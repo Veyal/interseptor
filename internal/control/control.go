@@ -17,6 +17,7 @@ import (
 
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
+	"github.com/Veyal/interceptor/internal/intruder"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/tlsca"
@@ -39,6 +40,7 @@ type Hub struct {
 	ca     *tlsca.CA
 	rebind Rebinder
 	snd    *sender.Sender
+	intr   *intruder.Engine
 	mux    *http.ServeMux
 
 	mu      sync.Mutex
@@ -57,6 +59,8 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder) 
 		mux:     http.NewServeMux(),
 		clients: map[chan string]struct{}{},
 	}
+	h.intr = intruder.New(h.snd)
+	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.routes()
 	if eng != nil {
 		eng.SetNotifier(h.broadcastIntercept)
@@ -87,6 +91,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
 	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
 	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)
+	h.mux.HandleFunc("POST /api/intruder/start", h.intruderStart)
+	h.mux.HandleFunc("GET /api/intruder/state", h.intruderState)
 	h.mux.HandleFunc("GET /api/events", h.handleEvents)
 	h.mux.HandleFunc("/", h.serveUI)
 }

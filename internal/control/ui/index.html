@@ -142,6 +142,16 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-hist .h .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rep-edit{width:100%;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.7;padding:8px 12px;border:none;border-top:1px solid var(--line)}
 
+/* intruder results */
+.intr-head,.intr-row{display:grid;grid-template-columns:42px 1fr 52px 66px 60px;align-items:center;padding:0 8px}
+.intr-head{flex:none;height:26px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg2)}
+.intr-row{height:25px;border-bottom:1px solid var(--line);font-size:11px;cursor:default}
+.intr-row:hover{background:var(--bg3)}
+.intr-row.flag{background:var(--sel)}
+.intr-row>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 3px}
+.intr-row .pl{color:var(--fg)}
+.intr-row.flag .pl{color:var(--accent);font-weight:600}
+
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 </style>
@@ -160,6 +170,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <button class="tab active" data-tab="proxy">Proxy</button>
   <button class="tab" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
   <button class="tab" data-tab="repeater">Repeater</button>
+  <button class="tab" data-tab="intruder">Intruder</button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -260,6 +271,43 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
           <div class="seg" id="repResSeg"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
         </div>
         <pre id="repResView"><span style="color:var(--fg3)">Send a request to see the response.</span></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTRUDER -->
+  <div class="panel" data-panel="intruder">
+    <div class="toolbar">
+      <input id="intrTarget" class="repurl" style="max-width:340px" placeholder="https://api.example.com">
+      <div class="seg" id="intrType"><button class="on" data-t="sniper">Sniper</button><button data-t="pitchfork">Pitchfork</button></div>
+      <button class="btn" id="intrWrap" title="Wrap the selected text in § … § fuzz markers">Add §</button>
+      <button class="btn accent" id="intrStart">Start ▸</button>
+      <span id="intrProgress" class="count"></span>
+    </div>
+    <div style="flex:1;display:flex;min-height:0">
+      <div class="pane" style="flex:1.2">
+        <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span style="font-size:10px;color:var(--fg3)">wrap fuzz points in §…§</span></div>
+        <textarea id="intrTemplate" class="rep-edit" style="flex:1" spellcheck="false">POST /login HTTP/1.1
+Host: example.com
+Content-Type: application/json
+
+{"user":"§admin§","pass":"§password§"}</textarea>
+        <div class="pane-head"><span class="lbl">PAYLOADS</span></div>
+        <div style="flex:none;display:flex;height:150px">
+          <textarea id="intrPayloads1" class="rep-edit" style="flex:1" spellcheck="false" placeholder="one payload per line">admin
+administrator
+root
+' OR 1=1--
+../../../etc/passwd</textarea>
+          <textarea id="intrPayloads2" class="rep-edit" style="flex:1;display:none;border-left:1px solid var(--line)" spellcheck="false" placeholder="list 2 (pitchfork)">password
+123456
+changeme</textarea>
+        </div>
+      </div>
+      <div class="pane" style="flex:1.1">
+        <div class="pane-head"><span class="lbl">RESULTS</span></div>
+        <div class="intr-head"><div>#</div><div>Payload</div><div style="text-align:center">St</div><div style="text-align:right">Len</div><div style="text-align:right">Time</div></div>
+        <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Run an attack to see results.</div></div>
       </div>
     </div>
   </div>
@@ -453,6 +501,7 @@ function showCtx(x,y,f,field){
   html+=`<div class="ctx-item" data-i="${acts.length}">Copy as cURL</div>`;acts.push(()=>copyCurl(f));
   html+='<div class="ctx-sep"></div>';
   html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Send to</span><span class="mono">Repeater</span></div>`;acts.push(()=>sendToRepeater(f));
+  html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Send to</span><span class="mono">Intruder</span></div>`;acts.push(()=>sendToIntruder(f));
   if(anyFilter()){html+='<div class="ctx-sep"></div>';html+=`<div class="ctx-item" data-i="${acts.length}">Clear all filters</div>`;acts.push(clearAllFilters);}
 
   ctx.innerHTML=html;ctx._acts=acts;
@@ -612,6 +661,48 @@ function sendToRepeater(f){loadRepFromFlow(f.id,false).then(()=>{document.queryS
 $('#repSend').onclick=repSend;
 $('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{repState.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
 
+/* ---- intruder ---- */
+const intrState={type:'sniper'};
+$('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  intrState.type=b.dataset.t;$('#intrType').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  $('#intrPayloads2').style.display=intrState.type==='pitchfork'?'block':'none';
+});
+$('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;};
+function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
+async function intrStart(){
+  const target=$('#intrTarget').value.trim();
+  if(!target){toast('enter a target (scheme://host)');return;}
+  const payloads=intrState.type==='pitchfork'?[lines($('#intrPayloads1').value),lines($('#intrPayloads2').value)]:[lines($('#intrPayloads1').value)];
+  try{renderIntr(await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target,template:$('#intrTemplate').value,attackType:intrState.type,payloads})}));}
+  catch(e){toast('attack: '+e.message);}
+}
+$('#intrStart').onclick=intrStart;
+let intrTimer=null;
+function scheduleIntr(){clearTimeout(intrTimer);intrTimer=setTimeout(async()=>{try{renderIntr(await api('/api/intruder/state'));}catch(e){}},120);}
+function renderIntr(st){
+  $('#intrProgress').textContent=st.running?`running ${st.done}/${st.total}`:(st.total?`done ${st.done}/${st.total}${st.capped?' (capped)':''}`:'');
+  $('#intrStart').disabled=!!st.running;$('#intrStart').textContent=st.running?'Running…':'Start ▸';
+  if(st.running)scheduleIntr(); // self-poll until the attack converges (robust to event/POST races)
+  const box=$('#intrResults');
+  if(st.error){box.innerHTML='<div class="hint" style="padding:12px;color:var(--red)">'+esc(st.error)+'</div>';return;}
+  if(!st.results||!st.results.length){box.innerHTML='<div class="hint" style="padding:12px">'+(st.running?'sending…':'Run an attack to see results.')+'</div>';return;}
+  box.innerHTML=st.results.map(r=>`<div class="intr-row ${r.flagged?'flag':''}">
+    <div style="color:var(--fg3)">${r.id}</div>
+    <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}</div>
+    <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
+    <div style="color:var(--fg2);text-align:right">${r.length}</div>
+    <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`).join('');
+}
+function sendToIntruder(f){
+  Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]).then(([d,raw])=>{
+    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
+    $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;
+    $('#intrTemplate').value=raw.replace(/\r\n/g,'\n');
+    document.querySelector('.tab[data-tab="intruder"]').click();
+    toast('loaded #'+f.id+' into Intruder · add § markers');
+  }).catch(e=>toast(e.message));
+}
+
 /* ---- live events ---- */
 function connectEvents(){
   const es=new EventSource('/api/events');
@@ -619,6 +710,7 @@ function connectEvents(){
     if(m.type==='flow.new')scheduleReload();
     else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();}
     else if(m.type==='rules.update')loadRules();
+    else if(m.type==='intruder.update')scheduleIntr();
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
