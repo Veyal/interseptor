@@ -39,7 +39,22 @@ type Flow struct {
 	DurationMs  int64
 	ClientAddr  string
 	Error       string
+	Flags       int64
 }
+
+// Flow flag bits, OR'd into Flow.Flags.
+const (
+	FlagIntercepted  int64 = 1 << iota // request passed through the intercept hold queue
+	FlagEdited                         // request was edited before forwarding
+	FlagDropped                        // request was dropped by the user (not forwarded)
+	FlagCaptureError                   // a body could not be captured; forwarding still succeeded
+	FlagTLSFailed                      // TLS interception failed for this flow
+)
+
+// flowColumns is the canonical SELECT column order; scanFlow consumes it.
+const flowColumns = `id, ts, method, scheme, host, port, path, http_version, status,
+	req_headers, res_headers, req_body_hash, res_body_hash,
+	req_len, res_len, mime, duration_ms, client_addr, error, flags`
 
 const schema = `
 CREATE TABLE IF NOT EXISTS flows (
@@ -59,6 +74,15 @@ CREATE INDEX IF NOT EXISTS idx_flows_method ON flows(method);
 CREATE INDEX IF NOT EXISTS idx_flows_ts ON flows(ts);
 
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ord INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  type TEXT NOT NULL,
+  match TEXT NOT NULL,
+  replace TEXT NOT NULL
+);
 `
 
 // Open creates (or opens) the database and body store under dir.
@@ -102,11 +126,11 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 		`INSERT INTO flows
 		 (ts, method, scheme, host, port, path, http_version, status,
 		  req_headers, res_headers, req_body_hash, res_body_hash,
-		  req_len, res_len, mime, duration_ms, client_addr, error)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  req_len, res_len, mime, duration_ms, client_addr, error, flags)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
 		string(rh), string(sh), f.ReqBodyHash, f.ResBodyHash,
-		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error)
+		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags)
 	if err != nil {
 		return 0, err
 	}
@@ -120,11 +144,7 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 
 // GetFlow loads a single flow by id.
 func (s *Store) GetFlow(id int64) (*Flow, error) {
-	row := s.db.QueryRow(
-		`SELECT id, ts, method, scheme, host, port, path, http_version, status,
-		        req_headers, res_headers, req_body_hash, res_body_hash,
-		        req_len, res_len, mime, duration_ms, client_addr, error
-		 FROM flows WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT `+flowColumns+` FROM flows WHERE id = ?`, id)
 	return scanFlow(row)
 }
 
@@ -141,7 +161,7 @@ func scanFlow(row scanner) (*Flow, error) {
 	if err := row.Scan(
 		&f.ID, &tsMillis, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.HTTPVersion, &f.Status,
 		&reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
-		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error,
+		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags,
 	); err != nil {
 		return nil, err
 	}
@@ -154,10 +174,7 @@ func scanFlow(row scanner) (*Flow, error) {
 // QueryFlows returns up to limit flows, newest first.
 func (s *Store) QueryFlows(limit int) ([]*Flow, error) {
 	rows, err := s.db.Query(
-		`SELECT id, ts, method, scheme, host, port, path, http_version, status,
-		        req_headers, res_headers, req_body_hash, res_body_hash,
-		        req_len, res_len, mime, duration_ms, client_addr, error
-		 FROM flows ORDER BY id DESC LIMIT ?`, limit)
+		`SELECT `+flowColumns+` FROM flows ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
