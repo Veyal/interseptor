@@ -155,15 +155,23 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	br := bufio.NewReader(tlsConn)
 	for {
+		// Reap tunnels left idle between requests. The deadline is cleared once a
+		// request arrives, so in-flight requests, slow bodies, and long-lived
+		// WebSocket splices (which are legitimately idle) are never affected.
+		tlsConn.SetReadDeadline(time.Now().Add(tunnelIdleTimeout))
 		req, err := http.ReadRequest(br)
 		if err != nil {
-			return // EOF or malformed → close tunnel
+			return // EOF, idle timeout, or malformed → close tunnel
 		}
+		tlsConn.SetReadDeadline(time.Time{})
 		if !s.mitmExchange(tlsConn, br, req, host, port) {
 			return
 		}
 	}
 }
+
+// tunnelIdleTimeout bounds how long a CONNECT tunnel may sit between requests.
+const tunnelIdleTimeout = 3 * time.Minute
 
 // mitmExchange forwards one tunnelled request and writes the response back over
 // conn. It returns false when the tunnel should be closed.
@@ -300,7 +308,10 @@ func (s *Server) recordUpgradeError(clientConn net.Conn, flow *store.Flow, msg s
 // upgraded stream is end-to-end encrypted to the origin.
 func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	d := &net.Dialer{Timeout: 30 * time.Second}
+	// KeepAlive lets the OS detect a half-open upstream (peer vanished without
+	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
+	// without an application-level timeout that would kill a legitimately idle one.
+	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	if scheme == "https" {
 		cfg := &tls.Config{ServerName: host}
 		if s.tr.TLSClientConfig != nil {

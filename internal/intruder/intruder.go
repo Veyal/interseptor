@@ -223,9 +223,13 @@ func (e *Engine) run(spec Spec, jobs []job) {
 func (e *Engine) flagAnomalies() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	// Only count successfully-sent responses; parse/transport failures (Status 0)
+	// must not skew the modal status or they'd mis-flag the valid responses.
 	counts := map[int]int{}
 	for _, r := range e.results {
-		counts[r.Status]++
+		if r.Status > 0 {
+			counts[r.Status]++
+		}
 	}
 	mode, best := 0, -1
 	for st, c := range counts {
@@ -234,7 +238,7 @@ func (e *Engine) flagAnomalies() {
 		}
 	}
 	for i := range e.results {
-		if e.results[i].Status != mode || e.results[i].Status >= 500 {
+		if st := e.results[i].Status; st > 0 && (st != mode || st >= 500) {
 			e.results[i].Flagged = true
 		}
 	}

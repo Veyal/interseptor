@@ -135,6 +135,31 @@ func TestSniperFuzzesPathNotJustBody(t *testing.T) {
 	}
 }
 
+func TestParseFailuresDoNotSkewAnomalyFlagging(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok") // every reachable request → 200
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	// "bad path" injects a space into the request line → http.ReadRequest fails
+	// → those jobs record Status 0. The 200s must NOT be flagged as anomalies.
+	if err := e.Start(Spec{
+		Target:     upstream.URL,
+		Template:   "GET /§seg§ HTTP/1.1\nHost: h\n\n",
+		AttackType: "sniper",
+		Payloads:   [][]string{{"bad path", "another bad one", "ok"}},
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	st := waitDone(t, e)
+	for _, r := range st.Results {
+		if r.Status == 200 && r.Flagged {
+			t.Fatalf("a valid 200 response was wrongly flagged as an anomaly: %+v", r)
+		}
+	}
+}
+
 func TestStartRejectsNoPositions(t *testing.T) {
 	e := newEngine(t)
 	err := e.Start(Spec{Target: "http://x", Template: "GET / HTTP/1.1\nHost: x\n\n", AttackType: "sniper", Payloads: [][]string{{"a"}}})
