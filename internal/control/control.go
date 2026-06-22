@@ -96,6 +96,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("POST /api/intercept/{id}/drop", h.dropIntercept)
 	h.mux.HandleFunc("GET /api/settings", h.getSettings)
 	h.mux.HandleFunc("PUT /api/settings", h.putSettings)
+	h.mux.HandleFunc("GET /api/sysproxy", h.getSysProxy)
+	h.mux.HandleFunc("POST /api/sysproxy", h.setSysProxy)
 	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
 	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
 	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)

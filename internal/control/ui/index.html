@@ -394,6 +394,14 @@ changeme</textarea>
         </div>
       </div>
       <div class="section">
+        <h3>SYSTEM PROXY</h3>
+        <p class="hint" style="margin-bottom:10px">Route this computer's HTTP/HTTPS traffic through Interceptor automatically (macOS). Off by default — turn it off when you're done. On other systems, set your OS/browser proxy to the address above manually.</p>
+        <div class="row" style="gap:12px">
+          <button class="toggle" id="sysProxyToggle">System proxy is off</button>
+          <span id="sysProxyHint" class="hint"></span>
+        </div>
+      </div>
+      <div class="section">
         <h3>TARGET SCOPE</h3>
         <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Host supports a leading wildcard, e.g. <b style="color:var(--accent)">*.acme.com</b>; path is a prefix.</p>
         <table class="rules-tbl">
@@ -768,6 +776,21 @@ $('#saveAddrBtn').onclick=async()=>{
   try{const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddr:$('#setAddr').value})});
     $('#proxyAddr').textContent=s.proxyAddr;toast('proxy now on '+s.proxyAddr);}catch(e){toast(e.message);}
 };
+async function loadSysProxy(){
+  try{const s=await api('/api/sysproxy');const b=$('#sysProxyToggle');
+    if(!s.supported){b.disabled=true;b.textContent='Auto-config: macOS only';$('#sysProxyHint').textContent='Set your OS/browser proxy to '+s.proxy+' manually.';return;}
+    b.classList.toggle('on',s.enabled);b.textContent=s.enabled?'System proxy is on':'System proxy is off';
+    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';
+  }catch(e){}
+}
+$('#sysProxyToggle').onclick=async()=>{
+  const on=$('#sysProxyToggle').classList.contains('on');$('#sysProxyToggle').disabled=true;
+  try{const s=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!on})});
+    $('#sysProxyToggle').classList.toggle('on',s.enabled);$('#sysProxyToggle').textContent=s.enabled?'System proxy is on':'System proxy is off';
+    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';toast(s.enabled?'system proxy enabled':'system proxy disabled');}
+  catch(e){toast(e.message);}
+  $('#sysProxyToggle').disabled=false;
+};
 
 /* ---- repeater ---- */
 const repState={resId:null,resView:'raw',histSel:null};
@@ -965,7 +988,7 @@ function connectEvents(){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadFlows();loadRules();loadScope();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadFlows();loadRules();loadScope();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
 </script>
 </body>
 </html>

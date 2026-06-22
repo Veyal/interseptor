@@ -7,6 +7,10 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **System-proxy toggle** — `internal/sysproxy` points the OS HTTP/HTTPS proxy at Interceptor on
+  macOS (via `networksetup`) and back off, only ever on explicit user opt-in (never automatic).
+  Control: `GET/POST /api/sysproxy`; a **Settings → System proxy** toggle; other platforms get a
+  "set 127.0.0.1:8080 manually" hint. Removes the top setup friction on macOS.
 - **HAR export & import** — `internal/harx` converts flows to/from HAR 1.2 (round-trip tested).
   Control: `GET /api/export/har` (optionally `?inScope=1`; excludes Intruder noise) streams the
   history as a downloadable `.har`; `POST /api/import/har` ingests a HAR, recording each entry as a
