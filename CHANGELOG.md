@@ -9,6 +9,7 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ### Added
 - Design spec for slice #1 (core intercepting proxy): `docs/superpowers/specs/2026-06-22-interceptor-proxy-core-design.md`. Stack: Go core (single static binary) + React web UI; persistent-lean storage (SQLite metadata + on-disk bodies); proxy listener configurable at runtime (default `127.0.0.1:8080`); control plane on `127.0.0.1:9966`.
 - Implementation plan for the foundation slice (store + capture + HTTP forward proxy + runnable binary), built bottom-up with TDD: `docs/superpowers/plans/2026-06-22-interceptor-foundation.md`.
+- **Foundation implementation (Go):** `internal/store` (SQLite flow metadata + settings, content-addressed deduplicated on-disk body store), `internal/capture` (streams bodies to disk via `io.TeeReader`, never buffering whole bodies), `internal/proxy` (HTTP forward proxy capturing every flow, hop-by-hop header stripping, errored-flow recording on upstream failure, `CONNECT` → 501), and `cmd/interceptor` (runnable binary on `127.0.0.1:8080`, overridable via the `proxy.addr` setting, graceful shutdown). Pure-Go SQLite (no cgo) → single static binary. HTTP only — HTTPS/TLS MITM, intercept, the control API, and the UI are later plans.
 
 ### Changed
 - Product renamed from "Conduit" to **Interceptor** (existing references will be updated during the slice-1 build).
