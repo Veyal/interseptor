@@ -1,3 +1,432 @@
 <!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interceptor</title>
-<body>Interceptor UI (placeholder — replaced in Task 7)</body>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#000000;--bg1:#0a0a0b;--bg2:#111113;--bg3:#1c1c20;--line:#222226;--line2:#33333a;
+  --fg:#ededf0;--fg2:#9a9aa3;--fg3:#5c5c64;--accent:#00e08a;--onAccent:#04150d;
+  --sel:rgba(0,224,138,0.12);--accentDim:rgba(0,224,138,0.13);--blue:#4aa8ff;--amber:#ffb02e;
+  --red:#ff5b5b;--violet:#c08cff;--cyan:#3fd8d0;--scroll:#2a2a30;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;overflow:hidden}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;outline:none}
+button{cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+.row{display:flex;align-items:center}
+.spacer{flex:1}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.blink{animation:blink 1.6s ease-in-out infinite}
+
+/* top bar */
+#bar{height:38px;flex:none;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 13px;user-select:none}
+#logo{width:15px;height:15px;border-radius:4px;background:var(--accent);box-shadow:0 0 10px var(--accentDim)}
+.brand{font-weight:700;letter-spacing:.5px}
+.tag{font-size:9.5px;color:var(--fg3);letter-spacing:1.5px}
+.kv{font-size:10.5px;color:var(--fg2)}
+.kv b{color:var(--fg);font-weight:600}
+
+/* tabs */
+#tabs{height:40px;flex:none;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 10px}
+.tab{font-size:12px;font-weight:600;color:var(--fg2);padding:7px 14px;border-radius:7px}
+.tab:hover{color:var(--fg)}
+.tab.active{color:var(--accent);background:var(--accentDim)}
+.badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:6px}
+
+#main{flex:1;min-height:0;position:relative}
+.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
+.panel.active{display:flex}
+
+/* toolbar */
+.toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg1)}
+.search{display:flex;align-items:center;flex:1;max-width:520px;background:var(--bg3);border:1px solid var(--line);border-radius:7px;height:30px;overflow:hidden}
+.search select{height:100%;background:var(--bg2);color:var(--fg2);font-size:11px;font-weight:600;border-right:1px solid var(--line);padding:0 8px;cursor:pointer}
+.search input{flex:1;background:none;font-size:12px;padding:0 10px}
+.btn{font-size:11.5px;font-weight:600;color:var(--fg2);padding:6px 11px;border-radius:6px;background:var(--bg3)}
+.btn:hover{color:var(--fg)}
+.btn.accent{color:var(--onAccent);background:var(--accent)}
+.btn.accent:hover{filter:brightness(1.08)}
+.btn.danger:hover{color:var(--red)}
+.count{font-size:11px;color:var(--fg2)}
+
+/* history table */
+.thead,.trow{display:grid;grid-template-columns:48px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 70px 64px 60px;align-items:center}
+.thead{flex:none;height:26px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--fg3);padding:0 6px}
+.thead>div{padding:0 4px;cursor:pointer;user-select:none}
+.thead>div:hover{color:var(--fg)}
+#rows{flex:1;overflow:auto;min-height:0}
+.trow{height:25px;border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:11px;padding:0 6px;cursor:pointer}
+.trow:hover{background:var(--bg3)}
+.trow.sel{background:var(--sel);border-left-color:var(--accent)}
+.trow>div{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-id{color:var(--fg3)}
+.tr-m{font-weight:700}
+.tr-host{color:var(--fg2)}
+.tr-path{color:var(--fg)}
+.tr-st{font-weight:700;text-align:center}
+.tr-mime{color:var(--fg3)}
+.tr-len{color:var(--fg2);text-align:right}
+.tr-t{color:var(--fg3);text-align:right}
+.empty{padding:30px;text-align:center;color:var(--fg3);font-size:12px}
+
+/* inspector */
+#inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+.pane:last-child{border-right:none}
+.pane-head{flex:none;height:30px;display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.pane-head .lbl{font-size:9px;font-weight:700;letter-spacing:1px;color:var(--fg3)}
+.seg{display:inline-flex;gap:2px;background:var(--bg3);border-radius:6px;padding:2px}
+.seg button{font-size:10.5px;font-weight:600;color:var(--fg2);padding:3px 9px;border-radius:4px}
+.seg button.on{color:var(--accent);background:var(--accentDim)}
+.pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+.statusline{font-size:10.5px;font-weight:700}
+
+/* intercept */
+.section{padding:14px 16px;border-bottom:1px solid var(--line)}
+.section h3{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--fg3);margin-bottom:10px}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;padding:7px 14px;border-radius:8px;background:var(--bg3)}
+.toggle.on{color:var(--accent);background:var(--accentDim)}
+.held{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;margin-bottom:6px;cursor:pointer;font-size:11.5px}
+.held:hover{background:var(--bg3)}
+.held.sel{border-color:var(--accent);background:var(--accentDim)}
+.held .m{font-weight:700}
+.held .h{color:var(--fg2)}
+.held .p{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.6;padding:11px 14px;border:1px solid var(--line);border-radius:8px}
+.rules-tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+.rules-tbl th{text-align:left;font-size:9px;letter-spacing:.6px;color:var(--fg3);padding:5px 8px;border-bottom:1px solid var(--line)}
+.rules-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.rules-tbl input[type=text]{width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:4px 7px}
+.rules-tbl select{background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:4px 6px;color:var(--fg2)}
+.field{display:flex;flex-direction:column;gap:6px;max-width:420px;margin-bottom:16px}
+.field label{font-size:11px;color:var(--fg2)}
+.field input{background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12px}
+.hint{font-size:11px;color:var(--fg3);line-height:1.6}
+.scroll{overflow:auto;min-height:0;flex:1}
+
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="bar">
+  <div id="logo"></div>
+  <span class="brand">INTERCEPTOR</span>
+  <span class="tag">INTERCEPTING PROXY</span>
+  <div class="spacer"></div>
+  <div class="row" style="gap:6px"><div class="dot blink"></div><span class="kv">proxy <b id="proxyAddr">…</b></span></div>
+  <span class="kv">control <b>127.0.0.1:9966</b></span>
+</div>
+
+<div id="tabs">
+  <button class="tab active" data-tab="proxy">Proxy</button>
+  <button class="tab" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
+  <button class="tab" data-tab="settings">Settings</button>
+</div>
+
+<div id="main">
+  <!-- PROXY -->
+  <div class="panel active" data-panel="proxy">
+    <div class="toolbar">
+      <div class="search">
+        <select id="fScheme"><option value="">all</option><option value="https">https</option><option value="http">http</option></select>
+        <input id="fSearch" placeholder="Filter by path…">
+      </div>
+      <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+      <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
+      <div class="spacer"></div>
+      <span class="count"><b id="rowCount">0</b> flows</span>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+    <div class="thead">
+      <div data-sort="id">#</div><div data-sort="method">Method</div><div data-sort="host">Host</div>
+      <div data-sort="path">Path</div><div data-sort="status" style="text-align:center">St</div>
+      <div data-sort="mime">Type</div><div data-sort="size" style="text-align:right">Size</div><div data-sort="time" style="text-align:right">Time</div>
+    </div>
+    <div id="rows"><div class="empty">No traffic yet. Point a client at the proxy and requests will appear here live.</div></div>
+    <div id="inspect">
+      <div class="pane">
+        <div class="pane-head"><span class="lbl">REQUEST</span>
+          <div class="seg" data-side="req"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
+        </div>
+        <pre id="reqView"><span style="color:var(--fg3)">Select a flow to inspect its request.</span></pre>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="lbl">RESPONSE</span>
+          <span id="resStatus" class="statusline"></span>
+          <div class="seg" data-side="res"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
+        </div>
+        <pre id="resView"><span style="color:var(--fg3)">Select a flow to inspect its response.</span></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTERCEPT -->
+  <div class="panel" data-panel="intercept">
+    <div class="scroll">
+      <div class="section">
+        <h3>INTERCEPT</h3>
+        <div class="row" style="gap:12px">
+          <button class="toggle" id="interceptToggle">Intercept is off</button>
+          <span class="hint">When on, every request is held until you forward (optionally edited) or drop it.</span>
+        </div>
+      </div>
+      <div class="section">
+        <h3>HOLD QUEUE · <span id="heldCount">0</span></h3>
+        <div id="heldList"><div class="hint">Nothing held.</div></div>
+        <div id="heldEditor" style="display:none;margin-top:10px">
+          <textarea class="raw" id="heldRaw" spellcheck="false"></textarea>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <button class="btn accent" id="forwardBtn">Forward</button>
+            <button class="btn danger" id="dropBtn">Drop</button>
+          </div>
+        </div>
+      </div>
+      <div class="section" style="border-bottom:none">
+        <h3>MATCH &amp; REPLACE (request)</h3>
+        <table class="rules-tbl">
+          <thead><tr><th style="width:34px">On</th><th style="width:120px">Type</th><th>Match (regex)</th><th>Replace</th><th style="width:60px"></th></tr></thead>
+          <tbody id="rulesBody"></tbody>
+        </table>
+        <div class="row" style="gap:8px;margin-top:10px">
+          <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option></select>
+          <input id="newRuleMatch" class="btn" style="flex:1;background:var(--bg3)" placeholder="match regex e.g. User-Agent: .*">
+          <input id="newRuleReplace" class="btn" style="flex:1;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
+          <button class="btn accent" id="addRuleBtn">+ Add rule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="panel" data-panel="settings">
+    <div class="scroll">
+      <div class="section">
+        <h3>PROXY LISTENER</h3>
+        <div class="field">
+          <label>Bind address &amp; port</label>
+          <input id="setAddr" placeholder="127.0.0.1:8080">
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn accent" id="saveAddrBtn">Apply &amp; rebind</button>
+          <span class="hint">Use <b>0.0.0.0:8080</b> to intercept other devices on your LAN.</span>
+        </div>
+      </div>
+      <div class="section">
+        <h3>TLS CERTIFICATE AUTHORITY</h3>
+        <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA on the client to intercept HTTPS. Per-host leaf certificates are minted on demand.</p>
+        <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block">Download CA certificate</a>
+      </div>
+      <div class="section" style="border-bottom:none">
+        <h3>INTERCEPT</h3>
+        <button class="toggle" id="interceptToggle2">Intercept is off</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,
+  rules:[],view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},
+  filters:{scheme:'',search:'',method:'',status:''}};
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
+async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
+
+const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
+const statusColor=s=>!s?'var(--fg3)':s<300?'var(--accent)':s<400?'var(--blue)':s<500?'var(--amber)':'var(--red)';
+const statusText=s=>({200:'OK',201:'Created',204:'No Content',301:'Moved',302:'Found',304:'Not Modified',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',500:'Internal Server Error',502:'Bad Gateway'}[s]||'');
+const mimeLabel=m=>{if(!m)return'—';if(m.includes('json'))return'json';if(m.includes('html'))return'html';if(m.includes('javascript'))return'script';if(m.includes('css'))return'css';if(m.includes('font')||m.includes('woff'))return'font';if(m.includes('image'))return'image';return(m.split('/')[1]||m).split(';')[0];};
+const fmtSize=n=>!n?'0 B':n<1024?n+' B':n<1048576?(n/1024).toFixed(n<10240?1:0)+' KB':(n/1048576).toFixed(1)+' MB';
+const fmtTime=ms=>{const d=new Date(ms);return d.toLocaleTimeString('en-GB',{hour12:false});};
+
+/* ---- tabs ---- */
+$$('.tab').forEach(t=>t.onclick=()=>{
+  $$('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
+  $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
+});
+
+/* ---- flows ---- */
+function applySort(flows){
+  const k=state.sort.key,dir=state.sort.dir;
+  const val=f=>k==='size'?(f.resLen||0):k==='time'?f.ts:k==='status'?(f.status||0):k==='method'?f.method:k==='host'?f.host:k==='path'?f.path:k==='mime'?mimeLabel(f.mime):f.id;
+  return flows.slice().sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*dir;});
+}
+function renderRows(){
+  const box=$('#rows');
+  const flows=applySort(state.flows);
+  $('#rowCount').textContent=state.flows.length;
+  if(!flows.length){box.innerHTML='<div class="empty">No traffic yet. Point a client at the proxy and requests will appear here live.</div>';return;}
+  box.innerHTML=flows.map(f=>{
+    const dropped=(f.flags&4)!==0,intercepted=(f.flags&1)!==0;
+    const st=f.error&&!f.status?'ERR':(f.status||'—');
+    return `<div class="trow ${f.id===state.selId?'sel':''}" data-id="${f.id}">
+      <div class="tr-id">${f.id}</div>
+      <div class="tr-m" style="color:${methodColor(f.method)}">${esc(f.method)}</div>
+      <div class="tr-host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>
+      <div class="tr-path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)">●</span>':''}</div>
+      <div class="tr-st" style="color:${statusColor(f.status)}">${st}</div>
+      <div class="tr-mime">${esc(mimeLabel(f.mime))}</div>
+      <div class="tr-len">${fmtSize(f.resLen)}</div>
+      <div class="tr-t">${fmtTime(f.ts)}</div>
+    </div>`;
+  }).join('');
+  $$('#rows .trow').forEach(r=>r.onclick=()=>selectFlow(Number(r.dataset.id)));
+}
+async function loadFlows(){
+  const q=new URLSearchParams();
+  const f=state.filters;
+  if(f.scheme)q.set('scheme',f.scheme);
+  if(f.search)q.set('search',f.search);
+  if(f.method)q.set('method',f.method);
+  if(f.status)q.set('status',f.status);
+  q.set('limit','500');
+  try{const d=await api('/api/flows?'+q.toString());state.flows=d.flows||[];renderRows();}catch(e){toast('flows: '+e.message);}
+}
+let reloadTimer=null;
+function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
+
+async function selectFlow(id){
+  state.selId=id;renderRows();
+  try{
+    state.detail=await api('/api/flows/'+id);
+    await renderSide('req');await renderSide('res');
+    const d=state.detail;
+    $('#resStatus').textContent=d.status?`${d.status} ${statusText(d.status)}`:(d.error||'');
+    $('#resStatus').style.color=statusColor(d.status);
+  }catch(e){toast('flow: '+e.message);}
+}
+function prettify(raw){
+  const i=raw.indexOf('\r\n\r\n');const head=i>=0?raw.slice(0,i):raw;const body=i>=0?raw.slice(i+4):'';
+  let pretty=body;
+  try{pretty=JSON.stringify(JSON.parse(body),null,2);}catch(e){}
+  return head+'\n\n'+pretty;
+}
+async function renderSide(side){
+  const el=side==='req'?$('#reqView'):$('#resView');
+  if(!state.selId){return;}
+  try{
+    const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
+    el.textContent=state.view[side]==='pretty'?prettify(raw):raw;
+  }catch(e){el.textContent='(error: '+e.message+')';}
+}
+$$('.seg').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderSide(side);});});
+
+$$('.thead [data-sort]').forEach(h=>h.onclick=()=>{
+  const k=h.dataset.sort;if(state.sort.key===k)state.sort.dir*=-1;else{state.sort.key=k;state.sort.dir=k==='id'||k==='time'?-1:1;}renderRows();});
+
+$('#fScheme').onchange=e=>{state.filters.scheme=e.target.value;loadFlows();};
+$('#fMethod').onchange=e=>{state.filters.method=e.target.value;loadFlows();};
+$('#fStatus').onchange=e=>{state.filters.status=e.target.value;loadFlows();};
+$('#fSearch').oninput=e=>{state.filters.search=e.target.value;scheduleReload();};
+$('#refreshBtn').onclick=loadFlows;
+
+/* ---- intercept ---- */
+function renderIntercept(){
+  const on=state.intercept.enabled,q=state.intercept.queue||[];
+  $('#heldCount').textContent=q.length;
+  const badge=$('#heldBadge');badge.style.display=q.length?'inline-block':'none';badge.textContent=q.length;
+  [['#interceptToggle'],['#interceptToggle2']].forEach(([sel])=>{const b=$(sel);if(!b)return;b.classList.toggle('on',on);b.textContent=on?'Intercept is on':'Intercept is off';});
+  const list=$('#heldList');
+  if(!q.length){list.innerHTML='<div class="hint">Nothing held.</div>';$('#heldEditor').style.display='none';state.selHeld=null;}
+  else{
+    list.innerHTML=q.map(h=>`<div class="held ${h.id===state.selHeld?'sel':''}" data-id="${h.id}">
+      <span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>
+      <span class="h">${esc(h.host)}</span><span class="p">${esc(h.path)}</span></div>`).join('');
+    $$('#heldList .held').forEach(el=>el.onclick=()=>selectHeld(Number(el.dataset.id)));
+    if(state.selHeld==null||!q.find(h=>h.id===state.selHeld))selectHeld(q[0].id);
+  }
+}
+function selectHeld(id){
+  state.selHeld=id;const h=(state.intercept.queue||[]).find(x=>x.id===id);
+  $$('#heldList .held').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id));
+  if(h){$('#heldEditor').style.display='block';$('#heldRaw').value=h.raw||'';}
+}
+async function toggleIntercept(){
+  try{const s=await api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})});
+    state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+}
+$('#interceptToggle').onclick=toggleIntercept;
+$('#interceptToggle2').onclick=toggleIntercept;
+$('#forwardBtn').onclick=async()=>{if(state.selHeld==null)return;try{
+  await api('/api/intercept/'+state.selHeld+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
+  toast('forwarded');}catch(e){toast(e.message);}};
+$('#dropBtn').onclick=async()=>{if(state.selHeld==null)return;try{
+  await api('/api/intercept/'+state.selHeld+'/drop',{method:'POST'});toast('dropped');}catch(e){toast(e.message);}};
+
+/* ---- rules ---- */
+function renderRules(){
+  const body=$('#rulesBody');
+  if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
+  body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
+    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
+    <td><select data-k="type"><option value="req-header" ${r.type==='req-header'?'selected':''}>req-header</option><option value="req-body" ${r.type==='req-body'?'selected':''}>req-body</option></select></td>
+    <td><input type="text" data-k="match" value="${esc(r.match)}"></td>
+    <td><input type="text" data-k="replace" value="${esc(r.replace)}"></td>
+    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
+  body.querySelectorAll('tr').forEach(tr=>{
+    const id=Number(tr.dataset.id);
+    tr.querySelectorAll('[data-k]').forEach(inp=>{
+      const ev=inp.tagName==='SELECT'||inp.type==='checkbox'?'change':'change';
+      inp.addEventListener(ev,()=>updateRule(id,tr));
+    });
+  });
+  body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteRule(Number(b.dataset.del)));
+}
+async function loadRules(){try{const d=await api('/api/rules');state.rules=d.rules||[];renderRules();}catch(e){toast(e.message);}}
+async function updateRule(id,tr){
+  const r=state.rules.find(x=>x.id===id);if(!r)return;
+  const get=k=>tr.querySelector(`[data-k="${k}"]`);
+  const upd={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
+  try{await api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('rule saved');}catch(e){toast(e.message);loadRules();}
+}
+async function deleteRule(id){try{await api('/api/rules/'+id,{method:'DELETE'});loadRules();}catch(e){toast(e.message);}}
+$('#addRuleBtn').onclick=async()=>{
+  const rule={type:$('#newRuleType').value,match:$('#newRuleMatch').value,replace:$('#newRuleReplace').value,enabled:true};
+  if(!rule.match){toast('match regex required');return;}
+  try{await api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');}catch(e){toast(e.message);}
+};
+
+/* ---- settings ---- */
+async function loadSettings(){try{const s=await api('/api/settings');$('#proxyAddr').textContent=s.proxyAddr;$('#setAddr').value=s.proxyAddr;
+  state.intercept.enabled=s.interceptEnabled;}catch(e){}}
+$('#saveAddrBtn').onclick=async()=>{
+  try{const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddr:$('#setAddr').value})});
+    $('#proxyAddr').textContent=s.proxyAddr;toast('proxy now on '+s.proxyAddr);}catch(e){toast(e.message);}
+};
+
+/* ---- live events ---- */
+function connectEvents(){
+  const es=new EventSource('/api/events');
+  es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    if(m.type==='flow.new')scheduleReload();
+    else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();}
+    else if(m.type==='rules.update')loadRules();
+    else if(m.type==='settings.update')loadSettings();
+  };
+  es.onerror=()=>{/* browser auto-reconnects */};
+}
+
+/* ---- boot ---- */
+async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
+loadSettings();loadFlows();loadRules();refreshIntercept();connectEvents();
+</script>
+</body>
+</html>
