@@ -40,19 +40,25 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 // Finalize commits the body and returns its sha256 hex hash and byte length.
 // If a body with the same hash already exists it is deduplicated.
 func (w *BodyWriter) Finalize() (string, int64, error) {
+	tmpName := w.tmp.Name()
 	if err := w.tmp.Close(); err != nil {
+		os.Remove(tmpName)
 		return "", 0, err
 	}
+	// Remove the temp file on every path except a successful rename (where it no
+	// longer exists, so Remove is a harmless no-op). This cleans up both the
+	// dedup path and any MkdirAll/Rename failure after Close.
+	defer os.Remove(tmpName)
+
 	sum := hex.EncodeToString(w.h.Sum(nil))
 	dst := w.s.bodyPath(sum)
 	if _, err := os.Stat(dst); err == nil {
-		os.Remove(w.tmp.Name()) // already stored
-		return sum, w.n, nil
+		return sum, w.n, nil // identical body already stored; temp removed by defer
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return "", 0, err
 	}
-	if err := os.Rename(w.tmp.Name(), dst); err != nil {
+	if err := os.Rename(tmpName, dst); err != nil {
 		return "", 0, err
 	}
 	return sum, w.n, nil
