@@ -6,6 +6,21 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 
 ## [Unreleased]
 
+### Added
+- `README.md` (product overview, install/run, HTTPS CA setup, architecture, control API) and
+  `CONTRIBUTING.md` (the code standards every change must follow — TDD, no cgo, conventional
+  commits, changelog-per-change, package/concurrency/UI conventions).
+
+### Changed
+- Rewrote `CLAUDE.md` to document the Go application (it previously described the now-removed
+  design component) and to point at `README.md` / `CONTRIBUTING.md`.
+- Tidied `.gitignore` (dropped the obsolete source-archive entry; ignore in-tree runtime data).
+
+### Removed
+- The obsolete mock-UI design artifacts, superseded by the real Go app + embedded UI:
+  `Conduit.dc.html`, `support.js`, `screenshots/`, `.thumbnail`, and the source `.zip`.
+  (Recoverable from git history if ever needed.)
+
 ## [2026-06-22] — Product modules: Repeater, Intruder, Scanner, WebSocket capture, API
 
 ### Added
