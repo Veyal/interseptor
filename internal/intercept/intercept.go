@@ -59,6 +59,12 @@ type Engine struct {
 	order   []int64
 	rules   []compiledRule
 	notify  func()
+
+	// response interception
+	respEnabled bool
+	respNextID  int64
+	respQueue   map[int64]*respItem
+	respOrder   []int64
 }
 
 // New returns an Engine with intercept disabled and no rules.

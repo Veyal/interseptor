@@ -7,6 +7,15 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **Response interception** — the intercept engine now handles the response side too:
+  **response match-&-replace** (`res-header` / `res-body` rules execute, transforming responses
+  before they reach the client) and a **response hold queue** (hold → edit raw → forward / drop),
+  mirroring the request side. Wired into both the HTTP and MITM response paths (buffered only when a
+  response rule or response-intercept is active; otherwise still streamed). Control adds
+  `POST /api/intercept/response/toggle|{id}/forward|{id}/drop` and the intercept state carries
+  `responseEnabled` + `responseQueue`; the Intercept tab gains a response toggle, a response hold
+  queue, and `res-*` rule types; MCP gains `set_response_intercept`. Verified live (a `res-body` rule
+  rewrote a real HTTPS response).
 - **System-proxy toggle** — `internal/sysproxy` points the OS HTTP/HTTPS proxy at Interceptor on
   macOS (via `networksetup`) and back off, only ever on explicit user opt-in (never automatic).
   Control: `GET/POST /api/sysproxy`; a **Settings → System proxy** toggle; other platforms get a

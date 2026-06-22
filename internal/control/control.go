@@ -94,6 +94,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("POST /api/intercept/toggle", h.toggleIntercept)
 	h.mux.HandleFunc("POST /api/intercept/{id}/forward", h.forwardIntercept)
 	h.mux.HandleFunc("POST /api/intercept/{id}/drop", h.dropIntercept)
+	h.mux.HandleFunc("POST /api/intercept/response/toggle", h.toggleResponseIntercept)
+	h.mux.HandleFunc("POST /api/intercept/response/{id}/forward", h.forwardResponse)
+	h.mux.HandleFunc("POST /api/intercept/response/{id}/drop", h.dropResponse)
 	h.mux.HandleFunc("GET /api/settings", h.getSettings)
 	h.mux.HandleFunc("PUT /api/settings", h.putSettings)
 	h.mux.HandleFunc("GET /api/sysproxy", h.getSysProxy)
@@ -168,8 +171,10 @@ type heldJSON struct {
 }
 
 type interceptJSON struct {
-	Enabled bool       `json:"enabled"`
-	Queue   []heldJSON `json:"queue"`
+	Enabled         bool       `json:"enabled"`
+	Queue           []heldJSON `json:"queue"`
+	ResponseEnabled bool       `json:"responseEnabled"`
+	ResponseQueue   []heldJSON `json:"responseQueue"`
 }
 
 type settingsJSON struct {
@@ -381,8 +386,10 @@ func (h *Hub) deleteRule(w http.ResponseWriter, r *http.Request) {
 
 // validRule rejects unknown types and uncompilable regexes (writing the error).
 func validRule(w http.ResponseWriter, in ruleJSON) bool {
-	if in.Type != "req-header" && in.Type != "req-body" {
-		httpErr(w, http.StatusBadRequest, "type must be req-header or req-body")
+	switch in.Type {
+	case "req-header", "req-body", "res-header", "res-body":
+	default:
+		httpErr(w, http.StatusBadRequest, "type must be req-header, req-body, res-header, or res-body")
 		return false
 	}
 	// Compile-check the regex through the engine's validation path.
@@ -417,6 +424,14 @@ func (h *Hub) interceptState() interceptJSON {
 			hj.Method, hj.Scheme, hj.Host, hj.Path = held.Flow.Method, held.Flow.Scheme, held.Flow.Host, held.Flow.Path
 		}
 		out.Queue = append(out.Queue, hj)
+	}
+	out.ResponseEnabled = h.eng.ResponseEnabled()
+	for _, held := range h.eng.ResponseQueue() {
+		hj := heldJSON{ID: held.ID, Raw: string(held.Raw)}
+		if held.Flow != nil {
+			hj.Method, hj.Scheme, hj.Host, hj.Path = held.Flow.Method, held.Flow.Scheme, held.Flow.Host, held.Flow.Path
+		}
+		out.ResponseQueue = append(out.ResponseQueue, hj)
 	}
 	return out
 }
@@ -471,6 +486,57 @@ func (h *Hub) dropIntercept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.eng.Drop(id); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Hub) toggleResponseIntercept(w http.ResponseWriter, r *http.Request) {
+	if h.eng == nil {
+		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
+		return
+	}
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	h.eng.SetResponseEnabled(in.Enabled)
+	writeJSON(w, http.StatusOK, h.interceptState())
+}
+
+func (h *Hub) forwardResponse(w http.ResponseWriter, r *http.Request) {
+	if h.eng == nil {
+		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	var in struct {
+		Raw string `json:"raw"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	if err := h.eng.ForwardResponse(id, []byte(in.Raw)); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Hub) dropResponse(w http.ResponseWriter, r *http.Request) {
+	if h.eng == nil {
+		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	if err := h.eng.DropResponse(id); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

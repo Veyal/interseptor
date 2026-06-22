@@ -415,6 +415,21 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 // while tee'ing the body to the store, then records the flow.
 func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *store.Flow) {
 	defer resp.Body.Close()
+	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
+		flow.DurationMs = time.Since(flow.TS).Milliseconds()
+		s.record(flow)
+		http.Error(w, "response dropped by interceptor", http.StatusBadGateway)
+		return
+	} else if transformed {
+		copyHeader(w.Header(), hdr)
+		w.WriteHeader(st)
+		w.Write(body)
+		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
+		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
+		flow.DurationMs = time.Since(flow.TS).Milliseconds()
+		s.record(flow)
+		return
+	}
 	removeHopHeaders(resp.Header)
 	copyHeader(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
@@ -443,6 +458,19 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *store.Flow) error {
 	upstream := resp.Body
 	defer upstream.Close()
+	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
+		flow.DurationMs = time.Since(flow.TS).Milliseconds()
+		s.record(flow)
+		writeSimpleResponse(conn, http.StatusBadGateway, "response dropped by interceptor")
+		return nil
+	} else if transformed {
+		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
+		flow.ResBodyHash, flow.ResLen = s.storeBytes(body)
+		flow.DurationMs = time.Since(flow.TS).Milliseconds()
+		_, werr := conn.Write(buildRawResponse(st, hdr, body))
+		s.record(flow)
+		return werr
+	}
 	removeHopHeaders(resp.Header)
 
 	flow.Status = resp.StatusCode
@@ -464,6 +492,96 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
 	s.record(flow)
 	return werr
+}
+
+// maybeInterceptResponse applies response-side match-&-replace and the response
+// hold gate when active. It returns the final status/header/body to send. When
+// neither rules nor response-interception apply, transformed is false and the
+// caller streams the original response untouched (no buffering).
+func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (status int, header http.Header, body []byte, transformed, dropped bool) {
+	if s.eng == nil {
+		return 0, nil, nil, false, false
+	}
+	hasRules := s.eng.HasResponseRules()
+	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow))
+	if !hasRules && !hold {
+		return 0, nil, nil, false, false
+	}
+
+	b, _ := io.ReadAll(resp.Body)
+	h := resp.Header.Clone()
+	removeHopHeaders(h)
+	st := resp.StatusCode
+	if hasRules {
+		h, b = s.eng.ApplyResponseRules(h, b)
+	}
+	if hold {
+		flow.Flags |= store.FlagIntercepted
+		d := s.eng.HoldResponse(flow, buildRawResponse(st, h, b))
+		if d.Drop {
+			flow.Flags |= store.FlagDropped
+			return 0, nil, nil, false, true
+		}
+		if d.Edited {
+			if nst, nh, nb, err := parseRawResponse(d.Raw); err == nil {
+				st, h, b = nst, nh, nb
+				flow.Flags |= store.FlagEdited
+			}
+		}
+	}
+	// Keep framing consistent with the (possibly edited) body.
+	h.Set("Content-Length", strconv.Itoa(len(b)))
+	h.Del("Transfer-Encoding")
+	return st, h, b, true, false
+}
+
+// storeBytes captures an in-memory body into the content-addressed store.
+func (s *Server) storeBytes(b []byte) (string, int64) {
+	if len(b) == 0 {
+		return "", 0
+	}
+	tee, finalize, err := s.cap.TeeBody(bytes.NewReader(b))
+	if err != nil || tee == nil {
+		return "", 0
+	}
+	io.Copy(io.Discard, tee)
+	h, n, _ := finalize()
+	return h, n
+}
+
+func buildRawResponse(status int, h http.Header, body []byte) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "HTTP/1.1 %d %s\r\n", status, http.StatusText(status))
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range h[k] {
+			fmt.Fprintf(&b, "%s: %s\r\n", k, v)
+		}
+	}
+	b.WriteString("\r\n")
+	b.Write(body)
+	return b.Bytes()
+}
+
+// parseRawResponse parses an (edited) raw response: status line + headers via
+// http.ReadResponse, body taken as everything after the blank line.
+func parseRawResponse(raw []byte) (int, http.Header, []byte, error) {
+	norm := strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n", "\r\n")
+	head, body := norm, ""
+	if i := strings.Index(norm, "\r\n\r\n"); i >= 0 {
+		head = norm[:i] + "\r\n\r\n"
+		body = norm[i+4:]
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(strings.NewReader(head)), nil)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	resp.Body.Close()
+	return resp.StatusCode, resp.Header, []byte(body), nil
 }
 
 // fail records an errored flow and writes a 502 to the client. Used only before

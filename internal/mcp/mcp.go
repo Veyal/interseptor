@@ -371,6 +371,12 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/intercept/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
 		})
 
+	s.add("set_response_intercept", "Enable or disable response interception (hold responses to edit/drop before they reach the client).",
+		obj(map[string]any{"enabled": p("boolean", "true to hold responses")}, "enabled"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/intercept/response/toggle", map[string]any{"enabled": argBool(a, "enabled", false)})
+		})
+
 	s.add("forward_request", "Forward a held request (optionally replacing it with edited raw bytes).",
 		obj(map[string]any{"id": p("integer", "held request id"), "raw": p("string", "optional edited raw request")}, "id"),
 		func(a map[string]any) (string, error) {

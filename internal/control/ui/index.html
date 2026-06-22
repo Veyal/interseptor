@@ -242,11 +242,15 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
         <h3>INTERCEPT</h3>
         <div class="row" style="gap:12px">
           <button class="toggle" id="interceptToggle">Intercept is off</button>
-          <span class="hint">When on, every request is held until you forward (optionally edited) or drop it.</span>
+          <span class="hint">When on, every (in-scope) request is held until you forward (optionally edited) or drop it.</span>
+        </div>
+        <div class="row" style="gap:12px;margin-top:10px">
+          <button class="toggle" id="respInterceptToggle">Response intercept is off</button>
+          <span class="hint">When on, every response is held so you can edit or drop it before it reaches the client.</span>
         </div>
       </div>
       <div class="section">
-        <h3>HOLD QUEUE · <span id="heldCount">0</span></h3>
+        <h3>REQUEST HOLD QUEUE · <span id="heldCount">0</span></h3>
         <div id="heldList"><div class="hint">Nothing held.</div></div>
         <div id="heldEditor" style="display:none;margin-top:10px">
           <textarea class="raw" id="heldRaw" spellcheck="false"></textarea>
@@ -256,14 +260,25 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
           </div>
         </div>
       </div>
+      <div class="section">
+        <h3>RESPONSE HOLD QUEUE · <span id="respHeldCount">0</span></h3>
+        <div id="respHeldList"><div class="hint">Nothing held.</div></div>
+        <div id="respHeldEditor" style="display:none;margin-top:10px">
+          <textarea class="raw" id="respHeldRaw" spellcheck="false"></textarea>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <button class="btn accent" id="respForwardBtn">Forward</button>
+            <button class="btn danger" id="respDropBtn">Drop</button>
+          </div>
+        </div>
+      </div>
       <div class="section" style="border-bottom:none">
-        <h3>MATCH &amp; REPLACE (request)</h3>
+        <h3>MATCH &amp; REPLACE (request &amp; response)</h3>
         <table class="rules-tbl">
           <thead><tr><th style="width:34px">On</th><th style="width:120px">Type</th><th>Match (regex)</th><th>Replace</th><th style="width:60px"></th></tr></thead>
           <tbody id="rulesBody"></tbody>
         </table>
         <div class="row" style="gap:8px;margin-top:10px">
-          <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option></select>
+          <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option><option value="res-header">res-header</option><option value="res-body">res-body</option></select>
           <input id="newRuleMatch" class="btn" style="flex:1;background:var(--bg3)" placeholder="match regex e.g. User-Agent: .*">
           <input id="newRuleReplace" class="btn" style="flex:1;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
           <button class="btn accent" id="addRuleBtn">+ Add rule</button>
@@ -436,7 +451,7 @@ const $=s=>document.querySelector(s);
 const $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,
+const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
   rules:[],scope:[],inScopeOnly:false,view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
   filters:{scheme:'',search:'',method:'',status:'',host:''}};
 
@@ -717,12 +732,37 @@ function renderIntercept(){
     $$('#heldList .held').forEach(el=>el.onclick=()=>selectHeld(Number(el.dataset.id)));
     if(state.selHeld==null||!q.find(h=>h.id===state.selHeld))selectHeld(q[0].id);
   }
+  // response side
+  const ron=state.intercept.responseEnabled,rq=state.intercept.responseQueue||[];
+  $('#respHeldCount').textContent=rq.length;
+  const rb=$('#respInterceptToggle');rb.classList.toggle('on',ron);rb.textContent=ron?'Response intercept is on':'Response intercept is off';
+  const rlist=$('#respHeldList');
+  if(!rq.length){rlist.innerHTML='<div class="hint">Nothing held.</div>';$('#respHeldEditor').style.display='none';state.selRespHeld=null;}
+  else{
+    rlist.innerHTML=rq.map(h=>`<div class="held ${h.id===state.selRespHeld?'sel':''}" data-id="${h.id}">
+      <span class="m" style="color:var(--accent)">RESP</span>
+      <span class="h">${esc(h.host)}</span><span class="p">${esc(h.path)}</span></div>`).join('');
+    rlist.querySelectorAll('.held').forEach(el=>el.onclick=()=>selectRespHeld(Number(el.dataset.id)));
+    if(state.selRespHeld==null||!rq.find(h=>h.id===state.selRespHeld))selectRespHeld(rq[0].id);
+  }
 }
 function selectHeld(id){
   state.selHeld=id;const h=(state.intercept.queue||[]).find(x=>x.id===id);
   $$('#heldList .held').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id));
   if(h){$('#heldEditor').style.display='block';$('#heldRaw').value=h.raw||'';}
 }
+function selectRespHeld(id){
+  state.selRespHeld=id;const h=(state.intercept.responseQueue||[]).find(x=>x.id===id);
+  $$('#respHeldList .held').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id));
+  if(h){$('#respHeldEditor').style.display='block';$('#respHeldRaw').value=h.raw||'';}
+}
+$('#respInterceptToggle').onclick=async()=>{
+  try{const s=await api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})});state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+};
+$('#respForwardBtn').onclick=async()=>{if(state.selRespHeld==null)return;try{
+  await api('/api/intercept/response/'+state.selRespHeld+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#respHeldRaw').value})});toast('response forwarded');}catch(e){toast(e.message);}};
+$('#respDropBtn').onclick=async()=>{if(state.selRespHeld==null)return;try{
+  await api('/api/intercept/response/'+state.selRespHeld+'/drop',{method:'POST'});toast('response dropped');}catch(e){toast(e.message);}};
 async function toggleIntercept(){
   try{const s=await api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})});
     state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
@@ -741,7 +781,7 @@ function renderRules(){
   if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
   body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type"><option value="req-header" ${r.type==='req-header'?'selected':''}>req-header</option><option value="req-body" ${r.type==='req-body'?'selected':''}>req-body</option></select></td>
+    <td><select data-k="type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
     <td><input type="text" data-k="match" value="${esc(r.match)}"></td>
     <td><input type="text" data-k="replace" value="${esc(r.replace)}"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');

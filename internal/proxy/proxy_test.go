@@ -324,6 +324,44 @@ func TestProxyMITMTunnelsWebSocketUpgrade(t *testing.T) {
 	}
 }
 
+func TestProxyResponseMatchReplace(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		io.WriteString(w, "the topsecret value")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	eng := intercept.New()
+	if err := eng.SetRules([]store.Rule{{Enabled: true, Type: "res-body", Match: "topsecret", Replace: "REDACTED"}}); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	srv := New(s, capture.New(s), nil, eng, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+	resp, err := client.Get(upstream.URL + "/x")
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "the REDACTED value" {
+		t.Fatalf("response-side match-&-replace not applied: %q", body)
+	}
+}
+
 func TestProxyInterceptHoldThenForward(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
