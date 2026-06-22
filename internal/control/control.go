@@ -93,6 +93,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)
 	h.mux.HandleFunc("POST /api/intruder/start", h.intruderStart)
 	h.mux.HandleFunc("GET /api/intruder/state", h.intruderState)
+	h.mux.HandleFunc("POST /api/scanner/run", h.scannerRun)
+	h.mux.HandleFunc("GET /api/scanner/issues", h.scannerIssues)
 	h.mux.HandleFunc("GET /api/events", h.handleEvents)
 	h.mux.HandleFunc("/", h.serveUI)
 }

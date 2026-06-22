@@ -196,6 +196,42 @@ func TestRepeaterSendAndHistory(t *testing.T) {
 	}
 }
 
+func TestScannerRunFindsIssues(t *testing.T) {
+	h, s, _ := newHub(t)
+	// An HTTPS flow with no HSTS and wildcard CORS → two findings.
+	s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "app.example.com", Path: "/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string{"Content-Type": {"text/html"}, "Access-Control-Allow-Origin": {"*"}},
+	})
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/scanner/run", "application/json", nil)
+	if err != nil {
+		t.Fatalf("scanner run: %v", err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Issues []map[string]any `json:"issues"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Issues) < 2 {
+		t.Fatalf("expected at least 2 issues, got %d", len(out.Issues))
+	}
+	var foundHSTS, foundCORS bool
+	for _, i := range out.Issues {
+		if i["title"] == "Missing Strict-Transport-Security (HSTS)" {
+			foundHSTS = true
+		}
+		if i["title"] == "Overly permissive CORS policy" {
+			foundCORS = true
+		}
+	}
+	if !foundHSTS || !foundCORS {
+		t.Fatalf("missing expected findings: hsts=%v cors=%v (%v)", foundHSTS, foundCORS, out.Issues)
+	}
+}
+
 func TestSSEReceivesFlowNew(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())

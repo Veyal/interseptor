@@ -86,6 +86,16 @@ CREATE TABLE IF NOT EXISTS rules (
   match TEXT NOT NULL,
   replace TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS scan_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  flow_id INTEGER NOT NULL DEFAULT 0,
+  severity TEXT NOT NULL,
+  title TEXT NOT NULL,
+  target TEXT NOT NULL,
+  detail TEXT, evidence TEXT, fix TEXT,
+  UNIQUE(title, target)
+);
 `
 
 // Open creates (or opens) the database and body store under dir.

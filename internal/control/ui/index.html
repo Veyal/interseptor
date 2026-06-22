@@ -152,6 +152,22 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-row .pl{color:var(--fg)}
 .intr-row.flag .pl{color:var(--accent);font-weight:600}
 
+/* scanner */
+.scan-list{width:330px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--bg1)}
+.scan-item{padding:9px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer}
+.scan-item:hover{background:var(--bg3)}
+.scan-item.sel{background:var(--sel);border-left-color:var(--accent)}
+.scan-item .t{margin-top:5px;color:var(--fg);font-size:12px}
+.scan-item .tg{font-size:10.5px;color:var(--accent);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sev{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;border-radius:5px;padding:2px 7px;border:1px solid}
+.sev.High{color:var(--red);border-color:var(--red)}
+.sev.Medium{color:var(--amber);border-color:var(--amber)}
+.sev.Low{color:var(--blue);border-color:var(--blue)}
+.sev.Info{color:var(--fg2);border-color:var(--line2)}
+.scan-wrap{padding:18px 20px;overflow:auto}
+.evidence{background:var(--bg1);border:1px solid var(--line);border-radius:8px;padding:10px 13px;font-family:var(--mono);font-size:11.5px;color:var(--fg);overflow-wrap:anywhere;margin:14px 0}
+.fixbox{background:var(--accentDim);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--fg);line-height:1.6}
+
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 </style>
@@ -171,6 +187,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <button class="tab" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
   <button class="tab" data-tab="repeater">Repeater</button>
   <button class="tab" data-tab="intruder">Intruder</button>
+  <button class="tab" data-tab="scanner">Scanner</button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -309,6 +326,20 @@ changeme</textarea>
         <div class="intr-head"><div>#</div><div>Payload</div><div style="text-align:center">St</div><div style="text-align:right">Len</div><div style="text-align:right">Time</div></div>
         <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Run an attack to see results.</div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- SCANNER -->
+  <div class="panel" data-panel="scanner">
+    <div class="toolbar">
+      <button class="btn accent" id="scanRun">Run scan ▸</button>
+      <span id="scanCount" class="count"></span>
+      <div class="spacer"></div>
+      <span class="hint" style="font-size:11px">Passive checks over captured traffic — no requests sent</span>
+    </div>
+    <div style="flex:1;display:flex;min-height:0">
+      <div id="scanList" class="scan-list"><div class="hint" style="padding:12px">Run a scan to find issues.</div></div>
+      <div id="scanDetail" class="pane" style="flex:1"><div class="hint" style="padding:16px">Select an issue.</div></div>
     </div>
   </div>
 
@@ -703,6 +734,40 @@ function sendToIntruder(f){
   }).catch(e=>toast(e.message));
 }
 
+/* ---- scanner ---- */
+const scanState={sel:null,issues:[]};
+async function loadIssues(){try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();}catch(e){}}
+async function runScan(){
+  $('#scanRun').textContent='Scanning…';$('#scanRun').disabled=true;
+  try{const d=await api('/api/scanner/run',{method:'POST'});scanState.issues=d.issues||[];renderScan();toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s'));}
+  catch(e){toast(e.message);}
+  $('#scanRun').textContent='Run scan ▸';$('#scanRun').disabled=false;
+}
+function renderScan(){
+  const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
+  $('#scanCount').textContent=scanState.issues.length?`${scanState.issues.length} · ${c.High||0} High ${c.Medium||0} Med ${c.Low||0} Low`:'';
+  const list=$('#scanList');
+  if(!scanState.issues.length){list.innerHTML='<div class="hint" style="padding:12px">No issues found. Capture some traffic, then Run scan.</div>';$('#scanDetail').innerHTML='<div class="hint" style="padding:16px">Select an issue.</div>';return;}
+  if(scanState.sel==null||scanState.sel>=scanState.issues.length)scanState.sel=0;
+  list.innerHTML=scanState.issues.map((i,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
+    <span class="sev ${esc(i.severity)}">${esc(i.severity)}</span>
+    <div class="t">${esc(i.title)}</div><div class="tg">${esc(i.target)}</div></div>`).join('');
+  list.querySelectorAll('.scan-item').forEach(el=>el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();});
+  renderScanDetail();
+}
+function renderScanDetail(){
+  const i=scanState.issues[scanState.sel];if(!i)return;
+  $('#scanDetail').innerHTML=`<div class="scan-wrap">
+    <span class="sev ${esc(i.severity)}">${esc(i.severity)}</span>
+    <h1 style="font-size:17px;font-weight:700;margin:12px 0 6px;line-height:1.3">${esc(i.title)}</h1>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin-bottom:16px">${esc(i.target)}</div>
+    <p style="font-size:13px;color:var(--fg2);line-height:1.6">${esc(i.detail)}</p>
+    ${i.evidence?`<div class="evidence">${esc(i.evidence)}</div>`:''}
+    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:4px 0 6px">REMEDIATION</div>
+    <div class="fixbox">${esc(i.fix)}</div></div>`;
+}
+$('#scanRun').onclick=runScan;
+
 /* ---- live events ---- */
 function connectEvents(){
   const es=new EventSource('/api/events');
@@ -711,6 +776,7 @@ function connectEvents(){
     else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='intruder.update')scheduleIntr();
+    else if(m.type==='scanner.update')loadIssues();
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
@@ -718,7 +784,7 @@ function connectEvents(){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadFlows();loadRules();refreshIntercept();loadRepHistory();connectEvents();
+renderChips();loadSettings();loadFlows();loadRules();refreshIntercept();loadRepHistory();loadIssues();connectEvents();
 </script>
 </body>
 </html>
