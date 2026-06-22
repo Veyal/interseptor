@@ -6,6 +6,9 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 
 ## [Unreleased]
 
+### Added
+- **Repeater module** — `internal/sender` sends one-off requests directly to a target (bypassing the proxy listener; does not follow redirects; does not verify TLS, since a pentest tool talks to targets with bad certs) and records each as a flow tagged `FlagRepeater`. New control endpoints `POST /api/repeater/send` and `GET /api/repeater/history`; the Proxy history now excludes Repeater/Intruder sends (`QueryFlowsFilter` gained `RequireFlags`/`ExcludeFlags`). New **Repeater** UI tab (method/URL/headers/body editors, Send, response raw/pretty, send history) plus a **Send to Repeater** right-click action that prefills the editor from a captured flow. Verified live against real sites.
+
 ### Fixed
 - **WebSocket connections through the proxy no longer break.** Upgrade handshakes were sent down the normal forward path, which strips the `Connection`/`Upgrade` hop-by-hop headers and uses `http.Transport.RoundTrip` (no protocol upgrade) — so the origin received a plain GET and returned `500 "WebSocket upgrade is expected"`. The proxy now detects `Connection: Upgrade` requests (HTTP and MITM'd HTTPS), forwards the handshake verbatim, relays the `101`, and splices bytes bidirectionally — keeping `ws://`/`wss://` connections working. The handshake is recorded as a flow (new `FlagWebSocket`); frame-level capture remains a later slice. Intercept/match-&-replace are bypassed for upgrades.
 

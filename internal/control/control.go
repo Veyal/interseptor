@@ -15,7 +15,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
+	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
@@ -36,6 +38,7 @@ type Hub struct {
 	eng    *intercept.Engine
 	ca     *tlsca.CA
 	rebind Rebinder
+	snd    *sender.Sender
 	mux    *http.ServeMux
 
 	mu      sync.Mutex
@@ -50,6 +53,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder) 
 		eng:     eng,
 		ca:      ca,
 		rebind:  rebind,
+		snd:     sender.New(st, capture.New(st)),
 		mux:     http.NewServeMux(),
 		clients: map[chan string]struct{}{},
 	}
@@ -81,6 +85,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/settings", h.getSettings)
 	h.mux.HandleFunc("PUT /api/settings", h.putSettings)
 	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
+	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
+	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)
 	h.mux.HandleFunc("GET /api/events", h.handleEvents)
 	h.mux.HandleFunc("/", h.serveUI)
 }
@@ -155,12 +161,13 @@ func toFlowJSON(f *store.Flow) flowJSON {
 func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := store.FlowFilter{
-		Limit:    atoiOr(q.Get("limit"), 200),
-		BeforeID: int64(atoiOr(q.Get("before"), 0)),
-		Method:   q.Get("method"),
-		Host:     q.Get("host"),
-		Search:   q.Get("search"),
-		Scheme:   q.Get("scheme"),
+		Limit:        atoiOr(q.Get("limit"), 200),
+		BeforeID:     int64(atoiOr(q.Get("before"), 0)),
+		Method:       q.Get("method"),
+		Host:         q.Get("host"),
+		Search:       q.Get("search"),
+		Scheme:       q.Get("scheme"),
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder, // Repeater/Intruder have their own views
 	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)

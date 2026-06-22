@@ -133,6 +133,15 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .ctx-item.on .lbl{color:var(--accent)}
 .ctx-sep{height:1px;background:var(--line);margin:5px 4px}
 
+/* repeater */
+.repurl{flex:1;background:var(--bg3);border:1px solid var(--line);border-radius:7px;height:30px;padding:0 12px;font-size:12.5px;color:var(--fg)}
+.rep-hist{width:180px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--bg1)}
+.rep-hist .h{display:flex;flex-direction:column;gap:2px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:11px}
+.rep-hist .h:hover{background:var(--bg3)}
+.rep-hist .h.sel{background:var(--sel);border-left:2px solid var(--accent)}
+.rep-hist .h .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-edit{width:100%;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.7;padding:8px 12px;border:none;border-top:1px solid var(--line)}
+
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 </style>
@@ -150,6 +159,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 <div id="tabs">
   <button class="tab active" data-tab="proxy">Proxy</button>
   <button class="tab" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
+  <button class="tab" data-tab="repeater">Repeater</button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -225,6 +235,31 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
           <input id="newRuleReplace" class="btn" style="flex:1;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
           <button class="btn accent" id="addRuleBtn">+ Add rule</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPEATER -->
+  <div class="panel" data-panel="repeater">
+    <div class="toolbar">
+      <select id="repMethod" class="btn" style="font-weight:700"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
+      <input id="repUrl" class="repurl" placeholder="https://api.example.com/v1/resource">
+      <button class="btn accent" id="repSend">Send ▸</button>
+    </div>
+    <div style="flex:1;display:flex;min-height:0">
+      <div id="repHistory" class="rep-hist"><div class="hint" style="padding:10px">No sends yet.</div></div>
+      <div class="pane">
+        <div class="pane-head"><span class="lbl">REQUEST</span></div>
+        <div style="flex:none;padding:6px 10px 0;font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">HEADERS</div>
+        <textarea id="repHeaders" class="rep-edit" spellcheck="false" style="flex:none;height:34%" placeholder="Header: value (one per line)"></textarea>
+        <div style="flex:none;padding:4px 10px 0;font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">BODY</div>
+        <textarea id="repBody" class="rep-edit" spellcheck="false" style="flex:1" placeholder="Request body…"></textarea>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline"></span>
+          <div class="seg" id="repResSeg"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
+        </div>
+        <pre id="repResView"><span style="color:var(--fg3)">Send a request to see the response.</span></pre>
       </div>
     </div>
   </div>
@@ -416,6 +451,8 @@ function showCtx(x,y,f,field){
   html+='<div class="ctx-sep"></div>';
   html+=`<div class="ctx-item" data-i="${acts.length}">Copy URL</div>`;acts.push(()=>copyURL(f));
   html+=`<div class="ctx-item" data-i="${acts.length}">Copy as cURL</div>`;acts.push(()=>copyCurl(f));
+  html+='<div class="ctx-sep"></div>';
+  html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Send to</span><span class="mono">Repeater</span></div>`;acts.push(()=>sendToRepeater(f));
   if(anyFilter()){html+='<div class="ctx-sep"></div>';html+=`<div class="ctx-item" data-i="${acts.length}">Clear all filters</div>`;acts.push(clearAllFilters);}
 
   ctx.innerHTML=html;ctx._acts=acts;
@@ -528,6 +565,53 @@ $('#saveAddrBtn').onclick=async()=>{
     $('#proxyAddr').textContent=s.proxyAddr;toast('proxy now on '+s.proxyAddr);}catch(e){toast(e.message);}
 };
 
+/* ---- repeater ---- */
+const repState={resId:null,resView:'raw',histSel:null};
+async function repSend(){
+  const payload={method:$('#repMethod').value,url:$('#repUrl').value.trim(),headers:$('#repHeaders').value,body:$('#repBody').value};
+  if(!payload.url){toast('enter a URL');return;}
+  $('#repSend').textContent='Sending…';$('#repSend').disabled=true;
+  try{
+    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    repState.resId=flow.id;repState.histSel=flow.id;
+    $('#repStatus').textContent=flow.status?flow.status+' '+statusText(flow.status):(flow.error||'');
+    $('#repStatus').style.color=statusColor(flow.status);
+    await renderRepResponse();loadRepHistory();
+  }catch(e){toast('send: '+e.message);}
+  $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
+}
+async function renderRepResponse(){
+  if(!repState.resId)return;
+  try{const raw=await api('/api/flows/'+repState.resId+'/raw?side=res');$('#repResView').textContent=repState.resView==='pretty'?prettify(raw):raw;}
+  catch(e){$('#repResView').textContent='(error: '+e.message+')';}
+}
+async function loadRepHistory(){
+  try{
+    const d=await api('/api/repeater/history');const box=$('#repHistory');
+    if(!d.flows||!d.flows.length){box.innerHTML='<div class="hint" style="padding:10px">No sends yet.</div>';return;}
+    box.innerHTML=d.flows.map(f=>`<div class="h ${f.id===repState.histSel?'sel':''}" data-id="${f.id}">
+      <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
+      <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
+    box.querySelectorAll('.h').forEach(el=>el.onclick=()=>loadRepFromFlow(Number(el.dataset.id),true));
+  }catch(e){}
+}
+function headersToText(h){if(!h)return'';const out=[];(h.Host||[]).forEach(v=>out.push('Host: '+v));Object.keys(h).sort().forEach(k=>{if(k==='Host')return;(h[k]||[]).forEach(v=>out.push(k+': '+v));});return out.join('\n');}
+async function loadRepFromFlow(id,showResponse){
+  try{
+    const d=await api('/api/flows/'+id);
+    $('#repMethod').value=d.method;
+    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
+    $('#repUrl').value=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
+    $('#repHeaders').value=headersToText(d.reqHeaders);
+    const raw=await api('/api/flows/'+id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');$('#repBody').value=i>=0?raw.slice(i+4):'';
+    if(showResponse){repState.resId=id;repState.histSel=id;loadRepHistory();
+      $('#repStatus').textContent=d.status?d.status+' '+statusText(d.status):'';$('#repStatus').style.color=statusColor(d.status);renderRepResponse();}
+  }catch(e){toast(e.message);}
+}
+function sendToRepeater(f){loadRepFromFlow(f.id,false).then(()=>{document.querySelector('.tab[data-tab="repeater"]').click();toast('loaded #'+f.id+' into Repeater');});}
+$('#repSend').onclick=repSend;
+$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{repState.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
+
 /* ---- live events ---- */
 function connectEvents(){
   const es=new EventSource('/api/events');
@@ -542,7 +626,7 @@ function connectEvents(){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadFlows();loadRules();refreshIntercept();connectEvents();
+renderChips();loadSettings();loadFlows();loadRules();refreshIntercept();loadRepHistory();connectEvents();
 </script>
 </body>
 </html>

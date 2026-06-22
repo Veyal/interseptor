@@ -50,6 +50,8 @@ const (
 	FlagCaptureError                   // a body could not be captured; forwarding still succeeded
 	FlagTLSFailed                      // TLS interception failed for this flow
 	FlagWebSocket                      // a protocol-upgrade (WebSocket) handshake, tunneled transparently
+	FlagRepeater                       // a request sent from the Repeater module
+	FlagIntruder                       // a request sent from the Intruder module
 )
 
 // flowColumns is the canonical SELECT column order; scanFlow consumes it.

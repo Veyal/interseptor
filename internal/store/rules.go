@@ -73,6 +73,8 @@ type FlowFilter struct {
 	Search      string // case-insensitive substring of path
 	Scheme      string // exact scheme match ("http"/"https")
 	StatusClass int    // 1..5 → 1xx..5xx; 0 = any
+	RequireFlags int64 // only rows with any of these flag bits set
+	ExcludeFlags int64 // only rows with none of these flag bits set
 }
 
 // QueryFlowsFilter returns flows matching f, newest first. Filtering and paging
@@ -110,6 +112,14 @@ func (s *Store) QueryFlowsFilter(f FlowFilter) ([]*Flow, error) {
 		lo := f.StatusClass * 100
 		where = append(where, "status >= ? AND status < ?")
 		args = append(args, lo, lo+100)
+	}
+	if f.RequireFlags != 0 {
+		where = append(where, "(flags & ?) != 0")
+		args = append(args, f.RequireFlags)
+	}
+	if f.ExcludeFlags != 0 {
+		where = append(where, "(flags & ?) = 0")
+		args = append(args, f.ExcludeFlags)
 	}
 
 	q := "SELECT " + flowColumns + " FROM flows"
