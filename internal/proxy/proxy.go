@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Veyal/interceptor/internal/capture"
@@ -96,6 +97,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	port := atoiOr(r.URL.Port(), defaultPort(scheme))
 
 	flow := buildFlow(r, scheme, host, port, time.Now())
+	if isUpgradeRequest(r.Header) {
+		s.handleUpgradeHTTP(w, r, flow)
+		return
+	}
 	resp, dropped, err := s.gateAndForward(flow, r)
 	switch {
 	case dropped:
@@ -154,7 +159,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return // EOF or malformed → close tunnel
 		}
-		if !s.mitmExchange(tlsConn, req, host, port) {
+		if !s.mitmExchange(tlsConn, br, req, host, port) {
 			return
 		}
 	}
@@ -162,11 +167,16 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 // mitmExchange forwards one tunnelled request and writes the response back over
 // conn. It returns false when the tunnel should be closed.
-func (s *Server) mitmExchange(conn net.Conn, req *http.Request, host string, port int) bool {
+func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request, host string, port int) bool {
 	req.URL.Scheme = "https"
 	req.URL.Host = hostPort(host, port, "https")
 	flow := buildFlow(req, "https", host, port, time.Now())
 	flow.ClientAddr = conn.RemoteAddr().String()
+
+	if isUpgradeRequest(req.Header) {
+		s.tunnelUpgrade(conn, br, req, flow)
+		return false // the connection is now an opaque upgraded stream
+	}
 
 	resp, dropped, err := s.gateAndForward(flow, req)
 	if dropped {
@@ -193,6 +203,131 @@ func (s *Server) mitmExchange(conn net.Conn, req *http.Request, host string, por
 		req.Body.Close()
 	}
 	return keepAlive
+}
+
+// isUpgradeRequest reports whether r is a protocol-upgrade handshake (e.g.
+// WebSocket): a non-empty Upgrade header plus "upgrade" in Connection.
+func isUpgradeRequest(h http.Header) bool {
+	if h.Get("Upgrade") == "" {
+		return false
+	}
+	for _, v := range h["Connection"] {
+		for _, tok := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(tok), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// handleUpgradeHTTP hijacks a plain-HTTP client connection and tunnels the
+// upgrade through to the upstream.
+func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow *store.Flow) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		s.fail(w, flow, "upgrade: hijacking unsupported")
+		return
+	}
+	clientConn, buf, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+	s.tunnelUpgrade(clientConn, buf.Reader, r, flow)
+}
+
+// tunnelUpgrade forwards an upgrade handshake to the upstream verbatim (upgrade
+// headers intact, never stripped) and, on a 101, splices bytes bidirectionally
+// until either side closes. Frame-level capture (WebSocket messages) is a later
+// slice — here we keep the connection working and record the handshake flow.
+func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, r *http.Request, flow *store.Flow) {
+	flow.Flags |= store.FlagWebSocket
+
+	up, err := s.dialUpstream(flow.Scheme, flow.Host, flow.Port)
+	if err != nil {
+		s.recordUpgradeError(clientConn, flow, "upgrade dial: "+err.Error())
+		return
+	}
+	defer up.Close()
+
+	r.RequestURI = "" // required to write a server-received request as a client request
+	if err := r.Write(up); err != nil {
+		s.recordUpgradeError(clientConn, flow, "upgrade write: "+err.Error())
+		return
+	}
+
+	upReader := bufio.NewReader(up)
+	resp, err := http.ReadResponse(upReader, r)
+	if err != nil {
+		s.recordUpgradeError(clientConn, flow, "upgrade response: "+err.Error())
+		return
+	}
+	flow.Status = resp.StatusCode
+	flow.ResHeaders = resp.Header.Clone()
+	flow.Mime = resp.Header.Get("Content-Type")
+	flow.DurationMs = time.Since(flow.TS).Milliseconds()
+
+	// Relay the handshake head verbatim (do NOT strip hop headers — Connection
+	// and Upgrade are the handshake) without consuming the upgraded stream.
+	if err := writeResponseHead(clientConn, resp); err != nil {
+		s.record(flow)
+		return
+	}
+	s.record(flow)
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		return // upstream declined the upgrade; nothing to splice
+	}
+
+	done := make(chan struct{}, 2)
+	go func() { io.Copy(up, clientReader); up.Close(); done <- struct{}{} }()
+	go func() { io.Copy(clientConn, upReader); clientConn.Close(); done <- struct{}{} }()
+	<-done
+	<-done
+}
+
+func (s *Server) recordUpgradeError(clientConn net.Conn, flow *store.Flow, msg string) {
+	flow.Status = http.StatusBadGateway
+	flow.Error = msg
+	flow.DurationMs = time.Since(flow.TS).Milliseconds()
+	s.record(flow)
+	writeSimpleResponse(clientConn, http.StatusBadGateway, msg)
+}
+
+// dialUpstream opens a raw connection to the target, using TLS for https so the
+// upgraded stream is end-to-end encrypted to the origin.
+func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	d := &net.Dialer{Timeout: 30 * time.Second}
+	if scheme == "https" {
+		cfg := &tls.Config{ServerName: host}
+		if s.tr.TLSClientConfig != nil {
+			cfg = s.tr.TLSClientConfig.Clone()
+			if cfg.ServerName == "" {
+				cfg.ServerName = host
+			}
+		}
+		return tls.DialWithDialer(d, "tcp", addr, cfg)
+	}
+	return d.Dial("tcp", addr)
+}
+
+// writeResponseHead writes a response's status line and headers (no body) so an
+// upgrade handshake can be relayed without reading the upgraded stream.
+func writeResponseHead(w io.Writer, resp *http.Response) error {
+	status := resp.Status
+	if status == "" {
+		status = strconv.Itoa(resp.StatusCode) + " " + http.StatusText(resp.StatusCode)
+	}
+	if _, err := fmt.Fprintf(w, "HTTP/1.1 %s\r\n", status); err != nil {
+		return err
+	}
+	if err := resp.Header.Write(w); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, "\r\n")
+	return err
 }
 
 // gateAndForward runs the intercept gate + match-&-replace, tees the request

@@ -49,6 +49,7 @@ const (
 	FlagDropped                        // request was dropped by the user (not forwarded)
 	FlagCaptureError                   // a body could not be captured; forwarding still succeeded
 	FlagTLSFailed                      // TLS interception failed for this flow
+	FlagWebSocket                      // a protocol-upgrade (WebSocket) handshake, tunneled transparently
 )
 
 // flowColumns is the canonical SELECT column order; scanFlow consumes it.

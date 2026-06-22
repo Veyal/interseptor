@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -95,6 +97,182 @@ func TestProxyMITMCapturesHTTPS(t *testing.T) {
 	}
 	if f.ReqLen != 4 || f.ResBodyHash == "" {
 		t.Fatalf("expected captured bodies: reqLen=%d resHash=%q", f.ReqLen, f.ResBodyHash)
+	}
+}
+
+func TestProxyTunnelsWebSocketUpgrade(t *testing.T) {
+	// Minimal upstream that completes a WebSocket-style handshake then echoes.
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("upstream listen: %v", err)
+	}
+	defer upLn.Close()
+	go func() {
+		c, err := upLn.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		br := bufio.NewReader(c)
+		req, err := http.ReadRequest(br)
+		if err != nil {
+			return
+		}
+		if req.Header.Get("Upgrade") == "" { // the bug: stripped Upgrade header lands here
+			io.WriteString(c, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+			return
+		}
+		io.WriteString(c, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+		io.Copy(c, br) // echo subsequent frames
+	}()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+
+	fmt.Fprintf(c, "GET http://%s/ws HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"+
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		upLn.Addr().String(), upLn.Addr().String())
+
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+	if err != nil {
+		t.Fatalf("read handshake response: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("expected 101 Switching Protocols, got %d", resp.StatusCode)
+	}
+
+	// The tunnel must now be a transparent byte pipe.
+	io.WriteString(c, "frame-bytes")
+	got := make([]byte, len("frame-bytes"))
+	if _, err := io.ReadFull(br, got); err != nil {
+		t.Fatalf("read echoed frame: %v", err)
+	}
+	if string(got) != "frame-bytes" {
+		t.Fatalf("tunnel echo mismatch: %q", got)
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	if f.Status != http.StatusSwitchingProtocols {
+		t.Fatalf("expected flow status 101, got %d", f.Status)
+	}
+	if f.Flags&store.FlagWebSocket == 0 {
+		t.Fatalf("expected FlagWebSocket set, flags=%d", f.Flags)
+	}
+}
+
+func TestProxyMITMTunnelsWebSocketUpgrade(t *testing.T) {
+	// Upstream: a raw TLS listener (signed by upCA) that completes a WS handshake then echoes.
+	upCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("upstream CA: %v", err)
+	}
+	upLeaf, err := upCA.LeafForHost("127.0.0.1")
+	if err != nil {
+		t.Fatalf("upstream leaf: %v", err)
+	}
+	upLn, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*upLeaf}})
+	if err != nil {
+		t.Fatalf("upstream listen: %v", err)
+	}
+	defer upLn.Close()
+	go func() {
+		c, err := upLn.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		br := bufio.NewReader(c)
+		req, err := http.ReadRequest(br)
+		if err != nil || req.Header.Get("Upgrade") == "" {
+			io.WriteString(c, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+			return
+		}
+		io.WriteString(c, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+		io.Copy(c, br)
+	}()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	srv := New(s, capture.New(s), ca, nil, nil)
+	upPool := x509.NewCertPool()
+	upPool.AppendCertsFromPEM(upCA.CertPEM())
+	srv.tr.TLSClientConfig = &tls.Config{RootCAs: upPool} // proxy trusts the upstream
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// Client: CONNECT, then TLS to the proxy's minted leaf, then the WS upgrade.
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer raw.Close()
+	raw.SetDeadline(time.Now().Add(4 * time.Second))
+	fmt.Fprintf(raw, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", upLn.Addr().String(), upLn.Addr().String())
+	connResp, err := http.ReadResponse(bufio.NewReader(raw), &http.Request{Method: "CONNECT"})
+	if err != nil || connResp.StatusCode != 200 {
+		t.Fatalf("CONNECT failed: %v / %v", err, connResp)
+	}
+
+	clientPool := x509.NewCertPool()
+	clientPool.AppendCertsFromPEM(ca.CertPEM())
+	tlsClient := tls.Client(raw, &tls.Config{RootCAs: clientPool, ServerName: "127.0.0.1"})
+	if err := tlsClient.Handshake(); err != nil {
+		t.Fatalf("client TLS handshake: %v", err)
+	}
+	fmt.Fprintf(tlsClient, "GET /ws HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"+
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n", upLn.Addr().String())
+
+	wsBr := bufio.NewReader(tlsClient)
+	resp, err := http.ReadResponse(wsBr, &http.Request{Method: "GET"})
+	if err != nil {
+		t.Fatalf("read WS handshake: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("expected 101 over MITM, got %d", resp.StatusCode)
+	}
+	io.WriteString(tlsClient, "wss-frame")
+	got := make([]byte, len("wss-frame"))
+	if _, err := io.ReadFull(wsBr, got); err != nil {
+		t.Fatalf("read echoed frame: %v", err)
+	}
+	if string(got) != "wss-frame" {
+		t.Fatalf("MITM tunnel echo mismatch: %q", got)
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	if f.Scheme != "https" || f.Status != http.StatusSwitchingProtocols || f.Flags&store.FlagWebSocket == 0 {
+		t.Fatalf("unexpected wss flow: scheme=%s status=%d flags=%d", f.Scheme, f.Status, f.Flags)
 	}
 }
 
