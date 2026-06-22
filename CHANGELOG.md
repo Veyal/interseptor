@@ -6,6 +6,11 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 
 ## [Unreleased]
 
+### Changed
+- **Onboarding** — the empty Proxy history is now a "get started" card: the proxy address to point a
+  client at, a one-click CA download for HTTPS, a right-click hint, and a **Connect via MCP** button
+  that jumps to the setup — reducing the biggest first-run friction for the human half of the pair.
+
 ### Added
 - **Real MCP server** (`interceptor mcp`) — a stdio JSON-RPC 2.0 Model Context Protocol server
   (new `internal/mcp`) that lets an AI assistant operate Interceptor with the same capabilities as

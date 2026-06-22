@@ -436,11 +436,24 @@ function applySort(flows){
   const val=f=>k==='size'?(f.resLen||0):k==='time'?f.ts:k==='status'?(f.status||0):k==='method'?f.method:k==='host'?f.host:k==='path'?f.path:k==='mime'?mimeLabel(f.mime):f.id;
   return flows.slice().sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*dir;});
 }
+function getStartedCard(){
+  return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
+    <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
+    <div class="hint" style="margin-bottom:14px">Interceptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
+    <ol style="color:var(--fg2);line-height:2;font-size:12.5px;padding-left:20px;margin:0">
+      <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b></li>
+      <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
+      <li>Browse — flows stream in here. <b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, or send to Repeater/Intruder</li>
+      <li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>
+    </ol></div>`;
+}
 function renderRows(){
   const box=$('#rows');
   const flows=applySort(state.flows);
   $('#rowCount').textContent=state.flows.length;
-  if(!flows.length){box.innerHTML='<div class="empty">No traffic yet. Point a client at the proxy and requests will appear here live.</div>';return;}
+  if(!flows.length){box.innerHTML=getStartedCard();
+    const b=document.getElementById('gsMcp');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="api"]').click();document.querySelector('#apiSub button[data-s="mcp"]').click();};
+    return;}
   box.innerHTML=flows.map(f=>{
     const intercepted=(f.flags&1)!==0;
     const st=f.error&&!f.status?'ERR':(f.status||'—');
