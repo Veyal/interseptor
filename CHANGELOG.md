@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Decoder / encoder** — a `🧰 Decoder` tool (open it from the **Ctrl/Cmd+K** palette): Base64,
+  URL, hex, HTML-entity, JWT inspection, and a **smart** auto-detect-and-decode, with chain
+  (output → next input) and copy. Pure transforms in a tested `internal/codec`, exposed at
+  `POST /api/decode` and as an MCP **`decode`** tool (now **29 tools**) so the AI can crack tokens
+  and parameters too.
 - **In-app custom-check management + AI authoring** — manage Starlark scanner checks without touching
   files. A Scanner-tab **✎ Custom checks** editor lists checks and lets you **new / test against a
   captured flow / save / delete**, backed by `GET /api/checks`, `GET/PUT/DELETE /api/checks/{id}`,

@@ -66,6 +66,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/flows/{id}/raw", "Reconstructed raw request/response (?side=req|res)"},
 	{"GET", "/api/flows/{id}/ws", "Captured WebSocket frames for a flow"},
 	{"POST", "/api/ws/send", "WebSocket Repeater: open a socket, send a message, return reply frames"},
+	{"POST", "/api/decode", "Decode/encode a string (base64, url, hex, html, jwt, smart)"},
 	{"GET", "/api/rules", "List match-&-replace rules"},
 	{"POST", "/api/rules", "Create a rule"},
 	{"PUT", "/api/rules/{id}", "Update a rule"},
@@ -174,6 +175,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "add_scope_rule", "desc": "Add an in/out-of-scope rule"},
 		{"name": "get_settings", "desc": "Proxy/intercept settings"},
 		{"name": "set_session", "desc": "Auth headers auto-applied to every send (keeps requests authenticated)"},
+		{"name": "decode", "desc": "Decode/encode (base64, url, hex, html, jwt, smart)"},
 		{"name": "ca_info", "desc": "How to trust the CA for HTTPS"},
 	},
 }

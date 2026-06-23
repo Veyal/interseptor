@@ -621,6 +621,16 @@ func (s *Server) registerTools() {
 			})
 		})
 
+	s.add("decode",
+		"Decode or encode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode (inspect a JWT's header+payload), or smart (auto-detect and decode one layer).",
+		obj(map[string]any{
+			"op":    p("string", "the transform to apply"),
+			"input": p("string", "the string to transform"),
+		}, "op", "input"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/decode", map[string]any{"op": argStr(a, "op"), "input": argStr(a, "input")})
+		})
+
 	s.add("ca_info", "How to trust the CA so HTTPS can be intercepted (proxy address + CA location).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")

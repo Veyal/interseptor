@@ -542,6 +542,21 @@ changeme</textarea>
     </div>
   </div>
 </div>
+<div id="decModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:86vh;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span style="font-weight:700;color:var(--accent)">🧰 Decoder</span>
+      <span class="hint" style="margin-left:10px">↓ decode · ↑ encode</span>
+      <div class="spacer"></div><button class="btn" id="decClose">✕</button>
+    </div>
+    <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto">
+      <textarea id="decIn" class="rep-edit" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
+      <div class="row" id="decOps" style="gap:6px;flex-wrap:wrap"></div>
+      <div class="row" style="gap:8px"><span class="hint" id="decErr"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
+      <textarea id="decOut" class="rep-edit" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -1087,6 +1102,23 @@ if($('#checkNew'))$('#checkNew').onclick=checkNew;
 if($('#checkTest'))$('#checkTest').onclick=checkTest;
 if($('#checkSave'))$('#checkSave').onclick=checkSave;
 if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
+
+/* ---- decoder ---- */
+const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','✨ Smart']];
+function decBuildOps(){const box=$('#decOps');if(!box||box._built)return;box._built=1;
+  box.innerHTML=DEC_OPS.map(([op,label])=>`<button class="btn" data-op="${op}">${esc(label)}</button>`).join('');
+  box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>decApply(b.dataset.op));}
+async function decApply(op){
+  const err=$('#decErr');err.textContent='';
+  try{const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:$('#decIn').value})});
+    if(r.error){err.style.color='var(--red)';err.textContent=r.error;return;}
+    $('#decOut').value=r.output;}
+  catch(e){err.style.color='var(--red)';err.textContent=e.message;}
+}
+function openDecoder(seed){decBuildOps();$('#decModal').style.display='flex';if(seed)$('#decIn').value=seed;$('#decOut').value='';$('#decErr').textContent='';$('#decIn').focus();}
+if($('#decClose'))$('#decClose').onclick=()=>$('#decModal').style.display='none';
+if($('#decUp'))$('#decUp').onclick=()=>{$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
+if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output copied');
 $('#aiModal').onclick=e=>{if(e.target.id==='aiModal')$('#aiModal').style.display='none';};
 
 $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
@@ -1413,6 +1445,7 @@ function cmdkCommands(){
     {t:'Toggle intercept',run:()=>{if(typeof toggleIntercept==='function')toggleIntercept();}},
     {t:'Run scanner',run:()=>{go('scanner')();if(typeof runScan==='function')runScan();}},
     {t:(state.inScopeOnly?'Show all traffic':'Show in-scope only'),run:()=>$('#scopeToggle')&&$('#scopeToggle').click()},
+    {t:'Open Decoder (base64 / url / jwt / hex…)',run:()=>openDecoder()},
     {t:'Export HAR',run:()=>{location.href='/api/export/har'+(state.inScopeOnly?'?inScope=1':'');}},
     {t:'Clear all filters',run:()=>{if(typeof clearAllFilters==='function')clearAllFilters();}},
   ];
