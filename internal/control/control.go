@@ -87,8 +87,9 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	return h
 }
 
-// Handler returns the control-plane HTTP handler.
-func (h *Hub) Handler() http.Handler { return h.mux }
+// Handler returns the control-plane HTTP handler, wrapped in the loopback/CSRF
+// security guard (see securityGuard).
+func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
 
 // handleMCP serves the Streamable-HTTP MCP transport. The backing mcp.Server is
 // built lazily from the request's own Host so its tool calls loop back to this
@@ -642,6 +643,13 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		_ = h.st.SetSetting("ai.model", *in.AiModel)
 	}
 	if in.ProxyAddr != "" && in.ProxyAddr != h.currentProxyAddr() {
+		// Refuse to expose the proxy on a non-loopback interface unless the
+		// operator explicitly opts in. This blocks a hostile page (or a slip)
+		// from rebinding the proxy to 0.0.0.0 and putting it on the network.
+		if !isLoopbackHost(in.ProxyAddr) && os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND") == "" {
+			httpErr(w, http.StatusBadRequest, "proxy bind address must be loopback (127.0.0.1/localhost/::1); set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1 to allow external binds")
+			return
+		}
 		if h.rebind != nil {
 			if err := h.rebind.Rebind(in.ProxyAddr); err != nil {
 				httpErr(w, http.StatusBadRequest, "rebind failed: "+err.Error())

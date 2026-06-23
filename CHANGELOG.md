@@ -6,6 +6,17 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 
 ## [Unreleased]
 
+### Security
+- **Control-plane CSRF / DNS-rebinding guard** — the control API and UI on `:9966` now reject any
+  request whose `Host` is not a loopback name, and any request carrying a non-loopback `Origin`.
+  Both listeners already bound `127.0.0.1`, but a web page the user visited could still POST to
+  `http://127.0.0.1:9966` (CSRF) or, via DNS rebinding, read responses — and through `PUT /api/settings`
+  rebind the proxy to `0.0.0.0`. The guard (`securityGuard` in `internal/control/guard.go`) closes
+  this: the Host check defeats rebinding, the Origin check defeats classic CSRF; legitimate clients
+  (the embedded UI, curl, the MCP server) pass untouched. **Rebinding the proxy to a non-loopback
+  address is now refused** unless `INTERCEPTOR_ALLOW_EXTERNAL_BIND=1` is set (the deliberate
+  "expose to my LAN" path). TDD + verified live (normal use 200; cross-origin/rebind 403/400).
+
 ### Added
 - **WebSocket message replay** (a WS Repeater) — a new `internal/wsrepeater` opens a fresh
   WebSocket to a target, sends one message, and captures the reply frames, speaking enough of

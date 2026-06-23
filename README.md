@@ -42,11 +42,18 @@ CGO_ENABLED=0 go build -o interceptor ./cmd/interceptor && ./interceptor
 
 On start it listens on two localhost ports and opens the UI in your browser:
 
-- **Proxy** — `127.0.0.1:8080` (runtime-configurable in Settings; may bind `0.0.0.0` for LAN/device capture)
+- **Proxy** — `127.0.0.1:8080` (runtime-configurable in Settings)
 - **Control UI + API** — `127.0.0.1:9966`
 
 Set `INTERCEPTOR_NO_BROWSER=1` to suppress auto-opening the browser (headless/server use).
 Runtime data lives under `~/.interceptor/` (`interceptor.db`, `bodies/`, `ca/`).
+
+### Security model
+
+Both listeners bind loopback. The control plane additionally **rejects non-loopback `Host`
+headers and cross-origin requests**, so a web page you visit can't drive the API behind your back
+(CSRF / DNS-rebinding). Rebinding the **proxy** to a non-loopback address (e.g. `0.0.0.0` to capture
+a phone on your LAN) is refused unless you opt in with `INTERCEPTOR_ALLOW_EXTERNAL_BIND=1`.
 
 ### Intercepting HTTPS
 
