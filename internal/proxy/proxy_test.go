@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,14 +60,109 @@ func waitFlows(t *testing.T, s *store.Store, n int) []*store.Flow {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		flows, _ := s.QueryFlows(50)
-		if len(flows) >= n {
+		// Flows now appear at request time (pending), so wait until they're
+		// filled in — a terminal status or error — before asserting on them.
+		if len(flows) >= n && flowsComplete(flows) {
 			return flows
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	flows, _ := s.QueryFlows(50)
-	t.Fatalf("expected %d flows, got %d", n, len(flows))
+	t.Fatalf("expected %d completed flows, got %d", n, len(flows))
 	return nil
+}
+
+// flowsComplete reports whether every flow has reached a terminal state.
+func flowsComplete(flows []*store.Flow) bool {
+	for _, f := range flows {
+		if f.Status == 0 && f.Error == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// recEvents records FlowCaptured/FlowUpdated calls, snapshotting status at call
+// time because the proxy keeps mutating the same *store.Flow afterward.
+type recEvents struct {
+	mu       sync.Mutex
+	captured []evSnap
+	updated  []evSnap
+}
+type evSnap struct {
+	id     int64
+	status int
+}
+
+func (r *recEvents) FlowCaptured(f *store.Flow) {
+	r.mu.Lock()
+	r.captured = append(r.captured, evSnap{f.ID, f.Status})
+	r.mu.Unlock()
+}
+func (r *recEvents) FlowUpdated(f *store.Flow) {
+	r.mu.Lock()
+	r.updated = append(r.updated, evSnap{f.ID, f.Status})
+	r.mu.Unlock()
+}
+func (r *recEvents) snap() (c, u []evSnap) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]evSnap(nil), r.captured...), append([]evSnap(nil), r.updated...)
+}
+
+// The history row should appear when the request is sent (no status yet) and
+// then be updated in place once the response arrives.
+func TestProxyRecordsRequestThenResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	ev := &recEvents{}
+	srv := New(s, capture.New(s), nil, nil, ev)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+	resp, err := client.Get(upstream.URL + "/x")
+	if err != nil {
+		t.Fatalf("request through proxy: %v", err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if c, u := ev.snap(); len(c) >= 1 && len(u) >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c, u := ev.snap()
+	if len(c) != 1 || c[0].status != 0 {
+		t.Fatalf("expected one flow.new with no status, got %+v", c)
+	}
+	if len(u) != 1 || u[0].status != 200 {
+		t.Fatalf("expected one flow.update carrying status 200, got %+v", u)
+	}
+	if c[0].id != u[0].id {
+		t.Fatalf("new/update id mismatch: %d vs %d", c[0].id, u[0].id)
+	}
+	if flows, _ := s.QueryFlows(10); len(flows) != 1 {
+		t.Fatalf("expected exactly 1 persisted row, got %d", len(flows))
+	}
 }
 
 func TestProxyMITMCapturesHTTPS(t *testing.T) {
@@ -495,12 +591,13 @@ func TestProxyForwardsAndCapturesFlow(t *testing.T) {
 		t.Fatalf("unexpected response body: %q", got)
 	}
 
-	// Allow the proxy goroutine to finish recording the flow.
+	// Allow the proxy goroutine to finish recording the flow (it appears at
+	// request time and is updated once the response is captured).
 	deadline := time.Now().Add(2 * time.Second)
 	var flows []*store.Flow
 	for time.Now().Before(deadline) {
 		flows, _ = s.QueryFlows(10)
-		if len(flows) == 1 {
+		if len(flows) == 1 && flowsComplete(flows) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -562,7 +659,7 @@ func TestProxyRecordsErroredFlowOnUpstreamFailure(t *testing.T) {
 	var flows []*store.Flow
 	for time.Now().Before(deadline) {
 		flows, _ = s.QueryFlows(10)
-		if len(flows) == 1 {
+		if len(flows) == 1 && flowsComplete(flows) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

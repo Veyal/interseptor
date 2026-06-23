@@ -28,7 +28,8 @@ import (
 // Events is an optional sink notified when a flow is captured (used by the
 // control plane to push live updates to the UI).
 type Events interface {
-	FlowCaptured(*store.Flow)
+	FlowCaptured(*store.Flow) // a new flow (request seen / sent upstream)
+	FlowUpdated(*store.Flow)  // an existing flow filled in (response, error, …)
 }
 
 // ScopeChecker reports whether a flow is in the engagement's target scope.
@@ -377,8 +378,12 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	// Intercept gate (Burp-style hold) — only for in-scope requests.
 	if s.eng != nil && s.eng.Enabled() && (s.Scope == nil || s.Scope.InScope(flow)) {
 		raw := dumpRequest(out)
-		flow.Flags |= store.FlagIntercepted
 		d := s.eng.Hold(flow, out, raw)
+		// Only flag as intercepted when the request was actually held; the
+		// conditional filter forwards non-matching requests without holding.
+		if d.Held {
+			flow.Flags |= store.FlagIntercepted
+		}
 		if d.Drop {
 			flow.Flags |= store.FlagDropped
 			return nil, true, nil
@@ -399,6 +404,14 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		}
 	}
 
+	// Record what is actually being sent (post edit/rules) and surface the
+	// in-flight request in history now, before we know the response. record()
+	// later updates this same row once the response (or error) is known.
+	flow.Method = out.Method
+	flow.Path = out.URL.RequestURI()
+	flow.ReqHeaders = headerWithHost(out)
+	s.recordRequest(flow)
+
 	// Tee the request body to the store; capture failure must not break forwarding.
 	var reqFinalize func() (string, int64, error)
 	if reqTee, fin, err := s.cap.TeeBody(out.Body); err != nil {
@@ -414,10 +427,6 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		h, n, _ := reqFinalize()
 		flow.ReqBodyHash, flow.ReqLen = h, n
 	}
-	// Record what was actually sent (post edit/rules).
-	flow.Method = out.Method
-	flow.Path = out.URL.RequestURI()
-	flow.ReqHeaders = headerWithHost(out)
 
 	if rtErr != nil {
 		return nil, false, rtErr
@@ -609,7 +618,37 @@ func (s *Server) fail(w http.ResponseWriter, flow *store.Flow, msg string) {
 }
 
 // record persists a flow and notifies the events sink.
+// recordRequest inserts a flow the moment its request is sent upstream — before
+// the response is known — so it shows in history immediately. Idempotent: it is
+// a no-op once the flow has an ID. record() later fills in the response.
+func (s *Server) recordRequest(flow *store.Flow) {
+	if flow.ID != 0 {
+		return
+	}
+	if _, err := s.st.InsertFlow(flow); err != nil {
+		log.Printf("proxy: insert flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
+		return
+	}
+	if s.events != nil {
+		s.events.FlowCaptured(flow)
+	}
+}
+
+// record persists a flow's final state. If it was already inserted at request
+// time (recordRequest), this updates that row in place and emits a flow.update;
+// otherwise — e.g. a request dropped before it was ever sent — it inserts and
+// emits flow.new.
 func (s *Server) record(flow *store.Flow) {
+	if flow.ID != 0 {
+		if err := s.st.UpdateFlow(flow); err != nil {
+			log.Printf("proxy: update flow %d (%s %s%s): %v", flow.ID, flow.Method, flow.Host, flow.Path, err)
+			return
+		}
+		if s.events != nil {
+			s.events.FlowUpdated(flow)
+		}
+		return
+	}
 	if _, err := s.st.InsertFlow(flow); err != nil {
 		log.Printf("proxy: persist flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
