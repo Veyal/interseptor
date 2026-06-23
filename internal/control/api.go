@@ -129,6 +129,7 @@ var mcpDescriptor = map[string]any{
 	"tools": []map[string]string{
 		{"name": "list_flows", "desc": "List/search captured proxy flows"},
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},
+		{"name": "analyze_flow", "desc": "Compact summary: headers, params, scanner hits, scope"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
 		{"name": "start_intruder", "desc": "Run a Sniper/Pitchfork payload attack"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},

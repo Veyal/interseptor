@@ -89,6 +89,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/flows/{id}", h.getFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/raw", h.getFlowRaw)
 	h.mux.HandleFunc("GET /api/flows/{id}/ws", h.flowWS)
+	h.mux.HandleFunc("GET /api/flows/{id}/analyze", h.analyzeFlow)
 	h.mux.HandleFunc("GET /api/rules", h.listRules)
 	h.mux.HandleFunc("POST /api/rules", h.createRule)
 	h.mux.HandleFunc("PUT /api/rules/{id}", h.updateRule)

@@ -91,7 +91,7 @@ the same capabilities as the UI. Run the app, then point your MCP client at `int
 ```
 
 `interceptor mcp` is a stdio MCP server that drives the running instance over its control API
-(override the target with `INTERCEPTOR_CONTROL_URL`). It exposes 19 tools — `list_flows`, `get_flow`,
+(override the target with `INTERCEPTOR_CONTROL_URL`). It exposes 20 tools — `list_flows`, `get_flow`, `analyze_flow`,
 `send_request`, `start_intruder`, `intruder_state`, `run_scanner`, `list_issues`, `get_intercept`,
 `set_intercept`, `set_response_intercept`, `forward_request`, `drop_request`, `list_rules`,
 `add_rule`, `list_ws_frames`, `list_scope`, `add_scope_rule`, `get_settings`, `ca_info` — with

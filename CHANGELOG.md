@@ -7,6 +7,12 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **`analyze_flow` (AI tool)** — `GET /api/flows/{id}/analyze` and a matching MCP tool return a
+  compact, decision-ready summary of a flow: URL/status, notable security headers, query parameters
+  (injection points), passive scanner findings, and in-scope status — so an agent can triage without
+  re-fetching and parsing the raw exchange (now **20 MCP tools**).
+- **Benchmark guard** — `BenchmarkInsertFlow` (metadata write rate) joins `BenchmarkTeeBody`, and
+  `scripts/bench.sh` reproduces the documented numbers (Go benchmarks + cold start + idle RSS).
 - **Saved filters / views** — name and recall a history filter (scheme/method/status/search/host +
   the in-scope toggle). Store `saved_views` + `GET/POST/DELETE /api/views` (SSE `views.update`); a
   toolbar **views** dropdown with save (＋) and delete (✕). TDD.

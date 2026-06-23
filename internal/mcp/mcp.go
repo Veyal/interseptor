@@ -312,6 +312,17 @@ func (s *Server) registerTools() {
 			return get(side), nil
 		})
 
+	s.add("analyze_flow",
+		"Get a compact, decision-ready summary of a flow: URL/status, notable security headers, query parameters (injection points), passive scanner findings, and whether it's in scope. Use this before get_flow to decide what to inspect.",
+		obj(map[string]any{"id": p("integer", "flow id")}, "id"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id is required")
+			}
+			return s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
+		})
+
 	s.add("send_request",
 		"Send a request directly to a target (Repeater) and record it. Returns the resulting flow id+status; call get_flow with that id to read the response body.",
 		obj(map[string]any{
