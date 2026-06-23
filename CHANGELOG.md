@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **In-app custom-check management + AI authoring** — manage Starlark scanner checks without touching
+  files. A Scanner-tab **✎ Custom checks** editor lists checks and lets you **new / test against a
+  captured flow / save / delete**, backed by `GET /api/checks`, `GET/PUT/DELETE /api/checks/{id}`,
+  and `POST /api/checks/test` (compile-validated — a non-compiling check is rejected, never written;
+  ids are path-sandboxed). New MCP tools **`list_checks` / `test_check` / `save_check` /
+  `delete_check`** (now **28 tools**) let the AI write, test, and save its own scanner checks. TDD on
+  the store CRUD + id sandboxing; verified live end-to-end (the AI authored a check that then fired
+  in a scan).
+
 ### Changed
 - **Suppress the browser's native right-click menu** app-wide so the app's own context menu (and a
   cleaner feel) takes over — but it's still allowed in editable fields (paste/cut) and over a live

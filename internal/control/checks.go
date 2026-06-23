@@ -1,0 +1,111 @@
+package control
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/Veyal/interceptor/internal/checkscript"
+	"github.com/Veyal/interceptor/internal/store"
+)
+
+// Custom-check management: list / read / save / delete user Starlark checks in
+// ChecksDir, plus a test endpoint that compiles + runs a check against a flow
+// without saving — so a human (or the AI) can iterate before committing it.
+
+func (h *Hub) listChecks(w http.ResponseWriter, r *http.Request) {
+	checks := []checkscript.Source{}
+	if h.ChecksDir != "" {
+		if got := checkscript.List(h.ChecksDir); got != nil {
+			checks = got
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"checks": checks, "dir": h.ChecksDir})
+}
+
+func (h *Hub) getCheck(w http.ResponseWriter, r *http.Request) {
+	src, err := checkscript.Read(h.ChecksDir, r.PathValue("id"))
+	if err != nil {
+		httpErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "source": src})
+}
+
+func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
+	if h.ChecksDir == "" {
+		httpErr(w, http.StatusBadRequest, "checks directory not configured")
+		return
+	}
+	var in struct {
+		Source string `json:"source"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if err := checkscript.Save(h.ChecksDir, r.PathValue("id"), in.Source); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error()) // includes compile errors
+		return
+	}
+	h.broadcast(map[string]any{"type": "checks.update"})
+	writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "saved": true})
+}
+
+func (h *Hub) deleteCheck(w http.ResponseWriter, r *http.Request) {
+	if err := checkscript.Delete(h.ChecksDir, r.PathValue("id")); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.broadcast(map[string]any{"type": "checks.update"})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// testCheck compiles source and runs it against a flow (the given id, else the
+// most recent flow), returning findings or the compile/runtime error — never 500
+// for a bad check, so callers can show the error inline.
+func (h *Hub) testCheck(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Source string `json:"source"`
+		FlowID int64  `json:"flowId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	c, err := checkscript.Compile("test", in.Source)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"error": err.Error()})
+		return
+	}
+	var f *store.Flow
+	if in.FlowID > 0 {
+		if f, err = h.st.GetFlow(in.FlowID); err != nil {
+			httpErr(w, http.StatusNotFound, "flow not found")
+			return
+		}
+	} else if flows, _ := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1}); len(flows) > 0 {
+		f = flows[0]
+	}
+	if f == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"findings": []store.Issue{}, "note": "no captured flow to test against yet"})
+		return
+	}
+	issues, rerr := c.Run(h.flowForCheck(f))
+	if rerr != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"error": rerr.Error()})
+		return
+	}
+	if issues == nil {
+		issues = []store.Issue{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "flowId": f.ID})
+}
+
+func (h *Hub) flowForCheck(f *store.Flow) checkscript.Flow {
+	return checkscript.Flow{
+		ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
+		Path: f.Path, Status: f.Status, Mime: f.Mime,
+		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
+		ReqBody: string(h.bodyBytes(f.ReqBodyHash)), ResBody: string(h.bodyBytes(f.ResBodyHash)),
+	}
+}

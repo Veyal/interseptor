@@ -486,6 +486,37 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/report") })
 
+	s.add("list_checks",
+		"List the custom Starlark scanner checks (id, source, and any compile error). These run on every scan alongside the built-ins.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/checks") })
+
+	s.add("test_check",
+		"Compile and run a custom check's Starlark source against a captured flow WITHOUT saving it — returns the findings, or the compile/runtime error. Iterate here until it's right, then save_check. Omit flowId to test against the most recent flow. A check is `def check(flow): return [finding(severity,title,detail=,evidence=,fix=)]` — flow exposes method/scheme/host/port/path/status/mime, req_body/res_body, req_header(name)/res_header(name), query_param(name); builtin re_search(pattern,text).",
+		obj(map[string]any{
+			"source": p("string", "the check's Starlark source"),
+			"flowId": p("integer", "flow to test against (optional; default = most recent)"),
+		}, "source"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/checks/test", map[string]any{"source": argStr(a, "source"), "flowId": argInt(a, "flowId", 0)})
+		})
+
+	s.add("save_check",
+		"Create or update a custom Starlark scanner check by id (letters/digits/-/_). The source must compile or it is rejected. Once saved it runs on every scan. Use test_check first.",
+		obj(map[string]any{
+			"id":     p("string", "check id / filename stem"),
+			"source": p("string", "the check's Starlark source"),
+		}, "id", "source"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPut, "/api/checks/"+url.PathEscape(argStr(a, "id")), map[string]any{"source": argStr(a, "source")})
+		})
+
+	s.add("delete_check", "Delete a custom scanner check by id.",
+		obj(map[string]any{"id": p("string", "check id")}, "id"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/checks/"+url.PathEscape(argStr(a, "id")), nil)
+		})
+
 	s.add("get_intercept", "Get intercept state and the current hold queue.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/intercept") })
 

@@ -375,6 +375,7 @@ changeme</textarea>
     <div class="toolbar">
       <button class="btn accent" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanReport">Export report</button>
+      <button class="btn" id="checksBtn">✎ Custom checks</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
       <span class="hint" style="font-size:11px">Passive checks over captured traffic — no requests sent</span>
@@ -512,6 +513,33 @@ changeme</textarea>
       <button class="btn" id="aiClose" style="margin-left:10px">✕</button>
     </div>
     <pre id="aiOut" style="margin:0;padding:16px;overflow:auto;white-space:pre-wrap;font-size:12.5px;line-height:1.6;color:var(--fg)"></pre>
+  </div>
+</div>
+<div id="checksModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:920px;max-height:84vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span style="font-weight:700;color:var(--accent)">✎ Custom scanner checks</span>
+      <span class="hint" style="margin-left:10px">Starlark · runs on every scan · sandboxed</span>
+      <div class="spacer"></div>
+      <button class="btn" id="checksClose">✕</button>
+    </div>
+    <div style="flex:1;display:flex;min-height:0">
+      <div style="width:190px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--bg1)">
+        <div id="checksList" style="flex:1;overflow:auto"></div>
+        <div style="padding:8px;border-top:1px solid var(--line)"><button class="btn accent" id="checkNew" style="width:100%">+ New check</button></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div class="row" style="padding:8px 12px;gap:8px;border-bottom:1px solid var(--line)">
+          <input id="checkId" class="btn" style="width:210px;background:var(--bg3)" placeholder="check-id (letters, - or _)">
+          <button class="btn" id="checkTest">Test ▸</button>
+          <button class="btn accent" id="checkSave">Save</button>
+          <div class="spacer"></div>
+          <button class="btn" id="checkDelete" style="color:var(--red)">Delete</button>
+        </div>
+        <textarea id="checkSrc" class="rep-edit" spellcheck="false" style="flex:1;border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
+        <div id="checkOut" style="flex:none;max-height:36%;overflow:auto;border-top:1px solid var(--line);padding:10px 12px;font-size:11.5px"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="toast"></div>
@@ -1018,6 +1046,47 @@ async function runAi(kind){
 $('#aiExplainBtn').onclick=()=>openAi('explain');
 $('#aiKindSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#aiKindSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));runAi(b.dataset.k);});
 $('#aiClose').onclick=()=>$('#aiModal').style.display='none';
+
+/* ---- custom checks editor ---- */
+async function loadChecksList(){
+  try{const d=await api('/api/checks');const box=$('#checksList');const cs=d.checks||[];
+    if(!cs.length){box.innerHTML='<div class="hint" style="padding:10px">No custom checks yet — click <b>+ New check</b>.</div>';return;}
+    box.innerHTML=cs.map(c=>`<div data-id="${esc(c.id)}" title="${c.error?esc(c.error):''}" style="padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:11.5px;font-weight:700;color:${c.error?'var(--red)':'var(--fg)'}">${esc(c.id)}${c.error?' ⚠':''}</div>`).join('');
+    box.querySelectorAll('[data-id]').forEach(el=>el.onclick=()=>loadCheck(el.dataset.id));
+  }catch(e){}
+}
+async function loadCheck(id){
+  try{const d=await api('/api/checks/'+encodeURIComponent(id));$('#checkId').value=id;$('#checkSrc').value=d.source||'';
+    $('#checkOut').innerHTML='<span class="hint">Loaded <b>'+esc(id)+'</b>.</span>';}catch(e){toast(e.message);}
+}
+function checkNew(){$('#checkId').value='';$('#checkSrc').value="def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
+  $('#checkOut').innerHTML='<span class="hint">New check — give it an id and Save.</span>';$('#checkId').focus();}
+async function checkTest(){
+  const out=$('#checkOut');out.innerHTML='<span class="hint">running…</span>';
+  try{const r=await api('/api/checks/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
+    if(r.error){out.innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(r.error)+'</span>';return;}
+    const fs=r.findings||[];
+    out.innerHTML=(r.note?'<div class="hint" style="margin-bottom:6px">'+esc(r.note)+'</div>':'')+
+      (fs.length?fs.map(f=>`<div style="padding:3px 0"><span class="sev ${esc(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.fix?' <span class="hint">— '+esc(f.fix)+'</span>':''}</div>`).join('')
+        :'<span class="hint">No findings on flow #'+(r.flowId||'?')+' (check compiles & runs).</span>');
+  }catch(e){out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+}
+async function checkSave(){
+  const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
+  try{await api('/api/checks/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
+    $('#checkOut').innerHTML='<span style="color:var(--accent)">Saved ✓ — runs on the next scan.</span>';loadChecksList();}
+  catch(e){$('#checkOut').innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(e.message)+'</span>';}
+}
+async function checkDelete(){
+  const id=$('#checkId').value.trim();if(!id)return;
+  try{await api('/api/checks/'+encodeURIComponent(id),{method:'DELETE'});checkNew();loadChecksList();toast('deleted '+id);}catch(e){toast(e.message);}
+}
+if($('#checksBtn'))$('#checksBtn').onclick=()=>{$('#checksModal').style.display='flex';loadChecksList();if(!$('#checkSrc').value)checkNew();};
+if($('#checksClose'))$('#checksClose').onclick=()=>$('#checksModal').style.display='none';
+if($('#checkNew'))$('#checkNew').onclick=checkNew;
+if($('#checkTest'))$('#checkTest').onclick=checkTest;
+if($('#checkSave'))$('#checkSave').onclick=checkSave;
+if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
 $('#aiModal').onclick=e=>{if(e.target.id==='aiModal')$('#aiModal').style.display='none';};
 
 $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
@@ -1309,6 +1378,7 @@ function connectEvents(){
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();}
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
+    else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
