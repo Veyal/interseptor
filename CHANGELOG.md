@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-23
+
+### Added
+- **Release automation** — a `release` GitHub Actions workflow cross-compiles static binaries
+  (linux / macOS / windows × amd64/arm64) and attaches them with a `checksums.txt` to each `v*`
+  tag's GitHub Release, so users can download-and-run without a Go toolchain.
+- **CI workflow** — `go vet` + `-race` tests + a static build run on every push to `main` and on PRs
+  (with a status badge in the README).
+- **`SECURITY.md`** — a private vulnerability-reporting / responsible-disclosure policy.
+
 ## [0.1.0] — 2026-06-23 · first public release
 
 The first tagged release: an intercepting HTTP/HTTPS proxy and AI-operable security-testing toolkit

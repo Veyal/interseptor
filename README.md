@@ -1,5 +1,6 @@
 # Interceptor
 
+[![CI](https://github.com/Veyal/interceptor/actions/workflows/ci.yml/badge.svg)](https://github.com/Veyal/interceptor/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Veyal/interceptor?sort=semver)](https://github.com/Veyal/interceptor/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -81,8 +82,12 @@ CGO_ENABLED=0 go build -o interceptor ./cmd/interceptor
 ./interceptor
 ```
 
-> Prebuilt, download-and-run binaries for each OS/arch aren't attached to releases yet — `go install`
-> or a source build is the path today. (CI to publish per-tag binaries is on the [roadmap](#roadmap).)
+### Prebuilt binaries
+
+Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
+`checksums.txt`, built by CI, on the [Releases](https://github.com/Veyal/interceptor/releases) page —
+download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
+tracks the latest release.)
 
 ## Quick start
 
