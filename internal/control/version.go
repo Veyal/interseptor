@@ -25,5 +25,7 @@ func (h *Hub) apiVersion(w http.ResponseWriter, r *http.Request) {
 		"latest":          latest,
 		"updateAvailable": avail,
 		"repo":            version.Repo,
+		"project":         h.ProjectName,
+		"projectDir":      h.ProjectDir,
 	})
 }

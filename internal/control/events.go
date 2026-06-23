@@ -8,10 +8,16 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 )
 
-// FlowCaptured implements proxy.Events: it pushes a captured flow to all live
-// UI subscribers. Safe for concurrent use.
+// FlowCaptured implements proxy.Events: it pushes a newly-seen flow (request
+// sent, response not yet known) to all live UI subscribers. Concurrency-safe.
 func (h *Hub) FlowCaptured(f *store.Flow) {
 	h.broadcast(map[string]any{"type": "flow.new", "flow": toFlowJSON(f)})
+}
+
+// FlowUpdated implements proxy.Events: it pushes the filled-in flow (response or
+// error now known) so the UI can update the existing history row in place.
+func (h *Hub) FlowUpdated(f *store.Flow) {
+	h.broadcast(map[string]any{"type": "flow.update", "flow": toFlowJSON(f)})
 }
 
 // WSFramed implements the proxy's optional ws-frame sink: it nudges the UI to

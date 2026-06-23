@@ -57,6 +57,11 @@ type Hub struct {
 	// cmd; the active scanner refuses to target it, so it never attacks its own API.
 	SelfAddr string
 
+	// ProjectName/ProjectDir identify the active project (Burp-style). Set by cmd;
+	// surfaced at GET /api/version so the UI can show which project is loaded.
+	ProjectName string
+	ProjectDir  string
+
 	mcpMu  sync.Mutex
 	mcpSrv *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
 
@@ -130,6 +135,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("DELETE /api/rules/{id}", h.deleteRule)
 	h.mux.HandleFunc("GET /api/intercept", h.getIntercept)
 	h.mux.HandleFunc("POST /api/intercept/toggle", h.toggleIntercept)
+	h.mux.HandleFunc("POST /api/intercept/filter", h.setInterceptFilter)
 	h.mux.HandleFunc("POST /api/intercept/{id}/forward", h.forwardIntercept)
 	h.mux.HandleFunc("POST /api/intercept/{id}/drop", h.dropIntercept)
 	h.mux.HandleFunc("POST /api/intercept/response/toggle", h.toggleResponseIntercept)
@@ -239,6 +245,9 @@ type interceptJSON struct {
 	Queue           []heldJSON `json:"queue"`
 	ResponseEnabled bool       `json:"responseEnabled"`
 	ResponseQueue   []heldJSON `json:"responseQueue"`
+	FilterEnabled   bool       `json:"filterEnabled"`
+	FilterTarget    string     `json:"filterTarget"`
+	FilterPattern   string     `json:"filterPattern"`
 }
 
 type settingsJSON struct {
@@ -273,6 +282,13 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
+	}
+	// Negative filters (repeatable): notMethod, notHost, notPath, notStatus.
+	f.NotMethods, f.NotHosts, f.NotPaths = q["notMethod"], q["notHost"], q["notPath"]
+	for _, s := range q["notStatus"] {
+		if n := atoiOr(s, 0); n > 0 {
+			f.NotStatuses = append(f.NotStatuses, n)
+		}
 	}
 	flows, err := h.st.QueryFlowsFilter(f)
 	if err != nil {
@@ -501,6 +517,7 @@ func (h *Hub) interceptState() interceptJSON {
 		}
 		out.ResponseQueue = append(out.ResponseQueue, hj)
 	}
+	out.FilterEnabled, out.FilterTarget, out.FilterPattern = h.eng.InterceptFilter()
 	return out
 }
 
@@ -519,6 +536,30 @@ func (h *Hub) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&in)
 	h.eng.SetEnabled(in.Enabled)
 	_ = h.st.SetSetting("intercept.enabled", boolToFlag(in.Enabled))
+	writeJSON(w, http.StatusOK, h.interceptState())
+}
+
+// setInterceptFilter configures the conditional-intercept regex filter and
+// persists it so the choice survives restarts.
+func (h *Hub) setInterceptFilter(w http.ResponseWriter, r *http.Request) {
+	if h.eng == nil {
+		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
+		return
+	}
+	var in struct {
+		Enabled bool   `json:"enabled"`
+		Target  string `json:"target"`
+		Pattern string `json:"pattern"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	if err := h.eng.SetInterceptFilter(in.Enabled, in.Target, in.Pattern); err != nil {
+		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
+		return
+	}
+	enabled, target, pattern := h.eng.InterceptFilter()
+	_ = h.st.SetSetting("intercept.filter.enabled", boolToFlag(enabled))
+	_ = h.st.SetSetting("intercept.filter.target", target)
+	_ = h.st.SetSetting("intercept.filter.pattern", pattern)
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 
