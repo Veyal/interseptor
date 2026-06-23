@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-23
+
+Headline: **active scanning** (deterministic + AI-operable), an **extensible scanner** (custom
+Starlark checks, authored in-app or by the AI), a **Decoder**, a multi-tab **Repeater**, a redesigned
+**Settings**, a **Ctrl/Cmd+K command palette** with keyboard shortcuts, and an `SQLITE_BUSY` fix —
+**32 MCP tools** total.
+
 ### Added
 - **Active scanning — Phase 1 (engine + API + MCP)** — a deterministic active-scan engine
   (`internal/activescan`) that **sends crafted payloads to confirm vulnerabilities** without any AI:

@@ -99,7 +99,7 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 		return map[string]any{
 			"protocolVersion": ver,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "interceptor", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "interceptor", "version": "0.2.0"},
 			"instructions":    "Interceptor: an intercepting HTTP/HTTPS proxy. Use these tools to list and read captured flows, replay/mutate requests (send_request), fuzz (start_intruder), passively scan (run_scanner), and control interception. Bodies are bounded by default; pass maxBytes to read more.",
 		}, nil
 	case "tools/list":

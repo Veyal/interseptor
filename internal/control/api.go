@@ -127,7 +127,7 @@ func (h *Hub) apiReference(w http.ResponseWriter, r *http.Request) {
 
 var mcpDescriptor = map[string]any{
 	"name":    "interceptor",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"status":  "ready",
 	"note":    "Run `interceptor` (this proxy/UI) first, then point your MCP client at `interceptor mcp` — a stdio MCP server that drives this engine over the control API. Set INTERCEPTOR_CONTROL_URL to override the default http://127.0.0.1:9966.",
 	"transport": map[string]any{
