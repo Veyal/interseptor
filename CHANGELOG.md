@@ -1,10 +1,18 @@
 # Changelog
 
-All notable changes to the Conduit design project are recorded here.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
+All notable changes to **Interceptor** are recorded here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] — 2026-06-23 · first public release
+
+The first tagged release: an intercepting HTTP/HTTPS proxy and AI-operable security-testing toolkit
+in a single static Go binary — TLS MITM with on-demand leaf certs, request/response interception +
+match-&-replace, Repeater / Intruder / Scanner, target scope, HAR + portable projects, WebSocket
+capture & replay, BYO-key AI assist (Anthropic / OpenRouter), an MCP server (stdio + Streamable-HTTP,
+24 tools), and a loopback-only control plane hardened against CSRF / DNS-rebinding.
 
 ### Security
 - **Control-plane CSRF / DNS-rebinding guard** — the control API and UI on `:9966` now reject any
