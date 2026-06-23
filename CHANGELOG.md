@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Repeater multi-tab** — the Repeater now holds multiple tabs, one per endpoint under test, each
+  with its own request editor, response, and **endpoint-scoped send history**. New tab (＋) / close
+  (✕); open tabs (method/URL/headers/body) persist across reloads via `localStorage`. **Send to
+  Repeater** focuses the matching endpoint's tab or opens a new one.
 - **Command palette (Ctrl / Cmd + K)** — fuzzy-search captured flows, jump to any tab, and run
   commands (toggle intercept, run scanner, in-scope, export HAR, …) from one overlay; arrow-key
   navigation, ⏎ to run, esc to close.

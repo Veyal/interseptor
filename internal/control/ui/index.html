@@ -141,6 +141,14 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-hist .h.sel{background:var(--sel);border-left:2px solid var(--accent)}
 .rep-hist .h .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rep-edit{width:100%;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.7;padding:8px 12px;border:none;border-top:1px solid var(--line)}
+.rep-tabs{flex:none;display:flex;gap:3px;align-items:center;padding:6px 8px 0;overflow-x:auto;background:var(--bg1);border-bottom:1px solid var(--line)}
+.rep-tab{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-bottom:none;border-radius:7px 7px 0 0;background:var(--bg3);color:var(--fg2);cursor:pointer;white-space:nowrap;max-width:260px;font-size:11.5px;position:relative;top:1px}
+.rep-tab.on{background:var(--bg);color:var(--fg);border-color:var(--accent)}
+.rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
+.rep-tab .rt-close{opacity:.45;font-size:10px;border-radius:3px;padding:0 3px}
+.rep-tab .rt-close:hover{opacity:1;color:var(--red);background:var(--sel)}
+.rep-tab-add{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:7px;cursor:pointer;padding:5px 10px;font-size:13px;line-height:1}
+.rep-tab-add:hover{color:var(--fg);border-color:var(--accent)}
 
 /* intruder results */
 .intr-head,.intr-row{display:grid;grid-template-columns:42px 1fr 52px 66px 60px;align-items:center;padding:0 8px}
@@ -293,6 +301,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 
   <!-- REPEATER -->
   <div class="panel" data-panel="repeater">
+    <div class="rep-tabs" id="repTabs"></div>
     <div class="toolbar">
       <select id="repMethod" class="btn" style="font-weight:700"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
       <input id="repUrl" class="repurl" placeholder="https://api.example.com/v1/resource">
@@ -1010,52 +1019,118 @@ $('#sysProxyToggle').onclick=async()=>{
   $('#sysProxyToggle').disabled=false;
 };
 
-/* ---- repeater ---- */
-const repState={resId:null,resView:'raw',histSel:null};
+/* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
+let repSeq=1, repTabs=[], repActive=null;
+function repBlank(){return {tid:repSeq++,title:'new tab',method:'GET',url:'',headers:'',body:'',resId:null,resView:'raw',status:'',color:''};}
+function repCur(){return repTabs.find(t=>t.tid===repActive)||null;}
+function repTitle(t){if(!t.url)return 'new tab';try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname;}catch(e){return t.method+' '+t.url.slice(0,46);}}
+function repTabEndpoint(t){if(!t||!t.url)return null;try{const u=new URL(t.url);return u.host+u.pathname;}catch(e){return null;}}
+function repFlowEndpoint(f){return f.host+String(f.path||'').split('?')[0];}
+function headersToText(h){if(!h)return'';const out=[];(h.Host||[]).forEach(v=>out.push('Host: '+v));Object.keys(h).sort().forEach(k=>{if(k==='Host')return;(h[k]||[]).forEach(v=>out.push(k+': '+v));});return out.join('\n');}
+
+function renderRepTabs(){
+  const bar=$('#repTabs');if(!bar)return;
+  bar.innerHTML=repTabs.map(t=>`<div class="rep-tab${t.tid===repActive?' on':''}" data-tid="${t.tid}" title="${esc(t.title||'new tab')}">
+    <span class="rt-label" style="color:${t.tid===repActive?methodColor(t.method):'inherit'}">${esc(t.title||'new tab')}</span>
+    <span class="rt-close" data-close="${t.tid}" title="close tab">✕</span></div>`).join('')
+    +`<button class="rep-tab-add" id="repTabAdd" title="New tab">＋</button>`;
+  bar.querySelectorAll('.rep-tab').forEach(el=>el.onclick=e=>{if(e.target.dataset.close!=null)return;repSwitch(Number(el.dataset.tid));});
+  bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();repCloseTab(Number(x.dataset.close));});
+  $('#repTabAdd').onclick=()=>{repSaveEditor();repTabs.push(repBlank());repActive=repTabs[repTabs.length-1].tid;renderRepTabs();repLoadEditor();repPersist();};
+}
+function repSwitch(tid){if(tid===repActive)return;repSaveEditor();repActive=tid;renderRepTabs();repLoadEditor();repPersist();}
+function repCloseTab(tid){
+  const i=repTabs.findIndex(t=>t.tid===tid);if(i<0)return;
+  const wasActive=tid===repActive;
+  repTabs.splice(i,1);
+  if(!repTabs.length)repTabs.push(repBlank());
+  if(wasActive)repActive=repTabs[Math.min(i,repTabs.length-1)].tid;
+  renderRepTabs();repLoadEditor();repPersist();
+}
+function repSaveEditor(){const t=repCur();if(!t)return;t.method=$('#repMethod').value;t.url=$('#repUrl').value;t.headers=$('#repHeaders').value;t.body=$('#repBody').value;t.title=repTitle(t);}
+function repLoadEditor(){
+  const t=repCur();if(!t)return;
+  $('#repMethod').value=t.method||'GET';$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';$('#repBody').value=t.body||'';
+  $('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.view===(t.resView||'raw')));
+  if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
+  else{$('#repStatus').textContent='';$('#repResView').innerHTML='<span style="color:var(--fg3)">Send a request to see the response.</span>';}
+  loadRepHistory();
+}
 async function repSend(){
-  const payload={method:$('#repMethod').value,url:$('#repUrl').value.trim(),headers:$('#repHeaders').value,body:$('#repBody').value};
-  if(!payload.url){toast('enter a URL');return;}
+  repSaveEditor();const t=repCur();if(!t)return;
+  if(!(t.url||'').trim()){toast('enter a URL');return;}
   $('#repSend').textContent='Sending…';$('#repSend').disabled=true;
   try{
-    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    repState.resId=flow.id;repState.histSel=flow.id;
-    $('#repStatus').textContent=flow.status?flow.status+' '+statusText(flow.status):(flow.error||'');
-    $('#repStatus').style.color=statusColor(flow.status);
-    await renderRepResponse();loadRepHistory();
+    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:t.method,url:t.url.trim(),headers:t.headers,body:t.body})});
+    t.resId=flow.id;t.status=flow.status?flow.status+' '+statusText(flow.status):(flow.error||'');t.color=statusColor(flow.status);
+    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
+    await renderRepResponse();loadRepHistory();repPersist();
   }catch(e){toast('send: '+e.message);}
   $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
 }
 async function renderRepResponse(){
-  if(!repState.resId)return;
-  try{const raw=await api('/api/flows/'+repState.resId+'/raw?side=res');$('#repResView').textContent=repState.resView==='pretty'?prettify(raw):raw;}
+  const t=repCur();if(!t||!t.resId)return;
+  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').textContent=(t.resView==='pretty')?prettify(raw):raw;}
   catch(e){$('#repResView').textContent='(error: '+e.message+')';}
 }
 async function loadRepHistory(){
+  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpoint(t);
   try{
-    const d=await api('/api/repeater/history');const box=$('#repHistory');
-    if(!d.flows||!d.flows.length){box.innerHTML='<div class="hint" style="padding:10px">No sends yet.</div>';return;}
-    box.innerHTML=d.flows.map(f=>`<div class="h ${f.id===repState.histSel?'sel':''}" data-id="${f.id}">
+    const d=await api('/api/repeater/history');const flows=ep?(d.flows||[]).filter(f=>repFlowEndpoint(f)===ep):[];
+    if(!flows.length){box.innerHTML='<div class="hint" style="padding:10px">'+(ep?'No sends to this endpoint yet.':'Send a request to start this tab’s history.')+'</div>';return;}
+    box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">
       <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
       <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
-    box.querySelectorAll('.h').forEach(el=>el.onclick=()=>loadRepFromFlow(Number(el.dataset.id),true));
+    box.querySelectorAll('.h').forEach(el=>el.onclick=()=>repLoadSend(Number(el.dataset.id)));
   }catch(e){}
 }
-function headersToText(h){if(!h)return'';const out=[];(h.Host||[]).forEach(v=>out.push('Host: '+v));Object.keys(h).sort().forEach(k=>{if(k==='Host')return;(h[k]||[]).forEach(v=>out.push(k+': '+v));});return out.join('\n');}
-async function loadRepFromFlow(id,showResponse){
+async function repLoadSend(id){
+  const t=repCur();if(!t)return;
   try{
     const d=await api('/api/flows/'+id);
-    $('#repMethod').value=d.method;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
-    $('#repUrl').value=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
-    $('#repHeaders').value=headersToText(d.reqHeaders);
-    const raw=await api('/api/flows/'+id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');$('#repBody').value=i>=0?raw.slice(i+4):'';
-    if(showResponse){repState.resId=id;repState.histSel=id;loadRepHistory();
-      $('#repStatus').textContent=d.status?d.status+' '+statusText(d.status):'';$('#repStatus').style.color=statusColor(d.status);renderRepResponse();}
+    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
+    const raw=await api('/api/flows/'+id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
+    t.resId=id;t.status=d.status?d.status+' '+statusText(d.status):'';t.color=statusColor(d.status);t.title=repTitle(t);
+    renderRepTabs();repLoadEditor();repPersist();
   }catch(e){toast(e.message);}
 }
-function sendToRepeater(f){loadRepFromFlow(f.id,false).then(()=>{document.querySelector('.tab[data-tab="repeater"]').click();toast('loaded #'+f.id+' into Repeater');});}
+async function sendToRepeater(f){
+  document.querySelector('.tab[data-tab="repeater"]').click();
+  repSaveEditor();
+  const fep=repFlowEndpoint(f);
+  let t=repTabs.find(x=>repTabEndpoint(x)===fep);
+  if(!t){t=repBlank();repTabs.push(t);}
+  repActive=t.tid;
+  try{
+    const d=await api('/api/flows/'+f.id);
+    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
+    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
+    const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
+    t.resId=null;t.status='';t.color='';t.title=repTitle(t);
+    renderRepTabs();repLoadEditor();repPersist();
+    toast('loaded #'+f.id+' into Repeater');
+  }catch(e){toast(e.message);}
+}
+function repPersist(){try{localStorage.setItem('rep.tabs',JSON.stringify({seq:repSeq,active:repActive,tabs:repTabs.map(t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,resView:t.resView}))}));}catch(e){}}
+let repPersistT=null;function repPersistDebounced(){clearTimeout(repPersistT);repPersistT=setTimeout(repPersist,400);}
+function repInit(){
+  let ok=false;
+  try{const d=JSON.parse(localStorage.getItem('rep.tabs')||'null');
+    if(d&&d.tabs&&d.tabs.length){
+      repTabs=d.tabs.map(t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',resView:t.resView||'raw',resId:null,status:'',color:'',title:''}));
+      repTabs.forEach(t=>t.title=repTitle(t));
+      repActive=(d.active&&repTabs.find(x=>x.tid===d.active))?d.active:repTabs[0].tid;
+      repSeq=Math.max(d.seq||0,Math.max.apply(null,repTabs.map(t=>t.tid))+1);ok=true;
+    }
+  }catch(e){}
+  if(!ok){repTabs=[repBlank()];repActive=repTabs[0].tid;}
+  renderRepTabs();repLoadEditor();
+  ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();renderRepTabs();repPersistDebounced();});});
+  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();repPersistDebounced();});});
+}
 $('#repSend').onclick=repSend;
-$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{repState.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
+$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{const t=repCur();if(t)t.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
 
 /* ---- intruder ---- */
 const intrState={type:'sniper'};
@@ -1292,7 +1367,7 @@ document.addEventListener('keydown',e=>{
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();repInit();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
 </script>
 </body>
 </html>
