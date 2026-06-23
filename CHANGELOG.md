@@ -20,7 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   arm-and-operate the same engine. Findings land in the issues store as `[active] …` with the
   confirming request/response linked. TDD on every detector + engine; verified live against a
   vulnerable target (XSS + SQLi + open-redirect confirmed). Design: [prd-0002](docs/product/prd-0002-active-scanning.md).
-  **UI (Scanner → Active) lands next.**
+- **Active scanning — UI** (Scanner → **⚡ Active scan**, also in the Ctrl/Cmd+K palette): a prominent
+  red **arm/consent** banner, target picker (selected flow vs all in-scope), a max-requests cap,
+  start/stop, live progress over SSE, and confirmed findings that open the proving request/response.
+  The scanner now also **refuses to target its own control plane** (`SelfAddr` guard — relevant if the
+  UI is reached through the proxy with the system proxy on). Verified live in a headless browser.
 - **Decoder / encoder** — a `🧰 Decoder` tool (open it from the **Ctrl/Cmd+K** palette): Base64,
   URL, hex, HTML-entity, JWT inspection, and a **smart** auto-detect-and-decode, with chain
   (output → next input) and copy. Pure transforms in a tested `internal/codec`, exposed at

@@ -53,6 +53,10 @@ type Hub struct {
 	// ChecksDir holds user-authored Starlark scanner checks ("" = none). Set by cmd.
 	ChecksDir string
 
+	// SelfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
+	// cmd; the active scanner refuses to target it, so it never attacks its own API.
+	SelfAddr string
+
 	mcpMu  sync.Mutex
 	mcpSrv *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
 

@@ -154,6 +154,11 @@ func (h *Hub) asTargets(flows []*store.Flow) []activescan.Target {
 		if !h.sc.InScope(f) {
 			continue
 		}
+		// Never active-scan our own control plane (can be captured if the browser
+		// reaches the UI through the proxy, e.g. with the system proxy enabled).
+		if h.SelfAddr != "" && f.Host+":"+strconv.Itoa(f.Port) == h.SelfAddr {
+			continue
+		}
 		key := f.Method + " " + f.Host + f.Path
 		if seen[key] {
 			continue

@@ -376,6 +376,7 @@ changeme</textarea>
       <button class="btn accent" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanReport">Export report</button>
       <button class="btn" id="checksBtn">✎ Custom checks</button>
+      <button class="btn" id="activeBtn" style="color:var(--red)">⚡ Active scan</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
       <span class="hint" style="font-size:11px">Passive checks over captured traffic — no requests sent</span>
@@ -539,6 +540,32 @@ changeme</textarea>
         <textarea id="checkSrc" class="rep-edit" spellcheck="false" style="flex:1;border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
         <div id="checkOut" style="flex:none;max-height:36%;overflow:auto;border-top:1px solid var(--line);padding:10px 12px;font-size:11.5px"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
       </div>
+    </div>
+  </div>
+</div>
+<div id="activeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:800px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span style="font-weight:700;color:var(--red)">⚡ Active scan</span>
+      <span class="hint" style="margin-left:10px">sends crafted attack requests · scope-restricted</span>
+      <div class="spacer"></div><button class="btn" id="asClose">✕</button>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
+      <div style="border:1px solid var(--red);background:rgba(255,80,80,.08);border-radius:8px;padding:10px 12px">
+        <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer;color:var(--fg)">
+          <input type="checkbox" id="asArm" style="margin-top:2px">
+          <span><b style="color:var(--red)">Active scanning sends real attack requests</b> (XSS, SQLi, SSTI, traversal, timing probes) to the target. Only enable this for systems you are <b>authorized to test</b>. Stays armed for this session.</span>
+        </label>
+      </div>
+      <div class="row" style="gap:14px;flex-wrap:wrap">
+        <span class="hint">Target:</span>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="asTarget" id="asTargetFlow" checked> selected flow <b id="asFlowLabel" style="color:var(--accent)"></b></label>
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="asTarget" id="asTargetScope"> all in-scope</label>
+        <input id="asMax" class="btn" style="width:150px;background:var(--bg3)" placeholder="max requests (2000)">
+      </div>
+      <div class="row" style="gap:8px"><button class="btn accent" id="asStart">Start ▸</button><button class="btn" id="asStop">Stop</button><span class="hint" id="asProgress"></span></div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">CONFIRMED FINDINGS</div>
+      <div id="asFindings"><div class="hint">No active findings yet.</div></div>
     </div>
   </div>
 </div>
@@ -1119,6 +1146,53 @@ function openDecoder(seed){decBuildOps();$('#decModal').style.display='flex';if(
 if($('#decClose'))$('#decClose').onclick=()=>$('#decModal').style.display='none';
 if($('#decUp'))$('#decUp').onclick=()=>{$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
 if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output copied');
+
+/* ---- active scan ---- */
+async function loadActive(){
+  try{const d=await api('/api/activescan');renderActive(d);}catch(e){}
+}
+function renderActive(d){
+  if($('#asArm'))$('#asArm').checked=!!d.armed;
+  const fs=d.findings||[];
+  if($('#asStart'))$('#asStart').disabled=d.running||!d.armed;
+  if($('#asStop'))$('#asStop').disabled=!d.running;
+  const prog=$('#asProgress');
+  if(prog){
+    if(d.running)prog.innerHTML='<span style="color:var(--accent)">⟳ running…</span> '+d.scanned+'/'+d.targets+' targets · '+d.requests+' requests';
+    else if(d.scanned)prog.textContent='done · '+d.scanned+' targets · '+d.requests+' requests · '+fs.length+' findings';
+    else prog.textContent='';
+  }
+  const box=$('#asFindings');if(!box)return;
+  box.innerHTML=fs.length?fs.map(f=>`<div data-flow="${f.flowId}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
+    <span class="sev ${esc(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b>
+    <div class="hint" style="margin-top:2px">${esc(f.class)} · ${esc(f.point.kind)}:${esc(f.point.name)} — ${esc(f.evidence)} <span style="color:var(--blue)">→ flow #${f.flowId}</span></div></div>`).join('')
+    :'<div class="hint">No active findings yet.</div>';
+  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{$('#activeModal').style.display='none';document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(Number(el.dataset.flow));});
+}
+async function asArmToggle(){
+  try{await api('/api/activescan/arm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({armed:$('#asArm').checked})});loadActive();}
+  catch(e){toast(e.message);}
+}
+async function asStartScan(){
+  const body={arm:$('#asArm').checked,maxRequests:parseInt($('#asMax').value,10)||0};
+  if($('#asTargetFlow').checked){
+    if(state.selId==null){toast('select a flow first, or choose “all in-scope”');return;}
+    body.flowId=state.selId;
+  }else body.inScope=true;
+  try{await api('/api/activescan/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});loadActive();}
+  catch(e){toast(e.message);}
+}
+async function asStopScan(){try{await api('/api/activescan/stop',{method:'POST'});loadActive();}catch(e){}}
+function openActive(){
+  $('#activeModal').style.display='flex';
+  $('#asFlowLabel').textContent=state.selId!=null?('#'+state.selId):'(none selected)';
+  loadActive();
+}
+if($('#activeBtn'))$('#activeBtn').onclick=openActive;
+if($('#asClose'))$('#asClose').onclick=()=>$('#activeModal').style.display='none';
+if($('#asArm'))$('#asArm').onchange=asArmToggle;
+if($('#asStart'))$('#asStart').onclick=asStartScan;
+if($('#asStop'))$('#asStop').onclick=asStopScan;
 $('#aiModal').onclick=e=>{if(e.target.id==='aiModal')$('#aiModal').style.display='none';};
 
 $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
@@ -1411,6 +1485,7 @@ function connectEvents(){
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
     else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
+    else if(m.type==='activescan.update'){if($('#activeModal')&&$('#activeModal').style.display==='flex')loadActive();}
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
@@ -1445,6 +1520,7 @@ function cmdkCommands(){
     {t:'Toggle intercept',run:()=>{if(typeof toggleIntercept==='function')toggleIntercept();}},
     {t:'Run scanner',run:()=>{go('scanner')();if(typeof runScan==='function')runScan();}},
     {t:(state.inScopeOnly?'Show all traffic':'Show in-scope only'),run:()=>$('#scopeToggle')&&$('#scopeToggle').click()},
+    {t:'⚡ Active scan (sends attack payloads)',run:()=>{document.querySelector('.tab[data-tab="scanner"]').click();openActive();}},
     {t:'Open Decoder (base64 / url / jwt / hex…)',run:()=>openDecoder()},
     {t:'Export HAR',run:()=>{location.href='/api/export/har'+(state.inScopeOnly?'?inScope=1':'');}},
     {t:'Clear all filters',run:()=>{if(typeof clearAllFilters==='function')clearAllFilters();}},

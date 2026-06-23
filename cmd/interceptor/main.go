@@ -82,6 +82,7 @@ func run() error {
 	checksDir := filepath.Join(dir, "checks")
 	_ = os.MkdirAll(checksDir, 0o755)
 	hub.ChecksDir = checksDir
+	hub.SelfAddr = controlAddr // so the active scanner never targets our own API
 	prx := proxy.New(st, capture.New(st), ca, eng, hub)
 	prx.Scope = sc
 	hub.Upstream = prx.SetUpstreamProxy
