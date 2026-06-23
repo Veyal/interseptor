@@ -357,6 +357,7 @@ changeme</textarea>
   <div class="panel" data-panel="scanner">
     <div class="toolbar">
       <button class="btn accent" id="scanRun">Run scan ▸</button>
+      <button class="btn" id="scanReport">Export report</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
       <span class="hint" style="font-size:11px">Passive checks over captured traffic — no requests sent</span>
@@ -1080,6 +1081,7 @@ function renderScanDetail(){
     <div class="fixbox">${esc(i.fix)}</div></div>`;
 }
 $('#scanRun').onclick=runScan;
+$('#scanReport').onclick=()=>{if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}const a=document.createElement('a');a.href='/api/scanner/report';a.download='interceptor-findings.md';document.body.appendChild(a);a.click();a.remove();toast('report downloaded');};
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{

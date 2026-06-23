@@ -3,6 +3,7 @@ package control
 import (
 	"net/http"
 
+	"github.com/Veyal/interceptor/internal/report"
 	"github.com/Veyal/interceptor/internal/scanner"
 	"github.com/Veyal/interceptor/internal/store"
 )
@@ -40,4 +41,16 @@ func (h *Hub) scannerIssues(w http.ResponseWriter, r *http.Request) {
 		issues = []store.Issue{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+}
+
+// scannerReport renders the current findings as a downloadable Markdown report.
+func (h *Hub) scannerReport(w http.ResponseWriter, r *http.Request) {
+	issues, err := h.st.ListIssues()
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="interceptor-findings.md"`)
+	w.Write([]byte(report.Findings(issues)))
 }

@@ -7,6 +7,11 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **Findings → Markdown report** — a new `internal/report` renders the passive-scan findings as a
+  severity-grouped Markdown report (summary line, per-finding target/detail/evidence/remediation).
+  Download it from the Scanner tab's **Export report** button (`GET /api/scanner/report`) or pull it
+  via the MCP **`scan_report`** tool (now **23 MCP tools**) to drop straight into a writeup. Pure,
+  deterministic, TDD'd (incl. inline-code sanitization of evidence).
 - **Four more passive scanner checks** (8 → 12) — reflected request parameter in an HTML response
   (possible XSS sink, with a noise guard for trivial/short values), HTTP Basic authentication (High
   over plaintext), missing `X-Content-Type-Options: nosniff` on scriptable responses, and missing

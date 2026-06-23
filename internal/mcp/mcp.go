@@ -481,6 +481,11 @@ func (s *Server) registerTools() {
 	s.add("list_issues", "List current scanner findings.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/issues") })
 
+	s.add("scan_report",
+		"Get the current passive-scan findings as a formatted Markdown report grouped by severity — ready to drop into a writeup.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/scanner/report") })
+
 	s.add("get_intercept", "Get intercept state and the current hold queue.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/intercept") })
 
