@@ -127,6 +127,12 @@ CREATE TABLE IF NOT EXISTS scope_rules (
   scheme TEXT NOT NULL DEFAULT '',
   port INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS saved_views (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL
+);
 `
 
 // Open creates (or opens) the database and body store under dir.

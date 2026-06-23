@@ -7,6 +7,9 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **Saved filters / views** — name and recall a history filter (scheme/method/status/search/host +
+  the in-scope toggle). Store `saved_views` + `GET/POST/DELETE /api/views` (SSE `views.update`); a
+  toolbar **views** dropdown with save (＋) and delete (✕). TDD.
 - **Projects (save/load)** — export/import a portable session: captured flows (as HAR) + match-&-
   replace rules + target-scope rules + the upstream-proxy setting, in one JSON bundle. Control:
   `GET /api/export/project`, `POST /api/import/project` (additive merge; does not rebind the

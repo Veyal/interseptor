@@ -203,6 +203,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <button class="btn" id="scopeToggle" title="Show only in-scope flows (define scope in Settings → Target scope)">◎ in scope</button>
+      <select id="viewsSelect" class="btn" title="Apply a saved view"><option value="">views…</option></select>
+      <button class="btn" id="saveViewBtn" title="Save the current filters as a view">＋</button>
+      <button class="btn danger" id="delViewBtn" title="Delete the selected view" style="display:none">✕</button>
       <div class="spacer"></div>
       <span class="count" title="Right-click any row to filter by host, method, status or scheme, or to copy its URL / cURL">↳ right-click a row to filter</span>
       <span class="count"><b id="rowCount">0</b> flows</span>
@@ -466,7 +469,7 @@ const $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
-  rules:[],scope:[],inScopeOnly:false,view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
+  rules:[],scope:[],views:[],inScopeOnly:false,view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
   filters:{scheme:'',search:'',method:'',status:'',host:''}};
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
@@ -615,6 +618,31 @@ $('#importHarFile').onchange=async e=>{
   e.target.value='';
 };
 $('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
+
+/* ---- saved views ---- */
+async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
+function renderViews(){
+  const sel=$('#viewsSelect'),cur=sel.value;
+  sel.innerHTML='<option value="">views…</option>'+state.views.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join('');
+  if(state.views.find(v=>String(v.id)===cur))sel.value=cur;
+  $('#delViewBtn').style.display=sel.value?'inline-block':'none';
+}
+$('#viewsSelect').onchange=()=>{
+  const id=$('#viewsSelect').value;$('#delViewBtn').style.display=id?'inline-block':'none';
+  if(!id)return;const v=state.views.find(x=>String(x.id)===id);if(!v)return;
+  let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
+  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||''};
+  state.inScopeOnly=!!f.inScope;
+  syncControls();$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
+  renderChips();loadFlows();
+};
+$('#saveViewBtn').onclick=async()=>{
+  const name=prompt('Save the current filters as a view named:');if(!name)return;
+  const data={...state.filters,inScope:state.inScopeOnly};
+  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');loadViews();}catch(e){toast(e.message);}
+};
+$('#delViewBtn').onclick=async()=>{const id=$('#viewsSelect').value;if(!id)return;
+  try{await api('/api/views/'+id,{method:'DELETE'});$('#viewsSelect').value='';$('#delViewBtn').style.display='none';loadViews();toast('view deleted');}catch(e){toast(e.message);}};
 
 /* ---- target scope ---- */
 async function loadScope(){try{const d=await api('/api/scope');state.scope=d.rules||[];renderScope();}catch(e){}}
@@ -1048,6 +1076,7 @@ function connectEvents(){
     else if(m.type==='scanner.update')loadIssues();
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();}
+    else if(m.type==='views.update')loadViews();
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
@@ -1055,7 +1084,7 @@ function connectEvents(){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadFlows();loadRules();loadScope();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
 </script>
 </body>
 </html>
