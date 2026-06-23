@@ -192,6 +192,7 @@ type settingsJSON struct {
 	ProxyAddr        string `json:"proxyAddr"`
 	InterceptEnabled bool   `json:"interceptEnabled"`
 	UpstreamProxy    string `json:"upstreamProxy"`
+	AiProvider       string `json:"aiProvider"`
 	AiModel          string `json:"aiModel"`
 	AiHasKey         bool   `json:"aiHasKey"` // never returns the key itself
 }
@@ -571,14 +572,23 @@ func (h *Hub) currentProxyAddr() string {
 
 func (h *Hub) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
+	aiProvider, _, _ := h.st.GetSetting("ai.provider")
+	if aiProvider == "" {
+		aiProvider = "anthropic"
+	}
 	aiKey, _, _ := h.st.GetSetting("ai.apiKey")
 	aiModel, _, _ := h.st.GetSetting("ai.model")
+	envKey := os.Getenv("ANTHROPIC_API_KEY")
+	if aiProvider == "openrouter" {
+		envKey = os.Getenv("OPENROUTER_API_KEY")
+	}
 	writeJSON(w, http.StatusOK, settingsJSON{
 		ProxyAddr:        h.currentProxyAddr(),
 		InterceptEnabled: h.eng != nil && h.eng.Enabled(),
 		UpstreamProxy:    up,
+		AiProvider:       aiProvider,
 		AiModel:          aiModel,
-		AiHasKey:         aiKey != "" || os.Getenv("ANTHROPIC_API_KEY") != "",
+		AiHasKey:         aiKey != "" || envKey != "",
 	})
 }
 
@@ -586,12 +596,16 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProxyAddr     string  `json:"proxyAddr"`
 		UpstreamProxy *string `json:"upstreamProxy"` // pointer so "" can clear it
+		AiProvider    *string `json:"aiProvider"`
 		AiApiKey      *string `json:"aiApiKey"`
 		AiModel       *string `json:"aiModel"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
+	}
+	if in.AiProvider != nil {
+		_ = h.st.SetSetting("ai.provider", *in.AiProvider)
 	}
 	if in.AiApiKey != nil {
 		_ = h.st.SetSetting("ai.apiKey", *in.AiApiKey)

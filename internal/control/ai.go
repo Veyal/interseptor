@@ -11,15 +11,23 @@ import (
 
 // aiAssist asks a bring-your-own-key LLM to explain a flow, suggest payloads, or
 // summarize findings. Disabled unless an API key is configured (Settings or the
-// ANTHROPIC_API_KEY env var). The exchange is sent to the provider only here, on
-// an explicit request.
+// provider's env var). The exchange is sent to the provider only here, on an
+// explicit request. Provider is "anthropic" (default) or "openrouter".
 func (h *Hub) aiAssist(w http.ResponseWriter, r *http.Request) {
+	provider, _, _ := h.st.GetSetting("ai.provider")
+	if provider == "" {
+		provider = aiassist.ProviderAnthropic
+	}
 	key, _, _ := h.st.GetSetting("ai.apiKey")
 	if key == "" {
-		key = os.Getenv("ANTHROPIC_API_KEY")
+		if provider == aiassist.ProviderOpenRouter {
+			key = os.Getenv("OPENROUTER_API_KEY")
+		} else {
+			key = os.Getenv("ANTHROPIC_API_KEY")
+		}
 	}
 	if key == "" {
-		httpErr(w, http.StatusBadRequest, "no AI API key — set one in Settings → AI assist, or ANTHROPIC_API_KEY")
+		httpErr(w, http.StatusBadRequest, "no AI API key — set one in Settings → AI assist (or the ANTHROPIC_API_KEY / OPENROUTER_API_KEY env var)")
 		return
 	}
 	var in struct {
@@ -56,7 +64,7 @@ func (h *Hub) aiAssist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	model, _, _ := h.st.GetSetting("ai.model")
-	text, err := aiassist.New(key, model).Complete(system, user)
+	text, err := aiassist.New(provider, key, model).Complete(system, user)
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, err.Error())
 		return

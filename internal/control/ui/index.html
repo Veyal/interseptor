@@ -436,8 +436,9 @@ changeme</textarea>
       </div>
       <div class="section">
         <h3>AI ASSIST · bring your own key</h3>
-        <p class="hint" style="margin-bottom:10px">Optional. With an Anthropic API key, the inspector's <b>✨</b> can explain a request, suggest payloads, or summarize findings. Off until a key is set; the exchange is sent to Anthropic only when you click ✨. <b id="aiKeyState"></b></p>
-        <div class="field"><label>Anthropic API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
+        <p class="hint" style="margin-bottom:10px">Optional. With your own provider key, the inspector's <b>✨</b> can explain a request, suggest payloads, or summarize findings. Off until a key is set; the exchange is sent to your chosen provider only when you click ✨. <b id="aiKeyState"></b></p>
+        <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
+        <div class="field"><label>API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
         <div class="field"><label>Model (optional)</label><input id="setAiModel" placeholder="claude-haiku-4-5-20251001"></div>
         <div class="row"><button class="btn accent" id="saveAiBtn">Save AI settings</button></div>
       </div>
@@ -873,15 +874,22 @@ $('#addRuleBtn').onclick=async()=>{
 /* ---- settings ---- */
 async function loadSettings(){try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;$('#setAddr').value=s.proxyAddr;
   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
+  if($('#setAiProvider'))$('#setAiProvider').value=s.aiProvider||'anthropic';
   if($('#setAiModel'))$('#setAiModel').value=s.aiModel||'';
   if($('#aiKeyState'))$('#aiKeyState').textContent=s.aiHasKey?'Key configured ✓':'No key set.';
+  aiPlaceholders();
   state.intercept.enabled=s.interceptEnabled;}catch(e){}}
+function aiPlaceholders(){if(!$('#setAiProvider'))return;
+  const p=$('#setAiProvider').value;
+  if(p==='openrouter'){$('#setAiKey').placeholder='sk-or-…';$('#setAiModel').placeholder='anthropic/claude-3.5-haiku';}
+  else{$('#setAiKey').placeholder='sk-ant-…';$('#setAiModel').placeholder='claude-haiku-4-5-20251001';}}
+if($('#setAiProvider'))$('#setAiProvider').onchange=aiPlaceholders;
 $('#saveUpstreamBtn').onclick=async()=>{
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
     toast('upstream proxy saved');}catch(e){toast(e.message);}
 };
 $('#saveAiBtn').onclick=async()=>{
-  const body={aiModel:$('#setAiModel').value.trim()};
+  const body={aiProvider:$('#setAiProvider').value,aiModel:$('#setAiModel').value.trim()};
   if($('#setAiKey').value)body.aiApiKey=$('#setAiKey').value;
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     $('#setAiKey').value='';toast('AI settings saved');loadSettings();}catch(e){toast(e.message);}
@@ -897,7 +905,7 @@ async function runAi(kind){
   $('#aiOut').textContent='Thinking…';
   try{const r=await api('/api/ai/assist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:state.selId,kind})});
     $('#aiOut').textContent=r.text||'(empty response)';}
-  catch(e){$('#aiOut').textContent='Error: '+e.message+'\n\nSet an Anthropic API key in Settings → AI assist (or the ANTHROPIC_API_KEY env var).';}
+  catch(e){$('#aiOut').textContent='Error: '+e.message+'\n\nPick a provider and set its API key in Settings → AI assist (or the ANTHROPIC_API_KEY / OPENROUTER_API_KEY env var).';}
 }
 $('#aiExplainBtn').onclick=()=>openAi('explain');
 $('#aiKindSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#aiKindSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));runAi(b.dataset.k);});

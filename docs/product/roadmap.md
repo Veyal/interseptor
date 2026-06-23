@@ -47,7 +47,7 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 | **Saved filters / views** | name & recall a history filter; toolbar dropdown |
 | **`analyze_flow`** (AI tool) | compact decision-ready flow summary (headers/params/findings/scope) |
 | **Benchmark guard** | `BenchmarkInsertFlow` + `scripts/bench.sh` (reproduces the documented numbers) |
-| **BYO-key AI assist** | explain / suggest payloads / summarize, off until a key is set |
+| **BYO-key AI assist** (Anthropic **+ OpenRouter**) | explain / suggest payloads / summarize, off until a key is set; provider-selectable |
 
 ## Cycle 3 — remaining bets (all genuinely L/XL; not single-session work)
 
