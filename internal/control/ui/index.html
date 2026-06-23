@@ -11,8 +11,14 @@
   --bg:#08080a;--bg1:#101013;--bg2:#17171a;--bg3:#232329;--line:#2e2e36;--line2:#43434d;
   --fg:#f2f2f5;--fg2:#bcbcc6;--fg3:#8e8e99;--accent:#00e08a;--onAccent:#04150d;
   --sel:rgba(0,224,138,0.12);--accentDim:rgba(0,224,138,0.13);--blue:#4aa8ff;--amber:#ffb02e;
-  --red:#ff5b5b;--violet:#c08cff;--cyan:#3fd8d0;--scroll:#2a2a30;
+  --red:#ff5b5b;--violet:#c08cff;--cyan:#3fd8d0;--scroll:#2a2a30;--shadow:rgba(0,0,0,.5);
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+:root[data-theme="light"]{
+  --bg:#ffffff;--bg1:#f6f7f9;--bg2:#eef0f3;--bg3:#e4e7ec;--line:#dcdfe6;--line2:#c2c7d0;
+  --fg:#16181d;--fg2:#454b56;--fg3:#787f8c;--accent:#00a368;--onAccent:#ffffff;
+  --sel:rgba(0,163,104,0.10);--accentDim:rgba(0,163,104,0.13);--blue:#1667d6;--amber:#9a6700;
+  --red:#cf3a3a;--violet:#7b46cf;--cyan:#0f9b92;--scroll:#cdd2da;--shadow:rgba(20,24,33,.16);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -35,6 +41,8 @@ button{cursor:pointer}
 .tag{font-size:9.5px;color:var(--fg3);letter-spacing:1.5px}
 .kv{font-size:10.5px;color:var(--fg2)}
 .kv b{color:var(--fg);font-weight:600}
+#themeToggle{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--bg3);color:var(--fg2);font-size:13px;line-height:1}
+#themeToggle:hover{color:var(--fg);background:var(--line)}
 
 /* tabs */
 #tabs{height:40px;flex:none;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 10px}
@@ -68,6 +76,7 @@ button{cursor:pointer}
 .trow{height:27px;border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:11.5px;padding:0 6px;cursor:pointer}
 .trow:hover{background:var(--bg3)}
 .trow.sel{background:var(--sel);border-left-color:var(--accent)}
+.trow.pending{border-left-color:var(--amber)}
 .trow>div{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr-id{color:var(--fg3)}
 .tr-m{font-weight:700}
@@ -90,6 +99,17 @@ button{cursor:pointer}
 .seg button.on{color:var(--accent);background:var(--accentDim)}
 .pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
 .statusline{font-size:10.5px;font-weight:700}
+
+/* HTTP syntax highlighting (read-only request/response views) */
+.hl-method{color:var(--accent);font-weight:700}
+.hl-url{color:var(--fg)}
+.hl-proto{color:var(--fg3)}
+.hl-hname{color:var(--blue);font-weight:600}
+.hl-hval{color:var(--fg2)}
+.hl-st2{color:var(--accent);font-weight:700}
+.hl-st3{color:var(--blue);font-weight:700}
+.hl-st4{color:var(--amber);font-weight:700}
+.hl-st5{color:var(--red);font-weight:700}
 
 /* intercept */
 .section{padding:14px 16px;border-bottom:1px solid var(--line)}
@@ -119,6 +139,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 #chips.has{display:flex;padding:8px 12px;border-bottom:1px solid var(--line)}
 .chip{display:inline-flex;align-items:center;gap:7px;font-size:11px;background:var(--bg3);border:1px solid var(--line2);border-radius:14px;padding:3px 5px 3px 11px;color:var(--fg)}
 .chip b{color:var(--accent);font-weight:600}
+.chip.not{border-color:var(--red)}
+.chip.not b{color:var(--red)}
 .chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border-radius:50%;background:var(--bg2);color:var(--fg2);font-size:11px}
 .chip .x:hover{color:var(--red);background:var(--bg1)}
 
@@ -154,9 +176,14 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .settings-nav button{text-align:left;padding:9px 12px;border-radius:8px;border:none;background:transparent;color:var(--fg2);cursor:pointer;font-size:13px;font-weight:600}
 .settings-nav button:hover{background:var(--bg3);color:var(--fg)}
 .settings-nav button.on{background:var(--sel);color:var(--fg)}
-.settings-body{flex:1;overflow:auto}
+.settings-body{flex:1;overflow:auto;padding:22px 26px}
 .settings-body .set-sec[hidden]{display:none}
-.settings-body .section{max-width:760px}
+.settings-body .section{max-width:780px;padding:22px 24px;margin:0 0 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg1)}
+.settings-body .section:last-child{margin-bottom:0}
+.settings-body .section h3{font-size:10px;letter-spacing:1px;color:var(--accent);margin-bottom:14px}
+.settings-body .field{max-width:460px;margin-bottom:18px}
+.settings-body .field:last-of-type{margin-bottom:14px}
+.settings-body .hint{font-size:11.5px}
 
 /* intruder results */
 .intr-head,.intr-row{display:grid;grid-template-columns:42px 1fr 52px 66px 60px;align-items:center;padding:0 8px}
@@ -187,6 +214,14 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:1}
 </style>
+<script>
+// Apply the saved (or system) theme before first paint to avoid a flash.
+(function(){try{
+  var t=localStorage.getItem('theme');
+  if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+}catch(e){}})();
+</script>
 </head>
 <body>
 <div id="bar">
@@ -196,6 +231,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <div class="spacer"></div>
   <div class="row" style="gap:6px"><div class="dot blink"></div><span class="kv">proxy <b id="proxyAddr">…</b></span></div>
   <span class="kv">control <b>127.0.0.1:9966</b></span>
+  <button id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">☾</button>
 </div>
 
 <div id="tabs">
@@ -206,7 +242,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <button class="tab" data-tab="scanner">Scanner</button>
   <button class="tab" data-tab="api">API</button>
   <button class="tab" data-tab="settings">Settings</button>
-  <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="margin-left:auto;align-self:center;padding:0 12px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
+  <span id="projBadge" style="margin-left:auto;align-self:center;padding:3px 9px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:6px;display:none" title="Active project"></span>
+  <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="align-self:center;padding:0 12px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
 </div>
 
 <div id="main">
@@ -269,6 +306,14 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
           <button class="toggle" id="respInterceptToggle">Response intercept is off</button>
           <span class="hint">When on, every response is held so you can edit or drop it before it reaches the client.</span>
         </div>
+        <div class="row" style="gap:10px;margin-top:12px;align-items:center">
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="interceptFilterOn"> <span>Only hold when</span></label>
+          <select id="interceptFilterTarget" class="btn"><option value="any">anything</option><option value="url">URL</option><option value="header">headers</option><option value="body">body</option><option value="method">method</option></select>
+          <span>matches</span>
+          <input id="interceptFilterPattern" class="btn" style="flex:1;background:var(--bg3);font-family:var(--mono)" placeholder="regex e.g. /admin|password=" spellcheck="false">
+          <button class="btn accent" id="interceptFilterApply">Apply</button>
+        </div>
+        <div class="hint" style="margin-top:6px">Conditional intercept: when enabled, requests that don't match are forwarded without being held. Leave off to hold everything.</div>
       </div>
       <div class="section">
         <h3>REQUEST HOLD QUEUE · <span id="heldCount">0</span></h3>
@@ -276,8 +321,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
         <div id="heldEditor" style="display:none;margin-top:10px">
           <textarea class="raw" id="heldRaw" spellcheck="false"></textarea>
           <div class="row" style="gap:8px;margin-top:8px">
-            <button class="btn accent" id="forwardBtn">Forward</button>
-            <button class="btn danger" id="dropBtn">Drop</button>
+            <button class="btn accent" id="forwardBtn" title="Forward (Ctrl+F)">Forward</button>
+            <button class="btn danger" id="dropBtn" title="Drop (Ctrl+D)">Drop</button>
+            <span class="hint" style="align-self:center">Ctrl+F forward · Ctrl+D drop</span>
           </div>
         </div>
       </div>
@@ -440,21 +486,21 @@ changeme</textarea>
             <div class="field" style="margin-top:16px"><label>Upstream proxy (chain through another proxy; blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
             <div class="row"><button class="btn" id="saveUpstreamBtn">Save upstream</button></div>
           </div>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>SYSTEM PROXY</h3>
             <p class="hint" style="margin-bottom:10px">Route this computer's HTTP/HTTPS traffic through Interceptor automatically (macOS). Off by default — turn it off when you're done. On other systems, set your OS/browser proxy to the address above manually.</p>
             <div class="row" style="gap:12px"><button class="toggle" id="sysProxyToggle">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>TLS CERTIFICATE AUTHORITY</h3>
             <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA on the client to intercept HTTPS. Per-host leaf certificates are minted on demand.</p>
             <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block">Download CA certificate</a>
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>TARGET SCOPE</h3>
             <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Tip: right-click a flow → <b>Add to scope</b>. Host supports a leading wildcard, e.g. <b style="color:var(--accent)">*.acme.com</b>; path is a prefix.</p>
             <table class="rules-tbl">
@@ -470,7 +516,7 @@ changeme</textarea>
           </div>
         </section>
         <section class="set-sec" data-sec="ai" hidden>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>AI ASSIST · bring your own key</h3>
             <p class="hint" style="margin-bottom:10px">Optional. With your own provider key, the inspector's <b>✨</b> can explain a request, suggest payloads, or summarize findings. Off until a key is set; the exchange is sent to your chosen provider only when you click ✨. <b id="aiKeyState"></b></p>
             <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
@@ -480,7 +526,7 @@ changeme</textarea>
           </div>
         </section>
         <section class="set-sec" data-sec="session" hidden>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>SESSION · auth headers</h3>
             <p class="hint" style="margin-bottom:10px">Headers auto-applied to every <b>Repeater</b> and <b>Intruder</b> send (which bypass the proxy), so a token stays fresh without re-pasting. One <b>Key: Value</b> per line; these <b>replace</b> any existing value on the outgoing request. Typically an <b style="color:var(--accent)">Authorization</b> bearer token or a <b style="color:var(--accent)">Cookie</b>.</p>
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
@@ -489,7 +535,7 @@ changeme</textarea>
           </div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
-          <div class="section" style="border-bottom:none">
+          <div class="section">
             <h3>PROJECT</h3>
             <p class="hint" style="margin-bottom:10px">Save or load a portable session — captured flows, match-&amp;-replace rules, target scope, and the upstream proxy. Import merges into the current session.</p>
             <div class="row" style="gap:8px">
@@ -497,7 +543,7 @@ changeme</textarea>
               <button class="btn" id="importProjectBtn">Import project</button>
               <input type="file" id="importProjectFile" accept=".json,application/json" style="display:none">
             </div>
-            <p class="hint" style="margin-top:14px">Runtime data lives in <b>~/.interceptor/</b> (database, bodies, CA, custom checks). Delete that folder to reset.</p>
+            <p class="hint" style="margin-top:14px">Active project: <b id="projDirHint">~/.interceptor</b> (its own database, bodies &amp; custom checks). The CA is shared across projects at <b>~/.interceptor/ca</b>, so you only trust it once. Start with <code>--project &lt;name&gt;</code> or pick at launch to switch projects.</p>
           </div>
         </section>
       </div>
@@ -594,7 +640,7 @@ const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[
 
 const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
   rules:[],scope:[],views:[],inScopeOnly:false,view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
-  filters:{scheme:'',search:'',method:'',status:'',host:''}};
+  filters:{scheme:'',search:'',method:'',status:'',host:'',exclude:[]}};
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
 async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
@@ -643,15 +689,16 @@ function renderRows(){
     return;}
   box.innerHTML=flows.map(f=>{
     const intercepted=(f.flags&1)!==0;
-    const st=f.error&&!f.status?'ERR':(f.status||'—');
-    return `<div class="trow ${f.id===state.selId?'sel':''}" data-id="${f.id}" title="Left-click to inspect · Right-click to filter / copy">
+    const pending=!f.status&&!f.error;
+    const stHTML=f.status?String(f.status):(f.error?'ERR':'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
+    return `<div class="trow ${f.id===state.selId?'sel':''}${pending?' pending':''}" data-id="${f.id}" title="Left-click to inspect · Right-click to filter / copy">
       <div class="tr-id" data-field="id">${f.id}</div>
       <div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>
       <div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>
       <div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}</div>
-      <div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${st}</div>
+      <div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>
       <div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>
-      <div class="tr-len" data-field="size">${fmtSize(f.resLen)}</div>
+      <div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>
       <div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>
     </div>`;
   }).join('');
@@ -674,6 +721,7 @@ async function loadFlows(){
   if(f.method)q.set('method',f.method);
   if(f.status)q.set('status',f.status);
   if(f.host)q.set('host',f.host);
+  (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
   if(state.inScopeOnly)q.set('inScope','1');
   q.set('limit','500');
   try{const d=await api('/api/flows?'+q.toString());state.flows=d.flows||[];renderRows();refreshMethodFilter();}catch(e){toast('flows: '+e.message);}
@@ -763,12 +811,40 @@ function prettify(raw){
   if(body.length>PRETTY_MAX)return head+'\n\n'+body+'\n\n— body too large to beautify ('+fmtSize(body.length)+'); showing raw —';
   return head+'\n\n'+beautifyBody(body);
 }
+// Colorize a read-only HTTP message: start line, header names/values, status code.
+// The text is escaped first (these are arbitrary captured bytes) so the result is
+// safe for innerHTML. Only the header block is tokenized; the body is escaped
+// verbatim to stay fast on large payloads.
+function highlightHTTP(text){
+  if(!text)return '';
+  text=String(text).replace(/\r\n/g,'\n');
+  const sep=text.indexOf('\n\n');
+  const head=sep>=0?text.slice(0,sep):text;
+  const body=sep>=0?text.slice(sep+2):'';
+  const lines=head.split('\n');
+  let html=hlStartLine(lines[0]||'');
+  for(let i=1;i<lines.length;i++){
+    const ln=lines[i];const c=ln.indexOf(':');
+    html+='\n'+(c>0
+      ?'<span class="hl-hname">'+esc(ln.slice(0,c))+'</span>:<span class="hl-hval">'+esc(ln.slice(c+1))+'</span>'
+      :esc(ln));
+  }
+  if(sep>=0)html+='\n\n'+esc(body);
+  return html;
+}
+function hlStartLine(ln){
+  let m=ln.match(/^(HTTP\/[\d.]+)\s+(\d{3})(.*)$/);            // response status line
+  if(m)return '<span class="hl-proto">'+esc(m[1])+'</span> <span class="hl-st'+m[2][0]+'">'+esc(m[2]+m[3])+'</span>';
+  m=ln.match(/^([A-Z]+)\s+(\S+)\s+(HTTP\/[\d.]+)$/);           // request line
+  if(m)return '<span class="hl-method">'+esc(m[1])+'</span> <span class="hl-url">'+esc(m[2])+'</span> <span class="hl-proto">'+esc(m[3])+'</span>';
+  return esc(ln);
+}
 async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
   if(!state.selId){return;}
   try{
     const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
-    el.textContent=state.view[side]==='pretty'?prettify(raw):raw;
+    el.innerHTML=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw);
   }catch(e){el.textContent='(error: '+e.message+')';}
 }
 $$('.seg').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -804,7 +880,7 @@ $('#viewsSelect').onchange=()=>{
   const id=$('#viewsSelect').value;$('#delViewBtn').style.display=id?'inline-block':'none';
   if(!id)return;const v=state.views.find(x=>String(x.id)===id);if(!v)return;
   let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
-  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||''};
+  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
   state.inScopeOnly=!!f.inScope;
   syncControls();$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
   renderChips();loadFlows();
@@ -860,8 +936,17 @@ function syncControls(){
 }
 function setFilter(key,val){state.filters[key]=val;syncControls();renderChips();loadFlows();}
 function clearFilter(key){setFilter(key,'');}
-function clearAllFilters(){state.filters={scheme:'',search:'',method:'',status:'',host:''};syncControls();renderChips();loadFlows();}
-function anyFilter(){return Object.values(state.filters).some(Boolean);}
+function clearAllFilters(){state.filters={scheme:'',search:'',method:'',status:'',host:'',exclude:[]};syncControls();renderChips();loadFlows();}
+function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||(f.exclude&&f.exclude.length));}
+// Negative filters: exclude rows matching {field,value}. Toggles off if already present.
+function addExclude(field,value){
+  if(value==null||value==='')return;
+  const ex=state.filters.exclude||(state.filters.exclude=[]);
+  const i=ex.findIndex(e=>e.field===field&&String(e.value)===String(value));
+  if(i>=0)ex.splice(i,1); else ex.push({field,value:String(value)});
+  renderChips();loadFlows();
+}
+function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
 function renderChips(){
   const f=state.filters,box=$('#chips'),items=[];
   const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><span class="x" data-clear="${k}" title="remove">✕</span></span>`);};
@@ -870,9 +955,11 @@ function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('search','path',f.search);
+  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
   box.innerHTML=items.join('');
   box.classList.toggle('has',items.length>0);
   box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
+  box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
 }
 
 /* ---- right-click context menu ---- */
@@ -891,9 +978,20 @@ function showCtx(x,y,f,field){
   // Put the right-clicked column's filter first and highlight it.
   filters.sort((a,b)=>(a.field===field?-1:0)-(b.field===field?-1:0));
 
+  // Negative counterparts: hide everything matching the clicked value.
+  const excludes=[
+    {field:'host',label:'Exclude host',val:f.host,act:()=>addExclude('host',f.host)},
+    {field:'method',label:'Exclude method',val:f.method,act:()=>addExclude('method',f.method)},
+  ];
+  if(cls)excludes.push({field:'status',label:'Exclude status',val:String(f.status),act:()=>addExclude('status',String(f.status))});
+  if(field==='path')excludes.unshift({field:'path',label:'Exclude path',val:f.path,act:()=>addExclude('path',f.path)});
+  excludes.sort((a,b)=>(a.field===field?-1:0)-(b.field===field?-1:0));
+
   const acts=[];
   let html='<div class="ctx-head">FILTER</div>';
   filters.forEach(it=>{html+=`<div class="ctx-item ${it.field===field?'on':''}" data-i="${acts.length}"><span class="lbl">${it.label}</span><span class="mono">${esc(it.val)}</span></div>`;acts.push(it.act);});
+  html+='<div class="ctx-head">EXCLUDE</div>';
+  excludes.forEach(it=>{html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">${it.label}</span><span class="mono" style="color:var(--red)">≠ ${esc(it.val)}</span></div>`;acts.push(it.act);});
   html+='<div class="ctx-sep"></div>';
   html+=`<div class="ctx-item" data-i="${acts.length}">Copy URL</div>`;acts.push(()=>copyURL(f));
   html+=`<div class="ctx-item" data-i="${acts.length}">Copy as cURL</div>`;acts.push(()=>copyCurl(f));
@@ -954,6 +1052,10 @@ function renderIntercept(){
   $('#heldCount').textContent=q.length;
   const badge=$('#heldBadge');badge.style.display=q.length?'inline-block':'none';badge.textContent=q.length;
   [['#interceptToggle'],['#interceptToggle2']].forEach(([sel])=>{const b=$(sel);if(!b)return;b.classList.toggle('on',on);b.textContent=on?'Intercept is on':'Intercept is off';});
+  // conditional-intercept filter (don't clobber fields the user is editing)
+  const fo=$('#interceptFilterOn');if(fo&&document.activeElement!==fo)fo.checked=!!state.intercept.filterEnabled;
+  const ft=$('#interceptFilterTarget');if(ft&&document.activeElement!==ft)ft.value=state.intercept.filterTarget||'any';
+  const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp)fp.value=state.intercept.filterPattern||'';
   const list=$('#heldList');
   if(!q.length){list.innerHTML='<div class="hint">Nothing held.</div>';$('#heldEditor').style.display='none';state.selHeld=null;}
   else{
@@ -1004,6 +1106,13 @@ $('#forwardBtn').onclick=async()=>{if(state.selHeld==null)return;try{
   toast('forwarded');}catch(e){toast(e.message);}};
 $('#dropBtn').onclick=async()=>{if(state.selHeld==null)return;try{
   await api('/api/intercept/'+state.selHeld+'/drop',{method:'POST'});toast('dropped');}catch(e){toast(e.message);}};
+async function applyInterceptFilter(){
+  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
+  try{const s=await api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})});
+    state.intercept=s;renderIntercept();toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
+}
+$('#interceptFilterApply').onclick=applyInterceptFilter;
+$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyInterceptFilter();}});
 
 /* ---- rules ---- */
 function renderRules(){
@@ -1275,7 +1384,7 @@ async function repSend(){
 }
 async function renderRepResponse(){
   const t=repCur();if(!t||!t.resId)return;
-  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').textContent=(t.resView==='pretty')?prettify(raw):raw;}
+  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw);}
   catch(e){$('#repResView').textContent='(error: '+e.message+')';}
 }
 async function loadRepHistory(){
@@ -1477,6 +1586,7 @@ function connectEvents(){
   const es=new EventSource('/api/events');
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
     if(m.type==='flow.new')scheduleReload();
+    else if(m.type==='flow.update'){scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);} // response arrived: refresh the open detail
     else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='intruder.update')scheduleIntr();
@@ -1571,6 +1681,12 @@ document.addEventListener('keydown',e=>{
   if(mod&&(e.key===' '||e.code==='Space')){e.preventDefault();document.querySelector('.tab[data-tab="repeater"]').click();repSend();return;} // Ctrl+Space: send in Repeater
   if(mod&&e.key.toLowerCase()==='r'){const f=selectedFlow();if(f){e.preventDefault();sendToRepeater(f);}return;} // Ctrl+R: → Repeater
   if(mod&&e.key.toLowerCase()==='i'){const f=selectedFlow();if(f){e.preventDefault();sendToIntruder(f);}return;} // Ctrl+I: → Intruder
+  // Ctrl+F forward / Ctrl+D drop the selected held item — only on the Intercept tab with something held
+  if(mod&&(e.key.toLowerCase()==='f'||e.key.toLowerCase()==='d')&&document.querySelector('.tab[data-tab="intercept"]').classList.contains('active')){
+    const drop=e.key.toLowerCase()==='d';
+    if(state.selHeld!=null){e.preventDefault();$(drop?'#dropBtn':'#forwardBtn').click();return;}
+    if(state.selRespHeld!=null){e.preventDefault();$(drop?'#respDropBtn':'#respForwardBtn').click();return;}
+  }
   if(e.key==='/'&&!typing&&!mod){const s=$('#fSearch');if(s){e.preventDefault();document.querySelector('.tab[data-tab="proxy"]').click();s.focus();}return;} // /: focus search
 });
 
@@ -1578,6 +1694,8 @@ document.addEventListener('keydown',e=>{
 async function loadVersion(retry){
   try{
     const d=await api('/api/version');const el=$('#verBadge');if(!el)return;
+    const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent='◧ '+d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
+    const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
       el.textContent='↑ v'+d.latest+' available';el.style.color='var(--accent)';el.style.fontWeight='700';
       el.title='You have v'+(d.version||'?')+' — a newer release is available. Click for releases.';
@@ -1588,6 +1706,17 @@ async function loadVersion(retry){
     if(!d.latest&&retry)setTimeout(()=>loadVersion(false),3500); // the server's update check may still be in flight
   }catch(e){}
 }
+
+/* ---- theme ---- */
+function currentTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark';}
+function applyTheme(t){
+  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+  else document.documentElement.removeAttribute('data-theme');
+  const b=$('#themeToggle');if(b)b.textContent=t==='light'?'☀':'☾';
+}
+function toggleTheme(){const t=currentTheme()==='light'?'dark':'light';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
+$('#themeToggle').onclick=toggleTheme;
+applyTheme(currentTheme()); // sync the button icon with the theme applied pre-paint
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
