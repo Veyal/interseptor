@@ -90,6 +90,8 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/settings", "Update settings (rebinds the proxy listener)"},
 	{"GET", "/api/sysproxy", "System-proxy status (supported/enabled)"},
 	{"POST", "/api/sysproxy", "Enable/disable the OS system proxy (macOS)"},
+	{"GET", "/api/session", "Get session/auth headers auto-applied to sends"},
+	{"POST", "/api/session", "Set session/auth headers (auto-applied to Repeater/Intruder)"},
 	{"GET", "/api/flows/{id}/analyze", "Compact AI-friendly summary of a flow"},
 	{"POST", "/api/ai/assist", "BYO-key AI: explain/suggest/summarize a flow"},
 	{"GET", "/api/export/har", "Export history as HAR (optional ?inScope=1)"},
@@ -156,6 +158,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "list_scope", "desc": "List target-scope rules"},
 		{"name": "add_scope_rule", "desc": "Add an in/out-of-scope rule"},
 		{"name": "get_settings", "desc": "Proxy/intercept settings"},
+		{"name": "set_session", "desc": "Auth headers auto-applied to every send (keeps requests authenticated)"},
 		{"name": "ca_info", "desc": "How to trust the CA for HTTPS"},
 	},
 }

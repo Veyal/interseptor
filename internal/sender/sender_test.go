@@ -67,6 +67,65 @@ func TestSendCapturesAsFlow(t *testing.T) {
 	}
 }
 
+func TestSessionHeadersInjected(t *testing.T) {
+	var gotAuth, gotCookie, gotHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotCookie = r.Header.Get("Cookie")
+		gotHost = r.Host
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	s, _ := store.Open(t.TempDir())
+	defer s.Close()
+	snd := New(s, capture.New(s))
+
+	// Off by default: nothing injected.
+	snd.Send(Request{Method: "GET", URL: upstream.URL + "/a"})
+	if gotAuth != "" {
+		t.Fatalf("session off should not inject, got %q", gotAuth)
+	}
+
+	// Enabled: auth + cookie auto-applied even though the request omits them.
+	snd.SetSession(true, []Header{
+		{Key: "Authorization", Value: "Bearer T0KEN"},
+		{Key: "Cookie", Value: "sid=abc"},
+	})
+	flow, err := snd.Send(Request{Method: "GET", URL: upstream.URL + "/b"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if gotAuth != "Bearer T0KEN" || gotCookie != "sid=abc" {
+		t.Fatalf("session headers not injected: auth=%q cookie=%q", gotAuth, gotCookie)
+	}
+	// Injected headers are recorded on the flow (transparency/repeatability).
+	if got := flow.ReqHeaders["Authorization"]; len(got) == 0 || got[0] != "Bearer T0KEN" {
+		t.Fatalf("injected header not recorded on flow: %v", flow.ReqHeaders)
+	}
+
+	// Session value replaces a stale explicit one (keeps sends authenticated).
+	snd.Send(Request{Method: "GET", URL: upstream.URL + "/c", Headers: map[string][]string{"Authorization": {"Bearer STALE"}}})
+	if gotAuth != "Bearer T0KEN" {
+		t.Fatalf("session should override stale header, got %q", gotAuth)
+	}
+
+	// A Host entry rewrites the request Host.
+	snd.SetSession(true, []Header{{Key: "Host", Value: "internal.test"}})
+	snd.Send(Request{Method: "GET", URL: upstream.URL + "/d"})
+	if gotHost != "internal.test" {
+		t.Fatalf("session Host not applied, got %q", gotHost)
+	}
+
+	// Disabling stops injection.
+	snd.SetSession(false, nil)
+	gotAuth = ""
+	snd.Send(Request{Method: "GET", URL: upstream.URL + "/e"})
+	if gotAuth != "" {
+		t.Fatalf("disabled session still injected: %q", gotAuth)
+	}
+}
+
 func TestSendRecordsUpstreamError(t *testing.T) {
 	s, err := store.Open(t.TempDir())
 	if err != nil {

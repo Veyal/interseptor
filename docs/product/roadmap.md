@@ -48,7 +48,8 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 | **`analyze_flow`** (AI tool) | compact decision-ready flow summary (headers/params/findings/scope) |
 | **Benchmark guard** | `BenchmarkInsertFlow` + `scripts/bench.sh` (reproduces the documented numbers) |
 | **BYO-key AI assist** (Anthropic **+ OpenRouter**) | explain / suggest payloads / summarize, off until a key is set; provider-selectable |
-| **MCP Streamable-HTTP transport** | `POST /mcp` on the control port — same 20 tools, no stdio subprocess; stateless, batch-aware; unit-tested + live-verified |
+| **MCP Streamable-HTTP transport** | `POST /mcp` on the control port — same tools, no stdio subprocess; stateless, batch-aware; unit-tested + live-verified |
+| **Session / auth — header injection** | auth headers (bearer/cookie) auto-applied to every Repeater/Intruder send; `set_session` MCP tool (**21 tools**). *Slice of the L item; login macros + 401 re-auth still roadmapped.* |
 
 ## Cycle 3 — remaining bets (all genuinely L/XL; not single-session work)
 

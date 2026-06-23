@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Veyal/interceptor/internal/capture"
@@ -26,11 +27,55 @@ type Request struct {
 	Flags   int64 // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
 }
 
+// Header is a single session header applied to outgoing sends.
+type Header struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// session holds auth headers auto-applied to every Repeater/Intruder send so a
+// tester (or the AI) need not re-paste a token on each request. Guarded for
+// concurrent reads (sends) and writes (settings changes).
+type session struct {
+	mu      sync.RWMutex
+	enabled bool
+	headers []Header
+}
+
 // Sender sends requests and persists them as flows.
 type Sender struct {
-	st  *store.Store
-	cap *capture.Capturer
-	cl  *http.Client
+	st   *store.Store
+	cap  *capture.Capturer
+	cl   *http.Client
+	sess session
+}
+
+// SetSession configures the session headers auto-applied to outgoing sends.
+func (s *Sender) SetSession(enabled bool, headers []Header) {
+	s.sess.mu.Lock()
+	s.sess.enabled = enabled
+	s.sess.headers = headers
+	s.sess.mu.Unlock()
+}
+
+// applySession forces the configured session headers onto req (replacing any
+// existing value), keeping every send authenticated. No-op when disabled.
+func (s *Sender) applySession(req *http.Request) {
+	s.sess.mu.RLock()
+	defer s.sess.mu.RUnlock()
+	if !s.sess.enabled {
+		return
+	}
+	for _, h := range s.sess.headers {
+		if h.Key == "" {
+			continue
+		}
+		if http.CanonicalHeaderKey(h.Key) == "Host" {
+			req.Host = h.Value
+			continue
+		}
+		req.Header.Set(h.Key, h.Value)
+	}
 }
 
 // New builds a Sender. The client does not follow redirects (each hop is its own
@@ -79,6 +124,7 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 			req.Header.Add(k, v)
 		}
 	}
+	s.applySession(req) // force session/auth headers (recorded on the flow below)
 
 	port := atoiOr(u.Port(), defaultPort(u.Scheme))
 	start := time.Now()

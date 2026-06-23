@@ -7,6 +7,16 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **Session / auth header injection** — a set of headers (typically an `Authorization` bearer token
+  or a `Cookie`) is now auto-applied to every **Repeater** and **Intruder** send, which bypass the
+  proxy and so were previously unreachable by match-&-replace rules. Keeps sends authenticated
+  without re-pasting a token; the injected headers are recorded on the resulting flow. Applied in the
+  shared `sender` (so both modules and the AI's `send_request` benefit), configured via
+  `GET/POST /api/session`, persisted in settings and loaded at startup, with a **Settings → Session**
+  toggle + editor and an MCP **`set_session`** tool (now **21 MCP tools**) so an agent can keep its
+  own traffic authenticated. Replace-semantics (a session value overrides a stale one). TDD on the
+  injector; verified live end-to-end. (Login-macro recording and automatic re-auth on 401 remain
+  roadmapped.)
 - **MCP Streamable-HTTP transport** — besides the `interceptor mcp` stdio subcommand, the control
   port now serves the MCP "Streamable HTTP" transport at **`POST /mcp`**: a remote/hosted agent can
   drive the same 20 tools over HTTP JSON-RPC without spawning a subprocess. Stateless (no session

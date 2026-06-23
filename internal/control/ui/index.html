@@ -443,6 +443,13 @@ changeme</textarea>
         <div class="row"><button class="btn accent" id="saveAiBtn">Save AI settings</button></div>
       </div>
       <div class="section">
+        <h3>SESSION · auth headers</h3>
+        <p class="hint" style="margin-bottom:10px">Headers auto-applied to every <b>Repeater</b> and <b>Intruder</b> send (which bypass the proxy), so a token stays fresh without re-pasting. One <b>Key: Value</b> per line; these <b>replace</b> any existing value on the outgoing request. Typically an <b style="color:var(--accent)">Authorization</b> bearer token or a <b style="color:var(--accent)">Cookie</b>.</p>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
+        <div class="field"><textarea id="setSessionHeaders" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
+        <div class="row"><button class="btn accent" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span></div>
+      </div>
+      <div class="section">
         <h3>TARGET SCOPE</h3>
         <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Host supports a leading wildcard, e.g. <b style="color:var(--accent)">*.acme.com</b>; path is a prefix.</p>
         <table class="rules-tbl">
@@ -894,6 +901,17 @@ $('#saveAiBtn').onclick=async()=>{
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     $('#setAiKey').value='';toast('AI settings saved');loadSettings();}catch(e){toast(e.message);}
 };
+async function loadSession(){try{const s=await api('/api/session');
+  if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
+  if($('#setSessionHeaders'))$('#setSessionHeaders').value=s.headers||'';
+  const n=(s.headers||'').split('\n').filter(l=>l.trim()&&!l.trim().startsWith('#')).length;
+  if($('#sessionState'))$('#sessionState').textContent=s.enabled?`Applying ${n} header${n===1?'':'s'} to sends`:'Off.';
+}catch(e){}}
+if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=async()=>{
+  const body={enabled:$('#setSessionOn').checked,headers:$('#setSessionHeaders').value};
+  try{await api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    toast('session saved');loadSession();}catch(e){toast(e.message);}
+};
 /* ---- AI assist modal ---- */
 function openAi(kind){
   if(state.selId==null){toast('select a flow first');return;}
@@ -1133,6 +1151,7 @@ function connectEvents(){
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();}
     else if(m.type==='views.update')loadViews();
+    else if(m.type==='session.update')loadSession();
     else if(m.type==='settings.update')loadSettings();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
@@ -1140,7 +1159,7 @@ function connectEvents(){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();loadRepHistory();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
 </script>
 </body>
 </html>

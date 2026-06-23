@@ -546,6 +546,19 @@ func (s *Server) registerTools() {
 	s.add("get_settings", "Get proxy/intercept settings (proxy bind address, intercept on/off).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/settings") })
 
+	s.add("set_session",
+		"Set session/auth headers auto-applied to every Repeater/Intruder send (e.g. an Authorization bearer token or a Cookie), so your requests stay authenticated without re-pasting credentials. Provide headers as 'Key: Value' lines; set enabled=false to stop applying them.",
+		obj(map[string]any{
+			"enabled": p("boolean", "true to apply the headers to outgoing sends"),
+			"headers": p("string", "header lines 'Key: Value', one per line (e.g. 'Authorization: Bearer …')"),
+		}, "enabled"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/session", map[string]any{
+				"enabled": argBool(a, "enabled", false),
+				"headers": argStr(a, "headers"),
+			})
+		})
+
 	s.add("ca_info", "How to trust the CA so HTTPS can be intercepted (proxy address + CA location).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")

@@ -76,6 +76,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.intr = intruder.New(h.snd)
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.refreshScope()
+	h.applySessionFromStore()
 	h.routes()
 	if eng != nil {
 		eng.SetNotifier(h.broadcastIntercept)
@@ -123,6 +124,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("PUT /api/settings", h.putSettings)
 	h.mux.HandleFunc("GET /api/sysproxy", h.getSysProxy)
 	h.mux.HandleFunc("POST /api/sysproxy", h.setSysProxy)
+	h.mux.HandleFunc("GET /api/session", h.getSession)
+	h.mux.HandleFunc("POST /api/session", h.setSession)
 	h.mux.HandleFunc("POST /api/ai/assist", h.aiAssist)
 	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
 	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
