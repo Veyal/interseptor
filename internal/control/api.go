@@ -100,6 +100,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/keys", "List API keys"},
 	{"POST", "/api/keys", "Create an API key"},
 	{"DELETE", "/api/keys/{id}", "Revoke an API key"},
+	{"POST", "/mcp", "Streamable-HTTP MCP transport (JSON-RPC; for remote/hosted agents)"},
 	{"GET", "/api/events", "Server-Sent Events stream of live updates"},
 }
 
@@ -118,6 +119,13 @@ var mcpDescriptor = map[string]any{
 		"type":    "stdio",
 		"command": "interceptor",
 		"args":    []string{"mcp"},
+	},
+	// Alternative transport for hosted/remote agents that cannot spawn the
+	// stdio subcommand: POST JSON-RPC to /mcp on this control port.
+	"httpTransport": map[string]any{
+		"type": "streamable-http",
+		"url":  "/mcp",
+		"note": "Stateless Streamable-HTTP MCP. POST a JSON-RPC message (or batch) to /mcp; no session id required. Same tools as stdio. Bind localhost-only.",
 	},
 	// Ready to paste into a Claude Desktop / Claude Code MCP config.
 	"clientConfig": map[string]any{

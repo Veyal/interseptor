@@ -156,6 +156,11 @@ func toolError(msg string) any {
 }
 
 func (s *Server) write(out io.Writer, id json.RawMessage, result any, rerr *rpcError) {
+	out.Write(append(s.marshalResponse(id, result, rerr), '\n'))
+}
+
+// marshalResponse builds a single JSON-RPC 2.0 response object.
+func (s *Server) marshalResponse(id json.RawMessage, result any, rerr *rpcError) []byte {
 	resp := map[string]any{"jsonrpc": "2.0"}
 	if id != nil {
 		resp["id"] = id
@@ -168,7 +173,99 @@ func (s *Server) write(out io.Writer, id json.RawMessage, result any, rerr *rpcE
 		resp["result"] = result
 	}
 	b, _ := json.Marshal(resp)
-	out.Write(append(b, '\n'))
+	return b
+}
+
+// ---- Streamable-HTTP transport ----
+
+// ServeHTTP implements the MCP "Streamable HTTP" transport over a single
+// endpoint. A client POSTs a JSON-RPC message (or batch) and receives the
+// JSON-RPC response as application/json. The server is stateless — no
+// Mcp-Session-Id is required — and offers no server-initiated SSE stream, so
+// GET returns 405 (per spec). This lets a hosted/remote agent drive Interceptor
+// without launching the `interceptor mcp` stdio subcommand. Bind localhost-only;
+// it shares the (unauthenticated, local) trust model of the control API it fronts.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		s.servePost(w, r)
+	case http.MethodOptions:
+		w.Header().Set("Allow", "POST, GET, OPTIONS")
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodGet:
+		// This endpoint does not push server-initiated messages.
+		w.Header().Set("Allow", "POST, OPTIONS")
+		http.Error(w, "this MCP endpoint offers no SSE stream; POST a JSON-RPC message instead", http.StatusMethodNotAllowed)
+	default:
+		w.Header().Set("Allow", "POST, OPTIONS")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		http.Error(w, "empty body", http.StatusBadRequest)
+		return
+	}
+
+	// A JSON-RPC batch (array) or a single message.
+	if body[0] == '[' {
+		var msgs []json.RawMessage
+		if err := json.Unmarshal(body, &msgs); err != nil {
+			s.writeJSON(w, s.marshalResponse(nil, nil, &rpcError{Code: -32700, Message: "parse error"}))
+			return
+		}
+		responses := make([]json.RawMessage, 0, len(msgs))
+		for _, m := range msgs {
+			if resp := s.handleHTTPMessage(m); resp != nil {
+				responses = append(responses, resp)
+			}
+		}
+		if len(responses) == 0 {
+			w.WriteHeader(http.StatusAccepted) // all notifications
+			return
+		}
+		b, _ := json.Marshal(responses)
+		s.writeJSON(w, b)
+		return
+	}
+
+	resp := s.handleHTTPMessage(body)
+	if resp == nil {
+		w.WriteHeader(http.StatusAccepted) // a notification — nothing to return
+		return
+	}
+	s.writeJSON(w, resp)
+}
+
+// handleHTTPMessage dispatches one JSON-RPC message and returns the marshaled
+// response, or nil if the message is a notification (no id).
+func (s *Server) handleHTTPMessage(raw json.RawMessage) json.RawMessage {
+	var req struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return s.marshalResponse(nil, nil, &rpcError{Code: -32700, Message: "parse error"})
+	}
+	notification := len(req.ID) == 0 || string(req.ID) == "null"
+	result, rerr := s.dispatch(req.Method, req.Params)
+	if notification {
+		return nil
+	}
+	return s.marshalResponse(req.ID, result, rerr)
+}
+
+func (s *Server) writeJSON(w http.ResponseWriter, b []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(b)
 }
 
 // ---- REST plumbing ----

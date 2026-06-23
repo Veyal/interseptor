@@ -1108,8 +1108,11 @@ async function loadMCP(){
       <div class="row" style="gap:8px"><span class="sev ${m.status==='ready'?'Low':'Info'}">${esc(m.status)}</span>
         <span class="hint">Let your AI assistant drive Interceptor — it gets the same capabilities as the UI.</span></div>
       <p class="hint" style="margin:12px 0;line-height:1.6">${esc(m.note||'')}</p>
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">CONNECT (stdio)</div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">CONNECT (stdio · Claude Desktop / Code)</div>
       <div class="evidence" style="font-family:var(--mono)">${esc(cmd)}</div>
+      ${m.httpTransport?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:16px 0 6px">OR CONNECT (HTTP · remote / hosted agents)</div>
+      <div class="evidence" style="font-family:var(--mono)">POST ${esc(location.origin)}${esc(m.httpTransport.url)}</div>
+      <p class="hint" style="margin:8px 0 0;line-height:1.6">${esc(m.httpTransport.note||'')}</p>`:''}
       <div class="row" style="gap:10px;margin:16px 0 6px"><span style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">CLIENT CONFIG · paste into your MCP client (e.g. Claude)</span><button class="btn accent" id="mcpCopy" style="padding:3px 10px">Copy</button></div>
       <pre class="evidence" style="white-space:pre;overflow:auto;margin-top:0">${esc(cfg)}</pre>
       <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:18px 0 6px">TOOLS · ${(m.tools||[]).length}</div>

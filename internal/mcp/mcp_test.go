@@ -129,6 +129,69 @@ func TestMCPProtocolAndTools(t *testing.T) {
 	}
 }
 
+func TestStreamableHTTPTransport(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/flows" {
+			io.WriteString(w, `{"flows":[{"id":1,"host":"victim.test","path":"/login"}]}`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer mock.Close()
+	srv := New(mock.URL)
+
+	post := func(jsonBody string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// initialize → JSON-RPC result over application/json
+	rec := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}`)
+	if rec.Code != 200 {
+		t.Fatalf("initialize: code %d body %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("expected application/json, got %q", ct)
+	}
+	resps := decodeResponses(t, rec.Body.String())
+	if len(resps) != 1 || resps[0].Result == nil {
+		t.Fatalf("bad initialize response: %s", rec.Body.String())
+	}
+
+	// tools/call list_flows → reaches the mock control backend
+	rec = post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_flows","arguments":{}}}`)
+	if !strings.Contains(rec.Body.String(), "victim.test") {
+		t.Fatalf("tools/call did not reach control backend: %s", rec.Body.String())
+	}
+
+	// a notification (no id) → 202 Accepted, empty body
+	rec = post(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	if rec.Code != http.StatusAccepted || strings.TrimSpace(rec.Body.String()) != "" {
+		t.Fatalf("notification should be 202 + empty, got %d %q", rec.Code, rec.Body.String())
+	}
+
+	// a batch with one request + one notification → array with a single response
+	rec = post(`[{"jsonrpc":"2.0","method":"notifications/x"},{"jsonrpc":"2.0","id":9,"method":"ping"}]`)
+	var arr []rpcResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &arr); err != nil {
+		t.Fatalf("batch response not an array: %s", rec.Body.String())
+	}
+	if len(arr) != 1 || string(arr[0].ID) != "9" {
+		t.Fatalf("batch should return 1 response for id 9: %s", rec.Body.String())
+	}
+
+	// GET → 405 (no server-initiated stream)
+	greq := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	grec := httptest.NewRecorder()
+	srv.ServeHTTP(grec, greq)
+	if grec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET should be 405, got %d", grec.Code)
+	}
+}
+
 func TestMCPUnknownToolIsToolError(t *testing.T) {
 	srv := New("http://127.0.0.1:1") // unused
 	script := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nope","arguments":{}}}` + "\n"

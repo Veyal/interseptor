@@ -7,6 +7,13 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **MCP Streamable-HTTP transport** — besides the `interceptor mcp` stdio subcommand, the control
+  port now serves the MCP "Streamable HTTP" transport at **`POST /mcp`**: a remote/hosted agent can
+  drive the same 20 tools over HTTP JSON-RPC without spawning a subprocess. Stateless (no session
+  id); single messages and JSON-RPC batches; notifications return `202`; `GET /mcp` returns `405`
+  (no server-initiated stream). Implemented as `mcp.Server.ServeHTTP`, mounted in `control` and
+  pointed back at the control server (the same wiring stdio uses). `/api/mcp` advertises
+  `httpTransport`; the MCP tab shows the endpoint. Transport unit-tested + live end-to-end verified.
 - **AI assist (bring-your-own-key, multi-provider)** — `internal/aiassist` calls **Anthropic**
   (native Messages API) or **OpenRouter** (OpenAI-compatible chat completions, fronting many models)
   with a user-supplied key to **explain** a request, **suggest** payloads, or **summarize** findings.

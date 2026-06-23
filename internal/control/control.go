@@ -19,6 +19,7 @@ import (
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
 	"github.com/Veyal/interceptor/internal/intruder"
+	"github.com/Veyal/interceptor/internal/mcp"
 	"github.com/Veyal/interceptor/internal/scope"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
@@ -48,6 +49,9 @@ type Hub struct {
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
+
+	mcpMu  sync.Mutex
+	mcpSrv *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
@@ -85,6 +89,19 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 // Handler returns the control-plane HTTP handler.
 func (h *Hub) Handler() http.Handler { return h.mux }
 
+// handleMCP serves the Streamable-HTTP MCP transport. The backing mcp.Server is
+// built lazily from the request's own Host so its tool calls loop back to this
+// control server (the same wiring the `interceptor mcp` stdio subcommand uses).
+func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
+	h.mcpMu.Lock()
+	if h.mcpSrv == nil {
+		h.mcpSrv = mcp.New("http://" + r.Host)
+	}
+	srv := h.mcpSrv
+	h.mcpMu.Unlock()
+	srv.ServeHTTP(w, r)
+}
+
 func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/flows", h.listFlows)
 	h.mux.HandleFunc("GET /api/flows/{id}", h.getFlow)
@@ -119,6 +136,11 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("DELETE /api/keys/{id}", h.deleteKey)
 	h.mux.HandleFunc("GET /api/reference", h.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", h.apiMCP)
+	// Streamable-HTTP MCP transport: a remote/hosted agent can drive the engine
+	// over the control port without the `interceptor mcp` stdio subcommand.
+	h.mux.HandleFunc("POST /mcp", h.handleMCP)
+	h.mux.HandleFunc("GET /mcp", h.handleMCP)
+	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /api/export/har", h.exportHAR)
 	h.mux.HandleFunc("POST /api/import/har", h.importHAR)
 	h.mux.HandleFunc("GET /api/export/project", h.exportProject)

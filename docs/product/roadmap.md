@@ -48,6 +48,7 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 | **`analyze_flow`** (AI tool) | compact decision-ready flow summary (headers/params/findings/scope) |
 | **Benchmark guard** | `BenchmarkInsertFlow` + `scripts/bench.sh` (reproduces the documented numbers) |
 | **BYO-key AI assist** (Anthropic **+ OpenRouter**) | explain / suggest payloads / summarize, off until a key is set; provider-selectable |
+| **MCP Streamable-HTTP transport** | `POST /mcp` on the control port — same 20 tools, no stdio subprocess; stateless, batch-aware; unit-tested + live-verified |
 
 ## Cycle 3 — remaining bets (all genuinely L/XL; not single-session work)
 
@@ -56,7 +57,6 @@ These are the honest, larger efforts left. Each deserves its own design → PRD 
 | Item | Theme | Why / caveat | Effort |
 |---|---|---|---|
 | **Session / auth handling** (login macros, token refresh, re-auth on 401) | Trustworthy core | High value; a pain point across all tools | L |
-| **MCP: streamable-HTTP transport** (remote MCP over the control port) | AI-operable | Lets hosted agents connect without the `interceptor mcp` subcommand; stdio already covers Claude Desktop/Code | M |
 | **Comparative benchmarks vs Burp & ZAP** | Interop & reach | Our harness + numbers shipped ([benchmarks.md](../benchmarks.md)); the *comparison* needs those tools installed on the same box | S–M |
 | **WebSocket through an upstream proxy** + WS message replay | Interop & reach | Completes upstream-proxy + WS coverage | M |
 | **HTTP/2 support** | Trustworthy core | Increasingly expected; significant proxy work | L |
