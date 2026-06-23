@@ -80,6 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `git add -f .github/workflows && git commit && git push` once that scope is granted. (Until then the
   README's CI badge shows no status.)
 
+### Fixed
+- **`SQLITE_BUSY` ("database is locked") under write contention.** `busy_timeout` and `synchronous`
+  are *per-connection* pragmas, but they were set once via `db.Exec` — which configures only one
+  connection in `database/sql`'s pool; the others had a 0 ms busy timeout and failed *immediately*
+  under concurrent writes (proxy capture, active-scan probes, settings), occasionally dropping a
+  write. They're now applied to **every** connection via the DSN (`_pragma=busy_timeout(10000)`, WAL,
+  `synchronous(NORMAL)`, `foreign_keys(1)`), so contending writers wait their turn instead of
+  erroring. Guarded by a concurrency stress test (16 writers × 40 inserts + concurrent readers).
+
 ## [0.1.1] — 2026-06-23
 
 ### Added

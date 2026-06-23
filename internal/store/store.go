@@ -145,19 +145,20 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(bodiesDir, 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, "interceptor.db"))
+	// Apply pragmas via the DSN so they run on EVERY pooled connection — busy_timeout
+	// and synchronous are per-connection, so setting them once via db.Exec would leave
+	// the other pooled connections without a busy timeout and they'd fail immediately
+	// with SQLITE_BUSY ("database is locked") under write contention. WAL lets readers
+	// run concurrently with the single writer; the busy timeout makes contending writers
+	// wait their turn instead of erroring.
+	dsn := "file:" + filepath.Join(dir, "interceptor.db") +
+		"?_pragma=busy_timeout(10000)" +
+		"&_pragma=journal_mode(WAL)" +
+		"&_pragma=synchronous(NORMAL)" +
+		"&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
-	}
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL;",
-		"PRAGMA busy_timeout=5000;",
-		"PRAGMA synchronous=NORMAL;",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, err
-		}
 	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()

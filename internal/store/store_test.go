@@ -1,9 +1,51 @@
 package store
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
+
+// TestConcurrentWritesNoBusy stresses the DB with many concurrent writers,
+// readers, and settings updates — it must not surface "database is locked"
+// (SQLITE_BUSY). Guards the per-connection busy_timeout/WAL config in Open.
+func TestConcurrentWritesNoBusy(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	const writers, each = 16, 40
+	errs := make(chan error, writers*each)
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < each; i++ {
+				if _, err := s.InsertFlow(&Flow{TS: time.Now(), Method: "GET", Scheme: "https", Host: "h", Path: "/x", Status: 200}); err != nil {
+					errs <- err
+				}
+				s.QueryFlowsFilter(FlowFilter{Limit: 5}) // concurrent reader
+				if i%6 == 0 {
+					if err := s.SetSetting("k", "v"); err != nil { // concurrent writer to another table
+						errs <- err
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent write failed (SQLITE_BUSY?): %v", err)
+	}
+	got, _ := s.QueryFlowsFilter(FlowFilter{Limit: 100000})
+	if len(got) != writers*each {
+		t.Fatalf("expected %d flows persisted, got %d", writers*each, len(got))
+	}
+}
 
 func TestInsertAndGetFlow(t *testing.T) {
 	s, err := Open(t.TempDir())
