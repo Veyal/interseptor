@@ -26,11 +26,19 @@ import (
 	"github.com/Veyal/interceptor/internal/scope"
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interceptor/internal/version"
 )
 
 const controlAddr = "127.0.0.1:9966"
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "-v", "--version":
+			fmt.Println("interceptor v" + version.String())
+			return
+		}
+	}
 	// `interceptor mcp` runs a Model Context Protocol server on stdio that drives
 	// a separately-running interceptor via its control API. All protocol traffic
 	// is on stdout; logs go to stderr so they can't corrupt the JSON-RPC stream.
@@ -111,8 +119,25 @@ func run() error {
 	}()
 
 	uiURL := "http://" + controlAddr
-	log.Printf("Interceptor: proxy on %s · UI on %s · data %s", pm.Addr(), uiURL, dir)
+	log.Printf("Interceptor v%s: proxy on %s · UI on %s · data %s", version.String(), pm.Addr(), uiURL, dir)
 	openBrowser(uiURL)
+
+	// Best-effort update check (every run). Non-blocking; silent on failure;
+	// opt out with INTERCEPTOR_NO_UPDATE_CHECK. Result is also served at /api/version.
+	if os.Getenv("INTERCEPTOR_NO_UPDATE_CHECK") == "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+			defer cancel()
+			latest, newer, err := version.CheckLatest(ctx)
+			if err != nil || latest == "" {
+				return
+			}
+			hub.SetUpdate(latest, newer)
+			if newer {
+				log.Printf("↑ A new version is available: v%s (you have v%s) — https://github.com/%s/releases", latest, version.String(), version.Repo)
+			}
+		}()
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

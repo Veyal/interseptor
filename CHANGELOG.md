@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Version reporting + per-run update check** — the binary now surfaces its version everywhere:
+  the startup log (`Interceptor vX.Y.Z: …`), an `interceptor version` / `--version` subcommand,
+  `GET /api/version`, the MCP `serverInfo`/descriptor, and a badge in the UI header. On each run it
+  does a **best-effort check of the GitHub tags** for a newer release; if one exists it logs a notice
+  and the header badge turns into a clickable **“↑ vX.Y.Z available.”** Non-blocking and silent on
+  failure (offline is fine); opt out with `INTERCEPTOR_NO_UPDATE_CHECK=1`. Version is now centralized
+  in `internal/version` (clean release tags trusted, `(devel)`/pseudo-versions fall back to the
+  constant). TDD on the semver/“is-newer” logic.
+
 ## [0.2.1] — 2026-06-23
 
 ### Security

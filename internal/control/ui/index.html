@@ -206,6 +206,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <button class="tab" data-tab="scanner">Scanner</button>
   <button class="tab" data-tab="api">API</button>
   <button class="tab" data-tab="settings">Settings</button>
+  <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="margin-left:auto;align-self:center;padding:0 12px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
 </div>
 
 <div id="main">
@@ -1573,9 +1574,24 @@ document.addEventListener('keydown',e=>{
   if(e.key==='/'&&!typing&&!mod){const s=$('#fSearch');if(s){e.preventDefault();document.querySelector('.tab[data-tab="proxy"]').click();s.focus();}return;} // /: focus search
 });
 
+/* ---- version / update check ---- */
+async function loadVersion(retry){
+  try{
+    const d=await api('/api/version');const el=$('#verBadge');if(!el)return;
+    if(d.updateAvailable&&d.latest){
+      el.textContent='↑ v'+d.latest+' available';el.style.color='var(--accent)';el.style.fontWeight='700';
+      el.title='You have v'+(d.version||'?')+' — a newer release is available. Click for releases.';
+    }else{
+      el.textContent='v'+(d.version||'');el.style.color='var(--fg3)';el.style.fontWeight='';
+      el.title='Interceptor v'+(d.version||'');
+    }
+    if(!d.latest&&retry)setTimeout(()=>loadVersion(false),3500); // the server's update check may still be in flight
+  }catch(e){}
+}
+
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();repInit();loadIssues();loadApiKeys();loadReference();loadMCP();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadVersion(true);connectEvents();
 </script>
 </body>
 </html>

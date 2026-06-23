@@ -62,6 +62,10 @@ type Hub struct {
 
 	as asState // active-scan state (armed/running/findings)
 
+	updMu    sync.Mutex // update-check result (set by cmd's background check)
+	updLatest string
+	updAvail  bool
+
 	mu      sync.Mutex
 	clients map[chan string]struct{}
 }
@@ -160,6 +164,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/keys", h.listKeys)
 	h.mux.HandleFunc("POST /api/keys", h.createKey)
 	h.mux.HandleFunc("DELETE /api/keys/{id}", h.deleteKey)
+	h.mux.HandleFunc("GET /api/version", h.apiVersion)
 	h.mux.HandleFunc("GET /api/reference", h.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", h.apiMCP)
 	// Streamable-HTTP MCP transport: a remote/hosted agent can drive the engine
