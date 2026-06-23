@@ -5,6 +5,7 @@ package sender
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -24,7 +25,8 @@ type Request struct {
 	URL     string
 	Headers map[string][]string
 	Body    []byte
-	Flags   int64 // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
+	Flags   int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
+	Context context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
 }
 
 // Header is a single session header applied to outgoing sends.
@@ -112,6 +114,9 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	req, err := http.NewRequest(method, r.URL, bytes.NewReader(r.Body))
 	if err != nil {
 		return nil, err
+	}
+	if r.Context != nil {
+		req = req.WithContext(r.Context) // lets a caller (active-scan kill switch) abort in-flight
 	}
 	for k, vs := range r.Headers {
 		if http.CanonicalHeaderKey(k) == "Host" {

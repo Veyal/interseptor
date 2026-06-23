@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- **Active-scan safety hardening** (from a skeptical review of the v0.2.0 active-scan surface, which
+  confirmed the core is safe — no cross-host sends, no redirect-following, non-destructive payloads):
+  - **Refuse an “all in-scope” run when no scope include rule is set** — otherwise it would actively
+    attack *every* captured host. (Scanning a single selected flow is unaffected.)
+  - **Self-target guard now covers both listeners** (control **and** proxy) with loopback
+    normalization (`localhost` / `::1` / `127.x`), not just a literal `127.0.0.1:9966` compare.
+  - **Closed a TOCTOU in start** — two concurrent starts could both pass the “already running” check
+    and launch (orphaning the kill switch); `running` is now checked-and-set under one lock.
+  - **The kill switch now aborts in-flight probes** — the scan context is threaded into the sender
+    (`req.WithContext`), so Stop cancels running requests instead of waiting out their timeout.
+
 ## [0.2.0] — 2026-06-23
 
 Headline: **active scanning** (deterministic + AI-operable), an **extensible scanner** (custom

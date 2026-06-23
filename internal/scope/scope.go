@@ -47,6 +47,14 @@ func (e *Engine) SetRules(rules []store.ScopeRule) {
 	e.mu.Unlock()
 }
 
+// HasIncludes reports whether any active include rule exists — i.e. whether the
+// scope is a real allow-list rather than the default "everything is in scope".
+func (e *Engine) HasIncludes() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.hasIncl
+}
+
 // InScope reports whether a flow is in scope: it matches no exclude rule, and
 // (if any include rules exist) matches at least one include rule.
 func (e *Engine) InScope(f *store.Flow) bool {
