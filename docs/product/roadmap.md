@@ -39,27 +39,26 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 | **History full-text search** | method/host/path |
 | **Onboarding "get started" card** + **performance benchmarks** | see [benchmarks.md](../benchmarks.md): ~20 MB idle, ~1 s cold start |
 
-## Now (cycle 2) — depth on the core loop
+## ✅ Shipped (cycle 2 — depth on the core loop + agent reach)
 
-| Item | Theme | Why | Effort |
-|---|---|---|---|
-| **Projects** (named save/load; export/import a portable session: flows + rules + scope + settings) | Trustworthy core | Burp Community's most-missed feature; builds on HAR export + the SQLite store | M |
-| **Comparative benchmarks** (idle RSS / cold start / 10k-flow scroll **vs Burp & ZAP**, reproducible script) + CI throughput guard | Interop & reach | Turns our measured numbers into a credible published comparison | S–M |
-| **Saved filters / views** + scope-aware quick filters | Trustworthy core | Scales the core loop; pairs with scope and search | S–M |
+| Shipped | Notes |
+|---|---|
+| **Projects** (named save/load) | export/import flows + rules + scope + settings; round-trip tested |
+| **Saved filters / views** | name & recall a history filter; toolbar dropdown |
+| **`analyze_flow`** (AI tool) | compact decision-ready flow summary (headers/params/findings/scope) |
+| **Benchmark guard** | `BenchmarkInsertFlow` + `scripts/bench.sh` (reproduces the documented numbers) |
+| **BYO-key AI assist** | explain / suggest payloads / summarize, off until a key is set |
 
-## Next (cycle 2) — parity + agent depth
+## Cycle 3 — remaining bets (all genuinely L/XL; not single-session work)
 
-| Item | Theme | Why | Effort |
-|---|---|---|---|
-| **MCP: streamable-HTTP transport + `analyze_flow`** | AI-operable | Lets hosted agents connect without a subcommand; a decision-ready flow summary tool | M |
-| **Session / auth handling** (login macros, token refresh, re-auth on 401) | Trustworthy core | High value; a pain point across all tools | L |
-| **BYO-key AI assist** (explain request, suggest payloads, summarize findings) | Differentiator | Keeps pace with Burp AI without hosting a model; optional & local-first | M–L |
-| **WebSocket through an upstream proxy** + WS message replay | Interop & reach | Completes upstream-proxy + WS coverage | M |
-
-## Later (cycle 2) — bigger bets
+These are the honest, larger efforts left. Each deserves its own design → PRD → plan.
 
 | Item | Theme | Why / caveat | Effort |
 |---|---|---|---|
+| **Session / auth handling** (login macros, token refresh, re-auth on 401) | Trustworthy core | High value; a pain point across all tools | L |
+| **MCP: streamable-HTTP transport** (remote MCP over the control port) | AI-operable | Lets hosted agents connect without the `interceptor mcp` subcommand; stdio already covers Claude Desktop/Code | M |
+| **Comparative benchmarks vs Burp & ZAP** | Interop & reach | Our harness + numbers shipped ([benchmarks.md](../benchmarks.md)); the *comparison* needs those tools installed on the same box | S–M |
+| **WebSocket through an upstream proxy** + WS message replay | Interop & reach | Completes upstream-proxy + WS coverage | M |
 | **HTTP/2 support** | Trustworthy core | Increasingly expected; significant proxy work | L |
 | **Extension / plugin API** | Differentiator | Burp's real moat; worth it once core is sticky | XL |
 | **Collaboration / multi-user** | Reach | Team/commercial segment | XL |
