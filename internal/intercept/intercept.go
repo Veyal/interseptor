@@ -27,6 +27,7 @@ var ErrNotHeld = errors.New("intercept: request not held")
 type Decision struct {
 	Drop    bool
 	Edited  bool
+	Held    bool // the request actually entered the hold queue (vs. filtered straight through)
 	Request *http.Request
 }
 
@@ -59,6 +60,13 @@ type Engine struct {
 	order   []int64
 	rules   []compiledRule
 	notify  func()
+
+	// optional intercept filter: when set, only requests matching the regex on
+	// the chosen field are held; everything else is forwarded without holding.
+	matchEnabled bool
+	matchTarget  string // "any" | "url" | "header" | "body" | "method"
+	matchPattern string
+	matchRe      *regexp.Regexp
 
 	// response interception
 	respEnabled bool
@@ -99,6 +107,67 @@ func (e *Engine) SetEnabled(on bool) {
 	e.fireNotify()
 }
 
+// SetInterceptFilter configures the conditional-intercept filter. When enabled
+// with a valid pattern, only requests whose chosen field matches the regex are
+// held. An invalid regex is returned as an error and the filter is left unchanged.
+func (e *Engine) SetInterceptFilter(enabled bool, target, pattern string) error {
+	var re *regexp.Regexp
+	if enabled && pattern != "" {
+		c, err := regexp.Compile(pattern)
+		if err != nil {
+			return err
+		}
+		re = c
+	}
+	if target == "" {
+		target = "any"
+	}
+	e.mu.Lock()
+	e.matchEnabled = enabled && re != nil
+	e.matchTarget, e.matchPattern, e.matchRe = target, pattern, re
+	e.mu.Unlock()
+	return nil
+}
+
+// InterceptFilter returns the current filter (enabled, target, pattern).
+func (e *Engine) InterceptFilter() (bool, string, string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.matchTarget
+	if t == "" {
+		t = "any"
+	}
+	return e.matchEnabled, t, e.matchPattern
+}
+
+// matchField tests the regex against the selected part of the request.
+func matchField(target string, re *regexp.Regexp, flow *store.Flow, raw []byte) bool {
+	var s string
+	switch target {
+	case "url":
+		if flow != nil {
+			s = flow.Host + flow.Path
+		}
+	case "method":
+		if flow != nil {
+			s = flow.Method
+		}
+	case "header":
+		if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+			s = string(raw[:i])
+		} else {
+			s = string(raw)
+		}
+	case "body":
+		if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+			s = string(raw[i+4:])
+		}
+	default: // "any" — the whole raw request
+		s = string(raw)
+	}
+	return re.MatchString(s)
+}
+
 // SetNotifier registers a callback invoked whenever the queue changes.
 func (e *Engine) SetNotifier(fn func()) {
 	e.mu.Lock()
@@ -124,6 +193,11 @@ func (e *Engine) Hold(flow *store.Flow, req *http.Request, raw []byte) Decision 
 		e.mu.Unlock()
 		return Decision{Request: req}
 	}
+	// Conditional intercept: only hold requests matching the filter regex.
+	if e.matchEnabled && e.matchRe != nil && !matchField(e.matchTarget, e.matchRe, flow, raw) {
+		e.mu.Unlock()
+		return Decision{Request: req}
+	}
 	e.nextID++
 	id := e.nextID
 	item := &heldItem{
@@ -136,7 +210,9 @@ func (e *Engine) Hold(flow *store.Flow, req *http.Request, raw []byte) Decision 
 	e.mu.Unlock()
 
 	e.fireNotify()
-	return <-item.done
+	d := <-item.done
+	d.Held = true
+	return d
 }
 
 // Queue returns a snapshot of held requests in arrival order.

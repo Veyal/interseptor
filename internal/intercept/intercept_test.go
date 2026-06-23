@@ -3,6 +3,7 @@ package intercept
 import (
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -10,6 +11,50 @@ import (
 
 	"github.com/Veyal/interceptor/internal/store"
 )
+
+func TestMatchField(t *testing.T) {
+	f := &store.Flow{Host: "x.com", Path: "/admin/users", Method: "POST"}
+	raw := []byte("POST /admin/users HTTP/1.1\r\nX-Role: admin\r\n\r\nuser=bob")
+	if !matchField("url", regexp.MustCompile("admin"), f, raw) {
+		t.Fatal("url should match /admin")
+	}
+	if !matchField("header", regexp.MustCompile("X-Role"), f, raw) {
+		t.Fatal("header should match X-Role")
+	}
+	if !matchField("body", regexp.MustCompile("user="), f, raw) {
+		t.Fatal("body should match user=")
+	}
+	if matchField("body", regexp.MustCompile("X-Role"), f, raw) {
+		t.Fatal("X-Role is a header, not body")
+	}
+	if !matchField("method", regexp.MustCompile("POST"), f, raw) {
+		t.Fatal("method should match POST")
+	}
+}
+
+func TestInterceptFilterForwardsNonMatching(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	if err := e.SetInterceptFilter(true, "url", "admin"); err != nil {
+		t.Fatalf("SetInterceptFilter: %v", err)
+	}
+	// A non-matching request must forward immediately (not be queued/blocked).
+	req := newReq(t, "GET", "http://x.com/home", "")
+	d := e.Hold(&store.Flow{Host: "x.com", Path: "/home"}, req, []byte("GET /home HTTP/1.1\r\nHost: x.com\r\n\r\n"))
+	if d.Request != req {
+		t.Fatal("non-matching request should be forwarded as-is")
+	}
+	if d.Held {
+		t.Fatal("non-matching request must not be marked Held")
+	}
+	if len(e.Queue()) != 0 {
+		t.Fatalf("non-matching request must not be held; queue=%d", len(e.Queue()))
+	}
+	// A bad regex is rejected.
+	if err := e.SetInterceptFilter(true, "any", "(unterminated"); err == nil {
+		t.Fatal("expected error for invalid regex")
+	}
+}
 
 func newReq(t *testing.T, method, url, body string) *http.Request {
 	t.Helper()
@@ -49,6 +94,9 @@ func TestHoldThenForward(t *testing.T) {
 	d := recvDecision(t, got)
 	if d.Drop || d.Request != req {
 		t.Fatalf("expected forward of original request, got %+v", d)
+	}
+	if !d.Held {
+		t.Fatal("a queued+forwarded request must report Held")
 	}
 	if len(e.Queue()) != 0 {
 		t.Fatal("queue should drain after forward")
