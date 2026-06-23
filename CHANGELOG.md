@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-06-23
+
 ### Added
 - **Version reporting + per-run update check** — the binary now surfaces its version everywhere:
   the startup log (`Interceptor vX.Y.Z: …`), an `interceptor version` / `--version` subcommand,
