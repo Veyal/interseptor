@@ -5,6 +5,7 @@ package scanner
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -115,7 +116,89 @@ func Analyze(f *store.Flow, reqBody, resBody []byte) []store.Issue {
 		}
 	}
 
+	// 9. Request parameter reflected verbatim in an HTML response (possible XSS sink).
+	if isHTML(res, f.Mime) {
+		if name, val, ok := reflectedParam(f.Path, req, resp); ok {
+			add("Low", "Request parameter reflected in HTML response",
+				"A request parameter is echoed verbatim into an HTML response. If it is not contextually output-encoded this is a reflected-XSS sink — confirm by sending a marker payload.",
+				trunc(name+"="+val, 80),
+				"HTML-encode user input on output (and set a Content-Security-Policy); verify the value cannot break out of its HTML/JS/attribute context.")
+		}
+	}
+
+	// 10. HTTP Basic authentication (credentials are only base64-encoded).
+	if av := http.Header(f.ReqHeaders).Get("Authorization"); strings.HasPrefix(strings.ToLower(av), "basic ") {
+		sev := "Low"
+		if f.Scheme == "http" {
+			sev = "High"
+		}
+		add(sev, "HTTP Basic authentication in use",
+			"The request authenticates with HTTP Basic, which transmits credentials as reversible base64. Over plaintext HTTP they are exposed to any on-path observer; even over TLS they are replayable and sent on every request.",
+			"Authorization: Basic …",
+			"Prefer a token/session-cookie scheme; if Basic is required, enforce HTTPS and short-lived credentials.")
+	}
+
+	// 11. Missing X-Content-Type-Options on scriptable responses (MIME sniffing).
+	if isHTML(res, f.Mime) || containsAny(f.Mime, "javascript") {
+		if !strings.Contains(strings.ToLower(res.Get("X-Content-Type-Options")), "nosniff") {
+			add("Low", "Missing X-Content-Type-Options: nosniff",
+				"The response omits X-Content-Type-Options: nosniff, so a browser may MIME-sniff the body and execute it as a different content type.",
+				"(no X-Content-Type-Options response header)",
+				"Send X-Content-Type-Options: nosniff on responses.")
+		}
+	}
+
+	// 12. Missing clickjacking protection on HTML.
+	if isHTML(res, f.Mime) {
+		csp := strings.ToLower(res.Get("Content-Security-Policy"))
+		if res.Get("X-Frame-Options") == "" && !strings.Contains(csp, "frame-ancestors") {
+			add("Low", "Missing clickjacking protection",
+				"The HTML document can be framed by any origin: neither X-Frame-Options nor a CSP frame-ancestors directive is set, enabling clickjacking.",
+				"(no X-Frame-Options or CSP frame-ancestors)",
+				"Send X-Frame-Options: DENY (or SAMEORIGIN) or a CSP frame-ancestors 'none' directive.")
+		}
+	}
+
 	return out
+}
+
+// reflectedParam returns the first query/body parameter whose value (≥6 chars,
+// containing a letter) appears verbatim in resp — a candidate reflected-XSS sink.
+func reflectedParam(path, body, resp string) (name, val string, ok bool) {
+	var pairs [][2]string
+	collect := func(q string) {
+		for _, kv := range strings.Split(q, "&") {
+			if kv == "" {
+				continue
+			}
+			k, v, _ := strings.Cut(kv, "=")
+			if dec, err := url.QueryUnescape(v); err == nil {
+				v = dec
+			}
+			if len(v) >= 6 && hasLetter(v) {
+				pairs = append(pairs, [2]string{k, v})
+			}
+		}
+	}
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		collect(path[i+1:])
+	}
+	collect(body)
+	for _, p := range pairs {
+		if strings.Contains(resp, p[1]) {
+			return p[0], p[1], true
+		}
+	}
+	return "", "", false
+}
+
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return true
+		}
+	}
+	return false
 }
 
 func clip(b []byte) string {

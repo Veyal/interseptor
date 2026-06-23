@@ -81,6 +81,45 @@ func TestAnalyzeInsecureCookieAndVerboseError(t *testing.T) {
 	}
 }
 
+func TestAnalyzeReflectionAuthAndFraming(t *testing.T) {
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.test", Path: "/search?q=hello<scriptmark>",
+		Status: 200, Mime: "text/html",
+		ReqHeaders: map[string][]string(http.Header{"Authorization": {"Basic dXNlcjpwYXNz"}}),
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Content-Security-Policy":   {"default-src 'self'"}, // present, but no frame-ancestors
+			"Strict-Transport-Security": {"max-age=63072000"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte("<html>results for hello<scriptmark> ...</html>"))
+	for _, want := range []string{
+		"Request parameter reflected in HTML response",
+		"HTTP Basic authentication in use",
+		"Missing X-Content-Type-Options: nosniff",
+		"Missing clickjacking protection",
+	} {
+		if !has(got, want) {
+			t.Fatalf("expected %q; got: %s", want, titles(got))
+		}
+	}
+}
+
+func TestAnalyzeReflectionAvoidsTrivialValues(t *testing.T) {
+	// Short / non-alpha values should not be flagged as reflections (noise control).
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.test", Path: "/p?id=12345&ok=1", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type": {"text/html"}, "X-Frame-Options": {"DENY"},
+			"X-Content-Type-Options": {"nosniff"}, "Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte("<html>id 12345 ok 1</html>"))
+	if has(got, "Request parameter reflected in HTML response") {
+		t.Fatalf("trivial values should not flag reflection; got: %s", titles(got))
+	}
+}
+
 func TestAnalyzeCleanFlowHasNoIssues(t *testing.T) {
 	flow := &store.Flow{
 		Scheme: "https", Method: "GET", Host: "api.example.com", Path: "/health", Status: 200,

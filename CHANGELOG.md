@@ -7,6 +7,11 @@ each "release" is an iteration of the Conduit design (`Conduit.dc.html`).
 ## [Unreleased]
 
 ### Added
+- **Four more passive scanner checks** (8 → 12) — reflected request parameter in an HTML response
+  (possible XSS sink, with a noise guard for trivial/short values), HTTP Basic authentication (High
+  over plaintext), missing `X-Content-Type-Options: nosniff` on scriptable responses, and missing
+  clickjacking protection (no `X-Frame-Options` / CSP `frame-ancestors`). They flow through to the
+  Scanner tab **and** the AI's `analyze_flow` / summarize. TDD, including a no-false-positive guard.
 - **Flow → curl** — a new `internal/curlgen` renders a captured request as a runnable `curl`
   command (direct to target: `--path-as-is` to preserve the exact path, `-k` to skip TLS
   verification — matching how Interceptor talks to targets). Exposed at `GET /api/flows/{id}/curl`
