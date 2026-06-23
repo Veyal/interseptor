@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-23
+
 ### Security
 - **Active-scan safety hardening** (from a skeptical review of the v0.2.0 active-scan surface, which
   confirmed the core is safe — no cross-host sends, no redirect-following, non-destructive payloads):
