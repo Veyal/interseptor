@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -62,7 +63,28 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(home, ".interceptor")
+	globalDir := filepath.Join(home, ".interceptor")
+
+	// --project <name|path> (or INTERCEPTOR_PROJECT) skips the startup prompt.
+	fs := flag.NewFlagSet("interceptor", flag.ContinueOnError)
+	projectFlag := fs.String("project", "", "project name or directory (skips the startup picker)")
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		return err
+	}
+	projectArg := *projectFlag
+	if projectArg == "" {
+		projectArg = os.Getenv("INTERCEPTOR_PROJECT")
+	}
+	// Show the Burp-style picker only on a real TTY, and never when a project is
+	// preselected or prompting is explicitly suppressed (CI, scripted launches).
+	interactive := isInteractive() && os.Getenv("INTERCEPTOR_NO_PROMPT") == ""
+	projectName, dir, err := selectProject(os.Stdin, os.Stdout, globalDir, projectArg, home, interactive)
+	if errors.Is(err, errQuit) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("select project: %w", err)
+	}
 
 	st, err := store.Open(dir)
 	if err != nil {
@@ -70,7 +92,9 @@ func run() error {
 	}
 	defer st.Close()
 
-	ca, err := tlsca.LoadOrCreate(filepath.Join(dir, "ca"))
+	// The CA is global (lives outside any project) so trusting it once covers
+	// every project — switching projects never means re-installing a cert.
+	ca, err := tlsca.LoadOrCreate(filepath.Join(globalDir, "ca"))
 	if err != nil {
 		return fmt.Errorf("certificate authority: %w", err)
 	}
@@ -78,6 +102,13 @@ func run() error {
 	eng := intercept.New()
 	if v, ok, _ := st.GetSetting("intercept.enabled"); ok && v == "1" {
 		eng.SetEnabled(true)
+	}
+	if v, ok, _ := st.GetSetting("intercept.filter.enabled"); ok && v == "1" {
+		target, _, _ := st.GetSetting("intercept.filter.target")
+		pattern, _, _ := st.GetSetting("intercept.filter.pattern")
+		if err := eng.SetInterceptFilter(true, target, pattern); err != nil {
+			log.Printf("intercept filter (saved) ignored: %v", err)
+		}
 	}
 
 	// Wiring cycle: the proxy needs the hub (events), the hub needs the proxy
@@ -91,6 +122,8 @@ func run() error {
 	_ = os.MkdirAll(checksDir, 0o755)
 	hub.ChecksDir = checksDir
 	hub.SelfAddr = controlAddr // so the active scanner never targets our own API
+	hub.ProjectName = projectName
+	hub.ProjectDir = dir
 	prx := proxy.New(st, capture.New(st), ca, eng, hub)
 	prx.Scope = sc
 	hub.Upstream = prx.SetUpstreamProxy
@@ -119,7 +152,7 @@ func run() error {
 	}()
 
 	uiURL := "http://" + controlAddr
-	log.Printf("Interceptor v%s: proxy on %s · UI on %s · data %s", version.String(), pm.Addr(), uiURL, dir)
+	log.Printf("Interceptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
 	openBrowser(uiURL)
 
 	// Best-effort update check (every run). Non-blocking; silent on failure;
