@@ -50,6 +50,7 @@ button{cursor:pointer}
 .tab:hover{color:var(--fg)}
 .tab.active{color:var(--accent);background:var(--accentDim)}
 .badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:6px}
+.ai-tag{font-size:9px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 
 #main{flex:1;min-height:0;position:relative}
 .panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
@@ -68,7 +69,7 @@ button{cursor:pointer}
 .count{font-size:11px;color:var(--fg2)}
 
 /* history table */
-.thead,.trow{display:grid;grid-template-columns:48px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 70px 64px 60px;align-items:center}
+.thead,.trow{display:grid;grid-template-columns:60px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 70px 64px 60px;align-items:center}
 .thead{flex:none;height:28px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--fg2);padding:0 6px}
 .thead>div{padding:0 4px;cursor:pointer;user-select:none}
 .thead>div:hover{color:var(--fg)}
@@ -110,6 +111,10 @@ button{cursor:pointer}
 .hl-st3{color:var(--blue);font-weight:700}
 .hl-st4{color:var(--amber);font-weight:700}
 .hl-st5{color:var(--red);font-weight:700}
+.js-key{color:var(--blue);font-weight:600}
+.js-str{color:var(--accent)}
+.js-num{color:var(--amber)}
+.js-lit{color:var(--violet);font-weight:600}
 
 /* intercept */
 .section{padding:14px 16px;border-bottom:1px solid var(--line)}
@@ -153,8 +158,10 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .chip b{color:var(--accent);font-weight:600}
 .chip.not{border-color:var(--red)}
 .chip.not b{color:var(--red)}
-.chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border-radius:50%;background:var(--bg2);color:var(--fg2);font-size:11px}
+.chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border-radius:50%;background:var(--bg2);color:var(--fg2);font-size:11px;cursor:pointer}
 .chip .x:hover{color:var(--red);background:var(--bg1)}
+.chip-clear{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;background:transparent;border:1px dashed var(--line2);border-radius:14px;padding:3px 11px;color:var(--fg2);cursor:pointer}
+.chip-clear:hover{border-color:var(--red);border-style:solid;color:var(--red)}
 
 /* right-click context menu */
 #ctxmenu{position:fixed;z-index:100;min-width:210px;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 16px 48px var(--shadow);padding:5px;display:none;font-size:11.5px}
@@ -214,6 +221,40 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .scan-item.sel{background:var(--sel);border-left-color:var(--accent)}
 .scan-item .t{margin-top:5px;color:var(--fg);font-size:12px}
 .scan-item .tg{font-size:10.5px;color:var(--accent);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-tgt[data-flow]:hover{border-color:var(--accent)!important}
+.map-host>summary,.map-folder>summary{cursor:pointer;padding:3px 2px}
+.map-host>summary{font-weight:700}
+.map-body{margin-left:13px;border-left:1px solid var(--line);padding-left:9px}
+.map-seg{font-family:var(--mono);color:var(--blue)}
+.map-c{font-size:10px;color:var(--fg3);background:var(--bg3);border-radius:8px;padding:0 6px;margin-left:4px}
+.map-ep{display:flex;align-items:center;gap:8px;padding:2px 4px;border-radius:4px}
+.map-ep[data-flow]{cursor:pointer}
+.map-ep[data-flow]:hover{background:var(--bg3)}
+.map-m{font-weight:700;font-size:10px;min-width:42px}
+.map-p{font-family:var(--mono);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-sts{font-family:var(--mono);font-size:10.5px}
+.map-hits{font-size:10px;color:var(--fg3);min-width:28px;text-align:right}
+.mapsev{opacity:.4}.mapsev.on{opacity:1}
+.md{font-size:13.5px;line-height:1.65;color:var(--fg)}
+.md h1{font-size:20px;margin:18px 0 10px;border-bottom:1px solid var(--line);padding-bottom:5px}
+.md h2{font-size:16px;margin:16px 0 8px}
+.md h3{font-size:14px;margin:14px 0 6px;color:var(--fg2)}
+.md h4,.md h5,.md h6{font-size:12.5px;margin:12px 0 5px;color:var(--fg2)}
+.md p{margin:8px 0}
+.md code{font-family:var(--mono);font-size:12px;background:var(--bg3);border-radius:4px;padding:1px 5px}
+.md pre.md-code{font-family:var(--mono);font-size:12px;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow:auto;white-space:pre-wrap;margin:8px 0}
+.md ul{margin:8px 0 8px 4px;padding-left:18px}
+.md li{margin:3px 0}
+.md a{color:var(--blue)}
+.md strong{color:var(--fg);font-weight:700}
+.md-img{max-width:100%;border:1px solid var(--line);border-radius:6px;margin:8px 0}
+details.acc{margin:0}
+details.acc>summary.acc-h{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px}
+details.acc>summary.acc-h::-webkit-details-marker{display:none}
+details.acc>summary.acc-h::before{content:'▾';color:var(--fg3);font-size:10px;flex:none}
+details.acc:not([open])>summary.acc-h::before{content:'▸'}
+details.acc>summary.acc-h>*{margin:7px 0}
+.acc-body{padding:0 0 2px 17px}
 .sev{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;border-radius:5px;padding:2px 7px;border:1px solid}
 .sev.High{color:var(--red);border-color:var(--red)}
 .sev.Medium{color:var(--amber);border-color:var(--amber)}
@@ -252,6 +293,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
   <button class="tab" data-tab="repeater">Repeater</button>
   <button class="tab" data-tab="intruder">Intruder</button>
   <button class="tab" data-tab="scanner">Scanner</button>
+  <button class="tab" data-tab="map">Map</button>
+  <button class="tab" data-tab="notes">Notes</button>
   <button class="tab" data-tab="activity">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
   <button class="tab" data-tab="api">API</button>
   <button class="tab" data-tab="settings">Settings</button>
@@ -272,8 +315,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <button class="btn" id="scopeToggle" title="Show only in-scope flows (define scope in Settings → Target scope)">◎ in scope</button>
-      <select id="viewsSelect" class="btn" title="Apply a saved view"><option value="">views…</option></select>
-      <button class="btn" id="saveViewBtn" title="Save the current filters as a view">＋</button>
+      <button class="btn accent" id="aiToggle" title="Show requests the AI assistant sent (Repeater / Intruder / scan) inline in History">🤖 AI</button>
+      <select id="viewsSelect" class="btn" title="Apply a saved view" style="display:none"><option value="">views…</option></select>
+      <button class="btn" id="saveViewBtn" title="Save the current filters as a view" style="display:none">＋ Save view</button>
       <button class="btn danger" id="delViewBtn" title="Delete the selected view" style="display:none">✕</button>
       <div class="spacer"></div>
       <span class="count" title="Right-click any row to filter by host, method, status or scheme, or to copy its URL / cURL">↳ right-click a row to filter</span>
@@ -284,8 +328,15 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
       <button class="btn" id="refreshBtn">Refresh</button>
     </div>
     <div id="chips"></div>
+    <div id="selBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px">
+      <span id="selCount" style="font-weight:700;flex:none"></span>
+      <button class="btn" id="selAsk" title="Analyze the selected flows with AI">✨ Ask AI</button>
+      <button class="btn" id="selScope" title="Add the selected hosts to target scope">◎ Add to scope</button>
+      <button class="btn" id="selDelete" title="Delete the selected flows from history" style="color:var(--red)">🗑 Delete</button>
+      <button class="btn" id="selClear" style="margin-left:auto">Clear</button>
+    </div>
     <div class="thead">
-      <div data-sort="id">#</div><div data-sort="method">Method</div><div data-sort="host">Host</div>
+      <div data-sort="id"><input type="checkbox" id="selAll" title="Select / clear all shown" style="vertical-align:middle;margin-right:5px">#</div><div data-sort="method">Method</div><div data-sort="host">Host</div>
       <div data-sort="path">Path</div><div data-sort="status" style="text-align:center">St</div>
       <div data-sort="mime">Type</div><div data-sort="size" style="text-align:right">Size</div><div data-sort="time" style="text-align:right">Time</div>
     </div>
@@ -305,6 +356,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
         </div>
         <pre id="resView"><span style="color:var(--fg3)">Select a flow to inspect its response.</span></pre>
       </div>
+    </div>
+    <div id="noteBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line)">
+      <span class="lbl" style="flex:none">📝 NOTE</span>
+      <input id="noteInput" type="text" maxlength="2000" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)" style="flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
+      <span id="noteSaved" style="flex:none;color:var(--accent);font-size:11px;opacity:0;transition:opacity .2s">✓ saved</span>
     </div>
   </div>
 
@@ -451,6 +507,40 @@ changeme</textarea>
     </div>
   </div>
 
+  <!-- Endpoint map (attack surface) -->
+  <div class="panel" data-panel="map">
+    <div class="toolbar">
+      <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">ENDPOINT MAP</span>
+      <input id="mapSearch" class="btn" style="background:var(--bg3);width:170px" placeholder="filter path / host">
+      <select id="mapMethod" class="btn" style="background:var(--bg3)"><option value="">All methods</option></select>
+      <span style="color:var(--fg3);font-size:11px">status:</span>
+      <button class="btn mapsev on" data-sev="2" title="toggle 2xx">2xx</button>
+      <button class="btn mapsev on" data-sev="3" title="toggle 3xx">3xx</button>
+      <button class="btn mapsev on" data-sev="4" title="toggle 4xx (e.g. 404 noise)">4xx</button>
+      <button class="btn mapsev on" data-sev="5" title="toggle 5xx">5xx</button>
+      <button class="btn" id="mapExpand">Expand all</button>
+      <button class="btn" id="mapRefresh" title="Rebuild from history">↻</button>
+      <span id="mapCount" class="count"></span>
+      <div class="spacer"></div>
+      <span class="hint" style="font-size:11px">Unique endpoints from captured traffic — your attack surface</span>
+    </div>
+    <div id="mapTree" style="flex:1;overflow:auto;padding:10px 14px;font-size:12.5px"><div class="hint" style="padding:12px">Capture some traffic, then open this tab to map the app.</div></div>
+  </div>
+
+  <!-- Project notes (markdown notebook) -->
+  <div class="panel" data-panel="notes">
+    <div class="toolbar">
+      <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">PROJECT NOTES</span>
+      <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
+      <button class="btn accent" id="notesSave">Save</button>
+      <span id="notesSaved" style="color:var(--accent);font-size:11px;opacity:0;transition:opacity .2s">✓ saved</span>
+      <div class="spacer"></div>
+      <span class="hint" style="font-size:11px">Markdown scratchpad for creds, findings &amp; scope — the AI can read and edit it (get_notes / set_notes).</span>
+    </div>
+    <textarea id="notesEdit" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do" style="flex:1;border:none;outline:none;resize:none;background:var(--bg1);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.6;padding:16px 18px"></textarea>
+    <div id="notesPreview" class="md" style="flex:1;overflow:auto;padding:16px 22px;display:none"></div>
+  </div>
+
   <!-- Activity (live AI feed) -->
   <div class="panel" data-panel="activity">
     <div class="toolbar">
@@ -519,6 +609,11 @@ changeme</textarea>
             <h3>SYSTEM PROXY</h3>
             <p class="hint" style="margin-bottom:10px">Route this computer's HTTP/HTTPS traffic through Interceptor automatically (macOS). Off by default — turn it off when you're done. On other systems, set your OS/browser proxy to the address above manually.</p>
             <div class="row" style="gap:12px"><button class="toggle" id="sysProxyToggle">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
+          </div>
+          <div class="section">
+            <h3>CAPTURE POLICY</h3>
+            <p class="hint" style="margin-bottom:10px">On long engagements, save database space by storing only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded — they're just not written to history. Define your target under <b>Target scope</b>; with no scope set, everything is in scope (so this has no effect).</p>
+            <div class="row" style="gap:12px"><button class="toggle" id="capScopeToggle">Saving all traffic</button><span class="hint">Toggle to keep only in-scope flows</span></div>
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
@@ -688,7 +783,7 @@ const $$=s=>Array.from(document.querySelectorAll(s));
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
-  rules:[],scope:[],views:[],inScopeOnly:false,view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
+  rules:[],scope:[],views:[],inScopeOnly:false,showAI:true,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
   filters:{scheme:'',search:'',method:'',status:'',host:'',exclude:[]},activity:[],actUnseen:0};
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
@@ -700,6 +795,7 @@ const statusText=s=>({200:'OK',201:'Created',204:'No Content',301:'Moved',302:'F
 const mimeLabel=m=>{if(!m)return'—';if(m.includes('json'))return'json';if(m.includes('html'))return'html';if(m.includes('javascript'))return'script';if(m.includes('css'))return'css';if(m.includes('font')||m.includes('woff'))return'font';if(m.includes('image'))return'image';return(m.split('/')[1]||m).split(';')[0];};
 const fmtSize=n=>!n?'0 B':n<1024?n+' B':n<1048576?(n/1024).toFixed(n<10240?1:0)+' KB':(n/1048576).toFixed(1)+' MB';
 const fmtTime=ms=>{const d=new Date(ms);return d.toLocaleTimeString('en-GB',{hour12:false});};
+const fmtDur=ms=>ms<1000?ms+' ms':(ms/1000).toFixed(ms<10000?2:1)+' s';
 
 /* ---- tabs ---- */
 $$('.tab').forEach(t=>t.onclick=()=>{
@@ -707,6 +803,8 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
   if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
   if(t.dataset.tab==='scanner')loadScanTargets();
+  if(t.dataset.tab==='map')loadEndpoints();
+  if(t.dataset.tab==='notes')loadNotes();
 });
 /* settings sub-nav */
 $$('#setNav button').forEach(b=>b.onclick=()=>{
@@ -754,10 +852,10 @@ function renderRows(){
     const pending=!f.status&&!f.error;
     const stHTML=f.status?String(f.status):(f.error?'ERR':'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
     return `<div class="trow ${f.id===state.selId?'sel':''}${pending?' pending':''}" data-id="${f.id}" title="Left-click to inspect · Right-click to filter / copy">
-      <div class="tr-id" data-field="id">${f.id}</div>
+      <div class="tr-id" data-field="id"><input type="checkbox" class="rowsel" data-id="${f.id}"${state.selected.has(f.id)?' checked':''} style="vertical-align:middle;margin-right:5px">${f.id}</div>
       <div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>
       <div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>
-      <div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}</div>
+      <div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${f.note?' <span title="has a note" style="cursor:help">📝</span>':''}</div>
       <div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>
       <div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>
       <div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>
@@ -774,6 +872,19 @@ function renderRows(){
       showCtx(e.clientX,e.clientY,f,cell?cell.dataset.field:'');
     };
   });
+  $$('#rows .rowsel').forEach(cb=>{
+    cb.onclick=e=>{
+      e.stopPropagation(); // toggle selection without opening the inspector
+      const id=Number(cb.dataset.id),list=applySort(state.flows),idx=list.findIndex(f=>f.id===id);
+      if(e.shiftKey&&state.lastSelIdx>=0&&state.lastSelIdx<list.length){
+        const a=Math.min(state.lastSelIdx,idx),b=Math.max(state.lastSelIdx,idx);
+        for(let i=a;i<=b;i++){cb.checked?state.selected.add(list[i].id):state.selected.delete(list[i].id);}
+      }else{cb.checked?state.selected.add(id):state.selected.delete(id);}
+      state.lastSelIdx=idx;renderRows();updateSelBar();
+    };
+  });
+  const sa=$('#selAll');
+  if(sa){const list=applySort(state.flows);sa.checked=list.length>0&&list.every(f=>state.selected.has(f.id));sa.indeterminate=!sa.checked&&list.some(f=>state.selected.has(f.id));}
 }
 async function loadFlows(){
   const q=new URLSearchParams();
@@ -785,6 +896,7 @@ async function loadFlows(){
   if(f.host)q.set('host',f.host);
   (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
   if(state.inScopeOnly)q.set('inScope','1');
+  if(!state.showAI)q.set('ai','0');
   q.set('limit','500');
   try{const d=await api('/api/flows?'+q.toString());state.flows=d.flows||[];renderRows();refreshMethodFilter();}catch(e){toast('flows: '+e.message);}
 }
@@ -801,11 +913,13 @@ let reloadTimer=null;
 function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 
 const FLAG_WS=32;
+const FLAG_AI=1024;
 async function selectFlow(id){
   state.selId=id;renderRows();
   try{
     state.detail=await api('/api/flows/'+id);
     const d=state.detail;
+    $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
     await renderSide('req');
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
@@ -817,7 +931,7 @@ async function selectFlow(id){
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
       await renderSide('res');
-      $('#resStatus').textContent=d.status?`${d.status} ${statusText(d.status)}`:(d.error||'');
+      $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
   }catch(e){toast('flow: '+e.message);}
@@ -882,7 +996,7 @@ function prettify(raw){
 // The text is escaped first (these are arbitrary captured bytes) so the result is
 // safe for innerHTML. Only the header block is tokenized; the body is escaped
 // verbatim to stay fast on large payloads.
-function highlightHTTP(text){
+function highlightHTTP(text,pretty){
   if(!text)return '';
   text=String(text).replace(/\r\n/g,'\n');
   const sep=text.indexOf('\n\n');
@@ -896,8 +1010,22 @@ function highlightHTTP(text){
       ?'<span class="hl-hname">'+esc(ln.slice(0,c))+'</span>:<span class="hl-hval">'+esc(ln.slice(c+1))+'</span>'
       :esc(ln));
   }
-  if(sep>=0)html+='\n\n'+esc(body);
+  if(sep>=0){
+    const tb=body.replace(/^\s+/,'');
+    const json=pretty&&body.length<=PRETTY_MAX&&(tb[0]==='{'||tb[0]==='[');
+    html+='\n\n'+(json?highlightJSON(body):esc(body));
+  }
   return html;
+}
+// Color a (pretty-printed) JSON body: keys, string / number / literal values.
+// Escapes first, then tokenizes the escaped text, so the result is safe for
+// innerHTML even though the body is arbitrary captured bytes.
+function highlightJSON(s){
+  return esc(s).replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,(m,str,colon,lit,num)=>{
+    if(str!==undefined)return colon!=null?'<span class="js-key">'+str+'</span>'+colon:'<span class="js-str">'+str+'</span>';
+    if(lit!==undefined)return '<span class="js-lit">'+lit+'</span>';
+    return '<span class="js-num">'+num+'</span>';
+  });
 }
 function hlStartLine(ln){
   let m=ln.match(/^(HTTP\/[\d.]+)\s+(\d{3})(.*)$/);            // response status line
@@ -906,13 +1034,25 @@ function hlStartLine(ln){
   if(m)return '<span class="hl-method">'+esc(m[1])+'</span> <span class="hl-url">'+esc(m[2])+'</span> <span class="hl-proto">'+esc(m[3])+'</span>';
   return esc(ln);
 }
+const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)
 async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
   if(!state.selId){return;}
-  try{
-    const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
-    el.innerHTML=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw);
-  }catch(e){el.textContent='(error: '+e.message+')';}
+  const draw=async()=>{
+    try{const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
+      el.innerHTML=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty');
+    }catch(e){el.textContent='(error: '+e.message+')';}
+  };
+  const len=state.detail?(side==='req'?state.detail.reqLen:state.detail.resLen):0;
+  if(len>RENDER_CAP){
+    el.innerHTML=`<div class="hint" style="padding:18px;line-height:1.8">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
+      <a class="btn" style="margin-top:8px;display:inline-block" href="/api/flows/${state.selId}/raw?side=${side}" download="flow-${state.selId}-${side}.txt">⤓ Download raw</a>
+      <button class="btn" data-bigshow="1" style="margin-top:8px">Show anyway</button></div>`;
+    const b=el.querySelector('[data-bigshow]');
+    if(b)b.onclick=()=>{el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';setTimeout(draw,10);};
+    return;
+  }
+  await draw();
 }
 $$('.seg').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderSide(side);});});
@@ -934,6 +1074,19 @@ $('#importHarFile').onchange=async e=>{
   e.target.value='';
 };
 $('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
+$('#aiToggle').onclick=()=>{state.showAI=!state.showAI;$('#aiToggle').classList.toggle('accent',state.showAI);loadFlows();};
+async function saveNote(){
+  if(!state.selId)return;
+  const note=$('#noteInput').value;
+  if(state.detail&&note===(state.detail.note||''))return; // unchanged — skip redundant PUT
+  try{
+    await api('/api/flows/'+state.selId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
+    if(state.detail)state.detail.note=note;
+    const s=$('#noteSaved');s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);
+  }catch(e){toast('note: '+e.message);}
+}
+$('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
+$('#noteInput').addEventListener('blur',saveNote);
 
 /* ---- saved views ---- */
 async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
@@ -941,7 +1094,8 @@ function renderViews(){
   const sel=$('#viewsSelect'),cur=sel.value;
   sel.innerHTML='<option value="">views…</option>'+state.views.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join('');
   if(state.views.find(v=>String(v.id)===cur))sel.value=cur;
-  $('#delViewBtn').style.display=sel.value?'inline-block':'none';
+  sel.style.display=state.views.length?'':'none';                       // hide the picker until a view is saved
+  $('#delViewBtn').style.display=(state.views.length&&sel.value)?'inline-block':'none';
 }
 $('#viewsSelect').onchange=()=>{
   const id=$('#viewsSelect').value;$('#delViewBtn').style.display=id?'inline-block':'none';
@@ -1023,10 +1177,15 @@ function renderChips(){
   add('host','host',f.host);
   add('search','path',f.search);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
+  const hasFilters=items.length>0;
+  if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
   box.innerHTML=items.join('');
-  box.classList.toggle('has',items.length>0);
+  box.classList.toggle('has',hasFilters);
   box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
   box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
+  const cc=$('#chipsClear');if(cc)cc.onclick=clearAllFilters;
+  // The "save current filters as a view" (＋) only makes sense when something is filtered.
+  const sv=$('#saveViewBtn');if(sv)sv.style.display=hasFilters?'':'none';
 }
 
 /* ---- right-click context menu ---- */
@@ -1221,8 +1380,15 @@ async function loadSettings(){try{const s=await api('/api/settings');state.proxy
   if($('#setAiProvider'))$('#setAiProvider').value=s.aiProvider||'anthropic';
   if($('#setAiModel'))$('#setAiModel').value=s.aiModel||'';
   if($('#aiKeyState'))$('#aiKeyState').textContent=s.aiHasKey?'Key configured ✓':'No key set.';
+  if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
   aiPlaceholders();
   state.intercept.enabled=s.interceptEnabled;}catch(e){}}
+function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.textContent=on?'Saving in-scope only':'Saving all traffic';}
+$('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
+  const on=!$('#capScopeToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
+  catch(e){toast('capture: '+e.message);}
+});
 function aiPlaceholders(){if(!$('#setAiProvider'))return;
   const p=$('#setAiProvider').value;
   if(p==='openrouter'){$('#setAiKey').placeholder='sk-or-…';$('#setAiModel').placeholder='anthropic/claude-3.5-haiku';}
@@ -1250,21 +1416,48 @@ if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=async()=>{
     toast('session saved');loadSession();}catch(e){toast(e.message);}
 };
 /* ---- AI assist modal ---- */
-function openAi(kind){
-  if(state.selId==null){toast('select a flow first');return;}
+function openAi(kind,ids){
+  state.aiIds=(ids&&ids.length)?ids.slice():(state.selId!=null?[state.selId]:[]);
+  if(!state.aiIds.length){toast('select a flow first');return;}
   $('#aiModal').style.display='flex';
   $('#aiKindSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.k===kind));
   runAi(kind);
 }
 async function runAi(kind){
-  $('#aiOut').textContent='Thinking…';
-  try{const r=await api('/api/ai/assist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:state.selId,kind})});
+  $('#aiOut').textContent=state.aiIds.length>1?`Analyzing ${state.aiIds.length} flows…`:'Thinking…';
+  const body=state.aiIds.length>1?{flowIds:state.aiIds,kind}:{flowId:state.aiIds[0],kind};
+  try{const r=await api('/api/ai/assist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     $('#aiOut').textContent=r.text||'(empty response)';}
   catch(e){$('#aiOut').textContent='Error: '+e.message+'\n\nPick a provider and set its API key in Settings → AI assist (or the ANTHROPIC_API_KEY / OPENROUTER_API_KEY env var).';}
 }
 $('#aiExplainBtn').onclick=()=>openAi('explain');
 $('#aiKindSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#aiKindSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));runAi(b.dataset.k);});
 $('#aiClose').onclick=()=>$('#aiModal').style.display='none';
+
+// ---- History multi-select actions ----
+function updateSelBar(){const n=state.selected.size;$('#selBar').style.display=n?'flex':'none';$('#selCount').textContent=n+' selected';}
+$('#selAll').onclick=e=>{e.stopPropagation();const list=applySort(state.flows);if(e.target.checked)list.forEach(f=>state.selected.add(f.id));else state.selected.clear();renderRows();updateSelBar();};
+$('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
+$('#selAsk').onclick=()=>{const ids=[...state.selected];if(ids.length)openAi('summarize',ids);};
+$('#selScope').onclick=async()=>{
+  const hosts=[...new Set([...state.selected].map(id=>{const f=state.flows.find(x=>x.id===id);return f&&f.host;}).filter(Boolean))];
+  if(!hosts.length)return;
+  let added=0;
+  for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){}}
+  toast('added '+added+' host'+(added===1?'':'s')+' to scope');loadScope();
+};
+let _delArm=false,_delTimer;
+$('#selDelete').onclick=async()=>{
+  const ids=[...state.selected];if(!ids.length)return;
+  if(!_delArm){_delArm=true;$('#selDelete').textContent='🗑 Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').textContent='🗑 Delete';},2500);return;}
+  clearTimeout(_delTimer);_delArm=false;$('#selDelete').textContent='🗑 Delete';
+  try{
+    const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
+    if(state.selected.has(state.selId))state.selId=null;
+    state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
+    toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
+  }catch(e){toast('delete: '+e.message);}
+};
 
 /* ---- custom checks editor ---- */
 async function loadChecksList(){
@@ -1374,6 +1567,28 @@ if($('#asStop'))$('#asStop').onclick=asStopScan;
 const MODAL_IDS=['aiModal','checksModal','activeModal','decModal'];
 function closeModals(){let n=0;MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m&&m.style.display&&m.style.display!=='none'){m.style.display='none';n++;}});return n>0;}
 MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m)m.addEventListener('mousedown',e=>{if(e.target===m)m.style.display='none';});});
+
+// ↑/↓ walk the visible History rows and load each in the inspector — only on the
+// Proxy tab, never while typing in a field or with a modal/palette open.
+document.addEventListener('keydown',e=>{
+  if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
+  const p=document.querySelector('.panel[data-panel="proxy"]');
+  if(!p||!p.classList.contains('active'))return;
+  const t=e.target;
+  if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
+  if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
+  if(typeof cmdk!=='undefined'&&cmdk.open)return;
+  const flows=applySort(state.flows);
+  if(!flows.length)return;
+  const i=flows.findIndex(f=>f.id===state.selId);
+  const ni=i<0?0:(e.key==='ArrowDown'?Math.min(i+1,flows.length-1):Math.max(i-1,0));
+  if(ni===i)return;
+  e.preventDefault();
+  const id=flows[ni].id;
+  selectFlow(id);
+  const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
+  if(row)row.scrollIntoView({block:'nearest'});
+});
 
 // uiPrompt: an in-app replacement for the browser's prompt() — themed, consistent,
 // resolves to the entered string or null (Cancel / Escape / backdrop / empty).
@@ -1496,7 +1711,7 @@ async function repSend(){
 }
 async function renderRepResponse(){
   const t=repCur();if(!t||!t.resId)return;
-  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw);}
+  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw,t.resView==='pretty');}
   catch(e){$('#repResView').textContent='(error: '+e.message+')';}
 }
 async function loadRepHistory(){
@@ -1622,31 +1837,184 @@ async function loadScanTargets(){
     if(hosts.includes(cur))sel.value=cur;
   }catch(e){}
 }
+// Group findings by title: one list row per finding type, the affected targets
+// nested in its detail — instead of a separate row per (finding × target).
+const SEV_ORDER=['High','Medium','Low','Info'];
+const sevRank=s=>{const i=SEV_ORDER.indexOf(s);return i<0?SEV_ORDER.length:i;};
+function scanGroups(){
+  const map=new Map();
+  scanState.issues.forEach(i=>{
+    let g=map.get(i.title);
+    if(!g){g={title:i.title,severity:i.severity,items:[]};map.set(i.title,g);}
+    g.items.push(i);
+    if(sevRank(i.severity)<sevRank(g.severity))g.severity=i.severity; // keep the most severe
+  });
+  return [...map.values()].sort((a,b)=>sevRank(a.severity)-sevRank(b.severity)||a.title.localeCompare(b.title));
+}
 function renderScan(){
-  const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
-  $('#scanCount').textContent=scanState.issues.length?`${scanState.issues.length} · ${c.High||0} High ${c.Medium||0} Med ${c.Low||0} Low`:'';
   const list=$('#scanList');
-  if(!scanState.issues.length){list.innerHTML='<div class="hint" style="padding:12px">No issues found. Capture some traffic, then Run scan.</div>';$('#scanDetail').innerHTML='<div class="hint" style="padding:16px">Select an issue.</div>';return;}
-  if(scanState.sel==null||scanState.sel>=scanState.issues.length)scanState.sel=0;
-  list.innerHTML=scanState.issues.map((i,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
-    <span class="sev ${esc(i.severity)}">${esc(i.severity)}</span>
-    <div class="t">${esc(i.title)}</div><div class="tg">${esc(i.target)}</div></div>`).join('');
+  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="hint" style="padding:12px">No issues found. Capture some traffic, then Run scan.</div>';$('#scanDetail').innerHTML='<div class="hint" style="padding:16px">Select a finding.</div>';return;}
+  const groups=scanState.groups=scanGroups();
+  const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
+  $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
+  if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
+  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
+    <span class="sev ${esc(g.severity)}">${esc(g.severity)}</span>
+    <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
   list.querySelectorAll('.scan-item').forEach(el=>el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();});
   renderScanDetail();
 }
 function renderScanDetail(){
-  const i=scanState.issues[scanState.sel];if(!i)return;
+  const g=(scanState.groups||[])[scanState.sel];if(!g)return;
+  const first=g.items[0];
+  const shared=g.items.every(i=>i.detail===first.detail); // show a common description once
+  const tgts=g.items.map(i=>`<div class="scan-tgt"${i.flowId?` data-flow="${i.flowId}"`:''} style="${i.flowId?'cursor:pointer;':''}padding:7px 9px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--accent);word-break:break-all">${esc(i.target||'(no target)')}${i.flowId?` <span style="color:var(--fg3)">· flow #${i.flowId} ›</span>`:''}</div>
+    ${(!shared&&i.detail)?`<div style="font-size:12px;color:var(--fg2);margin-top:5px;line-height:1.5">${esc(i.detail)}</div>`:''}
+    ${i.evidence?`<div class="evidence" style="margin-top:6px">${esc(i.evidence)}</div>`:''}</div>`).join('');
   $('#scanDetail').innerHTML=`<div class="scan-wrap">
-    <span class="sev ${esc(i.severity)}">${esc(i.severity)}</span>
-    <h1 style="font-size:17px;font-weight:700;margin:12px 0 6px;line-height:1.3">${esc(i.title)}</h1>
-    <div style="font-family:var(--mono);font-size:12px;color:var(--accent);margin-bottom:16px">${esc(i.target)}</div>
-    <p style="font-size:13px;color:var(--fg2);line-height:1.6">${esc(i.detail)}</p>
-    ${i.evidence?`<div class="evidence">${esc(i.evidence)}</div>`:''}
-    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:4px 0 6px">REMEDIATION</div>
-    <div class="fixbox">${esc(i.fix)}</div></div>`;
+    <span class="sev ${esc(g.severity)}">${esc(g.severity)}</span>
+    <h1 style="font-size:17px;font-weight:700;margin:12px 0 6px;line-height:1.3">${esc(g.title)}</h1>
+    ${(shared&&first.detail)?`<p style="font-size:13px;color:var(--fg2);line-height:1.6">${esc(first.detail)}</p>`:''}
+    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
+    ${tgts}
+    ${first.fix?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
+  $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>el.onclick=()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(Number(el.dataset.flow));});
 }
 $('#scanRun').onclick=runScan;
 $('#scanReport').onclick=()=>{if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}const a=document.createElement('a');a.href='/api/scanner/report';a.download='interceptor-findings.md';document.body.appendChild(a);a.click();a.remove();toast('report downloaded');};
+
+/* ---- endpoint map ---- */
+const mapState={eps:[],method:'',search:'',hideSev:new Set(),expandAll:false};
+async function loadEndpoints(){
+  try{const d=await api('/api/endpoints');mapState.eps=d.endpoints||[];fillMapMethods();renderMap();}
+  catch(e){toast('map: '+e.message);}
+}
+function fillMapMethods(){
+  const sel=$('#mapMethod');if(!sel)return;
+  const methods=[...new Set(mapState.eps.map(e=>e.method))].sort();const cur=sel.value;
+  sel.innerHTML='<option value="">All methods</option>'+methods.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if(methods.includes(cur))sel.value=cur;
+}
+function mapFiltered(){
+  const q=mapState.search.toLowerCase();
+  return mapState.eps.filter(e=>{
+    if(mapState.method&&e.method!==mapState.method)return false;
+    if(mapState.hideSev.has(Math.floor((e.lastStatus||0)/100)))return false;
+    if(q&&!((e.path||'').toLowerCase().includes(q)||(e.host||'').toLowerCase().includes(q)))return false;
+    return true;
+  });
+}
+function mapCount(node){let n=node.eps.length;node.kids.forEach(k=>n+=mapCount(k));return n;}
+function buildMapTree(eps){
+  const hosts=new Map();
+  eps.forEach(e=>{
+    if(!hosts.has(e.host))hosts.set(e.host,{name:e.host,kids:new Map(),eps:[]});
+    let node=hosts.get(e.host);
+    (e.path||'/').split('?')[0].split('/').filter(Boolean).forEach(seg=>{
+      if(!node.kids.has(seg))node.kids.set(seg,{name:seg,kids:new Map(),eps:[]});node=node.kids.get(seg);});
+    node.eps.push(e);
+  });
+  return hosts;
+}
+function mapEpRow(e){
+  const sts=(e.statuses||[]).map(s=>`<span style="color:${statusColor(s)}">${s}</span>`).join(' ');
+  const path=e.path||'/';
+  return `<div class="map-ep"${e.lastFlowId?` data-flow="${e.lastFlowId}"`:''} title="${esc(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
+    <span class="map-m" style="color:${methodColor(e.method)}">${esc(e.method)}</span>
+    <span class="map-p">${esc(path)}</span><span class="map-sts">${sts}</span>
+    <span class="map-hits">${e.hits>1?e.hits+'×':''}</span></div>`;
+}
+function mapRenderNode(node,open){
+  let html='';
+  [...node.kids.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(kid=>{
+    html+=`<details class="map-folder"${open?' open':''}><summary><span class="map-seg">/${esc(kid.name)}</span><span class="map-c">${mapCount(kid)}</span></summary><div class="map-body">${mapRenderNode(kid,open)}</div></details>`;
+  });
+  node.eps.slice().sort((a,b)=>a.method.localeCompare(b.method)).forEach(e=>html+=mapEpRow(e));
+  return html;
+}
+function renderMap(){
+  const box=$('#mapTree');if(!box)return;
+  const eps=mapFiltered();
+  const hostN=new Set(eps.map(e=>e.host)).size;
+  $('#mapCount').textContent=eps.length?`${eps.length} endpoint${eps.length===1?'':'s'} · ${hostN} host${hostN===1?'':'s'}`:'';
+  if(!eps.length){box.innerHTML='<div class="hint" style="padding:12px">No endpoints match — capture traffic or relax the filters.</div>';return;}
+  const open=mapState.expandAll||!!mapState.search; // a search auto-expands so matches are visible
+  const hosts=buildMapTree(eps);
+  box.innerHTML=[...hosts.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(h=>
+    `<details class="map-host" open><summary>🌐 ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h,open)}</div></details>`).join('');
+  box.querySelectorAll('.map-ep[data-flow]').forEach(el=>el.onclick=()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(Number(el.dataset.flow));});
+}
+$('#mapSearch').oninput=e=>{mapState.search=e.target.value.trim();renderMap();};
+$('#mapMethod').onchange=e=>{mapState.method=e.target.value;renderMap();};
+$('#mapRefresh').onclick=loadEndpoints;
+$('#mapExpand').onclick=()=>{mapState.expandAll=!mapState.expandAll;$('#mapExpand').textContent=mapState.expandAll?'Collapse all':'Expand all';renderMap();};
+$$('.mapsev').forEach(b=>b.onclick=()=>{const s=Number(b.dataset.sev);if(mapState.hideSev.has(s)){mapState.hideSev.delete(s);b.classList.add('on');}else{mapState.hideSev.add(s);b.classList.remove('on');}renderMap();});
+
+/* ---- project notes ---- */
+const notesState={loaded:'',mode:'edit'};
+async function loadNotes(){
+  try{const d=await api('/api/notes');notesState.loaded=d.notes||'';
+    if(document.activeElement!==$('#notesEdit'))$('#notesEdit').value=notesState.loaded;
+    if(notesState.mode==='preview')showNotesPreview();
+  }catch(e){}
+}
+async function saveNotes(){
+  const v=$('#notesEdit').value;
+  if(v===notesState.loaded)return; // nothing changed
+  try{await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({notes:v})});
+    notesState.loaded=v;const s=$('#notesSaved');s.style.opacity='1';setTimeout(()=>s.style.opacity='0',1200);
+  }catch(e){toast('notes: '+e.message);}
+}
+$('#notesSave')&&($('#notesSave').onclick=saveNotes);
+$('#notesEdit')&&$('#notesEdit').addEventListener('blur',saveNotes);
+$('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
+  const img=[...((e.clipboardData||{}).items||[])].find(it=>it.type&&it.type.indexOf('image/')===0);
+  if(!img)return;e.preventDefault();
+  const file=img.getAsFile();if(!file)return;
+  const rd=new FileReader();
+  rd.onload=()=>{const ta=$('#notesEdit'),ins='\n![pasted image]('+rd.result+')\n',p=ta.selectionStart;
+    ta.value=ta.value.slice(0,p)+ins+ta.value.slice(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=p+ins.length;
+    saveNotes();toast('image embedded');};
+  rd.readAsDataURL(file);
+});
+$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  const edit=notesState.mode==='edit';
+  $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';
+  if(!edit)showNotesPreview();
+});
+// Minimal, safe markdown → HTML: escape first, then format a useful subset.
+function renderMD(src){
+  if(!src||!src.trim())return '<p class="hint">Empty — switch to Edit and jot down creds, findings, scope…</p>';
+  let s=esc(src),blocks=[];
+  s=s.replace(/```([\s\S]*?)```/g,(m,c)=>{blocks.push(c.replace(/^\n|\n$/g,''));return '\u0000'+(blocks.length-1)+'\u0000';});
+  s=s.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>').replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>').replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>');
+  s=s.replace(/(?:^|\n)((?:[-*] .*(?:\n|$))+)/g,(m,list)=>'\n<ul>'+list.trim().split('\n').map(l=>'<li>'+l.replace(/^[-*]\s?/,'')+'</li>').join('')+'</ul>');
+  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s='<p>'+s.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
+  s=s.replace(/\u0000(\d+)\u0000/g,(m,i)=>'<pre class="md-code">'+blocks[Number(i)]+'</pre>');
+  return s.replace(/<p>\s*<\/p>/g,'').replace(/<p>(<(?:h\d|ul|pre))/g,'$1').replace(/(<\/(?:h\d|ul|pre)>)<\/p>/g,'$1');
+}
+// Wrap each heading + the content beneath it in a collapsible <details>, so long
+// notes fold into title/subtitle sections you can open and close.
+function accordionize(box){
+  const kids=[...box.childNodes],frag=document.createDocumentFragment();let i=0;
+  while(i<kids.length){
+    const n=kids[i];
+    if(n.nodeType===1&&/^H[1-6]$/.test(n.tagName)){
+      const det=document.createElement('details');det.className='acc';det.open=true;
+      const sum=document.createElement('summary');sum.className='acc-h';sum.appendChild(n);det.appendChild(sum);
+      const body=document.createElement('div');body.className='acc-body';i++;
+      while(i<kids.length&&!(kids[i].nodeType===1&&/^H[1-6]$/.test(kids[i].tagName))){body.appendChild(kids[i]);i++;}
+      det.appendChild(body);frag.appendChild(det);
+    }else{frag.appendChild(n);i++;}
+  }
+  box.appendChild(frag);
+}
+function showNotesPreview(){const box=$('#notesPreview');box.innerHTML=renderMD($('#notesEdit').value);accordionize(box);}
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -1724,6 +2092,7 @@ function connectEvents(){
     else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
     else if(m.type==='activescan.update'){if($('#activeModal')&&$('#activeModal').style.display==='flex')loadActive();}
     else if(m.type==='settings.update')loadSettings();
+    else if(m.type==='notes.update')loadNotes();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
 }
