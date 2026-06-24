@@ -6,6 +6,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Project notes (markdown notebook).** A new **Notes** tab gives each project a
+  shared markdown scratchpad — for credentials, findings, scope, and to-dos — with
+  an **Edit / Preview** toggle (a small, XSS-safe markdown renderer). The AI shares
+  the same notebook: new MCP tools **`get_notes`**, **`set_notes`**, and
+  **`append_notes`** let the assistant read it and record findings into it, so you
+  and the AI work from one set of notes. Stored per-project (a `project.notes`
+  setting), exposed via `GET`/`PUT /api/notes`, and synced live across open tabs
+  with a `notes.update` event. Notes also embed **images** — paste a screenshot
+  straight into the editor (stored inline as a data URL) or use `![alt](url)` — and
+  render each heading as a **collapsible accordion** section, so long notes fold
+  into title/subtitle blocks you can open and close.
+- **Scope-only capture (saves DB space).** Settings → Proxy → **Capture policy**
+  switches between persisting **all** proxied traffic (default) and **only
+  in-scope** traffic. Out-of-scope requests are still forwarded, but neither their
+  metadata **nor their bodies** (the bulk of disk use) are written — so a long
+  engagement through a busy browser doesn't bloat the project database with
+  CDN/analytics noise. The proxy gates persistence and body capture on scope;
+  interception is unaffected, and with no scope rules set everything is in scope
+  (so it's a no-op until you define a target). Backed by a `capture.scopeOnly`
+  setting (restored on restart) and a proxy `persistable`/`teeBody` gate.
+- **Endpoint map (attack surface).** A new **Map** tab renders the captured
+  traffic as a collapsible `domain → path → endpoint` tree, so you can see an
+  app's structure at a glance. Endpoints are de-duplicated — repeated hits (and
+  noise like dozens of 404s) collapse into one node carrying a hit count and the
+  distinct statuses seen, coloured by status. Filter by **path/host search**,
+  **method**, and **status-class toggles** (mute 4xx/5xx noise); a search
+  auto-expands to reveal matches, and clicking an endpoint jumps to its flow in
+  Proxy. Backed by a new `store.Endpoints` aggregation (`GROUP BY host,method,path`,
+  excluding Intruder/active-scan traffic) and `GET /api/endpoints`.
+- **JSON bodies are syntax-highlighted in Pretty view.** With **Pretty** selected,
+  the request/response body now colour-codes JSON — keys, string values, numbers,
+  and `true`/`false`/`null` each get their own colour (the start line, headers, and
+  status code were already coloured) — so a large payload is far easier to scan.
+  The body is HTML-escaped before tokenizing, so highlighting stays XSS-safe even
+  on hostile captured content.
+- **Multi-select & bulk actions in History.** A checkbox on each row (with
+  **shift-click** range select and a **select-all** header box) lets you pick
+  multiple flows and act on them from a selection bar: **Delete** them (two-click
+  "Confirm?" arm — no browser dialog), **Ask AI** to analyze the whole selection
+  together, or **Add to scope** (adds the selected hosts to target scope). Backed
+  by `store.DeleteFlows`, `POST /api/flows/delete`, and a multi-flow mode on
+  `POST /api/ai/assist` (a `flowIds` array → a combined per-endpoint review).
+- **Response time & keyboard navigation in History.** Selecting a flow now shows
+  its response time next to the status in the inspector (e.g. `200 OK · 142 ms`) —
+  the duration was always recorded, just never surfaced. And **↑/↓** now walk the
+  History rows (loading each into the inspector) while the Proxy tab is focused, so
+  you can triage traffic without the mouse. The keys are ignored while you're
+  typing in a field or a modal/command-palette is open.
+- **Notes on requests/responses.** Any flow in History can carry a free-text note.
+  Select a flow and use the **📝 NOTE** bar in the inspector (Enter or click away
+  to save); annotated rows show a 📝 marker, and notes are matched by the History
+  search box. The AI shares them: `get_flow` / `list_flows` now include the note,
+  and a new **`set_note`** MCP tool lets the assistant record a finding inline
+  (e.g. "IDOR confirmed") for the operator — and read notes the operator left for
+  it. Backed by a `note` column (added by an automatic, idempotent migration so
+  existing projects upgrade in place), `PUT /api/flows/{id}/note`, and an SSE
+  `flow.update` broadcast.
+- **AI traffic shows in Proxy/History (glass box, part 2).** Requests the AI
+  assistant issues over MCP — Repeater (`send_request`), Intruder, and active
+  scan — now appear inline in the Proxy **History** view, marked with an **AI**
+  badge, instead of only in the Activity feed. An operator watches the AI's actual
+  requests alongside their own captured traffic. The MCP server stamps every call
+  `X-Interceptor-Source: ai`; the control plane tags the resulting flows with a new
+  `FlagAI` and exempts them from History's Repeater/Intruder/Active-scan exclusion
+  (a new `FlowFilter.IncludeFlags` overrides `ExcludeFlags`). A **🤖 AI** toggle in
+  the History toolbar (and `?ai=0` on `GET /api/flows`) hides them again. The AI's
+  requests still go direct to the target (fast, no intercept deadlock); only their
+  visibility changed.
+
+### Changed
+- **Oversized bodies aren't rendered (no browser lag).** A request or response
+  body over 2 MB is no longer syntax-highlighted into the inspector — which could
+  lag or freeze the tab — and isn't even fetched. Instead the pane shows the body
+  size with a **Download raw** link and a **Show anyway** escape hatch.
+- **Tidier filter & Views controls in Proxy.** *Views* are saved filter sets — so
+  the **Views** picker is now hidden until you've saved one, and **＋ Save view**
+  only appears when a filter is actually active (no more empty, confusing controls
+  in the toolbar). The active-filter chips gained a **Clear all** pill next to the
+  per-chip ✕, so you can drop every filter in one click instead of removing them
+  one at a time.
+- **Scanner groups findings by type.** The Scanner tab now lists one row per
+  finding (e.g. "SQL Injection") with its affected-target count and severity,
+  sorted High→Info; selecting it shows every affected target nested in the detail
+  — each links through to its flow in Proxy — instead of a separate row per
+  (finding × target). The header now reads "N findings · M targets". A description
+  shared across targets is shown once; per-target detail/evidence stay inline.
+
 ## [0.4.0] — 2026-06-24
 
 ### Added
