@@ -40,14 +40,15 @@ type ScopeChecker interface {
 
 // Server is the intercepting forward-proxy HTTP handler.
 type Server struct {
-	st     *store.Store
-	cap    *capture.Capturer
-	ca     *tlsca.CA         // nil → HTTPS CONNECT returns 501
-	eng    *intercept.Engine // nil → no intercept/rules
-	events   Events       // nil → no live notifications
-	Scope    ScopeChecker // nil → everything in scope
-	tr       *http.Transport
-	upstream atomic.Pointer[url.URL] // optional chained upstream proxy
+	st        *store.Store
+	cap       *capture.Capturer
+	ca        *tlsca.CA         // nil → HTTPS CONNECT returns 501
+	eng       *intercept.Engine // nil → no intercept/rules
+	events    Events            // nil → no live notifications
+	Scope     ScopeChecker      // nil → everything in scope
+	tr        *http.Transport
+	upstream  atomic.Pointer[url.URL] // optional chained upstream proxy
+	scopeOnly atomic.Bool             // when set, only in-scope flows are persisted
 
 	// SelfPorts are this tool's own loopback ports (control plane + proxy). Set
 	// by cmd; traffic to them is forwarded but never recorded, so proxying
@@ -419,7 +420,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 
 	// Tee the request body to the store; capture failure must not break forwarding.
 	var reqFinalize func() (string, int64, error)
-	if reqTee, fin, err := s.cap.TeeBody(out.Body); err != nil {
+	if reqTee, fin, err := s.teeBody(flow, out.Body); err != nil {
 		flow.Flags |= store.FlagCaptureError
 	} else if reqTee != nil {
 		out.Body = io.NopCloser(reqTee)
@@ -466,7 +467,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	flow.ResHeaders = resp.Header.Clone()
 	flow.Mime = resp.Header.Get("Content-Type")
 
-	if resTee, resFinalize, err := s.cap.TeeBody(resp.Body); err == nil && resTee != nil {
+	if resTee, resFinalize, err := s.teeBody(flow, resp.Body); err == nil && resTee != nil {
 		if _, err := io.Copy(w, resTee); err != nil {
 			flow.Error = "stream resp: " + err.Error()
 		}
@@ -505,7 +506,7 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 	flow.ResHeaders = resp.Header.Clone()
 	flow.Mime = resp.Header.Get("Content-Type")
 
-	resTee, resFinalize, err := s.cap.TeeBody(upstream)
+	resTee, resFinalize, err := s.teeBody(flow, upstream)
 	if err == nil && resTee != nil {
 		resp.Body = io.NopCloser(resTee)
 	} else if err != nil {
@@ -637,6 +638,37 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 	return true
 }
 
+// SetCaptureScopeOnly switches between persisting all traffic (false) and only
+// in-scope traffic (true) — a space optimization for long engagements. With no
+// scope rules defined everything is in scope, so this becomes a no-op until the
+// operator sets a target scope.
+func (s *Server) SetCaptureScopeOnly(v bool) { s.scopeOnly.Store(v) }
+
+// persistable reports whether a flow should be written to history: never our own
+// loopback traffic, and — when scope-only capture is on and a scope is set — only
+// when it is in scope. The intercept path is unaffected; this gates the DB only.
+func (s *Server) persistable(flow *store.Flow) bool {
+	if !s.shouldCapture(flow) {
+		return false
+	}
+	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow) {
+		return false
+	}
+	return true
+}
+
+// teeBody captures a body to the content-addressed store and returns a reader to
+// forward plus a finalize() yielding (hash, len) — mirroring capture.TeeBody. When
+// the flow is not persistable (scope-only mode, out of scope) it skips storage
+// entirely and streams the body straight through, so out-of-scope bodies (the
+// bulk of disk use) never land on disk.
+func (s *Server) teeBody(flow *store.Flow, body io.Reader) (io.Reader, func() (string, int64, error), error) {
+	if s.persistable(flow) {
+		return s.cap.TeeBody(body)
+	}
+	return body, func() (string, int64, error) { return "", 0, nil }, nil
+}
+
 // isLoopbackName reports whether a bare hostname names the loopback interface.
 func isLoopbackName(host string) bool {
 	if strings.EqualFold(host, "localhost") {
@@ -650,7 +682,7 @@ func isLoopbackName(host string) bool {
 // the response is known — so it shows in history immediately. Idempotent: it is
 // a no-op once the flow has an ID. record() later fills in the response.
 func (s *Server) recordRequest(flow *store.Flow) {
-	if flow.ID != 0 || !s.shouldCapture(flow) {
+	if flow.ID != 0 || !s.persistable(flow) {
 		return
 	}
 	if _, err := s.st.InsertFlow(flow); err != nil {
@@ -667,10 +699,9 @@ func (s *Server) recordRequest(flow *store.Flow) {
 // otherwise — e.g. a request dropped before it was ever sent — it inserts and
 // emits flow.new.
 func (s *Server) record(flow *store.Flow) {
-	if !s.shouldCapture(flow) {
-		return
-	}
 	if flow.ID != 0 {
+		// Already inserted at request time — always finish it (the scope decision
+		// was made then) so an in-flight scope change can't strand a half-flow.
 		if err := s.st.UpdateFlow(flow); err != nil {
 			log.Printf("proxy: update flow %d (%s %s%s): %v", flow.ID, flow.Method, flow.Host, flow.Path, err)
 			return
@@ -678,6 +709,9 @@ func (s *Server) record(flow *store.Flow) {
 		if s.events != nil {
 			s.events.FlowUpdated(flow)
 		}
+		return
+	}
+	if !s.persistable(flow) {
 		return
 	}
 	if _, err := s.st.InsertFlow(flow); err != nil {

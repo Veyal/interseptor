@@ -27,6 +27,7 @@ type Spec struct {
 	Template   string     // raw request with §…§ fuzz points
 	AttackType string     // "sniper" | "pitchfork"
 	Payloads   [][]string // sniper: one list; pitchfork: one list per position
+	ExtraFlags int64      // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
 }
 
 // Result is one attack request's outcome.
@@ -94,7 +95,7 @@ func (e *Engine) State() State {
 }
 
 type job struct {
-	label   string
+	label    string
 	payloads []string // one per position
 }
 
@@ -197,7 +198,7 @@ func (e *Engine) run(spec Spec, jobs []job) {
 			URL:     base + path,
 			Headers: headers,
 			Body:    body,
-			Flags:   store.FlagIntruder,
+			Flags:   store.FlagIntruder | spec.ExtraFlags,
 		})
 		res.TimeMs = time.Since(start).Milliseconds()
 		if flow != nil {
