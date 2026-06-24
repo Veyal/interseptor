@@ -48,6 +48,11 @@ type Server struct {
 	Scope    ScopeChecker // nil → everything in scope
 	tr       *http.Transport
 	upstream atomic.Pointer[url.URL] // optional chained upstream proxy
+
+	// SelfPorts are this tool's own loopback ports (control plane + proxy). Set
+	// by cmd; traffic to them is forwarded but never recorded, so proxying
+	// localhost doesn't fill history with — or feedback-loop on — our own UI.
+	SelfPorts []int
 }
 
 // New builds a proxy Server. ca, eng, and events may each be nil.
@@ -375,8 +380,8 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 	removeHopHeaders(out.Header)
 
-	// Intercept gate (Burp-style hold) — only for in-scope requests.
-	if s.eng != nil && s.eng.Enabled() && (s.Scope == nil || s.Scope.InScope(flow)) {
+	// Intercept gate (Burp-style hold) — only for in-scope, non-self requests.
+	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && (s.Scope == nil || s.Scope.InScope(flow)) {
 		raw := dumpRequest(out)
 		d := s.eng.Hold(flow, out, raw)
 		// Only flag as intercepted when the request was actually held; the
@@ -397,8 +402,8 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		}
 	}
 
-	// Match & replace (request-side).
-	if s.eng != nil {
+	// Match & replace (request-side) — skip our own traffic.
+	if s.eng != nil && s.shouldCapture(flow) {
 		if err := s.eng.ApplyRules(out); err != nil {
 			return nil, false, fmt.Errorf("apply rules: %w", err)
 		}
@@ -522,8 +527,8 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 // neither rules nor response-interception apply, transformed is false and the
 // caller streams the original response untouched (no buffering).
 func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (status int, header http.Header, body []byte, transformed, dropped bool) {
-	if s.eng == nil {
-		return 0, nil, nil, false, false
+	if s.eng == nil || !s.shouldCapture(flow) {
+		return 0, nil, nil, false, false // our own traffic is forwarded untouched
 	}
 	hasRules := s.eng.HasResponseRules()
 	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow))
@@ -618,11 +623,34 @@ func (s *Server) fail(w http.ResponseWriter, flow *store.Flow, msg string) {
 }
 
 // record persists a flow and notifies the events sink.
+// shouldCapture reports whether a flow should be persisted. Traffic to our own
+// loopback listeners (control plane, proxy) is forwarded but never recorded.
+func (s *Server) shouldCapture(flow *store.Flow) bool {
+	if len(s.SelfPorts) == 0 || flow == nil || !isLoopbackName(flow.Host) {
+		return true
+	}
+	for _, p := range s.SelfPorts {
+		if p == flow.Port {
+			return false
+		}
+	}
+	return true
+}
+
+// isLoopbackName reports whether a bare hostname names the loopback interface.
+func isLoopbackName(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // recordRequest inserts a flow the moment its request is sent upstream — before
 // the response is known — so it shows in history immediately. Idempotent: it is
 // a no-op once the flow has an ID. record() later fills in the response.
 func (s *Server) recordRequest(flow *store.Flow) {
-	if flow.ID != 0 {
+	if flow.ID != 0 || !s.shouldCapture(flow) {
 		return
 	}
 	if _, err := s.st.InsertFlow(flow); err != nil {
@@ -639,6 +667,9 @@ func (s *Server) recordRequest(flow *store.Flow) {
 // otherwise — e.g. a request dropped before it was ever sent — it inserts and
 // emits flow.new.
 func (s *Server) record(flow *store.Flow) {
+	if !s.shouldCapture(flow) {
+		return
+	}
 	if flow.ID != 0 {
 		if err := s.st.UpdateFlow(flow); err != nil {
 			log.Printf("proxy: update flow %d (%s %s%s): %v", flow.ID, flow.Method, flow.Host, flow.Path, err)

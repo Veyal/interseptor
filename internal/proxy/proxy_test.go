@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -162,6 +163,101 @@ func TestProxyRecordsRequestThenResponse(t *testing.T) {
 	}
 	if flows, _ := s.QueryFlows(10); len(flows) != 1 {
 		t.Fatalf("expected exactly 1 persisted row, got %d", len(flows))
+	}
+}
+
+// Traffic to our own loopback listeners (control plane / proxy) is forwarded but
+// must never be recorded — otherwise proxying localhost floods history and
+// feedback-loops the live-update SSE.
+func TestProxySkipsOwnListenerCapture(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	ev := &recEvents{}
+	srv := New(s, capture.New(s), nil, nil, ev)
+	srv.SelfPorts = []int{9966, 8080}
+
+	// Our own control plane (loopback:9966): not recorded, no events, no id.
+	own := &store.Flow{Host: "127.0.0.1", Port: 9966, Method: "GET", Path: "/api/flows", Status: 200}
+	srv.recordRequest(own)
+	srv.record(own)
+	if own.ID != 0 {
+		t.Fatalf("own-listener flow must not be inserted, got id=%d", own.ID)
+	}
+
+	// localhost by name is loopback too.
+	named := &store.Flow{Host: "localhost", Port: 8080, Method: "GET", Path: "/x", Status: 200}
+	srv.recordRequest(named)
+	if named.ID != 0 {
+		t.Fatal("localhost:8080 (own proxy) must not be inserted")
+	}
+
+	// A loopback port that ISN'T ours is a legitimate target — record it.
+	target := &store.Flow{Host: "127.0.0.1", Port: 8877, Method: "GET", Path: "/app", Status: 200}
+	srv.recordRequest(target)
+	if target.ID == 0 {
+		t.Fatal("a non-self loopback target should be recorded")
+	}
+
+	// A normal remote host is always recorded.
+	remote := &store.Flow{Host: "example.com", Port: 443, Method: "GET", Path: "/", Status: 200}
+	srv.recordRequest(remote)
+	if remote.ID == 0 {
+		t.Fatal("remote flow should be recorded")
+	}
+
+	if flows, _ := s.QueryFlows(10); len(flows) != 2 {
+		t.Fatalf("expected only the 2 real targets recorded, got %d", len(flows))
+	}
+	if c, _ := ev.snap(); len(c) != 2 {
+		t.Fatalf("expected 2 flow.new events, got %d", len(c))
+	}
+}
+
+// Self-traffic must bypass the whole intercept pipeline, not just capture — with
+// intercept ON, a request to one of our own listeners must pass straight through
+// (never enter the hold queue), or proxying localhost would freeze the UI.
+func TestProxyDoesNotInterceptOwnTraffic(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+	u, _ := url.Parse(upstream.URL)
+	_, portStr, _ := net.SplitHostPort(u.Host)
+	port, _ := strconv.Atoi(portStr)
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	eng := intercept.New()
+	eng.SetEnabled(true) // intercept ON — a normal request would block in the gate
+	srv := New(s, capture.New(s), nil, eng, nil)
+	srv.SelfPorts = []int{port} // pretend the upstream is one of our own listeners
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 2 * time.Second}
+	resp, err := client.Get(upstream.URL + "/health")
+	if err != nil {
+		t.Fatalf("self-traffic should pass straight through, not be held: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "ok" {
+		t.Fatalf("expected ok, got %q", body)
+	}
+	if q := eng.Queue(); len(q) != 0 {
+		t.Fatalf("self-traffic must not enter the hold queue, got %d held", len(q))
 	}
 }
 

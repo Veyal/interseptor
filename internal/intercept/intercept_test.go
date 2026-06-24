@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -139,6 +140,40 @@ func TestForwardWithEditedRaw(t *testing.T) {
 	}
 	if d.Request.URL.Path != "/changed" || d.Request.URL.Scheme != "https" || d.Request.Header.Get("X-Edited") != "yes" {
 		t.Fatalf("edited request not applied: %s %s %v", d.Request.URL.Scheme, d.Request.URL.Path, d.Request.Header)
+	}
+}
+
+// Editing a held request's body should not require hand-fixing Content-Length:
+// the forwarded request must carry the full edited body with a matching length.
+// The UI textarea normalizes CRLF→LF, so exercise the LF-only form.
+func TestForwardEditedBodyRecomputesContentLength(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	req := newReq(t, "POST", "https://example.com/submit", "old")
+
+	got := make(chan Decision, 1)
+	go func() { got <- e.Hold(&store.Flow{}, req, nil) }()
+	waitQueue(t, e, 1)
+
+	// Body grown well past the stale "Content-Length: 3"; LF line endings.
+	want := "username=admin&password=hunter2"
+	raw := "POST /submit HTTP/1.1\nHost: example.com\nContent-Length: 3\n\n" + want
+	if err := e.Forward(e.Queue()[0].ID, []byte(raw)); err != nil {
+		t.Fatalf("Forward: %v", err)
+	}
+	d := recvDecision(t, got)
+	if !d.Edited {
+		t.Fatal("expected edited forward")
+	}
+	body, _ := io.ReadAll(d.Request.Body)
+	if string(body) != want {
+		t.Fatalf("body truncated by stale Content-Length: got %q want %q", body, want)
+	}
+	if d.Request.ContentLength != int64(len(want)) {
+		t.Fatalf("ContentLength not recomputed: got %d want %d", d.Request.ContentLength, len(want))
+	}
+	if got := d.Request.Header.Get("Content-Length"); got != strconv.Itoa(len(want)) {
+		t.Fatalf("Content-Length header not updated: got %q want %d", got, len(want))
 	}
 }
 

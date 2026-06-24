@@ -335,7 +335,42 @@ func parseEditedRequest(raw []byte, orig *http.Request) (*http.Request, error) {
 		r.URL.Host = orig.URL.Host
 	}
 	r.RemoteAddr = orig.RemoteAddr
+
+	// Re-derive the body straight from the edited raw so changing it doesn't
+	// require hand-fixing Content-Length (http.ReadRequest otherwise truncates
+	// the body to the stale header). Chunked bodies carry their own framing, so
+	// leave those alone; and don't add a length to a genuinely body-less request.
+	if !isChunked(r.Header) {
+		body, _ := rawBody(raw)
+		if len(body) > 0 || r.Header.Get("Content-Length") != "" {
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.ContentLength = int64(len(body))
+			r.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		}
+	}
 	return r, nil
+}
+
+// rawBody returns the body of a raw HTTP message — everything after the first
+// blank line — handling either CRLF or (textarea-normalized) LF separators.
+func rawBody(raw []byte) (body []byte, ok bool) {
+	if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+		return raw[i+4:], true
+	}
+	if i := bytes.Index(raw, []byte("\n\n")); i >= 0 {
+		return raw[i+2:], true
+	}
+	return nil, false
+}
+
+// isChunked reports whether the headers request chunked transfer encoding.
+func isChunked(h http.Header) bool {
+	for _, te := range h["Transfer-Encoding"] {
+		if strings.Contains(strings.ToLower(te), "chunked") {
+			return true
+		}
+	}
+	return false
 }
 
 // applyHeaderRule serializes the header block to text, applies the regex, and
