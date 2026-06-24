@@ -6,6 +6,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-24
+
+### Added
+- **AI Activity feed (glass box).** A new **Activity** tab streams every action your
+  AI assistant takes over MCP — tool, the gist of the arguments, the result, and
+  timing — live, newest-first, so a human can watch and supervise the AI as it
+  works. A pulsing **AI active** indicator in the header (with an unseen-count
+  badge on the tab) shows from any tab whenever the AI acts, and clicks through to
+  the feed. Backed by `mcp.Server` reporting each tool call to `POST /api/activity`,
+  a session ring buffer, `GET /api/activity`, and an `activity` SSE event. Entirely
+  AI-optional — manual pentesting is unchanged; the feed simply stays empty.
+- **Response/request bodies are decompressed for display.** Inspector and Repeater
+  views now transparently inflate `Content-Encoding: gzip / deflate / br / zstd`
+  (Brotli & Zstd via pure-Go libs, no cgo) — so the body shows readable text
+  instead of compressed bytes that look like undecrypted garbage. The decoded view
+  drops `Content-Encoding`, corrects `Content-Length`, and adds an
+  `X-Interceptor-Decoded` marker. Falls back to the raw bytes if decoding fails.
+- **Switch projects from the UI.** Settings → Project now lists your projects and
+  lets you open another one — or start a new one by name or absolute path — without
+  restarting from the terminal. Interceptor relaunches itself onto the chosen
+  project (shared CA, so no re-trust) and the UI reconnects. Backed by
+  `GET /api/project` and `POST /api/project/switch`.
+- **Scanner targets a chosen host/filter.** The Scanner can now be pointed at one
+  host (a dropdown of everything in history) and/or a path filter, instead of always
+  scanning all in-scope traffic — much faster to focus on the target you care about.
+
+### Changed
+- **Leaner MCP tool descriptions.** Rewrote the AI-facing tool/parameter
+  descriptions and the server `instructions` to be tight and direct: dropped
+  filler and parameter descriptions that just restated the name, and hoisted the
+  shared workflow/safety conventions into the one-time `instructions`. Cuts the
+  `tools/list` an AI loads each session by ~20% (≈600 tokens) with no loss of the
+  operational essentials (fuzz `§…§`, active-scan `arm`, the Starlark check shape).
+
+### Fixed
+- **No more native browser dialogs; export gives feedback.** The Export (HAR),
+  Export project, and CA-download buttons now show a confirmation toast, and the
+  one remaining `prompt()` (naming a saved view) is replaced with a themed in-app
+  dialog — for a consistent look instead of the browser's chrome.
+- **`--project default` means the root project.** Switching back to "default" now
+  returns to the original `~/.interceptor` project rather than creating a separate
+  `projects/default`, so switching away and back never orphans your data.
+- **No duplicate "default" in the project switcher.** A leftover `projects/default`
+  directory (from an earlier mis-switch) no longer shows up as a second "default"
+  entry — the reserved root project is listed exactly once.
+- **Modals close the way you expect.** Every modal (AI assist, custom checks,
+  active scan, decoder) now closes on **Escape** and on backdrop click —
+  previously only the AI modal closed on a backdrop click and none responded to
+  Escape.
+- **Filtered-empty history no longer looks broken.** When a filter/search matches
+  nothing, History shows “No flows match the current filters” with a one-click
+  **Clear filters**, instead of the “no traffic yet — set up your browser”
+  onboarding card (which implied capture was broken).
+- **Own traffic is now fully transparent.** Requests aimed at Interceptor's own
+  loopback listeners (the control plane and the proxy port) are forwarded but never
+  captured, intercepted, or run through match-&-replace. Previously, pointing a
+  system-wide proxy at localhost recorded the UI's own API calls — flooding History
+  and feedback-looping the live-update stream — and, with intercept on, could even
+  hold the UI's requests. Mirrors the active scanner's own-listener guard.
+- **Light-theme contrast.** Floating elements (modals, command palette, context
+  menu, toast) now use theme-aware shadow and backdrop variables instead of hard
+  black, and the selected command-palette row uses the on-accent text colour — so
+  light mode no longer shows harsh black drop-shadows or a near-invisible selection.
+- **Editing a held request body just works.** Forwarding an intercepted request
+  whose body you changed no longer truncates it to the stale `Content-Length` —
+  the length is recomputed from the actual (CRLF- or LF-separated) body. Chunked
+  and genuinely body-less requests are left untouched. (The response side already
+  did this.)
+- **In-flight detail.** Selecting a still-pending flow now shows “waiting for
+  response…” in the response pane (and a `pending` status) instead of a blank
+  pane; it fills in automatically when the response arrives.
+- **Repeater sending feedback.** While a send is in flight the response pane shows
+  a “sending…” placeholder (and status) instead of the previous response.
+- **Discoverable intercept shortcuts.** The command palette (Ctrl+K) now lists
+  “Forward held request (Ctrl+F)” and “Drop held request (Ctrl+D)” when a request
+  is held.
+
 ## [0.3.0] — 2026-06-23
 
 ### Added

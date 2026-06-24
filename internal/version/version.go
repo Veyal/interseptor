@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the baked-in release version — keep it in sync with the git tag.
-const Version = "0.3.0"
+const Version = "0.4.0"
 
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interceptor"
