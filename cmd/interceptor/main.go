@@ -69,6 +69,7 @@ func run() error {
 	// --project <name|path> (or INTERCEPTOR_PROJECT) skips the startup prompt.
 	fs := flag.NewFlagSet("interceptor", flag.ContinueOnError)
 	projectFlag := fs.String("project", "", "project name or directory (skips the startup picker)")
+	openFlag := fs.Bool("open", false, "open the UI in your browser on start (default: don't)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
 	}
@@ -172,7 +173,12 @@ func run() error {
 
 	uiURL := "http://" + controlAddr
 	log.Printf("Interceptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
-	openBrowser(uiURL)
+	// Quiet, daemon-style start by default: only open the browser when the operator
+	// opts in (--open / INTERCEPTOR_OPEN_BROWSER), so restarts and headless runs
+	// don't pop a new tab. The UI URL is logged above to open yourself.
+	if *openFlag || os.Getenv("INTERCEPTOR_OPEN_BROWSER") != "" {
+		openBrowser(uiURL)
+	}
 
 	// Best-effort update check (every run). Non-blocking; silent on failure;
 	// opt out with INTERCEPTOR_NO_UPDATE_CHECK. Result is also served at /api/version.
@@ -289,8 +295,8 @@ func (m *proxyManager) Shutdown(ctx context.Context) {
 	}
 }
 
-// openBrowser best-effort opens url in the default browser. Set
-// INTERCEPTOR_NO_BROWSER to suppress (e.g. headless / server use).
+// openBrowser best-effort opens url in the default browser. Opening is opt-in
+// (--open / INTERCEPTOR_OPEN_BROWSER); INTERCEPTOR_NO_BROWSER hard-disables it.
 func openBrowser(url string) {
 	if os.Getenv("INTERCEPTOR_NO_BROWSER") != "" {
 		return
