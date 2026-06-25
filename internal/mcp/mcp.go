@@ -424,6 +424,53 @@ func truncate(s string, n int) string {
 	return s[:n] + fmt.Sprintf("\n…[truncated %d more bytes — increase maxBytes]", len(s)-n)
 }
 
+// boundJSON keeps a tool result both VALID and small. Byte-truncating a JSON
+// document mid-structure (the old approach) yields output an agent cannot parse
+// — exactly when the result is large and interesting. Instead we cap the longest
+// array (a bare top-level array, or the longest array field of a top-level
+// object) at maxRows and record what was dropped, so the JSON stays parseable.
+// Non-JSON (a scalar or an error string) falls back to a plain byte cap.
+func boundJSON(raw string, maxRows int) string {
+	trimmed := strings.TrimSpace(raw)
+	// Bare top-level array → wrap as an object with capped items + counts.
+	var arr []json.RawMessage
+	if json.Unmarshal([]byte(trimmed), &arr) == nil {
+		if len(arr) <= maxRows {
+			return raw
+		}
+		kept, _ := json.Marshal(arr[:maxRows])
+		return fmt.Sprintf(`{"items":%s,"_truncated":true,"_shown":%d,"_total":%d}`, kept, maxRows, len(arr))
+	}
+	// Top-level object → cap its single longest array field in place.
+	var obj map[string]json.RawMessage
+	if json.Unmarshal([]byte(trimmed), &obj) == nil {
+		key, n := "", 0
+		for k, v := range obj {
+			var a []json.RawMessage
+			if json.Unmarshal(v, &a) == nil && len(a) > n {
+				key, n = k, len(a)
+			}
+		}
+		if key == "" || n <= maxRows {
+			return raw
+		}
+		var a []json.RawMessage
+		_ = json.Unmarshal(obj[key], &a)
+		kept, _ := json.Marshal(a[:maxRows])
+		obj[key] = kept
+		obj["_truncated"] = json.RawMessage("true")
+		obj["_truncatedField"] = json.RawMessage(strconv.Quote(key))
+		obj["_shown"] = json.RawMessage(strconv.Itoa(maxRows))
+		obj["_total"] = json.RawMessage(strconv.Itoa(n))
+		if out, err := json.Marshal(obj); err == nil {
+			return string(out)
+		}
+		return raw
+	}
+	// Not array/object JSON — bound by bytes so we still cap size.
+	return truncate(raw, maxRows*64)
+}
+
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -441,6 +488,12 @@ func pt(typ string) map[string]any { return map[string]any{"type": typ} }
 func (s *Server) add(name, desc string, schema map[string]any, call func(map[string]any) (string, error)) {
 	s.tools[name] = tool{description: desc, schema: schema, call: call}
 	s.order = append(s.order, name)
+}
+
+// ToolNames returns the registered tool names in registration order, so the UI
+// descriptor / docs can be checked against the actual toolset (no silent drift).
+func (s *Server) ToolNames() []string {
+	return append([]string(nil), s.order...)
 }
 
 // registerTools wires every tool to a control-API endpoint.
@@ -627,7 +680,7 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			out, err := s.apiGet("/api/intruder/state")
-			return truncate(out, 12000), err
+			return boundJSON(out, 200), err
 		})
 
 	s.add("run_scanner",
@@ -725,7 +778,7 @@ func (s *Server) registerTools() {
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
 			out, err := s.apiGet(fmt.Sprintf("/api/flows/%d/ws", argInt(a, "id", 0)))
-			return truncate(out, 12000), err
+			return boundJSON(out, 200), err
 		})
 
 	s.add("ws_send",
@@ -795,7 +848,10 @@ func (s *Server) registerTools() {
 
 	s.add("active_scan_state", "Active-scan progress + confirmed findings.",
 		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/activescan") })
+		func(a map[string]any) (string, error) {
+			out, err := s.apiGet("/api/activescan")
+			return boundJSON(out, 200), err
+		})
 
 	s.add("active_scan_stop", "Stop the running active scan (kill switch).",
 		obj(map[string]any{}),

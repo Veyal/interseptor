@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -265,5 +266,63 @@ func TestMCPUnknownToolIsToolError(t *testing.T) {
 	json.Unmarshal(resps[0].Result, &res)
 	if !res.IsError {
 		t.Fatalf("unknown tool should be a tool error, got: %s", resps[0].Result)
+	}
+}
+
+// boundJSON must keep large tool results VALID JSON (the old byte-truncate
+// produced unparseable output exactly when results were big and interesting).
+func TestBoundJSON(t *testing.T) {
+	// Object with a long array field → capped in place, still valid JSON.
+	rows := make([]string, 500)
+	for i := range rows {
+		rows[i] = `{"n":` + strconv.Itoa(i) + `}`
+	}
+	obj := `{"running":false,"results":[` + strings.Join(rows, ",") + `]}`
+	out := boundJSON(obj, 200)
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("object branch produced invalid JSON: %v\n%s", err, out)
+	}
+	var results []json.RawMessage
+	if err := json.Unmarshal(got["results"], &results); err != nil {
+		t.Fatalf("results not an array: %v", err)
+	}
+	if len(results) != 200 {
+		t.Fatalf("results not capped: got %d want 200", len(results))
+	}
+	if string(got["_truncated"]) != "true" || string(got["_total"]) != "500" || string(got["_shown"]) != "200" {
+		t.Fatalf("missing/incorrect truncation markers: %s", out)
+	}
+
+	// A short object is returned byte-for-byte unchanged.
+	small := `{"running":true,"results":[{"n":1}]}`
+	if boundJSON(small, 200) != small {
+		t.Fatalf("short object should be unchanged, got %s", boundJSON(small, 200))
+	}
+
+	// A bare top-level array → wrapped + capped, still valid JSON.
+	arrRows := make([]string, 300)
+	for i := range arrRows {
+		arrRows[i] = `{"i":` + strconv.Itoa(i) + `}`
+	}
+	out = boundJSON(`[`+strings.Join(arrRows, ",")+`]`, 50)
+	var wrap struct {
+		Items     []json.RawMessage `json:"items"`
+		Truncated bool              `json:"_truncated"`
+		Shown     int               `json:"_shown"`
+		Total     int               `json:"_total"`
+	}
+	if err := json.Unmarshal([]byte(out), &wrap); err != nil {
+		t.Fatalf("array branch produced invalid JSON: %v\n%s", err, out)
+	}
+	if len(wrap.Items) != 50 || !wrap.Truncated || wrap.Shown != 50 || wrap.Total != 300 {
+		t.Fatalf("array wrap wrong: items=%d trunc=%v shown=%d total=%d", len(wrap.Items), wrap.Truncated, wrap.Shown, wrap.Total)
+	}
+
+	// Non-JSON falls back to a bounded byte cap (still marked).
+	noise := strings.Repeat("x", 100000)
+	out = boundJSON(noise, 100)
+	if len(out) >= len(noise) || !strings.Contains(out, "truncated") {
+		t.Fatalf("non-JSON should be byte-truncated, got len=%d", len(out))
 	}
 }
