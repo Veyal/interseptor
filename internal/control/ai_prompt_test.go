@@ -25,3 +25,18 @@ func TestAssistPrompt(t *testing.T) {
 		t.Fatalf("single-flow prompt lost its focused wording:\n%s", single)
 	}
 }
+
+func TestExtractJSONArray(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`[{"a":1}]`, `[{"a":1}]`},
+		{"```json\n[{\"a\":1}]\n```", `[{"a":1}]`},
+		{`Here are the payloads:\n[1,2,3]\nHope that helps!`, `[1,2,3]`},
+		{`no array here`, ``},
+		{``, ``},
+	}
+	for _, c := range cases {
+		if got := extractJSONArray(c.in); got != c.want {
+			t.Fatalf("extractJSONArray(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}

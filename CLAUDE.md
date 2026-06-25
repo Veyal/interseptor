@@ -38,9 +38,17 @@ One binary, two localhost listeners (proxy `:8080`, control `:9966`). Single-res
   best-effort: it never breaks forwarding. The intercept gate + match-&-replace run before forward.
 - **`internal/control`** — REST + SSE API and the embedded UI. Routes are registered in `routes()`;
   JSON DTOs are kept separate from `store` structs; live changes broadcast over SSE.
-- **`internal/control/ui/index.html`** — the entire UI: one self-contained file (vanilla JS,
-  `//go:embed`). Theme via CSS variables (never hardcode hex); `esc()` interpolated values
-  (`escAttr()` for values placed inside an HTML attribute).
+- **`internal/control/ui/`** — the UI, embedded via `//go:embed ui` and served by `serveUI`
+  (which sets explicit `Content-Type`s — the OS mime registry is unreliable for `.js` on Windows
+  and would otherwise block ES modules). `index.html` is the markup shell; `app.css` the styles;
+  `js/` is native ES modules (no build step): `core.js` holds the shared foundation (DOM helpers,
+  the `state` object, `api()`, formatters, HTTP highlighters, the modal system, `renderMD`) and
+  every feature owns one module (`proxy`, `intercept`, `tools`, `scanner`, `map`, `settings`,
+  `notes`, `apipanel`, `activity`, `ai`); `app.js` is the entry — it imports the others (their
+  top-level code wires their own DOM handlers) and owns tabs, the command palette, shortcuts, the
+  SSE stream, and boot. Theme via CSS variables (never hardcode hex); `esc()` interpolated values
+  (`escAttr()` for values placed inside an HTML attribute). A module exports every symbol another
+  module references; cross-module imports may form cycles (safe — references resolve at call time).
 
 When adding a module: add its state/queries to `store`, its logic to a focused `internal/*`
 package (TDD), expose it through `control` (REST + SSE), and add a UI tab. Follow the existing

@@ -173,7 +173,7 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 			"protocolVersion": ver,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "interceptor", "version": version.Version},
-			"instructions":    "Interceptor: an intercepting HTTP/HTTPS proxy for web pentesting. Flow: list_flows/analyze_flow to find & triage → get_flow to read → send_request (replay) or start_intruder (fuzz) to attack → run_scanner (passive) or active_scan (sends payloads) to find bugs. Flow ids come from list_flows. Bodies truncate to maxBytes (default 4000). Scanners obey target scope (list_scope/add_scope_rule). active_scan sends real attacks: pass arm=true once to confirm authorization, and it only fires in-scope.",
+			"instructions":    "Interceptor: an intercepting HTTP/HTTPS proxy for web pentesting. Flow: list_flows/analyze_flow to find & triage → get_flow to read → send_request (replay) or start_intruder (fuzz) to attack → run_scanner (passive) or active_scan (sends payloads) to find bugs. Flow ids come from list_flows. Bodies truncate to maxBytes (default 4000). Scanners obey target scope (list_scope/add_scope_rule). active_scan sends real attacks: pass arm=true once to confirm authorization, and it only fires in-scope. Project size: host_stats shows per-host flow/byte breakdown; prune_history deletes noisy hosts (mode=delete) or keeps only the important ones (mode=keepOnly) — destructive, shown live in Activity.",
 		}, nil
 	case "tools/list":
 		return map[string]any{"tools": s.toolList()}, nil
@@ -484,6 +484,27 @@ func p(typ, desc string) map[string]any { return map[string]any{"type": typ, "de
 // pt declares a parameter with no description — for self-evident names (id, url,
 // method, body…) where a description would only cost tokens, not add meaning.
 func pt(typ string) map[string]any { return map[string]any{"type": typ} }
+
+// formatBytes renders a byte count as a human-readable string (B, KB, MB, GB).
+// The UI's data-retention panel should use the same thresholds/units so numbers
+// match: < 1 KB → "N B", < 1 MB → "N.N KB", < 1 GB → "N.N MB", else "N.N GB".
+func formatBytes(n int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case n < kb:
+		return fmt.Sprintf("%d B", n)
+	case n < mb:
+		return fmt.Sprintf("%.1f KB", float64(n)/kb)
+	case n < gb:
+		return fmt.Sprintf("%.1f MB", float64(n)/mb)
+	default:
+		return fmt.Sprintf("%.1f GB", float64(n)/gb)
+	}
+}
 
 func (s *Server) add(name, desc string, schema map[string]any, call func(map[string]any) (string, error)) {
 	s.tools[name] = tool{description: desc, schema: schema, call: call}
@@ -871,5 +892,78 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")
 			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA.\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt). Install and trust it on the client.", strings.TrimSpace(settings), s.base), nil
+		})
+
+	s.add("host_stats",
+		"Show a table of captured hosts sorted by byte volume (flows + bytes per host, plus totals). Call this before prune_history to decide which hosts to keep or delete.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) {
+			raw, err := s.apiGet("/api/hosts/stats")
+			if err != nil {
+				return "", err
+			}
+			var d struct {
+				Hosts []struct {
+					Host  string `json:"host"`
+					Flows int64  `json:"flows"`
+					Bytes int64  `json:"bytes"`
+				} `json:"hosts"`
+				TotalFlows int64 `json:"totalFlows"`
+				TotalBytes int64 `json:"totalBytes"`
+			}
+			if err := json.Unmarshal([]byte(raw), &d); err != nil {
+				return raw, nil // fall back to raw JSON if parse fails
+			}
+			if len(d.Hosts) == 0 {
+				return "No flows captured yet.", nil
+			}
+			var sb strings.Builder
+			sb.WriteString("HOST                                           FLOWS    SIZE\n")
+			sb.WriteString("--------------------------------------------------------------\n")
+			for _, h := range d.Hosts {
+				fmt.Fprintf(&sb, "%-46s %5d    %s\n", h.Host, h.Flows, formatBytes(h.Bytes))
+			}
+			sb.WriteString("--------------------------------------------------------------\n")
+			fmt.Fprintf(&sb, "%-46s %5d    %s\n", "TOTAL", d.TotalFlows, formatBytes(d.TotalBytes))
+			return sb.String(), nil
+		})
+
+	s.add("prune_history",
+		"DESTRUCTIVE: delete flows by host pattern to keep the project small. hosts is a comma- or newline-separated list of host patterns (wildcards like *.acme.com are supported). mode=delete removes flows matching the listed hosts; mode=keepOnly removes everything EXCEPT the listed hosts. keepOnly with no hosts is rejected (prevents accidental wipe). Changes are broadcast live to open History views.",
+		obj(map[string]any{
+			"hosts": p("string", "comma- or newline-separated host patterns, e.g. 'noise.com,*.cdn.com'"),
+			"mode":  p("string", "delete (default) | keepOnly"),
+		}, "hosts"),
+		func(a map[string]any) (string, error) {
+			hostsRaw := argStr(a, "hosts")
+			mode := argStr(a, "mode")
+			if mode == "" {
+				mode = "delete"
+			}
+			// Split on commas and newlines, trim whitespace, drop empties.
+			var hosts []string
+			for _, part := range strings.FieldsFunc(hostsRaw, func(r rune) bool {
+				return r == ',' || r == '\n' || r == '\r'
+			}) {
+				if h := strings.TrimSpace(part); h != "" {
+					hosts = append(hosts, h)
+				}
+			}
+			raw, err := s.api(http.MethodPost, "/api/flows/purge", map[string]any{
+				"hosts": hosts,
+				"mode":  mode,
+			})
+			if err != nil {
+				return "", err
+			}
+			var d struct {
+				Deleted      int64 `json:"deleted"`
+				RemovedFiles int64 `json:"removedFiles"`
+				FreedBytes   int64 `json:"freedBytes"`
+			}
+			if jsonErr := json.Unmarshal([]byte(raw), &d); jsonErr != nil {
+				return raw, nil
+			}
+			return fmt.Sprintf("deleted %d flows · freed %s (mode=%s)", d.Deleted, formatBytes(d.FreedBytes), mode), nil
 		})
 }

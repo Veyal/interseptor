@@ -8,11 +8,14 @@
 package aiassist
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -27,6 +30,9 @@ const (
 	defaultOpenRouterModel = "anthropic/claude-3.5-haiku"
 	anthropicEndpoint      = "https://api.anthropic.com/v1/messages"
 	openRouterEndpoint     = "https://openrouter.ai/api/v1/chat/completions"
+	// maxTokens caps the reply length. Kept modest so answers stay fast and tight —
+	// the assistant is told to be brief, and this is the hard ceiling.
+	maxTokens = 768
 )
 
 // Client calls a chosen LLM provider with a user-provided key.
@@ -74,7 +80,7 @@ func (c *Client) Complete(system, user string) (string, error) {
 func (c *Client) completeAnthropic(system, user string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
-		"max_tokens": 1024,
+		"max_tokens": maxTokens,
 		"system":     system,
 		"messages":   []map[string]string{{"role": "user", "content": user}},
 	})
@@ -119,7 +125,7 @@ func (c *Client) completeAnthropic(system, user string) (string, error) {
 func (c *Client) completeOpenRouter(system, user string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
-		"max_tokens": 1024,
+		"max_tokens": maxTokens,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},
@@ -168,4 +174,177 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	return io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+}
+
+// ---- streaming ----
+
+// streamHTTP has no overall timeout — a streamed completion can legitimately run
+// for tens of seconds; cancellation is driven by the caller's context instead.
+var streamHTTP = &http.Client{}
+
+// CompleteStream sends the prompt and invokes onDelta for each incremental text
+// chunk as the model generates it (Server-Sent Events). It returns when the
+// stream ends, the provider reports an error, or ctx is cancelled. onDelta is
+// always called from the calling goroutine.
+func (c *Client) CompleteStream(ctx context.Context, system, user string, onDelta func(string)) error {
+	if c.key == "" {
+		return fmt.Errorf("no API key configured")
+	}
+	if c.provider == ProviderOpenRouter {
+		return c.streamOpenRouter(ctx, system, user, onDelta)
+	}
+	return c.streamAnthropic(ctx, system, user, onDelta)
+}
+
+func (c *Client) streamAnthropic(ctx context.Context, system, user string, onDelta func(string)) error {
+	body, _ := json.Marshal(map[string]any{
+		"model":      c.model,
+		"max_tokens": maxTokens,
+		"stream":     true,
+		"system":     system,
+		"messages":   []map[string]string{{"role": "user", "content": user}},
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("x-api-key", c.key)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("content-type", "application/json")
+	return c.stream(req, onDelta, anthropicDelta)
+}
+
+func (c *Client) streamOpenRouter(ctx context.Context, system, user string, onDelta func(string)) error {
+	body, _ := json.Marshal(map[string]any{
+		"model":      c.model,
+		"max_tokens": maxTokens,
+		"stream":     true,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interceptor")
+	req.Header.Set("X-Title", "Interceptor")
+	return c.stream(req, onDelta, openRouterDelta)
+}
+
+// stream runs an SSE request and feeds each data line through deltaOf, forwarding
+// any non-empty text to onDelta.
+func (c *Client) stream(req *http.Request, onDelta func(string), deltaOf func(string) (string, error)) error {
+	resp, err := streamHTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		if msg := apiErrorMessage(raw); msg != "" {
+			return fmt.Errorf("ai: %s", msg)
+		}
+		return fmt.Errorf("ai: HTTP %d", resp.StatusCode)
+	}
+	return parseSSE(resp.Body, func(data string) error {
+		text, err := deltaOf(data)
+		if err != nil {
+			return err
+		}
+		if text != "" {
+			onDelta(text)
+		}
+		return nil
+	})
+}
+
+// parseSSE reads a text/event-stream body line by line, passing each `data:`
+// payload to onData. Blank lines, comments, and the OpenAI `[DONE]` sentinel are
+// skipped. Returns the first onData error (used to surface a mid-stream provider
+// error) or any read error.
+func parseSSE(r io.Reader, onData func(string) error) error {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), 4<<20) // some deltas (e.g. base64) can be large
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(line[len("data:"):])
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		if err := onData(data); err != nil {
+			return err
+		}
+	}
+	return sc.Err()
+}
+
+// anthropicDelta extracts the text from one Anthropic stream event. Non-text
+// events (message_start, ping, …) yield "". A streamed error event surfaces as
+// an error so the caller can abort.
+func anthropicDelta(data string) (string, error) {
+	var ev struct {
+		Type  string `json:"type"`
+		Delta struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"delta"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(data), &ev); err != nil {
+		return "", nil // tolerate keepalive/comment frames
+	}
+	if ev.Error != nil {
+		return "", fmt.Errorf("ai: %s", ev.Error.Message)
+	}
+	if ev.Delta.Type == "text_delta" {
+		return ev.Delta.Text, nil
+	}
+	return "", nil
+}
+
+// openRouterDelta extracts the content from one OpenAI-style chat stream chunk.
+func openRouterDelta(data string) (string, error) {
+	var ev struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(data), &ev); err != nil {
+		return "", nil
+	}
+	if ev.Error != nil {
+		return "", fmt.Errorf("ai: %s", ev.Error.Message)
+	}
+	if len(ev.Choices) > 0 {
+		return ev.Choices[0].Delta.Content, nil
+	}
+	return "", nil
+}
+
+// apiErrorMessage pulls a provider error message out of a non-streamed error body
+// (both providers wrap it as {"error":{"message":...}}).
+func apiErrorMessage(raw []byte) string {
+	var e struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &e) == nil && e.Error != nil {
+		return e.Error.Message
+	}
+	return strings.TrimSpace(string(raw))
 }

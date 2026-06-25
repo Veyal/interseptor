@@ -47,8 +47,12 @@ assistants alike. They describe how the existing code is written; match it.
 - REST handlers live in `internal/control`; register routes in `routes()` and keep JSON DTOs
   separate from `store` structs. Push live changes over SSE (`broadcast`), one event type per
   concern (`flow.new`, `intruder.update`, …).
-- The UI is **one** self-contained `internal/control/ui/index.html` (vanilla JS, embedded via
-  `//go:embed`) — no build step, no external runtime dependency.
+- The UI lives in `internal/control/ui/` (embedded via `//go:embed`) — **no build step, no bundler,
+  no external runtime dependency**. It is an `index.html` shell + `app.css` + native ES modules under
+  `js/`. Shared helpers (DOM, `state`, `api()`, formatters, HTTP highlighters, modals, `renderMD`)
+  live in `js/core.js`; each feature owns one module; `app.js` imports them all and owns tabs /
+  palette / shortcuts / SSE / boot. Add a feature → add a `js/<feature>.js`, import shared bits from
+  `./core.js`, `export` anything other modules call, and import it from `app.js` so it loads.
   - Theme via CSS custom properties (`--bg`, `--fg`, `--accent`, …); **never hardcode hex colors**.
   - `esc()` every value interpolated into HTML. Keep dark-mode contrast at WCAG AA.
 

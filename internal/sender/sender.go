@@ -4,6 +4,7 @@
 package sender
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -11,7 +12,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +28,9 @@ type Request struct {
 	URL     string
 	Headers map[string][]string
 	Body    []byte
-	Flags   int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
-	Context context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
+	Flags     int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
+	Context   context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
+	NoSession bool            // skip the global session headers + token macro (authz replays carry their own identity)
 }
 
 // Header is a single session header applied to outgoing sends.
@@ -44,12 +48,120 @@ type session struct {
 	headers []Header
 }
 
+// Macro defines a token-refresh request whose response feeds a value into every
+// subsequent send — for CSRF tokens that rotate per request, or to re-auth. The
+// refresh request is sent with a plain client (never recorded, never recursive).
+type Macro struct {
+	Enabled    bool   `json:"enabled"`
+	Target     string `json:"target"`     // scheme://host[:port] for the refresh request
+	Request    string `json:"request"`    // raw HTTP request (request line + headers + optional body)
+	Extract    string `json:"extract"`    // regex with one capture group, run over the refresh RESPONSE
+	InjectMode string `json:"injectMode"` // "header" | "placeholder"
+	InjectName string `json:"injectName"` // header name, or the placeholder text to replace (e.g. §CSRF§)
+}
+
 // Sender sends requests and persists them as flows.
 type Sender struct {
 	st   *store.Store
 	cap  *capture.Capturer
 	cl   *http.Client
 	sess session
+
+	macroMu sync.RWMutex
+	macro   Macro
+}
+
+// SetMacro configures the token-refresh macro applied before each send.
+func (s *Sender) SetMacro(m Macro) {
+	s.macroMu.Lock()
+	s.macro = m
+	s.macroMu.Unlock()
+}
+
+// macroToken runs the refresh request (if enabled) and returns the extracted
+// value plus where to inject it. Best-effort: any failure yields "".
+func (s *Sender) macroToken() (token, name, mode string) {
+	s.macroMu.RLock()
+	m := s.macro
+	s.macroMu.RUnlock()
+	if !m.Enabled || m.Target == "" || m.Request == "" || m.Extract == "" || m.InjectName == "" {
+		return "", "", ""
+	}
+	re, err := regexp.Compile(m.Extract)
+	if err != nil {
+		return "", "", ""
+	}
+	method, path, headers, body, err := parseRawRequest(m.Request)
+	if err != nil {
+		return "", "", ""
+	}
+	req, err := http.NewRequest(method, strings.TrimRight(m.Target, "/")+path, bytes.NewReader(body))
+	if err != nil {
+		return "", "", ""
+	}
+	for k, vs := range headers {
+		if http.CanonicalHeaderKey(k) == "Host" {
+			if len(vs) > 0 {
+				req.Host = vs[0]
+			}
+			continue
+		}
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	resp, err := s.cl.Do(req)
+	if err != nil {
+		return "", "", ""
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// Match over status line + headers + body so the token can come from anywhere
+	// (Set-Cookie, a header, or an HTML/JSON body).
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "HTTP/1.1 %d\r\n", resp.StatusCode)
+	_ = resp.Header.Write(&sb)
+	sb.WriteString("\r\n")
+	sb.Write(rb)
+	mt := re.FindStringSubmatch(sb.String())
+	if len(mt) < 2 {
+		return "", "", ""
+	}
+	mode = m.InjectMode
+	if mode == "" {
+		mode = "header"
+	}
+	return mt[1], m.InjectName, mode
+}
+
+// parseRawRequest parses a raw HTTP request (request line + headers + body after a
+// blank line). Content-Length is dropped (recomputed by the client).
+func parseRawRequest(raw string) (method, path string, headers map[string][]string, body []byte, err error) {
+	norm := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\n", "\r\n")
+	head := norm
+	var bodyStr string
+	if i := strings.Index(norm, "\r\n\r\n"); i >= 0 {
+		head, bodyStr = norm[:i]+"\r\n\r\n", norm[i+4:]
+	} else {
+		head = strings.TrimRight(norm, "\r\n") + "\r\n\r\n"
+	}
+	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(head)))
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+	h := req.Header.Clone()
+	if h == nil {
+		h = http.Header{}
+	}
+	h.Del("Content-Length")
+	if req.Host != "" {
+		h.Set("Host", req.Host)
+	}
+	p := req.URL.RequestURI()
+	if p == "" {
+		p = "/"
+	}
+	return req.Method, p, h, []byte(bodyStr), nil
 }
 
 // SetSession configures the session headers auto-applied to outgoing sends.
@@ -111,6 +223,24 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 		method = http.MethodGet
 	}
 
+	// Token macro: fetch a fresh value (e.g. CSRF) and inject it. Placeholder mode
+	// rewrites the outgoing headers/body before the request is built; header mode is
+	// applied to req below.
+	var macroTok, macroName, macroMode string
+	if !r.NoSession {
+		macroTok, macroName, macroMode = s.macroToken()
+	}
+	if macroTok != "" && macroMode == "placeholder" && macroName != "" {
+		r.Body = []byte(strings.ReplaceAll(string(r.Body), macroName, macroTok))
+		for k, vs := range r.Headers {
+			out := make([]string, len(vs))
+			for i, v := range vs {
+				out[i] = strings.ReplaceAll(v, macroName, macroTok)
+			}
+			r.Headers[k] = out
+		}
+	}
+
 	req, err := http.NewRequest(method, r.URL, bytes.NewReader(r.Body))
 	if err != nil {
 		return nil, err
@@ -129,7 +259,12 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 			req.Header.Add(k, v)
 		}
 	}
-	s.applySession(req) // force session/auth headers (recorded on the flow below)
+	if !r.NoSession {
+		s.applySession(req) // force session/auth headers (recorded on the flow below)
+	}
+	if macroTok != "" && macroMode == "header" && macroName != "" {
+		req.Header.Set(macroName, macroTok) // inject the fresh macro token as a header
+	}
 
 	port := atoiOr(u.Port(), defaultPort(u.Scheme))
 	start := time.Now()

@@ -8,10 +8,16 @@ import (
 )
 
 type intruderStartJSON struct {
-	Target     string     `json:"target"`
-	Template   string     `json:"template"`
-	AttackType string     `json:"attackType"`
-	Payloads   [][]string `json:"payloads"`
+	Target       string     `json:"target"`
+	Template     string     `json:"template"`
+	AttackType   string     `json:"attackType"`
+	Payloads     [][]string `json:"payloads"`
+	Repeat       int        `json:"repeat"`
+	Threads      int        `json:"threads"`
+	DelayMs      int        `json:"delayMs"`
+	GrepMatch    string     `json:"grepMatch"`
+	GrepExtract  string     `json:"grepExtract"`
+	ProcessRules []string   `json:"processRules"`
 }
 
 func (h *Hub) intruderStart(w http.ResponseWriter, r *http.Request) {
@@ -21,11 +27,17 @@ func (h *Hub) intruderStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.intr.Start(intruder.Spec{
-		Target:     in.Target,
-		Template:   in.Template,
-		AttackType: in.AttackType,
-		Payloads:   in.Payloads,
-		ExtraFlags: aiSourceFlag(r),
+		Target:       in.Target,
+		Template:     in.Template,
+		AttackType:   in.AttackType,
+		Payloads:     in.Payloads,
+		Repeat:       in.Repeat,
+		Threads:      in.Threads,
+		DelayMs:      in.DelayMs,
+		GrepMatch:    in.GrepMatch,
+		GrepExtract:  in.GrepExtract,
+		ProcessRules: in.ProcessRules,
+		ExtraFlags:   aiSourceFlag(r),
 	})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())

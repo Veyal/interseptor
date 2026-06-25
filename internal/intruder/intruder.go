@@ -5,9 +5,12 @@ package intruder
 
 import (
 	"bufio"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,23 +26,31 @@ var marker = regexp.MustCompile(`§[^§]*§`)
 
 // Spec describes an attack.
 type Spec struct {
-	Target     string     // scheme://host[:port]
-	Template   string     // raw request with §…§ fuzz points
-	AttackType string     // "sniper" | "pitchfork"
-	Payloads   [][]string // sniper: one list; pitchfork: one list per position
-	ExtraFlags int64      // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
+	Target       string     // scheme://host[:port]
+	Template     string     // raw request with §…§ fuzz points
+	AttackType   string     // "sniper" | "pitchfork" | "repeat"
+	Payloads     [][]string // sniper: one list; pitchfork: one list per position
+	Repeat       int        // "repeat" mode: send the template this many times (race testing)
+	Threads      int        // max concurrent in-flight requests (default 1; raise for race conditions)
+	DelayMs      int        // delay between dispatching each request (throttling); 0 = none
+	GrepMatch    string     // flag a result if its response matches this regex (or contains this literal)
+	GrepExtract  string     // extract group 1 of this regex from each response into the result
+	ProcessRules []string   // payload transforms applied in order: "urlencode" | "base64" | "prefix:X" | "suffix:X" | "upper" | "lower"
+	ExtraFlags   int64      // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
 }
 
 // Result is one attack request's outcome.
 type Result struct {
-	ID      int    `json:"id"`
-	Payload string `json:"payload"`
-	Status  int    `json:"status"`
-	Length  int64  `json:"length"`
-	TimeMs  int64  `json:"timeMs"`
-	Error   string `json:"error"`
-	FlowID  int64  `json:"flowId"`
-	Flagged bool   `json:"flagged"`
+	ID        int    `json:"id"`
+	Payload   string `json:"payload"`
+	Status    int    `json:"status"`
+	Length    int64  `json:"length"`
+	TimeMs    int64  `json:"timeMs"`
+	Error     string `json:"error"`
+	FlowID    int64  `json:"flowId"`
+	Flagged   bool   `json:"flagged"`
+	Matched   bool   `json:"matched"`   // grep-match hit in the response
+	Extracted string `json:"extracted"` // grep-extract capture from the response
 }
 
 // State is a snapshot of the current/last attack.
@@ -54,7 +65,8 @@ type State struct {
 
 // Engine runs one attack at a time.
 type Engine struct {
-	snd *sender.Sender
+	snd  *sender.Sender
+	body func(hash string) []byte // reads a stored response body (for grep); may be nil
 
 	mu      sync.Mutex
 	running bool
@@ -68,6 +80,31 @@ type Engine struct {
 
 // New returns an Engine backed by snd.
 func New(snd *sender.Sender) *Engine { return &Engine{snd: snd} }
+
+// SetBodyReader wires a response-body reader so grep-match/extract can inspect
+// response contents (the engine itself has no store access).
+func (e *Engine) SetBodyReader(fn func(hash string) []byte) { e.body = fn }
+
+// processPayload applies the configured transforms to a payload value, in order.
+func processPayload(pl string, rules []string) string {
+	for _, ru := range rules {
+		switch {
+		case ru == "urlencode":
+			pl = url.QueryEscape(pl)
+		case ru == "base64":
+			pl = base64.StdEncoding.EncodeToString([]byte(pl))
+		case ru == "upper":
+			pl = strings.ToUpper(pl)
+		case ru == "lower":
+			pl = strings.ToLower(pl)
+		case strings.HasPrefix(ru, "prefix:"):
+			pl = ru[len("prefix:"):] + pl
+		case strings.HasPrefix(ru, "suffix:"):
+			pl = pl + ru[len("suffix:"):]
+		}
+	}
+	return pl
+}
 
 // SetNotifier registers a callback fired as the attack progresses.
 func (e *Engine) SetNotifier(fn func()) {
@@ -103,11 +140,19 @@ type job struct {
 // background. It errors if an attack is already running or the spec is invalid.
 func (e *Engine) Start(spec Spec) error {
 	positions := marker.FindAllString(spec.Template, -1)
-	if len(positions) == 0 {
-		return errors.New("template has no §…§ fuzz points")
-	}
-	if len(spec.Payloads) == 0 || len(spec.Payloads[0]) == 0 {
-		return errors.New("no payloads provided")
+	if spec.AttackType == "repeat" {
+		// Race/repeat mode: send the template verbatim N times — no markers or
+		// payloads required (raise Threads to fire them concurrently).
+		if spec.Repeat < 1 {
+			return errors.New("set how many times to send (repeat count)")
+		}
+	} else {
+		if len(positions) == 0 {
+			return errors.New("template has no §…§ fuzz points")
+		}
+		if len(spec.Payloads) == 0 || len(spec.Payloads[0]) == 0 {
+			return errors.New("no payloads provided")
+		}
 	}
 	if spec.Target == "" {
 		return errors.New("no target")
@@ -143,6 +188,11 @@ func (e *Engine) Start(spec Spec) error {
 
 func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, capped bool) {
 	switch spec.AttackType {
+	case "repeat":
+		// N identical sends of the template (markers, if any, keep their value).
+		for k := 0; k < spec.Repeat; k++ {
+			jobs = append(jobs, job{label: "#" + strconv.Itoa(k+1), payloads: baselines})
+		}
 	case "pitchfork":
 		n := len(spec.Payloads[0])
 		for _, list := range spec.Payloads {
@@ -155,11 +205,13 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 			labels := make([]string, 0, nPositions)
 			for i := 0; i < nPositions; i++ {
 				if i < len(spec.Payloads) {
-					payloads[i] = spec.Payloads[i][k]
+					orig := spec.Payloads[i][k]
+					payloads[i] = processPayload(orig, spec.ProcessRules) // sent value (transformed)
+					labels = append(labels, orig)                         // label shows the original
 				} else {
 					payloads[i] = baselines[i]
+					labels = append(labels, baselines[i])
 				}
-				labels = append(labels, payloads[i])
 			}
 			jobs = append(jobs, job{label: strings.Join(labels, " · "), payloads: payloads})
 		}
@@ -167,7 +219,7 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 		for pos := 0; pos < nPositions; pos++ {
 			for _, pl := range spec.Payloads[0] {
 				payloads := append([]string(nil), baselines...)
-				payloads[pos] = pl
+				payloads[pos] = processPayload(pl, spec.ProcessRules)
 				jobs = append(jobs, job{label: pl, payloads: payloads})
 			}
 		}
@@ -181,36 +233,86 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 
 func (e *Engine) run(spec Spec, jobs []job) {
 	base := strings.TrimRight(spec.Target, "/")
-
-	for i, j := range jobs {
-		// Substitute payloads into the whole request, then parse — so fuzz points
-		// in the request line / path / headers / body all take effect.
-		method, path, headers, body, perr := parseRaw(substitute(spec.Template, j.payloads))
-		res := Result{ID: i + 1, Payload: j.label}
-		if perr != nil {
-			res.Error = "parse: " + perr.Error()
-			e.appendResult(res)
-			continue
-		}
-		start := time.Now()
-		flow, _ := e.snd.Send(sender.Request{
-			Method:  method,
-			URL:     base + path,
-			Headers: headers,
-			Body:    body,
-			Flags:   store.FlagIntruder | spec.ExtraFlags,
-		})
-		res.TimeMs = time.Since(start).Milliseconds()
-		if flow != nil {
-			res.Status = flow.Status
-			res.Length = flow.ResLen
-			if res.Error == "" {
-				res.Error = flow.Error
-			}
-			res.FlowID = flow.ID
-		}
-		e.appendResult(res)
+	threads := spec.Threads
+	if threads < 1 {
+		threads = 1
 	}
+	if threads > 64 { // bound concurrency so a race test can't exhaust sockets/goroutines
+		threads = 64
+	}
+
+	// Compile grep patterns once (literal Contains fallback if not a valid regex).
+	var grepM, grepX *regexp.Regexp
+	var grepMLit string
+	if spec.GrepMatch != "" {
+		if re, err := regexp.Compile(spec.GrepMatch); err == nil {
+			grepM = re
+		} else {
+			grepMLit = spec.GrepMatch
+		}
+	}
+	if spec.GrepExtract != "" {
+		grepX, _ = regexp.Compile(spec.GrepExtract)
+	}
+	doGrep := func(res *Result, hash string) {
+		if (grepM == nil && grepMLit == "" && grepX == nil) || e.body == nil || hash == "" {
+			return
+		}
+		body := string(e.body(hash))
+		if grepM != nil {
+			res.Matched = grepM.MatchString(body)
+		} else if grepMLit != "" {
+			res.Matched = strings.Contains(body, grepMLit)
+		}
+		if grepX != nil {
+			if m := grepX.FindStringSubmatch(body); len(m) >= 2 {
+				res.Extracted = m[1]
+			}
+		}
+	}
+
+	sem := make(chan struct{}, threads)
+	var wg sync.WaitGroup
+	for i, j := range jobs {
+		if spec.DelayMs > 0 && i > 0 { // throttle: wait between dispatching each request
+			time.Sleep(time.Duration(spec.DelayMs) * time.Millisecond)
+		}
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(idx int, j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			// Substitute payloads into the whole request, then parse — so fuzz points
+			// in the request line / path / headers / body all take effect.
+			method, path, headers, body, perr := parseRaw(substitute(spec.Template, j.payloads))
+			res := Result{ID: idx + 1, Payload: j.label}
+			if perr != nil {
+				res.Error = "parse: " + perr.Error()
+				e.appendResult(res)
+				return
+			}
+			start := time.Now()
+			flow, _ := e.snd.Send(sender.Request{
+				Method:  method,
+				URL:     base + path,
+				Headers: headers,
+				Body:    body,
+				Flags:   store.FlagIntruder | spec.ExtraFlags,
+			})
+			res.TimeMs = time.Since(start).Milliseconds()
+			if flow != nil {
+				res.Status = flow.Status
+				res.Length = flow.ResLen
+				if res.Error == "" {
+					res.Error = flow.Error
+				}
+				res.FlowID = flow.ID
+				doGrep(&res, flow.ResBodyHash)
+			}
+			e.appendResult(res)
+		}(i, j)
+	}
+	wg.Wait()
 
 	e.flagAnomalies()
 	e.mu.Lock()

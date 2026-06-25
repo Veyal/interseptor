@@ -36,23 +36,35 @@ func parseSessionHeaders(text string) []sender.Header {
 	return out
 }
 
-// applySessionFromStore loads persisted session config and applies it to the sender.
+// loadMacro reads the persisted token-refresh macro ("" setting → disabled).
+func (h *Hub) loadMacro() sender.Macro {
+	raw, _, _ := h.st.GetSetting("session.macro")
+	var m sender.Macro
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &m)
+	}
+	return m
+}
+
+// applySessionFromStore loads persisted session config + macro and applies both.
 func (h *Hub) applySessionFromStore() {
 	enabled, _, _ := h.st.GetSetting("session.enabled")
 	text, _, _ := h.st.GetSetting("session.headers")
 	h.snd.SetSession(enabled == "1", parseSessionHeaders(text))
+	h.snd.SetMacro(h.loadMacro())
 }
 
 func (h *Hub) getSession(w http.ResponseWriter, r *http.Request) {
 	enabled, _, _ := h.st.GetSetting("session.enabled")
 	text, _, _ := h.st.GetSetting("session.headers")
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled == "1", "headers": text})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled == "1", "headers": text, "macro": h.loadMacro()})
 }
 
 func (h *Hub) setSession(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Enabled bool   `json:"enabled"`
-		Headers string `json:"headers"`
+		Enabled bool          `json:"enabled"`
+		Headers string        `json:"headers"`
+		Macro   *sender.Macro `json:"macro"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -65,6 +77,11 @@ func (h *Hub) setSession(w http.ResponseWriter, r *http.Request) {
 	_ = h.st.SetSetting("session.enabled", en)
 	_ = h.st.SetSetting("session.headers", in.Headers)
 	h.snd.SetSession(in.Enabled, parseSessionHeaders(in.Headers))
+	if in.Macro != nil {
+		b, _ := json.Marshal(*in.Macro)
+		_ = h.st.SetSetting("session.macro", string(b))
+		h.snd.SetMacro(*in.Macro)
+	}
 	h.broadcast(map[string]any{"type": "session.update"})
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": in.Enabled, "headers": in.Headers})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": in.Enabled, "headers": in.Headers, "macro": h.loadMacro()})
 }

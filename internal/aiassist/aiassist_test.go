@@ -1,10 +1,12 @@
 package aiassist
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +124,101 @@ func TestOpenRouterSurfacesAPIError(t *testing.T) {
 	c.endpoint = srv.URL
 	if _, err := c.Complete("s", "u"); err == nil {
 		t.Fatal("expected OpenRouter API error to surface")
+	}
+}
+
+func TestAnthropicDeltaExtractsText(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}`, "Hello"},
+		{`{"type":"message_start","message":{}}`, ""},
+		{`{"type":"ping"}`, ""},
+		{`not json`, ""},
+	}
+	for _, c := range cases {
+		got, err := anthropicDelta(c.in)
+		if err != nil {
+			t.Fatalf("anthropicDelta(%q): %v", c.in, err)
+		}
+		if got != c.want {
+			t.Fatalf("anthropicDelta(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+	if _, err := anthropicDelta(`{"type":"error","error":{"message":"overloaded"}}`); err == nil {
+		t.Fatal("expected streamed error event to surface as error")
+	}
+}
+
+func TestOpenRouterDeltaExtractsContent(t *testing.T) {
+	got, err := openRouterDelta(`{"choices":[{"delta":{"content":"world"}}]}`)
+	if err != nil || got != "world" {
+		t.Fatalf("openRouterDelta got %q err %v", got, err)
+	}
+	if got, _ := openRouterDelta(`{"choices":[{"delta":{}}]}`); got != "" {
+		t.Fatalf("empty delta should yield empty string, got %q", got)
+	}
+	if _, err := openRouterDelta(`{"error":{"message":"rate limited"}}`); err == nil {
+		t.Fatal("expected error to surface")
+	}
+}
+
+func TestParseSSESkipsNonDataAndDone(t *testing.T) {
+	body := strings.Join([]string{
+		": comment / keepalive",
+		"event: content_block_delta",
+		`data: {"n":1}`,
+		"",
+		`data: {"n":2}`,
+		"data: [DONE]",
+		"",
+	}, "\n")
+	var got []string
+	err := parseSSE(strings.NewReader(body), func(d string) error { got = append(got, d); return nil })
+	if err != nil {
+		t.Fatalf("parseSSE: %v", err)
+	}
+	if len(got) != 2 || got[0] != `{"n":1}` || got[1] != `{"n":2}` {
+		t.Fatalf("unexpected data lines: %v", got)
+	}
+}
+
+func TestCompleteStreamAnthropicAccumulates(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n")
+		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"This is \"}}\n\n")
+		io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"a login.\"}}\n\n")
+		io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer srv.Close()
+
+	c := New(ProviderAnthropic, "sk-test", "")
+	c.endpoint = srv.URL
+	var sb strings.Builder
+	err := c.CompleteStream(context.Background(), "sys", "explain", func(d string) { sb.WriteString(d) })
+	if err != nil {
+		t.Fatalf("CompleteStream: %v", err)
+	}
+	if sb.String() != "This is a login." {
+		t.Fatalf("accumulated text = %q", sb.String())
+	}
+	if gotBody["stream"] != true {
+		t.Fatalf("expected stream:true in request body, got %v", gotBody["stream"])
+	}
+}
+
+func TestCompleteStreamSurfacesHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, `{"error":{"message":"invalid x-api-key"}}`)
+	}))
+	defer srv.Close()
+	c := New(ProviderAnthropic, "bad", "")
+	c.endpoint = srv.URL
+	err := c.CompleteStream(context.Background(), "s", "u", func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "invalid x-api-key") {
+		t.Fatalf("expected surfaced auth error, got %v", err)
 	}
 }

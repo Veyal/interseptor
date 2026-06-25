@@ -167,3 +167,132 @@ func TestStartRejectsNoPositions(t *testing.T) {
 		t.Fatal("expected error when template has no § markers")
 	}
 }
+
+func TestRepeatModeSendsTemplateNTimesConcurrently(t *testing.T) {
+	var mu sync.Mutex
+	hits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	// No markers, no payloads — just fire the same request 8 times across 8 threads.
+	err := e.Start(Spec{
+		Target:     upstream.URL,
+		Template:   "POST /buy HTTP/1.1\nHost: h\n\ncoupon=SAVE10",
+		AttackType: "repeat",
+		Repeat:     8,
+		Threads:    8,
+	})
+	if err != nil {
+		t.Fatalf("Start (repeat): %v", err)
+	}
+	st := waitDone(t, e)
+	if st.Total != 8 || len(st.Results) != 8 {
+		t.Fatalf("expected 8 results, got total=%d len=%d", st.Total, len(st.Results))
+	}
+	mu.Lock()
+	got := hits
+	mu.Unlock()
+	if got != 8 {
+		t.Fatalf("expected 8 requests sent, got %d", got)
+	}
+}
+
+func TestRepeatModeRequiresCount(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{Target: "http://x", Template: "GET / HTTP/1.1\nHost: x\n\n", AttackType: "repeat", Repeat: 0})
+	if err == nil {
+		t.Fatal("expected error when repeat count is 0")
+	}
+}
+
+func TestDelayThrottlesDispatch(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	start := time.Now()
+	// 3 sends, single thread, 60ms between dispatches → at least ~120ms total.
+	err := e.Start(Spec{Target: upstream.URL, Template: "GET / HTTP/1.1\nHost: h\n\n", AttackType: "repeat", Repeat: 3, Threads: 1, DelayMs: 60})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitDone(t, e)
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Fatalf("expected delay to throttle dispatch (>=100ms), took %v", elapsed)
+	}
+}
+
+func TestGrepAndPayloadProcessing(t *testing.T) {
+	var gotBodies []string
+	var mu sync.Mutex
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		gotBodies = append(gotBodies, string(b))
+		mu.Unlock()
+		if string(b) == "v=YWRtaW4=" { // base64("admin")
+			io.WriteString(w, "secret-token=ABC123 WELCOME")
+		} else {
+			io.WriteString(w, "denied")
+		}
+	}))
+	defer upstream.Close()
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	e := New(sender.New(st, capture.New(st)))
+	e.SetBodyReader(func(hash string) []byte {
+		rc, err := st.OpenBody(hash)
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+		b, _ := io.ReadAll(rc)
+		return b
+	})
+
+	err = e.Start(Spec{
+		Target:       upstream.URL,
+		Template:     "POST /x HTTP/1.1\nHost: h\n\nv=§p§",
+		AttackType:   "sniper",
+		Payloads:     [][]string{{"admin", "guest"}},
+		ProcessRules: []string{"base64"},
+		GrepMatch:    "WELCOME",
+		GrepExtract:  `secret-token=(\w+)`,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	st2 := waitDone(t, e)
+
+	// payload processing: "admin" must have been base64-encoded on the wire.
+	mu.Lock()
+	joined := strings.Join(gotBodies, "|")
+	mu.Unlock()
+	if !strings.Contains(joined, "v=YWRtaW4=") {
+		t.Fatalf("expected base64-processed payload on the wire, got %q", joined)
+	}
+	var adminRes *Result
+	for i := range st2.Results {
+		if st2.Results[i].Payload == "admin" { // label stays the original
+			adminRes = &st2.Results[i]
+		}
+	}
+	if adminRes == nil || !adminRes.Matched {
+		t.Fatalf("expected grep-match on the admin response: %+v", adminRes)
+	}
+	if adminRes.Extracted != "ABC123" {
+		t.Fatalf("expected extracted token ABC123, got %q", adminRes.Extracted)
+	}
+}

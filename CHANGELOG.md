@@ -6,6 +6,272 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-06-26
+
+### Added
+- **Intruder: Race mode + concurrency + throttle (race-condition testing).** A new **Race** attack
+  type sends the request verbatim N times with **no payloads or § markers** required. The attack bar
+  gains **threads** (max concurrent in-flight requests, 1–64) and **delay** (ms between dispatches)
+  controls that apply to every mode. Set high threads + 0 ms delay to fire requests together and hit
+  a race window; set 1 thread + a delay to throttle. Backend: `intruder.Spec` gains `Repeat`,
+  `Threads`, `DelayMs`; the engine now runs jobs through a bounded worker pool (verified: 8 sends ×
+  8 threads complete concurrently). Tested in `internal/intruder`.
+- **AI assist: streaming, Markdown rendering, and one-click actions.** The assist modal
+  no longer stalls on a full completion or dumps raw text:
+  - **Streaming.** Explain / Summary now stream the model's reply token-by-token over a new
+    `POST /api/ai/assist/stream` SSE endpoint (`aiassist.CompleteStream` for both the Anthropic
+    and OpenRouter providers), re-rendering live as it arrives. Falls back to the non-streaming
+    `POST /api/ai/assist` if the stream can't be opened. A **Stop** button aborts mid-stream.
+  - **Markdown.** Replies render through the existing safe `renderMD` (headings, lists, code,
+    bold, links) instead of plain text.
+  - **Actionable payloads.** Payloads mode calls a new `POST /api/ai/actions` that returns
+    structured suggestions (`{point, payload, why}`, JSON tolerant of stray prose/fences) rendered
+    as cards: copy a payload, send one **→ Intruder**, or **⚑ Load all → Intruder**. Loading
+    stages the request + payloads in Intruder for the user to mark `§` and Start — it never
+    auto-fires attacks (consistent with active-scan's arm gate).
+  - **Flow actions.** A footer bar turns the analysed request into one-click **→ Repeater** /
+    **→ Intruder** loads, plus **Copy**.
+- **UI: how-to-trust-the-CA instructions (Settings → TLS / CA).** The CA download now sits above
+  collapsible per-platform trust steps (macOS, Windows, Firefox, iOS, Android) — closing the main
+  first-run gap for HTTPS interception — and notes that plain HTTP needs no CA.
+- **UI: AI assist reachable from the History right-click menu.** Added **✨ Ask AI → explain** and
+  **✨ Ask AI → payloads** items, so the assistant isn't only behind the inspector's ✨ button. The
+  onboarding card now mentions the AI action and the `Ctrl/⌘ K` command palette.
+- **UI: keyboard-shortcut cheatsheet.** Press <kbd>?</kbd> for an overlay listing every shortcut
+  (palette, search, row nav, send-to-Repeater/Intruder, forward/drop, …) — previously all hidden.
+- **UI: inspector action bar.** The request pane header now has **→ Rep**, **→ Intr**, and **cURL**
+  buttons next to ✨, so the core capture→act workflow is discoverable without the right-click menu.
+- **UI: capture-liveness indicator.** The top-bar proxy dot now pulses on each captured request and
+  a status reads *waiting for traffic* → *capturing live* → *idle · N captured this session*, so it's
+  clear whether the proxy is actually receiving traffic.
+- **UI: Map interaction hint** (drag/zoom/click) and refreshed AI-assist settings copy (mentions
+  streaming, the right-click entry, and loading payloads into Intruder).
+- **UI: binary response/request bodies show headers only.** Images, fonts, media, archives,
+  PDFs and other non-text bodies (by Content-Type) no longer dump unreadable bytes into the
+  inspector or Map popup — the header block renders (rebuilt from the flow detail, so the body
+  isn't even fetched) with a size note, a **Download body** link, and a **Show raw anyway**
+  escape hatch.
+- **AI payloads recommend Repeater vs Intruder.** The actions endpoint now tags each suggestion
+  with a `tool`: **Repeater** for a one-shot manual probe (auth/authz bypass, a specific IDOR
+  value, an SSRF/logic test — send one crafted request and read the response) or **Intruder** for
+  fuzzing/enumeration over many values. Each payload card surfaces the recommended tool as its
+  primary button; **→ Repeater** loads the request and copies the payload to paste at the
+  injection point, **→ Intruder** stages it for fuzzing. (Previously everything went to Intruder.)
+- **UI: DATA & RETENTION panel in Settings → Project & data.**
+  A new card (below EXPORT / IMPORT) surfaces the `GET /api/hosts/stats` data as an
+  interactive per-host table: checkboxes to select hosts, per-row flow count and size
+  (formatted with the `fmtBytes` helper matching backend `B/KB/MB/GB` thresholds), and
+  a per-row **Delete** button. Bulk actions: **Delete selected** (`mode=delete`) and
+  **Keep only selected** (`mode=keepOnly`; disabled/warned when nothing is checked to
+  prevent the server-rejected empty-list 400). A free-text **Purge by pattern** input
+  supports wildcard patterns like `*.ads.example.com`. A **Reclaim space** button calls
+  `POST /api/flows/gc` and toasts the freed bytes. Every destructive action goes through
+  a themed `uiConfirm()` in-app dialog (new `#confirmModal`, reusing the same modal
+  plumbing as `uiPrompt`) that names the host(s), flow count, and warns the deletion is
+  permanent. Stats are loaded lazily the first time the Project section is opened (not
+  on every tab switch) and refreshed after every purge/GC. The History list (`loadFlows`)
+  is also refreshed after purge so the Proxy tab updates immediately alongside the SSE
+  `flow.new` broadcast.
+- **UI: "🗑 Delete all from &lt;host&gt;" in the History right-click context menu.**
+  A new destructive item (after the Send-to-Repeater/Intruder group, visually separated
+  by a `ctx-sep` divider, text and icons colored `var(--red)`) opens the `uiConfirm`
+  dialog naming the host and flow count before calling `POST /api/flows/purge`. After
+  confirmation it refreshes both the retention panel and the History list.
+- **UI: `fmtBytes` JS helper.** Matches the backend/MCP byte-format convention exactly:
+  `< 1 KB → "N B"`, `< 1 MB → "N.N KB"`, `< 1 GB → "N.N MB"`, else `"N.N GB"`.
+  Used by the retention panel and context-menu purge toasts so numbers agree with MCP
+  tool output.
+- **control + mcp: data-retention REST API and MCP tools.**
+  Three new REST endpoints:
+  `POST /api/flows/purge` deletes flows by host pattern (`mode=delete`) or keeps only the listed hosts (`mode=keepOnly`), always runs `GCBodies` afterward, and broadcasts an SSE `flow.new` reload signal so open History views refresh live. Returns `{deleted, removedFiles, freedBytes}`.
+  `POST /api/flows/gc` is a standalone GC trigger (reclaims orphaned body files, no flows deleted). Returns `{removedFiles, freedBytes}`.
+  `GET /api/hosts/stats` returns per-host flow counts and byte totals sorted descending by bytes, plus `totalFlows` and `totalBytes`.
+  Two new MCP tools: `host_stats` (readable text table of host·flows·size) and `prune_history` (parses comma/newline-separated host patterns, POSTs to `/api/flows/purge`, returns a concise summary like `deleted 42 flows · freed 1.3 MB`; documented as destructive). Both tools set `X-Interceptor-Source: ai` (existing MCP plumbing) so purges appear in the Activity feed. A `formatBytes` helper in `internal/mcp` renders byte counts as `B / KB / MB / GB` (same thresholds the UI should match). MCP `instructions` string updated with the `host_stats`→`prune_history` workflow note.
+- **store: data-retention primitives.** Three new store-layer methods:
+  `DeleteFlowsByHost(hosts []string, keepOnly bool)` deletes flows by wildcard-aware
+  host pattern (exact or `*.acme.com`) in delete-matching or keep-only mode; an empty
+  keep-list is rejected with an error to prevent accidental data wipe.
+  `GCBodies() (removedFiles, freedBytes int64)` removes content-addressed body files
+  in `bodiesDir` that are no longer referenced by any flow's `req_body_hash` or
+  `res_body_hash`; safe to run live (never touches referenced or non-hash files).
+  `HostStats() []HostStat` returns per-host flow counts and approximate byte totals
+  (SUM of per-flow lengths; approximation because deduped bodies are counted once per
+  referencing flow), sorted descending by bytes — for a retention-UI size breakdown.
+- **UI: accessible tab bar.** `#tabs` now carries `role="tablist"`; each `.tab` button
+  carries `role="tab"`, `aria-selected`, `aria-controls`, and a matching `id`. Each
+  panel carries `role="tabpanel"` and `aria-labelledby`. Roving tabindex: only the
+  active tab is in the tab sequence; Left/Right arrows move focus between tabs and
+  activate them (standard ARIA tablist pattern).
+- **UI: modal ARIA + focus trap.** Every dialog overlay (`#flowModal`, `#aiModal`,
+  `#checksModal`, `#activeModal`, `#decModal`, `#promptModal`) now has
+  `role="dialog" aria-modal="true"` on its inner card and an `aria-labelledby`
+  pointing at its title element. A shared `openModal`/`closeModal` helper moves focus
+  into the dialog on open (first button), traps Tab/Shift+Tab within the focusable
+  elements, and restores focus to the triggering element on close. The existing Escape
+  and backdrop-click behaviour is preserved.
+- **UI: `aria-pressed` on toggle buttons.** All `.toggle` state buttons (intercept
+  on/off, response intercept, system proxy, capture-scope, browser-telemetry
+  suppression) now set `aria-pressed="true/false"` whenever their `.on` class is
+  toggled, so screen readers announce the current state.
+- **UI: `aria-label` on icon-only / emoji buttons.** `#aiExplainBtn` (✨),
+  `#aiPulse` (now `role="button" tabindex="0"`), `#mapRefresh` (↻), `#mapFit` (⤢),
+  `#checksBtn` (✎), `#activeBtn` (⚡), and the proxy `#refreshBtn` all carry
+  descriptive `aria-label` attributes mirroring their existing `title` text.
+- **UI: resizable inspector splitter.** A thin drag handle (`#inspectSplitter`) sits
+  between the history table (`#rows`) and the request/response inspector (`#inspect`)
+  on the Proxy panel. Dragging it adjusts the inspector height (clamped to 120 px –
+  80 % of the panel). Height is persisted to `localStorage` under the key
+  `inspect.height` and restored on load. The handle carries
+  `role="separator" aria-orientation="horizontal" tabindex="0"`; Up/Down arrows nudge
+  the height by 20 px for keyboard-only access. Styled with `--line`/`--accent` CSS
+  variables — no hardcoded colours.
+
+### Added
+- **Intruder grep-match / grep-extract + payload processing.** Two new fields flag a result when its
+  **response matches** a regex/text (shown ✓ + row highlight) and **extract** a regex group from each
+  response (shown inline, e.g. a token or balance) — turning Intruder from a status-anomaly sender
+  into a real fuzzer. A **payload processing** field transforms each payload before sending
+  (`urlencode`, `base64`, `upper`, `lower`, `prefix:X`, `suffix:X`, comma-separated, in order); the
+  label keeps the original while the processed value goes on the wire. Persisted per attack tab.
+  Tested in `internal/intruder`.
+- **Authorization (access-control) testing.** Right-click a flow → **🔓 Authz test** to replay it
+  under each saved identity (role) and diff the responses. The first identity is the baseline (your
+  privileged user); any lower-privileged role that still gets a successful, ~same-size response is
+  flagged **⚠ same access** — a strong IDOR / broken-access-control signal (OWASP #1). Identities are
+  named header sets (Cookie/Authorization; blank = anonymous), persisted server-side; replays use the
+  identity's auth only (the global session/macro is skipped via a new `NoSession` send flag) and are
+  recorded as `FlagAuthz` flows. New `internal/control/authz.go` + `/api/authz[/run]`.
+- **Session token macro (CSRF / re-auth).** Settings → Session now has a **token macro**: a refresh
+  request (raw HTTP + target) sent before each Repeater/Intruder/scan send, whose response is matched
+  by a regex (one capture group) and injected — either as a **header** or by replacing a **`§placeholder§`**
+  in the outgoing request. Keeps requests valid against apps that rotate a CSRF token per request or
+  expire sessions. The refresh uses a plain client (never recorded, never recursive). Tested in
+  `internal/sender` (fresh token injected per send).
+- **Out-of-band (OOB) interaction catcher — blind-vuln detection.** New `internal/oob` catcher mints
+  unique tokens and records any inbound request to `/oob/<token>/…` (method, path, query, source,
+  user-agent, body preview). A Scanner → **⚲ OOB** modal generates a copy-ready payload URL, lets you
+  set a target-reachable base URL (your LAN IP / tunnel; defaults to the control origin for local
+  testing), and shows interactions **live** (SSE `oob.update`). Drop the URL into an SSRF param, XXE
+  entity, or SQLi exfil and watch the target call back — proof of a blind bug. The `/oob/` endpoint
+  bypasses the loopback/CSRF guard (it must accept foreign blind callers) but only records metadata.
+  Tested in `internal/oob`.
+- **Intruder: multiple attack tabs + run history (like Repeater).** A tab strip holds independent
+  saved attack configs (target, template, attack type, threads/delay/repeat, and per-marker payload
+  lists), persisted to `localStorage` and restored on reload; titles derive from type + host. A
+  collapsible **⟲ History** rail records every completed run this session (type, request count,
+  flagged count, target) — click an entry to re-open both its results and the exact config that
+  produced it.
+
+### Changed
+- **UI: Intruder payload lists are now per-marker (Pitchfork).** Instead of two fixed payload boxes,
+  the PAYLOADS area renders **one colour-coded input per `§` marker** in the template — add a 3rd
+  marker, a 3rd list appears. Each input is labelled with its position and the marker's current text
+  (e.g. "§1 · user", "§2 · pass") and carries a matching colour swatch/top-border so it's clear which
+  list feeds which injection point. The header shows per-position counts ("§1:3 · §2:3 · §3:0") and
+  Start refuses to run until every position has payloads. Sniper keeps its single shared list. (AI
+  "load into Intruder" now seeds the Sniper list via a dedicated `setSniperPayloads` export.)
+- **UI: Intruder tab redesigned.** A cleaner attack bar (target · Sniper/Pitchfork · **§ Mark
+  selection** · live payload/request count · Start), a **mode explainer** line that updates with the
+  selected attack type (so Sniper vs Pitchfork is self-documenting), a live **payload count** on the
+  PAYLOADS header and Start button, and a results pane with a **progress bar**, a flagged-count
+  summary ("N sent · M flagged ⚑"), and a clear empty state. Start now refuses an empty payload list.
+- **UI: Repeater tab redesigned.** Replaced the cramped toolbar + always-on 180px history sidebar
+  with a clean **request line** (method · full-width URL · History · Send-with-Ctrl+Space hint), a
+  full-width Request/Response split (HEADERS + BODY on the left, response on the right), and a
+  **collapsible** per-tab history rail (hidden by default with a live "⟲ History (N)" count, so the
+  editor gets the full width). The response header now shows a rich status line — **code · time ·
+  size** (e.g. "200 OK · 142 ms · 4.1 KB") — instead of just the status code.
+- **UI: Intercept tab redesigned as a proper workspace.** Replaced the flat four-section vertical
+  scroll (which buried held requests in a cramped 200px textarea and duplicated request/response
+  sections) with: a bold control strip whose **Requests/Responses** switches show a live pulsing
+  state, a single **unified hold queue** (requests + responses, tagged REQ/RESP) in a sidebar, a
+  full-height **raw editor** with prominent **▶ Forward** / **✕ Drop** in its header, a clear empty
+  state explaining the feature, and **Match & Replace** moved into a collapsible footer. Selecting a
+  queue item loads it into the one editor; Forward/Drop route to the request or response API by the
+  item's side. (`state.heldSel = {id, side}` replaces the separate `selHeld`/`selRespHeld`.)
+- **UI: Repeater now states its purpose.** A one-line intent hint ("Edit & resend a request… Load
+  one via right-click a flow → Repeater. Each tab keeps its own send history.") so a first-time
+  user understands the tab without prior Burp knowledge — matching the intent lines other tabs
+  already carry (Scanner, Map, Intercept, Notes, Activity).
+- **UI: clearer button hover affordance.** Neutral `.btn`s now shift background to `--line` on
+  hover (with a short transition); accent buttons keep their brightness lift. Makes every toolbar
+  and dialog button visibly interactive.
+- **Command palette (Ctrl/⌘ K) is now navigation-only and covers Settings subsections.** It jumps
+  to a tab, a Settings subsection (Proxy & network / TLS-CA / Target scope / AI assist / Session /
+  Project & data), or a tool screen — and never performs a mutating action (run scan, toggle
+  intercept, export, send a request), so a mis-typed Enter can't do anything destructive; you act
+  from the screen it takes you to. Keyword aliases (e.g. "download ca certs", "api key", "retention")
+  find the right destination.
+- **AI assist: faster, tighter answers.** The system prompt now demands brevity (≤~150 words
+  / 6 bullets, no preamble), `max_tokens` dropped 1024 → 768, and the single-flow prompt budget
+  trimmed 4000 → 2500 bytes — together cutting both time-to-first-token and total generation time
+  on top of the existing streaming.
+- **Browser telemetry suppression (on by default).** Chrome and Firefox background
+  traffic — Safe Browsing lookups, update pings, crash reports, Normandy experiments,
+  captive-portal probes — is now silently forwarded without being written to history
+  or held by the intercept gate. Toggle under **Settings → Proxy & network → Browser
+  Telemetry** to allow it in when you specifically need to inspect browser background
+  traffic. The list of suppressed hosts lives in `internal/proxy/telemetry.go`.
+
+### Changed
+- **UI: split the monolithic `index.html` into ES modules (no build step).** The single
+  ~2,700-line `internal/control/ui/index.html` is now an `index.html` shell + `app.css` +
+  native ES modules under `ui/js/`: `core.js` (shared foundation — DOM helpers, the `state`
+  object, `api()`, formatters, HTTP highlighters, the modal system, `renderMD`/`accordionize`)
+  and one module per feature (`proxy`, `intercept`, `tools`, `scanner`, `map`, `settings`,
+  `notes`, `apipanel`, `activity`, `ai`), wired by an `app.js` entry that owns tabs, the command
+  palette, shortcuts, the SSE stream, and boot. Behaviour is unchanged. The `//go:embed` now
+  embeds the whole `ui/` directory and `serveUI` serves the static assets with **explicit**
+  `Content-Type`s (the OS mime registry can resolve `.js` to `text/plain` on Windows, which makes
+  browsers refuse to execute ES modules). No bundler or toolchain added; the binary stays single
+  and static.
+- **UI: visible keyboard focus ring.** The global `outline:none` on form elements
+  previously killed all browser focus indicators. A `:focus-visible` rule now restores
+  a 2 px accent-coloured ring (using `--accent`) on keyboard navigation while
+  suppressing the ring on mouse clicks — keeping the desktop look clean.
+- **UI: responsive toolbars.** `.toolbar` rows now `flex-wrap:wrap` with a `row-gap`
+  so controls spill onto a second line on narrow windows instead of clipping. `#tabs`
+  gains `overflow-x:auto` so the AI-pulse / version badges remain reachable when the
+  window is tight. A `@media (max-width:900px)` block relaxes `.search` max-width and
+  adjusts padding.
+
+### Fixed
+- **Segmented toggles on Intruder / Repeater / AI / Map were dead (didn't switch).** After the UI
+  was split into ES modules, `proxy.js` ran *after* the feature modules (they're imported by it),
+  so its broad `$$('.seg')` inspector wiring **clobbered** every other tab's seg handlers — leaving
+  Intruder's Sniper/Pitchfork, Repeater's Raw/Pretty, the AI modal's Explain/Payloads/Summary, and
+  the Map's Graph/Tree visually toggling but doing nothing. Scoped that wiring to the inspector's own
+  segs (`.seg[data-side]`) so each module keeps its own handler. (Pitchfork now reveals the second
+  payload list as expected.)
+- **Map: the graph re-fits to the viewport on every search/filter change, and the result count
+  is never blank.** Previously a search left the graph at its old pan/zoom (matches could sit
+  off-screen) and the `#mapCount` label went empty when nothing matched, so you couldn't tell if
+  there were results. Now any search / domain / method / status / expand change re-fits the graph,
+  the count always shows ("N endpoints · M hosts", "No endpoints match the filters", or "No
+  endpoints captured yet"), and the empty graph resets its transform so the message is visible.
+- **Light theme now meets WCAG AA contrast on every surface.** A measured audit found the light
+  palette failed AA for secondary text (`--fg3`), the accent used as text/buttons, `--cyan`, and
+  `--amber`/`--red` on the darker `--bg3`. Darkened `--fg3` (#787f8c→#5e6675), `--accent`
+  (#00a368→#00734a, also lifting white-on-accent button text to AA), `--blue`, `--amber`, `--red`,
+  and `--cyan`, and aligned `--sel`/`--accentDim`/`--redDim` to the new tones. The dark theme already
+  passed and is unchanged.
+- **UI assets are no longer cached stale.** `serveUI` now sends `Cache-Control: no-store`
+  on the index shell and every JS/CSS module. Without it, browsers heuristically cached the
+  un-versioned ES modules, so users (and the AI-assist mode tabs) kept running an old build
+  after an upgrade until a manual hard-refresh.
+- **AI assist: switching modes mid-request no longer leaves stale output.** A per-request
+  sequence guard means a superseded Explain/Summary stream or Payloads fetch can't write over
+  the mode you switched to, and the modal header now wraps so the Explain/Payloads/Summary
+  tabs can't overflow off a narrow dialog.
+- **UI: hardcoded `rgba(255,80,80,.08)` in active-scan warning box.** The translucent
+  red fill bypassed the theme system and looked wrong in light mode. Introduced
+  `--redDim` in both `:root` blocks (dark: `rgba(255,80,80,.08)`, light:
+  `rgba(207,58,58,.08)`) and replaced the inline literal with `var(--redDim)`.
+- **UI: animations respect `prefers-reduced-motion`.** The `blink` (1.6 s) and
+  `pulse` (1 s) keyframe animations now set `animation:none` inside a
+  `@media (prefers-reduced-motion:reduce)` block, eliminating motion for users who
+  have requested it at the OS level.
+
 ## [0.6.0] — 2026-06-25
 
 ### Added

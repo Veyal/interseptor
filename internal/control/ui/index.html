@@ -6,274 +6,7 @@
 <title>Interceptor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='4'%20fill='%2300e08a'/%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --bg:#08080a;--bg1:#101013;--bg2:#17171a;--bg3:#232329;--line:#2e2e36;--line2:#43434d;
-  --fg:#f2f2f5;--fg2:#bcbcc6;--fg3:#8e8e99;--accent:#00e08a;--onAccent:#04150d;
-  --sel:rgba(0,224,138,0.12);--accentDim:rgba(0,224,138,0.13);--blue:#4aa8ff;--amber:#ffb02e;
-  --red:#ff5b5b;--violet:#c08cff;--cyan:#3fd8d0;--scroll:#2a2a30;--shadow:rgba(0,0,0,.5);--overlay:rgba(0,0,0,.6);
-  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-}
-:root[data-theme="light"]{
-  --bg:#ffffff;--bg1:#f6f7f9;--bg2:#eef0f3;--bg3:#e4e7ec;--line:#dcdfe6;--line2:#c2c7d0;
-  --fg:#16181d;--fg2:#454b56;--fg3:#787f8c;--accent:#00a368;--onAccent:#ffffff;
-  --sel:rgba(0,163,104,0.10);--accentDim:rgba(0,163,104,0.13);--blue:#1667d6;--amber:#9a6700;
-  --red:#cf3a3a;--violet:#7b46cf;--cyan:#0f9b92;--scroll:#cdd2da;--shadow:rgba(20,24,33,.16);--overlay:rgba(20,24,33,.34);
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;overflow:hidden}
-button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;outline:none}
-button{cursor:pointer}
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:6px}
-::-webkit-scrollbar-track{background:transparent}
-.row{display:flex;align-items:center}
-.spacer{flex:1}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
-.blink{animation:blink 1.6s ease-in-out infinite}
-
-/* top bar */
-#bar{height:38px;flex:none;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 13px;user-select:none}
-#logo{width:15px;height:15px;border-radius:4px;background:var(--accent);box-shadow:0 0 10px var(--accentDim)}
-.brand{font-weight:700;letter-spacing:.5px}
-.tag{font-size:9.5px;color:var(--fg3);letter-spacing:1.5px}
-.kv{font-size:10.5px;color:var(--fg2)}
-.kv b{color:var(--fg);font-weight:600}
-#themeToggle{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--bg3);color:var(--fg2);font-size:13px;line-height:1}
-#themeToggle:hover{color:var(--fg);background:var(--line)}
-
-/* tabs */
-#tabs{height:40px;flex:none;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 10px}
-.tab{font-size:12px;font-weight:600;color:var(--fg2);padding:7px 14px;border-radius:7px}
-.tab:hover{color:var(--fg)}
-.tab.active{color:var(--accent);background:var(--accentDim)}
-.badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:6px}
-.ai-tag{font-size:9px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
-
-#main{flex:1;min-height:0;position:relative}
-.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
-.panel.active{display:flex}
-
-/* toolbar */
-.toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg1)}
-.search{display:flex;align-items:center;flex:1;max-width:520px;background:var(--bg3);border:1px solid var(--line);border-radius:7px;height:30px;overflow:hidden}
-.search select{height:100%;background:var(--bg2);color:var(--fg2);font-size:11px;font-weight:600;border-right:1px solid var(--line);padding:0 8px;cursor:pointer}
-.search input{flex:1;background:none;font-size:12px;padding:0 10px}
-.btn{font-size:11.5px;font-weight:600;color:var(--fg2);padding:6px 11px;border-radius:6px;background:var(--bg3)}
-.btn:hover{color:var(--fg)}
-.btn.accent{color:var(--onAccent);background:var(--accent)}
-.btn.accent:hover{filter:brightness(1.08)}
-.btn.danger:hover{color:var(--red)}
-.count{font-size:11px;color:var(--fg2)}
-
-/* history table */
-.thead,.trow{display:grid;grid-template-columns:60px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 70px 64px 60px;align-items:center}
-.thead{flex:none;height:28px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--fg2);padding:0 6px}
-.thead>div{padding:0 4px;cursor:pointer;user-select:none}
-.thead>div:hover{color:var(--fg)}
-#rows{flex:1;overflow:auto;min-height:0}
-.trow{height:27px;border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:11.5px;padding:0 6px;cursor:pointer}
-.trow:hover{background:var(--bg3)}
-.trow.sel{background:var(--sel);border-left-color:var(--accent)}
-.trow.pending{border-left-color:var(--amber)}
-.trow>div{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tr-id{color:var(--fg3)}
-.tr-m{font-weight:700}
-.tr-host{color:var(--fg2)}
-.tr-path{color:var(--fg)}
-.tr-st{font-weight:700;text-align:center}
-.tr-mime{color:var(--fg3)}
-.tr-len{color:var(--fg2);text-align:right}
-.tr-t{color:var(--fg3);text-align:right}
-.empty{padding:30px;text-align:center;color:var(--fg3);font-size:12px}
-
-/* inspector */
-#inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0}
-.pane{flex:1;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
-.pane:last-child{border-right:none}
-.pane-head{flex:none;height:30px;display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--bg1);border-bottom:1px solid var(--line)}
-.pane-head .lbl{font-size:9px;font-weight:700;letter-spacing:1px;color:var(--fg3)}
-.seg{display:inline-flex;gap:2px;background:var(--bg3);border-radius:6px;padding:2px}
-.seg button{font-size:10.5px;font-weight:600;color:var(--fg2);padding:3px 9px;border-radius:4px}
-.seg button.on{color:var(--accent);background:var(--accentDim)}
-.pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
-.statusline{font-size:10.5px;font-weight:700}
-
-/* HTTP syntax highlighting (read-only request/response views) */
-.hl-method{color:var(--accent);font-weight:700}
-.hl-url{color:var(--fg)}
-.hl-proto{color:var(--fg3)}
-.hl-hname{color:var(--blue);font-weight:600}
-.hl-hval{color:var(--fg2)}
-.hl-st2{color:var(--accent);font-weight:700}
-.hl-st3{color:var(--blue);font-weight:700}
-.hl-st4{color:var(--amber);font-weight:700}
-.hl-st5{color:var(--red);font-weight:700}
-.js-key{color:var(--blue);font-weight:600}
-.js-str{color:var(--accent)}
-.js-num{color:var(--amber)}
-.js-lit{color:var(--violet);font-weight:600}
-
-/* intercept */
-.section{padding:14px 16px;border-bottom:1px solid var(--line)}
-.section h3{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--fg3);margin-bottom:10px}
-.toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;padding:7px 14px;border-radius:8px;background:var(--bg3)}
-.toggle.on{color:var(--accent);background:var(--accentDim)}
-.held{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;margin-bottom:6px;cursor:pointer;font-size:11.5px}
-.held:hover{background:var(--bg3)}
-.held.sel{border-color:var(--accent);background:var(--accentDim)}
-.held .m{font-weight:700}
-.held .h{color:var(--fg2)}
-.held .p{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.6;padding:11px 14px;border:1px solid var(--line);border-radius:8px}
-.rules-tbl{width:100%;border-collapse:collapse;font-size:11.5px}
-.rules-tbl th{text-align:left;font-size:9px;letter-spacing:.6px;color:var(--fg3);padding:5px 8px;border-bottom:1px solid var(--line)}
-.rules-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
-.rules-tbl input[type=text]{width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:4px 7px}
-.rules-tbl select{background:var(--bg3);border:1px solid var(--line);border-radius:5px;padding:4px 6px;color:var(--fg2)}
-.field{display:flex;flex-direction:column;gap:6px;max-width:420px;margin-bottom:16px}
-.field label{font-size:11px;color:var(--fg2)}
-.field input{background:var(--bg3);border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12px}
-.hint{font-size:11px;color:var(--fg3);line-height:1.6}
-.scroll{overflow:auto;min-height:0;flex:1}
-
-/* AI activity feed */
-#aiPulse .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
-#aiPulse.live .dot{animation:pulse 1s ease-in-out infinite}
-@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
-.act-row{display:flex;align-items:baseline;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:11.5px}
-.act-row:hover{background:var(--bg1)}
-.act-row .ok{width:7px;height:7px;flex:none;border-radius:50%;align-self:center}
-.act-tool{flex:none;font-weight:700;color:var(--accent);min-width:130px;font-family:var(--mono)}
-.act-sum{flex:none;color:var(--fg);font-family:var(--mono);max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act-res{flex:1;color:var(--fg3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act-meta{flex:none;color:var(--fg3);font-size:10.5px;text-align:right}
-
-/* active-filter chips */
-#chips{display:none;flex-wrap:wrap;gap:6px;padding:0 12px;background:var(--bg1)}
-#chips.has{display:flex;padding:8px 12px;border-bottom:1px solid var(--line)}
-.chip{display:inline-flex;align-items:center;gap:7px;font-size:11px;background:var(--bg3);border:1px solid var(--line2);border-radius:14px;padding:3px 5px 3px 11px;color:var(--fg)}
-.chip b{color:var(--accent);font-weight:600}
-.chip.not{border-color:var(--red)}
-.chip.not b{color:var(--red)}
-.chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border-radius:50%;background:var(--bg2);color:var(--fg2);font-size:11px;cursor:pointer}
-.chip .x:hover{color:var(--red);background:var(--bg1)}
-.chip-clear{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;background:transparent;border:1px dashed var(--line2);border-radius:14px;padding:3px 11px;color:var(--fg2);cursor:pointer}
-.chip-clear:hover{border-color:var(--red);border-style:solid;color:var(--red)}
-
-/* right-click context menu */
-#ctxmenu{position:fixed;z-index:100;min-width:210px;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 16px 48px var(--shadow);padding:5px;display:none;font-size:11.5px}
-#ctxmenu.show{display:block}
-.ctx-head{font-size:9px;font-weight:700;letter-spacing:.7px;color:var(--fg3);padding:7px 9px 4px}
-.ctx-item{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:6px;color:var(--fg);white-space:nowrap;cursor:pointer}
-.ctx-item:hover{background:var(--bg3)}
-.ctx-item .mono{color:var(--accent);font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:240px}
-.ctx-item.on{background:var(--accentDim)}
-.ctx-item.on .lbl{color:var(--accent)}
-.ctx-sep{height:1px;background:var(--line);margin:5px 4px}
-
-/* repeater */
-.repurl{flex:1;background:var(--bg3);border:1px solid var(--line);border-radius:7px;height:30px;padding:0 12px;font-size:12.5px;color:var(--fg)}
-.rep-hist{width:180px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--bg1)}
-.rep-hist .h{display:flex;flex-direction:column;gap:2px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:11px}
-.rep-hist .h:hover{background:var(--bg3)}
-.rep-hist .h.sel{background:var(--sel);border-left:2px solid var(--accent)}
-.rep-hist .h .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rep-edit{width:100%;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11.5px;line-height:1.7;padding:8px 12px;border:none;border-top:1px solid var(--line)}
-.rep-tabs{flex:none;display:flex;gap:3px;align-items:center;padding:6px 8px 0;overflow-x:auto;background:var(--bg1);border-bottom:1px solid var(--line)}
-.rep-tab{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-bottom:none;border-radius:7px 7px 0 0;background:var(--bg3);color:var(--fg2);cursor:pointer;white-space:nowrap;max-width:260px;font-size:11.5px;position:relative;top:1px}
-.rep-tab.on{background:var(--bg);color:var(--fg);border-color:var(--accent)}
-.rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
-.rep-tab .rt-close{opacity:.45;font-size:10px;border-radius:3px;padding:0 3px}
-.rep-tab .rt-close:hover{opacity:1;color:var(--red);background:var(--sel)}
-.rep-tab-add{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:7px;cursor:pointer;padding:5px 10px;font-size:13px;line-height:1}
-.rep-tab-add:hover{color:var(--fg);border-color:var(--accent)}
-.settings-wrap{flex:1;display:flex;min-height:0}
-.settings-nav{flex:none;width:196px;border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:3px;overflow:auto;background:var(--bg1)}
-.settings-nav button{text-align:left;padding:9px 12px;border-radius:8px;border:none;background:transparent;color:var(--fg2);cursor:pointer;font-size:13px;font-weight:600}
-.settings-nav button:hover{background:var(--bg3);color:var(--fg)}
-.settings-nav button.on{background:var(--sel);color:var(--fg)}
-.settings-body{flex:1;overflow:auto;padding:22px 26px}
-.settings-body .set-sec[hidden]{display:none}
-.settings-body .section{max-width:780px;padding:22px 24px;margin:0 0 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg1)}
-.settings-body .section:last-child{margin-bottom:0}
-.settings-body .section h3{font-size:10px;letter-spacing:1px;color:var(--accent);margin-bottom:14px}
-.settings-body .field{max-width:460px;margin-bottom:18px}
-.settings-body .field:last-of-type{margin-bottom:14px}
-.settings-body .hint{font-size:11.5px}
-
-/* intruder results */
-.intr-head,.intr-row{display:grid;grid-template-columns:42px 1fr 52px 66px 60px;align-items:center;padding:0 8px}
-.intr-head{flex:none;height:26px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg2)}
-.intr-row{height:25px;border-bottom:1px solid var(--line);font-size:11px;cursor:default}
-.intr-row:hover{background:var(--bg3)}
-.intr-row.flag{background:var(--sel)}
-.intr-row>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 3px}
-.intr-row .pl{color:var(--fg)}
-.intr-row.flag .pl{color:var(--accent);font-weight:600}
-
-/* scanner */
-.scan-list{width:330px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--bg1)}
-.scan-item{padding:9px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer}
-.scan-item:hover{background:var(--bg3)}
-.scan-item.sel{background:var(--sel);border-left-color:var(--accent)}
-.scan-item .t{margin-top:5px;color:var(--fg);font-size:12px}
-.scan-item .tg{font-size:10.5px;color:var(--accent);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.scan-tgt[data-flow]:hover{border-color:var(--accent)!important}
-.map-host>summary,.map-folder>summary{cursor:pointer;padding:3px 2px}
-.map-host>summary{font-weight:700}
-.map-body{margin-left:13px;border-left:1px solid var(--line);padding-left:9px}
-.map-seg{font-family:var(--mono);color:var(--blue)}
-.map-c{font-size:10px;color:var(--fg3);background:var(--bg3);border-radius:8px;padding:0 6px;margin-left:4px}
-.map-ep{display:flex;align-items:center;gap:8px;padding:2px 4px;border-radius:4px}
-.map-ep[data-flow]{cursor:pointer}
-.map-ep[data-flow]:hover{background:var(--bg3)}
-.map-m{font-weight:700;font-size:10px;min-width:42px}
-.map-p{font-family:var(--mono);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.map-sts{font-family:var(--mono);font-size:10.5px}
-.map-hits{font-size:10px;color:var(--fg3);min-width:28px;text-align:right}
-#mapGraphSvg text{font-family:var(--mono);font-size:11px;dominant-baseline:central;user-select:none}
-.g-host{fill:var(--fg);font-weight:700}
-.g-folder{fill:var(--blue)}
-.g-ep{fill:var(--fg2)}
-.g-dim{fill:var(--fg3)}
-.g-edge{fill:none;stroke:var(--line2);stroke-width:1.2}
-.g-node.g-click{cursor:pointer}
-.g-node.g-click:hover text{fill:var(--accent)}
-.md{font-size:13.5px;line-height:1.65;color:var(--fg)}
-.md h1{font-size:20px;margin:18px 0 10px;border-bottom:1px solid var(--line);padding-bottom:5px}
-.md h2{font-size:16px;margin:16px 0 8px}
-.md h3{font-size:14px;margin:14px 0 6px;color:var(--fg2)}
-.md h4,.md h5,.md h6{font-size:12.5px;margin:12px 0 5px;color:var(--fg2)}
-.md p{margin:8px 0}
-.md code{font-family:var(--mono);font-size:12px;background:var(--bg3);border-radius:4px;padding:1px 5px}
-.md pre.md-code{font-family:var(--mono);font-size:12px;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow:auto;white-space:pre-wrap;margin:8px 0}
-.md ul{margin:8px 0 8px 4px;padding-left:18px}
-.md li{margin:3px 0}
-.md a{color:var(--blue)}
-.md strong{color:var(--fg);font-weight:700}
-.md-img{max-width:100%;border:1px solid var(--line);border-radius:6px;margin:8px 0}
-details.acc{margin:0}
-details.acc>summary.acc-h{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px}
-details.acc>summary.acc-h::-webkit-details-marker{display:none}
-details.acc>summary.acc-h::before{content:'▾';color:var(--fg3);font-size:10px;flex:none}
-details.acc:not([open])>summary.acc-h::before{content:'▸'}
-details.acc>summary.acc-h>*{margin:7px 0}
-.acc-body{padding:0 0 2px 17px}
-.sev{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.5px;border-radius:5px;padding:2px 7px;border:1px solid}
-.sev.High{color:var(--red);border-color:var(--red)}
-.sev.Medium{color:var(--amber);border-color:var(--amber)}
-.sev.Low{color:var(--blue);border-color:var(--blue)}
-.sev.Info{color:var(--fg2);border-color:var(--line2)}
-.scan-wrap{padding:18px 20px;overflow:auto}
-.evidence{background:var(--bg1);border:1px solid var(--line);border-radius:8px;padding:10px 13px;font-family:var(--mono);font-size:11.5px;color:var(--fg);overflow-wrap:anywhere;margin:14px 0}
-.fixbox{background:var(--accentDim);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--fg);line-height:1.6}
-
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--line2);border-radius:9px;padding:9px 16px;font-size:12px;color:var(--fg);box-shadow:0 10px 30px var(--shadow);opacity:0;transition:opacity .2s;pointer-events:none}
-#toast.show{opacity:1}
-</style>
+<link rel="stylesheet" href="/app.css">
 <script>
 // Apply the saved (or system) theme before first paint to avoid a flash.
 (function(){try{
@@ -289,31 +22,31 @@ details.acc>summary.acc-h>*{margin:7px 0}
   <span class="brand">INTERCEPTOR</span>
   <span class="tag">INTERCEPTING PROXY</span>
   <div class="spacer"></div>
-  <div class="row" style="gap:6px"><div class="dot blink"></div><span class="kv">proxy <b id="proxyAddr">…</b></span></div>
+  <div class="row" style="gap:6px" title="Proxy listener — the dot pulses when traffic is captured"><div class="dot" id="capDot"></div><span class="kv">proxy <b id="proxyAddr">…</b></span><span class="kv" id="capStat" style="color:var(--fg3)">· waiting for traffic</span></div>
   <span class="kv">control <b>127.0.0.1:9966</b></span>
   <button id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">☾</button>
 </div>
 
-<div id="tabs">
-  <button class="tab active" data-tab="proxy">Proxy</button>
-  <button class="tab" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
-  <button class="tab" data-tab="repeater">Repeater</button>
-  <button class="tab" data-tab="intruder">Intruder</button>
-  <button class="tab" data-tab="scanner">Scanner</button>
-  <button class="tab" data-tab="map">Map</button>
-  <button class="tab" data-tab="notes">Notes</button>
-  <button class="tab" data-tab="activity">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
-  <button class="tab" data-tab="api">API</button>
-  <button class="tab" data-tab="settings">Settings</button>
+<div id="tabs" role="tablist" aria-label="Main navigation">
+  <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy">Proxy</button>
+  <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
+  <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater">Repeater</button>
+  <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder">Intruder</button>
+  <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner">Scanner</button>
+  <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map">Map</button>
+  <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes">Notes</button>
+  <button class="tab" id="tab-activity" role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
+  <button class="tab" id="tab-api" role="tab" aria-selected="false" aria-controls="panel-api" data-tab="api">API</button>
+  <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
   <div class="spacer"></div>
-  <span id="aiPulse" style="align-self:center;display:none;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--accent);padding:3px 10px;border-radius:6px;background:var(--accentDim);cursor:pointer" title="The AI assistant is acting on this project — click to watch"><span class="dot"></span><span id="aiPulseLbl">AI active</span></span>
+  <span id="aiPulse" role="button" tabindex="0" style="align-self:center;display:none;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--accent);padding:3px 10px;border-radius:6px;background:var(--accentDim);cursor:pointer" title="The AI assistant is acting on this project — click to watch" aria-label="AI assistant is active — click to watch activity"><span class="dot"></span><span id="aiPulseLbl">AI active</span></span>
   <span id="projBadge" style="align-self:center;margin-left:10px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:6px;display:none" title="Active project"></span>
   <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="align-self:center;padding:0 12px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
 </div>
 
 <div id="main">
   <!-- PROXY -->
-  <div class="panel active" data-panel="proxy">
+  <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
     <div class="toolbar">
       <div class="search">
         <select id="fScheme"><option value="">all</option><option value="https">https</option><option value="http">http</option></select>
@@ -332,7 +65,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
       <a class="btn" id="exportHar" href="/api/export/har" download title="Export history as a HAR file">Export</a>
       <button class="btn" id="importHarBtn" title="Import a HAR file">Import</button>
       <input type="file" id="importHarFile" accept=".har,application/json,application/har+json" style="display:none">
-      <button class="btn" id="refreshBtn">Refresh</button>
+      <button class="btn" id="refreshBtn" aria-label="Refresh flow history">Refresh</button>
     </div>
     <div id="chips"></div>
     <div id="selBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px">
@@ -348,11 +81,16 @@ details.acc>summary.acc-h>*{margin:7px 0}
       <div data-sort="mime">Type</div><div data-sort="size" style="text-align:right">Size</div><div data-sort="time" style="text-align:right">Time</div>
     </div>
     <div id="rows"><div class="empty">No traffic yet. Point a client at the proxy and requests will appear here live.</div></div>
+    <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
-          <button class="btn" id="aiExplainBtn" title="Ask AI about this flow" style="padding:3px 9px">✨</button>
+          <div class="spacer"></div>
+          <button class="btn" id="insRepeater" title="Send to Repeater (Ctrl+R)" style="padding:3px 9px">→ Rep</button>
+          <button class="btn" id="insIntruder" title="Send to Intruder (Ctrl+I)" style="padding:3px 9px">→ Intr</button>
+          <button class="btn" id="insCurl" title="Copy as cURL" style="padding:3px 9px">cURL</button>
+          <button class="btn" id="aiExplainBtn" title="Ask AI about this flow" aria-label="Ask AI about this flow" style="padding:3px 9px">✨</button>
         </div>
         <pre id="reqView"><span style="color:var(--fg3)">Select a flow to inspect its request.</span></pre>
       </div>
@@ -372,138 +110,142 @@ details.acc>summary.acc-h>*{margin:7px 0}
   </div>
 
   <!-- INTERCEPT -->
-  <div class="panel" data-panel="intercept">
-    <div class="scroll">
-      <div class="section">
-        <h3>INTERCEPT</h3>
-        <div class="row" style="gap:12px">
-          <button class="toggle" id="interceptToggle">Intercept is off</button>
-          <span class="hint">When on, every (in-scope) request is held until you forward (optionally edited) or drop it.</span>
-        </div>
-        <div class="row" style="gap:12px;margin-top:10px">
-          <button class="toggle" id="respInterceptToggle">Response intercept is off</button>
-          <span class="hint">When on, every response is held so you can edit or drop it before it reaches the client.</span>
-        </div>
-        <div class="row" style="gap:10px;margin-top:12px;align-items:center">
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="interceptFilterOn"> <span>Only hold when</span></label>
-          <select id="interceptFilterTarget" class="btn"><option value="any">anything</option><option value="url">URL</option><option value="header">headers</option><option value="body">body</option><option value="method">method</option></select>
-          <span>matches</span>
-          <input id="interceptFilterPattern" class="btn" style="flex:1;background:var(--bg3);font-family:var(--mono)" placeholder="regex e.g. /admin|password=" spellcheck="false">
-          <button class="btn accent" id="interceptFilterApply">Apply</button>
-        </div>
-        <div class="hint" style="margin-top:6px">Conditional intercept: when enabled, requests that don't match are forwarded without being held. Leave off to hold everything.</div>
+  <div class="panel" id="panel-intercept" role="tabpanel" aria-labelledby="tab-intercept" data-panel="intercept">
+    <!-- control strip: the on/off switches + conditional filter -->
+    <div class="icpt-bar">
+      <button class="icpt-sw" id="interceptToggle" aria-pressed="false" title="Hold matching requests before they leave"><span class="icpt-led"></span>Requests <b id="icptReqState">Off</b></button>
+      <button class="icpt-sw" id="respInterceptToggle" aria-pressed="false" title="Hold responses before they reach the client"><span class="icpt-led"></span>Responses <b id="icptResState">Off</b></button>
+      <div class="icpt-cond">
+        <label class="icpt-chk"><input type="checkbox" id="interceptFilterOn"> Only hold when</label>
+        <select id="interceptFilterTarget" class="btn"><option value="any">anything</option><option value="url">URL</option><option value="header">headers</option><option value="body">body</option><option value="method">method</option></select>
+        <span class="hint">matches</span>
+        <input id="interceptFilterPattern" class="btn" style="flex:1;min-width:160px;background:var(--bg3);font-family:var(--mono)" placeholder="regex e.g. /admin|password=" spellcheck="false">
+        <button class="btn accent" id="interceptFilterApply">Apply</button>
       </div>
-      <div class="section">
-        <h3>REQUEST HOLD QUEUE · <span id="heldCount">0</span></h3>
-        <div id="heldList"><div class="hint">Nothing held.</div></div>
-        <div id="heldEditor" style="display:none;margin-top:10px">
-          <textarea class="raw" id="heldRaw" spellcheck="false"></textarea>
-          <div class="row" style="gap:8px;margin-top:8px">
-            <button class="btn accent" id="forwardBtn" title="Forward (Ctrl+F)">Forward</button>
-            <button class="btn danger" id="dropBtn" title="Drop (Ctrl+D)">Drop</button>
-            <span class="hint" style="align-self:center">Ctrl+F forward · Ctrl+D drop</span>
-          </div>
+    </div>
+    <!-- workspace: hold queue + editor -->
+    <div class="icpt-work">
+      <aside class="icpt-queue">
+        <div class="icpt-queue-head">HOLD QUEUE <span class="badge" id="heldTotal" style="display:none">0</span></div>
+        <div id="heldList" class="icpt-list"></div>
+      </aside>
+      <section class="icpt-main">
+        <div class="icpt-edhead" id="heldEditor" style="display:none">
+          <div class="icpt-edtitle" id="heldTitle"></div>
+          <div class="spacer"></div>
+          <button class="btn accent" id="forwardBtn" title="Forward (Ctrl+F)">▶ Forward</button>
+          <button class="btn danger" id="dropBtn" title="Drop (Ctrl+D)">✕ Drop</button>
         </div>
-      </div>
-      <div class="section">
-        <h3>RESPONSE HOLD QUEUE · <span id="respHeldCount">0</span></h3>
-        <div id="respHeldList"><div class="hint">Nothing held.</div></div>
-        <div id="respHeldEditor" style="display:none;margin-top:10px">
-          <textarea class="raw" id="respHeldRaw" spellcheck="false"></textarea>
-          <div class="row" style="gap:8px;margin-top:8px">
-            <button class="btn accent" id="respForwardBtn">Forward</button>
-            <button class="btn danger" id="respDropBtn">Drop</button>
-          </div>
+        <textarea class="icpt-raw" id="heldRaw" spellcheck="false" style="display:none" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
+        <div class="icpt-empty" id="heldEmpty">
+          <div class="icpt-empty-i">⏸</div>
+          <div class="icpt-empty-t">Nothing on hold</div>
+          <p class="hint">Turn <b>Requests</b> on and matching traffic pauses here — read it, edit the raw HTTP, then <b>Forward</b> (Ctrl+F) or <b>Drop</b> (Ctrl+D). Turn on <b>Responses</b> to hold replies before they reach the client. Use <b>Only hold when</b> to pause just the requests you care about.</p>
         </div>
-      </div>
-      <div class="section" style="border-bottom:none">
-        <h3>MATCH &amp; REPLACE (request &amp; response)</h3>
+      </section>
+    </div>
+    <!-- match & replace: automatic rewriting, collapsed by default -->
+    <details class="icpt-mr">
+      <summary>Match &amp; Replace rules <span class="hint" style="font-weight:400">— rewrite requests/responses automatically (applies to all traffic, not just held)</span></summary>
+      <div class="icpt-mr-body">
         <table class="rules-tbl">
           <thead><tr><th style="width:34px">On</th><th style="width:120px">Type</th><th>Match (regex)</th><th>Replace</th><th style="width:60px"></th></tr></thead>
           <tbody id="rulesBody"></tbody>
         </table>
-        <div class="row" style="gap:8px;margin-top:10px">
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
           <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option><option value="res-header">res-header</option><option value="res-body">res-body</option></select>
-          <input id="newRuleMatch" class="btn" style="flex:1;background:var(--bg3)" placeholder="match regex e.g. User-Agent: .*">
-          <input id="newRuleReplace" class="btn" style="flex:1;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
+          <input id="newRuleMatch" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" placeholder="match regex e.g. User-Agent: .*">
+          <input id="newRuleReplace" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
           <button class="btn accent" id="addRuleBtn">+ Add rule</button>
         </div>
       </div>
-    </div>
+    </details>
   </div>
 
   <!-- REPEATER -->
-  <div class="panel" data-panel="repeater">
+  <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater">
     <div class="rep-tabs" id="repTabs"></div>
-    <div class="toolbar">
-      <select id="repMethod" class="btn" style="font-weight:700"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
-      <input id="repUrl" class="repurl" placeholder="https://api.example.com/v1/resource">
-      <button class="btn accent" id="repSend">Send ▸</button>
+    <!-- request line: method · url · history · send -->
+    <div class="rep-line">
+      <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
+      <input id="repUrl" class="repurl" placeholder="https://api.example.com/v1/resource" spellcheck="false">
+      <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
+      <button class="btn accent" id="repSend">Send ▸<span class="kbd">Ctrl+Space</span></button>
     </div>
-    <div style="flex:1;display:flex;min-height:0">
-      <div id="repHistory" class="rep-hist"><div class="hint" style="padding:10px">No sends yet.</div></div>
-      <div class="pane">
+    <div class="rep-work">
+      <aside id="repHistory" class="rep-hist" style="display:none"></aside>
+      <section class="pane rep-req">
         <div class="pane-head"><span class="lbl">REQUEST</span></div>
-        <div style="flex:none;padding:6px 10px 0;font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">HEADERS</div>
-        <textarea id="repHeaders" class="rep-edit" spellcheck="false" style="flex:none;height:34%" placeholder="Header: value (one per line)"></textarea>
-        <div style="flex:none;padding:4px 10px 0;font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">BODY</div>
-        <textarea id="repBody" class="rep-edit" spellcheck="false" style="flex:1" placeholder="Request body…"></textarea>
-      </div>
-      <div class="pane">
+        <div class="rep-sub">HEADERS</div>
+        <textarea id="repHeaders" class="rep-edit" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
+        <div class="rep-sub">BODY</div>
+        <textarea id="repBody" class="rep-edit" spellcheck="false" placeholder="Request body…"></textarea>
+      </section>
+      <section class="pane rep-res">
         <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline"></span>
+          <div class="spacer"></div>
           <div class="seg" id="repResSeg"><button class="on" data-view="raw">Raw</button><button data-view="pretty">Pretty</button></div>
         </div>
-        <pre id="repResView"><span style="color:var(--fg3)">Send a request to see the response.</span></pre>
-      </div>
+        <pre id="repResView"><span class="hint" style="padding:14px;display:block;line-height:1.7">Send a request to see the response.<br>Edit the method, URL, headers or body, then <b>Send</b> (Ctrl+Space). Load a captured request via right-click a flow → <b>Repeater</b>. Each tab keeps its own send history (⟲).</span></pre>
+      </section>
     </div>
   </div>
 
   <!-- INTRUDER -->
-  <div class="panel" data-panel="intruder">
-    <div class="toolbar">
-      <input id="intrTarget" class="repurl" style="max-width:340px" placeholder="https://api.example.com">
-      <div class="seg" id="intrType"><button class="on" data-t="sniper">Sniper</button><button data-t="pitchfork">Pitchfork</button></div>
-      <button class="btn" id="intrWrap" title="Wrap the selected text in § … § fuzz markers">Add §</button>
+  <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder">
+    <div class="rep-tabs" id="intrTabs"></div>
+    <!-- attack bar -->
+    <div class="intr-bar">
+      <input id="intrTarget" class="repurl" style="max-width:280px" placeholder="https://api.example.com" spellcheck="false">
+      <div class="seg" id="intrType"><button class="on" data-t="sniper">Sniper</button><button data-t="pitchfork">Pitchfork</button><button data-t="repeat">Race</button></div>
+      <button class="btn" id="intrWrap" title="Wrap the selected text in § … § fuzz markers">§ Mark</button>
+      <label class="intr-num" title="Max requests in flight at once — raise (e.g. 20) to hit race-condition windows"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
+      <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span>⏱</span><input id="intrDelay" type="number" min="0" step="50" value="0">ms</label>
+      <label class="intr-num" id="intrRepeatWrap" style="display:none" title="How many times to send the request (Race mode — no payloads needed)"><span>×</span><input id="intrRepeat" type="number" min="1" max="2000" value="20">sends</label>
+      <button class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)">⟲ History</button>
+      <div class="spacer"></div>
+      <span id="intrCount" class="hint"></span>
       <button class="btn accent" id="intrStart">Start ▸</button>
-      <span id="intrProgress" class="count"></span>
     </div>
-    <div style="flex:1;display:flex;min-height:0">
-      <div class="pane" style="flex:1.2">
-        <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span style="font-size:10px;color:var(--fg3)">wrap fuzz points in §…§</span></div>
-        <textarea id="intrTemplate" class="rep-edit" style="flex:1" spellcheck="false">POST /login HTTP/1.1
+    <div class="intr-explain" id="intrHint"></div>
+    <div class="intr-opts">
+      <span class="hint">grep</span>
+      <input id="intrGrep" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="flag if response matches (regex/text)" spellcheck="false">
+      <input id="intrExtract" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="extract from response (regex group 1)" spellcheck="false">
+      <span class="hint">encode</span>
+      <input id="intrProc" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="payload processing e.g. urlencode, base64, prefix:id=" spellcheck="false" title="comma-separated, applied in order: urlencode · base64 · upper · lower · prefix:X · suffix:X">
+    </div>
+    <div class="intr-work">
+      <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
+      <section class="pane intr-config">
+        <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">wrap each injection point in <b>§…§</b> (select text → <b>§ Mark</b>)</span></div>
+        <textarea id="intrTemplate" class="rep-edit" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
 
 {"user":"§admin§","pass":"§password§"}</textarea>
-        <div class="pane-head"><span class="lbl">PAYLOADS</span></div>
-        <div style="flex:none;display:flex;height:150px">
-          <textarea id="intrPayloads1" class="rep-edit" style="flex:1" spellcheck="false" placeholder="one payload per line">admin
-administrator
-root
-' OR 1=1--
-../../../etc/passwd</textarea>
-          <textarea id="intrPayloads2" class="rep-edit" style="flex:1;display:none;border-left:1px solid var(--line)" spellcheck="false" placeholder="list 2 (pitchfork)">password
-123456
-changeme</textarea>
-        </div>
-      </div>
-      <div class="pane" style="flex:1.1">
-        <div class="pane-head"><span class="lbl">RESULTS</span></div>
+        <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span></div>
+        <div class="intr-payloads" id="intrPayloadsWrap"></div>
+      </section>
+      <section class="pane intr-results">
+        <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><div class="spacer"></div><span id="intrStats" class="hint"></span></div>
+        <div class="intr-progbar" id="intrProgBar" style="display:none"><div id="intrProgFill"></div></div>
         <div class="intr-head"><div>#</div><div>Payload</div><div style="text-align:center">St</div><div style="text-align:right">Len</div><div style="text-align:right">Time</div></div>
-        <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Run an attack to see results.</div></div>
-      </div>
+        <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Set a target, mark <b>§</b> injection points in the template, add payloads, then <b>Start</b>. Results — status, length, response time — stream in here; unusual responses are flagged ⚑.</div></div>
+      </section>
     </div>
   </div>
 
   <!-- SCANNER -->
-  <div class="panel" data-panel="scanner">
+  <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <select id="scanTarget" class="btn" style="background:var(--bg3);max-width:230px" title="Scan only this target"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" placeholder="path filter (optional)" title="Only scan flows whose path/host matches">
       <button class="btn accent" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanReport">Export report</button>
-      <button class="btn" id="checksBtn">✎ Custom checks</button>
-      <button class="btn" id="activeBtn" style="color:var(--red)">⚡ Active scan</button>
+      <button class="btn" id="checksBtn" aria-label="Edit custom scanner checks">✎ Custom checks</button>
+      <button class="btn" id="activeBtn" style="color:var(--red)" aria-label="Open active scan (sends attack requests)">⚡ Active scan</button>
+      <button class="btn" id="oobBtn" aria-label="Out-of-band interaction catcher">⚲ OOB</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
       <span class="hint" style="font-size:11px">Passive checks over captured traffic — no requests sent</span>
@@ -515,7 +257,7 @@ changeme</textarea>
   </div>
 
   <!-- Endpoint map (attack surface) -->
-  <div class="panel" data-panel="map">
+  <div class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map">
     <div class="toolbar">
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">ENDPOINT MAP</span>
       <select id="mapDomain" class="btn" style="background:var(--bg3);max-width:240px" title="Domain to map (showing one at a time keeps the graph readable)"><option value="">All domains</option></select>
@@ -524,18 +266,18 @@ changeme</textarea>
       <select id="mapStatus" class="btn" style="background:var(--bg3)"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <div class="seg" id="mapViewSeg"><button data-v="graph" class="on">Graph</button><button data-v="tree">Tree</button></div>
       <button class="btn" id="mapExpand" style="display:none">Expand all</button>
-      <button class="btn" id="mapFit" title="Fit graph to view">⤢ Fit</button>
-      <button class="btn" id="mapRefresh" title="Rebuild from history">↻</button>
+      <button class="btn" id="mapFit" title="Fit graph to view" aria-label="Fit graph to view">⤢ Fit</button>
+      <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
       <span id="mapCount" class="count"></span>
       <div class="spacer"></div>
-      <span class="hint" style="font-size:11px">Unique endpoints from captured traffic — your attack surface</span>
+      <span class="hint" style="font-size:11px">Attack surface from captured traffic · drag to pan · scroll to zoom · click a node to expand/collapse · click an endpoint to inspect</span>
     </div>
     <div id="mapTree" style="display:none;flex:1;overflow:auto;padding:10px 14px;font-size:12.5px"></div>
     <svg id="mapGraphSvg" style="flex:1;min-height:0;background:var(--bg1);cursor:grab" xmlns="http://www.w3.org/2000/svg"><g id="mapGraphG"></g></svg>
   </div>
 
   <!-- Project notes (markdown notebook) -->
-  <div class="panel" data-panel="notes">
+  <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">PROJECT NOTES</span>
       <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
@@ -549,7 +291,7 @@ changeme</textarea>
   </div>
 
   <!-- Activity (live AI feed) -->
-  <div class="panel" data-panel="activity">
+  <div class="panel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">AI ACTIVITY</span>
       <span class="hint">Every action your AI assistant takes over MCP — live. Watch, supervise, and jump in manually anytime.</span>
@@ -561,7 +303,7 @@ changeme</textarea>
   </div>
 
   <!-- API -->
-  <div class="panel" data-panel="api">
+  <div class="panel" id="panel-api" role="tabpanel" aria-labelledby="tab-api" data-panel="api">
     <div class="toolbar">
       <div class="seg" id="apiSub"><button class="on" data-s="keys">API Keys</button><button data-s="rest">REST</button><button data-s="mcp">MCP</button></div>
     </div>
@@ -592,7 +334,7 @@ changeme</textarea>
   </div>
 
   <!-- SETTINGS -->
-  <div class="panel" data-panel="settings">
+  <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -622,12 +364,43 @@ changeme</textarea>
             <p class="hint" style="margin-bottom:10px">On long engagements, save database space by storing only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded — they're just not written to history. Define your target under <b>Target scope</b>; with no scope set, everything is in scope (so this has no effect).</p>
             <div class="row" style="gap:12px"><button class="toggle" id="capScopeToggle">Saving all traffic</button><span class="hint">Toggle to keep only in-scope flows</span></div>
           </div>
+          <div class="section">
+            <h3>BROWSER TELEMETRY</h3>
+            <p class="hint" style="margin-bottom:10px">Chrome and Firefox send background traffic — Safe Browsing lookups, update pings, crash reports, captive-portal probes — that clutters history during web-app testing. This suppresses those hosts from capture <em>and</em> the intercept queue. Turn it off if you specifically need to inspect browser background traffic.</p>
+            <div class="row" style="gap:12px"><button class="toggle on" id="suppressTelemetryToggle">Suppressing browser telemetry</button><span class="hint">Toggle to allow browser telemetry into history</span></div>
+          </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
           <div class="section">
             <h3>TLS CERTIFICATE AUTHORITY</h3>
-            <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA on the client to intercept HTTPS. Per-host leaf certificates are minted on demand.</p>
+            <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA on the client to intercept HTTPS. Per-host leaf certificates are minted on demand. <b>HTTP works without this</b> — the CA is only needed to decrypt HTTPS.</p>
             <a class="btn accent" id="dlCaBtn" href="/api/ca.crt" download style="text-decoration:none;display:inline-block">Download CA certificate</a>
+            <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">HOW TO TRUST IT</div>
+              <details class="ca-how"><summary>macOS</summary><ol>
+                <li>Open the downloaded <code>interceptor-ca.crt</code> — Keychain Access opens.</li>
+                <li>Add it to the <b>System</b> (or login) keychain.</li>
+                <li>Double-click the <b>Interceptor</b> CA → expand <b>Trust</b> → set <b>When using this certificate</b> to <b>Always Trust</b>.</li>
+              </ol></details>
+              <details class="ca-how"><summary>Windows</summary><ol>
+                <li>Double-click the <code>.crt</code> → <b>Install Certificate</b>.</li>
+                <li>Store location <b>Current User</b> → <b>Place all certificates in the following store</b>.</li>
+                <li>Choose <b>Trusted Root Certification Authorities</b> → Next → Finish.</li>
+              </ol></details>
+              <details class="ca-how"><summary>Firefox (uses its own store)</summary><ol>
+                <li>Settings → <b>Privacy &amp; Security</b> → <b>Certificates</b> → <b>View Certificates</b>.</li>
+                <li><b>Authorities</b> tab → <b>Import</b> → pick the <code>.crt</code>.</li>
+                <li>Check <b>Trust this CA to identify websites</b> → OK.</li>
+              </ol></details>
+              <details class="ca-how"><summary>iOS</summary><ol>
+                <li>Open the <code>.crt</code> in Safari → <b>Allow</b> the profile download → install it in Settings.</li>
+                <li>Settings → <b>General</b> → <b>About</b> → <b>Certificate Trust Settings</b> → enable full trust for the Interceptor CA.</li>
+              </ol></details>
+              <details class="ca-how"><summary>Android</summary><ol>
+                <li>Settings → <b>Security</b> → <b>Encryption &amp; credentials</b> → <b>Install a certificate</b> → <b>CA certificate</b>.</li>
+                <li>Note: user CAs are not trusted by most apps on Android 7+; testing app traffic may need a rooted device or a network-security-config.</li>
+              </ol></details>
+            </div>
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
@@ -649,7 +422,7 @@ changeme</textarea>
         <section class="set-sec" data-sec="ai" hidden>
           <div class="section">
             <h3>AI ASSIST · bring your own key</h3>
-            <p class="hint" style="margin-bottom:10px">Optional. With your own provider key, the inspector's <b>✨</b> can explain a request, suggest payloads, or summarize findings. Off until a key is set; the exchange is sent to your chosen provider only when you click ✨. <b id="aiKeyState"></b></p>
+            <p class="hint" style="margin-bottom:10px">Optional. With your own provider key, the inspector's <b>✨</b> (or right-click → ✨ Ask AI) streams an explanation, suggests payloads you can load straight into Intruder, or summarizes findings. Off until a key is set; the exchange is sent to your chosen provider only when you ask. <b id="aiKeyState"></b></p>
             <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
             <div class="field"><label>API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
             <div class="field"><label>Model (optional)</label><input id="setAiModel" placeholder="claude-haiku-4-5-20251001"></div>
@@ -663,6 +436,22 @@ changeme</textarea>
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
             <div class="field"><textarea id="setSessionHeaders" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row"><button class="btn accent" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span></div>
+          </div>
+          <div class="section">
+            <h3>TOKEN MACRO (CSRF / RE-AUTH)</h3>
+            <p class="hint" style="margin-bottom:12px">For apps that rotate a <b>CSRF token</b> every request or expire sessions: before each send, Interceptor fires a <b>refresh request</b>, pulls a value from its response with your regex, and injects it. <b>Header</b> mode sets a header; <b>placeholder</b> mode replaces a marker (e.g. <code>§CSRF§</code>) you put in the request/body.</p>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="macroOn"> Run token macro before each send</label>
+            <div class="field" style="max-width:none"><label>Refresh request <span class="hint">(raw HTTP — request line + headers)</span></label><textarea id="macroReq" rows="4" placeholder="GET /login HTTP/1.1&#10;Host: app.example.com&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <input id="macroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="https://app.example.com (where to send it)" spellcheck="false">
+              <input id="macroExtract" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <select id="macroMode" class="btn" style="background:var(--bg3)"><option value="header">inject as header</option><option value="placeholder">replace placeholder</option></select>
+              <input id="macroName" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="header name e.g. X-CSRF-Token  (or placeholder e.g. §CSRF§)" spellcheck="false">
+              <button class="btn accent" id="macroSave">Save macro</button>
+            </div>
+            <p class="hint" style="margin-top:8px;color:var(--amber)">Note: this fires one extra request per send — for Intruder that doubles the request count.</p>
           </div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
@@ -689,6 +478,26 @@ changeme</textarea>
               <input type="file" id="importProjectFile" accept=".json,application/json" style="display:none">
             </div>
           </div>
+          <div class="section" id="retentionSection">
+            <h3>DATA &amp; RETENTION</h3>
+            <p class="hint" style="margin-bottom:12px">Keep the database small by purging noisy hosts, or keep only the hosts that matter. Reclaiming space also runs body garbage-collection to remove unreferenced body files. <b style="color:var(--red)">Deletion is permanent and cannot be undone.</b></p>
+            <div id="retentionTotals" style="margin-bottom:12px;font-size:12px;color:var(--fg2)"></div>
+            <table class="rules-tbl" id="retentionTable">
+              <thead><tr><th style="width:30px"><input type="checkbox" id="retSelectAll" title="Select / clear all hosts"></th><th>Host</th><th style="width:80px;text-align:right">Flows</th><th style="width:90px;text-align:right">Size</th><th style="width:72px"></th></tr></thead>
+              <tbody id="retentionBody"><tr><td colspan="5" class="hint" style="padding:10px 8px">Loading…</td></tr></tbody>
+            </table>
+            <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+              <button class="btn danger" id="retDeleteSelected" style="color:var(--red)">🗑 Delete selected</button>
+              <button class="btn" id="retKeepOnly">◉ Keep only selected</button>
+            </div>
+            <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
+              <input id="retPatternInput" class="btn" style="flex:1;min-width:200px;max-width:340px;background:var(--bg3);border:1px solid var(--line)" placeholder="Pattern e.g. *.ads.example.com">
+              <button class="btn danger" id="retPurgePattern" style="color:var(--red)">🗑 Purge by pattern</button>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn" id="retGc">♻ Reclaim space (GC body files)</button>
+            </div>
+          </div>
         </section>
       </div>
     </div>
@@ -697,7 +506,7 @@ changeme</textarea>
 
 <div id="ctxmenu"></div>
 <div id="flowModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;width:min(1100px,94vw);height:min(82vh,820px);display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow);overflow:hidden">
+  <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;width:min(1100px,94vw);height:min(82vh,820px);display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow);overflow:hidden">
     <div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line);gap:10px">
       <div id="fmTitle" style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
       <div class="seg" id="fmSeg"><button class="on" data-v="raw">Raw</button><button data-v="pretty">Pretty</button></div>
@@ -711,20 +520,55 @@ changeme</textarea>
   </div>
 </div>
 <div id="aiModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:700px;max-height:80vh;width:90%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span style="font-weight:700;color:var(--accent)">✨ AI assist</span>
+  <div role="dialog" aria-modal="true" aria-labelledby="aiModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:700px;max-height:80vh;width:90%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap">
+      <span id="aiModalTitle" style="font-weight:700;color:var(--accent)">✨ AI assist</span>
       <div class="spacer"></div>
       <div class="seg" id="aiKindSeg"><button class="on" data-k="explain">Explain</button><button data-k="suggest">Payloads</button><button data-k="summarize">Summary</button></div>
-      <button class="btn" id="aiClose" style="margin-left:10px">✕</button>
+      <button class="btn" id="aiClose" aria-label="Close">✕</button>
     </div>
-    <pre id="aiOut" style="margin:0;padding:16px;overflow:auto;white-space:pre-wrap;font-size:12.5px;line-height:1.6;color:var(--fg)"></pre>
+    <div id="aiBody" style="flex:1;overflow:auto;padding:16px;min-height:140px">
+      <div id="aiOut" class="md"></div>
+      <div id="aiPayloads"></div>
+    </div>
+    <div class="row" id="aiActions" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap">
+      <span id="aiStatus" class="hint" style="margin-right:auto"></span>
+      <button class="btn" id="aiStop" style="display:none">■ Stop</button>
+      <button class="btn" id="aiAllIntruder" style="display:none" title="Load the request + every suggested payload into Intruder">⚑ Load all → Intruder</button>
+      <button class="btn" id="aiToRepeater" title="Load this request into Repeater">→ Repeater</button>
+      <button class="btn" id="aiToIntruder" title="Load this request into Intruder">→ Intruder</button>
+      <button class="btn" id="aiCopy" title="Copy the AI output">⧉ Copy</button>
+    </div>
+  </div>
+</div>
+<div id="shortcutsModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="scTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:480px;width:90%;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span id="scTitle" style="font-weight:700;color:var(--accent)">⌨ Keyboard shortcuts</span>
+      <div class="spacer"></div>
+      <button class="btn" id="scClose" aria-label="Close">✕</button>
+    </div>
+    <div style="padding:6px 16px 14px">
+      <table class="sc-tbl">
+        <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Command palette — jump anywhere, run anything</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Focus the History search</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Walk History rows (Proxy tab)</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>R</kbd></td><td>Send selected flow → Repeater</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>I</kbd></td><td>Send selected flow → Intruder</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td><td>Send the request in Repeater</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>F</kbd></td><td>Forward the held request (Intercept)</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>D</kbd></td><td>Drop the held request (Intercept)</td></tr>
+        <tr><td><kbd>?</kbd></td><td>This shortcuts list</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Close a dialog or menu</td></tr>
+      </table>
+      <div class="hint" style="margin-top:10px">On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>.</div>
+    </div>
   </div>
 </div>
 <div id="checksModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:920px;max-height:84vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+  <div role="dialog" aria-modal="true" aria-labelledby="checksModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:920px;max-height:84vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span style="font-weight:700;color:var(--accent)">✎ Custom scanner checks</span>
+      <span id="checksModalTitle" style="font-weight:700;color:var(--accent)">✎ Custom scanner checks</span>
       <span class="hint" style="margin-left:10px">Starlark · runs on every scan · sandboxed</span>
       <div class="spacer"></div>
       <button class="btn" id="checksClose">✕</button>
@@ -749,14 +593,14 @@ changeme</textarea>
   </div>
 </div>
 <div id="activeModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:800px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+  <div role="dialog" aria-modal="true" aria-labelledby="activeModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:800px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span style="font-weight:700;color:var(--red)">⚡ Active scan</span>
+      <span id="activeModalTitle" style="font-weight:700;color:var(--red)">⚡ Active scan</span>
       <span class="hint" style="margin-left:10px">sends crafted attack requests · scope-restricted</span>
       <div class="spacer"></div><button class="btn" id="asClose">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
-      <div style="border:1px solid var(--red);background:rgba(255,80,80,.08);border-radius:8px;padding:10px 12px">
+      <div style="border:1px solid var(--red);background:var(--redDim);border-radius:8px;padding:10px 12px">
         <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer;color:var(--fg)">
           <input type="checkbox" id="asArm" style="margin-top:2px">
           <span><b style="color:var(--red)">Active scanning sends real attack requests</b> (XSS, SQLi, SSTI, traversal, timing probes) to the target. Only enable this for systems you are <b>authorized to test</b>. Stays armed for this session.</span>
@@ -774,10 +618,50 @@ changeme</textarea>
     </div>
   </div>
 </div>
-<div id="decModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:86vh;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+<div id="oobModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="oobModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span style="font-weight:700;color:var(--accent)">🧰 Decoder</span>
+      <span id="oobModalTitle" style="font-weight:700;color:var(--accent)">⚲ Out-of-band (OOB) interactions</span>
+      <span class="hint" style="margin-left:10px">catch blind SSRF / XXE / SQLi / RCE callbacks</span>
+      <div class="spacer"></div><button class="btn" id="oobClose">✕</button>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
+      <p class="hint" style="line-height:1.6;margin:0">Generate a unique URL, drop it into a payload (e.g. an SSRF parameter, an XXE entity, or <code>'; SELECT … INTO OUTFILE</code> exfil), and watch here for the target to call back — proof of a <b>blind</b> vulnerability. The target must be able to reach the address below, so for a remote target set a reachable base (your LAN IP or a tunnel); the default points at this local control plane.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <span class="hint">Base URL</span>
+        <input id="oobBase" class="btn" style="flex:1;min-width:240px;background:var(--bg3);font-family:var(--mono)" placeholder="http://your-host:port/oob" spellcheck="false">
+        <button class="btn" id="oobSaveBase">Save</button>
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="btn accent" id="oobGen">＋ Generate payload URL</button>
+        <input id="oobUrl" class="btn" readonly style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);font-family:var(--mono);color:var(--accent)" placeholder="click Generate…">
+        <button class="btn" id="oobCopy">⧉ Copy</button>
+      </div>
+      <div class="row" style="gap:10px"><span style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">INTERACTIONS</span><span id="oobCount" class="count"></span><div class="spacer"></div><button class="btn danger" id="oobClear">Clear</button></div>
+      <div id="oobList"><div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div></div>
+    </div>
+  </div>
+</div>
+<div id="authzModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="authzModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:88vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span id="authzModalTitle" style="font-weight:700;color:var(--accent)">🔓 Authorization test</span>
+      <span class="hint" style="margin-left:10px">replay request <b id="authzFlow" style="color:var(--accent)"></b> as each role · diff for broken access control</span>
+      <div class="spacer"></div><button class="btn" id="authzClose">✕</button>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
+      <p class="hint" style="line-height:1.6;margin:0">Define identities (roles) below — the <b>first is the baseline</b> (your privileged user). Run replays the selected request under each, swapping in that identity's auth headers. If a lower-privileged role still gets a <b>successful, ~same-size</b> response, it's flagged <b style="color:var(--red)">⚠ same access</b> — likely IDOR / broken access control. Leave a role's headers blank to test <b>anonymous</b>.</p>
+      <div id="authzIds" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div class="row" style="gap:8px"><button class="btn" id="authzAdd">＋ Add identity</button><button class="btn" id="authzSave">Save identities</button><div class="spacer"></div><button class="btn accent" id="authzRun">Run ▸</button></div>
+      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">RESULTS</div>
+      <div id="authzResults"><div class="hint">Run to compare access across roles.</div></div>
+    </div>
+  </div>
+</div>
+<div id="decModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="decModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:86vh;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span id="decModalTitle" style="font-weight:700;color:var(--accent)">🧰 Decoder</span>
       <span class="hint" style="margin-left:10px">↓ decode · ↑ encode</span>
       <div class="spacer"></div><button class="btn" id="decClose">✕</button>
     </div>
@@ -789,8 +673,15 @@ changeme</textarea>
     </div>
   </div>
 </div>
+<div id="confirmModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:240;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="confirmTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;width:420px;max-width:92%;box-shadow:0 20px 60px var(--shadow);overflow:hidden">
+    <div style="padding:14px 16px 0"><div id="confirmTitle" style="font-weight:700;color:var(--fg);font-size:13px">Confirm</div></div>
+    <div style="padding:12px 16px;font-size:12px;line-height:1.6;color:var(--fg2)" id="confirmMsg"></div>
+    <div class="row" style="gap:8px;justify-content:flex-end;padding:0 16px 14px"><button class="btn" id="confirmCancel">Cancel</button><button class="btn accent" id="confirmOk">OK</button></div>
+  </div>
+</div>
 <div id="promptModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:240;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;width:420px;max-width:92%;box-shadow:0 20px 60px var(--shadow);overflow:hidden">
+  <div role="dialog" aria-modal="true" aria-labelledby="promptTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;width:420px;max-width:92%;box-shadow:0 20px 60px var(--shadow);overflow:hidden">
     <div style="padding:14px 16px 0"><div id="promptTitle" style="font-weight:700;color:var(--fg);font-size:13px">Enter a value</div></div>
     <div style="padding:12px 16px"><input id="promptInput" class="btn" style="width:100%;background:var(--bg3);border:1px solid var(--line);font-size:13px;padding:9px 11px"></div>
     <div class="row" style="gap:8px;justify-content:flex-end;padding:0 16px 14px"><button class="btn" id="promptCancel">Cancel</button><button class="btn accent" id="promptOk">OK</button></div>
@@ -798,1624 +689,6 @@ changeme</textarea>
 </div>
 <div id="toast"></div>
 
-<script>
-const $=s=>document.querySelector(s);
-const $$=s=>Array.from(document.querySelectorAll(s));
-const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-// escAttr also escapes quotes — use it for a value interpolated INTO an attribute
-// ("${escAttr(x)}"), where a raw " or ' in user-authored rules or captured traffic
-// (hosts, paths) would otherwise break out of the attribute. Plain esc() (which
-// deliberately keeps quotes) stays for text and the JSON/HTTP highlighters.
-const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-
-const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
-  rules:[],scope:[],views:[],inScopeOnly:false,showAI:true,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'raw',res:'raw'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
-  filters:{scheme:'',search:'',method:'',status:'',host:'',exclude:[]},activity:[],actUnseen:0};
-
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
-async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
-
-const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
-const statusColor=s=>!s?'var(--fg3)':s<300?'var(--accent)':s<400?'var(--blue)':s<500?'var(--amber)':'var(--red)';
-const statusText=s=>({200:'OK',201:'Created',204:'No Content',301:'Moved',302:'Found',304:'Not Modified',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',500:'Internal Server Error',502:'Bad Gateway'}[s]||'');
-const mimeLabel=m=>{if(!m)return'—';if(m.includes('json'))return'json';if(m.includes('html'))return'html';if(m.includes('javascript'))return'script';if(m.includes('css'))return'css';if(m.includes('font')||m.includes('woff'))return'font';if(m.includes('image'))return'image';return(m.split('/')[1]||m).split(';')[0];};
-const fmtSize=n=>!n?'0 B':n<1024?n+' B':n<1048576?(n/1024).toFixed(n<10240?1:0)+' KB':(n/1048576).toFixed(1)+' MB';
-const fmtTime=ms=>{const d=new Date(ms);return d.toLocaleTimeString('en-GB',{hour12:false});};
-const fmtDur=ms=>ms<1000?ms+' ms':(ms/1000).toFixed(ms<10000?2:1)+' s';
-
-/* ---- tabs ---- */
-$$('.tab').forEach(t=>t.onclick=()=>{
-  $$('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
-  $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
-  try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
-  if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-  if(t.dataset.tab==='scanner')loadScanTargets();
-  if(t.dataset.tab==='map')loadEndpoints();
-  if(t.dataset.tab==='notes')loadNotes();
-});
-// Re-open whichever tab was active before a refresh (default stays Proxy).
-function restoreTab(){
-  try{const id=localStorage.getItem('tab');if(!id||id==='proxy')return;
-    const b=document.querySelector('.tab[data-tab="'+id+'"]');if(b)b.click();
-  }catch(e){}
-}
-/* settings sub-nav */
-$$('#setNav button').forEach(b=>b.onclick=()=>{
-  $$('#setNav button').forEach(x=>x.classList.toggle('on',x===b));
-  $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
-});
-
-/* ---- flows ---- */
-function applySort(flows){
-  const k=state.sort.key,dir=state.sort.dir;
-  const val=f=>k==='size'?(f.resLen||0):k==='time'?f.ts:k==='status'?(f.status||0):k==='method'?f.method:k==='host'?f.host:k==='path'?f.path:k==='mime'?mimeLabel(f.mime):f.id;
-  return flows.slice().sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*dir;});
-}
-function getStartedCard(){
-  return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
-    <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
-    <div class="hint" style="margin-bottom:14px">Interceptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
-    <ol style="color:var(--fg2);line-height:2;font-size:12.5px;padding-left:20px;margin:0">
-      <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b></li>
-      <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
-      <li>Browse — flows stream in here. <b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, or send to Repeater/Intruder</li>
-      <li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>
-    </ol></div>`;
-}
-function renderRows(){
-  const box=$('#rows');
-  const flows=applySort(state.flows);
-  $('#rowCount').textContent=state.flows.length;
-  if(!flows.length){
-    if(anyFilter()||state.inScopeOnly){
-      // Traffic exists but nothing matches the active filters — don't show the
-      // "no traffic yet" onboarding (it reads as if capture is broken).
-      box.innerHTML='<div class="empty">No flows match the current filters.<br><button class="btn" id="emptyClear" style="margin-top:12px">Clear filters</button></div>';
-      const c=document.getElementById('emptyClear');if(c)c.onclick=()=>{
-        if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('accent');st.textContent='◎ in scope';}}
-        clearAllFilters();
-      };
-    }else{
-      box.innerHTML=getStartedCard();
-      const b=document.getElementById('gsMcp');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="api"]').click();document.querySelector('#apiSub button[data-s="mcp"]').click();};
-    }
-    return;}
-  box.innerHTML=flows.map(f=>{
-    const intercepted=(f.flags&1)!==0;
-    const pending=!f.status&&!f.error;
-    const stHTML=f.status?String(f.status):(f.error?'ERR':'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
-    return `<div class="trow ${f.id===state.selId?'sel':''}${pending?' pending':''}" data-id="${f.id}" title="Left-click to inspect · Right-click to filter / copy">
-      <div class="tr-id" data-field="id"><input type="checkbox" class="rowsel" data-id="${f.id}"${state.selected.has(f.id)?' checked':''} style="vertical-align:middle;margin-right:5px">${f.id}</div>
-      <div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>
-      <div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>
-      <div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${f.note?' <span title="has a note" style="cursor:help">📝</span>':''}</div>
-      <div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>
-      <div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>
-      <div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>
-      <div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>
-    </div>`;
-  }).join('');
-  $$('#rows .trow').forEach(r=>{
-    const id=Number(r.dataset.id);
-    r.onclick=()=>selectFlow(id);
-    r.oncontextmenu=e=>{
-      e.preventDefault();
-      const f=state.flows.find(x=>x.id===id);
-      const cell=e.target.closest('[data-field]');
-      showCtx(e.clientX,e.clientY,f,cell?cell.dataset.field:'');
-    };
-  });
-  $$('#rows .rowsel').forEach(cb=>{
-    cb.onclick=e=>{
-      e.stopPropagation(); // toggle selection without opening the inspector
-      const id=Number(cb.dataset.id),list=applySort(state.flows),idx=list.findIndex(f=>f.id===id);
-      if(e.shiftKey&&state.lastSelIdx>=0&&state.lastSelIdx<list.length){
-        const a=Math.min(state.lastSelIdx,idx),b=Math.max(state.lastSelIdx,idx);
-        for(let i=a;i<=b;i++){cb.checked?state.selected.add(list[i].id):state.selected.delete(list[i].id);}
-      }else{cb.checked?state.selected.add(id):state.selected.delete(id);}
-      state.lastSelIdx=idx;renderRows();updateSelBar();
-    };
-  });
-  const sa=$('#selAll');
-  if(sa){const list=applySort(state.flows);sa.checked=list.length>0&&list.every(f=>state.selected.has(f.id));sa.indeterminate=!sa.checked&&list.some(f=>state.selected.has(f.id));}
-}
-async function loadFlows(){
-  const q=new URLSearchParams();
-  const f=state.filters;
-  if(f.scheme)q.set('scheme',f.scheme);
-  if(f.search)q.set('search',f.search);
-  if(f.method)q.set('method',f.method);
-  if(f.status)q.set('status',f.status);
-  if(f.host)q.set('host',f.host);
-  (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
-  if(state.inScopeOnly)q.set('inScope','1');
-  if(!state.showAI)q.set('ai','0');
-  q.set('limit','500');
-  try{const d=await api('/api/flows?'+q.toString());state.flows=d.flows||[];renderRows();refreshMethodFilter();}catch(e){toast('flows: '+e.message);}
-}
-// Show only the HTTP methods that actually appear in the current history.
-function refreshMethodFilter(){
-  if(state.filters.method)return; // don't shrink the list while filtering by method
-  const order=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','CONNECT','TRACE'];
-  const present=[...new Set(state.flows.map(f=>f.method).filter(Boolean))]
-    .sort((a,b)=>{const ia=order.indexOf(a),ib=order.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
-  const sel=$('#fMethod');if(!sel)return;const cur=sel.value;
-  sel.innerHTML='<option value="">method</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
-}
-let reloadTimer=null;
-function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
-
-const FLAG_WS=32;
-const FLAG_AI=1024;
-async function selectFlow(id){
-  state.selId=id;renderRows();
-  try{
-    state.detail=await api('/api/flows/'+id);
-    const d=state.detail;
-    $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
-    await renderSide('req');
-    if(d.flags&FLAG_WS){
-      $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
-      await renderWSFrames(id);
-    }else if(!d.status&&!d.error){
-      // In-flight request: response not back yet. The flow.update handler
-      // re-selects this flow once it lands, filling the pane in automatically.
-      $('#resView').innerHTML='<span class="blink" style="color:var(--fg3)">waiting for response…</span>';
-      $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
-    }else{
-      await renderSide('res');
-      $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
-      $('#resStatus').style.color=statusColor(d.status);
-    }
-  }catch(e){toast('flow: '+e.message);}
-}
-function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
-function wsFrameRow(dir,opcode,length,text){
-  const arrow=dir==='send'?'<span style="color:var(--blue)">▲ send</span>':'<span style="color:var(--accent)">▼ recv</span>';
-  return `<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px solid var(--line)">
-    <span style="width:60px;flex:none">${arrow}</span>
-    <span style="width:46px;flex:none;color:var(--fg3)">${wsOpcode(opcode)}</span>
-    <span style="width:58px;flex:none;color:var(--fg2);text-align:right">${length} B</span>
-    <span style="color:var(--fg);overflow-wrap:anywhere">${esc(text)}</span></div>`;
-}
-function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${d.host}${def?'':':'+d.port}${d.path||'/'}`;}
-async function renderWSFrames(id){
-  try{
-    const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
-    const url=flowWsURL(state.detail||{});
-    const box=`<div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="wsMsg" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
-        <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
-      <div id="wsReplayOut" style="margin-bottom:10px"></div>`;
-    const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
-      :'<span style="color:var(--fg3)">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
-    $('#resView').innerHTML=box+list;
-    const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
-    const inp=document.getElementById('wsMsg');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')wsReplay(url);};
-  }catch(e){$('#resView').textContent='(error: '+e.message+')';}
-}
-async function wsReplay(url){
-  const msg=($('#wsMsg')||{}).value||'';
-  const out=$('#wsReplayOut');if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
-  try{
-    const r=await api('/api/ws/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,message:msg})});
-    const head=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:4px 0 4px">REPLAY · HTTP ${r.status} · ${(r.frames||[]).length} frame(s)</div>`;
-    if(out)out.innerHTML=head+(r.frames||[]).map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');
-  }catch(e){if(out)out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
-}
-const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light
-function beautifyBody(body){
-  const t=body.replace(/^﻿/,'').trim();
-  if(t&&(t[0]==='{'||t[0]==='[')){try{return JSON.stringify(JSON.parse(t),null,2);}catch(e){}}
-  if(t&&t[0]==='<'){try{
-    let depth=0,out='';
-    t.replace(/>\s*</g,'>\n<').split('\n').forEach(ln=>{
-      ln=ln.trim();if(!ln)return;
-      if(/^<\//.test(ln))depth=Math.max(0,depth-1);
-      out+='  '.repeat(depth)+ln+'\n';
-      if(/^<[^!?\/][^>]*[^\/]>$/.test(ln)&&!/^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b/i.test(ln))depth++;
-    });
-    return out.replace(/\s+$/,'');
-  }catch(e){}}
-  return body;
-}
-function prettify(raw){
-  const i=raw.indexOf('\r\n\r\n');const head=i>=0?raw.slice(0,i):raw;const body=i>=0?raw.slice(i+4):'';
-  if(!body)return raw;
-  if(body.length>PRETTY_MAX)return head+'\n\n'+body+'\n\n— body too large to beautify ('+fmtSize(body.length)+'); showing raw —';
-  return head+'\n\n'+beautifyBody(body);
-}
-// Colorize a read-only HTTP message: start line, header names/values, status code.
-// The text is escaped first (these are arbitrary captured bytes) so the result is
-// safe for innerHTML. Only the header block is tokenized; the body is escaped
-// verbatim to stay fast on large payloads.
-function highlightHTTP(text,pretty){
-  if(!text)return '';
-  text=String(text).replace(/\r\n/g,'\n');
-  const sep=text.indexOf('\n\n');
-  const head=sep>=0?text.slice(0,sep):text;
-  const body=sep>=0?text.slice(sep+2):'';
-  const lines=head.split('\n');
-  let html=hlStartLine(lines[0]||'');
-  for(let i=1;i<lines.length;i++){
-    const ln=lines[i];const c=ln.indexOf(':');
-    html+='\n'+(c>0
-      ?'<span class="hl-hname">'+esc(ln.slice(0,c))+'</span>:<span class="hl-hval">'+esc(ln.slice(c+1))+'</span>'
-      :esc(ln));
-  }
-  if(sep>=0){
-    const tb=body.replace(/^\s+/,'');
-    const json=pretty&&body.length<=PRETTY_MAX&&(tb[0]==='{'||tb[0]==='[');
-    html+='\n\n'+(json?highlightJSON(body):esc(body));
-  }
-  return html;
-}
-// Color a (pretty-printed) JSON body: keys, string / number / literal values.
-// Escapes first, then tokenizes the escaped text, so the result is safe for
-// innerHTML even though the body is arbitrary captured bytes.
-function highlightJSON(s){
-  return esc(s).replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,(m,str,colon,lit,num)=>{
-    if(str!==undefined)return colon!=null?'<span class="js-key">'+str+'</span>'+colon:'<span class="js-str">'+str+'</span>';
-    if(lit!==undefined)return '<span class="js-lit">'+lit+'</span>';
-    return '<span class="js-num">'+num+'</span>';
-  });
-}
-function hlStartLine(ln){
-  let m=ln.match(/^(HTTP\/[\d.]+)\s+(\d{3})(.*)$/);            // response status line
-  if(m)return '<span class="hl-proto">'+esc(m[1])+'</span> <span class="hl-st'+m[2][0]+'">'+esc(m[2]+m[3])+'</span>';
-  m=ln.match(/^([A-Z]+)\s+(\S+)\s+(HTTP\/[\d.]+)$/);           // request line
-  if(m)return '<span class="hl-method">'+esc(m[1])+'</span> <span class="hl-url">'+esc(m[2])+'</span> <span class="hl-proto">'+esc(m[3])+'</span>';
-  return esc(ln);
-}
-const RENDER_CAP=2*1024*1024; // bodies larger than this aren't rendered (they lag the browser)
-async function renderSide(side){
-  const el=side==='req'?$('#reqView'):$('#resView');
-  if(!state.selId){return;}
-  const draw=async()=>{
-    try{const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
-      el.innerHTML=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty');
-    }catch(e){el.textContent='(error: '+e.message+')';}
-  };
-  const len=state.detail?(side==='req'?state.detail.reqLen:state.detail.resLen):0;
-  if(len>RENDER_CAP){
-    el.innerHTML=`<div class="hint" style="padding:18px;line-height:1.8">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
-      <a class="btn" style="margin-top:8px;display:inline-block" href="/api/flows/${state.selId}/raw?side=${side}" download="flow-${state.selId}-${side}.txt">⤓ Download raw</a>
-      <button class="btn" data-bigshow="1" style="margin-top:8px">Show anyway</button></div>`;
-    const b=el.querySelector('[data-bigshow]');
-    if(b)b.onclick=()=>{el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';setTimeout(draw,10);};
-    return;
-  }
-  await draw();
-}
-$$('.seg').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderSide(side);});});
-
-$$('.thead [data-sort]').forEach(h=>h.onclick=()=>{
-  const k=h.dataset.sort;if(state.sort.key===k)state.sort.dir*=-1;else{state.sort.key=k;state.sort.dir=k==='id'||k==='time'?-1:1;}renderRows();});
-
-$('#fScheme').onchange=e=>setFilter('scheme',e.target.value);
-$('#fMethod').onchange=e=>setFilter('method',e.target.value);
-$('#fStatus').onchange=e=>setFilter('status',e.target.value);
-$('#fSearch').oninput=e=>{state.filters.search=e.target.value;renderChips();scheduleReload();};
-$('#refreshBtn').onclick=loadFlows;
-$('#exportHar').onclick=()=>{$('#exportHar').href='/api/export/har'+(state.inScopeOnly?'?inScope=1':'');toast('History exported — .har downloaded');};
-$('#importHarBtn').onclick=()=>$('#importHarFile').click();
-$('#importHarFile').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{const text=await f.text();const r=await api('/api/import/har',{method:'POST',headers:{'content-type':'application/json'},body:text});
-    toast('imported '+r.imported+' flows');loadFlows();}catch(err){toast('import: '+err.message);}
-  e.target.value='';
-};
-$('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
-$('#aiToggle').onclick=()=>{state.showAI=!state.showAI;$('#aiToggle').classList.toggle('accent',state.showAI);loadFlows();};
-async function saveNote(){
-  if(!state.selId)return;
-  const note=$('#noteInput').value;
-  if(state.detail&&note===(state.detail.note||''))return; // unchanged — skip redundant PUT
-  try{
-    await api('/api/flows/'+state.selId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
-    if(state.detail)state.detail.note=note;
-    const s=$('#noteSaved');s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);
-  }catch(e){toast('note: '+e.message);}
-}
-$('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
-$('#noteInput').addEventListener('blur',saveNote);
-
-/* ---- saved views ---- */
-async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
-function renderViews(){
-  const sel=$('#viewsSelect'),cur=sel.value;
-  sel.innerHTML='<option value="">views…</option>'+state.views.map(v=>`<option value="${v.id}">${esc(v.name)}</option>`).join('');
-  if(state.views.find(v=>String(v.id)===cur))sel.value=cur;
-  sel.style.display=state.views.length?'':'none';                       // hide the picker until a view is saved
-  $('#delViewBtn').style.display=(state.views.length&&sel.value)?'inline-block':'none';
-}
-$('#viewsSelect').onchange=()=>{
-  const id=$('#viewsSelect').value;$('#delViewBtn').style.display=id?'inline-block':'none';
-  if(!id)return;const v=state.views.find(x=>String(x.id)===id);if(!v)return;
-  let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
-  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
-  state.inScopeOnly=!!f.inScope;
-  syncControls();$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
-  renderChips();loadFlows();
-};
-$('#saveViewBtn').onclick=async()=>{
-  const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
-  const data={...state.filters,inScope:state.inScopeOnly};
-  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');loadViews();}catch(e){toast(e.message);}
-};
-$('#delViewBtn').onclick=async()=>{const id=$('#viewsSelect').value;if(!id)return;
-  try{await api('/api/views/'+id,{method:'DELETE'});$('#viewsSelect').value='';$('#delViewBtn').style.display='none';loadViews();toast('view deleted');}catch(e){toast(e.message);}};
-
-/* ---- target scope ---- */
-async function loadScope(){try{const d=await api('/api/scope');state.scope=d.rules||[];renderScope();}catch(e){}}
-async function addHostToScope(host){
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})});
-    toast('added '+host+' to scope — toggle ◎ in scope to focus');loadScope();}
-  catch(e){toast(e.message);}
-}
-function renderScope(){
-  const body=$('#scopeBody');if(!body)return;
-  if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
-  body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
-    <td><input type="text" data-k="host" value="${escAttr(r.host)}" placeholder="*.acme.com"></td>
-    <td><input type="text" data-k="path" value="${escAttr(r.path)}" placeholder="/"></td>
-    <td><input type="text" data-k="scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
-    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
-  body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>updateScope(id,tr)));});
-  body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteScope(Number(b.dataset.del)));
-}
-async function updateScope(id,tr){
-  const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const upd={id,action:get('action').value,host:get('host').value.trim(),path:get('path').value.trim(),scheme:get('scheme').value.trim(),enabled:get('enabled').checked,port:0};
-  try{await api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('scope saved');}catch(e){toast(e.message);loadScope();}
-}
-async function deleteScope(id){try{await api('/api/scope/'+id,{method:'DELETE'});loadScope();}catch(e){toast(e.message);}}
-$('#addScopeBtn').onclick=async()=>{
-  const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
-  if(!rule.host&&!rule.path){toast('host or path required');return;}
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');}catch(e){toast(e.message);}
-};
-
-/* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
-function syncControls(){
-  $('#fScheme').value=state.filters.scheme;
-  $('#fMethod').value=state.filters.method;
-  $('#fStatus').value=state.filters.status;
-  $('#fSearch').value=state.filters.search;
-}
-function setFilter(key,val){state.filters[key]=val;syncControls();renderChips();loadFlows();}
-function clearFilter(key){setFilter(key,'');}
-function clearAllFilters(){state.filters={scheme:'',search:'',method:'',status:'',host:'',exclude:[]};syncControls();renderChips();loadFlows();}
-function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||(f.exclude&&f.exclude.length));}
-// Negative filters: exclude rows matching {field,value}. Toggles off if already present.
-function addExclude(field,value){
-  if(value==null||value==='')return;
-  const ex=state.filters.exclude||(state.filters.exclude=[]);
-  const i=ex.findIndex(e=>e.field===field&&String(e.value)===String(value));
-  if(i>=0)ex.splice(i,1); else ex.push({field,value:String(value)});
-  renderChips();loadFlows();
-}
-function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
-function renderChips(){
-  const f=state.filters,box=$('#chips'),items=[];
-  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><span class="x" data-clear="${k}" title="remove">✕</span></span>`);};
-  add('scheme','scheme',f.scheme);
-  add('method','method',f.method);
-  add('status','status',f.status?f.status+'xx':'');
-  add('host','host',f.host);
-  add('search','path',f.search);
-  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
-  const hasFilters=items.length>0;
-  if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
-  box.innerHTML=items.join('');
-  box.classList.toggle('has',hasFilters);
-  box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
-  box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
-  const cc=$('#chipsClear');if(cc)cc.onclick=clearAllFilters;
-  // The "save current filters as a view" (＋) only makes sense when something is filtered.
-  const sv=$('#saveViewBtn');if(sv)sv.style.display=hasFilters?'':'none';
-}
-
-/* ---- right-click context menu ---- */
-const ctx=$('#ctxmenu');
-function hideCtx(){ctx.classList.remove('show');ctx._acts=null;}
-function showCtx(x,y,f,field){
-  if(!f)return;
-  const cls=f.status?Math.floor(f.status/100):0;
-  const filters=[
-    {field:'host',label:'Filter host',val:f.host,act:()=>setFilter('host',f.host)},
-    {field:'method',label:'Filter method',val:f.method,act:()=>setFilter('method',f.method)},
-  ];
-  if(cls)filters.push({field:'status',label:'Filter status',val:cls+'xx',act:()=>setFilter('status',String(cls))});
-  filters.push({field:'scheme',label:'Filter scheme',val:f.scheme,act:()=>setFilter('scheme',f.scheme)});
-  if(field==='path')filters.unshift({field:'path',label:'Filter path',val:f.path,act:()=>setFilter('search',f.path)});
-  // Put the right-clicked column's filter first and highlight it.
-  filters.sort((a,b)=>(a.field===field?-1:0)-(b.field===field?-1:0));
-
-  // Negative counterparts: hide everything matching the clicked value.
-  const excludes=[
-    {field:'host',label:'Exclude host',val:f.host,act:()=>addExclude('host',f.host)},
-    {field:'method',label:'Exclude method',val:f.method,act:()=>addExclude('method',f.method)},
-  ];
-  if(cls)excludes.push({field:'status',label:'Exclude status',val:String(f.status),act:()=>addExclude('status',String(f.status))});
-  if(field==='path')excludes.unshift({field:'path',label:'Exclude path',val:f.path,act:()=>addExclude('path',f.path)});
-  excludes.sort((a,b)=>(a.field===field?-1:0)-(b.field===field?-1:0));
-
-  const acts=[];
-  let html='<div class="ctx-head">FILTER</div>';
-  filters.forEach(it=>{html+=`<div class="ctx-item ${it.field===field?'on':''}" data-i="${acts.length}"><span class="lbl">${it.label}</span><span class="mono">${esc(it.val)}</span></div>`;acts.push(it.act);});
-  html+='<div class="ctx-head">EXCLUDE</div>';
-  excludes.forEach(it=>{html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">${it.label}</span><span class="mono" style="color:var(--red)">≠ ${esc(it.val)}</span></div>`;acts.push(it.act);});
-  html+='<div class="ctx-sep"></div>';
-  html+=`<div class="ctx-item" data-i="${acts.length}">Copy URL</div>`;acts.push(()=>copyURL(f));
-  html+=`<div class="ctx-item" data-i="${acts.length}">Copy as cURL</div>`;acts.push(()=>copyCurl(f));
-  html+='<div class="ctx-sep"></div>';
-  html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Add to scope</span><span class="mono">${esc(f.host)}</span></div>`;acts.push(()=>addHostToScope(f.host));
-  html+='<div class="ctx-sep"></div>';
-  html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Send to</span><span class="mono">Repeater</span></div>`;acts.push(()=>sendToRepeater(f));
-  html+=`<div class="ctx-item" data-i="${acts.length}"><span class="lbl">Send to</span><span class="mono">Intruder</span></div>`;acts.push(()=>sendToIntruder(f));
-  if(anyFilter()){html+='<div class="ctx-sep"></div>';html+=`<div class="ctx-item" data-i="${acts.length}">Clear all filters</div>`;acts.push(clearAllFilters);}
-
-  ctx.innerHTML=html;ctx._acts=acts;
-  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtx();if(fn)fn();});
-  ctx.style.left=x+'px';ctx.style.top=y+'px';ctx.classList.add('show');
-  const r=ctx.getBoundingClientRect();
-  if(r.right>innerWidth)ctx.style.left=Math.max(4,x-r.width)+'px';
-  if(r.bottom>innerHeight)ctx.style.top=Math.max(4,y-r.height)+'px';
-}
-document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(typeof closeModals==='function'&&closeModals())return;hideCtx();}});
-// Suppress the browser's native context menu app-wide, but keep it where it's
-// genuinely useful: editable fields (paste/cut) and over a live text selection (copy).
-document.addEventListener('contextmenu',e=>{
-  const t=e.target,tag=(t.tagName||'').toLowerCase();
-  if(tag==='input'||tag==='textarea'||t.isContentEditable)return;
-  const sel=window.getSelection&&window.getSelection();
-  if(sel&&String(sel).length&&!sel.isCollapsed)return;
-  e.preventDefault();
-});
-$('#rows').addEventListener('scroll',hideCtx,{passive:true});
-window.addEventListener('blur',hideCtx);
-
-/* ---- copy helpers ---- */
-function copyText(t,msg){
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast(msg||'copied')).catch(()=>fallbackCopy(t,msg));}
-  else fallbackCopy(t,msg);
-}
-function fallbackCopy(t,msg){const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast(msg||'copied');}catch(e){toast('copy failed');}document.body.removeChild(ta);}
-function flowURL(f){const def=(f.scheme==='https'&&f.port===443)||(f.scheme==='http'&&f.port===80);return `${f.scheme}://${f.host}${def?'':':'+f.port}${f.path}`;}
-function copyURL(f){copyText(flowURL(f),'URL copied');}
-function shq(s){return "'"+String(s).replace(/'/g,"'\\''")+"'";}
-async function copyCurl(f){
-  try{
-    const d=await api('/api/flows/'+f.id);
-    const parts=[`curl -x http://${state.proxyAddr}`];
-    if(f.scheme==='https')parts.push('--cacert interceptor-ca.crt');
-    parts.push('-X '+f.method);
-    const headers=d.reqHeaders||{};
-    Object.keys(headers).sort().forEach(k=>{if(k.toLowerCase()==='host')return;(headers[k]||[]).forEach(v=>parts.push('-H '+shq(k+': '+v)));});
-    if(f.reqLen>0){const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';if(body)parts.push('--data-raw '+shq(body));}
-    parts.push(shq(flowURL(f)));
-    copyText(parts.join(' \\\n  '),'cURL copied');
-  }catch(e){toast('cURL: '+e.message);}
-}
-
-/* ---- intercept ---- */
-function renderIntercept(){
-  const on=state.intercept.enabled,q=state.intercept.queue||[];
-  $('#heldCount').textContent=q.length;
-  const badge=$('#heldBadge');badge.style.display=q.length?'inline-block':'none';badge.textContent=q.length;
-  {const b=$('#interceptToggle');if(b){b.classList.toggle('on',on);b.textContent=on?'Intercept is on':'Intercept is off';}}
-  // conditional-intercept filter (don't clobber fields the user is editing)
-  const fo=$('#interceptFilterOn');if(fo&&document.activeElement!==fo)fo.checked=!!state.intercept.filterEnabled;
-  const ft=$('#interceptFilterTarget');if(ft&&document.activeElement!==ft)ft.value=state.intercept.filterTarget||'any';
-  const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp)fp.value=state.intercept.filterPattern||'';
-  const list=$('#heldList');
-  if(!q.length){list.innerHTML='<div class="hint">Nothing held.</div>';$('#heldEditor').style.display='none';state.selHeld=null;}
-  else{
-    list.innerHTML=q.map(h=>`<div class="held ${h.id===state.selHeld?'sel':''}" data-id="${h.id}">
-      <span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>
-      <span class="h">${esc(h.host)}</span><span class="p">${esc(h.path)}</span></div>`).join('');
-    $$('#heldList .held').forEach(el=>el.onclick=()=>selectHeld(Number(el.dataset.id)));
-    if(state.selHeld==null||!q.find(h=>h.id===state.selHeld))selectHeld(q[0].id);
-  }
-  // response side
-  const ron=state.intercept.responseEnabled,rq=state.intercept.responseQueue||[];
-  $('#respHeldCount').textContent=rq.length;
-  const rb=$('#respInterceptToggle');rb.classList.toggle('on',ron);rb.textContent=ron?'Response intercept is on':'Response intercept is off';
-  const rlist=$('#respHeldList');
-  if(!rq.length){rlist.innerHTML='<div class="hint">Nothing held.</div>';$('#respHeldEditor').style.display='none';state.selRespHeld=null;}
-  else{
-    rlist.innerHTML=rq.map(h=>`<div class="held ${h.id===state.selRespHeld?'sel':''}" data-id="${h.id}">
-      <span class="m" style="color:var(--accent)">RESP</span>
-      <span class="h">${esc(h.host)}</span><span class="p">${esc(h.path)}</span></div>`).join('');
-    rlist.querySelectorAll('.held').forEach(el=>el.onclick=()=>selectRespHeld(Number(el.dataset.id)));
-    if(state.selRespHeld==null||!rq.find(h=>h.id===state.selRespHeld))selectRespHeld(rq[0].id);
-  }
-}
-function selectHeld(id){
-  state.selHeld=id;const h=(state.intercept.queue||[]).find(x=>x.id===id);
-  $$('#heldList .held').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id));
-  if(h){$('#heldEditor').style.display='block';$('#heldRaw').value=h.raw||'';}
-}
-function selectRespHeld(id){
-  state.selRespHeld=id;const h=(state.intercept.responseQueue||[]).find(x=>x.id===id);
-  $$('#respHeldList .held').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id));
-  if(h){$('#respHeldEditor').style.display='block';$('#respHeldRaw').value=h.raw||'';}
-}
-$('#respInterceptToggle').onclick=async()=>{
-  try{const s=await api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})});state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
-};
-$('#respForwardBtn').onclick=async()=>{if(state.selRespHeld==null)return;try{
-  await api('/api/intercept/response/'+state.selRespHeld+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#respHeldRaw').value})});toast('response forwarded');}catch(e){toast(e.message);}};
-$('#respDropBtn').onclick=async()=>{if(state.selRespHeld==null)return;try{
-  await api('/api/intercept/response/'+state.selRespHeld+'/drop',{method:'POST'});toast('response dropped');}catch(e){toast(e.message);}};
-async function toggleIntercept(){
-  try{const s=await api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})});
-    state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
-}
-$('#interceptToggle').onclick=toggleIntercept;
-$('#forwardBtn').onclick=async()=>{if(state.selHeld==null)return;try{
-  await api('/api/intercept/'+state.selHeld+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
-  toast('forwarded');}catch(e){toast(e.message);}};
-$('#dropBtn').onclick=async()=>{if(state.selHeld==null)return;try{
-  await api('/api/intercept/'+state.selHeld+'/drop',{method:'POST'});toast('dropped');}catch(e){toast(e.message);}};
-async function applyInterceptFilter(){
-  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
-  try{const s=await api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})});
-    state.intercept=s;renderIntercept();toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
-}
-$('#interceptFilterApply').onclick=applyInterceptFilter;
-$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyInterceptFilter();}});
-
-/* ---- rules ---- */
-function renderRules(){
-  const body=$('#rulesBody');
-  if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
-  body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
-    <td><input type="text" data-k="match" value="${escAttr(r.match)}"></td>
-    <td><input type="text" data-k="replace" value="${escAttr(r.replace)}"></td>
-    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
-  body.querySelectorAll('tr').forEach(tr=>{
-    const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>{
-      const ev=inp.tagName==='SELECT'||inp.type==='checkbox'?'change':'change';
-      inp.addEventListener(ev,()=>updateRule(id,tr));
-    });
-  });
-  body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteRule(Number(b.dataset.del)));
-}
-async function loadRules(){try{const d=await api('/api/rules');state.rules=d.rules||[];renderRules();}catch(e){toast(e.message);}}
-async function updateRule(id,tr){
-  const r=state.rules.find(x=>x.id===id);if(!r)return;
-  const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const upd={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
-  try{await api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('rule saved');}catch(e){toast(e.message);loadRules();}
-}
-async function deleteRule(id){try{await api('/api/rules/'+id,{method:'DELETE'});loadRules();}catch(e){toast(e.message);}}
-$('#addRuleBtn').onclick=async()=>{
-  const rule={type:$('#newRuleType').value,match:$('#newRuleMatch').value,replace:$('#newRuleReplace').value,enabled:true};
-  if(!rule.match){toast('match regex required');return;}
-  try{await api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');}catch(e){toast(e.message);}
-};
-
-/* ---- settings ---- */
-async function loadSettings(){try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;$('#setAddr').value=s.proxyAddr;
-  if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
-  if($('#setAiProvider'))$('#setAiProvider').value=s.aiProvider||'anthropic';
-  if($('#setAiModel'))$('#setAiModel').value=s.aiModel||'';
-  if($('#aiKeyState'))$('#aiKeyState').textContent=s.aiHasKey?'Key configured ✓':'No key set.';
-  if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
-  aiPlaceholders();
-  state.intercept.enabled=s.interceptEnabled;}catch(e){}}
-function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.textContent=on?'Saving in-scope only':'Saving all traffic';}
-$('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
-  const on=!$('#capScopeToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
-  catch(e){toast('capture: '+e.message);}
-});
-function aiPlaceholders(){if(!$('#setAiProvider'))return;
-  const p=$('#setAiProvider').value;
-  if(p==='openrouter'){$('#setAiKey').placeholder='sk-or-…';$('#setAiModel').placeholder='anthropic/claude-3.5-haiku';}
-  else{$('#setAiKey').placeholder='sk-ant-…';$('#setAiModel').placeholder='claude-haiku-4-5-20251001';}}
-if($('#setAiProvider'))$('#setAiProvider').onchange=aiPlaceholders;
-$('#saveUpstreamBtn').onclick=async()=>{
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
-    toast('upstream proxy saved');}catch(e){toast(e.message);}
-};
-$('#saveAiBtn').onclick=async()=>{
-  const body={aiProvider:$('#setAiProvider').value,aiModel:$('#setAiModel').value.trim()};
-  if($('#setAiKey').value)body.aiApiKey=$('#setAiKey').value;
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    $('#setAiKey').value='';toast('AI settings saved');loadSettings();}catch(e){toast(e.message);}
-};
-async function loadSession(){try{const s=await api('/api/session');
-  if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
-  if($('#setSessionHeaders'))$('#setSessionHeaders').value=s.headers||'';
-  const n=(s.headers||'').split('\n').filter(l=>l.trim()&&!l.trim().startsWith('#')).length;
-  if($('#sessionState'))$('#sessionState').textContent=s.enabled?`Applying ${n} header${n===1?'':'s'} to sends`:'Off.';
-}catch(e){}}
-if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=async()=>{
-  const body={enabled:$('#setSessionOn').checked,headers:$('#setSessionHeaders').value};
-  try{await api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    toast('session saved');loadSession();}catch(e){toast(e.message);}
-};
-/* ---- AI assist modal ---- */
-function openAi(kind,ids){
-  state.aiIds=(ids&&ids.length)?ids.slice():(state.selId!=null?[state.selId]:[]);
-  if(!state.aiIds.length){toast('select a flow first');return;}
-  $('#aiModal').style.display='flex';
-  $('#aiKindSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.k===kind));
-  runAi(kind);
-}
-async function runAi(kind){
-  $('#aiOut').textContent=state.aiIds.length>1?`Analyzing ${state.aiIds.length} flows…`:'Thinking…';
-  const body=state.aiIds.length>1?{flowIds:state.aiIds,kind}:{flowId:state.aiIds[0],kind};
-  try{const r=await api('/api/ai/assist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    $('#aiOut').textContent=r.text||'(empty response)';}
-  catch(e){$('#aiOut').textContent='Error: '+e.message+'\n\nPick a provider and set its API key in Settings → AI assist (or the ANTHROPIC_API_KEY / OPENROUTER_API_KEY env var).';}
-}
-$('#aiExplainBtn').onclick=()=>openAi('explain');
-$('#aiKindSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#aiKindSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));runAi(b.dataset.k);});
-$('#aiClose').onclick=()=>$('#aiModal').style.display='none';
-
-// ---- History multi-select actions ----
-function updateSelBar(){const n=state.selected.size;$('#selBar').style.display=n?'flex':'none';$('#selCount').textContent=n+' selected';}
-$('#selAll').onclick=e=>{e.stopPropagation();const list=applySort(state.flows);if(e.target.checked)list.forEach(f=>state.selected.add(f.id));else state.selected.clear();renderRows();updateSelBar();};
-$('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
-$('#selAsk').onclick=()=>{const ids=[...state.selected];if(ids.length)openAi('summarize',ids);};
-$('#selScope').onclick=async()=>{
-  const hosts=[...new Set([...state.selected].map(id=>{const f=state.flows.find(x=>x.id===id);return f&&f.host;}).filter(Boolean))];
-  if(!hosts.length)return;
-  let added=0;
-  for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){}}
-  toast('added '+added+' host'+(added===1?'':'s')+' to scope');loadScope();
-};
-let _delArm=false,_delTimer;
-$('#selDelete').onclick=async()=>{
-  const ids=[...state.selected];if(!ids.length)return;
-  if(!_delArm){_delArm=true;$('#selDelete').textContent='🗑 Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').textContent='🗑 Delete';},2500);return;}
-  clearTimeout(_delTimer);_delArm=false;$('#selDelete').textContent='🗑 Delete';
-  try{
-    const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
-    if(state.selected.has(state.selId))state.selId=null;
-    state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
-    toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
-  }catch(e){toast('delete: '+e.message);}
-};
-
-/* ---- custom checks editor ---- */
-async function loadChecksList(){
-  try{const d=await api('/api/checks');const box=$('#checksList');const cs=d.checks||[];
-    if(!cs.length){box.innerHTML='<div class="hint" style="padding:10px">No custom checks yet — click <b>+ New check</b>.</div>';return;}
-    box.innerHTML=cs.map(c=>`<div data-id="${escAttr(c.id)}" title="${c.error?esc(c.error):''}" style="padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:11.5px;font-weight:700;color:${c.error?'var(--red)':'var(--fg)'}">${esc(c.id)}${c.error?' ⚠':''}</div>`).join('');
-    box.querySelectorAll('[data-id]').forEach(el=>el.onclick=()=>loadCheck(el.dataset.id));
-  }catch(e){}
-}
-async function loadCheck(id){
-  try{const d=await api('/api/checks/'+encodeURIComponent(id));$('#checkId').value=id;$('#checkSrc').value=d.source||'';
-    $('#checkOut').innerHTML='<span class="hint">Loaded <b>'+esc(id)+'</b>.</span>';}catch(e){toast(e.message);}
-}
-function checkNew(){$('#checkId').value='';$('#checkSrc').value="def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
-  $('#checkOut').innerHTML='<span class="hint">New check — give it an id and Save.</span>';$('#checkId').focus();}
-async function checkTest(){
-  const out=$('#checkOut');out.innerHTML='<span class="hint">running…</span>';
-  try{const r=await api('/api/checks/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
-    if(r.error){out.innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(r.error)+'</span>';return;}
-    const fs=r.findings||[];
-    out.innerHTML=(r.note?'<div class="hint" style="margin-bottom:6px">'+esc(r.note)+'</div>':'')+
-      (fs.length?fs.map(f=>`<div style="padding:3px 0"><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.fix?' <span class="hint">— '+esc(f.fix)+'</span>':''}</div>`).join('')
-        :'<span class="hint">No findings on flow #'+(r.flowId||'?')+' (check compiles & runs).</span>');
-  }catch(e){out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
-}
-async function checkSave(){
-  const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
-  try{await api('/api/checks/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
-    $('#checkOut').innerHTML='<span style="color:var(--accent)">Saved ✓ — runs on the next scan.</span>';loadChecksList();}
-  catch(e){$('#checkOut').innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(e.message)+'</span>';}
-}
-async function checkDelete(){
-  const id=$('#checkId').value.trim();if(!id)return;
-  try{await api('/api/checks/'+encodeURIComponent(id),{method:'DELETE'});checkNew();loadChecksList();toast('deleted '+id);}catch(e){toast(e.message);}
-}
-if($('#checksBtn'))$('#checksBtn').onclick=()=>{$('#checksModal').style.display='flex';loadChecksList();if(!$('#checkSrc').value)checkNew();};
-if($('#checksClose'))$('#checksClose').onclick=()=>$('#checksModal').style.display='none';
-if($('#checkNew'))$('#checkNew').onclick=checkNew;
-if($('#checkTest'))$('#checkTest').onclick=checkTest;
-if($('#checkSave'))$('#checkSave').onclick=checkSave;
-if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
-
-/* ---- decoder ---- */
-const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','✨ Smart']];
-function decBuildOps(){const box=$('#decOps');if(!box||box._built)return;box._built=1;
-  box.innerHTML=DEC_OPS.map(([op,label])=>`<button class="btn" data-op="${op}">${esc(label)}</button>`).join('');
-  box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>decApply(b.dataset.op));}
-async function decApply(op){
-  const err=$('#decErr');err.textContent='';
-  try{const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:$('#decIn').value})});
-    if(r.error){err.style.color='var(--red)';err.textContent=r.error;return;}
-    $('#decOut').value=r.output;}
-  catch(e){err.style.color='var(--red)';err.textContent=e.message;}
-}
-function openDecoder(seed){decBuildOps();$('#decModal').style.display='flex';if(seed)$('#decIn').value=seed;$('#decOut').value='';$('#decErr').textContent='';$('#decIn').focus();}
-if($('#decClose'))$('#decClose').onclick=()=>$('#decModal').style.display='none';
-if($('#decUp'))$('#decUp').onclick=()=>{$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
-if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output copied');
-
-/* ---- active scan ---- */
-async function loadActive(){
-  try{const d=await api('/api/activescan');renderActive(d);}catch(e){}
-}
-function renderActive(d){
-  if($('#asArm'))$('#asArm').checked=!!d.armed;
-  const fs=d.findings||[];
-  if($('#asStart'))$('#asStart').disabled=d.running||!d.armed;
-  if($('#asStop'))$('#asStop').disabled=!d.running;
-  const prog=$('#asProgress');
-  if(prog){
-    if(d.running)prog.innerHTML='<span style="color:var(--accent)">⟳ running…</span> '+d.scanned+'/'+d.targets+' targets · '+d.requests+' requests';
-    else if(d.scanned)prog.textContent='done · '+d.scanned+' targets · '+d.requests+' requests · '+fs.length+' findings';
-    else prog.textContent='';
-  }
-  const box=$('#asFindings');if(!box)return;
-  box.innerHTML=fs.length?fs.map(f=>`<div data-flow="${f.flowId}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
-    <span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b>
-    <div class="hint" style="margin-top:2px">${esc(f.class)} · ${esc(f.point.kind)}:${esc(f.point.name)} — ${esc(f.evidence)} <span style="color:var(--blue)">→ flow #${f.flowId}</span></div></div>`).join('')
-    :'<div class="hint">No active findings yet.</div>';
-  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{$('#activeModal').style.display='none';document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(Number(el.dataset.flow));});
-}
-async function asArmToggle(){
-  try{await api('/api/activescan/arm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({armed:$('#asArm').checked})});loadActive();}
-  catch(e){toast(e.message);}
-}
-async function asStartScan(){
-  const body={arm:$('#asArm').checked,maxRequests:parseInt($('#asMax').value,10)||0};
-  if($('#asTargetFlow').checked){
-    if(state.selId==null){toast('select a flow first, or choose “all in-scope”');return;}
-    body.flowId=state.selId;
-  }else body.inScope=true;
-  try{await api('/api/activescan/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});loadActive();}
-  catch(e){toast(e.message);}
-}
-async function asStopScan(){try{await api('/api/activescan/stop',{method:'POST'});loadActive();}catch(e){}}
-function openActive(){
-  $('#activeModal').style.display='flex';
-  $('#asFlowLabel').textContent=state.selId!=null?('#'+state.selId):'(none selected)';
-  loadActive();
-}
-if($('#activeBtn'))$('#activeBtn').onclick=openActive;
-if($('#asClose'))$('#asClose').onclick=()=>$('#activeModal').style.display='none';
-if($('#asArm'))$('#asArm').onchange=asArmToggle;
-if($('#asStart'))$('#asStart').onclick=asStartScan;
-if($('#asStop'))$('#asStop').onclick=asStopScan;
-/* ---- modals: close on Escape and on backdrop click (consistent across all) ---- */
-const MODAL_IDS=['aiModal','checksModal','activeModal','decModal','flowModal'];
-function closeModals(){let n=0;MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m&&m.style.display&&m.style.display!=='none'){m.style.display='none';n++;}});return n>0;}
-MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m)m.addEventListener('mousedown',e=>{if(e.target===m)m.style.display='none';});});
-
-// ↑/↓ walk the visible History rows and load each in the inspector — only on the
-// Proxy tab, never while typing in a field or with a modal/palette open.
-document.addEventListener('keydown',e=>{
-  if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
-  const p=document.querySelector('.panel[data-panel="proxy"]');
-  if(!p||!p.classList.contains('active'))return;
-  const t=e.target;
-  if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
-  if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
-  if(typeof cmdk!=='undefined'&&cmdk.open)return;
-  const flows=applySort(state.flows);
-  if(!flows.length)return;
-  const i=flows.findIndex(f=>f.id===state.selId);
-  const ni=i<0?0:(e.key==='ArrowDown'?Math.min(i+1,flows.length-1):Math.max(i-1,0));
-  if(ni===i)return;
-  e.preventDefault();
-  const id=flows[ni].id;
-  selectFlow(id);
-  const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
-  if(row)row.scrollIntoView({block:'nearest'});
-});
-
-// uiPrompt: an in-app replacement for the browser's prompt() — themed, consistent,
-// resolves to the entered string or null (Cancel / Escape / backdrop / empty).
-function uiPrompt(opts){
-  opts=opts||{};
-  return new Promise(resolve=>{
-    const m=$('#promptModal'),inp=$('#promptInput');
-    $('#promptTitle').textContent=opts.title||'Enter a value';
-    inp.placeholder=opts.placeholder||'';inp.value=opts.value||'';
-    m.style.display='flex';setTimeout(()=>{inp.focus();inp.select();},0);
-    let done=false;
-    const finish=v=>{if(done)return;done=true;m.style.display='none';inp.onkeydown=null;m.onmousedown=null;resolve(v);};
-    $('#promptOk').onclick=()=>finish(inp.value.trim()||null);
-    $('#promptCancel').onclick=()=>finish(null);
-    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(inp.value.trim()||null);}else if(e.key==='Escape'){e.preventDefault();finish(null);}};
-    m.onmousedown=e=>{if(e.target===m)finish(null);};
-  });
-}
-
-$('#exportProject').onclick=()=>toast('Project exported — .json downloaded');
-const dlCa=$('#dlCaBtn');if(dlCa)dlCa.onclick=()=>toast('CA certificate downloaded — trust it on the client');
-$('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
-$('#importProjectFile').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{const text=await f.text();const r=await api('/api/import/project',{method:'POST',headers:{'content-type':'application/json'},body:text});
-    toast(`imported ${r.importedFlows} flows · ${r.importedRules} rules · ${r.importedScope} scope`);
-    loadFlows();loadRules();loadScope();loadSettings();}catch(err){toast('import: '+err.message);}
-  e.target.value='';
-};
-// ---- project switching (close current, open another / a new path) ----
-async function loadProject(){
-  try{const d=await api('/api/project');
-    const n=$('#projNameHint');if(n)n.textContent=d.current||'default';
-    const dir=$('#projDirHint');if(dir&&d.dir)dir.textContent=d.dir;
-    const sel=$('#projSelect');if(sel)sel.innerHTML=(d.projects||['default']).map(p=>`<option value="${escAttr(p)}"${p===d.current?' disabled':''}>${esc(p)}${p===d.current?' (current)':''}</option>`).join('');
-    if(!d.canSwitch)['projSwitchBtn','projNewBtn'].forEach(id=>{const b=$('#'+id);if(b){b.disabled=true;b.title='project switching is unavailable in this build';}});
-  }catch(e){}
-}
-async function doSwitchProject(target){
-  if(!target)return;
-  const note=$('#projSwitchNote');if(note){note.style.display='block';note.textContent='Switching to “'+target+'” — restarting & reconnecting…';}
-  try{await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target})});}catch(e){}
-  let tries=0;const poll=setInterval(async()=>{tries++;
-    try{await api('/api/version');clearInterval(poll);location.reload();}
-    catch(e){if(tries>60){clearInterval(poll);if(note)note.textContent='Still restarting… reload the page manually if it doesn’t return.';}}
-  },500);
-}
-$('#projSwitchBtn').onclick=()=>{const v=($('#projSelect')||{}).value;if(v)doSwitchProject(v);else toast('no other project to open');};
-$('#projNewBtn').onclick=()=>{const v=(($('#projNew')||{}).value||'').trim();if(v)doSwitchProject(v);else toast('enter a project name or path');};
-$('#saveAddrBtn').onclick=async()=>{
-  try{const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddr:$('#setAddr').value})});
-    $('#proxyAddr').textContent=s.proxyAddr;toast('proxy now on '+s.proxyAddr);}catch(e){toast(e.message);}
-};
-async function loadSysProxy(){
-  try{const s=await api('/api/sysproxy');const b=$('#sysProxyToggle');
-    if(!s.supported){b.disabled=true;b.textContent='Auto-config: macOS only';$('#sysProxyHint').textContent='Set your OS/browser proxy to '+s.proxy+' manually.';return;}
-    b.classList.toggle('on',s.enabled);b.textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';
-  }catch(e){}
-}
-$('#sysProxyToggle').onclick=async()=>{
-  const on=$('#sysProxyToggle').classList.contains('on');$('#sysProxyToggle').disabled=true;
-  try{const s=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!on})});
-    $('#sysProxyToggle').classList.toggle('on',s.enabled);$('#sysProxyToggle').textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';toast(s.enabled?'system proxy enabled':'system proxy disabled');}
-  catch(e){toast(e.message);}
-  $('#sysProxyToggle').disabled=false;
-};
-
-/* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-let repSeq=1, repTabs=[], repActive=null;
-function repBlank(){return {tid:repSeq++,title:'new tab',method:'GET',url:'',headers:'',body:'',resId:null,resView:'raw',status:'',color:''};}
-function repCur(){return repTabs.find(t=>t.tid===repActive)||null;}
-function repTitle(t){if(!t.url)return 'new tab';try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname;}catch(e){return t.method+' '+t.url.slice(0,46);}}
-function repTabEndpoint(t){if(!t||!t.url)return null;try{const u=new URL(t.url);return u.host+u.pathname;}catch(e){return null;}}
-function repFlowEndpoint(f){return f.host+String(f.path||'').split('?')[0];}
-function headersToText(h){if(!h)return'';const out=[];(h.Host||[]).forEach(v=>out.push('Host: '+v));Object.keys(h).sort().forEach(k=>{if(k==='Host')return;(h[k]||[]).forEach(v=>out.push(k+': '+v));});return out.join('\n');}
-
-function renderRepTabs(){
-  const bar=$('#repTabs');if(!bar)return;
-  bar.innerHTML=repTabs.map(t=>`<div class="rep-tab${t.tid===repActive?' on':''}" data-tid="${t.tid}" title="${escAttr(t.title||'new tab')}">
-    <span class="rt-label" style="color:${t.tid===repActive?methodColor(t.method):'inherit'}">${esc(t.title||'new tab')}</span>
-    <span class="rt-close" data-close="${t.tid}" title="close tab">✕</span></div>`).join('')
-    +`<button class="rep-tab-add" id="repTabAdd" title="New tab">＋</button>`;
-  bar.querySelectorAll('.rep-tab').forEach(el=>el.onclick=e=>{if(e.target.dataset.close!=null)return;repSwitch(Number(el.dataset.tid));});
-  bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();repCloseTab(Number(x.dataset.close));});
-  $('#repTabAdd').onclick=()=>{repSaveEditor();repTabs.push(repBlank());repActive=repTabs[repTabs.length-1].tid;renderRepTabs();repLoadEditor();repPersist();};
-}
-function repSwitch(tid){if(tid===repActive)return;repSaveEditor();repActive=tid;renderRepTabs();repLoadEditor();repPersist();}
-function repCloseTab(tid){
-  const i=repTabs.findIndex(t=>t.tid===tid);if(i<0)return;
-  const wasActive=tid===repActive;
-  repTabs.splice(i,1);
-  if(!repTabs.length)repTabs.push(repBlank());
-  if(wasActive)repActive=repTabs[Math.min(i,repTabs.length-1)].tid;
-  renderRepTabs();repLoadEditor();repPersist();
-}
-function repSaveEditor(){const t=repCur();if(!t)return;t.method=$('#repMethod').value;t.url=$('#repUrl').value;t.headers=$('#repHeaders').value;t.body=$('#repBody').value;t.title=repTitle(t);}
-function repLoadEditor(){
-  const t=repCur();if(!t)return;
-  $('#repMethod').value=t.method||'GET';$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';$('#repBody').value=t.body||'';
-  $('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.view===(t.resView||'raw')));
-  if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
-  else{$('#repStatus').textContent='';$('#repResView').innerHTML='<span style="color:var(--fg3)">Send a request to see the response.</span>';}
-  loadRepHistory();
-}
-async function repSend(){
-  repSaveEditor();const t=repCur();if(!t)return;
-  if(!(t.url||'').trim()){toast('enter a URL');return;}
-  $('#repSend').textContent='Sending…';$('#repSend').disabled=true;
-  $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
-  $('#repResView').innerHTML='<span class="blink" style="color:var(--fg3)">sending…</span>';
-  try{
-    const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:t.method,url:t.url.trim(),headers:t.headers,body:t.body})});
-    t.resId=flow.id;t.status=flow.status?flow.status+' '+statusText(flow.status):(flow.error||'');t.color=statusColor(flow.status);
-    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
-    await renderRepResponse();loadRepHistory();repPersist();
-  }catch(e){toast('send: '+e.message);}
-  $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
-}
-async function renderRepResponse(){
-  const t=repCur();if(!t||!t.resId)return;
-  try{const raw=await api('/api/flows/'+t.resId+'/raw?side=res');$('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw,t.resView==='pretty');}
-  catch(e){$('#repResView').textContent='(error: '+e.message+')';}
-}
-async function loadRepHistory(){
-  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpoint(t);
-  try{
-    const d=await api('/api/repeater/history');const flows=ep?(d.flows||[]).filter(f=>repFlowEndpoint(f)===ep):[];
-    if(!flows.length){box.innerHTML='<div class="hint" style="padding:10px">'+(ep?'No sends to this endpoint yet.':'Send a request to start this tab’s history.')+'</div>';return;}
-    box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">
-      <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
-      <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
-    box.querySelectorAll('.h').forEach(el=>el.onclick=()=>repLoadSend(Number(el.dataset.id)));
-  }catch(e){}
-}
-async function repLoadSend(id){
-  const t=repCur();if(!t)return;
-  try{
-    const d=await api('/api/flows/'+id);
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
-    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
-    const raw=await api('/api/flows/'+id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.resId=id;t.status=d.status?d.status+' '+statusText(d.status):'';t.color=statusColor(d.status);t.title=repTitle(t);
-    renderRepTabs();repLoadEditor();repPersist();
-  }catch(e){toast(e.message);}
-}
-async function sendToRepeater(f){
-  document.querySelector('.tab[data-tab="repeater"]').click();
-  repSaveEditor();
-  const fep=repFlowEndpoint(f);
-  let t=repTabs.find(x=>repTabEndpoint(x)===fep);
-  if(!t){t=repBlank();repTabs.push(t);}
-  repActive=t.tid;
-  try{
-    const d=await api('/api/flows/'+f.id);
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
-    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
-    const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.resId=null;t.status='';t.color='';t.title=repTitle(t);
-    renderRepTabs();repLoadEditor();repPersist();
-    toast('loaded #'+f.id+' into Repeater');
-  }catch(e){toast(e.message);}
-}
-function repPersist(){try{localStorage.setItem('rep.tabs',JSON.stringify({seq:repSeq,active:repActive,tabs:repTabs.map(t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,resView:t.resView}))}));}catch(e){}}
-let repPersistT=null;function repPersistDebounced(){clearTimeout(repPersistT);repPersistT=setTimeout(repPersist,400);}
-function repInit(){
-  let ok=false;
-  try{const d=JSON.parse(localStorage.getItem('rep.tabs')||'null');
-    if(d&&d.tabs&&d.tabs.length){
-      repTabs=d.tabs.map(t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',resView:t.resView||'raw',resId:null,status:'',color:'',title:''}));
-      repTabs.forEach(t=>t.title=repTitle(t));
-      repActive=(d.active&&repTabs.find(x=>x.tid===d.active))?d.active:repTabs[0].tid;
-      repSeq=Math.max(d.seq||0,Math.max.apply(null,repTabs.map(t=>t.tid))+1);ok=true;
-    }
-  }catch(e){}
-  if(!ok){repTabs=[repBlank()];repActive=repTabs[0].tid;}
-  renderRepTabs();repLoadEditor();
-  ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();renderRepTabs();repPersistDebounced();});});
-  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();repPersistDebounced();});});
-}
-$('#repSend').onclick=repSend;
-$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{const t=repCur();if(t)t.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
-
-/* ---- intruder ---- */
-const intrState={type:'sniper'};
-$('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  intrState.type=b.dataset.t;$('#intrType').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-  $('#intrPayloads2').style.display=intrState.type==='pitchfork'?'block':'none';
-});
-$('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;};
-function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
-async function intrStart(){
-  const target=$('#intrTarget').value.trim();
-  if(!target){toast('enter a target (scheme://host)');return;}
-  const payloads=intrState.type==='pitchfork'?[lines($('#intrPayloads1').value),lines($('#intrPayloads2').value)]:[lines($('#intrPayloads1').value)];
-  try{renderIntr(await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target,template:$('#intrTemplate').value,attackType:intrState.type,payloads})}));}
-  catch(e){toast('attack: '+e.message);}
-}
-$('#intrStart').onclick=intrStart;
-let intrTimer=null;
-function scheduleIntr(){clearTimeout(intrTimer);intrTimer=setTimeout(async()=>{try{renderIntr(await api('/api/intruder/state'));}catch(e){}},120);}
-function renderIntr(st){
-  $('#intrProgress').textContent=st.running?`running ${st.done}/${st.total}`:(st.total?`done ${st.done}/${st.total}${st.capped?' (capped)':''}`:'');
-  $('#intrStart').disabled=!!st.running;$('#intrStart').textContent=st.running?'Running…':'Start ▸';
-  if(st.running)scheduleIntr(); // self-poll until the attack converges (robust to event/POST races)
-  const box=$('#intrResults');
-  if(st.error){box.innerHTML='<div class="hint" style="padding:12px;color:var(--red)">'+esc(st.error)+'</div>';return;}
-  if(!st.results||!st.results.length){box.innerHTML='<div class="hint" style="padding:12px">'+(st.running?'sending…':'Run an attack to see results.')+'</div>';return;}
-  box.innerHTML=st.results.map(r=>`<div class="intr-row ${r.flagged?'flag':''}">
-    <div style="color:var(--fg3)">${r.id}</div>
-    <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}</div>
-    <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
-    <div style="color:var(--fg2);text-align:right">${r.length}</div>
-    <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`).join('');
-}
-function sendToIntruder(f){
-  Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]).then(([d,raw])=>{
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
-    $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;
-    $('#intrTemplate').value=raw.replace(/\r\n/g,'\n');
-    document.querySelector('.tab[data-tab="intruder"]').click();
-    toast('loaded #'+f.id+' into Intruder · add § markers');
-  }).catch(e=>toast(e.message));
-}
-
-/* ---- scanner ---- */
-const scanState={sel:null,issues:[]};
-async function loadIssues(){try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();}catch(e){}}
-async function runScan(){
-  $('#scanRun').textContent='Scanning…';$('#scanRun').disabled=true;
-  const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
-  const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
-  try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});scanState.issues=d.issues||[];renderScan();
-    toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
-  catch(e){toast(e.message);}
-  $('#scanRun').textContent='Run scan ▸';$('#scanRun').disabled=false;
-}
-// Populate the scanner's target dropdown from the hosts seen in history.
-async function loadScanTargets(){
-  const sel=$('#scanTarget');if(!sel)return;
-  try{const d=await api('/api/flows?limit=2000');
-    const hosts=[...new Set((d.flows||[]).map(f=>f.host).filter(Boolean))].sort();
-    const cur=sel.value;
-    sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h)}">${esc(h)}</option>`).join('');
-    if(hosts.includes(cur))sel.value=cur;
-  }catch(e){}
-}
-// Group findings by title: one list row per finding type, the affected targets
-// nested in its detail — instead of a separate row per (finding × target).
-const SEV_ORDER=['High','Medium','Low','Info'];
-const sevRank=s=>{const i=SEV_ORDER.indexOf(s);return i<0?SEV_ORDER.length:i;};
-function scanGroups(){
-  const map=new Map();
-  scanState.issues.forEach(i=>{
-    let g=map.get(i.title);
-    if(!g){g={title:i.title,severity:i.severity,items:[]};map.set(i.title,g);}
-    g.items.push(i);
-    if(sevRank(i.severity)<sevRank(g.severity))g.severity=i.severity; // keep the most severe
-  });
-  return [...map.values()].sort((a,b)=>sevRank(a.severity)-sevRank(b.severity)||a.title.localeCompare(b.title));
-}
-function renderScan(){
-  const list=$('#scanList');
-  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="hint" style="padding:12px">No issues found. Capture some traffic, then Run scan.</div>';$('#scanDetail').innerHTML='<div class="hint" style="padding:16px">Select a finding.</div>';return;}
-  const groups=scanState.groups=scanGroups();
-  const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
-  $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
-  if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
-  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
-    <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
-    <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
-  list.querySelectorAll('.scan-item').forEach(el=>el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();});
-  renderScanDetail();
-}
-function renderScanDetail(){
-  const g=(scanState.groups||[])[scanState.sel];if(!g)return;
-  const first=g.items[0];
-  const shared=g.items.every(i=>i.detail===first.detail); // show a common description once
-  const tgts=g.items.map(i=>`<div class="scan-tgt"${i.flowId?` data-flow="${i.flowId}"`:''} style="${i.flowId?'cursor:pointer;':''}padding:7px 9px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px">
-    <div style="font-family:var(--mono);font-size:12px;color:var(--accent);word-break:break-all">${esc(i.target||'(no target)')}${i.flowId?` <span style="color:var(--fg3)">· flow #${i.flowId} ›</span>`:''}</div>
-    ${(!shared&&i.detail)?`<div style="font-size:12px;color:var(--fg2);margin-top:5px;line-height:1.5">${esc(i.detail)}</div>`:''}
-    ${i.evidence?`<div class="evidence" style="margin-top:6px">${esc(i.evidence)}</div>`:''}</div>`).join('');
-  $('#scanDetail').innerHTML=`<div class="scan-wrap">
-    <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
-    <h1 style="font-size:17px;font-weight:700;margin:12px 0 6px;line-height:1.3">${esc(g.title)}</h1>
-    ${(shared&&first.detail)?`<p style="font-size:13px;color:var(--fg2);line-height:1.6">${esc(first.detail)}</p>`:''}
-    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
-    ${tgts}
-    ${first.fix?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
-  $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>el.onclick=()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(Number(el.dataset.flow));});
-}
-$('#scanRun').onclick=runScan;
-$('#scanReport').onclick=()=>{if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}const a=document.createElement('a');a.href='/api/scanner/report';a.download='interceptor-findings.md';document.body.appendChild(a);a.click();a.remove();toast('report downloaded');};
-
-/* ---- endpoint map ---- */
-const mapState={eps:[],domain:null,method:'',search:'',statusClass:0,expandAll:false,view:'graph',collapsed:new Set(),zoom:{k:1,x:12,y:12},_needFit:true};
-async function loadEndpoints(){
-  try{const d=await api('/api/endpoints');mapState.eps=d.endpoints||[];mapState._needFit=true;fillMapDomains();fillMapMethods();renderMap();}
-  catch(e){toast('map: '+e.message);}
-}
-// Populate the domain picker and default to the busiest domain — showing one app
-// at a time keeps the graph readable instead of cramming every host on screen.
-function fillMapDomains(){
-  const sel=$('#mapDomain');if(!sel)return;
-  const counts={};mapState.eps.forEach(e=>{counts[e.host]=(counts[e.host]||0)+1;});
-  const hosts=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]||a.localeCompare(b));
-  if(mapState.domain===null)mapState.domain=hosts[0]||'';            // first open: biggest domain
-  else if(mapState.domain&&!counts[mapState.domain])mapState.domain=hosts[0]||''; // host gone → fall back
-  sel.innerHTML=`<option value="">All domains (${mapState.eps.length})</option>`+hosts.map(h=>`<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
-  sel.value=mapState.domain;
-}
-// Collapse every host node — used for the "All domains" overview so you see the
-// hosts (each with an endpoint count) and drill in by click, not 500 crammed rows.
-function mapCollapseHosts(){
-  mapState.collapsed.clear();
-  [...new Set(mapState.eps.map(e=>e.host))].forEach(h=>mapState.collapsed.add('/'+h));
-}
-function fillMapMethods(){
-  const sel=$('#mapMethod');if(!sel)return;
-  const methods=[...new Set(mapState.eps.map(e=>e.method))].sort();const cur=sel.value;
-  sel.innerHTML='<option value="">method</option>'+methods.map(m=>`<option value="${escAttr(m)}">${esc(m)}</option>`).join('');
-  if(methods.includes(cur))sel.value=cur;
-}
-function mapFiltered(){
-  const q=mapState.search.toLowerCase();
-  return mapState.eps.filter(e=>{
-    if(mapState.domain&&e.host!==mapState.domain)return false;
-    if(mapState.method&&e.method!==mapState.method)return false;
-    if(mapState.statusClass&&Math.floor((e.lastStatus||0)/100)!==mapState.statusClass)return false;
-    if(q&&!((e.path||'').toLowerCase().includes(q)||(e.host||'').toLowerCase().includes(q)))return false;
-    return true;
-  });
-}
-function mapCount(node){let n=node.eps.length;node.kids.forEach(k=>n+=mapCount(k));return n;}
-function buildMapTree(eps){
-  const hosts=new Map();
-  eps.forEach(e=>{
-    if(!hosts.has(e.host))hosts.set(e.host,{name:e.host,kids:new Map(),eps:[]});
-    let node=hosts.get(e.host);
-    (e.path||'/').split('?')[0].split('/').filter(Boolean).forEach(seg=>{
-      if(!node.kids.has(seg))node.kids.set(seg,{name:seg,kids:new Map(),eps:[]});node=node.kids.get(seg);});
-    node.eps.push(e);
-  });
-  return hosts;
-}
-function mapEpRow(e){
-  const sts=(e.statuses||[]).map(s=>`<span style="color:${statusColor(s)}">${s}</span>`).join(' ');
-  const path=e.path||'/';
-  return `<div class="map-ep"${e.lastFlowId?` data-flow="${e.lastFlowId}"`:''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
-    <span class="map-m" style="color:${methodColor(e.method)}">${esc(e.method)}</span>
-    <span class="map-p">${esc(path)}</span><span class="map-sts">${sts}</span>
-    <span class="map-hits">${e.hits>1?e.hits+'×':''}</span></div>`;
-}
-function mapRenderNode(node,open){
-  let html='';
-  [...node.kids.values()].sort((a,b)=>a.name.localeCompare(b.name)).forEach(kid=>{
-    html+=`<details class="map-folder"${open?' open':''}><summary><span class="map-seg">/${esc(kid.name)}</span><span class="map-c">${mapCount(kid)}</span></summary><div class="map-body">${mapRenderNode(kid,open)}</div></details>`;
-  });
-  node.eps.slice().sort((a,b)=>a.method.localeCompare(b.method)).forEach(e=>html+=mapEpRow(e));
-  return html;
-}
-function renderMap(){
-  const eps=mapFiltered();
-  const hostN=new Set(eps.map(e=>e.host)).size;
-  $('#mapCount').textContent=eps.length?`${eps.length} endpoint${eps.length===1?'':'s'} · ${hostN} host${hostN===1?'':'s'}`:'';
-  if(mapState.view==='graph')renderMapGraph(eps); else renderMapTree(eps);
-}
-function renderMapTree(eps){
-  const box=$('#mapTree');if(!box)return;
-  if(!eps.length){box.innerHTML='<div class="hint" style="padding:12px">No endpoints match — capture traffic or relax the filters.</div>';return;}
-  const open=mapState.expandAll||!!mapState.search; // a search auto-expands so matches are visible
-  const hosts=buildMapTree(eps);
-  box.innerHTML=[...hosts.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(h=>
-    `<details class="map-host" open><summary>🌐 ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h,open)}</div></details>`).join('');
-  box.querySelectorAll('.map-ep[data-flow]').forEach(el=>el.onclick=()=>flowPopup(Number(el.dataset.flow)));
-}
-$('#mapSearch').oninput=e=>{mapState.search=e.target.value.trim();renderMap();};
-$('#mapDomain')&&($('#mapDomain').onchange=e=>{mapState.domain=e.target.value;
-  // A specific domain shows its tree expanded; "All domains" collapses every host.
-  if(mapState.domain)mapState.collapsed.clear();else mapCollapseHosts();
-  mapState._needFit=true;renderMap();});
-$('#mapMethod').onchange=e=>{mapState.method=e.target.value;renderMap();};
-$('#mapRefresh').onclick=loadEndpoints;
-$('#mapExpand').onclick=()=>{mapState.expandAll=!mapState.expandAll;$('#mapExpand').textContent=mapState.expandAll?'Collapse all':'Expand all';renderMap();};
-$('#mapStatus')&&($('#mapStatus').onchange=e=>{mapState.statusClass=Number(e.target.value)||0;renderMap();});
-
-/* ---- map: node-link graph (hierarchical tidy tree) ---- */
-function gTrunc(s,n){return s.length>n?s.slice(0,n-1)+'…':s;}
-function gCount(n){if(n.type==='ep')return 1;let c=0;n.children.forEach(k=>c+=gCount(k));return c;}
-function buildGraphTree(eps){
-  const root={key:'',type:'root',children:[],cm:new Map()};
-  const child=(p,k,label,type)=>{let c=p.cm.get(k);if(!c){c={key:p.key+'/'+k,label,type,children:[],cm:new Map(),ep:null};p.cm.set(k,c);p.children.push(c);}return c;};
-  eps.forEach(e=>{const host=child(root,e.host,e.host,'host');let node=host;
-    (e.path||'/').split('?')[0].split('/').filter(Boolean).forEach(seg=>{node=child(node,seg,'/'+seg,'folder');});
-    child(node,'ep|'+e.method,e.method,'ep').ep=e;});
-  return root;
-}
-function graphLayout(hosts){
-  const COL=160,ROW=22,PAD=20;let leaf=0,maxD=0;
-  function place(n,d){n.depth=d;maxD=Math.max(maxD,d);n._col=mapState.collapsed.has(n.key)&&n.children.length>0;
-    if(n._col||!n.children.length){n.row=leaf++;return;}
-    n.children.forEach(c=>place(c,d+1));n.row=(n.children[0].row+n.children[n.children.length-1].row)/2;}
-  hosts.forEach(h=>place(h,0));
-  const nodes=[],edges=[];
-  function collect(n){n.px=PAD+n.depth*COL;n.py=PAD+n.row*ROW;nodes.push(n);
-    if(!n._col)n.children.forEach(c=>{edges.push([n,c]);collect(c);});}
-  hosts.forEach(collect);
-  return {nodes,edges,w:PAD*2+maxD*COL+180,h:PAD*2+Math.max(1,leaf)*ROW};
-}
-function gNode(n){
-  const x=n.px,y=n.py;let mk,lb,title=esc(n.label||''),extra='';
-  if(n.type==='host'){mk=`<circle cx="${x}" cy="${y}" r="5" fill="var(--accent)"/>`;lb=`<text class="g-host" x="${x+9}" y="${y}">${esc(gTrunc(n.label,26))}${n._col?` <tspan class="g-dim">+${gCount(n)}</tspan>`:''}</text>`;}
-  else if(n.type==='ep'){const e=n.ep,col=statusColor(e.lastStatus);title=esc(e.method+' '+(e.scheme||'http')+'://'+e.host+(e.path||'/'));
-    mk=`<rect x="${x-4}" y="${y-4}" width="8" height="8" rx="2" fill="${col}"/>`;
-    lb=`<text class="g-ep" x="${x+9}" y="${y}"><tspan fill="${methodColor(e.method)}" font-weight="700">${esc(e.method)}</tspan> <tspan class="g-dim">${esc((e.statuses||[]).join(','))}${e.hits>1?' · '+e.hits+'×':''}</tspan></text>`;
-    extra=` data-flow="${e.lastFlowId||''}"`;}
-  else{mk=`<circle cx="${x}" cy="${y}" r="4" fill="${n._col?'var(--blue)':'var(--bg3)'}" stroke="var(--blue)" stroke-width="1.4"/>`;
-    lb=`<text class="g-folder" x="${x+9}" y="${y}">${esc(gTrunc(n.label,22))}${n._col?` <tspan class="g-dim">+${gCount(n)}</tspan>`:''}</text>`;}
-  const click=n.type==='ep'||n.children.length>0;
-  return `<g class="g-node${click?' g-click':''}" data-key="${escAttr(n.key)}" data-kind="${n.type}"${extra}><title>${title}</title>${mk}${lb}</g>`;
-}
-function renderMapGraph(eps){
-  const g=$('#mapGraphG');if(!g)return;
-  if(!eps.length){g.innerHTML='<text class="g-dim" x="20" y="28">No endpoints match — capture traffic or relax the filters.</text>';return;}
-  const lay=graphLayout(buildGraphTree(eps).children);mapState._g=lay;
-  let h='';
-  lay.edges.forEach(([a,b])=>{const x1=a.px+7,y1=a.py,x2=b.px-3,y2=b.py,mx=(x1+x2)/2;h+=`<path class="g-edge" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;});
-  lay.nodes.forEach(n=>h+=gNode(n));
-  g.innerHTML=h;
-  g.querySelectorAll('.g-node').forEach(el=>el.onclick=ev=>{ev.stopPropagation();
-    if(el.dataset.kind==='ep'){const f=el.dataset.flow;if(f)flowPopup(Number(f));return;}
-    const k=el.dataset.key;mapState.collapsed.has(k)?mapState.collapsed.delete(k):mapState.collapsed.add(k);renderMap();});
-  if(mapState._needFit){mapState._needFit=false;mapFitNow();}else mapApplyZoom();
-}
-function mapApplyZoom(){const z=mapState.zoom;$('#mapGraphG').setAttribute('transform',`translate(${z.x} ${z.y}) scale(${z.k})`);}
-function mapFitNow(){const svg=$('#mapGraphSvg'),gr=mapState._g;if(!gr)return;
-  const vw=svg.clientWidth||820,vh=svg.clientHeight||520;
-  const k=Math.max(0.45,Math.min(1.4,vw/gr.w,vh/gr.h)); // keep labels legible; pan if it overflows
-  mapState.zoom={k,x:14,y:Math.max(10,(vh-gr.h*k)/2)};mapApplyZoom();}
-$('#mapViewSeg')&&$('#mapViewSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  mapState.view=b.dataset.v;$('#mapViewSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-  $('#mapTree').style.display=mapState.view==='tree'?'block':'none';$('#mapGraphSvg').style.display=mapState.view==='graph'?'block':'none';
-  $('#mapExpand').style.display=mapState.view==='tree'?'':'none';$('#mapFit').style.display=mapState.view==='graph'?'':'none';
-  mapState._needFit=true;renderMap();});
-$('#mapFit')&&($('#mapFit').onclick=mapFitNow);
-(function(){const svg=$('#mapGraphSvg');if(!svg)return;let drag=null;
-  svg.addEventListener('wheel',e=>{e.preventDefault();const z=mapState.zoom,r=svg.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,f=e.deltaY<0?1.1:1/1.1,nk=Math.max(0.1,Math.min(4,z.k*f));z.x=mx-(mx-z.x)*(nk/z.k);z.y=my-(my-z.y)*(nk/z.k);z.k=nk;mapApplyZoom();},{passive:false});
-  svg.addEventListener('mousedown',e=>{if(e.target.closest('.g-click'))return;drag={x:e.clientX,y:e.clientY,ox:mapState.zoom.x,oy:mapState.zoom.y};svg.style.cursor='grabbing';});
-  window.addEventListener('mousemove',e=>{if(!drag)return;mapState.zoom.x=drag.ox+(e.clientX-drag.x);mapState.zoom.y=drag.oy+(e.clientY-drag.y);mapApplyZoom();});
-  window.addEventListener('mouseup',()=>{if(drag){drag=null;svg.style.cursor='grab';}});
-})();
-
-/* ---- flow popup (quick request/response view, e.g. from the Map) ---- */
-async function flowPopup(id){
-  let d;
-  try{d=await api('/api/flows/'+id);}catch(e){toast('flow: '+e.message);return;}
-  state.fm={id,detail:d,pretty:false};
-  $('#fmTitle').innerHTML=`<span style="color:${methodColor(d.method)};font-weight:700">${esc(d.method)}</span> <span style="font-family:var(--mono);color:var(--fg2)">${esc((d.scheme||'http')+'://'+d.host+d.path)}</span>`;
-  $('#fmStatus').textContent=d.status?`${d.status} ${statusText(d.status)}`+(d.durationMs?` · ${fmtDur(d.durationMs)}`:''):(d.error||'');
-  $('#fmStatus').style.color=statusColor(d.status);
-  $('#fmSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v==='raw'));
-  $('#flowModal').style.display='flex';
-  fmRenderSide('req');fmRenderSide('res');
-}
-async function fmRenderSide(side){
-  const el=side==='req'?$('#fmReq'):$('#fmRes');const d=state.fm.detail;
-  const len=side==='req'?d.reqLen:d.resLen;
-  if(len>RENDER_CAP){el.innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not rendered.<br><a class="btn" style="margin-top:8px;display:inline-block" href="/api/flows/${state.fm.id}/raw?side=${side}" download="flow-${state.fm.id}-${side}.txt">⤓ Download raw</a></div>`;return;}
-  el.innerHTML='<span class="hint" style="padding:12px">loading…</span>';
-  try{const raw=await api('/api/flows/'+state.fm.id+'/raw?side='+side);
-    el.innerHTML=highlightHTTP(state.fm.pretty?prettify(raw):raw,state.fm.pretty);}
-  catch(e){el.textContent='(error: '+e.message+')';}
-}
-$('#fmClose')&&($('#fmClose').onclick=()=>$('#flowModal').style.display='none');
-$('#fmProxy')&&($('#fmProxy').onclick=()=>{
-  const d=state.fm&&state.fm.detail,id=state.fm&&state.fm.id;
-  $('#flowModal').style.display='none';if(!d)return;
-  document.querySelector('.tab[data-tab="proxy"]').click();
-  // Filter History to every request to this endpoint (host + method + path).
-  state.filters={scheme:'',method:d.method||'',status:'',host:d.host||'',search:(d.path||'').split('?')[0],exclude:[]};
-  syncControls();renderChips();loadFlows();
-  if(id)selectFlow(id);
-});
-$('#fmSeg')&&$('#fmSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.fm.pretty=b.dataset.v==='pretty';$('#fmSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));fmRenderSide('req');fmRenderSide('res');});
-
-/* ---- project notes ---- */
-const notesState={loaded:'',mode:'edit'};
-async function loadNotes(){
-  try{const d=await api('/api/notes');notesState.loaded=d.notes||'';
-    if(document.activeElement!==$('#notesEdit'))$('#notesEdit').value=notesState.loaded;
-    if(notesState.mode==='preview')showNotesPreview();
-  }catch(e){}
-}
-async function saveNotes(){
-  const v=$('#notesEdit').value;
-  if(v===notesState.loaded)return; // nothing changed
-  try{await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({notes:v})});
-    notesState.loaded=v;const s=$('#notesSaved');s.style.opacity='1';setTimeout(()=>s.style.opacity='0',1200);
-  }catch(e){toast('notes: '+e.message);}
-}
-$('#notesSave')&&($('#notesSave').onclick=saveNotes);
-$('#notesEdit')&&$('#notesEdit').addEventListener('blur',saveNotes);
-$('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
-  const img=[...((e.clipboardData||{}).items||[])].find(it=>it.type&&it.type.indexOf('image/')===0);
-  if(!img)return;e.preventDefault();
-  const file=img.getAsFile();if(!file)return;
-  const rd=new FileReader();
-  rd.onload=()=>{const ta=$('#notesEdit'),ins='\n![pasted image]('+rd.result+')\n',p=ta.selectionStart;
-    ta.value=ta.value.slice(0,p)+ins+ta.value.slice(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=p+ins.length;
-    saveNotes();toast('image embedded');};
-  rd.readAsDataURL(file);
-});
-$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-  const edit=notesState.mode==='edit';
-  $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';
-  if(!edit)showNotesPreview();
-});
-// Minimal, safe markdown → HTML: escape first, then format a useful subset.
-function renderMD(src){
-  if(!src||!src.trim())return '<p class="hint">Empty — switch to Edit and jot down creds, findings, scope…</p>';
-  let s=esc(src),blocks=[];
-  s=s.replace(/```([\s\S]*?)```/g,(m,c)=>{blocks.push(c.replace(/^\n|\n$/g,''));return '\u0000'+(blocks.length-1)+'\u0000';});
-  s=s.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>').replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>').replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>');
-  s=s.replace(/(?:^|\n)((?:[-*] .*(?:\n|$))+)/g,(m,list)=>'\n<ul>'+list.trim().split('\n').map(l=>'<li>'+l.replace(/^[-*]\s?/,'')+'</li>').join('')+'</ul>');
-  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
-  s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
-  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
-  s='<p>'+s.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
-  s=s.replace(/\u0000(\d+)\u0000/g,(m,i)=>'<pre class="md-code">'+blocks[Number(i)]+'</pre>');
-  return s.replace(/<p>\s*<\/p>/g,'').replace(/<p>(<(?:h\d|ul|pre))/g,'$1').replace(/(<\/(?:h\d|ul|pre)>)<\/p>/g,'$1');
-}
-// Wrap each heading + the content beneath it in a collapsible <details>, so long
-// notes fold into title/subtitle sections you can open and close.
-function accordionize(box){
-  const kids=[...box.childNodes],frag=document.createDocumentFragment();let i=0;
-  while(i<kids.length){
-    const n=kids[i];
-    if(n.nodeType===1&&/^H[1-6]$/.test(n.tagName)){
-      const det=document.createElement('details');det.className='acc';det.open=true;
-      const sum=document.createElement('summary');sum.className='acc-h';sum.appendChild(n);det.appendChild(sum);
-      const body=document.createElement('div');body.className='acc-body';i++;
-      while(i<kids.length&&!(kids[i].nodeType===1&&/^H[1-6]$/.test(kids[i].tagName))){body.appendChild(kids[i]);i++;}
-      det.appendChild(body);frag.appendChild(det);
-    }else{frag.appendChild(n);i++;}
-  }
-  box.appendChild(frag);
-}
-function showNotesPreview(){const box=$('#notesPreview');box.innerHTML=renderMD($('#notesEdit').value);accordionize(box);}
-
-/* ---- api module ---- */
-$('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  $('#apiSub').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-  ['Keys','Rest','Mcp'].forEach(s=>$('#api'+s).style.display=(s.toLowerCase()===b.dataset.s)?'block':'none');
-});
-async function loadApiKeys(){
-  try{const d=await api('/api/keys');const keys=d.keys||[];
-    $('#keyList').innerHTML=keys.length?keys.map(k=>`<tr>
-      <td style="font-family:var(--mono);color:var(--accent)">${esc(k.prefix)}…</td>
-      <td>${esc(k.label)}</td>
-      <td style="color:var(--fg3)">${new Date(k.created).toLocaleString()}</td>
-      <td><button class="btn danger" data-revoke="${k.id}">Revoke</button></td></tr>`).join('')
-      :'<tr><td colspan="4" class="hint" style="padding:10px">No keys yet.</td></tr>';
-    $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke)));
-  }catch(e){}
-}
-async function createApiKey(){
-  const label=$('#keyLabel').value.trim()||'key';
-  try{const d=await api('/api/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label})});
-    $('#keyNew').style.display='block';
-    $('#keyNew').innerHTML='New token — copy now, it is shown only once:<br><b style="color:var(--accent);user-select:all">'+esc(d.token)+'</b>';
-    $('#keyLabel').value='';loadApiKeys();
-  }catch(e){toast(e.message);}
-}
-async function revokeKey(id){try{await api('/api/keys/'+id,{method:'DELETE'});loadApiKeys();}catch(e){toast(e.message);}}
-$('#keyCreate').onclick=createApiKey;
-async function loadReference(){
-  try{const d=await api('/api/reference');$('#apiBase').textContent='Base URL: '+d.baseUrl;
-    $('#restList').innerHTML=(d.routes||[]).map(r=>`<tr>
-      <td style="color:${methodColor(r.method)};font-weight:700;font-family:var(--mono)">${esc(r.method)}</td>
-      <td style="font-family:var(--mono);color:var(--fg)">${esc(r.path)}</td>
-      <td style="color:var(--fg2)">${esc(r.desc)}</td></tr>`).join('');
-  }catch(e){}
-}
-async function loadMCP(){
-  try{const m=await api('/api/mcp');
-    const cfg=JSON.stringify(m.clientConfig||{},null,2);
-    const cmd=`${(m.transport&&m.transport.command)||'interceptor'} ${((m.transport&&m.transport.args)||[]).join(' ')}`.trim();
-    const tools=(m.tools||[]).map(t=>`<tr>
-      <td style="font-family:var(--mono);color:var(--accent)">${esc(t.name)}</td>
-      <td style="color:var(--fg2)">${esc(t.desc)}</td></tr>`).join('');
-    $('#mcpBody').innerHTML=`
-      <div class="row" style="gap:8px"><span class="sev ${m.status==='ready'?'Low':'Info'}">${esc(m.status)}</span>
-        <span class="hint">Let your AI assistant drive Interceptor — it gets the same capabilities as the UI.</span></div>
-      <p class="hint" style="margin:12px 0;line-height:1.6">${esc(m.note||'')}</p>
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">CONNECT (stdio · Claude Desktop / Code)</div>
-      <div class="evidence" style="font-family:var(--mono)">${esc(cmd)}</div>
-      ${m.httpTransport?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:16px 0 6px">OR CONNECT (HTTP · remote / hosted agents)</div>
-      <div class="evidence" style="font-family:var(--mono)">POST ${esc(location.origin)}${esc(m.httpTransport.url)}</div>
-      <p class="hint" style="margin:8px 0 0;line-height:1.6">${esc(m.httpTransport.note||'')}</p>`:''}
-      <div class="row" style="gap:10px;margin:16px 0 6px"><span style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">CLIENT CONFIG · paste into your MCP client (e.g. Claude)</span><button class="btn accent" id="mcpCopy" style="padding:3px 10px">Copy</button></div>
-      <pre class="evidence" style="white-space:pre;overflow:auto;margin-top:0">${esc(cfg)}</pre>
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:18px 0 6px">TOOLS · ${(m.tools||[]).length}</div>
-      <table class="rules-tbl"><thead><tr><th style="width:160px">Tool</th><th>Description</th></tr></thead><tbody>${tools}</tbody></table>`;
-    const cp=document.getElementById('mcpCopy'); if(cp) cp.onclick=()=>copyText(cfg,'MCP config copied');
-  }catch(e){}
-}
-
-/* ---- live events ---- */
-function connectEvents(){
-  const es=new EventSource('/api/events');
-  es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
-    if(m.type==='flow.new')scheduleReload();
-    else if(m.type==='flow.update'){scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);} // response arrived: refresh the open detail
-    else if(m.type==='activity')onActivity(m.item);
-    else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
-    else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();}
-    else if(m.type==='rules.update')loadRules();
-    else if(m.type==='intruder.update')scheduleIntr();
-    else if(m.type==='scanner.update')loadIssues();
-    else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
-    else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();}
-    else if(m.type==='views.update')loadViews();
-    else if(m.type==='session.update')loadSession();
-    else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
-    else if(m.type==='activescan.update'){if($('#activeModal')&&$('#activeModal').style.display==='flex')loadActive();}
-    else if(m.type==='settings.update')loadSettings();
-    else if(m.type==='notes.update')loadNotes();
-  };
-  es.onerror=()=>{/* browser auto-reconnects */};
-}
-
-/* ---- command palette (Ctrl/Cmd+K) ---- */
-const cmdk={el:null,input:null,list:null,items:[],sel:0,open:false};
-function cmdkBuild(){
-  const o=document.createElement('div');o.id='cmdk';
-  o.style.cssText='position:fixed;inset:0;z-index:300;display:none;align-items:flex-start;justify-content:center;background:var(--overlay)';
-  o.innerHTML='<div style="margin-top:11vh;width:min(680px,92vw);background:var(--bg2);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 70px var(--shadow);overflow:hidden">'
-    +'<input id="cmdkInput" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:15px;outline:none">'
-    +'<div id="cmdkList" style="max-height:52vh;overflow:auto;padding:6px"></div>'
-    +'<div style="padding:7px 14px;border-top:1px solid var(--line);color:var(--fg3);font-size:10px;display:flex;gap:16px"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
-  document.body.appendChild(o);
-  cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');
-  o.onclick=e=>{if(e.target===o)cmdkClose();};
-  cmdk.input.oninput=cmdkRender;
-  cmdk.input.onkeydown=e=>{
-    if(e.key==='ArrowDown'){e.preventDefault();cmdk.sel=Math.min(cmdk.items.length-1,cmdk.sel+1);cmdkPaint();}
-    else if(e.key==='ArrowUp'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.sel-1);cmdkPaint();}
-    else if(e.key==='Enter'){e.preventDefault();cmdkRun(cmdk.sel);}
-    else if(e.key==='Escape'){e.preventDefault();cmdkClose();}
-  };
-}
-function cmdkCommands(){
-  const go=name=>()=>document.querySelector('.tab[data-tab="'+name+'"]').click();
-  const c=[
-    {t:'Go to Proxy',run:go('proxy')},{t:'Go to Intercept',run:go('intercept')},
-    {t:'Go to Repeater',run:go('repeater')},{t:'Go to Intruder',run:go('intruder')},
-    {t:'Go to Scanner',run:go('scanner')},{t:'Go to API',run:go('api')},{t:'Go to Settings',run:go('settings')},
-    {t:'Toggle intercept',run:()=>{if(typeof toggleIntercept==='function')toggleIntercept();}},
-    {t:'Run scanner',run:()=>{go('scanner')();if(typeof runScan==='function')runScan();}},
-    {t:(state.inScopeOnly?'Show all traffic':'Show in-scope only'),run:()=>$('#scopeToggle')&&$('#scopeToggle').click()},
-    {t:'⚡ Active scan (sends attack payloads)',run:()=>{document.querySelector('.tab[data-tab="scanner"]').click();openActive();}},
-    {t:'Open Decoder (base64 / url / jwt / hex…)',run:()=>openDecoder()},
-    {t:'Export HAR',run:()=>{location.href='/api/export/har'+(state.inScopeOnly?'?inScope=1':'');}},
-    {t:'Clear all filters',run:()=>{if(typeof clearAllFilters==='function')clearAllFilters();}},
-  ];
-  if(state.selId){
-    c.push({t:'Send selected → Repeater  (Ctrl+R)',run:()=>{const f=state.flows.find(x=>x.id===state.selId);if(f)sendToRepeater(f);}});
-    c.push({t:'Send selected → Intruder  (Ctrl+I)',run:()=>{const f=state.flows.find(x=>x.id===state.selId);if(f)sendToIntruder(f);}});
-  }
-  if(state.selHeld!=null){
-    c.push({t:'Forward held request  (Ctrl+F)',run:()=>{go('intercept')();const b=$('#forwardBtn');if(b)b.click();}});
-    c.push({t:'Drop held request  (Ctrl+D)',run:()=>{go('intercept')();const b=$('#dropBtn');if(b)b.click();}});
-  }
-  return c;
-}
-function cmdkRender(){
-  const q=cmdk.input.value.trim().toLowerCase();
-  const items=[];
-  cmdkCommands().forEach(c=>{if(!q||c.t.toLowerCase().includes(q))items.push({label:c.t,kind:'command',run:c.run});});
-  if(q){
-    state.flows.filter(f=>(f.method+' '+f.host+f.path).toLowerCase().includes(q)).slice(0,8).forEach(f=>{
-      items.push({label:f.method+'  '+f.host+f.path,kind:'flow',sub:String(f.status||'—'),
-        run:()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(f.id);}});
-    });
-  }
-  cmdk.items=items;cmdk.sel=0;cmdkPaint();
-}
-function cmdkPaint(){
-  cmdk.list.innerHTML=cmdk.items.map((it,i)=>
-    '<div class="cmdk-row" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accent);color:var(--onAccent)':'')+'">'
-    +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'
-    +'<span style="opacity:.55;font-size:11px;flex:none">'+esc(it.sub||it.kind)+'</span></div>'
-  ).join('')||'<div style="padding:14px;color:var(--fg3)">No matches</div>';
-  cmdk.list.querySelectorAll('.cmdk-row').forEach(r=>{
-    r.onclick=()=>cmdkRun(Number(r.dataset.i));
-    r.onmousemove=()=>{const n=Number(r.dataset.i);if(n!==cmdk.sel){cmdk.sel=n;cmdkPaint();}};
-  });
-  const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
-}
-function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
-function cmdkOpen(){if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.el.style.display='flex';cmdk.input.value='';cmdkRender();cmdk.input.focus();}
-function cmdkClose(){cmdk.open=false;if(cmdk.el)cmdk.el.style.display='none';}
-
-/* ---- global keyboard shortcuts ---- */
-function selectedFlow(){return state.selId?state.flows.find(x=>x.id===state.selId):null;}
-document.addEventListener('keydown',e=>{
-  const mod=e.ctrlKey||e.metaKey;
-  const tag=(e.target.tagName||'').toLowerCase();
-  const typing=tag==='input'||tag==='textarea'||e.target.isContentEditable;
-  if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
-  if(cmdk.open)return; // the palette handles its own keys
-  if(mod&&(e.key===' '||e.code==='Space')){e.preventDefault();document.querySelector('.tab[data-tab="repeater"]').click();repSend();return;} // Ctrl+Space: send in Repeater
-  if(mod&&e.key.toLowerCase()==='r'){const f=selectedFlow();if(f){e.preventDefault();sendToRepeater(f);}return;} // Ctrl+R: → Repeater
-  if(mod&&e.key.toLowerCase()==='i'){const f=selectedFlow();if(f){e.preventDefault();sendToIntruder(f);}return;} // Ctrl+I: → Intruder
-  // Ctrl+F forward / Ctrl+D drop the selected held item — only on the Intercept tab with something held
-  if(mod&&(e.key.toLowerCase()==='f'||e.key.toLowerCase()==='d')&&document.querySelector('.tab[data-tab="intercept"]').classList.contains('active')){
-    const drop=e.key.toLowerCase()==='d';
-    if(state.selHeld!=null){e.preventDefault();$(drop?'#dropBtn':'#forwardBtn').click();return;}
-    if(state.selRespHeld!=null){e.preventDefault();$(drop?'#respDropBtn':'#respForwardBtn').click();return;}
-  }
-  if(e.key==='/'&&!typing&&!mod){const s=$('#fSearch');if(s){e.preventDefault();document.querySelector('.tab[data-tab="proxy"]').click();s.focus();}return;} // /: focus search
-});
-
-/* ---- version / update check ---- */
-async function loadVersion(retry){
-  try{
-    const d=await api('/api/version');const el=$('#verBadge');if(!el)return;
-    const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent='◧ '+d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
-    const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
-    if(d.updateAvailable&&d.latest){
-      el.textContent='↑ v'+d.latest+' available';el.style.color='var(--accent)';el.style.fontWeight='700';
-      el.title='You have v'+(d.version||'?')+' — a newer release is available. Click for releases.';
-    }else{
-      el.textContent='v'+(d.version||'');el.style.color='var(--fg3)';el.style.fontWeight='';
-      el.title='Interceptor v'+(d.version||'');
-    }
-    if(!d.latest&&retry)setTimeout(()=>loadVersion(false),3500); // the server's update check may still be in flight
-  }catch(e){}
-}
-
-/* ---- theme ---- */
-function currentTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark';}
-function applyTheme(t){
-  if(t==='light')document.documentElement.setAttribute('data-theme','light');
-  else document.documentElement.removeAttribute('data-theme');
-  const b=$('#themeToggle');if(b)b.textContent=t==='light'?'☀':'☾';
-}
-function toggleTheme(){const t=currentTheme()==='light'?'dark':'light';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
-$('#themeToggle').onclick=toggleTheme;
-applyTheme(currentTheme()); // sync the button icon with the theme applied pre-paint
-
-/* ---- AI activity feed (glass box: watch what the AI is doing, live) ---- */
-const ACT_MAX=300;
-function actTime(ts){const d=new Date(ts);const p=n=>String(n).padStart(2,'0');return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
-function renderActivity(){
-  const box=$('#actFeed');if(!box)return;
-  const a=state.activity;
-  $('#actCount').textContent=a.length?a.length+(a.length===1?' action':' actions'):'';
-  if(!a.length){box.innerHTML='<div class="empty">No AI activity yet.<br>Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</div>';return;}
-  box.innerHTML=a.map(it=>`<div class="act-row">
-    <span class="ok" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${it.ok?'ok':'error'}"></span>
-    <span class="act-tool">${esc(it.tool)}</span>
-    <span class="act-sum">${esc(it.summary||'')}</span>
-    <span class="act-res">${esc(it.result||'')}</span>
-    <span class="act-meta">${it.ms}ms · ${actTime(it.ts)}</span>
-  </div>`).join('');
-}
-let aiPulseTimer=null;
-function flashAiPulse(tool){
-  const p=$('#aiPulse');if(!p)return;
-  p.style.display='inline-flex';p.classList.add('live');
-  const lbl=$('#aiPulseLbl');if(lbl)lbl.textContent=tool?('AI · '+tool):'AI active';
-  clearTimeout(aiPulseTimer);
-  aiPulseTimer=setTimeout(()=>{p.classList.remove('live');if(lbl)lbl.textContent='AI active';},2500);
-}
-function onActivity(it){
-  if(!it)return;
-  state.activity.unshift(it);
-  if(state.activity.length>ACT_MAX)state.activity.length=ACT_MAX;
-  const onTab=document.querySelector('.tab[data-tab="activity"]').classList.contains('active');
-  if(onTab)renderActivity();
-  else{state.actUnseen++;const b=$('#actBadge');if(b){b.style.display='inline-block';b.textContent=state.actUnseen;}}
-  flashAiPulse(it.tool);
-}
-async function loadActivity(){try{const d=await api('/api/activity');state.activity=d.activity||[];renderActivity();}catch(e){}}
-function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.style.display='none';}
-$('#actClear').onclick=async()=>{try{await api('/api/activity',{method:'DELETE'});}catch(e){}state.activity=[];renderActivity();clearActSeen();};
-$('#aiPulse').onclick=()=>document.querySelector('.tab[data-tab="activity"]').click();
-
-/* ---- boot ---- */
-async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept();repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);connectEvents();restoreTab();
-</script>
+<script type="module" src="/js/app.js"></script>
 </body>
 </html>

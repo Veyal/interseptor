@@ -37,8 +37,14 @@ tester's direction and **entirely on the local machine**.
   filterable/searchable, with a raw/pretty request & response inspector and right-click filters.
 - **Intercept workflow** — hold / forward (with edits) / drop **requests *and* responses**, plus
   ordered **match-&-replace** rules.
-- **Repeater** — re-send any request, edit it freely, inspect the response, keep a history.
-- **Intruder** — Sniper / Pitchfork payload attacks over `§…§` fuzz points, with anomaly flagging.
+- **Repeater** — multi-tab; re-send any request, edit it freely, inspect the response, per-tab history.
+- **Intruder** — Sniper / Pitchfork (one payload list per `§` marker) / **Race** (no-payload concurrent
+  resends for race conditions), with thread + delay controls, payload processing (url/base64/…),
+  **grep-match/extract**, anomaly flagging, attack tabs and run history.
+- **Authorization testing** — replay a request as each saved identity (role) and diff for broken
+  access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE.
+- **AI assist** — BYO-key LLM explains requests, suggests payloads (with Repeater/Intruder routing),
+  and summarizes findings; streamed, rendered as Markdown.
 - **Scanner** — 12 passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
   reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
   exportable as a **Markdown findings report**.
@@ -48,7 +54,7 @@ tester's direction and **entirely on the local machine**.
 - **Target scope** — include/exclude rules that focus history, the intercept gate, and the scanner.
 - **WebSocket** capture (`ws://`/`wss://` per-frame) **and replay** (a WebSocket Repeater).
 - **Session / auth injection** — auto-apply an `Authorization`/`Cookie` to every Repeater & Intruder
-  send, so tokens stay fresh without re-pasting.
+  send, plus a **token macro** (CSRF/re-auth: fetch a value from a refresh request, inject per send).
 - **Import / export** — HAR in and out, plus portable **project** bundles (flows + rules + scope +
   settings).
 - **BYO-key AI assist** — explain a request, suggest payloads, or summarize findings via your own
@@ -177,9 +183,10 @@ independently tested.
 | `internal/intercept` | Hold queue (forward/edit/drop) for requests **and** responses + match-&-replace |
 | `internal/proxy` | Forward proxy, `CONNECT` + TLS MITM, WebSocket frame relay, flow capture, upstream proxy |
 | `internal/scope` | Target-scope include/exclude matcher (host wildcards + path prefixes) |
-| `internal/sender` | One-off direct request sender (+ session-header injection) — backs Repeater & Intruder |
-| `internal/intruder` | Sniper / Pitchfork attack engine |
+| `internal/sender` | One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater & Intruder |
+| `internal/intruder` | Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) |
 | `internal/scanner` | Passive security checks over captured flows |
+| `internal/oob` | Out-of-band interaction catcher (blind SSRF/XXE/SQLi/RCE callbacks) |
 | `internal/checkscript` | Runs user-authored Starlark scanner checks (sandboxed, bounded) |
 | `internal/curlgen` · `internal/report` | Render a flow as `curl`; render findings as Markdown |
 | `internal/wsrepeater` | WebSocket Repeater (RFC 6455 handshake + masked frames, no deps) |
@@ -190,7 +197,9 @@ independently tested.
 | `internal/control` | REST + SSE API, security guard, serves the embedded web UI |
 | `cmd/interceptor` | Config, wiring, lifecycle (both listeners, runtime rebind, graceful shutdown) |
 
-The web UI is a single self-contained `internal/control/ui/index.html`, embedded via `//go:embed`.
+The web UI lives in `internal/control/ui/` (embedded via `//go:embed`): an `index.html` shell,
+`app.css`, and native ES modules under `js/` — `core.js` (shared foundation) plus one module per
+feature, wired together by `app.js`. No build step or bundler; the binary stays single and static.
 Design notes and per-slice specs/plans live under [`docs/`](docs/).
 
 ## Development

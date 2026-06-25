@@ -119,6 +119,9 @@ var apiRoutes = []apiRoute{
 	{"POST", "/mcp", "Streamable-HTTP MCP transport (JSON-RPC; for remote/hosted agents)"},
 	{"GET", "/api/version", "Running version + whether a newer release is available"},
 	{"GET", "/api/events", "Server-Sent Events stream of live updates"},
+	{"POST", "/api/flows/purge", "Purge flows by host pattern ({hosts:[],mode:delete|keepOnly}); runs GC. Response: {deleted,removedFiles,freedBytes}"},
+	{"POST", "/api/flows/gc", "Reclaim orphaned body files (no flows deleted). Response: {removedFiles,freedBytes}"},
+	{"GET", "/api/hosts/stats", "Per-host flow counts and byte totals, sorted desc by bytes. Response: {hosts:[{host,flows,bytes}],totalFlows,totalBytes}"},
 }
 
 func (h *Hub) apiReference(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +193,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "set_session", "desc": "Auth headers auto-applied to every send (keeps requests authenticated)"},
 		{"name": "decode", "desc": "Decode/encode (base64, url, hex, html, jwt, smart)"},
 		{"name": "ca_info", "desc": "How to trust the CA for HTTPS"},
+		{"name": "host_stats", "desc": "Per-host flow/byte breakdown — use before prune_history"},
+		{"name": "prune_history", "desc": "DESTRUCTIVE: delete flows by host pattern (delete noisy hosts or keepOnly important ones)"},
 	},
 }
 

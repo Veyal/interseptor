@@ -57,6 +57,7 @@ const (
 	FlagImported                       // a flow imported from a HAR file (not proxied)
 	FlagActiveScan                     // a probe sent by the active scanner
 	FlagAI                             // request originated from the AI assistant (over MCP)
+	FlagAuthz                          // a request replayed by the authorization (access-control) tester
 )
 
 // flowColumns is the canonical SELECT column order; scanFlow consumes it.

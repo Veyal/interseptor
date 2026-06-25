@@ -1,0 +1,67 @@
+package control
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+)
+
+// oobBase returns the configured public base URL for OOB payloads, falling back
+// to this request's own origin (loopback — fine for local self-testing only).
+func (h *Hub) oobBase(r *http.Request) string {
+	base, _, _ := h.st.GetSetting("oob.baseUrl")
+	if base == "" {
+		base = "http://" + r.Host + "/oob"
+	}
+	return strings.TrimRight(base, "/")
+}
+
+// oobCatch records a blind out-of-band callback. It is public (the security guard
+// lets /oob/ through) and only stores request metadata, returning a tiny response.
+func (h *Hub) oobCatch(w http.ResponseWriter, r *http.Request) {
+	prev := ""
+	if r.Body != nil {
+		b, _ := io.ReadAll(io.LimitReader(r.Body, 512))
+		prev = string(b)
+	}
+	h.oob.Record(r, prev)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte("ok\n"))
+}
+
+// oobState returns the current base URL and recorded interactions.
+func (h *Hub) oobState(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"baseUrl":      h.oobBase(r),
+		"interactions": h.oob.List(),
+	})
+}
+
+// oobNew mints a fresh token and returns a ready-to-paste payload URL.
+func (h *Hub) oobNew(w http.ResponseWriter, r *http.Request) {
+	tok := h.oob.Token()
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok, "url": h.oobBase(r) + "/" + tok})
+}
+
+// oobSetBase persists the public base URL (operator sets a target-reachable host).
+func (h *Hub) oobSetBase(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL string `json:"baseUrl"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if err := h.st.SetSetting("oob.baseUrl", strings.TrimSpace(in.BaseURL)); err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"baseUrl": h.oobBase(r)})
+}
+
+func (h *Hub) oobClear(w http.ResponseWriter, r *http.Request) {
+	h.oob.Clear()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}

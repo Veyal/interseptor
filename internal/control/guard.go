@@ -23,6 +23,13 @@ import (
 // Host and either no Origin or the loopback Origin, so they pass untouched.
 func (h *Hub) securityGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The OOB interaction catcher is deliberately public: blind callbacks from a
+		// target arrive with a foreign Host/Origin and no auth. It only records request
+		// metadata (no control actions), so it bypasses the loopback/CSRF checks.
+		if strings.HasPrefix(r.URL.Path, "/oob/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !isLoopbackHost(r.Host) {
 			http.Error(w, "forbidden: the control plane only accepts loopback requests (rejected Host)", http.StatusForbidden)
 			return

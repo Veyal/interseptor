@@ -47,8 +47,9 @@ type Server struct {
 	events    Events            // nil → no live notifications
 	Scope     ScopeChecker      // nil → everything in scope
 	tr        *http.Transport
-	upstream  atomic.Pointer[url.URL] // optional chained upstream proxy
-	scopeOnly atomic.Bool             // when set, only in-scope flows are persisted
+	upstream            atomic.Pointer[url.URL] // optional chained upstream proxy
+	scopeOnly           atomic.Bool             // when set, only in-scope flows are persisted
+	suppressTelemetry   atomic.Bool             // when set, browser telemetry is not captured or intercepted
 
 	// SelfPorts are this tool's own loopback ports (control plane + proxy). Set
 	// by cmd; traffic to them is forwarded but never recorded, so proxying
@@ -381,8 +382,9 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 	removeHopHeaders(out.Header)
 
-	// Intercept gate (Burp-style hold) — only for in-scope, non-self requests.
-	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && (s.Scope == nil || s.Scope.InScope(flow)) {
+	// Intercept gate (Burp-style hold) — only for in-scope, non-self, non-telemetry requests.
+	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && (s.Scope == nil || s.Scope.InScope(flow)) &&
+		(!s.suppressTelemetry.Load() || !isBrowserTelemetry(flow.Host)) {
 		raw := dumpRequest(out)
 		d := s.eng.Hold(flow, out, raw)
 		// Only flag as intercepted when the request was actually held; the
@@ -644,11 +646,20 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 // operator sets a target scope.
 func (s *Server) SetCaptureScopeOnly(v bool) { s.scopeOnly.Store(v) }
 
+// SetSuppressBrowserTelemetry controls whether known Chrome and Firefox
+// background telemetry, update, and crash-reporting hosts are silently
+// forwarded without being captured or held by the intercept gate. Enabled by
+// default; users may turn it off to inspect browser background traffic.
+func (s *Server) SetSuppressBrowserTelemetry(v bool) { s.suppressTelemetry.Store(v) }
+
 // persistable reports whether a flow should be written to history: never our own
-// loopback traffic, and — when scope-only capture is on and a scope is set — only
-// when it is in scope. The intercept path is unaffected; this gates the DB only.
+// loopback traffic; never browser telemetry when suppression is on; and — when
+// scope-only capture is on and a scope is set — only when it is in scope.
 func (s *Server) persistable(flow *store.Flow) bool {
 	if !s.shouldCapture(flow) {
+		return false
+	}
+	if s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host) {
 		return false
 	}
 	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow) {

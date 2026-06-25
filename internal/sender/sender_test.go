@@ -151,3 +151,54 @@ func TestSendRejectsBadURL(t *testing.T) {
 		t.Fatal("expected error for non-absolute URL")
 	}
 }
+
+func TestMacroInjectsFreshToken(t *testing.T) {
+	// Token server hands out a rotating CSRF token in the body.
+	var n int
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		io.WriteString(w, `{"csrf":"tok-`+itoa(n)+`"}`)
+	}))
+	defer tokenSrv.Close()
+
+	var gotHeader string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-CSRF-Token")
+		io.WriteString(w, "ok")
+	}))
+	defer target.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.SetMacro(Macro{
+		Enabled:    true,
+		Target:     tokenSrv.URL,
+		Request:    "GET /token HTTP/1.1\nHost: t\n\n",
+		Extract:    `"csrf":"([^"]+)"`,
+		InjectMode: "header",
+		InjectName: "X-CSRF-Token",
+	})
+
+	if _, err := snd.Send(Request{Method: "GET", URL: target.URL + "/x"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if gotHeader == "" || gotHeader[:4] != "tok-" {
+		t.Fatalf("expected a fresh macro token header, got %q", gotHeader)
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}

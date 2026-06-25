@@ -147,6 +147,11 @@ func run() error {
 	if v, ok, _ := st.GetSetting("capture.scopeOnly"); ok && v == "1" {
 		prx.SetCaptureScopeOnly(true)
 	}
+	// Browser telemetry suppression: on by default; users may disable it in Settings.
+	hub.SetSuppressBrowserTelemetry = prx.SetSuppressBrowserTelemetry
+	if v, ok, _ := st.GetSetting("capture.suppressBrowserTelemetry"); !ok || v == "1" {
+		prx.SetSuppressBrowserTelemetry(true)
+	}
 	pm.handler = prx
 
 	proxyAddr := "127.0.0.1:8080"

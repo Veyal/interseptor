@@ -10,23 +10,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
 	"github.com/Veyal/interceptor/internal/intruder"
 	"github.com/Veyal/interceptor/internal/mcp"
+	"github.com/Veyal/interceptor/internal/oob"
 	"github.com/Veyal/interceptor/internal/scope"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
 
-//go:embed ui/index.html
+//go:embed ui
 var uiFS embed.FS
 
 // Rebinder lets the control plane move the proxy listener at runtime.
@@ -45,12 +48,15 @@ type Hub struct {
 	snd    *sender.Sender
 	intr   *intruder.Engine
 	sc     *scope.Engine
+	oob    *oob.Catcher
 	mux    *http.ServeMux
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
+	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
+	SetSuppressBrowserTelemetry func(bool)
 
 	// ChecksDir holds user-authored Starlark scanner checks ("" = none). Set by cmd.
 	ChecksDir string
@@ -98,7 +104,10 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		clients: map[chan string]struct{}{},
 	}
 	h.intr = intruder.New(h.snd)
+	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
+	h.oob = oob.New()
+	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })
 	h.refreshScope()
 	h.applySessionFromStore()
 	h.routes()
@@ -137,6 +146,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", h.flowCurl)
 	h.mux.HandleFunc("PUT /api/flows/{id}/note", h.setFlowNote)
 	h.mux.HandleFunc("POST /api/flows/delete", h.deleteFlows)
+	h.mux.HandleFunc("POST /api/flows/purge", h.purgeFlows)
+	h.mux.HandleFunc("POST /api/flows/gc", h.gcBodies)
+	h.mux.HandleFunc("GET /api/hosts/stats", h.hostStats)
 	h.mux.HandleFunc("GET /api/endpoints", h.listEndpoints)
 	h.mux.HandleFunc("GET /api/notes", h.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", h.putNotes)
@@ -159,11 +171,21 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/session", h.getSession)
 	h.mux.HandleFunc("POST /api/session", h.setSession)
 	h.mux.HandleFunc("POST /api/ai/assist", h.aiAssist)
+	h.mux.HandleFunc("POST /api/ai/assist/stream", h.aiAssistStream)
+	h.mux.HandleFunc("POST /api/ai/actions", h.aiActions)
 	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
 	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
 	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)
 	h.mux.HandleFunc("POST /api/intruder/start", h.intruderStart)
 	h.mux.HandleFunc("GET /api/intruder/state", h.intruderState)
+	h.mux.HandleFunc("/oob/", h.oobCatch) // public: blind callbacks land here (guard-bypassed)
+	h.mux.HandleFunc("GET /api/oob/state", h.oobState)
+	h.mux.HandleFunc("POST /api/oob/new", h.oobNew)
+	h.mux.HandleFunc("POST /api/oob/base", h.oobSetBase)
+	h.mux.HandleFunc("DELETE /api/oob/interactions", h.oobClear)
+	h.mux.HandleFunc("GET /api/authz", h.getAuthz)
+	h.mux.HandleFunc("POST /api/authz", h.setAuthz)
+	h.mux.HandleFunc("POST /api/authz/run", h.authzRun)
 	h.mux.HandleFunc("POST /api/scanner/run", h.scannerRun)
 	h.mux.HandleFunc("GET /api/scanner/issues", h.scannerIssues)
 	h.mux.HandleFunc("GET /api/scanner/report", h.scannerReport)
@@ -268,13 +290,14 @@ type interceptJSON struct {
 }
 
 type settingsJSON struct {
-	ProxyAddr        string `json:"proxyAddr"`
-	InterceptEnabled bool   `json:"interceptEnabled"`
-	UpstreamProxy    string `json:"upstreamProxy"`
-	AiProvider       string `json:"aiProvider"`
-	AiModel          string `json:"aiModel"`
-	AiHasKey         bool   `json:"aiHasKey"` // never returns the key itself
-	CaptureScopeOnly bool   `json:"captureScopeOnly"`
+	ProxyAddr                   string `json:"proxyAddr"`
+	InterceptEnabled            bool   `json:"interceptEnabled"`
+	UpstreamProxy               string `json:"upstreamProxy"`
+	AiProvider                  string `json:"aiProvider"`
+	AiModel                     string `json:"aiModel"`
+	AiHasKey                    bool   `json:"aiHasKey"` // never returns the key itself
+	CaptureScopeOnly            bool   `json:"captureScopeOnly"`
+	SuppressBrowserTelemetry    bool   `json:"suppressBrowserTelemetry"`
 }
 
 func toFlowJSON(f *store.Flow) flowJSON {
@@ -772,25 +795,30 @@ func (h *Hub) getSettings(w http.ResponseWriter, r *http.Request) {
 		envKey = os.Getenv("OPENROUTER_API_KEY")
 	}
 	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
+	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
+	// Default to true when the key has never been written (first run).
+	suppressTelemetryOn := !stOK || suppressTelemetry == "1"
 	writeJSON(w, http.StatusOK, settingsJSON{
-		ProxyAddr:        h.currentProxyAddr(),
-		InterceptEnabled: h.eng != nil && h.eng.Enabled(),
-		UpstreamProxy:    up,
-		AiProvider:       aiProvider,
-		AiModel:          aiModel,
-		AiHasKey:         aiKey != "" || envKey != "",
-		CaptureScopeOnly: scopeOnly == "1",
+		ProxyAddr:                h.currentProxyAddr(),
+		InterceptEnabled:         h.eng != nil && h.eng.Enabled(),
+		UpstreamProxy:            up,
+		AiProvider:               aiProvider,
+		AiModel:                  aiModel,
+		AiHasKey:                 aiKey != "" || envKey != "",
+		CaptureScopeOnly:         scopeOnly == "1",
+		SuppressBrowserTelemetry: suppressTelemetryOn,
 	})
 }
 
 func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ProxyAddr        string  `json:"proxyAddr"`
-		UpstreamProxy    *string `json:"upstreamProxy"` // pointer so "" can clear it
-		AiProvider       *string `json:"aiProvider"`
-		AiApiKey         *string `json:"aiApiKey"`
-		AiModel          *string `json:"aiModel"`
-		CaptureScopeOnly *bool   `json:"captureScopeOnly"`
+		ProxyAddr                   string  `json:"proxyAddr"`
+		UpstreamProxy               *string `json:"upstreamProxy"` // pointer so "" can clear it
+		AiProvider                  *string `json:"aiProvider"`
+		AiApiKey                    *string `json:"aiApiKey"`
+		AiModel                     *string `json:"aiModel"`
+		CaptureScopeOnly            *bool   `json:"captureScopeOnly"`
+		SuppressBrowserTelemetry    *bool   `json:"suppressBrowserTelemetry"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -813,6 +841,17 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		_ = h.st.SetSetting("capture.scopeOnly", v)
 		if h.SetCaptureScopeOnly != nil {
 			h.SetCaptureScopeOnly(*in.CaptureScopeOnly)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.SuppressBrowserTelemetry != nil {
+		v := "0"
+		if *in.SuppressBrowserTelemetry {
+			v = "1"
+		}
+		_ = h.st.SetSetting("capture.suppressBrowserTelemetry", v)
+		if h.SetSuppressBrowserTelemetry != nil {
+			h.SetSuppressBrowserTelemetry(*in.SuppressBrowserTelemetry)
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
@@ -858,18 +897,51 @@ func (h *Hub) getCA(w http.ResponseWriter, r *http.Request) {
 
 // ---- UI ----
 
+// serveUI serves the embedded UI: "/" returns the index shell and any other
+// path resolves to a static asset under ui/ (app.css, js/*.js). Content types
+// are set explicitly — relying on the OS mime registry is unsafe on Windows,
+// where ".js" can resolve to text/plain and browsers then refuse to execute the
+// ES modules.
 func (h *Hub) serveUI(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if !fs.ValidPath(name) { // rejects "..", absolute, and other unclean paths
 		http.NotFound(w, r)
 		return
 	}
-	data, err := uiFS.ReadFile("ui/index.html")
+	data, err := uiFS.ReadFile("ui/" + name)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "ui missing")
+		if name == "index.html" {
+			httpErr(w, http.StatusInternalServerError, "ui missing")
+			return
+		}
+		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", uiContentType(name))
+	// The UI is embedded and changes with every build; never let a browser serve a
+	// stale shell or JS module after an upgrade (the modules have no version hash).
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write(data)
+}
+
+// uiContentType maps a UI asset's extension to a Content-Type, independent of any
+// OS mime registry (see serveUI).
+func uiContentType(name string) string {
+	switch {
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=utf-8"
+	case strings.HasSuffix(name, ".js"):
+		return "text/javascript; charset=utf-8"
+	case strings.HasSuffix(name, ".css"):
+		return "text/css; charset=utf-8"
+	case strings.HasSuffix(name, ".svg"):
+		return "image/svg+xml"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // ---- helpers ----

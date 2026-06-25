@@ -8,15 +8,20 @@ import (
 )
 
 func TestResolveProjectDir(t *testing.T) {
-	home := "/home/u"
-	projects := "/home/u/.interceptor/projects"
+	// Use OS-absolute paths so the assertions hold on every platform (on Windows
+	// a bare "/home/u" is not absolute and filepath.Abs would prepend the drive).
+	home := t.TempDir()
+	projects := filepath.Join(home, ".interceptor", "projects")
 
 	// a bare name lands under projects/
 	if name, dir := resolveProjectDir(projects, "acme", home); name != "acme" || dir != filepath.Join(projects, "acme") {
 		t.Fatalf("name: got (%q,%q)", name, dir)
 	}
-	// an absolute path is used verbatim; name is its base
-	if name, dir := resolveProjectDir(projects, "/tmp/work/scan1", home); name != "scan1" || dir != "/tmp/work/scan1" {
+	// an absolute path is used verbatim; name is its base. Use a real OS-absolute
+	// path (a bare "/tmp/..." is not absolute on Windows and would be resolved
+	// against the current drive, so it can't be asserted verbatim cross-platform).
+	absIn := filepath.Join(t.TempDir(), "scan1")
+	if name, dir := resolveProjectDir(projects, absIn, home); name != "scan1" || dir != absIn {
 		t.Fatalf("abs: got (%q,%q)", name, dir)
 	}
 	// ~ expands to home
