@@ -51,7 +51,7 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 | **MCP Streamable-HTTP transport** | `POST /mcp` on the control port — same tools, no stdio subprocess; stateless, batch-aware; unit-tested + live-verified |
 | **Session / auth — header injection** | auth headers (bearer/cookie) auto-applied to every Repeater/Intruder send; `set_session` MCP tool. *Slice of the L item; login macros + 401 re-auth still roadmapped.* |
 | **Flow → curl** + **findings → Markdown report** | `flow_as_curl` and `scan_report` MCP tools / endpoints |
-| **WebSocket message replay** | `internal/wsrepeater` (RFC 6455, no deps); WS-inspector replay box, `POST /api/ws/send`, `ws_send` MCP tool (**24 tools**) |
+| **WebSocket message replay** | `internal/wsrepeater` (RFC 6455, no deps); WS-inspector replay box, `POST /api/ws/send`, `ws_send` MCP tool (**36 tools**) |
 
 ## Cycle 3 — remaining bets (all genuinely L/XL; not single-session work)
 

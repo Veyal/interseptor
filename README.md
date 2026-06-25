@@ -54,7 +54,7 @@ tester's direction and **entirely on the local machine**.
 - **BYO-key AI assist** — explain a request, suggest payloads, or summarize findings via your own
   **Anthropic** or **OpenRouter** key (off until you set one; the exchange is sent only on request).
 - **API & MCP** — a REST control API + SSE event stream and a full **Model Context Protocol** server
-  (24 tools, stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI.
+  (36 tools, stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI.
 
 ## Install
 
@@ -94,8 +94,8 @@ tracks the latest release.)
 
 ## Quick start
 
-1. **Run it.** `interceptor` starts the proxy on `127.0.0.1:8080`, the UI on `127.0.0.1:9966`, and
-   opens the UI in your browser.
+1. **Run it.** `interceptor` starts the proxy on `127.0.0.1:8080` and the UI on `127.0.0.1:9966`.
+   Open that URL in your browser — or start with `--open` to launch it automatically.
 2. **Send traffic through it.** Point your browser/HTTP client (or the OS proxy via **Settings →
    System proxy** on macOS) at `127.0.0.1:8080`.
 3. **For HTTPS, trust the CA** (see below) — then HTTPS flows are decrypted and editable.
@@ -117,7 +117,7 @@ directory to reset.
 
 | Environment variable | Effect |
 |---|---|
-| `INTERCEPTOR_NO_BROWSER` | Set to any value to **not** auto-open the UI (headless/server use). |
+| `INTERCEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
 | `INTERCEPTOR_ALLOW_EXTERNAL_BIND` | Allow binding the proxy to a **non-loopback** address (e.g. `0.0.0.0` to capture a phone on your LAN). Off by default — see [Security model](#security-model). |
 | `INTERCEPTOR_CONTROL_URL` | For `interceptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). |
 | `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | Optional fallback key for AI assist when none is set in **Settings → AI**. |
@@ -151,7 +151,7 @@ the same capabilities as the UI. Run the app, then connect your MCP client one o
 **Streamable-HTTP** (hosted/remote agents) — `POST` JSON-RPC to `http://127.0.0.1:9966/mcp`
 (stateless; no subprocess needed).
 
-Both expose the same **24 tools** — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
+Both expose the same **36 tools** — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
 `flow_as_curl`), replaying/fuzzing (`send_request`, `start_intruder`, `ws_send`), scanning
 (`run_scanner`, `scan_report`), intercept/rules/scope control, and `set_session` — with bounded
 results so large bodies don't blow the agent's context. The UI's **API → MCP** tab shows a

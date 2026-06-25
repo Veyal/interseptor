@@ -23,7 +23,7 @@ go test -race ./...               # race detector (must be clean)
 go vet ./...                      # static checks (must be clean)
 ```
 
-`INTERCEPTOR_NO_BROWSER=1` suppresses the browser auto-open. Runtime data: `~/.interceptor/`.
+The UI does **not** auto-open by default; pass `--open` (or set `INTERCEPTOR_OPEN_BROWSER=1`) to open it on start. Runtime data: `~/.interceptor/`.
 
 ## Architecture (where things live)
 
@@ -39,7 +39,8 @@ One binary, two localhost listeners (proxy `:8080`, control `:9966`). Single-res
 - **`internal/control`** — REST + SSE API and the embedded UI. Routes are registered in `routes()`;
   JSON DTOs are kept separate from `store` structs; live changes broadcast over SSE.
 - **`internal/control/ui/index.html`** — the entire UI: one self-contained file (vanilla JS,
-  `//go:embed`). Theme via CSS variables (never hardcode hex); `esc()` interpolated values.
+  `//go:embed`). Theme via CSS variables (never hardcode hex); `esc()` interpolated values
+  (`escAttr()` for values placed inside an HTML attribute).
 
 When adding a module: add its state/queries to `store`, its logic to a focused `internal/*`
 package (TDD), expose it through `control` (REST + SSE), and add a UI tab. Follow the existing

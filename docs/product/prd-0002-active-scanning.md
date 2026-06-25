@@ -1,6 +1,6 @@
 # PRD-0002 — Active scanning (with and without AI)
 
-**Status:** Draft / design · **Owner:** veyal · **Depends on:** scope, sender, scanner, checkscript, MCP
+**Status:** Shipped (Phase 1, v0.2.0) · **Owner:** veyal · **Depends on:** scope, sender, scanner, checkscript, MCP
 
 ## 1. Problem & intent
 
