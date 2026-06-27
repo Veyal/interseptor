@@ -185,6 +185,7 @@ async function start(){
     maxDepth: parseInt(($('#dscDepth')||{}).value,10) || 0,
     filterLen: parseInt(($('#dscFilterLen')||{}).value,10) || 0,
     record: !!($('#dscRecord')||{}).checked,
+    autoTagApi: !!($('#dscAutoTagApi')||{}).checked,
   };
   const sb=$('#dscStart'); if(sb) sb.disabled=true; // prevent double-submit before the server reports running
   try{ await api('/api/discovery/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); refreshDiscovery(); }

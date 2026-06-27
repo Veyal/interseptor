@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
-// Checks is the built-in active-check set (all 7 classes from PRD-0002).
+// Checks is the built-in active-check set.
 var Checks = []Check{
 	xssCheck, sqliErrorCheck, sqliBooleanCheck, sstiCheck,
 	openRedirectCheck, pathTraversalCheck, cmdInjectionCheck,
+	xxeCheck,
 }
 
 // Reflected XSS: inject a marker wrapped in angle brackets/quotes and confirm it
@@ -166,6 +167,132 @@ var cmdInjectionCheck = Check{
 						FlowID:   r.FlowID,
 					}
 				}
+			}
+		}
+		return nil
+	},
+}
+
+// xxeCanary is the string the server echoes back if it resolves the internal entity.
+const xxeCanary = "INTERCEPTOR_XXE_CANARY"
+
+// xxeInjectDoctype rewrites an XML body to prepend a DOCTYPE declaration that
+// defines an internal entity mapping "xxe" → xxeCanary, then injects &xxe; as
+// the text of the first non-prolog element so that a resolving parser echoes the
+// canary in its output.  Returns "" if the body cannot be injected safely.
+func xxeInjectDoctype(body string) string {
+	// We need a root element name to anchor the DOCTYPE. Find the first tag by
+	// scanning for '<' followed by a letter (skips the XML declaration, comments,
+	// and processing instructions).
+	rootName := xmlFirstElement(body)
+	if rootName == "" {
+		return ""
+	}
+
+	doctype := fmt.Sprintf(
+		`<!DOCTYPE %s [<!ENTITY xxe "%s">]>`,
+		rootName, xxeCanary,
+	)
+
+	// Strip any existing DOCTYPE so we don't produce a second one.
+	body = xmlStripDoctype(body)
+
+	// Insert the DOCTYPE immediately after the XML declaration (if present) or
+	// before the root element.
+	declEnd := strings.Index(body, "?>")
+	if declEnd >= 0 {
+		pos := declEnd + 2
+		return body[:pos] + "\n" + doctype + "\n" + body[pos:]
+	}
+	return doctype + "\n" + body
+}
+
+// xmlFirstElement returns the tag name of the first XML element in body
+// (skipping the XML declaration, PIs, and comments).
+func xmlFirstElement(body string) string {
+	s := body
+	for {
+		idx := strings.Index(s, "<")
+		if idx < 0 {
+			return ""
+		}
+		rest := s[idx+1:]
+		s = rest
+		if len(rest) == 0 {
+			return ""
+		}
+		// Skip XML declaration, processing instructions, comments, CDATA
+		if strings.HasPrefix(rest, "?") || strings.HasPrefix(rest, "!") {
+			continue
+		}
+		// Skip closing tags
+		if strings.HasPrefix(rest, "/") {
+			continue
+		}
+		// We found an opening tag; extract the name (up to whitespace, '>', or '/')
+		end := strings.IndexAny(rest, " \t\r\n>/")
+		if end < 0 {
+			end = len(rest)
+		}
+		name := rest[:end]
+		if name == "" {
+			continue
+		}
+		return name
+	}
+}
+
+// xmlStripDoctype removes an existing <!DOCTYPE ...> declaration from body so
+// we can safely insert our own.
+func xmlStripDoctype(body string) string {
+	lower := strings.ToLower(body)
+	start := strings.Index(lower, "<!doctype")
+	if start < 0 {
+		return body
+	}
+	// Find matching '>' — need to handle nested '[...]' internal subset.
+	depth := 0
+	for i := start; i < len(body); i++ {
+		switch body[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+		case '>':
+			if depth == 0 {
+				return body[:start] + body[i+1:]
+			}
+		}
+	}
+	return body
+}
+
+// XXE (XML External Entity) injection: inject a DOCTYPE with an internal entity
+// and confirm entity resolution by checking whether the canary string is reflected
+// in the response.  Only fires on "body" points whose value is XML-shaped (i.e.
+// requests that carry an XML body, as detected by Points()).  The payload is
+// deliberately safe — it uses an internal entity only; no SYSTEM/file reads.
+var xxeCheck = Check{
+	Class: "xxe", Severity: "High", Title: "XML External Entity injection (XXE)",
+	Fix: "Disable DTD processing and external entity resolution in your XML parser (e.g. set FEATURE_SECURE_PROCESSING, disallow DOCTYPE declarations, or use a DTD-rejecting library).",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		// Only act on whole-body XML points produced by Points().
+		if p.Kind != "body" || p.Name != "_xml" {
+			return nil
+		}
+		// Guard: if the canary is already in the baseline the check is unreliable.
+		if strings.Contains(base.Body, xxeCanary) {
+			return nil
+		}
+		injected := xxeInjectDoctype(p.Value)
+		if injected == "" {
+			return nil // could not construct a safe payload
+		}
+		r := probe(injected)
+		if r.Status != 0 && strings.Contains(r.Body, xxeCanary) {
+			return &Hit{
+				Evidence: fmt.Sprintf("internal entity &xxe; resolved: canary %q reflected in response", xxeCanary),
+				FlowID:   r.FlowID,
 			}
 		}
 		return nil

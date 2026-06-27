@@ -50,6 +50,7 @@ type Spec struct {
 	FilterLen  int64             // suppress results whose body length equals this (manual soft-404 filter)
 	Headers    map[string]string // sent on every probe (auth cookies, tokens, …)
 	MaxReq     int               // total request budget (0 = default)
+	AutoTagAPI bool              // auto-tag recorded API-looking endpoints (see IsAPIPath)
 }
 
 // Outcome is what a Probe reports for a single URL.
@@ -567,4 +568,85 @@ func canceledCtx() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	return ctx
+}
+
+// staticAssetExts are file extensions that mark a path as an obvious static asset,
+// not an API endpoint — they veto API classification even if another signal matched.
+var staticAssetExts = map[string]bool{
+	".css": true, ".js": true, ".mjs": true, ".map": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true,
+	".ico": true, ".bmp": true, ".webp": true, ".avif": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
+	".mp4": true, ".webm": true, ".mp3": true, ".wav": true, ".ogg": true,
+	".pdf": true, ".zip": true, ".gz": true, ".tar": true,
+	".html": true, ".htm": true, ".txt": true, ".scss": true, ".less": true,
+}
+
+// apiDataExts are extensions that, on their own, strongly signal an API/data
+// endpoint (a path ending in one of these is classified as API).
+var apiDataExts = map[string]bool{
+	".json": true, ".xml": true, ".graphql": true, ".grpc": true,
+}
+
+// IsAPIPath reports whether a URL path looks like an API endpoint rather than a
+// static asset. It is conservative: obvious static assets (.css/.js/.png/…) are
+// never tagged, and only high-signal patterns count as API — an "/api" or
+// "/graphql" segment, a version segment like "/v1"/"/v2", or a data extension
+// such as ".json"/".xml". The control layer uses it to auto-tag discovered API
+// surface so operators can filter it from static files.
+func IsAPIPath(path string) bool {
+	p := strings.ToLower(strings.TrimSpace(path))
+	if p == "" {
+		return false
+	}
+	// Strip any query/fragment defensively, then isolate the last path segment.
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i]
+	}
+	last := p
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		last = p[i+1:]
+	}
+	ext := ""
+	if i := strings.LastIndexByte(last, '.'); i >= 0 {
+		ext = last[i:]
+	}
+	// A data extension is a positive signal on its own.
+	if apiDataExts[ext] {
+		return true
+	}
+	// An obvious static-asset extension vetoes API classification.
+	if staticAssetExts[ext] {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "" {
+			continue
+		}
+		switch seg {
+		case "api", "apis", "graphql", "graphiql", "rest", "rpc", "jsonrpc", "grpc", "soap", "oauth", "oauth2", "wp-json":
+			return true
+		}
+		if isVersionSegment(seg) {
+			return true
+		}
+	}
+	return false
+}
+
+// isVersionSegment matches version path segments like "v1", "v2", "v10",
+// "v1beta1", "v2alpha". It requires a leading 'v' followed by a digit so plain
+// words ("video", "view") are not mistaken for versions.
+func isVersionSegment(seg string) bool {
+	if len(seg) < 2 || seg[0] != 'v' || seg[1] < '0' || seg[1] > '9' {
+		return false
+	}
+	for i := 1; i < len(seg); i++ {
+		c := seg[i]
+		if c < '0' || c > '9' {
+			// Allow a trailing qualifier like "beta1"/"alpha2" after the digits.
+			return strings.ContainsAny(seg[i:], "abcdefghijklmnopqrstuvwxyz")
+		}
+	}
+	return true
 }

@@ -318,6 +318,7 @@ Content-Type: application/json
       <label class="hint">Depth <input id="dscDepth" class="btn" type="number" min="0" max="8" value="2" style="background:var(--bg3);width:48px"></label>
       <label class="hint">Hide&nbsp;len <input id="dscFilterLen" class="btn" type="number" min="0" value="0" style="background:var(--bg3);width:84px" title="Suppress results whose body length equals this (manual soft-404 filter)"></label>
       <label class="hint" title="Re-issue each found URL so it lands in History and the Map"><input type="checkbox" id="dscRecord" checked> Save hits to History/Map</label>
+      <label class="hint" title="Auto-tag recorded endpoints that look like APIs (/api, /v1, .json, …) with the 'api' tag"><input type="checkbox" id="dscAutoTagApi" checked> Tag APIs</label>
       <button class="btn" id="dscWordBtn" aria-expanded="false">Wordlist ▾ <span id="dscWordCount" class="count"></span></button>
     </div>
     <div id="dscWordWrap" style="display:none;padding:8px 12px;border-bottom:1px solid var(--line)">
@@ -416,6 +417,8 @@ Content-Type: application/json
     <div class="toolbar">
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">AI ACTIVITY</span>
       <span class="hint">Every action your AI assistant takes over MCP — live. Watch, supervise, and jump in manually anytime.</span>
+      <div class="seg" id="actSrcSeg" style="margin-left:8px" role="group" aria-label="Filter activity by intent"><button class="on" data-src="all" aria-pressed="true">All</button><button data-src="intent" aria-pressed="false" title="Only actions where the AI stated a reason">💭 With intent</button></div>
+      <input id="actIntentFilter" class="btn" style="background:var(--bg3);width:150px;font-weight:400" aria-label="Filter activity by intent text" placeholder="Filter intent…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount"></span>
       <button class="btn" id="actClear" style="margin-left:8px">Clear</button>

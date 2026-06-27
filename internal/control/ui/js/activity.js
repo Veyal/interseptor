@@ -18,11 +18,27 @@ function sameWorkflow(a,b){
   if(ia||ib)return ia===ib&&ia!=='';
   return Math.abs((a.ts||0)-(b.ts||0))<=WORKFLOW_GAP_MS;
 }
+// ---- client-side filtering over the loaded feed ----
+// Every activity item originates from the AI over MCP, so a human/AI source split
+// is meaningless today. The useful split is deliberate vs passive: actions where
+// the AI stated an intent ("💭 With intent") versus bare recon calls. Plus a
+// free-text substring filter over the intent string.
+const actFilter={mode:'all',intent:''};
+function passesFilter(it){
+  if(actFilter.mode==='intent'&&!(it.intent||'').trim())return false;
+  if(actFilter.intent&&!(it.intent||'').toLowerCase().includes(actFilter.intent))return false;
+  return true;
+}
 export function renderActivity(){
   const box=$('#actFeed');if(!box)return;
-  const a=state.activity;
-  $('#actCount').textContent=a.length?a.length+(a.length===1?' action':' actions'):'';
-  if(!a.length){box.innerHTML='<div class="empty">No AI activity yet.<br>Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</div>';return;}
+  const all=state.activity;
+  // Filter first, then group: separators must reflect the visible subset only,
+  // so sameWorkflow() compares each row against the previous *visible* row.
+  const a=all.filter(passesFilter);
+  const total=all.length;
+  $('#actCount').textContent=total?(a.length<total?a.length+' / '+total:total+(total===1?' action':' actions')):'';
+  if(!total){box.innerHTML='<div class="empty">No AI activity yet.<br>Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</div>';return;}
+  if(!a.length){box.innerHTML='<div class="empty">No activity matches the current filter.</div>';return;}
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
     const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows
@@ -64,3 +80,13 @@ export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.s
 $('#actClear').onclick=async()=>{try{await api('/api/activity',{method:'DELETE'});}catch(e){}state.activity=[];renderActivity();clearActSeen();};
 $('#aiPulse').onclick=()=>document.querySelector('.tab[data-tab="activity"]').click();
 $('#aiPulse').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('#aiPulse').click();}});
+// Intent segmented toggle (All / With intent) — re-render the visible feed.
+const actSrcSeg=$('#actSrcSeg');
+if(actSrcSeg)actSrcSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  actFilter.mode=b.dataset.src;
+  actSrcSeg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  renderActivity();
+});
+// Free-text intent filter (substring, case-insensitive).
+const actIntentFilter=$('#actIntentFilter');
+if(actIntentFilter)actIntentFilter.oninput=()=>{actFilter.intent=actIntentFilter.value.trim().toLowerCase();renderActivity();};

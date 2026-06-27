@@ -9,6 +9,50 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 )
 
+// maxFindingBodyBytes is the maximum total byte size of a finding's narrative
+// body (the body JSON or the combined detail+evidence+fix text). Capped at 1 MiB
+// to prevent storage DoS and UI hangs from runaway AI loops or malicious clients.
+const maxFindingBodyBytes = 1 << 20 // 1 MiB
+
+// maxFindingTextBlock is the maximum byte size of a single text block's markdown
+// content within a finding body. Mirrors the reMaxText cap used elsewhere.
+const maxFindingTextBlock = 256 << 10 // 256 KiB
+
+// checkFindingBodySize validates body-content fields from an incoming write
+// request. It returns a non-empty error message (suitable for httpErr) if any
+// limit is exceeded. The checks are:
+//   - If body (pre-serialised JSON blocks) is non-empty: its raw byte length must
+//     not exceed maxFindingBodyBytes, and each text block's MD must not exceed
+//     maxFindingTextBlock.
+//   - Otherwise: the sum of detail + evidence + fix must not exceed maxFindingBodyBytes.
+//
+// Reads of pre-existing large findings are never blocked; this only guards writes.
+func checkFindingBodySize(body, detail, evidence, fix string) string {
+	if body != "" {
+		if len(body) > maxFindingBodyBytes {
+			return "finding body too large (max 1 MiB)"
+		}
+		// Validate individual text block sizes within the body JSON.
+		var blocks []struct {
+			Type string `json:"type"`
+			MD   string `json:"md,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(body), &blocks); err == nil {
+			for _, b := range blocks {
+				if b.Type == "text" && len(b.MD) > maxFindingTextBlock {
+					return "finding text block too large (max 256 KiB per block)"
+				}
+			}
+		}
+		return ""
+	}
+	// Legacy fields path: detail + evidence + fix combined.
+	if len(detail)+len(evidence)+len(fix) > maxFindingBodyBytes {
+		return "finding body too large (max 1 MiB)"
+	}
+	return ""
+}
+
 // Findings: a curated, persistent vulnerability store for a project (distinct from
 // the ephemeral passive-scanner issues). A finding can have multiple request/response
 // flows attached as PoC evidence — the human (or AI) selects them from History. The
@@ -68,6 +112,10 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "title required")
 		return
 	}
+	if msg := checkFindingBodySize(in.Body, in.Detail, in.Evidence, in.Fix); msg != "" {
+		httpErr(w, http.StatusRequestEntityTooLarge, msg)
+		return
+	}
 	f := &store.Finding{
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
 		Title: in.Title, Target: in.Target, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix,
@@ -110,6 +158,24 @@ func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	// Dereference optional pointers for the size check; nil means "not being updated".
+	bodyStr, detailStr, evidenceStr, fixStr := "", "", "", ""
+	if in.Body != nil {
+		bodyStr = *in.Body
+	}
+	if in.Detail != nil {
+		detailStr = *in.Detail
+	}
+	if in.Evidence != nil {
+		evidenceStr = *in.Evidence
+	}
+	if in.Fix != nil {
+		fixStr = *in.Fix
+	}
+	if msg := checkFindingBodySize(bodyStr, detailStr, evidenceStr, fixStr); msg != "" {
+		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
 	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body); err != nil {

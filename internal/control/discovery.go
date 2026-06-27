@@ -21,10 +21,11 @@ import (
 // headers to replay when recording found endpoints, whether to record at all,
 // and a guard so a finished run is only recorded once.
 type discoveryState struct {
-	mu        sync.Mutex
-	headers   map[string]string
-	record    bool
-	recordRun int64
+	mu         sync.Mutex
+	headers    map[string]string
+	record     bool
+	autoTagAPI bool
+	recordRun  int64
 }
 
 // probeFor builds the discovery transport: a direct client that does NOT follow
@@ -102,6 +103,7 @@ func (h *Hub) recordDiscovered(runID int64, results []discovery.Result) {
 	}
 	h.ds.recordRun = runID
 	headers := h.ds.headers
+	autoTagAPI := h.ds.autoTagAPI
 	h.ds.mu.Unlock()
 
 	hdr := toHeaderValues(headers)
@@ -110,13 +112,16 @@ func (h *Hub) recordDiscovered(runID int64, results []discovery.Result) {
 			if r.FlowID != 0 || r.Status == 0 || r.Error != "" {
 				continue
 			}
-			_, _ = h.snd.Send(sender.Request{
+			flow, err := h.snd.Send(sender.Request{
 				Method:    "GET",
 				URL:       r.URL,
 				Headers:   hdr,
 				Flags:     store.FlagDiscovery,
 				NoSession: true,
 			})
+			if err == nil && autoTagAPI && discovery.IsAPIPath(r.Path) {
+				_, _ = h.st.AddFlowTags(flow.ID, []string{"api"})
+			}
 		}
 	}()
 }
@@ -135,6 +140,7 @@ type discoverySpecIn struct {
 	FilterLen  int64             `json:"filterLen"`
 	Headers    map[string]string `json:"headers"`
 	Record     *bool             `json:"record"`
+	AutoTagAPI *bool             `json:"autoTagApi"`
 }
 
 func (h *Hub) discoveryStart(w http.ResponseWriter, r *http.Request) {
@@ -165,9 +171,15 @@ func (h *Hub) discoveryStart(w http.ResponseWriter, r *http.Request) {
 	if in.Record != nil {
 		record = *in.Record
 	}
+	autoTagAPI := true
+	if in.AutoTagAPI != nil {
+		autoTagAPI = *in.AutoTagAPI
+	}
+	spec.AutoTagAPI = autoTagAPI
 	h.ds.mu.Lock()
 	h.ds.headers = in.Headers
 	h.ds.record = record
+	h.ds.autoTagAPI = autoTagAPI
 	h.ds.mu.Unlock()
 
 	if err := h.disc.Start(spec); err != nil {
@@ -186,10 +198,14 @@ func (h *Hub) discoveryStateHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.disc.State())
 }
 
-// discoveryRecord persists one found URL as a flow when recording is enabled.
+// discoveryRecord persists one found URL as a flow when recording is enabled,
+// and best-effort auto-tags it `api` when the path looks like API surface (so
+// operators can filter API endpoints from static assets). Tagging never affects
+// the run: a tag failure is silently ignored and the flow id is still returned.
 func (h *Hub) discoveryRecord(r discovery.Result) int64 {
 	h.ds.mu.Lock()
 	record := h.ds.record
+	autoTagAPI := h.ds.autoTagAPI
 	headers := h.ds.headers
 	h.ds.mu.Unlock()
 	if !record {
@@ -204,6 +220,9 @@ func (h *Hub) discoveryRecord(r discovery.Result) int64 {
 	})
 	if err != nil {
 		return 0
+	}
+	if autoTagAPI && discovery.IsAPIPath(r.Path) {
+		_, _ = h.st.AddFlowTags(flow.ID, []string{"api"})
 	}
 	return flow.ID
 }

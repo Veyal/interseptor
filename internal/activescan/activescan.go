@@ -95,7 +95,13 @@ func Points(t Target) []Point {
 		if t.Headers != nil {
 			ct = t.Headers.Get("Content-Type")
 		}
-		if strings.Contains(ct, "json") || body[0] == '{' {
+		if isXMLBody(ct, body) {
+			// A single "body" point carries the entire XML body so that the
+			// XXE check can replace the whole document atomically.
+			// XML is checked first because XML bodies can contain '=' (e.g.
+			// attribute values) that would otherwise misfire the form heuristic.
+			pts = append(pts, Point{"body", "_xml", body})
+		} else if strings.Contains(ct, "json") || body[0] == '{' {
 			var m map[string]any
 			if json.Unmarshal([]byte(t.Body), &m) == nil {
 				for k, v := range m {
@@ -119,6 +125,18 @@ func Points(t Target) []Point {
 		return pts[i].Name < pts[j].Name
 	})
 	return pts
+}
+
+// isXMLBody reports whether the Content-Type or the body prefix indicates XML.
+// It deliberately avoids matching generic HTML (which also starts with '<') by
+// requiring either an XML-indicating content-type or a leading XML declaration.
+func isXMLBody(ct, body string) bool {
+	ct = strings.ToLower(ct)
+	if strings.Contains(ct, "xml") {
+		return true
+	}
+	// Detect bare XML without a declared content-type via the standard XML prolog.
+	return strings.HasPrefix(body, "<?xml")
 }
 
 // With returns a copy of t with point p's value replaced by payload.
@@ -145,6 +163,10 @@ func (t Target) With(p Point, payload string) Target {
 				out.Body = string(b)
 			}
 		}
+	case "body":
+		// Wholesale body replacement (used by the XXE check which rewrites the
+		// entire XML document rather than a single field value).
+		out.Body = payload
 	}
 	return out
 }
