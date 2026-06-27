@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-27
+
 ### Added
 - **Flow tags — Map filter by tag.** The Map tab has a tag selector that restricts
   the endpoint map to endpoints with at least one flow carrying that tag, so you can
