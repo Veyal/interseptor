@@ -713,6 +713,10 @@ Content-Type: application/json
       <div class="seg" id="aiKindSeg"><button class="on" data-k="explain">Explain</button><button data-k="suggest">Payloads</button><button data-k="summarize">Summary</button></div>
       <button class="btn" id="aiClose" aria-label="Close">✕</button>
     </div>
+    <div class="row" style="padding:8px 16px;border-bottom:1px solid var(--line);gap:8px">
+      <input id="aiQuestion" class="btn" style="flex:1;background:var(--bg3)" placeholder="Ask anything about this request / response… (Enter)" aria-label="Ask a question about the selected flow(s)" spellcheck="false">
+      <button class="btn accent" id="aiAskBtn">Ask ▸</button>
+    </div>
     <div id="aiBody" style="flex:1;overflow:auto;padding:16px;min-height:140px">
       <div id="aiOut" class="md"></div>
       <div id="aiPayloads"></div>

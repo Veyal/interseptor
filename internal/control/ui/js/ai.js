@@ -10,6 +10,7 @@ let aiPayloads = [];        // structured suggestions (Payloads mode)
 let aiLastText = '';        // last streamed/markdown text (for Copy)
 let aiAbort = null;         // AbortController for the in-flight stream
 let aiSeq = 0;              // bumped per request; stale runs must not touch the DOM
+let aiQuestion = '';        // free-text question for the "ask" mode
 
 // setStatus writes the small status line in the AI modal footer ("Thinking…",
 // "Streaming…", ""). It is called throughout the run; a missing definition threw
@@ -53,6 +54,7 @@ function scheduleAiRender(seq, text){
 async function streamAi(kind, seq) {
   const ids = state.aiIds;
   const body = ids.length > 1 ? { flowIds: ids, kind } : { flowId: ids[0], kind };
+  if (kind === 'ask') body.question = aiQuestion;
   const ctrl = new AbortController(); aiAbort = ctrl;
   $('#aiStop').style.display = '';
   setStatus(ids.length > 1 ? `Analyzing ${ids.length} flows…` : 'Thinking…');
@@ -111,6 +113,7 @@ function handleSSE(chunk, onText, onErr) {
 async function runAiNonStream(kind, seq) {
   const ids = state.aiIds;
   const body = ids.length > 1 ? { flowIds: ids, kind } : { flowId: ids[0], kind };
+  if (kind === 'ask') body.question = aiQuestion;
   setStatus('Thinking…');
   try {
     const r = await api('/api/ai/assist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -206,6 +209,16 @@ function abortAi() { if (aiAbort) { try { aiAbort.abort(); } catch (e) {} aiAbor
 
 $('#aiExplainBtn').onclick = () => openAi('explain');
 $('#aiKindSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('#aiKindSeg').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); runAi(b.dataset.k); });
+// Free-text question: run the "ask" mode and clear the preset seg's active state.
+function runAsk() {
+  const q = ($('#aiQuestion').value || '').trim();
+  if (!q) { $('#aiQuestion').focus(); return; }
+  aiQuestion = q;
+  $('#aiKindSeg').querySelectorAll('button').forEach(x => { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
+  runAi('ask');
+}
+$('#aiAskBtn') && ($('#aiAskBtn').onclick = runAsk);
+$('#aiQuestion') && $('#aiQuestion').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runAsk(); } });
 $('#aiClose').onclick = () => { abortAi(); closeModal($('#aiModal')); };
 $('#aiStop').onclick = abortAi;
 $('#aiToRepeater').onclick = () => { const id = state.aiIds[0]; if (id) { sendToRepeater({ id }); closeModal($('#aiModal')); } };

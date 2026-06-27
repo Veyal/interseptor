@@ -13,16 +13,26 @@ func TestAssistPrompt(t *testing.T) {
 		{Label: "#2 POST https://h/b", Req: "POST /b", Res: "500 err"},
 	}
 
-	multi := assistPrompt("explain", flows)
+	multi := assistPrompt("explain", flows, "")
 	for _, want := range []string{"2 exchanges", "#1 GET https://h/a", "#2 POST https://h/b", "GET /a", "POST /b"} {
 		if !strings.Contains(multi, want) {
 			t.Fatalf("multi-flow prompt missing %q:\n%s", want, multi)
 		}
 	}
 
-	single := assistPrompt("explain", flows[:1])
+	single := assistPrompt("explain", flows[:1], "")
 	if !strings.Contains(single, "Explain what this HTTP request/response does") {
 		t.Fatalf("single-flow prompt lost its focused wording:\n%s", single)
+	}
+
+	// "ask" weaves the free-text question into the prompt (single and multi).
+	ask := assistPrompt("ask", flows[:1], "Is the CSRF token validated?")
+	if !strings.Contains(ask, "Is the CSRF token validated?") || !strings.Contains(ask, "GET /a") {
+		t.Fatalf("ask prompt missing the question or the exchange:\n%s", ask)
+	}
+	askMulti := assistPrompt("ask", flows, "Which endpoint is riskiest?")
+	if !strings.Contains(askMulti, "Which endpoint is riskiest?") || !strings.Contains(askMulti, "2 exchanges") {
+		t.Fatalf("ask multi prompt missing question/exchanges:\n%s", askMulti)
 	}
 }
 

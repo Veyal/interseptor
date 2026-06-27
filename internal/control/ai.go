@@ -42,9 +42,10 @@ func (h *Hub) aiCreds() (provider, key string, ok bool) {
 // aiAssistReq is the JSON body shared by the assist endpoints: a single flow
 // (back-compat) or a selection, plus the kind (explain/suggest/summarize).
 type aiAssistReq struct {
-	FlowID  int64   `json:"flowId"`
-	FlowIDs []int64 `json:"flowIds"`
-	Kind    string  `json:"kind"`
+	FlowID   int64   `json:"flowId"`
+	FlowIDs  []int64 `json:"flowIds"`
+	Kind     string  `json:"kind"`
+	Question string  `json:"question"` // free-text question (kind == "ask")
 }
 
 func (in aiAssistReq) ids() []int64 {
@@ -119,7 +120,7 @@ func (h *Hub) aiAssist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model, _, _ := h.st.GetSetting("ai.model")
-	text, err := aiassist.New(provider, key, model).Complete(assistSystem, assistPrompt(in.Kind, flows))
+	text, err := aiassist.New(provider, key, model).Complete(assistSystem, assistPrompt(in.Kind, flows, in.Question))
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -167,7 +168,7 @@ func (h *Hub) aiAssistStream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	model, _, _ := h.st.GetSetting("ai.model")
-	err := aiassist.New(provider, key, model).CompleteStream(r.Context(), assistSystem, assistPrompt(in.Kind, flows), func(delta string) {
+	err := aiassist.New(provider, key, model).CompleteStream(r.Context(), assistSystem, assistPrompt(in.Kind, flows, in.Question), func(delta string) {
 		b, _ := json.Marshal(delta) // JSON-encode so newlines/quotes survive the SSE framing
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		flusher.Flush()
@@ -263,10 +264,13 @@ type assistFlow struct {
 
 // assistPrompt builds the AI-assist user prompt. One flow keeps the original
 // focused wording; several selected flows become a combined per-endpoint review.
-func assistPrompt(kind string, flows []assistFlow) string {
+func assistPrompt(kind string, flows []assistFlow, question string) string {
+	question = strings.TrimSpace(question)
 	if len(flows) == 1 {
 		f := flows[0]
 		switch kind {
+		case "ask":
+			return "Answer this question about the HTTP exchange below, using only what it shows:\n\nQuestion: " + question + "\n\nRequest:\n" + f.Req + "\n\nResponse:\n" + f.Res
 		case "suggest":
 			return "Suggest specific test payloads (injection, IDOR, auth bypass, etc.) for the parameters in this request, with a one-line rationale each:\n\n" + f.Req
 		case "summarize":
@@ -276,6 +280,7 @@ func assistPrompt(kind string, flows []assistFlow) string {
 		}
 	}
 	lead := map[string]string{
+		"ask":       "Answer this question about the captured exchanges below, using only what they show:\n\nQuestion: " + question,
 		"suggest":   "Across these requests, suggest specific test payloads (injection, IDOR, auth bypass, etc.) worth trying, grouped by endpoint, each with a one-line rationale.",
 		"summarize": "Review these captured exchanges together and summarize the security posture and the highest-value things to test, in a few bullets.",
 	}[kind]
