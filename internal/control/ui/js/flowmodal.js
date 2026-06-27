@@ -14,7 +14,7 @@ export async function flowPopup(id){
   $('#fmTitle').innerHTML = `<span style="color:${methodColor(d.method)};font-weight:700">${esc(d.method)}</span> <span style="font-family:var(--mono);color:var(--fg2)">${esc((d.scheme||'http')+'://'+d.host+d.path)}</span>`;
   $('#fmStatus').textContent = d.status ? `${d.status} ${statusText(d.status)}`+(d.durationMs ? ` · ${fmtDur(d.durationMs)}` : '') : (d.error || '');
   $('#fmStatus').style.color = statusColor(d.status);
-  $('#fmSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === 'pretty'));
+  $('#fmSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.v === 'pretty'; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   openModal($('#flowModal'));
   fmRenderSide('req'); fmRenderSide('res');
 }
@@ -23,6 +23,7 @@ export async function fmRenderSide(side){
   const el = side === 'req' ? $('#fmReq') : $('#fmRes');
   const dec = side === 'req' ? $('#fmReqDecode') : $('#fmResDecode');
   if(dec)dec.hidden=true;
+  const id = state.fm.id; // snapshot: a second flowPopup must not let this render write the wrong flow
   const d = state.fm.detail;
   const len = side === 'req' ? d.reqLen : d.resLen;
   const mime = bodyMime(d, side);
@@ -38,7 +39,8 @@ export async function fmRenderSide(side){
   }
   el.innerHTML = '<span class="hint" style="padding:12px">loading…</span>';
   try{
-    const raw = await api('/api/flows/'+state.fm.id+'/raw?side='+side);
+    const raw = await api('/api/flows/'+id+'/raw?side='+side);
+    if(state.fm.id !== id) return; // a newer flowPopup superseded this render
     el._rawText=raw;
     el.innerHTML = highlightHTTP(state.fm.pretty ? prettify(raw) : raw, state.fm.pretty, mime);
   }catch(e){ el.textContent = '(error: '+e.message+')'; }
@@ -60,7 +62,7 @@ $('#fmProxy') && ($('#fmProxy').onclick = () => {
 });
 $('#fmSeg') && $('#fmSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   state.fm.pretty = b.dataset.v === 'pretty';
-  $('#fmSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  $('#fmSeg').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
   fmRenderSide('req'); fmRenderSide('res');
 });
 const fmOpenDecoder=s=>import('./scanner.js').then(m=>m.openDecoder(s));

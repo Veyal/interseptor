@@ -7,9 +7,266 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Findings ↔ flow cross-linking + History "AI-only" filter.** A flow's right-click
+  menu shows the findings it's a PoC for ("📌 In finding") and an "➕ Add to finding"
+  action, so you can navigate both directions (and record any flow as evidence in one
+  click). A new "🤖 only" History toggle (`/api/flows?onlyAi=1`) shows just the flows
+  the AI sent, so you can watch exactly what it did.
+- **AI↔human handoff.** The AI can pause and ask the operator before a high-impact
+  or ambiguous action via the `request_human_input` MCP tool ("found IDOR — fuzz
+  ids 1-100?", with optional suggested answers). The question appears in a banner
+  at the top of the UI; the operator answers (or picks an option) and the AI gets
+  the reply — inline if answered within ~40s, otherwise via `get_human_response`
+  (poll). Pending prompts survive an SSE reconnect. So the AI never exceeds the
+  human's authority on consequential steps.
+- **Activity feed shows the AI's intent.** Consequential MCP tools accept an
+  optional `intent` (a short "why"), recorded and shown beneath the action in the
+  Activity feed — so the human sees the reasoning, not just the request.
+- **AI setup tools + pentest methodology (MCP).** New `check_readiness` (pre-flight
+  checklist: proxy listening, CA-for-HTTPS hint, scope set, in-scope traffic
+  captured) and `scope_from_url` (self-scope from a target URL → include rule for
+  its host/scheme) let an AI get set up and self-scope. The MCP `initialize`
+  instructions are now a real methodology (setup → recon → authz/IDOR → injection →
+  verify → **record findings via `create_finding`/`add_finding_poc` as it goes**),
+  so the AI tests systematically and leaves a curated trail the human can take over.
+- **Findings: a curated, persistent vulnerability store with PoC evidence.** A
+  project can hold many findings (title, severity, status, detail, evidence, fix),
+  each with **multiple request/response flows attached as proof-of-concept** —
+  selected from captured History. Distinct from the ephemeral passive-scanner
+  issues: findings carry an operator-managed status (`open` → `verified` /
+  `false_positive` / `wont_fix` / `fixed`) and a source (`human`/`ai`/`scanner`).
+  Backed by `findings` + `finding_flows` tables, a REST+SSE API
+  (`/api/findings`, `/api/findings/{id}/flows`), and MCP tools (`create_finding`,
+  `list_findings`, `update_finding`, `add_finding_poc`, `remove_finding_poc`) so
+  the AI records findings as durable, structured memory the human reviews. A
+  **Findings tab** lets the human review/curate findings, change status, read the
+  markdown write-up and each PoC's request/response (click to open), and **attach
+  request/responses selected in History** as PoC evidence (selection-bar "➕ Add to
+  finding" or the finding's "Add selected" button).
+- **Export engagement report.** A new "⤓ Export report" button in the Findings tab
+  (and the `export_report` MCP tool, `GET /api/findings/report`) renders the full
+  writeup as Markdown: every curated finding (severity, status, detail, evidence,
+  remediation, and its attached PoC request/response flows) grouped by severity,
+  followed by an appendix of the passive-scan issues. This is the shared artifact
+  the human exports or the AI hands off.
+- **Activity feed groups an AI's workflows.** Consecutive tool calls that share a
+  stated `intent` (or fall within a short time window) render as one block, with a
+  separator where one workflow ends and the next begins — so a multi-step sequence
+  reads as a unit rather than a flat list.
+- **Per-OS CA-trust guidance (Linux + CLI).** The Settings → TLS panel and the
+  `ca_info` MCP tool now spell out trusting the CA on Linux (`update-ca-certificates`
+  / `update-ca-trust`) and for curl/tools (`--cacert`, `SSL_CERT_FILE`), alongside
+  the existing macOS/Windows/Firefox/iOS/Android steps. Trusting the CA stays a
+  deliberate one-time manual step — Interceptor never edits the OS trust store.
+- **`docs/AUDIT-BACKLOG.md`** — tracked list of audit findings, now fully burned
+  down: every item is FIXED or DEFERRED-with-rationale (output of the
+  multi-iteration security/quality audit + the backlog-clearing campaign).
+
 ### Changed
 ### Fixed
+- **Security: Repeater / Intruder / WS-repeater refuse to target Interceptor's own
+  listeners.** A send aimed at the control plane (`127.0.0.1:9966`) or the proxy
+  port was an SSRF / self-pivot the AI/MCP agent could be coerced into (e.g.
+  reading `/api/keys`); such targets are now rejected with 403. Blanket internal-IP
+  blocking is intentionally avoided — pentesters legitimately target internal hosts.
+- **Security: match/replace and intercept-filter regexes are length-capped (4 KB).**
+  An over-long pattern runs against large bodies on every proxied request; real
+  patterns are short, so over-cap patterns are rejected at the API.
+- **History API: bad `limit` no longer panics.** `GET /api/flows?limit=-1` (any
+  non-positive or absurd value) previously hit `flows[:limit]` and panicked
+  ("slice bounds out of range", recovered as a 500); bad limits now fall back to
+  the default 200.
+- **Body store: concurrent identical captures on Windows.** Two simultaneous
+  captures of the same body content could make the loser of the create race fail
+  `os.Rename` (Windows rejects renaming onto an existing file), spuriously
+  reporting a capture error for a body that is in fact on disk. `Finalize` now
+  treats an already-present destination as a successful dedup.
+- **Security: stored XSS via notebook markdown links.** `renderMD()` interpolated
+  a link URL into the `href` attribute without escaping `"`, so an AI/MCP-written
+  note link could break out of the attribute and execute script in the control
+  origin. The href is now quote-escaped (matching the existing image rule).
+- **Security: stored XSS via notebook image MIME.** Notebook images were served
+  with a caller-controlled `Content-Type` and no `nosniff`, so an image stored as
+  `text/html`/`image/svg+xml` could execute as active content. MIME is now coerced
+  to a raster-image allowlist on both insert and serve, and `getNotesImage` sends
+  `X-Content-Type-Options: nosniff`.
+- **Security: curl export quotes the request method.** `curlgen` now single-quotes
+  the `-X <method>` value like every other field, so a method with shell
+  metacharacters can't inject when the generated command is pasted into a shell.
+- **UI: Compare-responses modal closes on Escape / backdrop click** like every
+  other modal (it was missing from `MODAL_IDS`).
+- **UI: intercept Forward shortcut cheatsheet** now shows `Ctrl+Shift+F` (the
+  actual binding) instead of `Ctrl+F`.
+- **UI: Repeater send errors no longer leave the status stuck on "sending…"** —
+  the catch path now clears the placeholder and shows the error in the response pane.
+- **UI: Ctrl+D no longer drops the held request while you're editing it** — the
+  intercept drop shortcut is suppressed when focus is in an input/textarea.
+- **UI: Discover Start can't be double-submitted** — the button is disabled
+  synchronously on click until the server reports the scan running.
+- **Security: stored XSS via host name in the retention delete dialog.** The
+  per-host "Delete flows" confirm built its message from a raw `host` rendered
+  via `innerHTML`; a proxied host containing markup could execute in the control
+  origin. The host is now escaped (the dialog title already was).
+- **UI: Intruder marker tooltip attribute escaping.** A `§` marker's captured
+  text was placed in a `title="…"` attribute via `esc()` (which doesn't escape
+  quotes), so a marker containing `"` broke the attribute. Now uses `escAttr()`.
+- **UI: Active-scan findings render no longer crashes on a finding without a
+  `point`.** `renderActive()` dereferenced `f.point.kind` unguarded, throwing on
+  every `activescan.update` event for such a finding; the field is now optional.
+- **UI: flow selection race.** `selectFlow()` could overwrite the note field,
+  status line and `state.detail` with a slower earlier request's data after you'd
+  already moved to another flow; it now bails if the selection changed mid-fetch.
+- **API: security-guard errors are now JSON.** `securityGuard` rejections (rejected
+  Host / cross-origin / missing MCP key) returned plain text, so the UI's `api()`
+  wrapper showed a generic "Forbidden" instead of the explanatory message. They now
+  use the same `{"error":…}` JSON shape as every other handler.
+
+- **Control API: malformed JSON bodies are rejected instead of silently flipping
+  state.** Ten handlers ignored their `json.Decode` error, so a malformed body
+  decoded to a zero value and silently acted on it — e.g. disarming the active
+  scanner, turning intercept off, or disabling the OS system proxy. They now
+  return 400 on malformed JSON while still tolerating an empty body (`io.EOF` →
+  zero value), so existing empty-body callers (e.g. forward-unchanged) are
+  unaffected. Covers the intercept toggle/filter/forward handlers, active-scan
+  arm/start, sysproxy, project switch, and API-key create.
+- **Bulk delete/purge reject absurdly large id/host arrays.** A request whose
+  `ids`/`hosts` array fit within the body cap but held tens of millions of entries
+  amplified ~10× into a multi-hundred-MB allocation (`make([]any, len)` + SQL
+  placeholder string); both endpoints now reject arrays over 100,000 entries.
+- **Control API: every request body is bounded (128 MiB) as a DoS backstop.** ~40
+  handlers decoded JSON request bodies with no size limit, so a single huge body
+  (loopback- or AI/MCP-reachable) could exhaust memory. A `http.MaxBytesReader`
+  cap is now applied to all control routes in the security middleware; the tighter
+  per-endpoint limits (checks 512 KB, HAR 64 MiB, OOB 512 B) still apply on top.
+- **Intruder: a runaway attack spec can no longer OOM the process.** `buildJobs`
+  truncated to the request cap only *after* materializing every job, so a huge
+  `repeat` count (or a template with thousands of §markers × payloads) allocated
+  billions of jobs first. The cap is now enforced *during* accumulation.
+- **Custom checks: the Starlark source is size-capped (512 KB) before parsing.**
+  The save/test endpoints decoded an unbounded request body and handed it straight
+  to the lexer; a multi-hundred-MB body could exhaust memory/CPU on the control
+  goroutine. The body is now bounded with `io.LimitReader`.
+- **OOB token fallback is unique even if `crypto/rand` fails.** The (essentially
+  unreachable) fallback used a wall-clock-derived token that could collide or be
+  guessed; it now uses a monotonic counter.
+- **Repeater/Intruder tabs survive a corrupted `localStorage` tab list.** A persisted
+  tab missing its `tid` made the next-id seed `NaN`, which broke tab selection; the
+  seed now ignores non-finite ids.
+- **Discover "Stop" gives feedback.** It silently swallowed errors; it now toasts on
+  success or failure.
+- **Accessibility: the right-click context menu exposes `role="menu"`/`menuitem`** so
+  screen readers announce it as a menu (it already had full keyboard navigation).
+- **Map/endpoints cache is refreshed after importing a HAR or project.** Both
+  import handlers inserted flows and nudged the UI but never invalidated the
+  endpoints aggregate cache, so the Map tab showed the pre-import list until the
+  next live capture. They now invalidate it like the other mutation sites.
+- **TLS: expired per-host leaf certificates are re-minted instead of served from
+  cache.** `LeafForHost` returned a cached leaf without checking its validity, so a
+  proxy process running past the leaf window (or one minted against a near-expiry
+  CA) would serve an expired cert and TLS clients would reject the MITM. The cache
+  hit now falls through and re-mints when the cached leaf is at/near expiry.
+- **UI: API-keys list shows "—" instead of "Invalid Date"** when a key has no
+  parseable `created` timestamp; and the Map tab's search/method/refresh controls
+  are now null-guarded at import like their siblings (defensive, no behavior change).
+- **Active scan: cmd-injection timing check no longer false-confirms on an
+  un-run control.** If the request budget was exhausted at the `sleep 0` control
+  probe, it returned duration 0 (`< 3s`) and the check reported a confirmed
+  finding; the control must now actually run (`Status != 0`) to confirm.
+- **HAR export: flows with an unknown scheme produce a valid URL.** A flow that
+  errored before its scheme was determined exported as `://host/path`; `flowURL`
+  now defaults the scheme to `http`.
+- **Intruder: repeat-mode jobs no longer alias one payload slice** (defensive —
+  each repeat job now gets its own copy, matching the sniper branch).
+- **Store: `OpenBody` no longer panics (or escapes the bodies dir) on a malformed
+  hash.** A body hash shorter than 4 chars (e.g. from a crafted HAR import) panicked
+  `bodyPath`'s `sum[:2]`/`sum[2:4]` slicing, and a traversal string like `../../x`
+  could read outside `bodiesDir`. `OpenBody` now validates the hash is a 64-char
+  lowercase sha256 hex and returns `os.ErrNotExist` otherwise.
+
+- **Accessibility: screen-reader labels for icon-only controls and key inputs.**
+  The seven modal close buttons that were bare "✕" (flow, checks, active-scan, OOB,
+  authz, compare, decode) now have `aria-label="Close"`; the History search, Repeater
+  URL and Map search inputs (previously placeholder-only) have `aria-label`s; and the
+  intercept status bar is now an `aria-live="polite"` region so a held-request count
+  is announced. (Pure additive — no behavior change.)
+
+- **Accessibility: clickable rows are keyboard-operable.** The `<div>` rows wired
+  with `onclick` — History flow rows, the held-intercept queue, scanner scan-items
+  and active-scan findings, Repeater/Intruder tabs and history, finding and PoC
+  rows, and authz result rows — were unreachable without a mouse. A shared
+  `wireRowKey()` helper now marks them `role="button"` + `tabindex="0"` and activates
+  on Enter/Space (live-verified: Tab focuses a flow row, Enter selects it).
+- **Accessibility: segmented toggles announce their pressed state.** Segmented
+  `<button>` groups across the AI modal, API sub-nav, flow modal, notes, Map,
+  Repeater/Intruder and Settings nav now set `aria-pressed` in sync with the visual
+  `.on` class; the remaining placeholder-only inputs (match/replace, scope, intruder
+  grep/extract/processing, token/login macros, OOB, check-id, scan/authz limits,
+  API-key label, note) gained `aria-label`s; and the dark-theme muted text colour
+  `--fg3` was nudged `#8e8e99`→`#9a9aa6` for ~AA contrast on cards.
+- **Proxy (forwarding path): body-transforming intercepts are bounded and never
+  truncate.** Response/request interception and body match-replace read the whole
+  body with `io.ReadAll` (breaking the stream-to-disk invariant) and could forward a
+  silently-truncated body on a read error. They now use `io.LimitReader(64 MiB)` and
+  forward the body untransformed (via a `restoreBody` `MultiReader` that preserves
+  `Close`) when it exceeds the cap or errors. Live-verified.
+- **Proxy (forwarding path): chunked HTTP/1.1 responses keep the connection alive.**
+  `keepAlive` was false for chunked responses (ContentLength −1), tearing down the
+  MITM tunnel (and forcing a TLS re-handshake) after every such response.
+- **Proxy: WebSocket upgrades honour the chained upstream proxy.** WS dials went
+  direct even when an upstream proxy was configured; they now CONNECT-tunnel through
+  it (the direct path is byte-identical when no upstream is set).
+- **Proxy: plain-HTTP responses forward their trailers.** `writeResponseHTTP`
+  dropped `resp.Trailer` (the MITM path already preserved them).
+- **Store: `InsertFlow` indexes the FTS row in the same transaction** as the flow
+  insert, so a crash between the two can't leave a flow invisible to search.
+- **Store: `UpdateFlow` drops the per-response pre-SELECT** — it now updates the row
+  and the `flows_fts` columns directly in one transaction (less work on the hot
+  proxied-response path).
+- **Store: `ws_frames` is capped per flow** (most-recent 5000), so a long-lived
+  WebSocket can't grow the table unbounded.
+- **Store: bounded TLS leaf-certificate cache.** `LeafForHost` evicts FIFO past
+  2048 hosts, so subdomain fuzzing can't grow the cache without limit.
+- **Retention: body GC no longer blocks the purge response.** `GCBodies` (a full
+  bodies-dir walk) runs in the background after the purge is acknowledged.
+- **Security: `re_search` custom-check builtin caches compiled regexes and caps
+  input** (256 KB), closing a CPU sink (the Starlark step counter doesn't tick
+  during `regexp`).
+- **Security: MCP authorization fails closed.** A `HasAPIKeys` store error no longer
+  flips `mcpAuthorized` open once any key is known to exist.
+- **Sender: the login macro no longer thunders.** Concurrent sends hitting an
+  expired refresh TTL all fired the macro; an in-progress sentinel now lets exactly
+  one run.
+- **wsrepeater: the connection deadline is reset after the handshake**, so a slow
+  TLS handshake can't consume the frame-write budget and cause a silent timeout.
+- **Discovery: data race on the budget-exhaustion path removed** — a local
+  `budgetHit` flag replaces reassigning the shared `ctx` while workers read it.
+  (Final `go test -race` confirmation pending a cgo-enabled host.)
+- **Active scan: boolean-SQLi check skips tiny baselines** (`< 64 B`) whose length
+  thresholds truncated to zero and could false-positive.
+- **UI: SSE `ws.frame` debounce no longer double-fires** — `WSFramed` compares the
+  stored timer by identity so a stale `AfterFunc` can't delete the new entry.
+- **UI: Map table sort routes through `renderMap()`** so the breadcrumb, count and
+  warning stay current after sorting.
+- **UI: the flow inspector won't render the wrong flow.** `fmRenderSide` snapshots
+  the flow id and bails if a newer `flowPopup` superseded it mid-fetch.
+- **UI: authz tests the currently-selected flow.** The target is resolved at action
+  time (`state.selId` wins) across "from flow", "check sessions" and "run", so
+  changing the History selection behind the open modal no longer tests a stale flow.
+- **UI: export-project / download-CA toasts** say "Downloading…" instead of claiming
+  success before the download is confirmed.
+
+### Changed
+- **Store: bulk flow deletes are now atomic and avoid an N+1 query.** `DeleteFlows`
+  ran one `SELECT` per id to fetch columns that the FTS unindex never used, then
+  deleted the FTS rows and the flows in separate non-transactional statements. Both
+  `DeleteFlows` and `DeleteFlowsByHost` now batch-delete the FTS rows by rowid and
+  wrap the FTS + flows deletes in a single transaction — so a "select all → delete"
+  of N rows is 2 statements instead of ~2N, and the full-text index can never be
+  left out of sync with the flows table.
+
 ### Removed
+- **UI: dead `state.selHeld` / `state.selRespHeld` keys** (never read; the live
+  key is `state.heldSel`) — removed to prevent a future refactor footgun.
 
 ## [0.9.0] — 2026-06-26
 

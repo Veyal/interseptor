@@ -153,6 +153,30 @@ CREATE TABLE IF NOT EXISTS notes_images (
   mime TEXT NOT NULL,
   data BLOB NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS findings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  updated_ts INTEGER NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'Medium',
+  status TEXT NOT NULL DEFAULT 'open',
+  source TEXT NOT NULL DEFAULT 'human',
+  title TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  evidence TEXT NOT NULL DEFAULT '',
+  fix TEXT NOT NULL DEFAULT ''
+);
+
+-- PoC request/response evidence attached to a finding (many flows per finding).
+CREATE TABLE IF NOT EXISTS finding_flows (
+  finding_id INTEGER NOT NULL,
+  flow_id INTEGER NOT NULL,
+  ord INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (finding_id, flow_id)
+);
+CREATE INDEX IF NOT EXISTS idx_finding_flows_finding ON finding_flows(finding_id);
 `
 
 // Open creates (or opens) the database and body store under dir.
@@ -190,6 +214,7 @@ func Open(dir string) (*Store, error) {
 	// which is the idempotent no-op we want to ignore.
 	for _, mig := range []string{
 		`ALTER TABLE flows ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE activity ADD COLUMN intent TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -211,7 +236,14 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) InsertFlow(f *Flow) (int64, error) {
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
-	res, err := s.db.Exec(
+	// The flow row and its FTS index entry go in one transaction so a crash
+	// between them can't leave a flow invisible to full-text search.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`INSERT INTO flows
 		 (ts, method, scheme, host, port, path, http_version, status,
 		  req_headers, res_headers, req_body_hash, res_body_hash,
@@ -227,10 +259,15 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	f.ID = id
-	if err := s.indexFlowFTS(id, f.Host, f.Path, f.Method, f.Note); err != nil {
+	if _, err := tx.Exec(
+		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
+		id, f.Host, f.Path, f.Method, f.Note); err != nil {
 		return 0, err
 	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	f.ID = id
 	return id, nil
 }
 
@@ -238,13 +275,17 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // that was first inserted at request time, keyed by f.ID. The immutable request
 // identity (ts, scheme, host, port, version, client) is left untouched.
 func (s *Store) UpdateFlow(f *Flow) error {
-	var oh, op, om, on string
-	if err := s.db.QueryRow(`SELECT host, path, method, note FROM flows WHERE id=?`, f.ID).Scan(&oh, &op, &om, &on); err != nil {
-		return err
-	}
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
-	_, err := s.db.Exec(
+	// One transaction; no pre-SELECT round-trip. host is immutable and the note is
+	// not touched here, so the FTS index only needs its path/method refreshed (a
+	// column UPDATE that leaves the indexed note in place).
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
 		`UPDATE flows SET
 		   method=?, path=?, status=?, req_headers=?, res_headers=?,
 		   req_body_hash=?, res_body_hash=?, req_len=?, res_len=?,
@@ -252,11 +293,13 @@ func (s *Store) UpdateFlow(f *Flow) error {
 		 WHERE id=?`,
 		f.Method, f.Path, f.Status, string(rh), string(sh),
 		f.ReqBodyHash, f.ResBodyHash, f.ReqLen, f.ResLen,
-		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID)
-	if err != nil {
+		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID); err != nil {
 		return err
 	}
-	return s.replaceFlowFTS(f.ID, oh, op, om, on, f.Host, f.Path, f.Method, on)
+	if _, err := tx.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.
@@ -278,20 +321,28 @@ func (s *Store) DeleteFlows(ids []int64) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	for _, id := range ids {
-		var host, path, method, note string
-		if err := s.db.QueryRow(`SELECT host, path, method, note FROM flows WHERE id=?`, id).Scan(&host, &path, &method, &note); err != nil {
-			continue
-		}
-		_ = s.unindexFlowFTS(id, host, path, method, note)
-	}
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id
 	}
 	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
-	res, err := s.db.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	// FTS rows are keyed by rowid (= flow id), so unindex in one batch by id (the
+	// content columns aren't needed to delete). Both deletes share one transaction
+	// so a partial failure can't leave the full-text index out of sync with flows
+	// (a stale FTS row would make a deleted flow appear in search until reused).
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+ph+`)`, args...); err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	n, _ := res.RowsAffected()

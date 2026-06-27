@@ -33,12 +33,18 @@ func (h *Hub) WSFramed(flowID int64) {
 	if t, ok := h.wsTimers[flowID]; ok {
 		t.Stop()
 	}
-	h.wsTimers[flowID] = time.AfterFunc(200*time.Millisecond, func() {
+	var t *time.Timer
+	t = time.AfterFunc(200*time.Millisecond, func() {
 		h.wsMu.Lock()
-		delete(h.wsTimers, flowID)
+		// Only clean up if we're still the current timer — a fired-but-superseded
+		// timer must not delete the map entry a newer WSFramed just installed.
+		if h.wsTimers[flowID] == t {
+			delete(h.wsTimers, flowID)
+		}
 		h.wsMu.Unlock()
 		h.broadcast(map[string]any{"type": "ws.frame", "flowId": flowID})
 	})
+	h.wsTimers[flowID] = t
 	h.wsMu.Unlock()
 }
 

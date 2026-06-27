@@ -64,6 +64,12 @@ var sqliBooleanCheck = Check{
 			return nil
 		}
 		lb, lt, lf := len(base.Body), len(tru.Body), len(fls.Body)
+		// Length-based boolean detection is unreliable on tiny responses (a few
+		// bytes' natural variation reads as a large relative divergence → false
+		// positives), so require a non-trivial baseline.
+		if lb < 64 {
+			return nil
+		}
 		// true ≈ baseline, false clearly different from true
 		if lt > 0 && absdiff(lt, lb) <= lb/20+8 && absdiff(lf, lt) >= lt/10+24 {
 			return &Hit{
@@ -151,7 +157,10 @@ var cmdInjectionCheck = Check{
 		for _, pl := range []string{";sleep 6", "|sleep 6", "`sleep 6`", "$(sleep 6)"} {
 			r := probe(p.Value + pl)
 			if r.Status != 0 && r.Duration >= 5*time.Second {
-				if c := probe(p.Value + ";sleep 0"); c.Duration < 3*time.Second {
+				// The sleep-0 control must actually run (Status!=0); a budget-
+				// exhausted or errored control returns Duration 0, which would
+				// otherwise pass `< 3s` and falsely "confirm" a slow endpoint.
+				if c := probe(p.Value + ";sleep 0"); c.Status != 0 && c.Duration < 3*time.Second {
 					return &Hit{
 						Evidence: fmt.Sprintf("`sleep 6` delayed the response to %.1fs (baseline %.1fs)", r.Duration.Seconds(), base.Duration.Seconds()),
 						FlowID:   r.FlowID,

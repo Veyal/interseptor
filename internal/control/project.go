@@ -119,6 +119,7 @@ func (h *Hub) importProject(w http.ResponseWriter, r *http.Request) {
 	h.refreshRules()
 	h.refreshScope()
 	if flows > 0 {
+		h.epsCache.invalidate() // imported flows add endpoints — drop the stale Map/endpoints aggregate
 		h.broadcast(map[string]any{"type": "flow.new"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -185,7 +186,10 @@ func (h *Hub) switchProject(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Target string `json:"target"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	target := strings.TrimSpace(in.Target)
 	if target == "" {
 		httpErr(w, http.StatusBadRequest, "target required")

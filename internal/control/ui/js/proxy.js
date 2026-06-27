@@ -1,4 +1,5 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, saveFile, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, saveFile, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
+import { flowFindings, addFlowToFinding, openFinding } from './findings.js';
 import { sendToRepeater, sendToIntruder } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAi } from './ai.js';
@@ -143,6 +144,8 @@ function flowRowHTML(f){
 function wireFlowRow(r){
   const id=Number(r.dataset.id);
   r.onclick=e=>flowRowClick(id,e);
+  wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
+  r.setAttribute('aria-label','flow '+id);
   r.oncontextmenu=e=>{
     e.preventDefault();
     const f=state.flows.find(x=>x.id===id);
@@ -320,6 +323,7 @@ export async function loadFlows(){
   if(state.inScopeOnly)q.set('inScope','1');
   if(state.discoveryOnly)q.set('discovery','1');
   if(!state.showAI)q.set('ai','0');
+  if(state.aiOnly)q.set('onlyAi','1');
   q.set('limit',String(FLOW_LIMIT));
   try{
     const d=await api('/api/flows?'+q.toString());
@@ -345,8 +349,9 @@ export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeou
 export async function selectFlow(id){
   state.selId=id;renderRows();
   try{
-    state.detail=await api('/api/flows/'+id);
-    const d=state.detail;
+    const d=await api('/api/flows/'+id);
+    if(state.selId!==id)return; // a newer selection superseded this one mid-fetch — don't overwrite its panes
+    state.detail=d;
     $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
     await renderSide('req');
     if(d.flags&FLAG_WS){
@@ -484,6 +489,7 @@ $('#importHarFile').onchange=async e=>{
 $('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
 $('#discFilter').onclick=()=>{state.discoveryOnly=!state.discoveryOnly;$('#discFilter').classList.toggle('accent',state.discoveryOnly);loadFlows();};
 $('#aiToggle').onclick=()=>{state.showAI=!state.showAI;$('#aiToggle').classList.toggle('accent',state.showAI);loadFlows();};
+$('#aiOnlyFilter')&&($('#aiOnlyFilter').onclick=()=>{state.aiOnly=!state.aiOnly;$('#aiOnlyFilter').classList.toggle('accent',state.aiOnly);loadFlows();});
 export async function saveNote(){
   if(!state.selId)return;
   const note=$('#noteInput').value;
@@ -719,6 +725,10 @@ export function showCtx(x,y,f,field){
   // the global section below.
 
   sections.push(flowGlobalSection(f,'REQUEST'));
+  const ff=flowFindings(f.id);
+  const fitems=ff.map(x=>({label:'📌 '+x.title,val:x.severity,act:()=>openFinding(x.id)}));
+  fitems.push({label:'➕ Add to finding',act:()=>addFlowToFinding(f.id)});
+  sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
   if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
   openMenu(x,y,sections);
 }

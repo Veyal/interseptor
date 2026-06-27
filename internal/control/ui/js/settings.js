@@ -4,7 +4,7 @@ import { loadRules } from './intercept.js';
 
 /* settings sub-nav */
 $$('#setNav button').forEach(b=>b.onclick=()=>{
-  $$('#setNav button').forEach(x=>x.classList.toggle('on',x===b));
+  $$('#setNav button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'&&!retentionLoaded){retentionLoaded=true;loadRetention();}
@@ -230,12 +230,12 @@ export function renderRetention(d){
 export function retChecked(){return [].slice.call(document.querySelectorAll('.ret-chk:checked')).map(cb=>cb.dataset.host);}
 
 export async function retDeleteOne(host,flows){
-  const msg='Delete all '+flows+' flow'+(flows===1?'':'s')+' from '+host+'? This is permanent.';
+  const msg='Delete all '+flows+' flow'+(flows===1?'':'s')+' from '+esc(host)+'? This is permanent.';
   const confirmed=await uiConfirm('Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})});
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
+    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadRetention();loadFlows();
   }catch(e){toast('purge: '+e.message);}
 }
@@ -251,7 +251,7 @@ $('#retDeleteSelected').onclick=async()=>{
   if(!confirmed)return;
   try{
     const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})});
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
+    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadRetention();loadFlows();
   }catch(e){toast('purge: '+e.message);}
 };
@@ -268,7 +268,7 @@ $('#retKeepOnly').onclick=async()=>{
   if(!confirmed)return;
   try{
     const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})});
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
+    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadRetention();loadFlows();
   }catch(e){toast('purge: '+e.message);}
 };
@@ -281,7 +281,7 @@ $('#retPurgePattern').onclick=async()=>{
   if(!confirmed)return;
   try{
     const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[pat],mode:'delete'})});
-    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
+    toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     if($('#retPatternInput'))$('#retPatternInput').value='';
     loadRetention();loadFlows();
   }catch(e){toast('purge: '+e.message);}
@@ -304,8 +304,8 @@ $('#retSelectAll')&&($('#retSelectAll').onclick=function(){
   boxes.forEach(cb=>cb.checked=this.checked);
 });
 
-$('#exportProject').onclick=()=>toast('Project exported — .json downloaded');
-const dlCa=$('#dlCaBtn');if(dlCa)dlCa.onclick=()=>toast('CA certificate downloaded — trust it on the client');
+$('#exportProject').onclick=()=>toast('Downloading project export…');
+const dlCa=$('#dlCaBtn');if(dlCa)dlCa.onclick=()=>toast('Downloading CA certificate — trust it on the client');
 $('#importProjectBtn').onclick=()=>$('#importProjectFile').click();
 $('#importProjectFile').onchange=async e=>{
   const f=e.target.files[0];if(!f)return;

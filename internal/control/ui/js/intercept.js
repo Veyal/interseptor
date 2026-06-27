@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey } from './core.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
@@ -25,7 +25,7 @@ export function renderIntercept(){
     <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
     ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
     <span class="u">${esc(h.host)}${esc(h.path)}</span></div>`).join('');
-  $$('#heldList .icpt-item').forEach(el=>el.onclick=()=>selectHeld(Number(el.dataset.id),el.dataset.side));
+  $$('#heldList .icpt-item').forEach(el=>{el.onclick=()=>selectHeld(Number(el.dataset.id),el.dataset.side);wireRowKey(el,()=>selectHeld(Number(el.dataset.id),el.dataset.side));});
   const cur=state.heldSel&&items.find(h=>h.id===state.heldSel.id&&h.side===state.heldSel.side);
   if(cur)selectHeld(cur.id,cur.side,{keepEditor:true});
   else selectHeld(items[0].id,items[0].side);

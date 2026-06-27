@@ -413,15 +413,29 @@ func applyHeaderRule(req *http.Request, re *regexp.Regexp, replace string) {
 	}
 }
 
+// maxBodyRuleBytes bounds how much request body is buffered to apply a body
+// match-&-replace rule; a larger body is forwarded untransformed.
+const maxBodyRuleBytes = 64 << 20
+
 func applyBodyRule(req *http.Request, re *regexp.Regexp, replace string) error {
 	if req.Body == nil {
 		return nil
 	}
-	body, err := io.ReadAll(req.Body)
-	req.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyRuleBytes+1))
 	if err != nil {
+		req.Body.Close()
 		return err
 	}
+	if int64(len(body)) > maxBodyRuleBytes {
+		// Too large to buffer for a body rule — forward untransformed, preserving
+		// Close so the original body isn't leaked.
+		req.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(body), req.Body), req.Body}
+		return nil
+	}
+	req.Body.Close()
 	nb := re.ReplaceAll(body, []byte(replace))
 	req.Body = io.NopCloser(bytes.NewReader(nb))
 	req.ContentLength = int64(len(nb))

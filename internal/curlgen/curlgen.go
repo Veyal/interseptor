@@ -22,7 +22,7 @@ func Build(method, url string, headers http.Header, body []byte) string {
 		m = http.MethodGet
 	}
 	if m != http.MethodGet {
-		parts = append(parts, "-X "+m)
+		parts = append(parts, "-X '"+shellEscape(m)+"'")
 	}
 
 	parts = append(parts, "'"+shellEscape(url)+"'")

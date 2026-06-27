@@ -21,6 +21,15 @@ import (
 //
 // Legitimate clients — the embedded UI, curl, the MCP server — send a loopback
 // Host and either no Origin or the loopback Origin, so they pass untouched.
+// maxRequestBody bounds every control request body as a DoS backstop: handlers
+// decode JSON into memory and several read unbounded string fields (notes, rule
+// patterns, repeater bodies, session headers). The largest legitimate body is a
+// project import (128 MiB), so the global cap sits there; tighter per-endpoint
+// limits (checks 512 KiB, HAR 64 MiB, OOB 512 B) still apply on top. A var (not a
+// const) so tests can lower it. Loopback + AI/MCP make an oversized body a real
+// local DoS vector despite the loopback bind.
+var maxRequestBody int64 = 128 << 20
+
 func (h *Hub) securityGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The OOB interaction catcher is deliberately public: blind callbacks from a
@@ -31,11 +40,11 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			return
 		}
 		if !isLoopbackHost(r.Host) {
-			http.Error(w, "forbidden: the control plane only accepts loopback requests (rejected Host)", http.StatusForbidden)
+			httpErr(w, http.StatusForbidden, "the control plane only accepts loopback requests (rejected Host)")
 			return
 		}
 		if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
-			http.Error(w, "forbidden: cross-origin request rejected", http.StatusForbidden)
+			httpErr(w, http.StatusForbidden, "cross-origin request rejected")
 			return
 		}
 		// Optional API-key auth for the remote-agent surface: once the operator has
@@ -44,20 +53,28 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 		// and embedded UI remain loopback-only and are not gated here.
 		if r.URL.Path == "/mcp" && !h.mcpAuthorized(r) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
-			http.Error(w, "unauthorized: the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth", http.StatusUnauthorized)
+			httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth")
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 		next.ServeHTTP(w, r)
 	})
 }
 
 // mcpAuthorized reports whether a request to /mcp may proceed. Auth is opt-in:
 // with no API keys the endpoint is open (loopback trust); once any key exists a
-// valid bearer token is required. A store error fails open so a transient DB
-// hiccup can't lock out the keyless common case.
+// valid bearer token is required. On a store error it falls back to the last-known
+// key state (mcpKeysSeen) — so a keyless install stays open through a transient DB
+// hiccup, but once keys are known to exist the endpoint fails CLOSED rather than
+// briefly dropping auth.
 func (h *Hub) mcpAuthorized(r *http.Request) bool {
 	has, err := h.st.HasAPIKeys()
-	if err != nil || !has {
+	if err != nil {
+		has = h.mcpKeysSeen.Load()
+	} else {
+		h.mcpKeysSeen.Store(has)
+	}
+	if !has {
 		return true
 	}
 	tok := bearerToken(r)

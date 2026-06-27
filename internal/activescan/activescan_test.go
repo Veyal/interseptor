@@ -147,6 +147,36 @@ func TestCmdInjectionTimingDetector(t *testing.T) {
 	}
 }
 
+// Length-based boolean SQLi must not flag on tiny responses, where a few bytes of
+// natural variation reads as a large relative divergence (false positives).
+func TestSQLiBooleanIgnoresTinyResponses(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.Contains(payload, "1'='1") {
+			return Response{Status: 200, Body: "{}"} // true ≈ baseline (2 bytes)
+		}
+		return Response{Status: 200, Body: "404 not found — a longer error page"} // false diverges
+	}
+	if sqliBooleanCheck.Run(Point{Value: "1"}, Response{Status: 200, Body: "{}"}, probe) != nil {
+		t.Fatal("tiny baseline must not flag boolean SQLi")
+	}
+}
+
+// A slow sleep-6 must NOT be confirmed when the sleep-0 control never actually
+// ran (Status 0 — e.g. the request budget was exhausted). A control that didn't
+// execute can't rule out a genuinely-slow endpoint, so confirming on it is a
+// false positive.
+func TestCmdInjectionTimingRequiresControlToRun(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.Contains(payload, "sleep 6") {
+			return Response{Status: 200, FlowID: 9, Duration: 6 * time.Second}
+		}
+		return Response{Status: 0} // control did not execute (budget exhausted / error)
+	}
+	if cmdInjectionCheck.Run(Point{Value: "h"}, Response{Status: 200, Duration: 40 * time.Millisecond}, probe) != nil {
+		t.Fatal("must not confirm cmd-injection when the sleep-0 control did not run")
+	}
+}
+
 // ---- engine wiring + budget ----
 
 func TestRunFindsAndBoundsRequests(t *testing.T) {

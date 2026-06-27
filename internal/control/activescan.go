@@ -3,7 +3,9 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
+	"net/url"
 	"net/http"
 	"strconv"
 	"sync"
@@ -44,7 +46,10 @@ func (h *Hub) asArm(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Armed bool `json:"armed"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	h.as.mu.Lock()
 	h.as.armed = in.Armed
 	h.as.mu.Unlock()
@@ -68,7 +73,10 @@ func (h *Hub) asStart(w http.ResponseWriter, r *http.Request) {
 		Arm         bool  `json:"arm"` // arm-and-run (the AI/API consent path)
 		MaxRequests int   `json:"maxRequests"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 
 	if in.FlowID == 0 && !in.InScope {
 		httpErr(w, http.StatusBadRequest, "specify a flowId or inScope:true")
@@ -200,6 +208,20 @@ func (h *Hub) asTargets(flows []*store.Flow) []activescan.Target {
 		out = append(out, t)
 	}
 	return out
+}
+
+// targetsOwnListener reports whether rawURL points at one of our own loopback
+// listeners (control plane or proxy). Repeater/Intruder/WS-repeater refuse such
+// targets so the tool can't be coerced — e.g. by prompt-injection reaching the
+// AI/MCP agent — into attacking its own control API (reading /api/keys, etc.), a
+// same-origin SSRF the loopback bind does NOT prevent. Blanket internal-IP
+// blocking is intentionally avoided: pentesters legitimately target internal hosts.
+func (h *Hub) targetsOwnListener(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return h.isOwnListener(&store.Flow{Host: u.Hostname(), Port: atoiOr(u.Port(), defaultPortFor(u.Scheme))})
 }
 
 // isOwnListener reports whether a flow targets one of our own loopback listeners

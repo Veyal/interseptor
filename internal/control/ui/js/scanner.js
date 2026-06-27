@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey } from './core.js';
 import { flowPopup } from './flowmodal.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
@@ -221,9 +221,9 @@ export function renderActive(d){
   const box=$('#asFindings');if(!box)return;
   box.innerHTML=fs.length?fs.map(f=>`<div data-flow="${f.flowId}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
     <span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b>
-    <div class="hint" style="margin-top:2px">${esc(f.class)} · ${esc(f.point.kind)}:${esc(f.point.name)} — ${esc(f.evidence)}${f.flowId?` <span style="color:var(--blue)">· flow #${f.flowId}</span>`:''}</div></div>`).join('')
+    <div class="hint" style="margin-top:2px">${esc(f.class)}${f.point?` · ${esc(f.point.kind)}:${esc(f.point.name)}`:''} — ${esc(f.evidence)}${f.flowId?` <span style="color:var(--blue)">· flow #${f.flowId}</span>`:''}</div></div>`).join('')
     :'<div class="hint">No active findings yet.</div>';
-  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>flowPopup(Number(el.dataset.flow)));
+  box.querySelectorAll('[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
 }
 export async function asArmToggle(){
   try{await api('/api/activescan/arm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({armed:$('#asArm').checked})});loadActive();}
@@ -309,7 +309,7 @@ export function renderScan(){
   list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
     <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
     <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
-  list.querySelectorAll('.scan-item').forEach(el=>el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();});
+  list.querySelectorAll('.scan-item').forEach(el=>{el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();};wireRowKey(el);});
   renderScanDetail();
 }
 export function renderScanDetail(){
@@ -327,7 +327,7 @@ export function renderScanDetail(){
     <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
     ${tgts}
     ${first.fix?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
-  $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>el.onclick=()=>flowPopup(Number(el.dataset.flow)));
+  $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
 }
 $('#scanRun').onclick=runScan;
 $('#scanReport').onclick=()=>{if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}const a=document.createElement('a');a.href='/api/scanner/report';a.download='interceptor-findings.md';document.body.appendChild(a);a.click();a.remove();toast('report downloaded');};

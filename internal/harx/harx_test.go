@@ -42,6 +42,19 @@ func TestBuildParseRoundTrip(t *testing.T) {
 	}
 }
 
+// A flow that errored before its scheme was known (Scheme == "") must still
+// produce a valid absolute URL, not "://host".
+func TestBuildDefaultsEmptyScheme(t *testing.T) {
+	flows := []*store.Flow{{Method: "GET", Scheme: "", Host: "x.com", Port: 0, Path: "/a", HTTPVersion: "HTTP/1.1", Status: 502}}
+	entries, err := Parse(Build(flows, func(string) []byte { return nil }))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if entries[0].URL != "http://x.com/a" {
+		t.Fatalf("empty scheme should default to http, got %q", entries[0].URL)
+	}
+}
+
 func TestBuildOmitsDefaultPort(t *testing.T) {
 	flows := []*store.Flow{{Method: "GET", Scheme: "http", Host: "x.com", Port: 80, Path: "/", HTTPVersion: "HTTP/1.1", Status: 200}}
 	entries, err := Parse(Build(flows, func(string) []byte { return nil }))

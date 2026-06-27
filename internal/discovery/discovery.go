@@ -223,8 +223,10 @@ func (e *Engine) run(ctx context.Context, base string, words []string, spec Spec
 	queue := []dir{{url: base, depth: 0}}
 	seenDir := map[string]bool{base: true}
 
+	budgetHit := false // request budget reached — stop launching probes (a local flag,
+	// NOT a ctx reassignment, so the worker goroutines reading ctx never race a write)
 	for len(queue) > 0 {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || budgetHit {
 			break
 		}
 		d := queue[0]
@@ -240,8 +242,11 @@ func (e *Engine) run(ctx context.Context, base string, words []string, spec Spec
 			first = true
 		)
 		for _, w := range words {
+			if budgetHit {
+				break
+			}
 			for _, ext := range exts {
-				if ctx.Err() != nil {
+				if ctx.Err() != nil || budgetHit {
 					break
 				}
 				e.mu.Lock()
@@ -249,7 +254,7 @@ func (e *Engine) run(ctx context.Context, base string, words []string, spec Spec
 				e.mu.Unlock()
 				if over {
 					e.setNote("stopped at request budget (" + itoa(budget) + ") — narrow the wordlist or raise the limit")
-					ctx = canceledCtx()
+					budgetHit = true
 					break
 				}
 				raw := d.url + w + ext

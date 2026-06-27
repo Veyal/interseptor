@@ -18,6 +18,15 @@ func TestBuildGET(t *testing.T) {
 	}
 }
 
+// A non-standard method is single-quoted like every other value, so a method
+// carrying shell metacharacters can't inject when the command is pasted.
+func TestBuildMethodIsQuoted(t *testing.T) {
+	out := Build("DELETE", "https://victim.test/a", nil, nil)
+	if !strings.Contains(out, "-X 'DELETE'") {
+		t.Fatalf("method not single-quoted: %s", out)
+	}
+}
+
 func TestBuildPOSTWithBodyAndEscaping(t *testing.T) {
 	h := http.Header{
 		"Content-Type":   {"application/json"},
@@ -25,8 +34,8 @@ func TestBuildPOSTWithBodyAndEscaping(t *testing.T) {
 		"Authorization":  {"Bearer abc"},
 	}
 	out := Build("post", "https://victim.test/login", h, []byte(`{"u":"o'malley"}`))
-	if !strings.Contains(out, "-X POST") {
-		t.Fatalf("POST should emit -X POST: %s", out)
+	if !strings.Contains(out, "-X 'POST'") {
+		t.Fatalf("POST should emit -X 'POST': %s", out)
 	}
 	if strings.Contains(out, "Content-Length") {
 		t.Fatalf("Content-Length should be dropped: %s", out)

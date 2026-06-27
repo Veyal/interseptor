@@ -169,7 +169,7 @@ function setMapView(v){
   mapState.view = v;
   try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
   const seg = $('#mapViewSeg');
-  if(seg) seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+  if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap');
   if(tree) tree.style.display = v === 'tree' ? 'block' : 'none';
   if(tbl) tbl.style.display = v === 'table' ? 'block' : 'none';
@@ -299,7 +299,7 @@ function renderMapTable(eps){
     const k = h.dataset.sort;
     if(mapState.sort.key === k) mapState.sort.dir *= -1;
     else{ mapState.sort.key = k; mapState.sort.dir = 1; }
-    renderMapTable(mapFiltered());
+    renderMap(); // route through renderMap so crumb/count/warn stay consistent
   });
   box.querySelectorAll('tr[data-flow]').forEach(tr => {
     const id = Number(tr.dataset.flow);
@@ -326,12 +326,12 @@ function mapApplySearch(){
   mapState._needFit = true;
   renderMap();
 }
-$('#mapSearch').oninput = e => {
+$('#mapSearch') && ($('#mapSearch').oninput = e => {
   mapState.search = e.target.value.trim();
   clearTimeout(mapSearchTimer);
   if(mapUsesServerSearch()) mapSearchTimer = setTimeout(mapApplySearch, 350);
   else mapApplySearch();
-};
+});
 $('#mapSearchScope') && ($('#mapSearchScope').onchange = e => {
   mapState.searchScope = e.target.value || 'path';
   mapApplySearch();
@@ -344,8 +344,8 @@ $('#mapDomain') && ($('#mapDomain').onchange = e => {
   if(mapUsesServerSearch()) loadEndpoints();
   else renderMap();
 });
-$('#mapMethod').onchange = e => { mapState.method = e.target.value; mapState._needFit = true; renderMap(); };
-$('#mapRefresh').onclick = loadEndpoints;
+$('#mapMethod') && ($('#mapMethod').onchange = e => { mapState.method = e.target.value; mapState._needFit = true; renderMap(); });
+$('#mapRefresh') && ($('#mapRefresh').onclick = loadEndpoints);
 $('#mapExpand').onclick = () => {
   mapState.expandAll = !mapState.expandAll;
   $('#mapExpand').textContent = mapState.expandAll ? 'Collapse all' : 'Expand all';

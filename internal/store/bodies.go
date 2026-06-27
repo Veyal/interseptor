@@ -59,6 +59,13 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 		return "", 0, err
 	}
 	if err := os.Rename(tmpName, dst); err != nil {
+		// A concurrent writer with identical content may have created dst
+		// between our Stat above and this Rename. On Windows, Rename onto an
+		// existing file fails; treat an already-present dst as a successful
+		// dedup rather than a spurious capture error.
+		if _, statErr := os.Stat(dst); statErr == nil {
+			return sum, w.n, nil
+		}
 		return "", 0, err
 	}
 	return sum, w.n, nil
@@ -80,5 +87,27 @@ func (s *Store) OpenBody(sum string) (io.ReadCloser, error) {
 	if sum == "" {
 		return io.NopCloser(strings.NewReader("")), nil
 	}
+	if !isContentHash(sum) {
+		// A body hash is always a 64-char lowercase sha256 hex string. Reject
+		// anything else: it would either panic bodyPath's sum[:2]/sum[2:4]
+		// slicing (e.g. a 2-char hash from a malformed HAR import) or, worse,
+		// escape bodiesDir (e.g. "../../etc/passwd"). Treat it as "no such body".
+		return nil, os.ErrNotExist
+	}
 	return os.Open(s.bodyPath(sum))
+}
+
+// isContentHash reports whether s is a 64-char lowercase hex sha256 digest — the
+// only shape bodyPath may be handed.
+func isContentHash(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }

@@ -7,6 +7,43 @@ import (
 	"testing"
 )
 
+// Dangerous MIME types must never survive insert or serve; only the raster
+// allowlist is kept, everything else is coerced inert so a stored notebook
+// image can't run as active content (stored-XSS prevention).
+func TestNotesImageMIMESanitized(t *testing.T) {
+	cases := map[string]string{
+		"image/png":                 "image/png",
+		"image/JPEG":                "image/jpeg",
+		"image/webp; charset=utf-8": "image/webp",
+		"text/html":                 "application/octet-stream",
+		"image/svg+xml":             "application/octet-stream",
+		"application/javascript":    "application/octet-stream",
+		"":                          "application/octet-stream",
+	}
+	for in, want := range cases {
+		if got := SanitizeNotesImageMIME(in); got != want {
+			t.Fatalf("SanitizeNotesImageMIME(%q) = %q, want %q", in, got, want)
+		}
+	}
+
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	id, err := s.InsertNotesImage("text/html", []byte("<script>alert(1)</script>"))
+	if err != nil {
+		t.Fatalf("InsertNotesImage: %v", err)
+	}
+	mime, _, err := s.GetNotesImage(id)
+	if err != nil {
+		t.Fatalf("GetNotesImage: %v", err)
+	}
+	if mime != "application/octet-stream" {
+		t.Fatalf("stored mime = %q, want application/octet-stream", mime)
+	}
+}
+
 func TestNormalizeNotesMarkdownStoresDataURL(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

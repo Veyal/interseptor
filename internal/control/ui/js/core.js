@@ -15,11 +15,40 @@ export const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'
 // deliberately keeps quotes) stays for text and the JSON/HTTP highlighters.
 export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
-export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},selHeld:null,selRespHeld:null,
+export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,discoveryOnly:false,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
   filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',exclude:[]},notesOnly:false,activity:[],actUnseen:0,flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 export function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
+
+// wireRowKey makes a clickable <div> row keyboard-operable: it becomes a focusable
+// button to assistive tech and Enter/Space activate it. `onActivate` defaults to a
+// synthetic click so existing onclick handlers keep working unchanged. Idempotent —
+// re-wiring the same element (rows are recycled on re-render) won't stack listeners.
+export function wireRowKey(el, onActivate){
+  if(!el||el._rowKeyed) return el;
+  el._rowKeyed=true;
+  if(!el.hasAttribute('role')) el.setAttribute('role','button');
+  if(!el.hasAttribute('tabindex')) el.tabIndex=0;
+  el.addEventListener('keydown',e=>{
+    if(e.key!=='Enter'&&e.key!==' ') return;
+    // Let Enter/Space fall through when focus is on a real control inside the row
+    // (button/input/textarea/select/link) — those have their own activation.
+    const t=e.target;
+    if(t!==el&&t.closest&&t.closest('button,input,textarea,select,a')) return;
+    e.preventDefault();
+    if(onActivate) onActivate(e); else el.click();
+  });
+  return el;
+}
+
+// setSeg toggles a segmented-control button's pressed state, keeping the visual
+// `.on` class and the ARIA `aria-pressed` attribute in sync for screen readers.
+export function setSeg(btn,on){
+  if(!btn) return;
+  btn.classList.toggle('on',!!on);
+  btn.setAttribute('aria-pressed',on?'true':'false');
+}
 export async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
 
 export const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
@@ -260,6 +289,7 @@ export function hideCtxMenu(){
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
 export function openCtxMenu(x,y,sections){
   const ctx=$('#ctxmenu');if(!ctx)return;
+  ctx.setAttribute('role','menu');
   const acts=[];let html='';
   sections.forEach(sec=>{
     const items=(sec.items||[]).filter(Boolean);
@@ -269,7 +299,7 @@ export function openCtxMenu(x,y,sections){
       if(it.sep){html+='<div class="ctx-sep"></div>';return;}
       const dStyle=it.danger?' style="color:var(--red)"':'';
       const right=it.val!=null?`<span class="mono"${dStyle}>${esc(it.val)}</span>`:'';
-      html+=`<div class="ctx-item${it.on?' on':''}" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${esc(it.label)}</span>${right}</div>`;
+      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${esc(it.label)}</span>${right}</div>`;
       acts.push(it.act);
     });
   });
@@ -413,7 +443,7 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ---- modals: close on Escape and on backdrop click (consistent across all) ---- */
-export const MODAL_IDS=['aiModal','notesAiModal','checksModal','activeModal','oobModal','authzModal','decModal','flowModal','confirmModal','shortcutsModal','projModal'];
+export const MODAL_IDS=['aiModal','notesAiModal','checksModal','activeModal','oobModal','authzModal','decModal','flowModal','confirmModal','shortcutsModal','projModal','compareModal','findCreateModal','findPickModal'];
 export function closeModals(){let n=0;MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m&&m.style.display&&m.style.display!=='none'){closeModal(m);n++;}});return n>0;}
 MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m)m.addEventListener('mousedown',e=>{if(e.target===m)closeModal(m);});});
 
@@ -500,7 +530,7 @@ export function renderMD(src){
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
   s=s.replace(/`([^`\n]+)`/g,'<code>$1</code>');
-  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,(m,txt,href)=>'<a href="'+href.replace(/"/g,'&quot;')+'" target="_blank" rel="noopener">'+txt+'</a>');
   s='<p>'+s.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
   s=s.replace(/\x00(\d+)\x00/g,(m,i)=>{
     const b=blocks[Number(i)]||{code:'',lang:''};

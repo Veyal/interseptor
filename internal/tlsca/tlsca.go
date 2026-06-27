@@ -26,14 +26,19 @@ type CA struct {
 	key     *ecdsa.PrivateKey
 	certPEM []byte
 
-	mu    sync.Mutex
-	cache map[string]*tls.Certificate
+	mu       sync.Mutex
+	cache    map[string]*tls.Certificate
+	cacheOrd []string // insertion order, for bounded (FIFO) eviction
 }
 
 const (
 	caValidity   = 10 * 365 * 24 * time.Hour
 	leafValidity = 397 * 24 * time.Hour // CA/Browser Forum max for leaf certs
 )
+
+// leafCacheMax bounds the per-host leaf cache (each entry holds a key + cert). A
+// var so tests can lower it.
+var leafCacheMax = 2048
 
 // LoadOrCreate loads the CA from dir if present, otherwise generates a new one
 // and persists ca.crt + ca.key under dir.
@@ -133,8 +138,8 @@ func (c *CA) CertPEM() []byte { return c.certPEM }
 func (c *CA) LeafForHost(host string) (*tls.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if tc, ok := c.cache[host]; ok {
-		return tc, nil
+	if tc, ok := c.cache[host]; ok && time.Now().Before(tc.Leaf.NotAfter.Add(-time.Minute)) {
+		return tc, nil // still valid; a near-expiry/expired entry falls through and is re-minted
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -177,6 +182,16 @@ func (c *CA) LeafForHost(host string) (*tls.Certificate, error) {
 		Certificate: [][]byte{der},
 		PrivateKey:  key,
 		Leaf:        leaf,
+	}
+	if _, existed := c.cache[host]; !existed {
+		c.cacheOrd = append(c.cacheOrd, host)
+		// Evict oldest entries once over the bound so the cache can't grow without
+		// limit under many distinct SNIs (e.g. subdomain fuzzing through the proxy).
+		for len(c.cacheOrd) > leafCacheMax {
+			oldest := c.cacheOrd[0]
+			c.cacheOrd = c.cacheOrd[1:]
+			delete(c.cache, oldest)
+		}
 	}
 	c.cache[host] = tc
 	return tc, nil

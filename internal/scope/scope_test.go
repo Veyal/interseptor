@@ -10,6 +10,47 @@ func flow(host, path, scheme string, port int) *store.Flow {
 	return &store.Flow{Host: host, Path: path, Scheme: scheme, Port: port}
 }
 
+// Wildcard scope must not be tricked by hosts that merely contain the base
+// domain as a substring or non-dot-boundary suffix — the classic wildcard
+// confusion (evil-acme.com, acme.com.evil.com). Also pins scheme case-folding
+// and port-only matching, none of which had boundary coverage.
+func TestScopeMatchingEdgeCases(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "*.acme.com"}})
+	wildcard := map[string]bool{
+		"acme.com":           true,  // base
+		"api.acme.com":       true,  // real subdomain
+		"a.b.acme.com":       true,  // deep subdomain
+		"evil-acme.com":      false, // NOT a subdomain — must not match
+		"acme.com.evil.com":  false, // base as a left-suffix — must not match
+		"notacme.com":        false,
+		"xacme.com":          false,
+	}
+	for host, want := range wildcard {
+		if got := e.InScope(flow(host, "/", "https", 443)); got != want {
+			t.Fatalf("wildcard InScope(%s) = %v, want %v", host, got, want)
+		}
+	}
+
+	// Exact host rule matches only that host, not its subdomains.
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "acme.com"}})
+	if e.InScope(flow("api.acme.com", "/", "https", 443)) {
+		t.Fatal("exact host rule must not match a subdomain")
+	}
+	if !e.InScope(flow("acme.com", "/", "https", 443)) {
+		t.Fatal("exact host rule must match the host itself")
+	}
+
+	// Scheme is case-insensitive; port-only rule (empty host) gates by port.
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Scheme: "HTTPS", Port: 8443}})
+	if !e.InScope(flow("anything.test", "/", "https", 8443)) {
+		t.Fatal("scheme should match case-insensitively and empty host should match any host")
+	}
+	if e.InScope(flow("anything.test", "/", "https", 443)) {
+		t.Fatal("port-only rule must not match a different port")
+	}
+}
+
 func TestIncludeExcludeWildcard(t *testing.T) {
 	e := New()
 	e.SetRules([]store.ScopeRule{

@@ -194,7 +194,7 @@ async function applyOrganizedNotes(){
   if(!ta)return;
   ta.value=notesOrganizedText;
   notesState.mode='edit';
-  $('#notesSeg')?.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.m==='edit'));
+  $('#notesSeg')?.querySelectorAll('button').forEach(x=>{const on=x.dataset.m==='edit';x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
   ta.style.display='block';
   const prev=$('#notesPreview');if(prev)prev.style.display='none';
   notesPreviewCache={src:'',html:''};
@@ -226,7 +226,7 @@ $('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
   rd.readAsDataURL(file);
 });
 $('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
-  notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   const edit=notesState.mode==='edit';
   if(!edit)await flushNotesSave();
   $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';

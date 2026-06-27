@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Veyal/interceptor/internal/aiassist"
@@ -53,6 +54,7 @@ type Hub struct {
 	intr   *intruder.Engine
 	sc     *scope.Engine
 	oob    *oob.Catcher
+	hi     *humanInput // pending AI→human input prompts (request_human_input)
 	disc   *discovery.Engine
 	ds     discoveryState
 	mux    *http.ServeMux
@@ -81,8 +83,9 @@ type Hub struct {
 	GlobalDir     string
 	SwitchProject func(target string) error
 
-	mcpMu  sync.Mutex
-	mcpSrv *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
+	mcpMu       sync.Mutex
+	mcpSrv      *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
+	mcpKeysSeen atomic.Bool // last-known "API keys exist" — mcpAuthorized fails closed on a store error once true
 
 	as asState // active-scan state (armed/running/findings)
 
@@ -120,6 +123,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.oob = oob.New()
 	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })
+	h.hi = newHumanInput()
 	h.disc = discovery.New()
 	h.disc.SetProbe(h.probeFor())
 	h.disc.SetScope(h.discInScope)
@@ -227,6 +231,14 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("POST /api/scanner/run", h.scannerRun)
 	h.mux.HandleFunc("GET /api/scanner/issues", h.scannerIssues)
 	h.mux.HandleFunc("GET /api/scanner/report", h.scannerReport)
+	h.mux.HandleFunc("GET /api/findings", h.listFindings)
+	h.mux.HandleFunc("GET /api/findings/report", h.findingsReport)
+	h.mux.HandleFunc("POST /api/findings", h.createFinding)
+	h.mux.HandleFunc("GET /api/findings/{id}", h.getFinding)
+	h.mux.HandleFunc("PATCH /api/findings/{id}", h.updateFinding)
+	h.mux.HandleFunc("DELETE /api/findings/{id}", h.deleteFinding)
+	h.mux.HandleFunc("POST /api/findings/{id}/flows", h.attachFindingFlow)
+	h.mux.HandleFunc("DELETE /api/findings/{id}/flows/{flowId}", h.detachFindingFlow)
 	h.mux.HandleFunc("GET /api/checks", h.listChecks)
 	h.mux.HandleFunc("PUT /api/checks/disabled", h.setChecksDisabled)
 	h.mux.HandleFunc("GET /api/checks/reference", h.checksReference)
@@ -247,6 +259,10 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/activity", h.listActivity)
 	h.mux.HandleFunc("POST /api/activity", h.postActivity)
 	h.mux.HandleFunc("DELETE /api/activity", h.clearActivity)
+	h.mux.HandleFunc("POST /api/human-input", h.createHumanInput)
+	h.mux.HandleFunc("GET /api/human-input", h.listHumanInput)
+	h.mux.HandleFunc("GET /api/human-input/{id}", h.getHumanInput)
+	h.mux.HandleFunc("POST /api/human-input/{id}/respond", h.respondHumanInput)
 	h.mux.HandleFunc("GET /api/project", h.apiProject)
 	h.mux.HandleFunc("POST /api/project/switch", h.switchProject)
 	h.mux.HandleFunc("GET /api/reference", h.apiReference)
@@ -331,16 +347,16 @@ type interceptJSON struct {
 }
 
 type settingsJSON struct {
-	ProxyAddr                   string `json:"proxyAddr"`
-	InterceptEnabled            bool   `json:"interceptEnabled"`
-	UpstreamProxy               string `json:"upstreamProxy"`
-	AiProvider                  string `json:"aiProvider"`
-	AiModel                     string `json:"aiModel"`
-	AiHasKey                    bool   `json:"aiHasKey"` // never returns the key itself
-	AiDisabled                  bool   `json:"aiDisabled"`
-	OobEnabled                  bool   `json:"oobEnabled"`
-	CaptureScopeOnly            bool   `json:"captureScopeOnly"`
-	SuppressBrowserTelemetry    bool   `json:"suppressBrowserTelemetry"`
+	ProxyAddr                string `json:"proxyAddr"`
+	InterceptEnabled         bool   `json:"interceptEnabled"`
+	UpstreamProxy            string `json:"upstreamProxy"`
+	AiProvider               string `json:"aiProvider"`
+	AiModel                  string `json:"aiModel"`
+	AiHasKey                 bool   `json:"aiHasKey"` // never returns the key itself
+	AiDisabled               bool   `json:"aiDisabled"`
+	OobEnabled               bool   `json:"oobEnabled"`
+	CaptureScopeOnly         bool   `json:"captureScopeOnly"`
+	SuppressBrowserTelemetry bool   `json:"suppressBrowserTelemetry"`
 }
 
 func toFlowJSON(f *store.Flow) flowJSON {
@@ -380,12 +396,21 @@ func (h *Hub) setFlowNote(w http.ResponseWriter, r *http.Request) {
 
 // deleteFlows removes the listed flows from History. Bodies are content-addressed
 // and shared, so only the metadata rows are dropped. Clients are told to reload.
+// maxBulkItems bounds the id/host array on bulk delete/purge. Even within the
+// 128 MiB body cap, a giant array amplifies ~10× via make([]any, len) and the
+// SQL placeholder string; no legitimate UI action targets this many at once.
+const maxBulkItems = 100000
+
 func (h *Hub) deleteFlows(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		IDs []int64 `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if len(in.IDs) > maxBulkItems {
+		httpErr(w, http.StatusBadRequest, "too many ids")
 		return
 	}
 	n, err := h.st.DeleteFlows(in.IDs)
@@ -441,6 +466,11 @@ func (h *Hub) listEndpoints(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := atoiOr(q.Get("limit"), 200)
+	if limit < 1 || limit > 5000 {
+		// Guard against a non-positive limit (which would make the truncation
+		// reslice `flows[:limit]` panic) and absurd upper bounds.
+		limit = 200
+	}
 	f := store.FlowFilter{
 		Limit:        limit + 1, // fetch one extra to detect truncation
 		BeforeID:     int64(atoiOr(q.Get("before"), 0)),
@@ -457,6 +487,13 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Get("discovery") == "1" {
 		f.RequireFlags = store.FlagDiscovery
+	}
+	if q.Get("onlyAi") == "1" {
+		// Show only AI-originated flows (FlagAI) — the human watches just what the AI
+		// did. Include FlagAI so the Repeater/Intruder/ActiveScan exclusion above
+		// (which AI sends also carry) doesn't hide them.
+		f.RequireFlags |= store.FlagAI
+		f.IncludeFlags = store.FlagAI
 	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
@@ -737,11 +774,20 @@ func (h *Hub) deleteRule(w http.ResponseWriter, r *http.Request) {
 }
 
 // validRule rejects unknown types and uncompilable regexes (writing the error).
+// maxRulePattern bounds a user-supplied match/intercept regex. Go's RE2 is linear
+// (no catastrophic ReDoS), but a very long pattern run against large bodies on
+// every proxied request is still costly; real patterns are short.
+const maxRulePattern = 4096
+
 func validRule(w http.ResponseWriter, in ruleJSON) bool {
 	switch in.Type {
 	case "req-header", "req-body", "res-header", "res-body":
 	default:
 		httpErr(w, http.StatusBadRequest, "type must be req-header, req-body, res-header, or res-body")
+		return false
+	}
+	if len(in.Match) > maxRulePattern {
+		httpErr(w, http.StatusBadRequest, "match pattern too long")
 		return false
 	}
 	// Compile-check the regex through the engine's validation path.
@@ -852,7 +898,10 @@ func (h *Hub) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	h.eng.SetEnabled(in.Enabled)
 	_ = h.st.SetSetting("intercept.enabled", boolToFlag(in.Enabled))
 	writeJSON(w, http.StatusOK, h.interceptState())
@@ -870,7 +919,14 @@ func (h *Hub) setInterceptFilter(w http.ResponseWriter, r *http.Request) {
 		Target  string `json:"target"`
 		Pattern string `json:"pattern"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if len(in.Pattern) > maxRulePattern {
+		httpErr(w, http.StatusBadRequest, "pattern too long")
+		return
+	}
 	if err := h.eng.SetInterceptFilter(in.Enabled, in.Target, in.Pattern); err != nil {
 		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
 		return
@@ -895,7 +951,10 @@ func (h *Hub) forwardIntercept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	if err := h.eng.Forward(id, []byte(in.Raw)); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -928,7 +987,10 @@ func (h *Hub) toggleResponseIntercept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	h.eng.SetResponseEnabled(in.Enabled)
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
@@ -946,7 +1008,10 @@ func (h *Hub) forwardResponse(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	if err := h.eng.ForwardResponse(id, []byte(in.Raw)); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -1016,15 +1081,15 @@ func (h *Hub) getSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ProxyAddr                   string  `json:"proxyAddr"`
-		UpstreamProxy               *string `json:"upstreamProxy"` // pointer so "" can clear it
-		AiProvider                  *string `json:"aiProvider"`
-		AiApiKey                    *string `json:"aiApiKey"`
-		AiModel                     *string `json:"aiModel"`
-		AiDisabled                  *bool   `json:"aiDisabled"`
-		OobEnabled                  *bool   `json:"oobEnabled"`
-		CaptureScopeOnly            *bool   `json:"captureScopeOnly"`
-		SuppressBrowserTelemetry    *bool   `json:"suppressBrowserTelemetry"`
+		ProxyAddr                string  `json:"proxyAddr"`
+		UpstreamProxy            *string `json:"upstreamProxy"` // pointer so "" can clear it
+		AiProvider               *string `json:"aiProvider"`
+		AiApiKey                 *string `json:"aiApiKey"`
+		AiModel                  *string `json:"aiModel"`
+		AiDisabled               *bool   `json:"aiDisabled"`
+		OobEnabled               *bool   `json:"oobEnabled"`
+		CaptureScopeOnly         *bool   `json:"captureScopeOnly"`
+		SuppressBrowserTelemetry *bool   `json:"suppressBrowserTelemetry"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")

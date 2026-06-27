@@ -12,6 +12,34 @@ import (
 
 const maxNotesImageBytes = 5 << 20 // 5 MiB per pasted screenshot
 
+// allowedNotesImageMIME is the raster-image allowlist for stored notebook
+// images. Anything outside it (text/html, image/svg+xml, …) is coerced to an
+// inert type so a malicious MIME can't execute as active content when the image
+// is served same-origin from the control plane (stored-XSS prevention).
+var allowedNotesImageMIME = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/bmp":  true,
+	"image/avif": true,
+}
+
+// SanitizeNotesImageMIME returns mime when it is an allowlisted raster image
+// type, otherwise "application/octet-stream" (served inert — never as HTML, SVG
+// or script). Applied both on insert and on serve, so already-stored rows with
+// a dangerous MIME are also neutralized.
+func SanitizeNotesImageMIME(mime string) string {
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	if i := strings.IndexByte(mime, ';'); i >= 0 { // drop "; charset=…"
+		mime = strings.TrimSpace(mime[:i])
+	}
+	if allowedNotesImageMIME[mime] {
+		return mime
+	}
+	return "application/octet-stream"
+}
+
 var (
 	notesDataImageRE = regexp.MustCompile(`!\[([^\]]*)\]\(data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\)`)
 	notesImgRefRE    = regexp.MustCompile(`/api/notes/images/(\d+)`)
@@ -25,10 +53,7 @@ func (s *Store) InsertNotesImage(mime string, data []byte) (int64, error) {
 	if len(data) > maxNotesImageBytes {
 		return 0, fmt.Errorf("image too large (max %d bytes)", maxNotesImageBytes)
 	}
-	mime = strings.TrimSpace(mime)
-	if mime == "" {
-		mime = "application/octet-stream"
-	}
+	mime = SanitizeNotesImageMIME(mime)
 	res, err := s.db.Exec(
 		`INSERT INTO notes_images (ts, mime, data) VALUES (?, ?, ?)`,
 		time.Now().UnixMilli(), mime, data)

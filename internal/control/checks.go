@@ -2,11 +2,18 @@ package control
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/Veyal/interceptor/internal/checkscript"
 	"github.com/Veyal/interceptor/internal/store"
 )
+
+// maxCheckSource bounds a user/AI-supplied Starlark check source before it is
+// decoded and handed to the parser — a multi-hundred-MB body would otherwise be
+// lexed in full (memory/CPU exhaustion on the control goroutine). 512 KiB is far
+// larger than any real check.
+const maxCheckSource = 512 << 10
 
 // Custom-check management: list / read / save / delete user Starlark checks in
 // ChecksDir, plus a test endpoint that compiles + runs a check against a flow
@@ -44,7 +51,7 @@ func (h *Hub) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Disabled []string `json:"disabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
@@ -74,7 +81,7 @@ func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
@@ -103,7 +110,7 @@ func (h *Hub) testCheck(w http.ResponseWriter, r *http.Request) {
 		Source string `json:"source"`
 		FlowID int64  `json:"flowId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}

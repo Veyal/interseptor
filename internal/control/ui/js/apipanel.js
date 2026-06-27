@@ -2,7 +2,7 @@ import { $, esc, api, toast, methodColor, copyText } from './core.js';
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-  $('#apiSub').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  $('#apiSub').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   ['Keys','Rest','Mcp'].forEach(s=>$('#api'+s).style.display=(s.toLowerCase()===b.dataset.s)?'block':'none');
 });
 export async function loadApiKeys(){
@@ -10,7 +10,7 @@ export async function loadApiKeys(){
     $('#keyList').innerHTML=keys.length?keys.map(k=>`<tr>
       <td style="font-family:var(--mono);color:var(--accent)">${esc(k.prefix)}…</td>
       <td>${esc(k.label)}</td>
-      <td style="color:var(--fg3)">${new Date(k.created).toLocaleString()}</td>
+      <td style="color:var(--fg3)">${k.created?esc(new Date(k.created).toLocaleString()):'—'}</td>
       <td><button class="btn danger" data-revoke="${k.id}">Revoke</button></td></tr>`).join('')
       :'<tr><td colspan="4" class="hint" style="padding:10px">No keys yet.</td></tr>';
     $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke)));

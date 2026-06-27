@@ -186,12 +186,14 @@ async function start(){
     filterLen: parseInt(($('#dscFilterLen')||{}).value,10) || 0,
     record: !!($('#dscRecord')||{}).checked,
   };
+  const sb=$('#dscStart'); if(sb) sb.disabled=true; // prevent double-submit before the server reports running
   try{ await api('/api/discovery/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); refreshDiscovery(); }
-  catch(e){ toast(e.message||'could not start'); }
+  catch(e){ toast(e.message||'could not start'); if(sb) sb.disabled=false; }
 }
 
 async function stop(){
-  try{ await api('/api/discovery/stop',{method:'POST'}); }catch(e){}
+  try{ await api('/api/discovery/stop',{method:'POST'}); toast('discovery stopped'); }
+  catch(e){ toast(e.message||'could not stop'); }
 }
 
 {const b=$('#dscStart'); if(b) b.onclick=start;}

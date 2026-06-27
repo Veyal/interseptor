@@ -107,6 +107,10 @@ func Send(req Request) (*Result, error) {
 		return res, fmt.Errorf("bad Sec-WebSocket-Accept (handshake not honored)")
 	}
 
+	// Handshake done — reset the deadline so a slow handshake didn't consume the
+	// frame-exchange budget (the send below and the read loop get a fresh window).
+	conn.SetDeadline(time.Now().Add(readFor + 5*time.Second))
+
 	// Send the message frame.
 	opcode := byte(opText)
 	if req.Binary {

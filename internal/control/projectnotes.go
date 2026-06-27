@@ -73,10 +73,11 @@ func (h *Hub) getNotesImage(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, "image not found")
 		return
 	}
-	if mime == "" {
-		mime = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", mime)
+	// Coerce to an allowlisted raster type and forbid MIME sniffing so a stored
+	// image can never be served as active content (HTML/SVG/script) in the
+	// control-plane origin — see store.SanitizeNotesImageMIME.
+	w.Header().Set("Content-Type", store.SanitizeNotesImageMIME(mime))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	_, _ = w.Write(data)
 }

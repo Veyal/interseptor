@@ -16,7 +16,7 @@ export function openAi(kind, ids) {
   state.aiIds = (ids && ids.length) ? ids.slice() : (state.selId != null ? [state.selId] : []);
   if (!state.aiIds.length) { toast('select a flow first'); return; }
   openModal($('#aiModal'));
-  $('#aiKindSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
+  $('#aiKindSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.k === kind; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   runAi(kind);
 }
 
@@ -200,7 +200,7 @@ function showError(msg) {
 function abortAi() { if (aiAbort) { try { aiAbort.abort(); } catch (e) {} aiAbort = null; } $('#aiStop').style.display = 'none'; }
 
 $('#aiExplainBtn').onclick = () => openAi('explain');
-$('#aiKindSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('#aiKindSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); runAi(b.dataset.k); });
+$('#aiKindSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('#aiKindSeg').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); runAi(b.dataset.k); });
 $('#aiClose').onclick = () => { abortAi(); closeModal($('#aiModal')); };
 $('#aiStop').onclick = abortAi;
 $('#aiToRepeater').onclick = () => { const id = state.aiIds[0]; if (id) { sendToRepeater({ id }); closeModal($('#aiModal')); } };

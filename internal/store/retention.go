@@ -114,35 +114,23 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 		args[i] = h
 	}
 	ph := strings.TrimRight(strings.Repeat("?,", len(toDelete)), ",")
-	rows, qerr := s.db.Query(`SELECT id, host, path, method, note FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
-	if qerr != nil {
-		return 0, fmt.Errorf("store.DeleteFlowsByHost: list: %w", qerr)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsByHost: begin: %w", err)
 	}
-	var ftsRows []struct {
-		id           int64
-		host, path   string
-		method, note string
+	defer tx.Rollback()
+	// FTS rows are keyed by rowid (= flow id); delete them for the matching hosts
+	// in one statement (the indexed content columns aren't needed to delete), then
+	// delete the flows — both in one transaction so search can't see orphans.
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsByHost: unindex: %w", err)
 	}
-	for rows.Next() {
-		var r struct {
-			id           int64
-			host, path   string
-			method, note string
-		}
-		if err := rows.Scan(&r.id, &r.host, &r.path, &r.method, &r.note); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		ftsRows = append(ftsRows, r)
-	}
-	rows.Close()
-	for _, r := range ftsRows {
-		_ = s.unindexFlowFTS(r.id, r.host, r.path, r.method, r.note)
-	}
-
-	res, err := s.db.Exec(`DELETE FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
+	res, err := tx.Exec(`DELETE FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsByHost: delete: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsByHost: commit: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil

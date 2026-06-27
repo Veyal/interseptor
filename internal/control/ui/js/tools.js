@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, applyTextList, countListLines, normalizeListText } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, applyTextList, countListLines, normalizeListText, wireRowKey } from './core.js';
 
 // repStatusLine builds a rich response summary: "200 OK · 142 ms · 4.1 KB".
 function repStatusLine(f){
@@ -26,7 +26,7 @@ function repBodyForDisplay(body,view){
 }
 function repSyncReqSeg(view){
   const seg=$('#repReqSeg');if(!seg)return;
-  seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.view===view));
+  seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.view===view;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
 }
 
 export function renderRepTabs(){
@@ -35,7 +35,7 @@ export function renderRepTabs(){
     <span class="rt-label" style="color:${t.tid===repActive?methodColor(t.method):'inherit'}">${esc(t.title||'new tab')}</span>
     <span class="rt-close" data-close="${t.tid}" title="close tab">✕</span></div>`).join('')
     +`<button class="rep-tab-add" id="repTabAdd" title="New tab">＋</button>`;
-  bar.querySelectorAll('.rep-tab').forEach(el=>el.onclick=e=>{if(e.target.dataset.close!=null)return;repSwitch(Number(el.dataset.tid));});
+  bar.querySelectorAll('.rep-tab').forEach(el=>{el.onclick=e=>{if(e.target.dataset.close!=null)return;repSwitch(Number(el.dataset.tid));};wireRowKey(el,()=>repSwitch(Number(el.dataset.tid)));});
   bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();repCloseTab(Number(x.dataset.close));});
   $('#repTabAdd').onclick=()=>{repSaveEditor();repTabs.push(repBlank());repActive=repTabs[repTabs.length-1].tid;renderRepTabs();repLoadEditor();repPersist();};
 }
@@ -55,7 +55,7 @@ export function repLoadEditor(){
   const rv=t.reqView||'raw';
   repSyncReqSeg(rv);
   $('#repBody').value=repBodyForDisplay(t.body,rv);
-  $('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.view===(t.resView||'pretty')));
+  $('#repResSeg').querySelectorAll('button').forEach(x=>{const on=x.dataset.view===(t.resView||'pretty');x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
   if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML='<span style="color:var(--fg3)">Send a request to see the response.</span>';}
   loadRepHistory();
@@ -75,7 +75,7 @@ export async function repSend(){
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();loadRepHistory();repPersist();
-  }catch(e){toast('send: '+e.message);}
+  }catch(e){$('#repStatus').textContent='';$('#repResView').textContent='(error: '+e.message+')';toast('send: '+e.message);}
   $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
 }
 export async function renderRepResponse(){
@@ -93,7 +93,7 @@ export async function loadRepHistory(){
     box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">
       <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
       <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
-    box.querySelectorAll('.h').forEach(el=>el.onclick=()=>repLoadSend(Number(el.dataset.id)));
+    box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
   }catch(e){}
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
@@ -135,7 +135,7 @@ export function repInit(){
       repTabs=d.tabs.map(t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'raw',resView:t.resView||'pretty',resId:null,status:'',color:'',title:''}));
       repTabs.forEach(t=>t.title=repTitle(t));
       repActive=(d.active&&repTabs.find(x=>x.tid===d.active))?d.active:repTabs[0].tid;
-      repSeq=Math.max(d.seq||0,Math.max.apply(null,repTabs.map(t=>t.tid))+1);ok=true;
+      {const fin=repTabs.map(t=>t.tid).filter(Number.isFinite);repSeq=Math.max(d.seq||0,(fin.length?Math.max(...fin):0)+1);}ok=true;
     }
   }catch(e){}
   if(!ok){repTabs=[repBlank()];repActive=repTabs[0].tid;}
@@ -182,7 +182,7 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   $('#repBody').value=repBodyForDisplay(t.body,next);
   repPersistDebounced();
 });
-$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{const t=repCur();if(t)t.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));renderRepResponse();});
+$('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{const t=repCur();if(t)t.resView=b.dataset.view;$('#repResSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});renderRepResponse();});
 
 /* ---- intruder ---- */
 // Per-position colours tie each §-marker to its payload list (cycle if > 6 markers).
@@ -219,7 +219,7 @@ function intrTouch(){intrSaveCur();renderIntrTabs();intrPersistDebounced();} // 
 function renderIntrTabs(){
   const bar=$('#intrTabs');if(!bar)return;
   bar.innerHTML=intrTabs.map(t=>`<div class="rep-tab${t.tid===intrActive?' on':''}" data-tid="${t.tid}" title="${escAttr(intrTitle(t))}"><span class="rt-label">${esc(intrTitle(t))}</span><span class="rt-close" data-close="${t.tid}" title="close tab">✕</span></div>`).join('')+`<button class="rep-tab-add" id="intrTabAdd" title="New attack">＋</button>`;
-  bar.querySelectorAll('.rep-tab').forEach(el=>el.onclick=e=>{if(e.target.dataset.close!=null)return;intrSwitch(Number(el.dataset.tid));});
+  bar.querySelectorAll('.rep-tab').forEach(el=>{el.onclick=e=>{if(e.target.dataset.close!=null)return;intrSwitch(Number(el.dataset.tid));};wireRowKey(el,()=>intrSwitch(Number(el.dataset.tid)));});
   bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();intrCloseTab(Number(x.dataset.close));});
   $('#intrTabAdd').onclick=()=>{intrSaveCur();intrTabs.push(intrBlank());intrActive=intrTabs[intrTabs.length-1].tid;renderIntrTabs();intrApply(intrCur());intrPersist();};
 }
@@ -231,7 +231,7 @@ export function intrInit(){
     if(d&&d.tabs&&d.tabs.length){
       intrTabs=d.tabs.map(t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}));
       intrActive=(d.active&&intrTabs.find(x=>x.tid===d.active))?d.active:intrTabs[0].tid;
-      intrSeq=Math.max(d.seq||0,Math.max.apply(null,intrTabs.map(t=>t.tid))+1);ok=true;}
+      {const fin=intrTabs.map(t=>t.tid).filter(Number.isFinite);intrSeq=Math.max(d.seq||0,(fin.length?Math.max(...fin):0)+1);}ok=true;}
   }catch(e){}
   if(!ok){intrTabs=[intrBlank()];intrActive=intrTabs[0].tid;}
   renderIntrTabs();intrApply(intrCur());renderIntrHistory();
@@ -249,7 +249,7 @@ function renderIntrHistory(){
   if(!box)return;
   if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
   box.innerHTML=intrHistory.map((h,i)=>`<div class="h" data-i="${i}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'⚑</span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
-  box.querySelectorAll('.h').forEach(el=>el.onclick=()=>intrLoadHistory(Number(el.dataset.i)));
+  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
 }
 function intrLoadHistory(i){
   const h=intrHistory[i];if(!h)return;
@@ -305,7 +305,7 @@ function renderPayloadInputs(){
     if(!mk.length){wrap.innerHTML='<div class="hint">Mark injection points with <b>§…§</b> in the template (select text → <b>§ Mark</b>). Each marker gets its own colour-matched payload list here.</div>';updateIntrCount();return;}
     wrap.innerHTML=mk.map((content,i)=>{const c=POS_COLORS[i%POS_COLORS.length];
       return `<div class="intr-pl" style="border-top:2px solid ${c}">
-        <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+esc(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${INTR_FILE_BTNS}</div>
+        <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+escAttr(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${INTR_FILE_BTNS}</div>
         <textarea class="rep-edit" data-pos="${i}" spellcheck="false" placeholder="payloads for §${i+1}"></textarea></div>`;}).join('');
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
@@ -350,7 +350,7 @@ function updateIntrCount(){
 }
 function updateIntrMode(){
   const repeat=intrState.type==='repeat';
-  $('#intrType').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.t===intrState.type));
+  $('#intrType').querySelectorAll('button').forEach(x=>{const on=x.dataset.t===intrState.type;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
   const h=$('#intrHint');if(h)h.textContent=intrModeText();
   const rw=$('#intrRepeatWrap');if(rw)rw.style.display=repeat?'inline-flex':'none'; // "× N sends" only in Race
   const mk=$('#intrWrap');if(mk)mk.style.opacity=repeat?'.4':''; // § markers irrelevant in Race

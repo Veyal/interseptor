@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -23,6 +24,10 @@ func (h *Hub) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
+	if len(in.Hosts) > maxBulkItems {
+		httpErr(w, http.StatusBadRequest, "too many hosts")
+		return
+	}
 	keepOnly := in.Mode == "keepOnly"
 
 	deleted, err := h.st.DeleteFlowsByHost(in.Hosts, keepOnly)
@@ -32,22 +37,20 @@ func (h *Hub) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	removedFiles, freedBytes, err := h.st.GCBodies()
-	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "gc: "+err.Error())
-		return
-	}
-
 	if deleted > 0 {
 		h.epsCache.invalidate()
 		h.broadcast(map[string]any{"type": "flow.new"}) // reuse the reload signal
 	}
+	// Reclaim orphaned body files in the background: a large bodies directory can
+	// take seconds to walk (worse on Windows), and the user-visible delete is
+	// already done. (The explicit "Reclaim space" button — gcBodies — stays sync.)
+	go func() {
+		if _, _, err := h.st.GCBodies(); err != nil {
+			log.Printf("purge GC: %v", err)
+		}
+	}()
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"deleted":      deleted,
-		"removedFiles": removedFiles,
-		"freedBytes":   freedBytes,
-	})
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 // gcBodies reclaims orphaned body files without deleting any flows.

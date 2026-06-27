@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 
@@ -21,7 +22,10 @@ func (h *Hub) setSysProxy(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	if in.Enabled {
 		host, port := proxyHostPort(h.currentProxyAddr())
 		if err := sysproxy.Enable(host, port); err != nil {

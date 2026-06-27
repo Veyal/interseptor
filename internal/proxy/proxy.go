@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -231,7 +232,7 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 		return false
 	}
 
-	keepAlive := resp.ContentLength >= 0 && !resp.Close
+	keepAlive := respKeepAlive(resp)
 	if err := s.writeResponseConn(conn, resp, flow); err != nil {
 		return false
 	}
@@ -240,6 +241,25 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 		req.Body.Close()
 	}
 	return keepAlive
+}
+
+// respKeepAlive reports whether the MITM tunnel can be reused after this response.
+// A chunked HTTP/1.1 response has ContentLength −1 but is self-delimiting, so it
+// can keep-alive too (the old `ContentLength >= 0` test tore the tunnel down after
+// every chunked response, forcing a TLS re-handshake per request).
+func respKeepAlive(resp *http.Response) bool {
+	if resp.Close {
+		return false
+	}
+	if resp.ContentLength >= 0 {
+		return true
+	}
+	for _, te := range resp.TransferEncoding {
+		if strings.EqualFold(te, "chunked") {
+			return true
+		}
+	}
+	return false
 }
 
 // isUpgradeRequest reports whether r is a protocol-upgrade handshake (e.g.
@@ -341,17 +361,70 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	// FIN/RST) so an idle-but-dead WebSocket tunnel is eventually torn down,
 	// without an application-level timeout that would kill a legitimately idle one.
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	if scheme == "https" {
-		cfg := &tls.Config{ServerName: host}
+	tlsCfg := func() *tls.Config {
+		c := &tls.Config{ServerName: host}
 		if s.tr.TLSClientConfig != nil {
-			cfg = s.tr.TLSClientConfig.Clone()
-			if cfg.ServerName == "" {
-				cfg.ServerName = host
+			c = s.tr.TLSClientConfig.Clone()
+			if c.ServerName == "" {
+				c.ServerName = host
 			}
 		}
-		return tls.DialWithDialer(d, "tcp", addr, cfg)
+		return c
+	}
+	// If a chained upstream proxy is configured, CONNECT-tunnel through it.
+	// (Plain HTTP/HTTPS requests already honor it via s.tr.Proxy; a WebSocket
+	// upgrade dials here and would otherwise bypass the upstream.)
+	if up := s.upstream.Load(); up != nil && (up.Scheme == "http" || up.Scheme == "https" || up.Scheme == "") {
+		raw, err := dialViaUpstream(d, up, addr)
+		if err != nil {
+			return nil, err
+		}
+		if scheme == "https" {
+			tc := tls.Client(raw, tlsCfg())
+			_ = raw.SetDeadline(time.Now().Add(d.Timeout))
+			if err := tc.Handshake(); err != nil {
+				raw.Close()
+				return nil, err
+			}
+			_ = raw.SetDeadline(time.Time{})
+			return tc, nil
+		}
+		return raw, nil
+	}
+	// Direct (no upstream) — unchanged.
+	if scheme == "https" {
+		return tls.DialWithDialer(d, "tcp", addr, tlsCfg())
 	}
 	return d.Dial("tcp", addr)
+}
+
+// dialViaUpstream opens a TCP tunnel to addr through an HTTP CONNECT proxy.
+func dialViaUpstream(d *net.Dialer, up *url.URL, addr string) (net.Conn, error) {
+	conn, err := d.Dial("tcp", up.Host)
+	if err != nil {
+		return nil, err
+	}
+	req := &http.Request{Method: http.MethodConnect, URL: &url.URL{Opaque: addr}, Host: addr, Header: make(http.Header)}
+	if up.User != nil {
+		if pw, ok := up.User.Password(); ok {
+			req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(up.User.Username()+":"+pw)))
+		}
+	}
+	if err := req.Write(conn); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		conn.Close()
+		return nil, fmt.Errorf("upstream CONNECT %s: %s", addr, resp.Status)
+	}
+	return conn, nil
 }
 
 // writeResponseHead writes a response's status line and headers (no body) so an
@@ -463,6 +536,14 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	}
 	removeHopHeaders(resp.Header)
 	copyHeader(w.Header(), resp.Header)
+	if len(resp.Trailer) > 0 {
+		// Declare announced trailer keys before the body so the server emits them.
+		tk := make([]string, 0, len(resp.Trailer))
+		for k := range resp.Trailer {
+			tk = append(tk, k)
+		}
+		w.Header().Set("Trailer", strings.Join(tk, ", "))
+	}
 	w.WriteHeader(resp.StatusCode)
 
 	flow.Status = resp.StatusCode
@@ -478,6 +559,13 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	} else if err != nil {
 		flow.Flags |= store.FlagCaptureError
 		flow.Error = "capture resp: " + err.Error()
+	}
+	// Now that the body is fully read, resp.Trailer holds the trailer values —
+	// forward them (the plain-HTTP path previously dropped them).
+	for k, vv := range resp.Trailer {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
 	}
 
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -525,6 +613,20 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 	return werr
 }
 
+// maxTransformBody bounds how much of a request/response body is buffered in
+// memory to transform (match-&-replace) or hold for interception. Bodies over the
+// cap are forwarded untransformed/streamed rather than buffered unbounded.
+const maxTransformBody = 64 << 20
+
+// restoreBody re-wraps a partially-read body so the unread remainder still streams
+// (prefix already read + the rest) and Close still closes the original reader.
+func restoreBody(prefix []byte, rest io.ReadCloser) io.ReadCloser {
+	return struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(prefix), rest), rest}
+}
+
 // maybeInterceptResponse applies response-side match-&-replace and the response
 // hold gate when active. It returns the final status/header/body to send. When
 // neither rules nor response-interception apply, transformed is false and the
@@ -539,7 +641,15 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 		return 0, nil, nil, false, false
 	}
 
-	b, _ := io.ReadAll(resp.Body)
+	lr := io.LimitReader(resp.Body, maxTransformBody+1)
+	b, rerr := io.ReadAll(lr)
+	if rerr != nil || int64(len(b)) > maxTransformBody {
+		// Too large to buffer/transform (or a mid-body read error) — restore the
+		// stream and forward it untransformed, rather than buffering unbounded or
+		// forwarding a silently-truncated body. Rules/hold don't apply over the cap.
+		resp.Body = restoreBody(b, resp.Body)
+		return 0, nil, nil, false, false
+	}
 	h := resp.Header.Clone()
 	removeHopHeaders(h)
 	st := resp.StatusCode
@@ -767,10 +877,16 @@ func headerWithHost(r *http.Request) map[string][]string {
 func dumpRequest(r *http.Request) []byte {
 	var body []byte
 	if r.Body != nil {
-		body, _ = io.ReadAll(r.Body)
-		r.Body.Close()
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		body, _ = io.ReadAll(io.LimitReader(r.Body, maxTransformBody+1))
+		if int64(len(body)) > maxTransformBody {
+			// Body too large to buffer for the intercept editor — restore the full
+			// stream so forwarding isn't broken; the editable dump is truncated.
+			r.Body = restoreBody(body, r.Body)
+		} else {
+			r.Body.Close()
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.ContentLength = int64(len(body))
+		}
 	}
 
 	var b bytes.Buffer

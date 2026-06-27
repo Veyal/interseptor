@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.starlark.net/starlark"
 
@@ -213,15 +214,42 @@ func findingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple
 	return d, nil
 }
 
+// reCache memoizes compiled patterns so re_search doesn't recompile on every call
+// (a check may call it in a loop). reMaxText caps the input a single call scans —
+// the Starlark step limit doesn't tick during a Go regexp call, so an unbounded
+// text × a wide pattern could otherwise burn CPU.
+var reCache sync.Map // pattern string → *regexp.Regexp | error
+
+const reMaxText = 256 << 10
+
+func cachedRegexp(pattern string) (*regexp.Regexp, error) {
+	if v, ok := reCache.Load(pattern); ok {
+		if e, isErr := v.(error); isErr {
+			return nil, e
+		}
+		return v.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		reCache.Store(pattern, err)
+		return nil, err
+	}
+	reCache.Store(pattern, re)
+	return re, nil
+}
+
 // re_search(pattern, text) → matched string, or None
 func reSearchBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var pattern, text string
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "pattern", &pattern, "text", &text); err != nil {
 		return nil, err
 	}
-	re, err := regexp.Compile(pattern)
+	re, err := cachedRegexp(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("re_search: bad pattern: %w", err)
+	}
+	if len(text) > reMaxText {
+		text = text[:reMaxText]
 	}
 	if m := re.FindString(text); m != "" {
 		return starlark.String(m), nil

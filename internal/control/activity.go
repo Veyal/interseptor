@@ -29,12 +29,13 @@ func (h *Hub) postActivity(w http.ResponseWriter, r *http.Request) {
 		OK      bool   `json:"ok"`
 		Result  string `json:"result"`
 		Ms      int64  `json:"ms"`
+		Intent  string `json:"intent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Tool == "" {
 		httpErr(w, http.StatusBadRequest, "tool required")
 		return
 	}
-	it := h.recordActivity(store.Activity{Tool: in.Tool, Summary: in.Summary, OK: in.OK, Result: in.Result, Ms: in.Ms})
+	it := h.recordActivity(store.Activity{Tool: in.Tool, Summary: in.Summary, OK: in.OK, Result: in.Result, Ms: in.Ms, Intent: in.Intent})
 	h.broadcast(map[string]any{"type": "activity", "item": it})
 	w.WriteHeader(http.StatusNoContent)
 }

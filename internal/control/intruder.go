@@ -26,6 +26,10 @@ func (h *Hub) intruderStart(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
+	if h.targetsOwnListener(in.Target) {
+		httpErr(w, http.StatusForbidden, "refusing to attack Interceptor's own listener")
+		return
+	}
 	err := h.intr.Start(intruder.Spec{
 		Target:       in.Target,
 		Template:     in.Template,

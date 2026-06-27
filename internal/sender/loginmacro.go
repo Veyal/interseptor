@@ -75,9 +75,32 @@ func RunLoginMacro(cl *http.Client, m LoginMacro) ([]Header, error) {
 
 // loginState tracks the configured login macro and last refresh time.
 type loginState struct {
-	mu    sync.RWMutex
-	macro LoginMacro
-	at    time.Time
+	mu         sync.RWMutex
+	macro      LoginMacro
+	at         time.Time
+	refreshing bool // a TTL refresh is in flight (prevents a thundering herd)
+}
+
+// tryBeginRefresh atomically checks whether an auto-refresh is due and not already
+// running, claiming it if so. Without this, every concurrent Send at TTL expiry
+// (e.g. an Intruder run's N threads) would fire the login macro at once.
+func (ls *loginState) tryBeginRefresh() bool {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if !ls.macro.Enabled || ls.macro.RefreshSecs <= 0 || ls.macro.Request == "" || ls.refreshing {
+		return false
+	}
+	if !ls.at.IsZero() && time.Since(ls.at) < time.Duration(ls.macro.RefreshSecs)*time.Second {
+		return false
+	}
+	ls.refreshing = true
+	return true
+}
+
+func (ls *loginState) endRefresh() {
+	ls.mu.Lock()
+	ls.refreshing = false
+	ls.mu.Unlock()
 }
 
 func (ls *loginState) set(m LoginMacro) {
@@ -105,13 +128,10 @@ func (s *Sender) SetLoginMacro(m LoginMacro) { s.login.set(m) }
 func (s *Sender) SetSessionRefresh(fn func([]Header)) { s.refreshSess = fn }
 
 func (s *Sender) maybeRefreshLogin() {
-	m, at := s.login.get()
-	if !m.Enabled || m.RefreshSecs <= 0 || m.Request == "" {
+	if !s.login.tryBeginRefresh() {
 		return
 	}
-	if !at.IsZero() && time.Since(at) < time.Duration(m.RefreshSecs)*time.Second {
-		return
-	}
+	defer s.login.endRefresh()
 	_, _ = s.runLoginMacro()
 }
 

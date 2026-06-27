@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -27,7 +28,10 @@ func (h *Hub) createKey(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Label string `json:"label"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
 	if in.Label == "" {
 		in.Label = "key"
 	}
@@ -204,6 +208,12 @@ var mcpDescriptor = map[string]any{
 		{"name": "get_notes", "desc": "Read the project's shared markdown notebook"},
 		{"name": "set_notes", "desc": "Replace the project's shared markdown notebook"},
 		{"name": "append_notes", "desc": "Append a markdown block to the project notebook"},
+		{"name": "create_finding", "desc": "Record a structured vulnerability finding (durable memory)"},
+		{"name": "list_findings", "desc": "List findings (with PoC flows), filter by severity/status"},
+		{"name": "update_finding", "desc": "Update a finding's status or fields (e.g. mark verified)"},
+		{"name": "add_finding_poc", "desc": "Attach a request/response flow to a finding as PoC evidence"},
+		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
+		{"name": "export_report", "desc": "Full engagement report (findings + PoCs + passive-scan appendix) as Markdown"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
 		{"name": "start_intruder", "desc": "Run a Sniper/Pitchfork payload attack"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},
@@ -228,6 +238,10 @@ var mcpDescriptor = map[string]any{
 		{"name": "ws_send", "desc": "WebSocket Repeater: open a socket, send a message, read replies"},
 		{"name": "list_scope", "desc": "List target-scope rules"},
 		{"name": "add_scope_rule", "desc": "Add an in/out-of-scope rule"},
+		{"name": "scope_from_url", "desc": "Add a target URL's host/scheme to scope (self-scope)"},
+		{"name": "check_readiness", "desc": "Pre-flight setup checklist (proxy/CA/scope/traffic)"},
+		{"name": "request_human_input", "desc": "Pause and ask the human a question (handoff gate)"},
+		{"name": "get_human_response", "desc": "Retrieve the human's answer to a request_human_input"},
 		{"name": "get_settings", "desc": "Proxy/intercept settings"},
 		{"name": "set_session", "desc": "Auth headers auto-applied to every send (keeps requests authenticated)"},
 		{"name": "run_login_macro", "desc": "Run login macro — refresh session from login response"},

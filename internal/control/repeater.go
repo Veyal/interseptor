@@ -33,6 +33,10 @@ func (h *Hub) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
+	if h.targetsOwnListener(in.URL) {
+		httpErr(w, http.StatusForbidden, "refusing to send to Interceptor's own listener")
+		return
+	}
 	flow, err := h.snd.Send(sender.Request{
 		Method:  in.Method,
 		URL:     in.URL,

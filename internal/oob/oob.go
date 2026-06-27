@@ -12,12 +12,17 @@ package oob
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// oobFallbackSeq backs Token's fallback when crypto/rand is unavailable.
+var oobFallbackSeq atomic.Uint64
 
 const maxInteractions = 500
 
@@ -57,8 +62,9 @@ func (c *Catcher) SetNotifier(fn func()) {
 func (c *Catcher) Token() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		// Fall back to a time-derived token; collisions are harmless for this use.
-		return hex.EncodeToString([]byte(time.Now().Format("150405.000000")))
+		// crypto/rand is essentially never unavailable post-boot; if it ever is,
+		// use a monotonic counter — unique and not wall-clock-guessable/collidable.
+		binary.BigEndian.PutUint64(b, oobFallbackSeq.Add(1))
 	}
 	return hex.EncodeToString(b)
 }

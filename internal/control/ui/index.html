@@ -22,12 +22,14 @@
   <span class="brand">INTERCEPTOR</span>
   <span class="tag">INTERCEPTING PROXY</span>
   <div class="spacer"></div>
-  <div class="row" style="gap:6px" title="Proxy listener — the dot pulses when traffic is captured"><div class="dot" id="capDot"></div><span class="kv">proxy <b id="proxyAddr">…</b></span><span class="kv" id="capStat" style="color:var(--fg3)">· waiting for traffic</span><span class="kv" id="icptStat" style="display:none;color:var(--amber);font-weight:600"></span></div>
+  <div class="row" style="gap:6px" title="Proxy listener — the dot pulses when traffic is captured"><div class="dot" id="capDot"></div><span class="kv">proxy <b id="proxyAddr">…</b></span><span class="kv" id="capStat" style="color:var(--fg3)">· waiting for traffic</span><span class="kv" id="icptStat" aria-live="polite" style="display:none;color:var(--amber);font-weight:600"></span></div>
   <span class="kv">control <b>127.0.0.1:9966</b></span>
   <button id="cmdkBtn" class="btn" title="Command palette (Ctrl+K)" aria-label="Command palette" style="padding:4px 10px">⌘K</button>
   <button id="helpBtn" class="btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" style="padding:4px 10px">?</button>
   <button id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">☾</button>
 </div>
+
+<div id="humanInputBar" role="region" aria-label="AI is asking for your input" style="display:none"></div>
 
 <div id="tabs" role="tablist" aria-label="Main navigation">
   <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy">Proxy History</button>
@@ -35,6 +37,7 @@
   <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater">Repeater</button>
   <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder">Intruder</button>
   <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner">Scanner</button>
+  <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings">Findings</button>
   <button class="tab" id="tab-discover" role="tab" aria-selected="false" aria-controls="panel-discover" data-tab="discover">Discover</button>
   <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map">Map</button>
   <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes">Notes</button>
@@ -54,7 +57,7 @@
       <div class="search">
         <select id="fScheme"><option value="">all</option><option value="https">https</option><option value="http">http</option></select>
         <select id="fSearchScope" class="btn" title="Search in path/host (FTS) or scan bodies"><option value="path">path</option><option value="body">body</option></select>
-        <input id="fSearch" placeholder="Search method / host / path…">
+        <input id="fSearch" aria-label="Search history (method / host / path)" placeholder="Search method / host / path…">
       </div>
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
@@ -62,6 +65,7 @@
       <button class="btn" id="scopeToggle" title="Show only in-scope flows (define scope in Settings → Target scope)">◎ in scope</button>
       <button class="btn" id="discFilter" title="Show only content-discovery hits">🔎 discover</button>
       <button class="btn accent" id="aiToggle" data-ai-ui title="Show requests the AI assistant sent (Repeater / Intruder / scan) inline in History">🤖 AI</button>
+      <button class="btn" id="aiOnlyFilter" data-ai-ui title="Show ONLY flows the AI sent — watch just what the AI did">🤖 only</button>
       <select id="viewsSelect" class="btn" title="Apply a saved view" style="display:none"><option value="">views…</option></select>
       <button class="btn" id="saveViewBtn" title="Save the current filters as a view" style="display:none">＋ Save view</button>
       <button class="btn danger" id="delViewBtn" title="Delete the selected view" style="display:none">✕</button>
@@ -80,6 +84,7 @@
       <button class="btn" id="selCompare" title="Compare response bodies of two selected flows">⇄ Compare</button>
       <button class="btn" id="selAsk" data-ai-ui title="Analyze the selected flows with AI">✨ Ask AI</button>
       <button class="btn" id="selScope" title="Add the selected hosts to target scope">◎ Add to scope</button>
+      <button class="btn" id="selAddFinding" title="Attach the selected request/responses to a finding as PoC evidence">➕ Add to finding</button>
       <button class="btn" id="selDelete" title="Delete the selected flows from history" style="color:var(--red)">🗑 Delete</button>
       <button class="btn" id="selClear" style="margin-left:auto">Clear</button>
     </div>
@@ -123,7 +128,7 @@
     </div>
     <div id="noteBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line)">
       <span class="lbl" style="flex:none">📝 NOTE</span>
-      <input id="noteInput" type="text" maxlength="2000" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)" style="flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
+      <input id="noteInput" type="text" maxlength="2000" aria-label="Note for the selected flow" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)" style="flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
       <span id="noteSaved" style="flex:none;color:var(--accent);font-size:11px;opacity:0;transition:opacity .2s">✓ saved</span>
     </div>
   </div>
@@ -138,7 +143,7 @@
         <label class="icpt-chk"><input type="checkbox" id="interceptFilterOn"> Only hold when</label>
         <select id="interceptFilterTarget" class="btn"><option value="any">anything</option><option value="url">URL</option><option value="header">headers</option><option value="body">body</option><option value="method">method</option></select>
         <span class="hint">matches</span>
-        <input id="interceptFilterPattern" class="btn" style="flex:1;min-width:160px;background:var(--bg3);font-family:var(--mono)" placeholder="regex e.g. /admin|password=" spellcheck="false">
+        <input id="interceptFilterPattern" class="btn" style="flex:1;min-width:160px;background:var(--bg3);font-family:var(--mono)" aria-label="Intercept filter pattern" placeholder="regex e.g. /admin|password=" spellcheck="false">
         <button class="btn accent" id="interceptFilterApply">Apply</button>
       </div>
     </div>
@@ -173,8 +178,8 @@
         </table>
         <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
           <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option><option value="res-header">res-header</option><option value="res-body">res-body</option></select>
-          <input id="newRuleMatch" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" placeholder="match regex e.g. User-Agent: .*">
-          <input id="newRuleReplace" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" placeholder="replace e.g. User-Agent: interceptor">
+          <input id="newRuleMatch" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" aria-label="Match & replace — match regex" placeholder="match regex e.g. User-Agent: .*">
+          <input id="newRuleReplace" class="btn" style="flex:1;min-width:160px;background:var(--bg3)" aria-label="Match & replace — replacement" placeholder="replace e.g. User-Agent: interceptor">
           <button class="btn accent" id="addRuleBtn">+ Add rule</button>
         </div>
       </div>
@@ -187,7 +192,7 @@
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
       <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
-      <input id="repUrl" class="repurl" placeholder="https://api.example.com/v1/resource" spellcheck="false">
+      <input id="repUrl" class="repurl" aria-label="Request URL" placeholder="https://api.example.com/v1/resource" spellcheck="false">
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
       <button class="btn accent" id="repSend">Send ▸<span class="kbd">Ctrl+Space</span></button>
     </div>
@@ -217,7 +222,7 @@
     <div class="rep-tabs" id="intrTabs"></div>
     <!-- attack bar -->
     <div class="intr-bar">
-      <input id="intrTarget" class="repurl" style="max-width:280px" placeholder="https://api.example.com" spellcheck="false">
+      <input id="intrTarget" class="repurl" style="max-width:280px" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
       <div class="seg" id="intrType"><button class="on" data-t="sniper">Sniper</button><button data-t="pitchfork">Pitchfork</button><button data-t="repeat">Null</button></div>
       <button class="btn" id="intrWrap" title="Wrap the selected text in § … § fuzz markers">§ Mark</button>
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
@@ -231,10 +236,10 @@
     <div class="intr-explain" id="intrHint"></div>
     <div class="intr-opts">
       <span class="hint">grep</span>
-      <input id="intrGrep" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="flag if response matches (regex/text)" spellcheck="false">
-      <input id="intrExtract" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="extract from response (regex group 1)" spellcheck="false">
+      <input id="intrGrep" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" aria-label="Grep — flag responses matching" placeholder="flag if response matches (regex/text)" spellcheck="false">
+      <input id="intrExtract" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" aria-label="Extract from response (regex group 1)" placeholder="extract from response (regex group 1)" spellcheck="false">
       <span class="hint">encode</span>
-      <input id="intrProc" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" placeholder="payload processing e.g. urlencode, base64, prefix:id=" spellcheck="false" title="comma-separated, applied in order: urlencode · base64 · upper · lower · prefix:X · suffix:X">
+      <input id="intrProc" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" aria-label="Payload processing pipeline" placeholder="payload processing e.g. urlencode, base64, prefix:id=" spellcheck="false" title="comma-separated, applied in order: urlencode · base64 · upper · lower · prefix:X · suffix:X">
     </div>
     <div class="intr-work">
       <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
@@ -261,7 +266,7 @@ Content-Type: application/json
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <select id="scanTarget" class="btn" style="background:var(--bg3);max-width:230px" title="Scan only this target"><option value="">All in-scope hosts</option></select>
-      <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" placeholder="path filter (optional)" title="Only scan flows whose path/host matches">
+      <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" aria-label="Scan path filter" placeholder="path filter (optional)" title="Only scan flows whose path/host matches">
       <button class="btn accent" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanReport">Export report</button>
       <button class="btn" id="checksBtn" aria-label="Edit custom scanner checks">✎ Custom checks</button>
@@ -274,6 +279,21 @@ Content-Type: application/json
     <div style="flex:1;display:flex;min-height:0">
       <div id="scanList" class="scan-list"><div class="hint" style="padding:12px">Run a scan to find issues.</div></div>
       <div id="scanDetail" class="pane" style="flex:1"><div class="hint" style="padding:16px">Select an issue.</div></div>
+    </div>
+  </div>
+
+  <!-- Findings: curated vulnerability records with PoC evidence -->
+  <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
+    <div class="toolbar">
+      <button class="btn accent" id="findNew">＋ New finding</button>
+      <button class="btn" id="findExport" title="Download a Markdown engagement report (findings + PoCs + passive-scan appendix)">⤓ Export report</button>
+      <span id="findCount" class="count"></span>
+      <div class="spacer"></div>
+      <span class="hint" style="font-size:11px">Findings recorded by you or the AI — attach request/responses from History as PoC</span>
+    </div>
+    <div style="flex:1;display:flex;min-height:0">
+      <div id="findList" class="scan-list"><div class="hint" style="padding:12px">No findings yet.</div></div>
+      <div id="findDetail" class="pane" style="flex:1;overflow:auto;padding:14px"><div class="hint" style="padding:16px">Select a finding.</div></div>
     </div>
   </div>
 
@@ -319,7 +339,7 @@ Content-Type: application/json
     <div class="toolbar">
       <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">ENDPOINT MAP</span>
       <select id="mapDomain" class="btn" style="background:var(--bg3);max-width:240px" title="Domain to map (showing one at a time keeps the graph readable)"><option value="">All domains</option></select>
-      <input id="mapSearch" class="btn" style="background:var(--bg3);width:150px" placeholder="Search…">
+      <input id="mapSearch" class="btn" style="background:var(--bg3);width:150px" aria-label="Search the site map" placeholder="Search…">
       <select id="mapSearchScope" class="btn" style="background:var(--bg3);max-width:130px" title="What to search">
         <option value="path">Path / host</option>
         <option value="headers">Headers</option>
@@ -412,7 +432,7 @@ Content-Type: application/json
           <h3>API KEYS</h3>
           <p class="hint" style="margin-bottom:12px">Keys authenticate remote access to the control API when it is exposed beyond localhost. The full token is shown only once, at creation.</p>
           <div class="row" style="gap:8px;margin-bottom:12px">
-            <input id="keyLabel" class="repurl" style="max-width:260px" placeholder="label (e.g. ci-runner)">
+            <input id="keyLabel" class="repurl" style="max-width:260px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
             <button class="btn accent" id="keyCreate">Create key</button>
           </div>
           <div id="keyNew" class="evidence" style="display:none"></div>
@@ -500,7 +520,13 @@ Content-Type: application/json
                 <li>Settings → <b>Security</b> → <b>Encryption &amp; credentials</b> → <b>Install a certificate</b> → <b>CA certificate</b>.</li>
                 <li>Note: user CAs are not trusted by most apps on Android 7+; testing app traffic may need a rooted device or a network-security-config.</li>
               </ol></details>
+              <details class="ca-how"><summary>Linux (system / CLI)</summary><ol>
+                <li><b>Debian/Ubuntu:</b> copy to <code>/usr/local/share/ca-certificates/interceptor.crt</code> → run <code>sudo update-ca-certificates</code>.</li>
+                <li><b>Fedora/RHEL:</b> copy to <code>/etc/pki/ca-trust/source/anchors/</code> → run <code>sudo update-ca-trust</code>.</li>
+                <li><b>curl/wget one-off:</b> <code>curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://…</code>. Many tools also honour <code>SSL_CERT_FILE</code>/<code>REQUESTS_CA_BUNDLE</code> pointing at the CA.</li>
+              </ol></details>
             </div>
+            <p class="hint" style="margin-top:10px">Trusting the CA is a one-time manual step per client — by design. Interceptor does not modify your OS trust store automatically, so nothing it installs outlives a step you took yourself.</p>
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
@@ -513,8 +539,8 @@ Content-Type: application/json
             </table>
             <div class="row" style="gap:8px;margin-top:10px">
               <select id="newScopeAction" class="btn"><option value="include">include</option><option value="exclude">exclude</option></select>
-              <input id="newScopeHost" class="btn" style="flex:1;background:var(--bg3)" placeholder="host e.g. *.acme.com">
-              <input id="newScopePath" class="btn" style="width:130px;background:var(--bg3)" placeholder="path prefix (opt)">
+              <input id="newScopeHost" class="btn" style="flex:1;background:var(--bg3)" aria-label="Scope rule — host pattern" placeholder="host e.g. *.acme.com">
+              <input id="newScopePath" class="btn" style="width:130px;background:var(--bg3)" aria-label="Scope rule — path prefix" placeholder="path prefix (opt)">
               <button class="btn accent" id="addScopeBtn">+ Add</button>
             </div>
           </div>
@@ -569,12 +595,12 @@ Content-Type: application/json
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="macroOn"> Run token macro before each send</label>
             <div class="field" style="max-width:none"><label>Refresh request <span class="hint">(raw HTTP — request line + headers)</span></label><textarea id="macroReq" rows="4" placeholder="GET /login HTTP/1.1&#10;Host: app.example.com&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <input id="macroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="https://app.example.com (where to send it)" spellcheck="false">
-              <input id="macroExtract" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
+              <input id="macroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — target URL" placeholder="https://app.example.com (where to send it)" spellcheck="false">
+              <input id="macroExtract" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — extract regex" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
             </div>
             <div class="row" style="gap:8px;flex-wrap:wrap">
               <select id="macroMode" class="btn" style="background:var(--bg3)"><option value="header">inject as header</option><option value="placeholder">replace placeholder</option></select>
-              <input id="macroName" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="header name e.g. X-CSRF-Token  (or placeholder e.g. §CSRF§)" spellcheck="false">
+              <input id="macroName" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — header name or placeholder" placeholder="header name e.g. X-CSRF-Token  (or placeholder e.g. §CSRF§)" spellcheck="false">
               <button class="btn accent" id="macroSave">Save macro</button>
             </div>
             <p class="hint" style="margin-top:8px;color:var(--amber)">Note: this fires one extra request per send — for Intruder that doubles the request count.</p>
@@ -585,7 +611,7 @@ Content-Type: application/json
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="loginMacroOn"> Enable login macro</label>
             <div class="field" style="max-width:none"><label>Login request <span class="hint">(raw HTTP)</span></label><textarea id="loginMacroReq" rows="4" placeholder="POST /api/login HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/json&#10;&#10;{&quot;user&quot;:&quot;…&quot;,&quot;pass&quot;:&quot;…&quot;}" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <input id="loginMacroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" placeholder="https://app.example.com" spellcheck="false">
+              <input id="loginMacroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Login macro — target URL" placeholder="https://app.example.com" spellcheck="false">
               <label class="hint">Refresh sec <input id="loginMacroRefresh" class="btn" type="number" min="0" value="0" style="background:var(--bg3);width:72px" title="0 = manual / 401 only"></label>
               <label class="hint"><input type="checkbox" id="loginMacro401" checked> Re-auth on 401</label>
             </div>
@@ -634,7 +660,7 @@ Content-Type: application/json
               <button class="btn" id="retKeepOnly">◉ Keep only selected</button>
             </div>
             <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
-              <input id="retPatternInput" class="btn" style="flex:1;min-width:200px;max-width:340px;background:var(--bg3);border:1px solid var(--line)" placeholder="Pattern e.g. *.ads.example.com">
+              <input id="retPatternInput" class="btn" style="flex:1;min-width:200px;max-width:340px;background:var(--bg3);border:1px solid var(--line)" aria-label="Purge host pattern" placeholder="Pattern e.g. *.ads.example.com">
               <button class="btn danger" id="retPurgePattern" style="color:var(--red)">🗑 Purge by pattern</button>
             </div>
             <div style="margin-top:16px">
@@ -655,7 +681,7 @@ Content-Type: application/json
       <div class="seg" id="fmSeg"><button data-v="raw">Raw</button><button class="on" data-v="pretty">Pretty</button></div>
       <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>
-      <button class="btn" id="fmClose">✕</button>
+      <button class="btn" id="fmClose" aria-label="Close">✕</button>
     </div>
     <div style="flex:1;display:flex;min-height:0">
       <div class="pane" style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)"><div class="pane-head"><span class="lbl">REQUEST</span></div>
@@ -730,7 +756,7 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys">📂</div><p class="sc-desc">Discover, Intruder, and Decoder support <b>Load file</b> for wordlists, payloads, templates, and blobs</p></div>
         <div class="sc-card"><div class="sc-keys">Map ▾</div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
         <h3 class="sc-section">Intercept</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>F</kbd></div><p class="sc-desc">Forward the held request</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd></div><p class="sc-desc">Forward the held request</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>D</kbd></div><p class="sc-desc">Drop the held request</p></div>
         <h3 class="sc-section">General</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Esc</kbd></div><p class="sc-desc">Close a dialog or menu</p></div>
@@ -745,7 +771,7 @@ Content-Type: application/json
       <span id="checksModalTitle" style="font-weight:700;color:var(--accent)">✎ Custom scanner checks</span>
       <span class="hint" style="margin-left:10px">Starlark · shared across projects · sandboxed</span>
       <div class="spacer"></div>
-      <button class="btn" id="checksClose">✕</button>
+      <button class="btn" id="checksClose" aria-label="Close">✕</button>
     </div>
     <div class="checks-work">
       <div style="width:190px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--bg1)">
@@ -754,7 +780,7 @@ Content-Type: application/json
       </div>
       <div class="checks-editor">
         <div class="row" style="padding:8px 12px;gap:8px;border-bottom:1px solid var(--line);flex:none">
-          <input id="checkId" class="btn" style="width:210px;background:var(--bg3)" placeholder="check-id (letters, - or _)">
+          <input id="checkId" class="btn" style="width:210px;background:var(--bg3)" aria-label="Check ID" placeholder="check-id (letters, - or _)">
           <button class="btn" id="checkTest">Test ▸</button>
           <button class="btn accent" id="checkSave">Save</button>
           <div class="spacer"></div>
@@ -794,7 +820,7 @@ Content-Type: application/json
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="activeModalTitle" style="font-weight:700;color:var(--red)">⚡ Active scan</span>
       <span class="hint" style="margin-left:10px">sends crafted attack requests · scope-restricted</span>
-      <div class="spacer"></div><button class="btn" id="asClose">✕</button>
+      <div class="spacer"></div><button class="btn" id="asClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
       <div style="border:1px solid var(--red);background:var(--redDim);border-radius:8px;padding:10px 12px">
@@ -807,7 +833,7 @@ Content-Type: application/json
         <span class="hint">Target:</span>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="asTarget" id="asTargetFlow" checked> selected flow <b id="asFlowLabel" style="color:var(--accent)"></b></label>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="asTarget" id="asTargetScope"> all in-scope</label>
-        <input id="asMax" class="btn" style="width:150px;background:var(--bg3)" placeholder="max requests (2000)">
+        <input id="asMax" class="btn" style="width:150px;background:var(--bg3)" aria-label="Active scan — max requests" placeholder="max requests (2000)">
       </div>
       <div id="asScopePanel" style="display:none;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)"></div>
       <div class="row" style="gap:8px"><button class="btn accent" id="asStart">Start ▸</button><button class="btn" id="asStop">Stop</button><span class="hint" id="asProgress"></span></div>
@@ -821,18 +847,18 @@ Content-Type: application/json
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="oobModalTitle" style="font-weight:700;color:var(--accent)">⚲ Out-of-band (OOB) interactions</span>
       <span class="hint" style="margin-left:10px">catch blind SSRF / XXE / SQLi / RCE callbacks</span>
-      <div class="spacer"></div><button class="btn" id="oobClose">✕</button>
+      <div class="spacer"></div><button class="btn" id="oobClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
       <p class="hint" style="line-height:1.6;margin:0;color:var(--amber)"><b>Remote targets cannot call back to localhost.</b> Set <b>Base URL</b> to an address the target can reach — e.g. an ngrok tunnel (<code>https://xyz.ngrok.io/oob</code>), your VPS, or a LAN IP if the target is on the same network. Same-box testing only: the default <code>127.0.0.1:9966/oob</code> works when the vulnerable app runs on this machine.</p>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <span class="hint">Base URL</span>
-        <input id="oobBase" class="btn" style="flex:1;min-width:240px;background:var(--bg3);font-family:var(--mono)" placeholder="http://your-host:port/oob" spellcheck="false">
+        <input id="oobBase" class="btn" style="flex:1;min-width:240px;background:var(--bg3);font-family:var(--mono)" aria-label="OOB collector base URL" placeholder="http://your-host:port/oob" spellcheck="false">
         <button class="btn" id="oobSaveBase">Save</button>
       </div>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <button class="btn accent" id="oobGen">＋ Generate payload URL</button>
-        <input id="oobUrl" class="btn" readonly style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);font-family:var(--mono);color:var(--accent)" placeholder="click Generate…">
+        <input id="oobUrl" class="btn" readonly style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);font-family:var(--mono);color:var(--accent)" aria-label="Generated OOB payload URL" placeholder="click Generate…">
         <button class="btn" id="oobCopy">⧉ Copy</button>
       </div>
       <div class="row" style="gap:10px"><span style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">INTERACTIONS</span><span id="oobCount" class="count"></span><div class="spacer"></div><button class="btn danger" id="oobClear">Clear</button></div>
@@ -870,7 +896,7 @@ Content-Type: application/json
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="authzModalTitle" style="font-weight:700;color:var(--accent)">🔓 Authorization test</span>
       <span class="hint" style="margin-left:10px">compare access across roles · IDOR / broken access control</span>
-      <div class="spacer"></div><button class="btn" id="authzClose">✕</button>
+      <div class="spacer"></div><button class="btn" id="authzClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
       <p class="hint" style="line-height:1.6;margin:0">Define identities (roles) below — the <b>first is the baseline</b> (your privileged user). Each replay swaps in that identity's auth headers. If a lower-privileged role still gets a <b>successful, ~same-size</b> response, it's flagged <b style="color:var(--red)">⚠ same access</b>. Leave headers blank for <b>anonymous</b> (Cookie/Authorization stripped).</p>
@@ -878,7 +904,7 @@ Content-Type: application/json
         <span class="hint">Target:</span>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="authzTarget" id="authzTargetFlow" checked> selected flow <b id="authzFlow" style="color:var(--accent)"></b></label>
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="authzTarget" id="authzTargetScope"> all in-scope</label>
-        <input id="authzMax" class="btn" style="width:130px;background:var(--bg3)" placeholder="max endpoints (30)" title="Bulk mode only">
+        <input id="authzMax" class="btn" style="width:130px;background:var(--bg3)" aria-label="Authz — max endpoints" placeholder="max endpoints (30)" title="Bulk mode only">
       </div>
       <div id="authzScopePanel" style="display:none;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)"></div>
       <div id="authzCookieHint" class="hint" style="display:none;line-height:1.5"></div>
@@ -896,11 +922,36 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<div id="findCreateModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="fcTitleLbl" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:560px;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span id="fcTitleLbl" style="font-weight:700;color:var(--accent)">＋ New finding</span>
+      <div class="spacer"></div><button class="btn" id="fcClose" aria-label="Close">✕</button>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+      <input id="fcTitle" class="btn" style="background:var(--bg3);text-align:left" placeholder="Title (e.g. IDOR on /api/user/{id})" aria-label="Finding title">
+      <select id="fcSeverity" class="btn" style="background:var(--bg3)" aria-label="Severity">
+        <option>High</option><option selected>Medium</option><option>Low</option><option>Info</option>
+      </select>
+      <textarea id="fcDetail" class="rep-edit" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Details / how to reproduce (markdown)"></textarea>
+      <div class="row"><div class="spacer"></div><button class="btn accent" id="fcSave">Create finding</button></div>
+    </div>
+  </div>
+</div>
+<div id="findPickModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="fpTitleLbl" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:520px;max-height:80vh;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <span id="fpTitleLbl" style="font-weight:700;color:var(--accent)">➕ Add to finding</span>
+      <div class="spacer"></div><button class="btn" id="fpClose" aria-label="Close">✕</button>
+    </div>
+    <div id="findPickList" style="padding:12px 14px;overflow:auto"></div>
+  </div>
+</div>
 <div id="compareModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
   <div role="dialog" aria-modal="true" aria-labelledby="compareTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:900px;max-height:88vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="compareTitle" style="font-weight:700;color:var(--accent)">Compare responses</span>
-      <div class="spacer"></div><button class="btn" id="compareClose">✕</button>
+      <div class="spacer"></div><button class="btn" id="compareClose" aria-label="Close">✕</button>
     </div>
     <div id="compareBody" style="padding:12px 16px;overflow:auto;min-height:0;flex:1"></div>
   </div>
@@ -910,7 +961,7 @@ Content-Type: application/json
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="decModalTitle" style="font-weight:700;color:var(--accent)">🧰 Decoder</span>
       <span class="hint" style="margin-left:10px">↓ decode · ↑ encode</span>
-      <div class="spacer"></div><button class="btn" id="decClose">✕</button>
+      <div class="spacer"></div><button class="btn" id="decClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto">
       <div class="list-file-bar">

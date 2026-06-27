@@ -71,6 +71,7 @@ func (h *Hub) importHAR(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if n > 0 {
+		h.epsCache.invalidate() // imported flows add endpoints — drop the stale Map/endpoints aggregate
 		h.broadcast(map[string]any{"type": "flow.new"}) // nudge the UI to refresh history
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})

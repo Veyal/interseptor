@@ -1,10 +1,16 @@
 // authz.js — authorization (access-control) testing. Replays captured request(s)
 // under each saved identity (role) and diffs responses to surface IDOR / broken
 // access control. Launched from History right-click or command palette.
-import { $, esc, escAttr, state, api, toast, openModal, closeModal, statusColor, fmtSize } from './core.js';
+import { $, esc, escAttr, state, api, toast, openModal, closeModal, statusColor, fmtSize, wireRowKey } from './core.js';
 import { selectFlow } from './proxy.js';
 
 let authzFlowId = null;
+// authzTarget resolves the flow to act on AT CALL TIME — the live History selection
+// wins (so changing selection while the modal is open isn't ignored, which would
+// silently test the wrong endpoint for IDOR), falling back to the flow the modal
+// was opened for.
+const authzTarget = () => state.selId || authzFlowId;
+function syncAuthzLabel(){ const f=authzTarget(); const el=$('#authzFlow'); if(el)el.textContent=f?('#'+f):'(none — select in History)'; }
 
 function openSettingsScope(){
   closeModal($('#authzModal'));
@@ -98,9 +104,10 @@ function collectIds(){
 async function saveIds(){await api('/api/authz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identities:collectIds()})});}
 
 async function fillFromFlow(){
-  if(!authzFlowId){toast('select a flow first');return;}
+  const fid=authzTarget(); syncAuthzLabel();
+  if(!fid){toast('select a flow first');return;}
   try{
-    const d=await api('/api/authz/flow-auth/'+authzFlowId);
+    const d=await api('/api/authz/flow-auth/'+fid);
     if(!d.requestAuth){toast('no Cookie/Authorization on that request');return;}
     const ids=collectIds();
     let i=ids.findIndex(x=>!x.headers.trim());
@@ -108,12 +115,12 @@ async function fillFromFlow(){
     ids[i].headers=d.requestAuth;
     if(!ids[i].name)ids[i].name='from flow';
     renderIdentities(ids);
-    toast('filled identity from flow #'+authzFlowId);
+    toast('filled identity from flow #'+fid);
   }catch(e){toast(e.message);}
 }
 
 async function checkSessions(){
-  const probe=authzFlowId||state.selId;
+  const probe=authzTarget(); syncAuthzLabel();
   if(!probe){toast('select a flow to probe sessions (e.g. GET /api/me)');return;}
   if(collectIds().length<1){toast('add at least one identity');return;}
   $('#authzResults').innerHTML='<div class="hint">checking sessions…</div>';
@@ -132,9 +139,10 @@ async function checkSessions(){
 
 function runBody(){
   const bulk=$('#authzTargetScope')?.checked;
-  if(!bulk&&!authzFlowId){toast('select a flow or choose all in-scope');return null;}
+  const fid=authzTarget(); syncAuthzLabel();
+  if(!bulk&&!fid){toast('select a flow or choose all in-scope');return null;}
   const body={maxFlows:parseInt($('#authzMax')?.value,10)||0};
-  if(bulk)body.inScope=true; else body.flowId=authzFlowId;
+  if(bulk)body.inScope=true; else body.flowId=fid;
   return body;
 }
 
@@ -159,7 +167,7 @@ function renderAuthzResults(d){
     const res=runs[0].results||[];
     box.innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
       +res.map((r,i)=>renderAuthzRow(r,i)).join('');
-    box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));});
+    box.querySelectorAll('[data-flow]').forEach(el=>{const go=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));};el.onclick=go;wireRowKey(el,go);});
     return;
   }
   const sum=d.summary||{};

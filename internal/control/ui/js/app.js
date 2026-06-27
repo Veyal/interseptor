@@ -13,6 +13,8 @@ import { loadSettings, loadSysProxy, loadSession, loadProject, openProjectModal,
 import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js';
 import { loadApiKeys, loadReference, loadMCP } from './apipanel.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
+import { loadFindings } from './findings.js';
+import { loadHumanInput } from './humaninput.js';
 import './flowmodal.js'; // side-effect: flow inspect popup + modal handlers
 import './ai.js'; // side-effect: wires the AI assist modal (its openAi is also imported by proxy.js)
 import './authz.js'; // side-effect: wires authz modal buttons
@@ -29,6 +31,7 @@ function activateTab(t){
   try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
   if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
   if(t.dataset.tab==='scanner')loadScanTargets();
+  if(t.dataset.tab==='findings')loadFindings();
   if(t.dataset.tab==='discover')loadDiscovery();
   if(t.dataset.tab==='map')loadEndpoints();
   if(t.dataset.tab==='notes')loadNotes();
@@ -139,6 +142,8 @@ function connectEvents(){
     else if(m.type==='discovery.update'){if(document.querySelector('.tab[data-tab="discover"]').classList.contains('active'))refreshDiscovery();}
     else if(m.type==='settings.update'){loadSettings();applyAiDisabledUI();applyOobDisabledUI();}
     else if(m.type==='notes.update')loadNotes();
+    else if(m.type==='findings.update')loadFindings();
+    else if(m.type==='human.input')loadHumanInput();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
 }
@@ -247,7 +252,7 @@ document.addEventListener('keydown',e=>{
   if(mod&&e.key.toLowerCase()==='m'){const f=selectedFlow();if(f){e.preventDefault();focusMapFromFlow(f);}return;}
   // Ctrl+Shift+F forward / Ctrl+D drop the selected held item — Intercept tab only
   if(document.querySelector('.tab[data-tab="intercept"]').classList.contains('active')){
-    const drop=mod&&e.key.toLowerCase()==='d';
+    const drop=mod&&!typing&&e.key.toLowerCase()==='d';
     const fwd=mod&&e.shiftKey&&e.key.toLowerCase()==='f';
     if((drop||fwd)&&state.heldSel){e.preventDefault();$(drop?'#dropBtn':'#forwardBtn').click();return;}
   }
@@ -292,6 +297,6 @@ applyTheme(currentTheme()); // sync the button icon with the theme applied pre-p
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();connectEvents();restoreTab();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
 {const hb=$('#helpBtn');if(hb)hb.onclick=()=>openModal($('#shortcutsModal'));}

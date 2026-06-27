@@ -3,11 +3,52 @@ package sender
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/store"
 )
+
+// Many concurrent sends hitting the refresh TTL at once must fire the login macro
+// only ONCE (no thundering herd).
+func TestMaybeRefreshLoginNoThunderingHerd(t *testing.T) {
+	var hits int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login" {
+			atomic.AddInt64(&hits, 1)
+			time.Sleep(20 * time.Millisecond) // hold so concurrent callers pile up at the gate
+			w.Header().Set("Set-Cookie", "sid=x; Path=/")
+		}
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.cl = upstream.Client()
+	snd.SetLoginMacro(LoginMacro{
+		Enabled: true, RefreshSecs: 1, Target: upstream.URL,
+		Request: "GET /login HTTP/1.1\r\nHost: example\r\n\r\n",
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); snd.maybeRefreshLogin() }()
+	}
+	wg.Wait()
+
+	if n := atomic.LoadInt64(&hits); n != 1 {
+		t.Fatalf("login macro should fire exactly once, fired %d times", n)
+	}
+}
 
 func TestExtractSessionHeaders(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}

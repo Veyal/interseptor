@@ -15,7 +15,12 @@ type WSFrame struct {
 	Preview string    `json:"preview"`
 }
 
-// SaveWSFrame records a captured frame.
+// wsFramesPerFlow bounds how many frames are retained per flow so a long-lived
+// WebSocket can't grow ws_frames without bound. A var so tests can lower it.
+var wsFramesPerFlow int64 = 5000
+
+// SaveWSFrame records a captured frame, trimming the flow to the most recent
+// wsFramesPerFlow frames.
 func (s *Store) SaveWSFrame(f *WSFrame) error {
 	res, err := s.db.Exec(
 		`INSERT INTO ws_frames (flow_id, ts, dir, opcode, length, preview) VALUES (?,?,?,?,?,?)`,
@@ -24,6 +29,10 @@ func (s *Store) SaveWSFrame(f *WSFrame) error {
 		return err
 	}
 	f.ID, _ = res.LastInsertId()
+	_, _ = s.db.Exec(
+		`DELETE FROM ws_frames WHERE flow_id=? AND id NOT IN (
+		   SELECT id FROM ws_frames WHERE flow_id=? ORDER BY id DESC LIMIT ?)`,
+		f.FlowID, f.FlowID, wsFramesPerFlow)
 	return nil
 }
 

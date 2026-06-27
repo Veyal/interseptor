@@ -25,6 +25,10 @@ func (h *Hub) wsSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "url required")
 		return
 	}
+	if h.targetsOwnListener(in.URL) {
+		httpErr(w, http.StatusForbidden, "refusing to send to Interceptor's own listener")
+		return
+	}
 	hdrs := map[string]string{}
 	for _, hh := range parseSessionHeaders(in.Headers) {
 		hdrs[hh.Key] = hh.Value

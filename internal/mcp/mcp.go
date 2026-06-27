@@ -45,6 +45,7 @@ type Activity struct {
 	OK      bool   `json:"ok"`
 	Result  string `json:"result"` // first line of the result / error, truncated
 	Ms      int64  `json:"ms"`
+	Intent  string `json:"intent,omitempty"` // the AI's stated "why", if it passed one
 }
 
 // activitySummary renders the most informative arguments of a tool call into a
@@ -173,7 +174,7 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 			"protocolVersion": ver,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "interceptor", "version": version.Version},
-			"instructions":    "Interceptor: an intercepting HTTP/HTTPS proxy for web pentesting. Flow: list_flows/analyze_flow to find & triage → get_flow to read → send_request (replay) or start_intruder (fuzz) to attack → start_discovery (forced-browse paths) → run_scanner (passive) or active_scan (sends payloads) to find bugs. suggest_discovery_paths seeds wordlists from history + AI. run_login_macro refreshes auth on 401. Flow ids come from list_flows. Bodies truncate to maxBytes (default 4000). Scanners obey target scope (list_scope/add_scope_rule). active_scan sends real attacks: pass arm=true once to confirm authorization, and it only fires in-scope. Project size: host_stats shows per-host flow/byte breakdown; prune_history deletes noisy hosts (mode=delete) or keeps only the important ones (mode=keepOnly) — destructive, shown live in Activity.",
+			"instructions":    "Interceptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\nSETUP (do first): check_readiness for a setup checklist → scope_from_url to focus on the target → for HTTPS the client must trust the CA (ca_info) → route the target's traffic through the proxy. Re-run check_readiness if list_flows/scans come back empty.\n\nMETHODOLOGY: (1) Recon & map — list_flows + analyze_flow to triage captured endpoints and spot injection points; suggest_discovery_paths + start_discovery to forced-browse more. (2) Auth & access control — set_session to stay authenticated; authz_run / authz_check_sessions to find IDOR / broken access control. (3) Injection & logic — send_request to probe, start_intruder to fuzz §markers; run_scanner (passive, no traffic) then active_scan (real payloads: xss/sqli/ssti/redirect/traversal/timing-cmdi — pass arm=true once, fires in-scope only); oob_* for blind callbacks. (4) Verify each candidate before reporting (re-send the PoC; rule out false positives).\n\nRECORD AS YOU GO (this is shared memory the human reviews in the Findings tab and can act on): create_finding for every confirmed/suspected vuln → add_finding_poc to attach the baseline and exploit request/response flows as evidence → update_finding to mark verified or false_positive. list_findings to track progress and avoid duplicates. get_notes/append_notes for freeform methodology, creds, scope notes.\n\nNOTES: flow ids come from list_flows; bodies truncate to maxBytes (default 4000); scanners obey scope (list_scope/scope_from_url/add_scope_rule). host_stats + prune_history manage project size (destructive, shown live in Activity). Everything you do is tagged AI and visible to the human in History and the Activity feed. Pass an optional `intent` (a short why) on consequential tools — it's shown to the human next to the action. Before any high-impact or ambiguous step (large fuzz, destructive action, unclear scope), call request_human_input to ask the operator and wait for their answer — never exceed their authority.",
 		}, nil
 	case "tools/list":
 		return map[string]any{"tools": s.toolList()}, nil
@@ -217,7 +218,7 @@ func (s *Server) callTool(params json.RawMessage) any {
 	start := time.Now()
 	text, err := t.call(p.Arguments)
 	if s.report != nil {
-		a := Activity{Tool: p.Name, Summary: activitySummary(p.Name, p.Arguments), OK: err == nil, Ms: time.Since(start).Milliseconds()}
+		a := Activity{Tool: p.Name, Summary: activitySummary(p.Name, p.Arguments), OK: err == nil, Ms: time.Since(start).Milliseconds(), Intent: argStr(p.Arguments, "intent")}
 		if err != nil {
 			a.Result = firstLine(err.Error(), 160)
 		} else {
@@ -354,6 +355,19 @@ func (s *Server) writeJSON(w http.ResponseWriter, b []byte) {
 // ---- REST plumbing ----
 
 func (s *Server) apiGet(path string) (string, error) { return s.api(http.MethodGet, path, nil) }
+
+// flowsExist reports whether a /api/flows query returned at least one flow.
+func (s *Server) flowsExist(path string) bool {
+	raw, err := s.apiGet(path)
+	if err != nil {
+		return false
+	}
+	var d struct {
+		Flows []json.RawMessage `json:"flows"`
+	}
+	json.Unmarshal([]byte(raw), &d)
+	return len(d.Flows) > 0
+}
 
 func (s *Server) api(method, path string, body any) (string, error) {
 	var rdr io.Reader
@@ -662,6 +676,112 @@ func (s *Server) registerTools() {
 			return "appended to notes", nil
 		})
 
+	// ---- findings: structured, curated vulnerability records (the AI's durable
+	// memory; the human reviews/curates them in the Findings tab) ----
+	s.add("create_finding",
+		"Record a confirmed/suspected vulnerability as a structured finding (the AI's durable memory the human reviews). Returns the new finding with its id; then attach request/response PoCs with add_finding_poc. severity=High|Medium|Low|Info; status defaults to open.",
+		obj(map[string]any{
+			"title":    pt("string"),
+			"severity": pt("string"),
+			"status":   pt("string"),
+			"target":   pt("string"),
+			"detail":   pt("string"),
+			"evidence": pt("string"),
+			"fix":      pt("string"),
+			"intent":   p("string", "optional: a short 'why' shown to the human in the Activity feed"),
+		}, "title"),
+		func(a map[string]any) (string, error) {
+			if argStr(a, "title") == "" {
+				return "", fmt.Errorf("title is required")
+			}
+			return s.api(http.MethodPost, "/api/findings", map[string]any{
+				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
+				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
+				"evidence": argStr(a, "evidence"), "fix": argStr(a, "fix"), "source": "ai",
+			})
+		})
+
+	s.add("list_findings",
+		"List the project's findings (with their attached PoC flows), optionally filtered by severity or status (open|verified|false_positive|wont_fix|fixed). Use this to track progress and avoid re-reporting.",
+		obj(map[string]any{"severity": pt("string"), "status": pt("string")}),
+		func(a map[string]any) (string, error) {
+			q := url.Values{}
+			if v := argStr(a, "severity"); v != "" {
+				q.Set("severity", v)
+			}
+			if v := argStr(a, "status"); v != "" {
+				q.Set("status", v)
+			}
+			p := "/api/findings"
+			if len(q) > 0 {
+				p += "?" + q.Encode()
+			}
+			return s.apiGet(p)
+		})
+
+	s.add("update_finding",
+		"Update a finding's status or any field (e.g. mark verified once you've confirmed the PoC, or false_positive). Only the fields you pass are changed.",
+		obj(map[string]any{
+			"id":       pt("integer"),
+			"status":   pt("string"),
+			"severity": pt("string"),
+			"title":    pt("string"),
+			"target":   pt("string"),
+			"detail":   pt("string"),
+			"evidence": pt("string"),
+			"fix":      pt("string"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id is required")
+			}
+			body := map[string]any{}
+			for _, k := range []string{"status", "severity", "title", "target", "detail", "evidence", "fix"} {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api(http.MethodPatch, fmt.Sprintf("/api/findings/%d", id), body)
+		})
+
+	s.add("add_finding_poc",
+		"Attach a captured flow (a request/response from list_flows) to a finding as proof-of-concept evidence. Attach the baseline and the exploit requests so the human can reproduce it. Optional note explains what the flow demonstrates.",
+		obj(map[string]any{
+			"findingId": pt("integer"),
+			"flowId":    pt("integer"),
+			"note":      pt("string"),
+		}, "findingId", "flowId"),
+		func(a map[string]any) (string, error) {
+			fid, flow := argInt(a, "findingId", 0), argInt(a, "flowId", 0)
+			if fid == 0 || flow == 0 {
+				return "", fmt.Errorf("findingId and flowId are required")
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", fid), map[string]any{"flowId": flow, "note": argStr(a, "note")})
+		})
+
+	s.add("remove_finding_poc",
+		"Detach a PoC flow from a finding.",
+		obj(map[string]any{"findingId": pt("integer"), "flowId": pt("integer")}, "findingId", "flowId"),
+		func(a map[string]any) (string, error) {
+			fid, flow := argInt(a, "findingId", 0), argInt(a, "flowId", 0)
+			if fid == 0 || flow == 0 {
+				return "", fmt.Errorf("findingId and flowId are required")
+			}
+			return s.api(http.MethodDelete, fmt.Sprintf("/api/findings/%d/flows/%d", fid, flow), nil)
+		})
+
+	s.add("export_report",
+		"Render the full engagement report as Markdown: every curated finding (severity, status, detail, remediation, attached PoC flows) plus an appendix of passive-scan issues. This is the shared writeup the human exports — call it to hand off or summarize. Pass includeIssues=false to omit the passive-scan appendix.",
+		obj(map[string]any{"includeIssues": p("boolean", "include passive-scan issues appendix (default true)")}),
+		func(a map[string]any) (string, error) {
+			p := "/api/findings/report"
+			if !argBool(a, "includeIssues", true) {
+				p += "?issues=0"
+			}
+			return s.apiGet(p)
+		})
+
 	s.add("send_request",
 		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body.",
 		obj(map[string]any{
@@ -891,7 +1011,154 @@ func (s *Server) registerTools() {
 	s.add("ca_info", "How to trust the CA so HTTPS can be intercepted (proxy address + CA location).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")
-			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA.\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt). Install and trust it on the client.", strings.TrimSpace(settings), s.base), nil
+			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA (a one-time MANUAL step per client — Interceptor never edits the OS trust store for you).\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt).\nTrust it on the client:\n• macOS: open the .crt → Keychain Access → System keychain → set the Interceptor CA to Always Trust.\n• Windows: double-click → Install Certificate → Current User → Trusted Root Certification Authorities.\n• Linux (Debian/Ubuntu): copy to /usr/local/share/ca-certificates/interceptor.crt → sudo update-ca-certificates. (Fedora/RHEL: /etc/pki/ca-trust/source/anchors/ → sudo update-ca-trust.)\n• Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.\n• curl/tools one-off: curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://… (or SSL_CERT_FILE / REQUESTS_CA_BUNDLE).\nHTTP needs none of this — the CA is only for decrypting HTTPS.", strings.TrimSpace(settings), s.base), nil
+		})
+
+	s.add("check_readiness",
+		"Pre-flight setup checklist before testing: is the proxy listening, is target scope set, and has any (in-scope) traffic been captured? Run this when you start on a target, or when scans/list_flows come back empty — it tells you and the human exactly which setup step is missing.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) {
+			var b strings.Builder
+			mark := func(c bool) string {
+				if c {
+					return "✓"
+				}
+				return "✗"
+			}
+			settings, _ := s.apiGet("/api/settings")
+			var st struct {
+				ProxyAddr string `json:"proxyAddr"`
+			}
+			json.Unmarshal([]byte(settings), &st)
+			addr := st.ProxyAddr
+			if addr == "" {
+				addr = "(unknown)"
+			}
+			fmt.Fprintf(&b, "%s Proxy listening at %s — point the target's browser/curl here.\n", mark(st.ProxyAddr != ""), addr)
+			fmt.Fprintf(&b, "• For HTTPS, trust the CA on the client: %s/api/ca.crt (or ~/.interceptor/ca/ca.crt). Without it, https sites won't intercept.\n", s.base)
+
+			scope, _ := s.apiGet("/api/scope")
+			var sc struct {
+				Rules []struct {
+					Action  string `json:"action"`
+					Enabled bool   `json:"enabled"`
+				} `json:"rules"`
+			}
+			json.Unmarshal([]byte(scope), &sc)
+			includes := 0
+			for _, r := range sc.Rules {
+				if r.Enabled && r.Action == "include" {
+					includes++
+				}
+			}
+			if includes > 0 {
+				fmt.Fprintf(&b, "%s Scope set (%d include rule(s)) — scanners/active_scan focus on it.\n", mark(true), includes)
+			} else {
+				fmt.Fprintf(&b, "%s No include scope — everything is in scope. Set one with scope_from_url so active_scan won't hit unrelated hosts.\n", mark(false))
+			}
+
+			captured := s.flowsExist("/api/flows?limit=1")
+			if captured {
+				fmt.Fprintf(&b, "%s Traffic captured.\n", mark(true))
+			} else {
+				fmt.Fprintf(&b, "%s No traffic captured yet — drive the target through the proxy.\n", mark(false))
+			}
+			if includes > 0 {
+				if s.flowsExist("/api/flows?inScope=1&limit=1") {
+					fmt.Fprintf(&b, "%s In-scope traffic captured.\n", mark(true))
+				} else {
+					fmt.Fprintf(&b, "%s No in-scope traffic — captured traffic isn't matching scope (check host/scheme).\n", mark(false))
+				}
+			}
+			if st.ProxyAddr != "" && captured {
+				b.WriteString("\nReady. Triage with list_flows/analyze_flow, then record findings via create_finding + add_finding_poc.")
+			} else {
+				b.WriteString("\nNot fully ready — resolve the ✗ items first.")
+			}
+			return b.String(), nil
+		})
+
+	s.add("scope_from_url",
+		"Focus scope on a target by URL — adds an include scope rule for the URL's host (and scheme). Call this first when you start on a target (e.g. \"pentest https://app.acme.com\"). wildcard=true scopes *.<host> (subdomains) instead of the exact host.",
+		obj(map[string]any{
+			"url":      p("string", "target URL or host, e.g. https://app.acme.com/login"),
+			"wildcard": p("boolean", "scope *.<host> (subdomains) instead of the exact host (default false)"),
+		}, "url"),
+		func(a map[string]any) (string, error) {
+			raw := strings.TrimSpace(argStr(a, "url"))
+			if raw == "" {
+				return "", fmt.Errorf("url is required")
+			}
+			u, err := url.Parse(raw)
+			if err != nil || u.Hostname() == "" {
+				if u, err = url.Parse("https://" + raw); err != nil || u.Hostname() == "" {
+					return "", fmt.Errorf("invalid url: %q", raw)
+				}
+			}
+			host := u.Hostname()
+			if argBool(a, "wildcard", false) {
+				host = "*." + host
+			}
+			scheme := u.Scheme
+			if scheme != "http" && scheme != "https" {
+				scheme = ""
+			}
+			return s.api(http.MethodPost, "/api/scope", map[string]any{
+				"action": "include", "host": host, "scheme": scheme, "enabled": true,
+			})
+		})
+
+	s.add("request_human_input",
+		"Pause and ASK THE HUMAN before a high-impact or ambiguous action (e.g. \"found IDOR on /api/user/{id} — fuzz ids 1-100?\", or to confirm scope). The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Use this instead of guessing or exceeding the human's authority.",
+		obj(map[string]any{
+			"message": p("string", "the question, or what you want to do and why"),
+			"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional suggested answers, e.g. [\"yes\",\"no\"]"},
+		}, "message"),
+		func(a map[string]any) (string, error) {
+			if argStr(a, "message") == "" {
+				return "", fmt.Errorf("message is required")
+			}
+			body := map[string]any{"message": argStr(a, "message")}
+			if opts, ok := a["options"].([]any); ok && len(opts) > 0 {
+				body["options"] = opts
+			}
+			raw, err := s.api(http.MethodPost, "/api/human-input", body)
+			if err != nil {
+				return "", err
+			}
+			var pr struct {
+				ID       int64  `json:"id"`
+				Answered bool   `json:"answered"`
+				Answer   string `json:"answer"`
+			}
+			json.Unmarshal([]byte(raw), &pr)
+			if pr.Answered {
+				return "Human answered: " + pr.Answer, nil
+			}
+			return fmt.Sprintf("No answer yet (the prompt is showing in the operator's UI). Do other read-only work if useful, then call get_human_response with id=%d to fetch their reply before proceeding.", pr.ID), nil
+		})
+
+	s.add("get_human_response",
+		"Retrieve the human's answer to an earlier request_human_input (poll this until they've answered).",
+		obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id is required")
+			}
+			raw, err := s.apiGet(fmt.Sprintf("/api/human-input/%d", id))
+			if err != nil {
+				return "", err
+			}
+			var pr struct {
+				Answered bool   `json:"answered"`
+				Answer   string `json:"answer"`
+			}
+			json.Unmarshal([]byte(raw), &pr)
+			if pr.Answered {
+				return "Human answered: " + pr.Answer, nil
+			}
+			return "Still pending — the human hasn't answered yet. Poll again shortly.", nil
 		})
 
 	s.add("host_stats",

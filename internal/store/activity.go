@@ -10,6 +10,7 @@ type Activity struct {
 	OK      bool   `json:"ok"`
 	Result  string `json:"result"`
 	Ms      int64  `json:"ms"`
+	Intent  string `json:"intent,omitempty"` // the AI's stated "why" for a consequential action
 }
 
 // activityKeep bounds how many activity rows are retained per project.
@@ -20,8 +21,8 @@ const activityKeep = 5000
 // can't grow without bound.
 func (s *Store) InsertActivity(a *Activity) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO activity (ts, tool, summary, ok, result, ms) VALUES (?,?,?,?,?,?)`,
-		a.TS, a.Tool, a.Summary, a.OK, a.Result, a.Ms)
+		`INSERT INTO activity (ts, tool, summary, ok, result, ms, intent) VALUES (?,?,?,?,?,?,?)`,
+		a.TS, a.Tool, a.Summary, a.OK, a.Result, a.Ms, a.Intent)
 	if err != nil {
 		return 0, err
 	}
@@ -43,7 +44,7 @@ func (s *Store) ListActivity(limit int) ([]Activity, error) {
 		limit = 300
 	}
 	rows, err := s.db.Query(
-		`SELECT id, ts, tool, summary, ok, result, ms FROM activity ORDER BY id DESC LIMIT ?`, limit)
+		`SELECT id, ts, tool, summary, ok, result, ms, intent FROM activity ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +52,7 @@ func (s *Store) ListActivity(limit int) ([]Activity, error) {
 	var out []Activity
 	for rows.Next() {
 		var a Activity
-		if err := rows.Scan(&a.ID, &a.TS, &a.Tool, &a.Summary, &a.OK, &a.Result, &a.Ms); err != nil {
+		if err := rows.Scan(&a.ID, &a.TS, &a.Tool, &a.Summary, &a.OK, &a.Result, &a.Ms, &a.Intent); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

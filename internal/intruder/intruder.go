@@ -198,11 +198,25 @@ func (e *Engine) Start(spec Spec) error {
 }
 
 func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, capped bool) {
+	// add enforces the request cap DURING accumulation: a huge spec.Repeat or a
+	// template with thousands of §markers × payloads would otherwise materialize
+	// billions of jobs (OOM) before any post-loop truncation. add returns false
+	// once the cap is hit so each loop can stop immediately.
+	add := func(j job) bool {
+		if len(jobs) >= maxRequests {
+			capped = true
+			return false
+		}
+		jobs = append(jobs, j)
+		return true
+	}
 	switch spec.AttackType {
 	case "repeat":
 		// N identical sends of the template (markers, if any, keep their value).
 		for k := 0; k < spec.Repeat; k++ {
-			jobs = append(jobs, job{label: "#" + strconv.Itoa(k+1), payloads: baselines})
+			if !add(job{label: "#" + strconv.Itoa(k+1), payloads: append([]string(nil), baselines...)}) {
+				break
+			}
 		}
 	case "pitchfork":
 		n := len(spec.Payloads[0])
@@ -224,20 +238,25 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 					labels = append(labels, baselines[i])
 				}
 			}
-			jobs = append(jobs, job{label: strings.Join(labels, " · "), payloads: payloads})
+			if !add(job{label: strings.Join(labels, " · "), payloads: payloads}) {
+				break
+			}
 		}
 	default: // sniper: vary one position at a time, others keep their baseline
 		for pos := 0; pos < nPositions; pos++ {
+			capHit := false
 			for _, pl := range spec.Payloads[0] {
 				payloads := append([]string(nil), baselines...)
 				payloads[pos] = processPayload(pl, spec.ProcessRules)
-				jobs = append(jobs, job{label: pl, payloads: payloads})
+				if !add(job{label: pl, payloads: payloads}) {
+					capHit = true
+					break
+				}
+			}
+			if capHit {
+				break
 			}
 		}
-	}
-	if len(jobs) > maxRequests {
-		jobs = jobs[:maxRequests]
-		capped = true
 	}
 	return jobs, capped
 }

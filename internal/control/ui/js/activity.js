@@ -8,6 +8,16 @@ function flowIdFromActivity(it){
   const m=(it.result||it.summary||'').match(/flow #(\d+)/i);
   return m?Number(m[1]):null;
 }
+// sameWorkflow groups an AI's consecutive related tool calls: same stated intent,
+// or — when neither states one — calls that fired close together in time (≤20s).
+// The feed is newest-first, so `a` is the newer row sitting above the older `b`.
+const WORKFLOW_GAP_MS=20000;
+function sameWorkflow(a,b){
+  if(!a||!b)return false;
+  const ia=(a.intent||'').trim().toLowerCase(),ib=(b.intent||'').trim().toLowerCase();
+  if(ia||ib)return ia===ib&&ia!=='';
+  return Math.abs((a.ts||0)-(b.ts||0))<=WORKFLOW_GAP_MS;
+}
 export function renderActivity(){
   const box=$('#actFeed');if(!box)return;
   const a=state.activity;
@@ -15,12 +25,14 @@ export function renderActivity(){
   if(!a.length){box.innerHTML='<div class="empty">No AI activity yet.<br>Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</div>';return;}
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
-    return `<div class="act-row${fid?' act-jump':''}" data-flow="${fid||''}" data-i="${i}" title="${fid?'Open flow #'+fid+' in History':''}">
+    const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows
+    return `<div class="act-row${fid?' act-jump':''}${grp}" data-flow="${fid||''}" data-i="${i}" title="${fid?'Open flow #'+fid+' in History':''}">
     <span class="ok" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${it.ok?'ok':'error'}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
     <span class="act-res">${esc(it.result||'')}</span>
     <span class="act-meta">${it.ms}ms · ${actTime(it.ts)}</span>
+    ${it.intent?`<span class="act-intent" title="the AI's stated reason">💭 ${esc(it.intent)}</span>`:''}
   </div>`;
   }).join('');
   box.querySelectorAll('.act-row.act-jump').forEach(row=>row.onclick=()=>{
