@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **UI: the passive-scan report download uses the native Save dialog and honest
+  feedback**, like the Findings engagement-report export. It previously triggered a
+  hidden-anchor download and toasted "report downloaded" before the download could
+  fail; it now fetches via `api()` + `saveFile()` (offering a Save-As where
+  supported), surfaces real errors, and says "Downloading…". This was the last
+  download path still bypassing the shared `saveFile()` helper.
+
 ### Fixed
 - **UI: user-triggered actions that failed silently now give feedback.** The custom-
   checks list left a blank panel when its load failed (now shows an inline error);

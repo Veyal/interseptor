@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile } from './core.js';
 import { flowPopup } from './flowmodal.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
@@ -330,4 +330,11 @@ export function renderScanDetail(){
   $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
 }
 $('#scanRun').onclick=runScan;
-$('#scanReport').onclick=()=>{if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}const a=document.createElement('a');a.href='/api/scanner/report';a.download='interceptor-findings.md';document.body.appendChild(a);a.click();a.remove();toast('report downloaded');};
+$('#scanReport').onclick=async()=>{
+  if(!scanState.issues.length){toast('no findings yet — run a scan first');return;}
+  try{
+    const md=await api('/api/scanner/report');
+    await saveFile(new Blob([md],{type:'text/markdown'}),'interceptor-findings.md','text/markdown');
+    toast('Downloading scan report…');
+  }catch(e){if(!(e&&e.name==='AbortError'))toast(e.message);}
+};
