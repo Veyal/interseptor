@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **History uses infinite scroll instead of a hard 500-flow cap.** The list now
+  loads the latest page and fetches older flows automatically as you scroll toward
+  the bottom (cursor pagination over the existing `?before=` API), so you can reach
+  the whole history without filtering or purging. Filters carry into each page; live
+  captures still stream in at the top; body-search (a bounded result set) is exempt.
+  The "Showing latest 500" banner is replaced by a live loaded-count and a small
+  "loading older flows…" affordance. (Rows aren't virtualized yet, so very large
+  scrolled-in histories still grow the DOM — virtualization is the planned follow-up.)
+
 ### Fixed
 - **History Ctrl/Cmd-click multi-select kept only the second row.** A plain click
   inspects a row but doesn't add it to the multi-select set, so Ctrl/Cmd-clicking a

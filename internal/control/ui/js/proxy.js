@@ -9,7 +9,9 @@ import { openDecoder, prefillScanner } from './scanner.js';
 import { prefillDiscovery } from './discovery.js';
 import { focusMapFromFlow, focusMapSearch } from './map.js';
 
-const FLOW_LIMIT=500;
+const FLOW_PAGE=250;            // rows fetched per page (initial + each scroll-load)
+let flowHasMore=false;         // the server may have older flows past what's loaded
+let loadingMore=false;         // a scroll-triggered page fetch is in flight
 const EXCLUDE_NORM=64|128|512; // repeater, intruder, active scan
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLUMNS=[
@@ -156,12 +158,16 @@ function wireFlowRow(r){
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
   if(!b)return;
-  b.style.display=state.flowTruncated?'block':'none';
+  // No hard cap anymore — older flows stream in as you scroll. Show a subtle
+  // affordance only while a page is loading or when more remain below.
+  if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
+  else if(flowHasMore){b.style.display='block';b.textContent='Scroll down to load older flows.';}
+  else b.style.display='none';
 }
-function removeFlowRow(id){
-  const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
-  if(row)row.remove();
-}
+// Infinite scroll: load the next older page as the History list nears its bottom.
+{const box=$('#rows');if(box)box.addEventListener('scroll',()=>{
+  if(box.scrollTop+box.clientHeight>=box.scrollHeight-400)loadMoreFlows();
+});}
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
@@ -190,16 +196,8 @@ export function patchFlowRow(f){
 export function upsertFlow(f){
   const i=state.flows.findIndex(x=>x.id===f.id);
   if(i>=0)state.flows[i]=f;
-  else{
-    state.flows.unshift(f);
-    if(state.flows.length>FLOW_LIMIT){
-      const dropped=state.flows.pop();
-      if(dropped)removeFlowRow(dropped.id);
-      state.flowTruncated=true;
-    }
-  }
+  else state.flows.unshift(f); // newest at top; infinite-scroll keeps older pages loaded
   $('#rowCount').textContent=state.flows.length;
-  updateTruncBanner();
 }
 export function handleFlowNew(f){
   if(!f)return;
@@ -315,7 +313,9 @@ function updateSearchNoteBanner(){
   if(state.flowSearchNote){el.style.display='';el.textContent=state.flowSearchNote;}
   else el.style.display='none';
 }
-export async function loadFlows(){
+// buildFlowParams encodes the active filters into a query (without limit/cursor),
+// shared by the initial load and the scroll-triggered page loads.
+function buildFlowParams(){
   const q=new URLSearchParams();
   const f=state.filters;
   if(f.scheme)q.set('scheme',f.scheme);
@@ -332,17 +332,59 @@ export async function loadFlows(){
   if(state.inScopeOnly)q.set('inScope','1');
   if(!state.showAI)q.set('ai','0');
   if(state.aiOnly)q.set('onlyAi','1');
-  q.set('limit',String(FLOW_LIMIT));
+  return q;
+}
+// bodySearchActive: body search resolves a bounded id set server-side, so it isn't
+// cursor-paginated — load-more is disabled for it.
+function bodySearchActive(){return state.filters.searchScope==='body'&&!!state.filters.search.trim();}
+
+export async function loadFlows(){
+  const q=buildFlowParams();
+  q.set('limit',String(FLOW_PAGE+1)); // +1 row tells us whether older flows exist
   try{
     const d=await api('/api/flows?'+q.toString());
-    state.flows=d.flows||[];
-    state.flowTruncated=!!d.truncated;
+    let flows=d.flows||[];
+    flowHasMore=flows.length>FLOW_PAGE&&!bodySearchActive();
+    if(flows.length>FLOW_PAGE)flows=flows.slice(0,FLOW_PAGE);
+    state.flows=flows;
     state.flowSearchNote=d.searchNote||'';
+    const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
     updateTruncBanner();
     updateSearchNoteBanner();
     refreshMethodFilter();
   }catch(e){toast('flows: '+e.message);}
+}
+
+// loadMoreFlows appends the next older page (cursor = oldest loaded id) when the
+// user scrolls near the bottom. Scroll position is preserved across the re-render.
+export async function loadMoreFlows(){
+  if(loadingMore||!flowHasMore||!state.flows.length)return;
+  loadingMore=true;
+  updateTruncBanner();
+  try{
+    const oldest=state.flows.reduce((m,f)=>Math.min(m,f.id),Infinity);
+    if(!isFinite(oldest)){flowHasMore=false;return;}
+    const q=buildFlowParams();
+    q.set('before',String(oldest));
+    q.set('limit',String(FLOW_PAGE+1));
+    const d=await api('/api/flows?'+q.toString());
+    let flows=d.flows||[];
+    flowHasMore=flows.length>FLOW_PAGE;
+    if(flows.length>FLOW_PAGE)flows=flows.slice(0,FLOW_PAGE);
+    if(flows.length){
+      // Drop any ids already present (a flow could arrive live between pages).
+      const have=new Set(state.flows.map(f=>f.id));
+      const add=flows.filter(f=>!have.has(f.id));
+      if(add.length){
+        const box=$('#rows');const keep=box?box.scrollTop:0;
+        state.flows=state.flows.concat(add);
+        renderRows();
+        if(box)box.scrollTop=keep;
+      }
+    }
+  }catch(e){/* a failed page-load is non-fatal; the user can scroll again */}
+  finally{loadingMore=false;updateTruncBanner();}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method
