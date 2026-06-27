@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, applyTextList, countListLines, normalizeListText, wireRowKey } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey } from './core.js';
 
 // repStatusLine builds a rich response summary: "200 OK · 142 ms · 4.1 KB".
 function repStatusLine(f){
@@ -49,6 +49,7 @@ export function repCloseTab(tid){
   renderRepTabs();repLoadEditor();repPersist();
 }
 export function repSaveEditor(){const t=repCur();if(!t)return;t.method=$('#repMethod').value;t.url=$('#repUrl').value;t.headers=$('#repHeaders').value;t.body=$('#repBody').value;t.title=repTitle(t);}
+export function repNewTab(){repSaveEditor();const t=repBlank();repTabs.push(t);repActive=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
   $('#repMethod').value=t.method||'GET';$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
@@ -192,28 +193,78 @@ const INTR_SNIPER="admin\nadministrator\nroot\n' OR 1=1--\n../../../etc/passwd";
 const INTR_POS=["admin\nadministrator\nroot","password\n123456\nchangeme"];
 // Live editing mirror of the active tab's mode + payload lists (the other fields —
 // target/template/threads/delay/repeat — live in the DOM and are snapshotted to tabs).
-export const intrState={type:'sniper',sniper:INTR_SNIPER,pos:INTR_POS.slice()};
+export const intrState={type:'sniper',sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[]};
 export function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
+function intrGetPayloadLines(slot){
+  if(slot==='s') return intrState.sniperLines||lines(intrState.sniper||'');
+  const i=Number(slot);
+  if(intrState.posLines?.[i]) return intrState.posLines[i];
+  return lines(intrState.pos[i]||'');
+}
+function intrPayloadTruncated(slot){
+  if(slot==='s') return !!intrState.sniperLines;
+  return !!intrState.posLines?.[Number(slot)];
+}
+function intrPayloadNote(slot){
+  if(!intrPayloadTruncated(slot)) return '';
+  const n=intrGetPayloadLines(slot).length;
+  const f=slot==='s'?intrState.sniperFile:intrState.posFiles?.[Number(slot)];
+  return `Showing first ${LIST_PREVIEW_LINES} of ${n.toLocaleString()} payloads${f?' from '+f:''} — full list is kept for the attack but not rendered here.`;
+}
+function intrSetPayloadLines(slot, arr, fileName){
+  const prev=previewListLines(arr, LIST_PREVIEW_LINES);
+  if(slot==='s'){
+    if(prev.truncated){intrState.sniperLines=arr;intrState.sniper=prev.text;intrState.sniperFile=fileName||null;}
+    else{intrState.sniperLines=null;intrState.sniperFile=null;intrState.sniper=arr.join('\n');}
+    return;
+  }
+  const i=Number(slot);
+  while(intrState.pos.length<=i) intrState.pos.push('');
+  if(!intrState.posLines) intrState.posLines=[];
+  while(intrState.posLines.length<=i) intrState.posLines.push(null);
+  if(!intrState.posFiles) intrState.posFiles=[];
+  while(intrState.posFiles.length<=i) intrState.posFiles.push(null);
+  if(prev.truncated){intrState.posLines[i]=arr;intrState.pos[i]=prev.text;intrState.posFiles[i]=fileName||null;}
+  else{intrState.posLines[i]=null;intrState.posFiles[i]=null;intrState.pos[i]=arr.join('\n');}
+}
+function intrClearPayloadLines(slot){
+  if(slot==='s'){intrState.sniperLines=null;intrState.sniperFile=null;return;}
+  const i=Number(slot);
+  if(intrState.posLines) intrState.posLines[i]=null;
+  if(intrState.posFiles) intrState.posFiles[i]=null;
+}
 function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]*§/g)||[]).map(s=>s.slice(1,-1));}
 
 /* ---- intruder tabs: each is a full saved attack config (mirrors Repeater) ---- */
 let intrSeq=1, intrTabs=[], intrActive=null, intrPersistT=null;
-function intrBlank(){return {tid:intrSeq++,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),grep:'',extract:'',proc:''};}
+function intrBlank(){return {tid:intrSeq++,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],grep:'',extract:'',proc:''};}
 function intrCur(){return intrTabs.find(t=>t.tid===intrActive)||null;}
 function intrTypeLabel(t){return t==='repeat'?'null':(t||'sniper');}
 function intrTitle(t){if(!t)return 'new attack';let h='';try{h=new URL(t.target).host;}catch(e){h=(t.target||'').replace(/^https?:\/\//,'');}return intrTypeLabel(t.type)+(h?' · '+h:' attack');}
 function intrReadEditor(){return {target:$('#intrTarget').value,template:$('#intrTemplate').value,
   threads:parseInt($('#intrThreads').value,10)||1,delay:parseInt($('#intrDelay').value,10)||0,repeat:parseInt($('#intrRepeat').value,10)||20,
   grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value,
-  type:intrState.type,sniper:intrState.sniper,pos:intrState.pos.slice()};}
+  type:intrState.type,sniper:intrState.sniper,pos:intrState.pos.slice(),
+  sniperLines:intrState.sniperLines,posLines:intrState.posLines?.slice()||[],sniperFile:intrState.sniperFile,posFiles:intrState.posFiles?.slice()||[]};}
 function intrSaveCur(){const t=intrCur();if(t)Object.assign(t,intrReadEditor());}
 function intrApply(t){if(!t)return;
   $('#intrTarget').value=t.target||'';$('#intrTemplate').value=t.template||'';
   $('#intrThreads').value=t.threads||1;$('#intrDelay').value=t.delay||0;$('#intrRepeat').value=t.repeat||20;
   $('#intrGrep').value=t.grep||'';$('#intrExtract').value=t.extract||'';$('#intrProc').value=t.proc||'';
   intrState.type=t.type||'sniper';intrState.sniper=t.sniper||'';intrState.pos=Array.isArray(t.pos)?t.pos.slice():[];
+  intrState.sniperLines=t.sniperLines||null;intrState.posLines=Array.isArray(t.posLines)?t.posLines.slice():[];
+  intrState.sniperFile=t.sniperFile||null;intrState.posFiles=Array.isArray(t.posFiles)?t.posFiles.slice():[];
   updateIntrMode();}
-function intrPersist(){try{localStorage.setItem('intr.tabs',JSON.stringify({seq:intrSeq,active:intrActive,tabs:intrTabs}));}catch(e){}}
+function intrTabForStorage(t){
+  const o={...t};
+  if(o.sniperLines?.length>500){o.sniperLarge=true;o.sniperCount=o.sniperLines.length;delete o.sniperLines;}
+  if(o.posLines?.length){
+    o.posCounts=o.posLines.map(a=>a?.length||0);
+    o.posLines=o.posLines.map(a=>(a&&a.length<=500)?a:null);
+  }
+  return o;
+}
+function intrPersist(){try{localStorage.setItem('intr.tabs',JSON.stringify({seq:intrSeq,active:intrActive,tabs:intrTabs.map(intrTabForStorage)}));}catch(e){}}
 function intrPersistDebounced(){clearTimeout(intrPersistT);intrPersistT=setTimeout(intrPersist,400);}
 function intrTouch(){intrSaveCur();renderIntrTabs();intrPersistDebounced();} // save editor → active tab
 function renderIntrTabs(){
@@ -229,12 +280,12 @@ export function intrInit(){
   let ok=false;
   try{const d=JSON.parse(localStorage.getItem('intr.tabs')||'null');
     if(d&&d.tabs&&d.tabs.length){
-      intrTabs=d.tabs.map(t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}));
+      intrTabs=d.tabs.map(t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}));
       intrActive=(d.active&&intrTabs.find(x=>x.tid===d.active))?d.active:intrTabs[0].tid;
       {const fin=intrTabs.map(t=>t.tid).filter(Number.isFinite);intrSeq=Math.max(d.seq||0,(fin.length?Math.max(...fin):0)+1);}ok=true;}
   }catch(e){}
   if(!ok){intrTabs=[intrBlank()];intrActive=intrTabs[0].tid;}
-  renderIntrTabs();intrApply(intrCur());renderIntrHistory();
+  renderIntrTabs();intrApply(intrCur());renderIntrHistory();loadIntrPresets();
   $('#intrTarget')&&$('#intrTarget').addEventListener('input',intrTouch);
   $('#intrTemplate')&&$('#intrTemplate').addEventListener('input',()=>{intrTemplateChanged();intrTouch();});
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
@@ -253,7 +304,10 @@ function renderIntrHistory(){
 }
 function intrLoadHistory(i){
   const h=intrHistory[i];if(!h)return;
-  if(h.cfg){intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
+  if(h.cfg){
+    intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
+    intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
+    intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
     $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
     updateIntrMode();intrTouch();}
   renderIntr({running:false,total:h.total,done:h.total,results:h.results,capped:h.capped});
@@ -263,23 +317,30 @@ $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory
 function intrModeText(){
   if(intrState.type==='repeat')
     return 'Null — resend the template verbatim with no payloads or § markers. Use for duplicate submits, idempotency checks, rate limits, or concurrent replays (raise threads, 0 ms delay).';
-  return intrState.type==='pitchfork'
-    ? 'Pitchfork — one payload list per § marker (colour-matched below). Lists advance together, so mark N injection points → fill N lists; fires min(list lengths) requests. Load each list from a file with 📂 / ＋.'
-    : 'Sniper — a single payload list, tried at each § marker one position at a time (the others keep their original value). Load payloads from a file with 📂 / ＋.';
+  if(intrState.type==='battering')
+    return 'Battering ram — one payload list applied to every § marker at once (same value in all positions). Good for hitting every field with the same token.';
+  if(intrState.type==='cluster')
+    return 'Cluster bomb — one payload list per § marker; every combination is tried (cartesian product). Mark N points → fill N lists.';
+  if(intrState.type==='pitchfork')
+    return 'Pitchfork — one payload list per § marker (colour-matched below). Lists advance together, so mark N injection points → fill N lists; fires min(list lengths) requests. Load each list from a file with 📂 / ＋.';
+  return 'Sniper — a single payload list, tried at each § marker one position at a time (the others keep their original value). Load payloads from a file with 📂 / ＋.';
 }
 const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file">📂</button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
 async function intrLoadPayloadFile(ta, append){
   try{
     const got=await pickTextFile();
     if(!got||!ta) return;
-    applyTextList(ta, got.text, {append});
     const p=ta.dataset.pos;
-    if(p==='s') intrState.sniper=ta.value;
-    else intrState.pos[Number(p)]=ta.value;
+    const incoming=parseListLines(got.text);
+    const merged=append?[...intrGetPayloadLines(p),...incoming]:incoming;
+    intrSetPayloadLines(p, merged, got.name);
+    ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
+    ta.readOnly=intrPayloadTruncated(p);
+    const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
+    if(note) note.textContent=intrPayloadNote(p);
     updateIntrCount();
     intrTouch();
-    const n=countListLines(got.text);
-    toast((append?'appended ':'loaded ')+n+' payload'+(n===1?'':'s')+' from '+got.name);
+    toast((append?'appended ':'loaded ')+merged.length.toLocaleString()+' payload'+(merged.length===1?'':'s')+' from '+got.name+(merged.length>LIST_PREVIEW_LINES?' (preview only in editor)':''));
   }catch(e){ toast(e.message); }
 }
 function wireIntrPayloadFileButtons(wrap){
@@ -298,20 +359,46 @@ function renderPayloadInputs(){
     wrap.innerHTML='<div class="hint">Null mode — no payload lists. The request above is sent verbatim <b>×'+(parseInt($('#intrRepeat').value,10)||0)+'</b> times across <b>'+(parseInt($('#intrThreads').value,10)||1)+'</b> threads.</div>';
     updateIntrCount();return;
   }
-  if(intrState.type!=='pitchfork'){
-    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${INTR_FILE_BTNS}</div><textarea class="rep-edit" data-pos="s" spellcheck="false" placeholder="one payload per line"></textarea></div>`;
+  if(intrState.type!=='pitchfork'&&intrState.type!=='cluster'){
+    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${INTR_FILE_BTNS}</div><div class="intr-pl-note hint" style="margin:4px 0 6px"></div><textarea class="rep-edit" data-pos="s" spellcheck="false" placeholder="one payload per line"></textarea></div>`;
   }else{
     const mk=intrMarkers();
     if(!mk.length){wrap.innerHTML='<div class="hint">Mark injection points with <b>§…§</b> in the template (select text → <b>§ Mark</b>). Each marker gets its own colour-matched payload list here.</div>';updateIntrCount();return;}
     wrap.innerHTML=mk.map((content,i)=>{const c=POS_COLORS[i%POS_COLORS.length];
       return `<div class="intr-pl" style="border-top:2px solid ${c}">
         <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+escAttr(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${INTR_FILE_BTNS}</div>
+        <div class="intr-pl-note hint" style="margin:4px 0 6px"></div>
         <textarea class="rep-edit" data-pos="${i}" spellcheck="false" placeholder="payloads for §${i+1}"></textarea></div>`;}).join('');
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
     const p=ta.dataset.pos;
     ta.value=p==='s'?(intrState.sniper||''):(intrState.pos[Number(p)]||'');
-    ta.addEventListener('input',()=>{if(p==='s')intrState.sniper=ta.value;else intrState.pos[Number(p)]=ta.value;updateIntrCount();intrTouch();});
+    ta.readOnly=intrPayloadTruncated(p);
+    const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
+    if(note){
+      note.textContent=intrPayloadNote(p);
+      const tab=intrCur();
+      if(p==='s'&&tab?.sniperLarge&&!intrState.sniperLines){
+        note.textContent=(tab.sniperCount?tab.sniperCount.toLocaleString()+' payloads were':'Large payload list was')+' not restored after reload — load the file again with 📂.';
+      }else if(p!=='s'&&tab?.posCounts?.[Number(p)]&&!intrState.posLines?.[Number(p)]){
+        note.textContent=`${tab.posCounts[Number(p)].toLocaleString()} payloads were not restored after reload — load the file again with 📂.`;
+      }
+    }
+    ta.addEventListener('input',()=>{
+      if(ta.readOnly) return;
+      const arr=parseListLines(ta.value);
+      if(arr.length>LIST_PREVIEW_LINES){
+        intrSetPayloadLines(p, arr, null);
+        ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
+        ta.readOnly=true;
+        if(note) note.textContent=intrPayloadNote(p);
+      }else{
+        intrClearPayloadLines(p);
+        if(p==='s') intrState.sniper=ta.value; else intrState.pos[Number(p)]=ta.value;
+        if(note) note.textContent='';
+      }
+      updateIntrCount();intrTouch();
+    });
   });
   wireIntrPayloadFileButtons(wrap);
   updateIntrCount();
@@ -338,14 +425,19 @@ function updateIntrCount(){
     return;
   }
   if(intrState.type==='pitchfork'){
-    const counts=mk.map((_,i)=>lines(intrState.pos[i]||'').length);
+    const counts=mk.map((_,i)=>intrGetPayloadLines(i).length);
     const reqs=counts.length?Math.min(...counts):0;
-    if(hint)hint.textContent=counts.length?counts.map((n,i)=>`§${i+1}:${n}`).join(' · '):'no § markers yet';
-    if(cnt)cnt.textContent=mk.length?`${reqs} request${reqs===1?'':'s'}`:'mark § first';
+    if(hint)hint.textContent=counts.length?counts.map((n,i)=>`§${i+1}:${n.toLocaleString()}`).join(' · '):'no § markers yet';
+    if(cnt)cnt.textContent=mk.length?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:'mark § first';
+  }else if(intrState.type==='cluster'){
+    const counts=mk.map((_,i)=>intrGetPayloadLines(i).length);
+    const reqs=counts.length?counts.reduce((a,b)=>a*b,1):0;
+    if(hint)hint.textContent=counts.length?counts.map((n,i)=>`§${i+1}:${n.toLocaleString()}`).join(' · '):'no § markers yet';
+    if(cnt)cnt.textContent=mk.length?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:'mark § first';
   }else{
-    const n=lines(intrState.sniper||'').length,P=mk.length,reqs=n*Math.max(P,1);
-    if(hint)hint.textContent=`${n} payload${n===1?'':'s'}`+(P>1?` × ${P} § positions`:'');
-    if(cnt)cnt.textContent=P?`${reqs} request${reqs===1?'':'s'}`:`${n} payloads · mark § first`;
+    const n=intrGetPayloadLines('s').length,P=mk.length,reqs=n*Math.max(P,1);
+    if(hint)hint.textContent=`${n.toLocaleString()} payload${n===1?'':'s'}`+(P>1?` × ${P} § positions`:'');
+    if(cnt)cnt.textContent=P?`${reqs.toLocaleString()} request${reqs===1?'':'s'}`:`${n.toLocaleString()} payloads · mark § first`;
   }
 }
 function updateIntrMode(){
@@ -360,9 +452,9 @@ $('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{intrState.ty
 $('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();};
 // Re-derive the per-marker inputs whenever the template's § markers change. (Input
 // listeners for the editor fields are wired in intrInit so they also save to the tab.)
-function intrTemplateChanged(){if(intrState.type==='pitchfork')renderPayloadInputs();else updateIntrCount();}
+function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
-export function setSniperPayloads(text){intrState.type='sniper';intrState.sniper=text||'';updateIntrMode();intrTouch();}
+export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 export async function intrStart(){
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');return;}
@@ -376,11 +468,11 @@ export async function intrStart(){
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Null mode for payload-free resends');return;}
-    if(intrState.type==='pitchfork'){
-      body.payloads=mk.map((_,i)=>lines(intrState.pos[i]||''));
+    if(intrState.type==='pitchfork'||intrState.type==='cluster'){
+      body.payloads=mk.map((_,i)=>intrGetPayloadLines(i));
       if(body.payloads.some(l=>!l.length)){toast('add payloads for every § position');return;}
     }else{
-      body.payloads=[lines(intrState.sniper||'')];
+      body.payloads=[intrGetPayloadLines('s')];
       if(!body.payloads[0].length){toast('add at least one payload');return;}
     }
   }
@@ -391,6 +483,31 @@ export async function intrStart(){
   catch(e){intrCapturePending=false;toast('attack: '+e.message);}
 }
 $('#intrStart').onclick=intrStart;
+const INTR_PRESETS_KEY='intruder.presets';
+function loadIntrPresets(){
+  const sel=$('#intrPreset');if(!sel)return;
+  let list=[];try{list=JSON.parse(localStorage.getItem(INTR_PRESETS_KEY)||'[]');}catch(e){}
+  sel.innerHTML='<option value="">presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
+  sel.onchange=()=>{
+    const i=parseInt(sel.value,10);if(isNaN(i)||!list[i])return;
+    const p=list[i];
+    intrState.type=p.type||'sniper';intrState.sniper=p.sniper||'';intrState.pos=(p.pos||[]).slice();
+    $('#intrTarget').value=p.target||'';$('#intrTemplate').value=p.template||'';
+    $('#intrThreads').value=p.threads||1;$('#intrDelay').value=p.delay||0;$('#intrRepeat').value=p.repeat||20;
+    $('#intrGrep').value=p.grep||'';$('#intrExtract').value=p.extract||'';$('#intrProc').value=p.proc||'';
+    updateIntrMode();intrTouch();toast('loaded preset');
+  };
+}
+if($('#intrPresetSave'))$('#intrPresetSave').onclick=()=>{
+  const name=prompt('Preset name');if(!name)return;
+  let list=[];try{list=JSON.parse(localStorage.getItem(INTR_PRESETS_KEY)||'[]');}catch(e){}
+  list.unshift({name,target:$('#intrTarget').value,template:$('#intrTemplate').value,type:intrState.type,
+    sniper:intrState.sniper,pos:intrState.pos.slice(),threads:$('#intrThreads').value,delay:$('#intrDelay').value,
+    repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
+  if(list.length>20)list.length=20;
+  try{localStorage.setItem(INTR_PRESETS_KEY,JSON.stringify(list));}catch(e){}
+  loadIntrPresets();toast('preset saved');
+};
 export let intrTimer=null;
 export function scheduleIntr(){clearTimeout(intrTimer);intrTimer=setTimeout(async()=>{try{renderIntr(await api('/api/intruder/state'));}catch(e){}},120);}
 export function renderIntr(st){

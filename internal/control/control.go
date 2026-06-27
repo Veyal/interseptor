@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -131,6 +132,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.disc.SetNotifier(h.onDiscoveryUpdate)
 	h.disc.SetRecorder(h.discoveryRecord)
 	h.wireSessionRefresh()
+	h.wireSessionScope()
 	h.refreshScope()
 	h.applySessionFromStore()
 	h.routes()
@@ -140,6 +142,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 			_ = eng.SetRules(rules)
 		}
 	}
+	h.snd.SetOnPersist(h.FlowCaptured)
 	return h
 }
 
@@ -162,6 +165,8 @@ func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/flows", h.listFlows)
+	h.mux.HandleFunc("GET /api/flows/inscope", h.trafficInScope)
+	h.mux.HandleFunc("GET /api/params", h.listParams)
 	h.mux.HandleFunc("GET /api/flows/{id}", h.getFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/raw", h.getFlowRaw)
 	h.mux.HandleFunc("GET /api/flows/{id}/body", h.getFlowBody)
@@ -226,6 +231,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", h.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", h.authzCheckSessions)
 	h.mux.HandleFunc("POST /api/authz/run", h.authzRun)
+	h.mux.HandleFunc("POST /api/authz/cross-host-replay", h.authzCrossHostReplay)
 	h.mux.HandleFunc("POST /api/discovery/start", h.discoveryStart)
 	h.mux.HandleFunc("POST /api/discovery/stop", h.discoveryStop)
 	h.mux.HandleFunc("GET /api/discovery/state", h.discoveryStateHandler)
@@ -255,6 +261,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("POST /api/ws/send", h.wsSend)
 	h.mux.HandleFunc("POST /api/decode", h.decode)
 	h.mux.HandleFunc("GET /api/activescan", h.asGet)
+	h.mux.HandleFunc("GET /api/activescan/history", h.activescanHistory)
 	h.mux.HandleFunc("POST /api/activescan/arm", h.asArm)
 	h.mux.HandleFunc("POST /api/activescan/start", h.asStart)
 	h.mux.HandleFunc("POST /api/activescan/stop", h.asStop)
@@ -438,15 +445,24 @@ func (h *Hub) setFlowTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
 }
 
-// addFlowTagsBulk adds tags to many flows at once ({"flowIds":[...],"add":[...]}) —
-// for tagging a multi-selection from History.
+// addFlowTagsBulk adds or removes tags on many flows at once
+// ({"flowIds":[...],"add":[...],"remove":[...]}) — for tagging a multi-selection from History.
 func (h *Hub) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowIDs []int64  `json:"flowIds"`
 		Add     []string `json:"add"`
+		Remove  []string `json:"remove"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if len(in.FlowIDs) == 0 {
+		httpErr(w, http.StatusBadRequest, "flowIds required")
+		return
+	}
+	if len(in.Add) == 0 && len(in.Remove) == 0 {
+		httpErr(w, http.StatusBadRequest, "add or remove required")
 		return
 	}
 	if len(in.FlowIDs) > maxBulkItems {
@@ -454,9 +470,17 @@ func (h *Hub) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, id := range in.FlowIDs {
-		if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
-			httpErr(w, http.StatusInternalServerError, err.Error())
-			return
+		if len(in.Add) > 0 {
+			if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
+				httpErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+		for _, t := range store.NormalizeTags(in.Remove) {
+			if err := h.st.RemoveFlowTag(id, t); err != nil {
+				httpErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 		h.broadcastFlowTags(id)
 	}
@@ -566,6 +590,36 @@ func (h *Hub) listEndpoints(w http.ResponseWriter, r *http.Request) {
 
 // ---- Flows ----
 
+// flowSourceFilters parses History source toggles. Default: both manual (proxy) and
+// AI sends. Legacy: ?ai=0 hides AI; ?onlyAi=1 is AI-only.
+func flowSourceFilters(q url.Values) (manual, ai bool) {
+	manual, ai = true, true
+	if q.Get("onlyAi") == "1" {
+		return false, true
+	}
+	if v := q.Get("manual"); v != "" {
+		manual = v != "0"
+	}
+	if v := q.Get("ai"); v != "" {
+		ai = v != "0"
+	}
+	return manual, ai
+}
+
+// parseFlowSortQuery reads ?sort=&dir= for History list ordering (server-side).
+func parseFlowSortQuery(q url.Values) (key string, dir int) {
+	key = store.NormalizeFlowSortKey(q.Get("sort"))
+	switch strings.ToLower(q.Get("dir")) {
+	case "asc":
+		dir = 1
+	case "desc":
+		dir = -1
+	default:
+		dir = 0 // store picks a default per key
+	}
+	return key, dir
+}
+
 func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := atoiOr(q.Get("limit"), 200)
@@ -576,27 +630,36 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	f := store.FlowFilter{
 		Limit:        limit + 1, // fetch one extra to detect truncation
-		BeforeID:     int64(atoiOr(q.Get("before"), 0)),
 		Method:       q.Get("method"),
 		Host:         q.Get("host"),
 		Search:       q.Get("search"),
 		Scheme:       q.Get("scheme"),
 		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan, // these have their own views
 	}
-	// AI-originated sends carry FlagAI on top of those flags; exempt them from the
-	// exclusion so the human can watch the AI work inline in History. ?ai=0 hides them.
-	if !h.aiDisabled() && q.Get("ai") != "0" {
-		f.IncludeFlags = store.FlagAI
+	f.SortKey, f.SortDir = parseFlowSortQuery(q)
+	if curID := int64(atoiOr(q.Get("curId"), 0)); curID > 0 {
+		f.CursorID = curID
+		f.CursorVal = q.Get("curVal")
+	} else {
+		f.BeforeID = int64(atoiOr(q.Get("before"), 0)) // legacy id-DESC cursor
+	}
+	showManual, showAI := flowSourceFilters(q)
+	if !showManual && !showAI {
+		writeJSON(w, http.StatusOK, map[string]any{"flows": []flowJSON{}, "truncated": false})
+		return
 	}
 	if q.Get("discovery") == "1" {
 		f.RequireFlags = store.FlagDiscovery
 	}
-	if q.Get("onlyAi") == "1" {
-		// Show only AI-originated flows (FlagAI) — the human watches just what the AI
-		// did. Include FlagAI so the Repeater/Intruder/ActiveScan exclusion above
-		// (which AI sends also carry) doesn't hide them.
+	switch {
+	case showManual && showAI && !h.aiDisabled():
+		// Both sources: proxy traffic plus AI sends (FlagAI exempts Repeater/Intruder noise).
+		f.IncludeFlags = store.FlagAI
+	case showAI && !showManual:
 		f.RequireFlags |= store.FlagAI
 		f.IncludeFlags = store.FlagAI
+	case showManual && !showAI:
+		f.WithoutFlags = store.FlagAI
 	}
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
@@ -628,6 +691,30 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 			f.NotStatuses = append(f.NotStatuses, n)
 		}
 	}
+	inScopeOnly := q.Get("inScope") == "1"
+	if inScopeOnly {
+		want := limit + 1
+		matched, more, qerr := h.queryInScopeFlows(f, want)
+		if qerr != nil {
+			httpErr(w, http.StatusInternalServerError, qerr.Error())
+			return
+		}
+		truncated := more || len(matched) > limit
+		if len(matched) > limit {
+			matched = matched[:limit]
+		}
+		_ = h.st.AttachTags(matched)
+		out := make([]flowJSON, 0, len(matched))
+		for _, fl := range matched {
+			out = append(out, toFlowJSON(fl))
+		}
+		resp := map[string]any{"flows": out, "truncated": truncated}
+		if searchNote != "" {
+			resp["searchNote"] = searchNote
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	flows, err := h.st.QueryFlowsListFilter(f)
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -637,13 +724,9 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	if truncated {
 		flows = flows[:limit]
 	}
-	_ = h.st.AttachTags(flows) // best-effort: tag chips on rows
-	inScopeOnly := q.Get("inScope") == "1"
+	_ = h.st.AttachTags(flows)
 	out := make([]flowJSON, 0, len(flows))
 	for _, fl := range flows {
-		if inScopeOnly && !h.sc.InScope(fl) {
-			continue
-		}
 		out = append(out, toFlowJSON(fl))
 	}
 	resp := map[string]any{"flows": out, "truncated": truncated}

@@ -6,7 +6,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **"Send as" context-menu action.** Right-click any flow in Proxy History (or the inspector pane) → **SEND AS** section lists every saved authz identity. Clicking one loads the flow into a new Repeater tab with the selected identity's auth headers (Cookie/Authorization) substituted — one click to replay a captured request as any test role. The identity list is cached from Settings and refreshed whenever identities are saved.
+- **Broken account annotation.** Each authz identity now has a **⚠** toggle button in the Authorization modal. Marking an identity broken (e.g., after a lockout) dims its row, adds a warning badge, excludes it from **SEND AS**, and causes it to be **skipped** (not replayed) in `authz_run` and `cross_host_token_replay` — its result row shows "⚠ broken — skipped" instead of live results. Check sessions also skips broken identities. The `broken` flag is persisted with the identity JSON.
+- **Findings narrative body.** Each finding now has an interleaved document body instead of separate "Detail / Evidence" text areas and a flat PoC list at the bottom. The body is a free-order sequence of **text blocks** (markdown) and **flow blocks** (clickable PoC request/response badge with an annotation field). Add text with **＋ Text**, attach selected History flows with **＋ Flow**; reorder with ↑/↓; delete with ✕. Content auto-saves on blur. Existing findings (detail + attached flows) are transparently migrated to blocks on first read — no data loss. The export report renders blocks in author order (text paragraphs interleaved with `> GET host/path → STATUS` flow quotes). MCP backward-compat preserved: `update_finding(detail=...)` updates the first text block; `add_finding_poc` appends a flow block; `list_findings` syncs detail from the first text block.
+- **Authorization test matrix view.** The authz results area now has a **List / Matrix** toggle for bulk runs. Matrix view shows a single table with endpoints as rows and identities as columns, with per-cell status and size — far easier to scan when testing many endpoints × roles. `⚠ same access` flags highlight the row.
+- **Cross-host JWT replay.** New **↔ Cross-host** button in the Authorization modal (and MCP tool `cross_host_token_replay`). Extracts the Bearer token from the selected flow and replays the same path to every unique in-scope host in history — automates detection of cross-environment JWT confusion (shared secret / same-secret multi-tenant bugs). Results show accepted/rejected per host with a link to the captured flow.
+- **Per-host session headers.** The Session module now supports host-specific auth overrides alongside the global headers. Set a different Authorization/Cookie per hostname — when a send target matches, the host override replaces the global headers for that request. Exposed via Settings → Session / Auth (UI table with `+ Add host` rows), the `set_session` API (`hostHeaders` field), and the MCP `set_session` tool (`hostHeaders` JSON object). Eliminates the friction of testing multiple targets simultaneously (the main use case: two auth domains, one project).
+- **JWT expiry countdown in session UI.** Settings → Session now shows a live expiry timer (`Expires in Xh Ym`) parsed from the Bearer token in the global session headers. Turns amber under 30 minutes and red under 5 minutes. Refreshes every 30 seconds.
+
+### Fixed
+- **History live refresh for MCP/tool sends.** Repeater, Intruder, active scan, and discovery sends now broadcast `flow.new` over SSE (via `sender.SetOnPersist`) so Proxy History updates live for AI/MCP traffic — not only proxied browser traffic. Virtualized History (≥120 rows) re-renders on incremental updates instead of patching a single DOM row.
+
+### Added
+- **Intruder Battering ram + Cluster bomb.** New attack types matching Burp: `battering` applies one payload list to every § marker at once; `cluster` runs the cartesian product of per-marker lists. UI attack bar, MCP `start_intruder`, and tests.
+- **Intruder attack presets.** Save/load attack setups in the Intruder bar via localStorage (`presets…` / 💾).
+- **History row virtualization.** Proxy History virtualizes the flow list when ≥120 rows are loaded — only visible rows stay in the DOM.
+- **Inspector find-in-response.** `Ctrl+F` on the Proxy tab opens a find bar on the response pane with match highlighting.
+- **Response Render tab.** HTML responses preview in a sandboxed iframe (Raw / Pretty / Render).
+- **`internal/httplines`.** Shared header normalizer for Repeater/MCP — accepts `"Key: Value"` lines or a JSON object (fixes MCP agents passing `headers` as a map).
+- **MCP `flowId` alias.** `analyze_flow`, `get_flow`, and related tools accept `flowId` as well as `id`.
+- **MCP Cursor auto-sync.** Project `.cursor/mcp.json` uses Streamable HTTP (`http://127.0.0.1:9966/mcp`) so MCP matches the running Interceptor after restart — no stale stdio subprocess. `scripts/interceptor-mcp` resolves the latest binary for stdio clients; `interceptor update` prints an MCP restart hint.
+- **In-scope history pagination fix.** `?inScope=1` pages until enough in-scope rows are found; `GET /api/flows/inscope` for readiness checks.
+- **Param miner.** `GET /api/params` aggregates query, form, and JSON keys from captured traffic; Map tab **Params** view lists them per host with send-to-Intruder shortcuts.
+- **OOB tunnel helper.** OOB modal and Settings → Scanner show a copy-paste `cloudflared` one-liner for a public callback URL.
+- **Ask AI agent mode (opt-in).** The ✨ Ask AI modal has a per-session **Let AI send
+  requests** toggle (default off). When enabled with Anthropic as the provider, the
+  model can call `send_request` and `get_flow` (up to 5 tool steps per question) to
+  probe URLs via Repeater — cookies/auth headers are seeded from the selected flow.
+  Tool steps appear as Tool bubbles in the thread; the final answer still streams over
+  SSE (`event: tool` during the loop, then `data:` text chunks).
+- **Ask AI follow-up questions.** The ✨ Ask AI modal now keeps a conversation thread:
+  ask a question, read the streamed answer, then ask follow-ups in the same panel
+  (prior Q&A is sent as `history` so the model stays in context). The thread renders
+  as You / AI bubbles; **↺ New chat** clears it; **Copy** grabs the whole exchange.
+- **Tag removal in History.** Right-click a flow (TAGS section) or a tag chip to
+  remove one tag from that flow — or from every row in a multi-selection. Bulk
+  `POST /api/flows/tags` now accepts `"remove": [...]` alongside `"add"`. MCP:
+  `untag_flow`.
+- **Active scan request log.** Every probe is recorded as a `FlagActiveScan` flow
+  (including transport errors as 502) whether or not it confirms a finding.
+  `GET /api/activescan` includes a live `logs` array for the current run;
+  `GET /api/activescan/history` lists all saved probes. The ⚡ Active scan modal
+  shows a **Request log** panel (click a row to inspect).
+- **Intruder file payloads — preview only in UI.** Loading a wordlist with 📂/＋
+  keeps the full list in memory for the attack but shows only the first 40 lines
+  in the editor (readonly). Counts and Start still use the full list; huge lists
+  are not written to localStorage.
+
 ### Changed
+- **Session injection is scope-gated by URL path** (not just host) — Repeater/Intruder sends only attach auth headers when the target URL matches scope rules; `session.unscoped` opt-in still sends everywhere (unsafe).
+- **System font stack** replaces Google Fonts JetBrains Mono — works offline/air-gapped.
+- **Windows proxy onboarding** in the get-started card (`Settings → Network → Proxy` / `netsh winhttp`).
+- **Scope duplicate warning** in Settings → Target scope when identical rules exist.
+- **History source filters: Manual + AI toggles.** Replaced the confusing **🤖 AI** /
+  **🤖 only** pair with independent **Manual** and **AI** buttons (both on by default).
+  Enable both to see proxy + bot traffic; disable one to see only manual captures or
+  only AI sends. API: `?manual=0|1&ai=0|1` (`?onlyAi=1` still works for AI-only).
+- **History sort is server-side.** Column headers send `?sort=&dir=` to the API
+  (keyset pagination via `curId`/`curVal`, legacy `before=` for id DESC). Sorting
+  no longer reorders only the loaded browser page — id ascending starts at flow #1
+  and infinite scroll fetches the rest. Initial fetch loads 250 rows plus a 50-row
+  buffer to reduce scroll lag.
+- **History uses infinite scroll + virtualization.** Loads older flows on scroll;
+  lists ≥120 rows virtualize so the DOM stays bounded.
 - **AI assist is now a single "Ask AI" question box** instead of the Explain /
   Payloads / Summary preset modes. Open it on a flow (or a multi-selection) and ask
   anything about the captured request/response — "is the CSRF token validated?",
@@ -14,18 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   grounded in the exchange. Simpler and more flexible (one box does what the three
   presets did). Backed by `kind:"ask"` + `question` on the assist endpoints; the
   preset segmented control and the structured-payload cards were removed.
-
-### Changed
-- **History uses infinite scroll instead of a hard 500-flow cap.** The list now
-  loads the latest page and fetches older flows automatically as you scroll toward
-  the bottom (cursor pagination over the existing `?before=` API), so you can reach
-  the whole history without filtering or purging. Filters carry into each page; live
-  captures still stream in at the top; body-search (a bounded result set) is exempt.
-  The "Showing latest 500" banner is replaced by a live loaded-count and a small
-  "loading older flows…" affordance. (Rows aren't virtualized yet, so very large
-  scrolled-in histories still grow the DOM — virtualization is the planned follow-up.)
+- **Scanner tab absorbs Findings.** Passive scan issues and curated findings share
+  one tab with a **Passive / Findings** toggle — fewer top-level tabs.
+- **API & MCP moved to Settings.** API keys, REST reference, and MCP config live
+  under Settings → **API & MCP**; the standalone API tab is removed.
+- **Comparer upgrade.** Two-flow compare now diffs response headers and bodies with
+  word-level highlights; body size cap raised to 512 KiB per side.
 
 ### Fixed
+- **MCP `send_request` with object headers** no longer produces corrupt `map[User-Agent` header names.
+- **`check_readiness` / in-scope filter** no longer false-negative when in-scope traffic exists but recent rows are telemetry/noise (`GET /api/flows/inscope`).
+- **Sender `port` use-before-declare** compile bug in session scope gating path.
 - **History Ctrl/Cmd-click multi-select kept only the second row.** A plain click
   inspects a row but doesn't add it to the multi-select set, so Ctrl/Cmd-clicking a
   second row selected only that one. Ctrl/Cmd-click now seeds the set with the
@@ -33,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Ctrl-clicked one end up selected.
 
 ### Removed
+- **Show in Map.** Removed the History/inspector context-menu item and **Ctrl+M** /
+  **⌘M** shortcut that jumped to the Map tab filtered to the selected flow. **Search
+  in Map (body)** (inspector text selection) and the Map tab itself are unchanged.
 - **History "Export" / "Import" (HAR) toolbar buttons.** Removed from the Proxy
   History toolbar (unused in practice). The `/api/export/har` and `/api/import/har`
   endpoints are unchanged, and full project export/import remains in Settings.

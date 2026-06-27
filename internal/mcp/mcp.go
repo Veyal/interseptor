@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Veyal/interceptor/internal/httplines"
 	"github.com/Veyal/interceptor/internal/version"
 )
 
@@ -369,6 +370,20 @@ func (s *Server) flowsExist(path string) bool {
 	return len(d.Flows) > 0
 }
 
+// inScopeTraffic uses the paginating /api/flows/inscope endpoint so readiness
+// checks don't false-negative when recent history is mostly out-of-scope noise.
+func (s *Server) inScopeTraffic() bool {
+	raw, err := s.apiGet("/api/flows/inscope")
+	if err != nil {
+		return false
+	}
+	var d struct {
+		InScope bool `json:"inScope"`
+	}
+	json.Unmarshal([]byte(raw), &d)
+	return d.InScope
+}
+
 func (s *Server) api(method, path string, body any) (string, error) {
 	var rdr io.Reader
 	if body != nil {
@@ -429,6 +444,27 @@ func argBool(a map[string]any, key string, def bool) bool {
 		return b
 	}
 	return def
+}
+
+// argFlowID accepts "id" or "flowId" (agents often guess the latter).
+func argFlowID(a map[string]any) int {
+	if id := argInt(a, "id", 0); id != 0 {
+		return id
+	}
+	return argInt(a, "flowId", 0)
+}
+
+// argHeaderLines normalizes MCP headers: "Key: Value" lines or a JSON object.
+func argHeaderLines(a map[string]any, key string) (string, error) {
+	v, ok := a[key]
+	if !ok || v == nil {
+		return "", nil
+	}
+	m, err := httplines.NormalizeArg(v)
+	if err != nil {
+		return "", err
+	}
+	return httplines.ToLines(m), nil
 }
 
 func truncate(s string, n int) string {
@@ -565,9 +601,9 @@ func (s *Server) registerTools() {
 			"maxBytes": pt("integer"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
-			id := argInt(a, "id", 0)
+			id := argFlowID(a)
 			if id == 0 {
-				return "", fmt.Errorf("id is required")
+				return "", fmt.Errorf("id (or flowId) is required")
 			}
 			max := argInt(a, "maxBytes", 4000)
 			side := argStr(a, "side")
@@ -591,9 +627,9 @@ func (s *Server) registerTools() {
 		"Compact triage of a flow: URL/status, security headers, query params (injection points), passive findings, in-scope flag. Cheaper than get_flow for deciding what to inspect.",
 		obj(map[string]any{"id": pt("integer")}, "id"),
 		func(a map[string]any) (string, error) {
-			id := argInt(a, "id", 0)
+			id := argFlowID(a)
 			if id == 0 {
-				return "", fmt.Errorf("id is required")
+				return "", fmt.Errorf("id (or flowId) is required")
 			}
 			return s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
 		})
@@ -646,6 +682,27 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			return fmt.Sprintf("tagged flow %d with %s", id, strings.Join(tags, ", ")), nil
+		})
+
+	s.add("untag_flow",
+		"Remove tags from a flow without replacing the rest. Comma- or space-separated tag slugs; same bulk API as tag_flow but with remove.",
+		obj(map[string]any{
+			"id":   pt("integer"),
+			"tags": p("string", "comma- or space-separated tags to remove"),
+		}, "id", "tags"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id is required")
+			}
+			tags := strings.FieldsFunc(argStr(a, "tags"), func(r rune) bool { return r == ',' || r == ' ' || r == ';' })
+			if len(tags) == 0 {
+				return "", fmt.Errorf("at least one tag is required")
+			}
+			if _, err := s.api(http.MethodPost, "/api/flows/tags", map[string]any{"flowIds": []int{id}, "remove": tags}); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("removed %s from flow %d", strings.Join(tags, ", "), id), nil
 		})
 
 	s.add("list_tags",
@@ -814,13 +871,17 @@ func (s *Server) registerTools() {
 		obj(map[string]any{
 			"method":  pt("string"),
 			"url":     p("string", "absolute URL"),
-			"headers": p("string", "'Key: Value' lines"),
+			"headers": map[string]any{"oneOf": []any{map[string]any{"type": "string", "description": "'Key: Value' lines"}, map[string]any{"type": "object", "description": "header map e.g. {\"User-Agent\":\"bot\"}"}}},
 			"body":    pt("string"),
 		}, "url"),
 		func(a map[string]any) (string, error) {
+			hdr, err := argHeaderLines(a, "headers")
+			if err != nil {
+				return "", err
+			}
 			out, err := s.api(http.MethodPost, "/api/repeater/send", map[string]any{
 				"method": argStr(a, "method"), "url": argStr(a, "url"),
-				"headers": argStr(a, "headers"), "body": argStr(a, "body"),
+				"headers": hdr, "body": argStr(a, "body"),
 			})
 			if err != nil {
 				return "", err
@@ -829,11 +890,11 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("start_intruder",
-		"Fuzz a request. Mark fuzz points with §…§ in template. attackType sniper=one position at a time, pitchfork=lists in parallel. payloads=list of lists (one for sniper; one per position for pitchfork).",
+		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §). payloads=list of lists.",
 		obj(map[string]any{
 			"target":     p("string", "scheme://host[:port]"),
 			"template":   p("string", "raw request with §…§"),
-			"attackType": p("string", "sniper | pitchfork"),
+			"attackType": p("string", "sniper | battering | pitchfork | cluster"),
 			"payloads":   map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
 		}, "target", "template"),
 		func(a map[string]any) (string, error) {
@@ -987,15 +1048,17 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/settings") })
 
 	s.add("set_session",
-		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop.",
+		"Auth headers auto-applied to every Repeater/Intruder send (e.g. Authorization/Cookie) so sends stay authenticated. enabled=false to stop. Use hostHeaders when testing multiple targets simultaneously — each host gets its own auth, overriding the global headers for that hostname.",
 		obj(map[string]any{
-			"enabled": pt("boolean"),
-			"headers": p("string", "'Key: Value' lines"),
+			"enabled":     pt("boolean"),
+			"headers":     p("string", "'Key: Value' lines — global fallback applied to all in-scope hosts"),
+			"hostHeaders": p("object", "per-host auth overrides: {\"hostname\": \"Key: Value\\nKey2: Value2\"} — replaces global headers for matching hosts only"),
 		}, "enabled"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/session", map[string]any{
-				"enabled": argBool(a, "enabled", false),
-				"headers": argStr(a, "headers"),
+				"enabled":     argBool(a, "enabled", false),
+				"headers":     argStr(a, "headers"),
+				"hostHeaders": a["hostHeaders"],
 			})
 		})
 
@@ -1091,10 +1154,10 @@ func (s *Server) registerTools() {
 				fmt.Fprintf(&b, "%s No traffic captured yet — drive the target through the proxy.\n", mark(false))
 			}
 			if includes > 0 {
-				if s.flowsExist("/api/flows?inScope=1&limit=1") {
-					fmt.Fprintf(&b, "%s In-scope traffic captured.\n", mark(true))
-				} else {
-					fmt.Fprintf(&b, "%s No in-scope traffic — captured traffic isn't matching scope (check host/scheme).\n", mark(false))
+				inScope := s.inScopeTraffic()
+				fmt.Fprintf(&b, "%s In-scope traffic captured.\n", mark(inScope))
+				if !inScope {
+					b.WriteString("  (recent captures may be out-of-scope noise — drive the target app or check host/scheme rules)\n")
 				}
 			}
 			if st.ProxyAddr != "" && captured {
@@ -1359,6 +1422,24 @@ func (s *Server) registerTools() {
 				return "", fmt.Errorf("flowId is required")
 			}
 			return s.api(http.MethodPost, "/api/authz/check-sessions", map[string]any{"flowId": id})
+		})
+
+	s.add("cross_host_token_replay",
+		"Take a JWT from one flow and replay the same path to every unique in-scope host in history — automates cross-environment token confusion detection (e.g. qa-internal Bearer accepted on qa-external because they share a JWT secret).",
+		obj(map[string]any{
+			"flowId":    pt("integer"),
+			"jwtFlowId": p("integer", "flow whose Authorization: Bearer token to extract — defaults to flowId"),
+			"jwt":       p("string", "raw JWT string (alternative to jwtFlowId)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"flowId": argInt(a, "flowId", 0)}
+			if v := argInt(a, "jwtFlowId", 0); v > 0 {
+				body["jwtFlowId"] = v
+			}
+			if v := argStr(a, "jwt"); v != "" {
+				body["jwt"] = v
+			}
+			return s.api(http.MethodPost, "/api/authz/cross-host-replay", body)
 		})
 
 	s.add("oob_state", "Out-of-band callback catcher: enabled flag, base URL, recent interactions.", obj(map[string]any{}),

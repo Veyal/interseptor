@@ -109,3 +109,14 @@ func TestDisabledRulesIgnored(t *testing.T) {
 		t.Fatal("disabled rules must be ignored")
 	}
 }
+
+func TestHostInScopeIgnoresPath(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "127.0.0.1", Path: "/in"}})
+	if !e.HostInScope("127.0.0.1") {
+		t.Fatal("host include with path constraint should still match host for session gate")
+	}
+	if e.HostInScope("other.test") {
+		t.Fatal("unrelated host should be out of scope")
+	}
+}

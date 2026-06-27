@@ -16,6 +16,16 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 )
 
+// asProbeLog is one active-scan probe (saved as a FlagActiveScan flow when sent).
+type asProbeLog struct {
+	FlowID int64  `json:"flowId,omitempty"`
+	Method string `json:"method"`
+	Host   string `json:"host"`
+	Path   string `json:"path"`
+	Status int    `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
 // asState is the live active-scan state (one run at a time). "armed" is the
 // session-level consent gate: active scans refuse to run until the operator
 // arms it (asserting they're authorized to test the in-scope targets).
@@ -28,6 +38,7 @@ type asState struct {
 	scanned  int
 	requests int
 	findings []activescan.Finding
+	logs     []asProbeLog // every probe this run (with or without a finding)
 }
 
 func (h *Hub) asWriteState(w http.ResponseWriter) {
@@ -37,7 +48,14 @@ func (h *Hub) asWriteState(w http.ResponseWriter) {
 		"armed": h.as.armed, "running": h.as.running,
 		"targets": h.as.targets, "scanned": h.as.scanned, "requests": h.as.requests,
 		"findings": append([]activescan.Finding{}, h.as.findings...),
+		"logs":     append([]asProbeLog{}, h.as.logs...),
 	})
+}
+
+func (h *Hub) asAppendLog(e asProbeLog) {
+	h.as.mu.Lock()
+	h.as.logs = append(h.as.logs, e)
+	h.as.mu.Unlock()
 }
 
 func (h *Hub) asGet(w http.ResponseWriter, r *http.Request) { h.asWriteState(w) }
@@ -108,7 +126,7 @@ func (h *Hub) asStart(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	h.as.running, h.as.cancel = true, cancel
-	h.as.targets, h.as.scanned, h.as.requests, h.as.findings = 0, 0, 0, nil
+	h.as.targets, h.as.scanned, h.as.requests, h.as.findings, h.as.logs = 0, 0, 0, nil, nil
 	h.as.mu.Unlock()
 
 	// release rolls the claim back if we bail before launching the runner.
@@ -244,8 +262,18 @@ func (h *Hub) isOwnListener(f *store.Flow) bool {
 // activeSender bridges the engine to the real sender (records each probe as a
 // flagged flow, applies session auth) and reads the response back for detection.
 // The ctx is threaded into each send so the kill switch aborts in-flight probes.
+func probeLogFromTarget(t activescan.Target) asProbeLog {
+	e := asProbeLog{Method: t.Method}
+	if u, err := url.Parse(t.URL); err == nil {
+		e.Host = u.Hostname()
+		e.Path = u.RequestURI()
+	}
+	return e
+}
+
 func (h *Hub) activeSender(ctx context.Context, extraFlags int64) activescan.SendFunc {
 	return func(t activescan.Target) activescan.Response {
+		entry := probeLogFromTarget(t)
 		flow, err := h.snd.Send(sender.Request{
 			Method:  t.Method,
 			URL:     t.URL,
@@ -255,8 +283,20 @@ func (h *Hub) activeSender(ctx context.Context, extraFlags int64) activescan.Sen
 			Context: ctx,
 		})
 		if err != nil || flow == nil {
+			if err != nil {
+				entry.Error = err.Error()
+			} else {
+				entry.Error = "send failed"
+			}
+			h.asAppendLog(entry)
 			return activescan.Response{}
 		}
+		entry.FlowID = flow.ID
+		entry.Status = flow.Status
+		if flow.Error != "" {
+			entry.Error = flow.Error
+		}
+		h.asAppendLog(entry)
 		return activescan.Response{
 			FlowID:   flow.ID,
 			Status:   flow.Status,
@@ -265,6 +305,22 @@ func (h *Hub) activeSender(ctx context.Context, extraFlags int64) activescan.Sen
 			Duration: time.Duration(flow.DurationMs) * time.Millisecond,
 		}
 	}
+}
+
+func (h *Hub) activescanHistory(w http.ResponseWriter, r *http.Request) {
+	flows, err := h.st.QueryFlowsListFilter(store.FlowFilter{
+		RequireFlags: store.FlagActiveScan,
+		Limit:        atoiOr(r.URL.Query().Get("limit"), 200),
+	})
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := make([]flowJSON, 0, len(flows))
+	for _, f := range flows {
+		out = append(out, toFlowJSON(f))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"flows": out})
 }
 
 func asIssues(fs []activescan.Finding) []store.Issue {

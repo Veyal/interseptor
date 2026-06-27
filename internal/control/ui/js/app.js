@@ -6,12 +6,11 @@ import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal } from 
 import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
-import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel } from './scanner.js';
-import { loadEndpoints, focusMapFromFlow } from './map.js';
+import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel, setScanSub } from './scanner.js';
+import { loadEndpoints } from './map.js';
 import { loadDiscovery, refreshDiscovery } from './discovery.js';
 import { loadSettings, loadSysProxy, loadSession, loadProject, openProjectModal, applyAiDisabledUI, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js';
-import { loadApiKeys, loadReference, loadMCP } from './apipanel.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
 import { loadFindings } from './findings.js';
 import { loadTags } from './tags.js';
@@ -31,8 +30,7 @@ function activateTab(t){
   $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
   try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
   if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-  if(t.dataset.tab==='scanner')loadScanTargets();
-  if(t.dataset.tab==='findings')loadFindings();
+  if(t.dataset.tab==='scanner'){loadScanTargets();const sub=localStorage.getItem('scanSub')||$('#scanSub')?.querySelector('.on')?.dataset.s||'passive';setScanSub(sub);}
   if(t.dataset.tab==='discover')loadDiscovery();
   if(t.dataset.tab==='map')loadEndpoints();
   if(t.dataset.tab==='notes')loadNotes();
@@ -60,8 +58,13 @@ $('#tabs').addEventListener('keydown',e=>{
 });
 // Re-open whichever tab was active before a refresh (default stays Proxy).
 function restoreTab(){
-  try{const id=localStorage.getItem('tab');if(!id||id==='proxy')return;
+  try{let id=localStorage.getItem('tab');
+    if(id==='findings'){id='scanner';localStorage.setItem('tab','scanner');localStorage.setItem('scanSub','findings');}
+    if(id==='api'){id='settings';localStorage.setItem('tab','settings');}
+    if(!id||id==='proxy')return;
     const b=document.querySelector('.tab[data-tab="'+id+'"]');if(b)b.click();
+    if(id==='scanner'){const sub=localStorage.getItem('scanSub');if(sub==='findings')setScanSub('findings');}
+    if(id==='settings'&&localStorage.getItem('setSec')==='api'){document.querySelector('#setNav button[data-sec="api"]')?.click();}
   }catch(e){}
 }
 
@@ -182,7 +185,8 @@ function cmdkCommands(){
     {t:'Go to Intercept',kw:'hold forward drop match replace rules',run:go('intercept')},
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
     {t:'Go to Intruder',kw:'fuzz brute force payloads enumerate',run:go('intruder')},
-    {t:'Go to Scanner',kw:'passive active scan checks findings issues vulnerabilities report',run:go('scanner')},
+    {t:'Go to Scanner',kw:'passive active scan checks findings issues vulnerabilities report',run:()=>{go('scanner')();setScanSub('passive');}},
+    {t:'Go to Findings',kw:'findings poc vulnerability record curated',run:()=>{go('scanner')();setScanSub('findings');}},
     {t:'Go to Discover',kw:'content discovery forced browse brute force dirbuster gobuster ffuf wordlist directories endpoints fuzz paths',run:go('discover')},
     {t:'Go to Map',kw:'endpoints attack surface graph tree headers body search',run:go('map')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
@@ -192,7 +196,7 @@ function cmdkCommands(){
     ...(state.aiDisabled?[]:[{t:'Organize project notes with AI',kw:'notes structure sort clean headings findings todo',run:()=>{goToNotes();organizeNotes();}}]),
     {t:'Open Authz test',kw:'authorization access control roles identity',run:()=>{const f=selectedFlow();if(f)openAuthz(f.id);else toast('select a flow in History first');}},
     ...(state.aiDisabled?[]:[{t:'Go to Activity',kw:'ai mcp glass box agent log',run:go('activity')}]),
-    {t:'Go to API',kw:'keys tokens rest mcp reference',run:go('api')},
+    {t:'Settings: API & MCP',kw:'keys tokens rest mcp reference',run:goSet('api')},
     {t:'Settings: Proxy & network',kw:'listener bind port upstream system proxy capture browser telemetry',run:goSet('proxy')},
     {t:'Settings: TLS / CA — download CA certificate',kw:'https certificate cert trust install ca download mitm',run:goSet('tls')},
     {t:'Settings: Target scope',kw:'include exclude host path in scope',run:goSet('scope')},
@@ -251,7 +255,6 @@ document.addEventListener('keydown',e=>{
   if(mod&&e.key.toLowerCase()==='r'){const f=selectedFlow();if(f){e.preventDefault();sendToRepeater(f);}return;}
   if(!mod&&!typing&&e.key==='r'){const f=selectedFlow();if(f){const p=document.querySelector('.panel[data-panel="proxy"]');if(p&&p.classList.contains('active')){e.preventDefault();sendToRepeater(f);}}return;}
   if(mod&&e.key.toLowerCase()==='i'){const f=selectedFlow();if(f){e.preventDefault();sendToIntruder(f);}return;}
-  if(mod&&e.key.toLowerCase()==='m'){const f=selectedFlow();if(f){e.preventDefault();focusMapFromFlow(f);}return;}
   // Ctrl+Shift+F forward / Ctrl+D drop the selected held item — Intercept tab only
   if(document.querySelector('.tab[data-tab="intercept"]').classList.contains('active')){
     const drop=mod&&!typing&&e.key.toLowerCase()==='d';
@@ -299,6 +302,6 @@ applyTheme(currentTheme()); // sync the button icon with the theme applied pre-p
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
 {const hb=$('#helpBtn');if(hb)hb.onclick=()=>openModal($('#shortcutsModal'));}

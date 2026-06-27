@@ -137,6 +137,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 			return err
 		}
 		fmt.Fprintf(out, "updated to interceptor v%s → %s\n", ver, dest)
+		printMCPUpdateNote(out)
 		return nil
 	}
 
@@ -151,7 +152,13 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	} else {
 		fmt.Fprintf(out, "installed interceptor v%s via go install (ensure $(go env GOPATH)/bin is on your PATH)\n", ver)
 	}
+	printMCPUpdateNote(out)
 	return nil
+}
+
+func printMCPUpdateNote(out io.Writer) {
+	fmt.Fprintf(out, "\nMCP: if Cursor uses Streamable HTTP (http://127.0.0.1:9966/mcp), restart Interceptor to pick up this build — no MCP config change needed.\n")
+	fmt.Fprintf(out, "     stdio clients: restart the MCP server or use scripts/interceptor-mcp to resolve the updated binary on PATH.\n")
 }
 
 func fetchRelease(ctx context.Context, version string) (*releaseInfo, error) {

@@ -34,7 +34,7 @@ func printUsage() {
 
 Usage:
   interceptor              start the proxy and control UI
-  interceptor mcp          run the MCP server on stdio
+  interceptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
   interceptor update       install the latest release
   interceptor version      print the running version
 

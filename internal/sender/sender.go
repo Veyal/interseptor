@@ -40,14 +40,19 @@ type Header struct {
 	Value string `json:"value"`
 }
 
-// session holds auth headers auto-applied to every Repeater/Intruder send so a
+// session holds auth headers auto-applied to outgoing sends so a
 // tester (or the AI) need not re-paste a token on each request. Guarded for
 // concurrent reads (sends) and writes (settings changes).
 type session struct {
-	mu      sync.RWMutex
-	enabled bool
-	headers []Header
+	mu          sync.RWMutex
+	enabled     bool
+	headers     []Header            // global — applied to all in-scope sends
+	hostHeaders map[string][]Header // per-host override: lowercase hostname → headers
 }
+
+// SessionScope decides whether session headers may be attached to a send target.
+// When nil, session headers are not injected (fail closed).
+type SessionScope func(host, scheme string, port int, path string) bool
 
 // Macro defines a token-refresh request whose response feeds a value into every
 // subsequent send — for CSRF tokens that rotate per request, or to re-auth. The
@@ -71,8 +76,13 @@ type Sender struct {
 	macroMu sync.RWMutex
 	macro   Macro
 
+	sessionScope SessionScope
+
 	login       loginState
 	refreshSess func([]Header)
+
+	persistMu sync.Mutex
+	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
 }
 
 // SetMacro configures the token-refresh macro applied before each send.
@@ -176,15 +186,42 @@ func (s *Sender) SetSession(enabled bool, headers []Header) {
 	s.sess.mu.Unlock()
 }
 
+// SetSessionHostHeaders configures per-host auth header overrides. When a
+// send target's hostname matches a key, those headers replace the global
+// headers for that request. Pass nil to clear all per-host overrides.
+func (s *Sender) SetSessionHostHeaders(hh map[string][]Header) {
+	s.sess.mu.Lock()
+	s.sess.hostHeaders = hh
+	s.sess.mu.Unlock()
+}
+
+// SetSessionScope sets the host gate for session injection (typically target scope).
+func (s *Sender) SetSessionScope(fn SessionScope) {
+	s.sessionScope = fn
+}
+
+func (s *Sender) sessionAllowed(host, scheme string, port int, path string) bool {
+	if s.sessionScope == nil {
+		return false
+	}
+	return s.sessionScope(host, scheme, port, path)
+}
+
 // applySession forces the configured session headers onto req (replacing any
-// existing value), keeping every send authenticated. No-op when disabled.
+// existing value). Per-host overrides take priority over global headers — if
+// the request hostname matches a key in hostHeaders, only those headers are
+// applied. No-op when disabled.
 func (s *Sender) applySession(req *http.Request) {
 	s.sess.mu.RLock()
 	defer s.sess.mu.RUnlock()
 	if !s.sess.enabled {
 		return
 	}
-	for _, h := range s.sess.headers {
+	hdrs := s.sess.headers
+	if hh, ok := s.sess.hostHeaders[strings.ToLower(req.URL.Hostname())]; ok && len(hh) > 0 {
+		hdrs = hh
+	}
+	for _, h := range hdrs {
 		if h.Key == "" {
 			continue
 		}
@@ -226,12 +263,14 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	if method == "" {
 		method = http.MethodGet
 	}
+	port := atoiOr(u.Port(), defaultPort(u.Scheme))
+	scopeOK := !r.NoSession && s.sessionAllowed(u.Hostname(), u.Scheme, port, u.Path)
 
 	// Token macro: fetch a fresh value (e.g. CSRF) and inject it. Placeholder mode
 	// rewrites the outgoing headers/body before the request is built; header mode is
-	// applied to req below.
+	// applied to req below. Skipped when the send target is out of session scope.
 	var macroTok, macroName, macroMode string
-	if !r.NoSession {
+	if scopeOK {
 		s.maybeRefreshLogin()
 		macroTok, macroName, macroMode = s.macroToken()
 	}
@@ -264,14 +303,13 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 			req.Header.Add(k, v)
 		}
 	}
-	if !r.NoSession {
+	if scopeOK {
 		s.applySession(req) // force session/auth headers (recorded on the flow below)
 	}
 	if macroTok != "" && macroMode == "header" && macroName != "" {
 		req.Header.Set(macroName, macroTok) // inject the fresh macro token as a header
 	}
 
-	port := atoiOr(u.Port(), defaultPort(u.Scheme))
 	start := time.Now()
 	flow := &store.Flow{
 		TS:          start,
@@ -310,7 +348,7 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	s.persist(flow)
 
 	// 401 re-auth: run the login macro once and retry the original request.
-	if !r.NoSession && !r.retried401 && flow.Status == http.StatusUnauthorized && s.shouldReauth401() {
+	if scopeOK && !r.retried401 && flow.Status == http.StatusUnauthorized && s.shouldReauth401() {
 		if _, err := s.runLoginMacro(); err == nil {
 			r2 := r
 			r2.retried401 = true
@@ -320,7 +358,26 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	return flow, nil
 }
 
-func (s *Sender) persist(flow *store.Flow) { _, _ = s.st.InsertFlow(flow) }
+// SetOnPersist registers a callback invoked after each flow is stored. The
+// control plane wires this to SSE flow.new so Repeater/Intruder/MCP sends
+// refresh Proxy History the same way proxied traffic does.
+func (s *Sender) SetOnPersist(fn func(*store.Flow)) {
+	s.persistMu.Lock()
+	s.onPersist = fn
+	s.persistMu.Unlock()
+}
+
+func (s *Sender) persist(flow *store.Flow) {
+	if _, err := s.st.InsertFlow(flow); err != nil {
+		return
+	}
+	s.persistMu.Lock()
+	fn := s.onPersist
+	s.persistMu.Unlock()
+	if fn != nil {
+		fn(flow)
+	}
+}
 
 func (s *Sender) storeBody(b []byte) (string, int64) {
 	if len(b) == 0 {

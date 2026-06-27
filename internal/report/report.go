@@ -130,26 +130,46 @@ func Project(findings []store.Finding, issues []store.Issue) string {
 			if f.Target != "" {
 				b.WriteString("- **Target:** `" + code(f.Target) + "`\n")
 			}
-			if f.Detail != "" {
-				b.WriteString("- **Detail:** " + f.Detail + "\n")
-			}
-			if f.Evidence != "" {
-				b.WriteString("- **Evidence:** `" + code(f.Evidence) + "`\n")
-			}
 			if f.Fix != "" {
 				b.WriteString("- **Remediation:** " + f.Fix + "\n")
 			}
-			if len(f.Flows) > 0 {
-				b.WriteString("- **PoC flows:**\n")
-				for _, fl := range f.Flows {
-					line := fmt.Sprintf("  - `%s %s%s`", orVal(fl.Method, "GET"), code(fl.Host), code(fl.Path))
-					if fl.Status > 0 {
-						line += fmt.Sprintf(" → %d", fl.Status)
+			b.WriteString("\n")
+			// Render interleaved narrative body (text + PoC flows in author's order).
+			if len(f.Blocks) > 0 {
+				for _, bl := range f.Blocks {
+					if bl.Type == "text" && bl.MD != "" {
+						b.WriteString(bl.MD + "\n\n")
+					} else if bl.Type == "flow" {
+						line := fmt.Sprintf("> `%s %s%s`", orVal(bl.Method, "?"), code(bl.Host), code(bl.Path))
+						if bl.Status > 0 {
+							line += fmt.Sprintf(" → **%d**", bl.Status)
+						}
+						if bl.Note != "" {
+							line += " — " + bl.Note
+						}
+						b.WriteString(line + "\n>\n")
 					}
-					if fl.Note != "" {
-						line += " — " + code(fl.Note)
+				}
+			} else {
+				// Legacy fallback: separate detail / evidence / flows sections.
+				if f.Detail != "" {
+					b.WriteString(f.Detail + "\n\n")
+				}
+				if f.Evidence != "" {
+					b.WriteString("**Evidence:** " + f.Evidence + "\n\n")
+				}
+				if len(f.Flows) > 0 {
+					b.WriteString("**PoC flows:**\n")
+					for _, fl := range f.Flows {
+						line := fmt.Sprintf("- `%s %s%s`", orVal(fl.Method, "GET"), code(fl.Host), code(fl.Path))
+						if fl.Status > 0 {
+							line += fmt.Sprintf(" → %d", fl.Status)
+						}
+						if fl.Note != "" {
+							line += " — " + code(fl.Note)
+						}
+						b.WriteString(line + "\n")
 					}
-					b.WriteString(line + "\n")
 				}
 			}
 		}

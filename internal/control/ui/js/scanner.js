@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor } from './core.js';
 import { flowPopup } from './flowmodal.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
@@ -27,6 +27,27 @@ $('#oobGen')&&($('#oobGen').onclick=async()=>{try{const r=await api('/api/oob/ne
 $('#oobCopy')&&($('#oobCopy').onclick=()=>{const u=$('#oobUrl').value;if(u)copyText(u,'OOB URL copied');else toast('generate a URL first');});
 $('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{try{await api('/api/oob/base',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({baseUrl:$('#oobBase').value.trim()})});toast('OOB base saved');loadOob();}catch(e){toast(e.message);}});
 $('#oobClear')&&($('#oobClear').onclick=async()=>{try{await api('/api/oob/interactions',{method:'DELETE'});loadOob();toast('OOB interactions cleared');}catch(e){toast(e.message);}});
+
+const OOB_TUNNEL_CMD='cloudflared tunnel --url http://127.0.0.1:9966';
+$('#oobModalTunnelCopy')&&($('#oobModalTunnelCopy').onclick=()=>copyText(OOB_TUNNEL_CMD,'Tunnel command copied'));
+
+/* ---- Scanner / Findings sub-tabs ---- */
+export function setScanSub(sub){
+  const passive=sub!=='findings';
+  $('#scanSub')?.querySelectorAll('button').forEach(b=>{
+    const on=b.dataset.s===(passive?'passive':'findings');
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-pressed',on?'true':'false');
+  });
+  const pb=$('#scanPassiveBar'),fb=$('#scanFindingsBar'),pv=$('#scanPassiveView'),fv=$('#scanFindingsView');
+  if(pb)pb.style.display=passive?'flex':'none';
+  if(fb)fb.style.display=passive?'none':'flex';
+  if(pv)pv.style.display=passive?'flex':'none';
+  if(fv)fv.style.display=passive?'none':'flex';
+  if(!passive) import('./findings.js').then(m=>m.loadFindings());
+  try{localStorage.setItem('scanSub',passive?'passive':'findings');}catch(e){}
+}
+$('#scanSub')&&$('#scanSub').querySelectorAll('button').forEach(b=>{b.onclick=()=>setScanSub(b.dataset.s);});
 
 /* ---- custom checks editor ---- */
 let checkMode='code',checkDocsLoaded=false;
@@ -208,6 +229,33 @@ export async function renderAsScopePanel(){
 export async function loadActive(){
   try{const d=await api('/api/activescan');renderActive(d);}catch(e){}
 }
+let asHistoryFlows=[];
+async function loadAsHistory(){
+  try{
+    const d=await api('/api/activescan/history?limit=200');
+    asHistoryFlows=d.flows||[];
+    const st=await api('/api/activescan').catch(()=>null);
+    if(st)renderAsLogs(st);
+  }catch(e){}
+}
+function renderAsLogs(d){
+  const box=$('#asLogs'),cnt=$('#asLogCount');
+  if(!box)return;
+  const runLogs=(d&&d.logs)||[];
+  const items=runLogs.length?runLogs:asHistoryFlows.map(f=>({flowId:f.id,method:f.method,host:f.host,path:f.path,status:f.status,error:f.error||''}));
+  if(cnt)cnt.textContent=items.length?'('+items.length+')':'';
+  if(!items.length){box.innerHTML='<div class="hint">No probes yet — start a scan to record attack requests here.</div>';return;}
+  box.innerHTML=items.map(p=>{
+    const st=p.status||0;
+    const err=p.error?` <span style="color:var(--red)">${esc(p.error)}</span>`:'';
+    const flow=p.flowId?` <span style="color:var(--blue)">#${p.flowId}</span>`:'';
+    return `<div class="as-log-row${p.flowId?'':' muted'}"${p.flowId?` data-flow="${p.flowId}"`:''} style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);cursor:${p.flowId?'pointer':'default'};font-size:11.5px;font-family:var(--mono)">
+      <span style="width:44px;flex:none;color:${methodColor(p.method)}">${esc(p.method||'—')}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)">${esc(p.host||'')}${esc(p.path||'')}</span>
+      <span style="width:36px;flex:none;text-align:right;color:${statusColor(st)}">${st||'—'}</span>${flow}${err}</div>`;
+  }).join('');
+  box.querySelectorAll('[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
+}
 export function renderActive(d){
   if($('#asArm'))$('#asArm').checked=!!d.armed;
   const fs=d.findings||[];
@@ -219,6 +267,7 @@ export function renderActive(d){
     else if(d.scanned)prog.textContent='done · '+d.scanned+' targets · '+d.requests+' requests · '+fs.length+' findings';
     else prog.textContent='';
   }
+  renderAsLogs(d);
   const box=$('#asFindings');if(!box)return;
   box.innerHTML=fs.length?fs.map(f=>`<div data-flow="${f.flowId}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
     <span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b>
@@ -244,6 +293,7 @@ export function openActive(){
   openModal($('#activeModal'));
   $('#asFlowLabel').textContent=state.selId!=null?('#'+state.selId):'(none selected)';
   loadActive();
+  loadAsHistory();
   renderAsScopePanel();
 }
 if($('#activeBtn'))$('#activeBtn').onclick=openActive;

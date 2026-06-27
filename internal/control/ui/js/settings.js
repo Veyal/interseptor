@@ -1,17 +1,105 @@
-import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal } from './core.js';
-import { loadFlows, loadScope } from './proxy.js';
+import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal, copyText } from './core.js';
+import { loadFlows, loadScope, syncSourceFilters } from './proxy.js';
 import { loadRules } from './intercept.js';
+
+/* ---- JWT expiry countdown ---- */
+let sessExpTimer = null;
+let sessExpValue = null; // cached Unix exp timestamp from active session JWT
+
+function jwtExpFromHeaders(headersText) {
+  for (const line of (headersText || '').split('\n')) {
+    const m = line.match(/^Authorization\s*:\s*Bearer\s+([A-Za-z0-9+/=_-]+)\.([A-Za-z0-9+/=_-]+)\./i);
+    if (!m) continue;
+    try {
+      const raw = m[2].replace(/-/g, '+').replace(/_/g, '/');
+      const pad = raw.length % 4 ? raw + '='.repeat(4 - raw.length % 4) : raw;
+      const payload = JSON.parse(atob(pad));
+      if (payload && payload.exp) return Number(payload.exp);
+    } catch(e) {}
+  }
+  return null;
+}
+
+function renderSessionExpiry(exp, enabled) {
+  const el = $('#sessionExpiry');
+  if (!el) return;
+  if (!enabled || !exp) { el.style.display = 'none'; return; }
+  const secsLeft = exp - Math.floor(Date.now() / 1000);
+  let text, color;
+  if (secsLeft <= 0) {
+    text = 'Token EXPIRED';
+    color = 'var(--red)';
+  } else if (secsLeft < 300) {
+    const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+    text = `Expires in ${m > 0 ? m + 'm ' : ''}${s}s`;
+    color = 'var(--red)';
+  } else if (secsLeft < 1800) {
+    const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+    text = `Expires in ${m}m ${s}s`;
+    color = 'var(--amber)';
+  } else {
+    const totalM = Math.floor(secsLeft / 60), h = Math.floor(totalM / 60);
+    text = h > 0 ? `Expires in ${h}h ${totalM % 60}m` : `Expires in ${totalM}m`;
+    color = 'var(--fg3)';
+  }
+  el.textContent = text;
+  el.style.color = color;
+  el.style.display = '';
+}
+
+/* ---- per-host session header rows ---- */
+function renderHostHdrList(hostHeaders) {
+  const list = $('#hostHdrList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!hostHeaders || !Object.keys(hostHeaders).length) return;
+  for (const [host, hdrs] of Object.entries(hostHeaders)) {
+    list.appendChild(makeHostHdrRow(host, hdrs));
+  }
+}
+
+function makeHostHdrRow(host, hdrs) {
+  const row = document.createElement('div');
+  row.className = 'host-hdr-row';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
+  row.innerHTML = `<input class="btn host-hdr-host" style="background:var(--bg3);font-family:var(--mono);font-size:11px;width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
+    `<textarea class="host-hdr-headers" rows="2" style="flex:1;font-family:var(--mono);font-size:11px;resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
+    `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override">×</button>`;
+  row.querySelector('.host-hdr-del').onclick = () => row.remove();
+  return row;
+}
+
+function collectHostHeaders() {
+  const out = {};
+  document.querySelectorAll('.host-hdr-row').forEach(row => {
+    const host = (row.querySelector('.host-hdr-host').value || '').trim().toLowerCase();
+    const hdrs = (row.querySelector('.host-hdr-headers').value || '').trim();
+    if (host) out[host] = hdrs;
+  });
+  return out;
+}
+
+if ($('#addHostHdrBtn')) $('#addHostHdrBtn').onclick = () => {
+  const row = makeHostHdrRow('', '');
+  $('#hostHdrList').appendChild(row);
+  row.querySelector('.host-hdr-host').focus();
+};
 
 /* settings sub-nav */
 $$('#setNav button').forEach(b=>b.onclick=()=>{
   $$('#setNav button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
+  try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'&&!retentionLoaded){retentionLoaded=true;loadRetention();}
+  if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
 });
 
 /* ---- settings ---- */
 let savedAiModel='';
+let apiLoaded=false;
+const OOB_TUNNEL_CMD='cloudflared tunnel --url http://127.0.0.1:9966';
+$('#oobTunnelCopy')&&($('#oobTunnelCopy').onclick=()=>copyText(OOB_TUNNEL_CMD,'Tunnel command copied'));
 
 export async function loadSettings(){try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;$('#setAddr').value=s.proxyAddr;
   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
@@ -61,7 +149,7 @@ export function applyAiDisabledUI(){
     if(mcpBtn&&mcpBtn.classList.contains('on'))document.querySelector('#apiSub button[data-s="keys"]')?.click();
     state.actUnseen=0;
     const b=$('#actBadge');if(b)b.style.display='none';
-    if(state.showAI){state.showAI=false;const t=$('#aiToggle');if(t)t.classList.remove('accent');}
+    if(state.showAI){state.showAI=false;syncSourceFilters();}
   }
 }
 
@@ -158,9 +246,23 @@ $('#saveAiBtn').onclick=async()=>{
 };
 export async function loadSession(){try{const s=await api('/api/session');
   if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
+  if($('#setSessionUnscoped'))$('#setSessionUnscoped').checked=!!s.unscoped;
   if($('#setSessionHeaders'))$('#setSessionHeaders').value=s.headers||'';
   const n=(s.headers||'').split('\n').filter(l=>l.trim()&&!l.trim().startsWith('#')).length;
-  if($('#sessionState'))$('#sessionState').textContent=s.enabled?`Applying ${n} header${n===1?'':'s'} to sends`:'Off.';
+  const hh=s.hostHeaders||{};
+  const nhh=Object.keys(hh).length;
+  if($('#sessionState')){
+    if(!s.enabled) $('#sessionState').textContent='Off.';
+    else if(s.unscoped) $('#sessionState').textContent=`Applying ${n} header${n===1?'':'s'} to all hosts (unsafe)${nhh?` · ${nhh} host override${nhh===1?'':'s'}`:''}`;
+    else $('#sessionState').textContent=`Applying ${n} header${n===1?'':'s'} to in-scope hosts${nhh?` · ${nhh} host override${nhh===1?'':'s'}`:''}`;
+  }
+  renderHostHdrList(hh);
+  sessExpValue = jwtExpFromHeaders(s.headers);
+  renderSessionExpiry(sessExpValue, !!s.enabled);
+  if (sessExpTimer) clearInterval(sessExpTimer);
+  if (sessExpValue && s.enabled) {
+    sessExpTimer = setInterval(() => renderSessionExpiry(sessExpValue, !!($('#setSessionOn')||{}).checked), 30000);
+  }
   const m=s.macro||{};
   if($('#macroOn'))$('#macroOn').checked=!!m.enabled;
   if($('#macroReq'))$('#macroReq').value=m.request||'';
@@ -180,10 +282,10 @@ function loginMacroBody(){
   return {enabled:$('#loginMacroOn').checked,target:$('#loginMacroTarget').value.trim(),request:$('#loginMacroReq').value,
     refreshSecs:parseInt(($('#loginMacroRefresh')||{}).value,10)||0,reauthOn401:!!($('#loginMacro401')||{}).checked};
 }
-// Save session headers + the token macro together (the endpoint takes both).
+// Save session headers + the token macro + per-host overrides together.
 function saveSessionAll(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
-  const body={enabled:$('#setSessionOn').checked,headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody()};
+  const body={enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
   return api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 }
 if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=async()=>{try{await saveSessionAll();toast('session saved');loadSession();}catch(e){toast(e.message);}};

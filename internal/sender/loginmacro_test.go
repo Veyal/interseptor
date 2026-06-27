@@ -176,6 +176,7 @@ func TestReauthOn401RetriesOnce(t *testing.T) {
 	}
 	defer s.Close()
 	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return true })
 	snd.SetLoginMacro(LoginMacro{
 		Enabled: true, Target: upstream.URL, ReauthOn401: true,
 		Request: "GET /login HTTP/1.1\r\nHost: example\r\n\r\n",

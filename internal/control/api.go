@@ -71,6 +71,8 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/flows/{id}/raw", "Reconstructed raw request/response (?side=req|res)"},
 	{"GET", "/api/flows/{id}/body", "Body bytes only (?side=req|res) — for download with MIME extension"},
 	{"GET", "/api/flows/{id}/ws", "Captured WebSocket frames for a flow"},
+	{"GET", "/api/flows/inscope", "Whether any in-scope traffic exists (paginated; for readiness checks)"},
+	{"GET", "/api/params", "Aggregate query/form/JSON parameter names from captured traffic (?host=, ?inScope=1)"},
 	{"POST", "/api/ws/send", "WebSocket Repeater: open a socket, send a message, return reply frames"},
 	{"POST", "/api/decode", "Decode/encode a string (base64, url, hex, html, jwt, smart)"},
 	{"GET", "/api/rules", "List match-&-replace rules"},
@@ -88,7 +90,8 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/scanner/run", "Run passive checks over captured flows"},
 	{"GET", "/api/scanner/issues", "List scanner findings"},
 	{"GET", "/api/scanner/report", "Download scanner findings as a Markdown report"},
-	{"GET", "/api/activescan", "Active-scan state (armed/running/findings)"},
+	{"GET", "/api/activescan", "Active-scan state (armed/running/findings/probe log)"},
+	{"GET", "/api/activescan/history", "Active-scan probe history (all FlagActiveScan flows)"},
 	{"POST", "/api/activescan/arm", "Arm/disarm active scanning (consent gate)"},
 	{"POST", "/api/activescan/start", "Start an active scan (sends attack payloads; flowId or inScope)"},
 	{"POST", "/api/activescan/stop", "Stop the running active scan"},
@@ -130,7 +133,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/flows/{id}/analyze", "Compact AI-friendly summary of a flow"},
 	{"PUT", "/api/flows/{id}/note", "Set or clear a flow note"},
 	{"PUT", "/api/flows/{id}/tags", "Replace a flow's tags"},
-	{"POST", "/api/flows/tags", "Add tags to many flows (selection)"},
+	{"POST", "/api/flows/tags", "Add or remove tags on many flows (selection)"},
 	{"GET", "/api/tags", "List tags in use with flow counts and colors"},
 	{"PUT", "/api/tags/{tag}/color", "Set or clear a tag's display color"},
 	{"GET", "/api/endpoints", "Unique endpoints map (searchScope: path|headers|body|all)"},
@@ -181,7 +184,7 @@ var mcpDescriptor = map[string]any{
 	"name":    "interceptor",
 	"version": version.Version,
 	"status":  "ready",
-	"note":    "Run `interceptor` (this proxy/UI) first, then point your MCP client at `interceptor mcp` — a stdio MCP server that drives this engine over the control API. Set INTERCEPTOR_CONTROL_URL to override the default http://127.0.0.1:9966.",
+	"note":    "Run `interceptor` first. See GET /api/mcp for Cursor (HTTP /mcp) and stdio client configs.",
 	"transport": map[string]any{
 		"type":    "stdio",
 		"command": "interceptor",
@@ -194,15 +197,8 @@ var mcpDescriptor = map[string]any{
 		"url":  "/mcp",
 		"note": "Stateless Streamable-HTTP MCP. POST a JSON-RPC message (or batch) to /mcp; no session id required. Same tools as stdio. Bind localhost-only.",
 	},
-	// Ready to paste into a Claude Desktop / Claude Code MCP config.
-	"clientConfig": map[string]any{
-		"mcpServers": map[string]any{
-			"interceptor": map[string]any{
-				"command": "interceptor",
-				"args":    []string{"mcp"},
-			},
-		},
-	},
+	// Legacy default; apiMCP overwrites with mcpHTTPClientConfig(host) per request.
+	"clientConfig": mcpHTTPClientConfig("http://127.0.0.1:9966"),
 	"tools": []map[string]string{
 		{"name": "list_flows", "desc": "List/search captured proxy flows"},
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},
@@ -213,6 +209,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "set_notes", "desc": "Replace the project's shared markdown notebook"},
 		{"name": "append_notes", "desc": "Append a markdown block to the project notebook"},
 		{"name": "tag_flow", "desc": "Attach tags to a flow for triage/grouping"},
+		{"name": "untag_flow", "desc": "Remove tags from a flow (others kept)"},
 		{"name": "list_tags", "desc": "List tags in use with flow counts"},
 		{"name": "create_finding", "desc": "Record a structured vulnerability finding (durable memory)"},
 		{"name": "list_findings", "desc": "List findings (with PoC flows), filter by severity/status"},
@@ -221,7 +218,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
 		{"name": "export_report", "desc": "Full engagement report (findings + PoCs + passive-scan appendix) as Markdown"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
-		{"name": "start_intruder", "desc": "Run a Sniper/Pitchfork payload attack"},
+		{"name": "start_intruder", "desc": "Run Sniper/Battering/Pitchfork/Cluster payload attack"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},
 		{"name": "run_scanner", "desc": "Passive scan of captured flows"},
 		{"name": "list_issues", "desc": "Scanner findings"},
@@ -255,6 +252,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "set_authz", "desc": "Save authz identities"},
 		{"name": "authz_run", "desc": "Run authorization test (flowId or inScope:true)"},
 		{"name": "authz_check_sessions", "desc": "Probe session validity per identity on one flow"},
+		{"name": "cross_host_token_replay", "desc": "Replay endpoint to all in-scope hosts with a JWT — detects cross-env token confusion"},
 		{"name": "oob_state", "desc": "OOB blind-callback catcher state + hits"},
 		{"name": "oob_new", "desc": "Generate a new OOB callback URL/token"},
 		{"name": "oob_set_base", "desc": "Set the public OOB base URL (ngrok/VPS/LAN)"},
@@ -270,5 +268,5 @@ var mcpDescriptor = map[string]any{
 }
 
 func (h *Hub) apiMCP(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, mcpDescriptor)
+	writeJSON(w, http.StatusOK, mcpDescriptorForRequest(r.Host))
 }

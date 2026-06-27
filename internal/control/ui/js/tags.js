@@ -64,3 +64,40 @@ async function setTagColor(tag, color) {
     await loadTags();
   } catch (e) { toast(e.message); }
 }
+
+// tagActionTargets returns flow ids for a tag mutation: the whole multi-selection
+// when the row is part of it, otherwise just that row.
+export function tagActionTargets(flowId) {
+  if (state.selected.size && state.selected.has(flowId)) return [...state.selected];
+  return [flowId];
+}
+
+// mutateFlowTags bulk-adds or bulk-removes tags via POST /api/flows/tags.
+export async function mutateFlowTags(flowIds, { add, remove }) {
+  if (!flowIds?.length) return;
+  const body = { flowIds };
+  if (add?.length) body.add = add;
+  if (remove?.length) body.remove = remove;
+  if (!body.add && !body.remove) return;
+  try {
+    await api('/api/flows/tags', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const n = flowIds.length;
+    if (remove?.length) toast('removed from ' + n + ' flow' + (n === 1 ? '' : 's'));
+    else if (add?.length) toast('tagged ' + n + ' flow' + (n === 1 ? '' : 's'));
+  } catch (e) { toast(e.message); }
+}
+
+// openTagChipMenu — right-click a per-row tag chip to filter or remove that tag.
+export function openTagChipMenu(x, y, tag, flowId) {
+  const targets = tagActionTargets(flowId);
+  const n = targets.length;
+  openCtxMenu(x, y, [{
+    head: 'TAG · ' + tag,
+    items: [
+      { label: 'Filter by this tag', on: state.filters.tag === tag, act: () => filterByTag(tag) },
+      { label: 'Remove from flow', danger: true, val: n > 1 ? n + ' selected' : '', act: () => mutateFlowTags(targets, { remove: [tag] }) },
+    ],
+  }]);
+}

@@ -2,9 +2,10 @@
 // under each saved identity (role) and diffs responses to surface IDOR / broken
 // access control. Launched from History right-click or command palette.
 import { $, esc, escAttr, state, api, toast, openModal, closeModal, statusColor, fmtSize, wireRowKey } from './core.js';
-import { selectFlow } from './proxy.js';
+import { selectFlow, refreshAuthzIds } from './proxy.js';
 
 let authzFlowId = null;
+let authzViewMode = 'list'; // 'list' | 'matrix' — toggled in bulk results
 // authzTarget resolves the flow to act on AT CALL TIME — the live History selection
 // wins (so changing selection while the modal is open isn't ignored, which would
 // silently test the wrong endpoint for IDOR), falling back to the flow the modal
@@ -83,22 +84,34 @@ export function openAuthz(flowId){
 }
 
 async function loadAuthzIdentities(){
-  try{const d=await api('/api/authz');renderIdentities(d.identities||[]);}catch(e){renderIdentities([]);}
+  try{const d=await api('/api/authz');renderIdentities(d.identities||[]);refreshAuthzIds();}catch(e){renderIdentities([]);}
 }
 function renderIdentities(ids){
   if(!ids.length)ids=[{name:'',headers:''}];
-  $('#authzIds').innerHTML=ids.map((id,i)=>`<div class="authz-id" data-i="${i}">
+  $('#authzIds').innerHTML=ids.map((id,i)=>`<div class="authz-id${id.broken?' authz-id-broken':''}" data-i="${i}">
     <input class="authz-name btn" style="background:var(--bg3)" placeholder="role e.g. ${i===0?'admin (baseline)':'user'}" value="${escAttr(id.name||'')}">
     <textarea class="authz-hdr rep-edit" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
-    <button class="btn danger authz-del" data-i="${i}" title="remove">✕</button></div>`).join('');
+    <div style="display:flex;gap:4px">
+      <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'⚠ broken':'⚠'}</button>
+      <button class="btn danger authz-del" data-i="${i}" title="remove">✕</button>
+    </div>
+    ${id.broken&&id.brokenNote?`<div class="hint" style="font-size:11px;margin-top:2px;color:var(--amber)">${esc(id.brokenNote)}</div>`:''}
+  </div>`).join('');
   document.querySelectorAll('#authzIds .authz-del').forEach(b=>b.onclick=()=>{
     const ids=collectIds();ids.splice(Number(b.dataset.i),1);
     renderIdentities(ids.length?ids:[{name:'',headers:''}]);
   });
+  document.querySelectorAll('#authzIds .authz-broken').forEach(b=>b.onclick=()=>{
+    const ids=collectIds();const i=Number(b.dataset.i);
+    ids[i].broken=!ids[i].broken;
+    renderIdentities(ids);
+  });
 }
 function collectIds(){
   return [...document.querySelectorAll('#authzIds .authz-id')].map(el=>({
-    name:el.querySelector('.authz-name').value,headers:el.querySelector('.authz-hdr').value,
+    name:el.querySelector('.authz-name').value,
+    headers:el.querySelector('.authz-hdr').value,
+    broken:el.classList.contains('authz-id-broken'),
   })).filter(x=>x.name||x.headers);
 }
 async function saveIds(){await api('/api/authz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identities:collectIds()})});}
@@ -129,7 +142,11 @@ async function checkSessions(){
     const d=await api('/api/authz/check-sessions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:probe})});
     const checks=d.checks||[];
     $('#authzResults').innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>session</span><span></span></div>'
-      +checks.map(c=>`<div class="authz-row${c.sessionInvalid?' flag':''}">
+      +checks.map(c=>c.broken?`<div class="authz-row" style="opacity:.55">
+        <span>${esc(c.name||'(unnamed)')}</span>
+        <span style="color:var(--fg3)">—</span>
+        <span><span style="color:var(--amber)">⚠ broken</span></span>
+        <span></span></div>`:`<div class="authz-row${c.sessionInvalid?' flag':''}">
         <span>${esc(c.name||'(unnamed)')}</span>
         <span style="color:${statusColor(c.status)};font-weight:700">${c.error?'ERR':(c.status||'—')}</span>
         <span>${!c.hasAuth?'<span class="hint">anonymous</span>':c.sessionInvalid?'<span style="color:var(--red);font-weight:700">expired?</span>':'<span class="hint">ok</span>'}</span>
@@ -148,30 +165,20 @@ function runBody(){
 
 function renderAuthzRow(r,i){
   let verdict='';
-  if(i===0)verdict='<span class="hint">baseline</span>';
+  if(r.broken)verdict='<span style="color:var(--amber)">⚠ broken — skipped</span>';
+  else if(i===0)verdict='<span class="hint">baseline</span>';
   else if(r.sessionInvalid)verdict='<span style="color:var(--amber);font-weight:700">session?</span>';
   else if(r.sameAsBaseline)verdict='<span style="color:var(--red);font-weight:700">⚠ same access</span>';
   else verdict='<span class="hint">differs ✓</span>';
-  return `<div class="authz-row${r.sameAsBaseline||r.sessionInvalid?' flag':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
-    <span>${esc(r.name||'(unnamed)')}</span>
-    <span style="color:${statusColor(r.status)};font-weight:700">${r.error?'ERR':(r.status||'—')}</span>
-    <span>${fmtSize(r.length)}</span>
+  return `<div class="authz-row${r.sameAsBaseline||r.sessionInvalid?' flag':''}${r.broken?' authz-broken-row':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
+    <span${r.broken?' style="opacity:.6"':''}>${esc(r.name||'(unnamed)')}</span>
+    <span style="color:${r.broken?'var(--fg3)':statusColor(r.status)};font-weight:700">${r.broken?'—':(r.error?'ERR':(r.status||'—'))}</span>
+    <span>${r.broken?'—':fmtSize(r.length)}</span>
     <span>${verdict}</span></div>`;
 }
 
-function renderAuthzResults(d){
-  const runs=d.runs||[];
-  const box=$('#authzResults');
-  if(!runs.length){box.innerHTML='<div class="hint">no results</div>';return;}
-  if(runs.length===1&&!$('#authzTargetScope')?.checked){
-    const res=runs[0].results||[];
-    box.innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
-      +res.map((r,i)=>renderAuthzRow(r,i)).join('');
-    box.querySelectorAll('[data-flow]').forEach(el=>{const go=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));};el.onclick=go;wireRowKey(el,go);});
-    return;
-  }
-  const sum=d.summary||{};
-  let html=`<div class="hint" style="margin-bottom:8px">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged</div>`;
+function renderAuthzListBulk(runs){
+  let html='';
   runs.forEach(run=>{
     const flagged=(run.results||[]).some((r,i)=>i>0&&r.sameAsBaseline);
     html+=`<details style="margin-bottom:8px;border:1px solid var(--line);border-radius:8px;padding:6px 10px"${flagged?' open':''}>
@@ -183,14 +190,92 @@ function renderAuthzResults(d){
       ${(run.results||[]).map((r,i)=>renderAuthzRow(r,i)).join('')}
     </details>`;
   });
+  return html;
+}
+
+function renderAuthzMatrix(runs){
+  if(!runs.length)return '<div class="hint">no results</div>';
+  const names=(runs[0].results||[]).map(r=>r.name||'(unnamed)');
+  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">
+    <thead><tr>
+      <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);color:var(--fg3)">endpoint</th>
+      ${names.map((n,i)=>`<th style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap">${i===0?`<span style="color:var(--fg3)">${esc(n)}</span>`:esc(n)}</th>`).join('')}
+    </tr></thead><tbody>`;
+  for(const run of runs){
+    const rowFlagged=(run.results||[]).some((r,i)=>i>0&&r.sameAsBaseline);
+    html+=`<tr${rowFlagged?' style="background:color-mix(in srgb,var(--red) 7%,transparent)"':''}>
+      <td style="padding:5px 8px;font-family:var(--mono);border-bottom:1px solid var(--line2);white-space:nowrap"><span style="color:var(--accent);font-weight:700">${esc(run.method)}</span> <span style="color:var(--fg2);font-size:11px">${esc(run.host)}${esc(run.path||'/')}</span></td>
+      ${(run.results||[]).map((r,i)=>{
+        const warn=i>0&&r.sameAsBaseline;
+        const err=!!r.error||r.status===0;
+        return `<td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--line2)"${r.flowId?` data-flow="${r.flowId}"`:''}>${i===0?`<span class="hint" style="font-size:10px">—</span>`:`<span style="color:${err?'var(--fg3)':statusColor(r.status)};font-weight:700">${err?'ERR':(r.status||'—')}</span><span style="color:var(--fg3);font-size:10px;display:block">${fmtSize(r.length)}</span>${warn?'<span style="color:var(--red);font-size:10px">⚠</span>':''}${r.sessionInvalid?'<span style="color:var(--amber);font-size:10px">sess?</span>':''}`}</td>`;
+      }).join('')}
+    </tr>`;
+  }
+  html+='</tbody></table></div>';
+  return html;
+}
+
+function renderAuthzResults(d){
+  const runs=d.runs||[];
+  const box=$('#authzResults');
+  if(!runs.length){box.innerHTML='<div class="hint">no results</div>';return;}
+  const bulk=runs.length>1||$('#authzTargetScope')?.checked;
+  if(!bulk){
+    const res=runs[0].results||[];
+    box.innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
+      +res.map((r,i)=>renderAuthzRow(r,i)).join('');
+    box.querySelectorAll('[data-flow]').forEach(el=>{const go=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));};el.onclick=go;wireRowKey(el,go);});
+    return;
+  }
+  const sum=d.summary||{};
+  const toggleHtml=`<div class="row" style="gap:6px;margin-bottom:8px;align-items:center">
+    <span class="hint">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged</span>
+    <div class="spacer"></div>
+    <button class="btn${authzViewMode==='list'?' on':''}" id="authzViewList" style="padding:2px 7px;font-size:11px">☰ List</button>
+    <button class="btn${authzViewMode==='matrix'?' on':''}" id="authzViewMatrix" style="padding:2px 7px;font-size:11px">⊞ Matrix</button>
+  </div>`;
+  box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
+  $('#authzViewList')?.addEventListener('click',()=>{authzViewMode='list';renderAuthzResults(d);});
+  $('#authzViewMatrix')?.addEventListener('click',()=>{authzViewMode='matrix';renderAuthzResults(d);});
+  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));});
+}
+
+async function crossHostReplay(){
+  const fid=authzTarget();syncAuthzLabel();
+  if(!fid){toast('select a reference flow first');return;}
+  $('#authzResults').innerHTML='<div class="hint">replaying to all in-scope hosts…</div>';
+  try{
+    const d=await api('/api/authz/cross-host-replay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:fid})});
+    renderCrossHostResults(d);
+  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+}
+
+function renderCrossHostResults(d){
+  const box=$('#authzResults');
+  const results=d.results||[];
+  if(!results.length){box.innerHTML='<div class="hint">no in-scope hosts found — browse the target through the proxy first</div>';return;}
+  const accepted=results.filter(r=>r.accepted).length;
+  let html=`<div class="hint" style="margin-bottom:8px">Cross-host JWT replay · <span style="font-family:var(--mono)">${esc(d.method||'')} ${esc(d.path||'/')}</span> · ${accepted} of ${results.length} host${results.length===1?'':'s'} accepted</div>`;
+  html+='<div class="authz-row authz-head"><span>host</span><span>status</span><span>length</span><span>verdict</span></div>';
+  results.forEach(r=>{
+    const err=!!r.error||r.status===0;
+    html+=`<div class="authz-row${r.accepted?' flag':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
+      <span style="font-family:var(--mono);font-size:11.5px">${esc(r.host)}</span>
+      <span style="color:${err?'var(--fg3)':statusColor(r.status)};font-weight:700">${err?'ERR':(r.status||'—')}</span>
+      <span>${fmtSize(r.length)}</span>
+      <span>${r.accepted?'<span style="color:var(--red);font-weight:700">⚠ accepted</span>':'<span class="hint">rejected ✓</span>'}</span>
+    </div>`;
+  });
   box.innerHTML=html;
   box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));});
 }
 
 $('#authzAdd')&&($('#authzAdd').onclick=()=>renderIdentities([...collectIds(),{name:'',headers:''}]));
+$('#authzCrossHost')&&($('#authzCrossHost').onclick=crossHostReplay);
 $('#authzFromFlow')&&($('#authzFromFlow').onclick=fillFromFlow);
 $('#authzCheck')&&($('#authzCheck').onclick=checkSessions);
-$('#authzSave')&&($('#authzSave').onclick=async()=>{try{await saveIds();toast('identities saved');}catch(e){toast(e.message);}});
+$('#authzSave')&&($('#authzSave').onclick=async()=>{try{await saveIds();toast('identities saved');refreshAuthzIds();}catch(e){toast(e.message);}});
 $('#authzClose')&&($('#authzClose').onclick=()=>closeModal($('#authzModal')));
 $('#authzTargetFlow')&&($('#authzTargetFlow').onchange=renderAuthzScopePanel);
 $('#authzTargetScope')&&($('#authzTargetScope').onchange=renderAuthzScopePanel);
@@ -199,7 +284,7 @@ $('#authzRun')&&($('#authzRun').onclick=async()=>{
   if(collectIds().length<1){toast('add at least one identity');return;}
   $('#authzResults').innerHTML='<div class="hint">replaying…</div>';
   try{
-    await saveIds();
+    await saveIds();refreshAuthzIds();
     const d=await api('/api/authz/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     renderAuthzResults(d);
   }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}

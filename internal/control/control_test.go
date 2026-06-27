@@ -176,6 +176,45 @@ func TestListFlowsJSON(t *testing.T) {
 	}
 }
 
+func TestListFlowsSortAsc(t *testing.T) {
+	h, s, _ := newHub(t)
+	for i := 0; i < 5; i++ {
+		s.InsertFlow(&store.Flow{TS: time.UnixMilli(int64(i + 1)), Method: "GET", Host: "a.com", Path: "/x", Status: 200})
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/flows?sort=id&dir=asc&limit=2")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Flows []struct {
+			ID int64 `json:"id"`
+		} `json:"flows"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Flows) != 2 || out.Flows[0].ID >= out.Flows[1].ID {
+		t.Fatalf("asc page1 = %+v", out.Flows)
+	}
+	cur := out.Flows[len(out.Flows)-1]
+	resp2, err := http.Get(ts.URL + "/api/flows?sort=id&dir=asc&limit=2&curId=" + itoa(cur.ID))
+	if err != nil {
+		t.Fatalf("GET page2: %v", err)
+	}
+	defer resp2.Body.Close()
+	var out2 struct {
+		Flows []struct {
+			ID int64 `json:"id"`
+		} `json:"flows"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&out2)
+	if len(out2.Flows) != 2 || out2.Flows[0].ID <= cur.ID {
+		t.Fatalf("asc page2 = %+v after cur %d", out2.Flows, cur.ID)
+	}
+}
+
 func TestActivityFeed(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())

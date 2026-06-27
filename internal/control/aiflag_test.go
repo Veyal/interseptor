@@ -1,11 +1,13 @@
 package control
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Veyal/interceptor/internal/store"
 )
@@ -95,4 +97,50 @@ func TestRepeaterSendAISourceShowsInHistory(t *testing.T) {
 	if plainSeen {
 		t.Fatal("plain Repeater send should stay hidden from Proxy/History")
 	}
+}
+
+// Repeater/Intruder/MCP sends must emit flow.new over SSE so Proxy History
+// refreshes live — same as proxied traffic.
+func TestRepeaterSendBroadcastsFlowNewSSE(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatalf("GET events: %v", err)
+	}
+	defer resp.Body.Close()
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		body, _ := json.Marshal(map[string]string{"method": "GET", "url": target.URL + "/live"})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/repeater/send", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Interceptor-Source", "ai")
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Errorf("send: %v", err)
+			return
+		}
+		r.Body.Close()
+	}()
+
+	sc := bufio.NewScanner(resp.Body)
+	deadline := time.Now().Add(3 * time.Second)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.Contains(line, "flow.new") && strings.Contains(line, "/live") {
+			return
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+	}
+	t.Fatal("did not receive flow.new SSE for Repeater send")
 }

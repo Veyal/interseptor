@@ -98,7 +98,7 @@ func TestFindingsEndpoints(t *testing.T) {
 		t.Fatalf("report content-type %q", ct)
 	}
 	md := string(body)
-	for _, want := range []string{"# Interceptor — Engagement Report", "IDOR on /user/{id}", "**Status:** verified", "PoC flows:", "t.com/user/2"} {
+	for _, want := range []string{"# Interceptor — Engagement Report", "IDOR on /user/{id}", "**Status:** verified", "t.com/user/2"} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("report missing %q:\n%s", want, md)
 		}

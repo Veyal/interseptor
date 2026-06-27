@@ -67,15 +67,20 @@ func (s *Store) DeleteRule(id int64) error {
 // FlowFilter selects and pages flows. Zero-valued fields are ignored.
 type FlowFilter struct {
 	Limit        int    // max rows (defaults to 200 when <= 0)
-	BeforeID     int64  // cursor: only rows with id < BeforeID (0 = newest)
+	BeforeID     int64  // legacy cursor: id < BeforeID when sorting id DESC
+	CursorID     int64  // keyset cursor flow id (0 = first page)
+	CursorVal    string // sort value at the cursor row (required for non-id sorts)
+	SortKey      string // id|method|host|path|status|size|time|mime
+	SortDir      int    // +1 asc, -1 desc; 0 = default for the key
 	Method       string // exact method match
 	Host         string // case-insensitive substring of host
 	Search       string // case-insensitive substring of path
 	Scheme       string // exact scheme match ("http"/"https")
 	StatusClass  int    // 1..5 → 1xx..5xx; 0 = any
-	RequireFlags int64  // only rows with any of these flag bits set
-	ExcludeFlags int64  // only rows with none of these flag bits set
-	IncludeFlags int64  // rows with any of these bits are kept even if ExcludeFlags also matches
+	RequireFlags  int64 // only rows with any of these flag bits set
+	ExcludeFlags  int64 // only rows with none of these flag bits set
+	IncludeFlags  int64 // rows with any of these bits are kept even if ExcludeFlags also matches
+	WithoutFlags  int64 // only rows with none of these flag bits set (independent of ExcludeFlags)
 
 	// Negative filters — each entry excludes matching rows; multiples are ANDed.
 	NotMethods  []string // exclude these exact methods
@@ -96,12 +101,13 @@ func (s *Store) QueryFlowsFilter(f FlowFilter) ([]*Flow, error) {
 		limit = 200
 	}
 	where, args := buildFlowFilterWhere(f)
+	where, args = appendFlowPageCursor(f, where, args)
 
 	q := "SELECT " + flowColumns + " FROM flows"
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY id DESC LIMIT " + strconv.Itoa(limit)
+	q += flowListOrderBy(f) + " LIMIT " + strconv.Itoa(limit)
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {

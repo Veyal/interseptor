@@ -18,8 +18,10 @@ import (
 
 // identity is a named set of auth headers (a user/role/anonymous).
 type identity struct {
-	Name    string `json:"name"`
-	Headers string `json:"headers"` // "Key: Value" lines (Cookie / Authorization / …)
+	Name       string `json:"name"`
+	Headers    string `json:"headers"` // "Key: Value" lines (Cookie / Authorization / …)
+	Broken     bool   `json:"broken,omitempty"`
+	BrokenNote string `json:"brokenNote,omitempty"` // e.g. "locked after rate-limit test"
 }
 
 type authzResult struct {
@@ -32,6 +34,7 @@ type authzResult struct {
 	BodyHash       string `json:"bodyHash,omitempty"`
 	Same           bool   `json:"sameAsBaseline"`
 	SessionInvalid bool   `json:"sessionInvalid,omitempty"`
+	Broken         bool   `json:"broken,omitempty"`
 }
 
 type authzRunOut struct {
@@ -121,9 +124,14 @@ func (h *Hub) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 		Error          string `json:"error"`
 		SessionInvalid bool   `json:"sessionInvalid"`
 		HasAuth        bool   `json:"hasAuth"`
+		Broken         bool   `json:"broken,omitempty"`
 	}
 	var out []check
 	for _, id := range ids {
+		if id.Broken {
+			out = append(out, check{Name: id.Name, Broken: true, Error: "skipped — broken account"})
+			continue
+		}
 		hasAuth := identityHasAuth(id)
 		rr := h.authzReplay(f, id)
 		out = append(out, check{
@@ -224,14 +232,24 @@ func (h *Hub) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 	var baseLen int64
 	var baseHash, baseMime string
 	haveBase := false
-	for i, id := range ids {
+	for _, id := range ids {
+		if id.Broken {
+			note := id.BrokenNote
+			if note == "" {
+				note = "skipped — account marked broken"
+			} else {
+				note = "skipped — " + note
+			}
+			ro.Results = append(ro.Results, authzResult{Name: id.Name, Error: note, Broken: true})
+			continue
+		}
 		hasAuth := identityHasAuth(id)
 		rr := h.authzReplay(f, id)
 		rr.Name = id.Name
 		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth)
 		if !haveBase {
 			ro.BaselineStatus, baseLen, baseHash, baseMime, haveBase = rr.Status, rr.Length, rr.BodyHash, rr.Mime, true
-		} else if i > 0 {
+		} else {
 			rr.Same = authzSameAccess(ro.BaselineStatus, baseLen, baseHash, baseMime, rr)
 		}
 		ro.Results = append(ro.Results, rr)
@@ -370,6 +388,152 @@ func cookieAttr(setCookie, key string) string {
 		}
 	}
 	return ""
+}
+
+// extractBearerToken returns the raw JWT from an Authorization: Bearer header.
+func extractBearerToken(hdrs map[string][]string) string {
+	for _, v := range hdrs["Authorization"] {
+		v = strings.TrimSpace(v)
+		if len(v) > 7 && strings.EqualFold(v[:7], "bearer ") {
+			return strings.TrimSpace(v[7:])
+		}
+	}
+	return ""
+}
+
+// authzCrossHostReplay extracts a JWT from one flow and replays the reference
+// endpoint's path to every unique in-scope host seen in history. This detects
+// cross-environment JWT confusion (e.g. a host-A Bearer token accepted on host-B
+// because both environments share the same JWT secret).
+func (h *Hub) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		FlowID    int64  `json:"flowId"`    // reference endpoint (path to replay)
+		JWTFlowID int64  `json:"jwtFlowId"` // source of JWT; defaults to flowId
+		JWT       string `json:"jwt"`        // raw JWT (alternative to jwtFlowId)
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if in.FlowID == 0 {
+		httpErr(w, http.StatusBadRequest, "flowId required")
+		return
+	}
+
+	ref, err := h.st.GetFlow(in.FlowID)
+	if err != nil {
+		httpErr(w, http.StatusNotFound, "flow not found")
+		return
+	}
+
+	jwt := strings.TrimSpace(in.JWT)
+	if jwt == "" {
+		srcID := in.JWTFlowID
+		if srcID == 0 {
+			srcID = in.FlowID
+		}
+		var srcFlow *store.Flow
+		if srcID == in.FlowID {
+			srcFlow = ref
+		} else {
+			srcFlow, err = h.st.GetFlow(srcID)
+			if err != nil {
+				httpErr(w, http.StatusNotFound, "jwtFlowId flow not found")
+				return
+			}
+		}
+		jwt = extractBearerToken(srcFlow.ReqHeaders)
+	}
+	if jwt == "" {
+		httpErr(w, http.StatusBadRequest, "no Bearer token found — provide jwt directly or pick a flow that has an Authorization: Bearer header")
+		return
+	}
+
+	type hostKey struct {
+		host, scheme string
+		port         int
+	}
+	allFlows, _ := h.st.QueryFlowsFilter(store.FlowFilter{
+		Limit:        5000,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan | store.FlagAuthz,
+	})
+	seen := map[hostKey]bool{}
+	var targets []hostKey
+	for _, f := range allFlows {
+		if !h.sc.InScope(f) || h.isOwnListener(f) {
+			continue
+		}
+		k := hostKey{f.Host, f.Scheme, f.Port}
+		if !seen[k] {
+			seen[k] = true
+			targets = append(targets, k)
+		}
+	}
+	if len(targets) == 0 {
+		targets = []hostKey{{ref.Host, ref.Scheme, ref.Port}}
+	}
+
+	path := ref.Path
+	if path == "" {
+		path = "/"
+	}
+
+	type hostResult struct {
+		Host     string `json:"host"`
+		Scheme   string `json:"scheme"`
+		Port     int    `json:"port"`
+		URL      string `json:"url"`
+		Status   int    `json:"status"`
+		Length   int64  `json:"length"`
+		Accepted bool   `json:"accepted"`
+		FlowID   int64  `json:"flowId,omitempty"`
+		Error    string `json:"error,omitempty"`
+	}
+
+	var results []hostResult
+	for _, t := range targets {
+		hostport := t.host
+		def := (t.scheme == "https" && t.port == 443) || (t.scheme == "http" && t.port == 80)
+		if t.port != 0 && !def {
+			hostport += ":" + strconv.Itoa(t.port)
+		}
+		targetURL := t.scheme + "://" + hostport + path
+
+		hdrs := cloneHeaders(ref.ReqHeaders)
+		hdrs["Authorization"] = []string{"Bearer " + jwt}
+
+		flow, _ := h.snd.Send(sender.Request{
+			Method:    ref.Method,
+			URL:       targetURL,
+			Headers:   hdrs,
+			Body:      h.bodyBytes(ref.ReqBodyHash),
+			Flags:     store.FlagAuthz,
+			NoSession: true,
+		})
+
+		hr := hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}
+		if flow != nil {
+			hr.Status = flow.Status
+			hr.Length = flow.ResLen
+			hr.FlowID = flow.ID
+			hr.Error = flow.Error
+			hr.Accepted = flow.Status >= 200 && flow.Status < 300
+		}
+		results = append(results, hr)
+	}
+
+	jwtPreview := jwt
+	if len(jwtPreview) > 50 {
+		jwtPreview = jwtPreview[:50] + "…"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"flowId":  in.FlowID,
+		"method":  ref.Method,
+		"path":    path,
+		"jwt":     jwtPreview,
+		"results": results,
+	})
 }
 
 // flowURLStr reconstructs the absolute URL of a captured flow.

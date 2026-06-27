@@ -242,6 +242,57 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 				break
 			}
 		}
+	case "battering", "batteringram":
+		// Same payload at every § marker simultaneously (Burp Battering ram).
+		for _, pl := range spec.Payloads[0] {
+			processed := processPayload(pl, spec.ProcessRules)
+			payloads := make([]string, nPositions)
+			for i := range payloads {
+				payloads[i] = processed
+			}
+			if !add(job{label: pl, payloads: payloads}) {
+				break
+			}
+		}
+	case "cluster", "clusterbomb":
+		// Cartesian product of payload lists (Burp Cluster bomb).
+		lists := spec.Payloads
+		if len(lists) < nPositions {
+			padded := make([][]string, nPositions)
+			copy(padded, lists)
+			for i := len(lists); i < nPositions; i++ {
+				padded[i] = []string{baselines[i]}
+			}
+			lists = padded
+		} else if len(lists) > nPositions {
+			lists = lists[:nPositions]
+		}
+		idx := make([]int, len(lists))
+		for {
+			payloads := make([]string, nPositions)
+			labels := make([]string, 0, nPositions)
+			for i := 0; i < nPositions; i++ {
+				orig := lists[i][idx[i]]
+				payloads[i] = processPayload(orig, spec.ProcessRules)
+				labels = append(labels, orig)
+			}
+			if !add(job{label: strings.Join(labels, " · "), payloads: payloads}) {
+				break
+			}
+			// advance odometer
+			carried := true
+			for i := len(idx) - 1; i >= 0; i-- {
+				idx[i]++
+				if idx[i] < len(lists[i]) {
+					carried = false
+					break
+				}
+				idx[i] = 0
+			}
+			if carried {
+				break
+			}
+		}
 	default: // sniper: vary one position at a time, others keep their baseline
 		for pos := 0; pos < nPositions; pos++ {
 			capHit := false

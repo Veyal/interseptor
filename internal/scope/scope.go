@@ -55,6 +55,39 @@ func (e *Engine) HasIncludes() bool {
 	return e.hasIncl
 }
 
+// HasActiveRules reports whether any enabled scope rule exists (include or exclude).
+func (e *Engine) HasActiveRules() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return len(e.rules) > 0
+}
+
+// HostInScope reports whether a host matches the current rules using host patterns
+// only (path/scheme/port on rules are ignored). Used to gate session header
+// injection on Repeater/Intruder sends where only the target host is known.
+func (e *Engine) HostInScope(host string) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	included := false
+	for _, r := range e.rules {
+		if r.host == "" {
+			continue // path/scheme/port-only rules do not gate session by host
+		}
+		if !hostMatches(r.host, host) {
+			continue
+		}
+		if r.include {
+			included = true
+		} else {
+			return false
+		}
+	}
+	if !e.hasIncl {
+		return true
+	}
+	return included
+}
+
 // InScope reports whether a flow is in scope: it matches no exclude rule, and
 // (if any include rules exist) matches at least one include rule.
 func (e *Engine) InScope(f *store.Flow) bool {

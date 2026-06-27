@@ -37,6 +37,10 @@ func TestTagEndpoints(t *testing.T) {
 	bp, _ := http.Post(ts.URL+"/api/flows/tags", "application/json",
 		strings.NewReader(`{"flowIds":[`+itoa(f1)+`,`+itoa(f2)+`],"add":["recon"]}`))
 	bp.Body.Close()
+	// Bulk-remove recon from f2 only.
+	br, _ := http.Post(ts.URL+"/api/flows/tags", "application/json",
+		strings.NewReader(`{"flowIds":[`+itoa(f2)+`],"remove":["recon"]}`))
+	br.Body.Close()
 
 	// Filter History by tag=idor → only f1.
 	r, _ := http.Get(ts.URL + "/api/flows?tag=idor")
@@ -55,15 +59,19 @@ func TestTagEndpoints(t *testing.T) {
 		t.Fatalf("f1 tags = %v", fl.Flows[0].Tags)
 	}
 
-	// List distinct tags: recon=2, auth=1, idor=1.
+	// List distinct tags: recon=1 (f2 lost it), auth=1, idor=1.
 	r2, _ := http.Get(ts.URL + "/api/tags")
 	var tl struct {
 		Tags []store.TagCount `json:"tags"`
 	}
 	json.NewDecoder(r2.Body).Decode(&tl)
 	r2.Body.Close()
-	if len(tl.Tags) != 3 || tl.Tags[0].Tag != "recon" || tl.Tags[0].Count != 2 {
-		t.Fatalf("DistinctTags = %+v", tl.Tags)
+	if len(tl.Tags) != 3 || tl.Tags[0].Tag != "auth" || tl.Tags[0].Count != 1 {
+		t.Fatalf("DistinctTags after remove = %+v", tl.Tags)
+	}
+	recon := tl.Tags[2]
+	if recon.Tag != "recon" || recon.Count != 1 {
+		t.Fatalf("recon count after remove = %+v", recon)
 	}
 
 	// Set a color; reject a bad one.
@@ -197,8 +205,7 @@ func TestDeleteFlowsRejectsHugeIDArray(t *testing.T) {
 	}
 }
 
-// GET /api/flows?onlyAi=1 returns only AI-originated flows (FlagAI), so the human
-// can watch just what the AI did.
+// GET /api/flows?onlyAi=1 (or manual=0&ai=1) returns only AI-originated flows (FlagAI).
 func TestListFlowsOnlyAi(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/human", Status: 200})
@@ -206,7 +213,32 @@ func TestListFlowsOnlyAi(t *testing.T) {
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/flows?onlyAi=1")
+	for _, q := range []string{"onlyAi=1", "manual=0&ai=1"} {
+		resp, err := http.Get(ts.URL + "/api/flows?" + q)
+		if err != nil {
+			t.Fatalf("GET %s: %v", q, err)
+		}
+		var out struct {
+			Flows []struct {
+				Path string `json:"path"`
+			} `json:"flows"`
+		}
+		json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if len(out.Flows) != 1 || out.Flows[0].Path != "/ai" {
+			t.Fatalf("%s should return only the AI flow, got %+v", q, out.Flows)
+		}
+	}
+}
+
+func TestListFlowsManualOnly(t *testing.T) {
+	h, s, _ := newHub(t)
+	s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/human", Status: 200})
+	s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/ai", Status: 200, Flags: store.FlagRepeater | store.FlagAI})
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/flows?manual=1&ai=0")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -217,8 +249,8 @@ func TestListFlowsOnlyAi(t *testing.T) {
 		} `json:"flows"`
 	}
 	json.NewDecoder(resp.Body).Decode(&out)
-	if len(out.Flows) != 1 || out.Flows[0].Path != "/ai" {
-		t.Fatalf("onlyAi=1 should return only the AI flow, got %+v", out.Flows)
+	if len(out.Flows) != 1 || out.Flows[0].Path != "/human" {
+		t.Fatalf("manual=1&ai=0 should return only the human flow, got %+v", out.Flows)
 	}
 }
 

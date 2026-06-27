@@ -16,7 +16,7 @@ export const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'
 export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
-  rules:[],scope:[],views:[],inScopeOnly:false,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
+  rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
   filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 export function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
@@ -233,10 +233,23 @@ export async function saveFile(blob,suggestedName,mimeType){
 }
 
 const MAX_LIST_FILE = 16 * 1024 * 1024; // SecLists-scale wordlists
+export const LIST_PREVIEW_LINES = 40; // max payload lines shown in Intruder textareas
 
 // normalizeListText converts CRLF/CR to LF for pasted or loaded list files.
 export function normalizeListText(text){
   return String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+}
+
+// parseListLines splits a newline list into trimmed non-empty lines.
+export function parseListLines(text, {ignoreComments=false}={}){
+  return normalizeListText(text).split('\n').map(l=>l.trim()).filter(l=>l&&(!ignoreComments||!l.startsWith('#')));
+}
+
+// previewListLines returns a short textarea-safe preview of a payload list.
+export function previewListLines(arr, max=LIST_PREVIEW_LINES){
+  if(!arr||!arr.length) return {text:'',total:0,truncated:false};
+  if(arr.length<=max) return {text:arr.join('\n'),total:arr.length,truncated:false};
+  return {text:arr.slice(0,max).join('\n'),total:arr.length,truncated:true};
 }
 
 // applyTextList writes text into a textarea/input; append joins with a newline.
@@ -273,10 +286,7 @@ export function pickTextFile({accept='.txt,.lst,.csv,.words,text/plain',maxBytes
 }
 
 export function countListLines(text, ignoreComments=false){
-  return normalizeListText(text).split('\n').filter(l=>{
-    const t=l.trim();
-    return t&&(ignoreComments?!t.startsWith('#'):true);
-  }).length;
+  return parseListLines(text, {ignoreComments}).length;
 }
 
 /* ---- shared right-click context menu (#ctxmenu) ---- */

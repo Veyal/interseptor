@@ -1,17 +1,58 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding } from './findings.js';
-import { tagChipStyle, renderTagBar } from './tags.js';
-import { sendToRepeater, sendToIntruder } from './tools.js';
+import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
+import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAi } from './ai.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { prefillDiscovery } from './discovery.js';
-import { focusMapFromFlow, focusMapSearch } from './map.js';
+import { focusMapSearch } from './map.js';
 
-const FLOW_PAGE=250;            // rows fetched per page (initial + each scroll-load)
+// Authz identity cache for the "Send as" context-menu section. Loaded once at
+// startup and refreshed whenever identities are saved in the authz modal.
+let _authzIdsCache = [];
+export function refreshAuthzIds(){
+  api('/api/authz').then(d=>{ _authzIdsCache=(d.identities||[]).filter(id=>id.name||id.headers); }).catch(()=>{});
+}
+refreshAuthzIds();
+
+// Strip Cookie/Authorization from a raw "Key: Value\n…" headers string, then
+// append the identity's auth lines — used when loading a flow "as" a role.
+const _AUTH_HDR_RE=/^(cookie|authorization|x-auth-token|proxy-authorization):/i;
+function applyIdentityToHeaders(hdrsText, identityHdrs){
+  const filtered=(hdrsText||'').split('\n').filter(l=>!_AUTH_HDR_RE.test(l.trim())).join('\n').trimEnd();
+  if(!identityHdrs||!identityHdrs.trim())return filtered;
+  return filtered+'\n'+identityHdrs.trim();
+}
+
+async function sendAsIdentity(f, id){
+  document.querySelector('.tab[data-tab="repeater"]').click();
+  const t=repNewTab();
+  try{
+    const d=await api('/api/flows/'+f.id);
+    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
+    t.method=d.method;
+    t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
+    t.headers=applyIdentityToHeaders(headersToText(d.reqHeaders),id.headers||'');
+    const raw=await api('/api/flows/'+f.id+'/raw?side=req');
+    const i2=raw.indexOf('\r\n\r\n');t.body=i2>=0?raw.slice(i2+4):'';
+    t.resId=null;t.status='';t.color='';
+    t.title=repTitle(t)+(id.name?' ['+id.name+']':'');
+    renderRepTabs();repLoadEditor();repPersist();
+    toast('loaded #'+f.id+' as '+( id.name||'identity')+' · Repeater');
+  }catch(e){toast(e.message);}
+}
+
+const FLOW_PAGE=250;            // primary page size shown in History
+const FLOW_BUFFER=50;           // extra rows prefetched ahead of scroll (reduces load-more lag)
+const FLOW_FETCH=FLOW_PAGE+FLOW_BUFFER;
+const ROW_H=28;                 // virtualized row height (px)
+const VIRT_MIN=120;             // virtualize when more rows than this
+const VIRT_BUF=40;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
+let virtScrollBound=false;
 const EXCLUDE_NORM=64|128|512; // repeater, intruder, active scan
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLUMNS=[
@@ -45,9 +86,28 @@ function wireFlowSort(){
     const k=h.dataset.sort;
     if(state.sort.key===k)state.sort.dir*=-1;
     else{state.sort.key=k;state.sort.dir=k==='id'||k==='time'?-1:1;}
-    renderRows();
+    renderFlowHead();
+    loadFlows();
   });
 }
+function sortDirParam(){return state.sort.dir>0?'asc':'desc';}
+// flowSortValue matches the server's sort key (for keyset cursors).
+function flowSortValue(f){
+  const k=state.sort.key;
+  if(k==='size')return String(f.resLen||0);
+  if(k==='time')return String(f.ts||0);
+  if(k==='status')return String(f.status||0);
+  if(k==='method')return f.method||'';
+  if(k==='host')return (f.host||'').toLowerCase();
+  if(k==='path')return (f.path||'').toLowerCase();
+  if(k==='mime')return (f.mime||'').toLowerCase();
+  return String(f.id);
+}
+function appendFlowCursor(q,flow){
+  q.set('curId',String(flow.id));
+  if(state.sort.key!=='id')q.set('curVal',flowSortValue(flow));
+}
+function sortIsLiveDefault(){return state.sort.key==='id'&&state.sort.dir===-1;}
 export function renderFlowHead(){
   const head=$('#flowHead')||$('.thead');
   if(!head)return;
@@ -57,7 +117,10 @@ export function renderFlowHead(){
     const c=FLOW_COLUMNS.find(x=>x.key===k);
     const align=c.align?` style="text-align:${c.align}"`:'';
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
-    return `<div data-sort="${c.sort}"${align}${title}>${esc(c.label)}</div>`;
+    const sk=state.sort.key,sd=state.sort.dir;
+    const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
+    const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
+    return `<div class="${sorted.trim()}" data-sort="${c.sort}"${align}${title}>${esc(c.label)}${arrow}</div>`;
   }).join('');
   wireFlowSort();
 }
@@ -108,6 +171,7 @@ function canIncremental(){
 function flowMatchesFilters(f){
   const fl=state.filters;
   if(flowExcluded(f))return false;
+  if(!state.showManual&&!(f.flags&FLAG_AI))return false;
   if(!state.showAI&&(f.flags&FLAG_AI))return false;
   if(fl.scheme&&f.scheme!==fl.scheme)return false;
   if(fl.method&&f.method!==fl.method)return false;
@@ -148,6 +212,12 @@ function wireFlowRow(r){
   r.onclick=e=>flowRowClick(id,e);
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
   r.setAttribute('aria-label','flow '+id);
+  r.querySelectorAll('.flowtag').forEach(chip=>{
+    chip.oncontextmenu=e=>{
+      e.preventDefault();e.stopPropagation();
+      openTagChipMenu(e.clientX,e.clientY,chip.dataset.tagchip,id);
+    };
+  });
   r.oncontextmenu=e=>{
     e.preventDefault();
     const f=state.flows.find(x=>x.id===id);
@@ -185,7 +255,7 @@ export function patchFlowRow(f){
   tmp.innerHTML=flowRowHTML(f);
   const nr=tmp.firstElementChild;
   wireFlowRow(nr);
-  const sorted=applySort(state.flows);
+  const sorted=state.flows;
   const idx=sorted.findIndex(x=>x.id===f.id);
   const next=sorted[idx+1];
   if(next){
@@ -196,40 +266,48 @@ export function patchFlowRow(f){
 export function upsertFlow(f){
   const i=state.flows.findIndex(x=>x.id===f.id);
   if(i>=0)state.flows[i]=f;
-  else state.flows.unshift(f); // newest at top; infinite-scroll keeps older pages loaded
+  else if(sortIsLiveDefault())state.flows.unshift(f);
+  else scheduleReload();
   $('#rowCount').textContent=state.flows.length;
+}
+function flowRowLiveUpdate(f){
+  if(state.flows.length>=VIRT_MIN)renderRows();
+  else patchFlowRow(f);
 }
 export function handleFlowNew(f){
   if(!f)return;
-  const proxy=document.querySelector('.panel[data-panel="proxy"]');
-  if(!proxy||!proxy.classList.contains('active')||!canIncremental()||!flowMatchesFilters(f)){scheduleReload();return;}
+  if(!sortIsLiveDefault()||!canIncremental()||!flowMatchesFilters(f)){scheduleReload();return;}
   upsertFlow(f);
-  patchFlowRow(f);
   refreshMethodFilter();
+  const proxy=document.querySelector('.panel[data-panel="proxy"]');
+  if(!proxy||!proxy.classList.contains('active'))return;
+  flowRowLiveUpdate(f);
 }
 export function handleFlowUpdate(f){
   if(!f)return;
   const i=state.flows.findIndex(x=>x.id===f.id);
   if(i<0){
-    if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);patchFlowRow(f);refreshMethodFilter();}
+    if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);refreshMethodFilter();flowRowLiveUpdate(f);}
     else scheduleReload();
     return;
   }
   state.flows[i]=f;
-  patchFlowRow(f);
+  const proxy=document.querySelector('.panel[data-panel="proxy"]');
+  if(!proxy||!proxy.classList.contains('active'))return;
+  flowRowLiveUpdate(f);
 }
 
 export function applySort(flows){
-  const k=state.sort.key,dir=state.sort.dir;
-  const val=f=>k==='size'?(f.resLen||0):k==='time'?f.ts:k==='status'?(f.status||0):k==='method'?f.method:k==='host'?f.host:k==='path'?f.path:k==='mime'?mimeLabel(f.mime):f.id;
-  return flows.slice().sort((a,b)=>{const x=val(a),y=val(b);return (x>y?1:x<y?-1:0)*dir;});
+  // History order comes from the server (?sort=&dir=); keep this for callers that
+  // still pass a list, but the loaded page is already sorted.
+  return flows;
 }
 export function getStartedCard(){
   return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
     <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
     <div class="hint" style="margin-bottom:14px">Interceptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
     <ol style="color:var(--fg2);line-height:2;font-size:12.5px;padding-left:20px;margin:0">
-      <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b></li>
+      <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
       <li>Browse — flows stream in here. <b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or ✨ ask AI'}</li>
       ${state.aiDisabled?'':`<li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>`}
@@ -242,8 +320,6 @@ export function renderRows(){
   $('#rowCount').textContent=state.flows.length;
   if(!flows.length){
     if(anyFilter()||state.inScopeOnly){
-      // Traffic exists but nothing matches the active filters — don't show the
-      // "no traffic yet" onboarding (it reads as if capture is broken).
       box.innerHTML='<div class="empty">No flows match the current filters.<br><button class="btn" id="emptyClear" style="margin-top:12px">Clear filters</button></div>';
       const c=document.getElementById('emptyClear');if(c)c.onclick=()=>{
         if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('accent');st.textContent='◎ in scope';}}
@@ -251,9 +327,22 @@ export function renderRows(){
       };
     }else{
       box.innerHTML=getStartedCard();
-      const b=document.getElementById('gsMcp');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="api"]').click();document.querySelector('#apiSub button[data-s="mcp"]').click();};
+      const b=document.getElementById('gsMcp');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="api"]')?.click();document.querySelector('#apiSub button[data-s="mcp"]')?.click();};
     }
     return;}
+  if(!virtScrollBound&&box){
+    virtScrollBound=true;
+    box.addEventListener('scroll',()=>renderRows(),{passive:true});
+  }
+  if(flows.length>=VIRT_MIN&&box){
+    const viewH=box.clientHeight||640,scrollTop=box.scrollTop||0;
+    const start=Math.max(0,Math.floor(scrollTop/ROW_H)-VIRT_BUF);
+    const end=Math.min(flows.length,start+Math.ceil(viewH/ROW_H)+2*VIRT_BUF);
+    const topPad=start*ROW_H,bottomPad=(flows.length-end)*ROW_H;
+    box.innerHTML=`<div style="height:${topPad}px" aria-hidden="true"></div>`+flows.slice(start,end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${bottomPad}px" aria-hidden="true"></div>`;
+    $$('#rows .trow').forEach(wireFlowRow);
+    return;
+  }
   box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
   $$('#rows .trow').forEach(wireFlowRow);
 }
@@ -330,8 +419,10 @@ function buildFlowParams(){
   if(f.tag)q.set('tag',f.tag);
   (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
   if(state.inScopeOnly)q.set('inScope','1');
+  if(!state.showManual)q.set('manual','0');
   if(!state.showAI)q.set('ai','0');
-  if(state.aiOnly)q.set('onlyAi','1');
+  q.set('sort',state.sort.key);
+  q.set('dir',sortDirParam());
   return q;
 }
 // bodySearchActive: body search resolves a bounded id set server-side, so it isn't
@@ -340,12 +431,12 @@ function bodySearchActive(){return state.filters.searchScope==='body'&&!!state.f
 
 export async function loadFlows(){
   const q=buildFlowParams();
-  q.set('limit',String(FLOW_PAGE+1)); // +1 row tells us whether older flows exist
+  q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
   try{
     const d=await api('/api/flows?'+q.toString());
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_PAGE&&!bodySearchActive();
-    if(flows.length>FLOW_PAGE)flows=flows.slice(0,FLOW_PAGE);
+    flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
+    if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     state.flows=flows;
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
@@ -356,22 +447,22 @@ export async function loadFlows(){
   }catch(e){toast('flows: '+e.message);}
 }
 
-// loadMoreFlows appends the next older page (cursor = oldest loaded id) when the
+// loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
   if(loadingMore||!flowHasMore||!state.flows.length)return;
   loadingMore=true;
   updateTruncBanner();
   try{
-    const oldest=state.flows.reduce((m,f)=>Math.min(m,f.id),Infinity);
-    if(!isFinite(oldest)){flowHasMore=false;return;}
+    const last=state.flows[state.flows.length-1];
+    if(!last){flowHasMore=false;return;}
     const q=buildFlowParams();
-    q.set('before',String(oldest));
-    q.set('limit',String(FLOW_PAGE+1));
+    appendFlowCursor(q,last);
+    q.set('limit',String(FLOW_FETCH+1));
     const d=await api('/api/flows?'+q.toString());
     let flows=d.flows||[];
-    flowHasMore=flows.length>FLOW_PAGE;
-    if(flows.length>FLOW_PAGE)flows=flows.slice(0,FLOW_PAGE);
+    flowHasMore=flows.length>FLOW_FETCH;
+    if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     if(flows.length){
       // Drop any ids already present (a flow could arrive live between pages).
       const have=new Set(state.flows.map(f=>f.id));
@@ -462,7 +553,18 @@ export async function renderSide(side){
     try{const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
       el._rawText=raw;
       el._pretty=state.view[side]==='pretty';
-      el.innerHTML=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty',mime);
+      if(side==='res'&&state.view.res==='render'&&mime&&/html/i.test(mime)){
+        const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';
+        el.innerHTML=`<iframe sandbox="" title="Rendered HTML" srcdoc="${escAttr(body)}" style="width:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>`;
+        return;
+      }
+      let html=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty',mime);
+      const fq=($('#inspectFindIn')||{}).value;
+      if(side==='res'&&fq&&fq.length>1){
+        const re=new RegExp(fq.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+        html=html.replace(re,m=>'<mark class="find-hit">'+m+'</mark>');
+      }
+      el.innerHTML=html;
     }catch(e){el.textContent='(error: '+e.message+')';}
   };
   const len=state.detail?(side==='req'?state.detail.reqLen:state.detail.resLen):0;
@@ -495,6 +597,23 @@ export async function renderSide(side){
 // $$('.seg') here would clobber them since this module loads after them.
 $$('.seg[data-side]').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});renderSide(side);});});
+const inspectFindBar=$('#inspectFind'),inspectFindIn=$('#inspectFindIn');
+function toggleInspectFind(show){
+  if(!inspectFindBar)return;
+  inspectFindBar.style.display=show?'flex':'none';
+  if(show&&inspectFindIn){inspectFindIn.focus();inspectFindIn.select();}
+  else if(!show&&inspectFindIn){inspectFindIn.value='';renderSide('res');}
+}
+if(inspectFindIn)inspectFindIn.oninput=()=>renderSide('res');
+if($('#inspectFindClose'))$('#inspectFindClose').onclick=()=>toggleInspectFind(false);
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
+    const p=document.querySelector('.panel[data-panel="proxy"]');
+    if(!p||!p.classList.contains('active'))return;
+    const t=e.target;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
+    e.preventDefault();toggleInspectFind(true);
+  }
+});
 
 loadFlowCols();
 renderFlowHead();
@@ -514,8 +633,22 @@ function inspectorFlow(){return state.detail||state.flows.find(x=>x.id===state.s
 {const b=$('#insIntruder');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)sendToIntruder(f);else toast('select a flow first');};}
 {const b=$('#insCurl');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)copyCurl(f);else toast('select a flow first');};}
 $('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
-$('#aiToggle').onclick=()=>{state.showAI=!state.showAI;$('#aiToggle').classList.toggle('accent',state.showAI);loadFlows();};
-$('#aiOnlyFilter')&&($('#aiOnlyFilter').onclick=()=>{state.aiOnly=!state.aiOnly;$('#aiOnlyFilter').classList.toggle('accent',state.aiOnly);loadFlows();});
+function syncSourceFilters(){
+  $('#manualFilter')?.classList.toggle('accent',state.showManual);
+  $('#aiSourceFilter')?.classList.toggle('accent',state.showAI);
+}
+export { syncSourceFilters };
+function toggleSourceFilter(which){
+  const nextManual=which==='manual'?!state.showManual:state.showManual;
+  const nextAI=which==='ai'?!state.showAI:state.showAI;
+  if(!nextManual&&!nextAI){toast('enable Manual or AI (at least one source)');return;}
+  if(which==='manual')state.showManual=nextManual;else state.showAI=nextAI;
+  syncSourceFilters();
+  loadFlows();
+}
+$('#manualFilter')&&($('#manualFilter').onclick=()=>toggleSourceFilter('manual'));
+$('#aiSourceFilter')&&($('#aiSourceFilter').onclick=()=>toggleSourceFilter('ai'));
+syncSourceFilters();
 export async function saveNote(){
   if(!state.selId)return;
   const note=$('#noteInput').value;
@@ -568,6 +701,15 @@ export async function addHostToScope(host){
 }
 export function renderScope(){
   const body=$('#scopeBody');if(!body)return;
+  const warn=$('#scopeDupWarn');
+  const enabled=state.scope.filter(r=>r.enabled);
+  const dup=enabled.filter((r,i,a)=>a.findIndex(x=>x.action===r.action&&x.host===r.host&&x.path===r.path&&x.scheme===r.scheme&&x.port===r.port)!==i);
+  if(warn){
+    if(dup.length){
+      warn.style.display='block';
+      warn.textContent=`Duplicate scope rule${dup.length===1?'':'s'} detected — only one is needed.`;
+    }else warn.style.display='none';
+  }
   if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
   body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
@@ -629,8 +771,15 @@ async function tagSelectionPrompt(){
   const v=await uiPrompt({title:'Tag '+ids.length+' selected flows',placeholder:'tags to add, e.g. auth candidate'});
   if(v==null)return;
   const add=parseTags(v);if(!add.length)return;
-  try{await api('/api/flows/tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowIds:ids,add})});toast('tagged '+ids.length+' flow'+(ids.length===1?'':'s'));}
-  catch(e){toast(e.message);}
+  await mutateFlowTags(ids,{add});
+}
+// tagSelectionRemovePrompt removes one tag from every selected flow.
+async function tagSelectionRemovePrompt(){
+  const ids=[...state.selected];if(!ids.length)return;
+  const v=await uiPrompt({title:'Remove tag from '+ids.length+' selected flows',placeholder:'tag to remove, e.g. auth'});
+  if(v==null)return;
+  const remove=parseTags(v);if(!remove.length)return;
+  await mutateFlowTags(ids,{remove});
 }
 // Negative filters: exclude rows matching {field,value}. Toggles off if already present.
 export function addExclude(field,value){
@@ -709,7 +858,6 @@ function flowGlobalSection(f,head){
       {label:'✨ Ask AI',act:()=>openAi([f.id])});
   }
   items.push({sep:true},
-    {label:'🗺 Show in Map',act:()=>focusMapFromFlow(f)},
     {label:'🔍 Scan this host',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
     {label:'🔓 Authz test',val:'roles',act:()=>openAuthz(f.id)},
     {label:'🔑 Use as login macro',act:()=>saveLoginMacroFromFlow(f.id)});
@@ -774,16 +922,25 @@ export function showCtx(x,y,f,field){
   // the global section below.
 
   sections.push(flowGlobalSection(f,'REQUEST'));
-  // TAGS: filter by an existing tag, or add tags (to this flow, or the whole selection).
-  const tagItems=(f.tags||[]).map(t=>({label:'🏷 '+t,val:state.filters.tag===t?'filtering':'filter',on:state.filters.tag===t,act:()=>filterByTag(t)}));
+  // TAGS: filter by / remove an existing tag, or add tags (to this flow, or the whole selection).
+  const tagTargets=tagActionTargets(f.id);
+  const tagN=tagTargets.length;
+  const tagItems=[];
+  (f.tags||[]).forEach(t=>{
+    tagItems.push({label:'🏷 Filter · '+t,on:state.filters.tag===t,act:()=>filterByTag(t)});
+    tagItems.push({label:'✕ Remove · '+t,danger:true,val:tagN>1?tagN+' flows':'',act:()=>mutateFlowTags(tagTargets,{remove:[t]})});
+  });
   const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
   tagItems.push({label:selN?('🏷 Tag '+selN+' selected…'):'🏷 Tag…',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
+  if(selN)tagItems.push({label:'✕ Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
   sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
   const fitems=ff.map(x=>({label:'📌 '+x.title,val:x.severity,act:()=>openFinding(x.id)}));
   fitems.push({label:'➕ Add to finding',act:()=>addFlowToFinding(f.id)});
   sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
   if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
+  const sendAsIds=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
+  if(sendAsIds.length)sections.push({head:'SEND AS',items:sendAsIds.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
   openMenu(x,y,sections);
 }
 
@@ -808,6 +965,8 @@ export function showInspectorCtx(x,y,side){
   }
   sections.push(flowGlobalSection(f, side==='req'?'REQUEST':'RESPONSE'));
   if(!sel)sections.push({items:[{label:'Open Decoder',act:()=>openDecoder('')}]});
+  const sendAsIds2=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
+  if(sendAsIds2.length)sections.push({head:'SEND AS',items:sendAsIds2.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
   openMenu(x,y,sections);
 }
 document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx();});
@@ -856,14 +1015,41 @@ export function updateSelBar(){
   $('#selCount').textContent=n+' selected';
   const cmp=$('#selCompare');if(cmp)cmp.style.display=n===2?'':'none';
 }
+function compareWordDiff(a,b){
+  const tok=s=>String(s||'').split(/(\s+)/);
+  const ta=tok(a),tb=tok(b),rows=[];
+  let i=0,j=0,n=0;
+  while((i<ta.length||j<tb.length)&&n<400){
+    if(ta[i]===tb[j]){if(ta[i])rows.push(`<span style="color:var(--fg3)">${esc(ta[i])}</span>`);i++;j++;}
+    else{
+      const la=ta[i]||'',lb=tb[j]||'';
+      rows.push(`<span style="color:var(--red);background:var(--redDim)">${esc(la||'∅')}</span>`);
+      rows.push(`<span style="color:var(--accent);background:var(--accentDim)">${esc(lb||'∅')}</span>`);
+      i++;j++;
+    }
+    n++;
+  }
+  return `<div style="font-family:var(--mono);font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word">${rows.join('')}${(i<ta.length||j<tb.length)?'<span class="hint"> …truncated</span>':''}</div>`;
+}
+function compareHeaderDiff(ha,hb){
+  const keys=new Set([...Object.keys(ha||{}),...Object.keys(hb||{})]);
+  const sorted=[...keys].sort((a,b)=>a.localeCompare(b));
+  if(!sorted.length)return '<div class="hint">No response headers</div>';
+  const rows=sorted.map(k=>{
+    const x=(ha&&ha[k]||[]).join(', '),y=(hb&&hb[k]||[]).join(', ');
+    if(x===y)return `<div style="font-family:var(--mono);font-size:11px;color:var(--fg3)"><b>${esc(k)}:</b> ${esc(x||'—')}</div>`;
+    return `<div style="font-family:var(--mono);font-size:11px;margin:4px 0"><div style="color:var(--red)"><b>${esc(k)}:</b> ${esc(x||'∅')}</div><div style="color:var(--accent)"><b>${esc(k)}:</b> ${esc(y||'∅')}</div></div>`;
+  });
+  return rows.join('');
+}
 function compareLineDiff(a,b){
   const la=a.split('\n'),lb=b.split('\n'),n=Math.max(la.length,lb.length),rows=[];
-  for(let i=0;i<n&&rows.length<200;i++){
+  for(let i=0;i<n&&rows.length<300;i++){
     const x=la[i]??'',y=lb[i]??'';
     if(x===y)rows.push(`<div style="color:var(--fg3);font-family:var(--mono);font-size:11px;white-space:pre-wrap">${esc(x||' ')}</div>`);
     else rows.push(`<div style="font-family:var(--mono);font-size:11px"><span style="color:var(--red);white-space:pre-wrap">${esc(x||'∅')}</span><br><span style="color:var(--accent);white-space:pre-wrap">${esc(y||'∅')}</span></div>`);
   }
-  return rows.join('')+(n>200?'<div class="hint">…truncated</div>':'');
+  return rows.join('')+(n>300?'<div class="hint">…line diff truncated</div>':'');
 }
 async function openCompare(){
   const ids=[...state.selected].sort((a,b)=>a-b);
@@ -874,9 +1060,21 @@ async function openCompare(){
     const [fa,fb]=await Promise.all(ids.map(id=>api('/api/flows/'+id)));
     const [ra,rb]=await Promise.all(ids.map(id=>api('/api/flows/'+id+'/raw?side=res')));
     const split=s=>{const i=s.indexOf('\r\n\r\n');return i>=0?s.slice(i+4):s;};
-    const ba=split(ra),bb=split(rb);
+    const limit=512*1024;
+    const ba=split(ra).slice(0,limit),bb=split(rb).slice(0,limit);
+    const mode=($('#compareMode')&&$('#compareMode').querySelector('.on')?.dataset.m)||'words';
+    const bodyHtml=mode==='lines'?compareLineDiff(ba,bb):compareWordDiff(ba,bb);
     $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
-    if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:11px"><span><b style="color:var(--red)">#${ids[0]}</b> ${esc(fa.method)} ${esc(fa.status||'—')} · ${fmtSize(fa.resLen)}</span><span><b style="color:var(--accent)">#${ids[1]}</b> ${esc(fb.method)} ${esc(fb.status||'—')} · ${fmtSize(fb.resLen)}</span></div>`+compareLineDiff(ba.slice(0,32000),bb.slice(0,32000));
+    if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:11px;flex-wrap:wrap">
+      <span><b style="color:var(--red)">#${ids[0]}</b> ${esc(fa.method)} ${esc(fa.status||'—')} · ${fmtSize(fa.resLen)}</span>
+      <span><b style="color:var(--accent)">#${ids[1]}</b> ${esc(fb.method)} ${esc(fb.status||'—')} · ${fmtSize(fb.resLen)}</span>
+      <div class="seg" id="compareMode" style="margin-left:auto"><button class="on" data-m="words">Words</button><button data-m="lines">Lines</button></div>
+    </div>
+    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:8px 0 4px">RESPONSE HEADERS</div>
+    ${compareHeaderDiff(fa.resHeaders,fb.resHeaders)}
+    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:12px 0 4px">RESPONSE BODY</div>
+    ${bodyHtml}`;
+    $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{ $('#compareMode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); openCompare(); };});
   }catch(e){if(box)box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
 }
 if($('#selCompare'))$('#selCompare').onclick=openCompare;

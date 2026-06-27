@@ -36,6 +36,35 @@ func TestAssistPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildAskMessagesFollowUp(t *testing.T) {
+	flows := []assistFlow{{Label: "#1 GET https://h/a", Req: "GET /a", Res: "200 ok"}}
+	history := []aiAssistTurn{
+		{Role: "user", Content: "Is CSRF validated?"},
+		{Role: "assistant", Content: "No CSRF token in the request."},
+	}
+	msgs := buildAskMessages(flows, history, "What header should carry it?")
+	if len(msgs) != 4 {
+		t.Fatalf("expected 4 messages (context + 2 history + question), got %d", len(msgs))
+	}
+	if !strings.Contains(msgs[0].Content, "GET /a") || !strings.Contains(msgs[0].Content, "follow-up") {
+		t.Fatalf("context message missing exchange:\n%s", msgs[0].Content)
+	}
+	if msgs[1].Role != "user" || msgs[1].Content != "Is CSRF validated?" {
+		t.Fatalf("history user turn wrong: %+v", msgs[1])
+	}
+	if msgs[2].Role != "assistant" {
+		t.Fatalf("history assistant turn wrong: %+v", msgs[2])
+	}
+	if msgs[3].Content != "What header should carry it?" {
+		t.Fatalf("follow-up question wrong: %q", msgs[3].Content)
+	}
+
+	first := buildAskMessages(flows, nil, "Is CSRF validated?")
+	if len(first) != 1 || !strings.Contains(first[0].Content, "Is CSRF validated?") {
+		t.Fatalf("first ask should be a single combined prompt:\n%+v", first)
+	}
+}
+
 func TestExtractJSONArray(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{`[{"a":1}]`, `[{"a":1}]`},

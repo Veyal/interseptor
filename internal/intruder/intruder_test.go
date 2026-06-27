@@ -104,6 +104,62 @@ func TestPitchforkWalksListsInParallel(t *testing.T) {
 	}
 }
 
+func TestBatteringRamSamePayloadAllPositions(t *testing.T) {
+	var seen []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen = append(seen, string(body))
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target: upstream.URL, Template: "POST /x HTTP/1.1\nHost: h\n\n§u§:§p§",
+		AttackType: "battering", Payloads: [][]string{{"X", "Y"}},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	st := waitDone(t, e)
+	if st.Total != 2 {
+		t.Fatalf("battering: expected 2, got %d", st.Total)
+	}
+	for _, s := range seen {
+		if s != "X:X" && s != "Y:Y" {
+			t.Fatalf("battering should set all markers to the same payload: %q", s)
+		}
+	}
+}
+
+func TestClusterBombCartesianProduct(t *testing.T) {
+	var seen []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen = append(seen, string(body))
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target: upstream.URL, Template: "POST /x HTTP/1.1\nHost: h\n\n§u§:§p§",
+		AttackType: "cluster", Payloads: [][]string{{"a", "b"}, {"1", "2"}},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	st := waitDone(t, e)
+	if st.Total != 4 {
+		t.Fatalf("cluster: expected 4 combos, got %d", st.Total)
+	}
+	joined := strings.Join(seen, ",")
+	for _, want := range []string{"a:1", "a:2", "b:1", "b:2"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("cluster missing %q in %q", want, joined)
+		}
+	}
+}
 func TestSniperFuzzesPathNotJustBody(t *testing.T) {
 	var paths []string
 	var mu sync.Mutex

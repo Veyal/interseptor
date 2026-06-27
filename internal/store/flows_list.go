@@ -17,11 +17,12 @@ func (s *Store) QueryFlowsListFilter(f FlowFilter) ([]*Flow, error) {
 		limit = 200
 	}
 	where, args := buildFlowFilterWhere(f)
+	where, args = appendFlowPageCursor(f, where, args)
 	q := "SELECT " + flowListColumns + " FROM flows"
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY id DESC LIMIT " + strconv.Itoa(limit)
+	q += flowListOrderBy(f) + " LIMIT " + strconv.Itoa(limit)
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
@@ -60,10 +61,6 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		where []string
 		args  []any
 	)
-	if f.BeforeID > 0 {
-		where = append(where, "id < ?")
-		args = append(args, f.BeforeID)
-	}
 	if f.Method != "" {
 		where = append(where, "method = ?")
 		args = append(args, f.Method)
@@ -87,6 +84,10 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 	if f.RequireFlags != 0 {
 		where = append(where, "(flags & ?) != 0")
 		args = append(args, f.RequireFlags)
+	}
+	if f.WithoutFlags != 0 {
+		where = append(where, "(flags & ?) = 0")
+		args = append(args, f.WithoutFlags)
 	}
 	if f.ExcludeFlags != 0 {
 		if f.IncludeFlags != 0 {

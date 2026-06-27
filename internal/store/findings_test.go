@@ -58,7 +58,7 @@ func TestFindingsCRUDAndPoCFlows(t *testing.T) {
 
 	// Update status; list filter by status.
 	verified := "verified"
-	if err := s.UpdateFinding(id, nil, &verified, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpdateFinding(id, nil, &verified, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateFinding: %v", err)
 	}
 	open, _ := s.ListFindings("", "open")

@@ -5,15 +5,16 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Veyal/interceptor/internal/httplines"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
 )
 
 type repeaterSendJSON struct {
-	Method  string `json:"method"`
-	URL     string `json:"url"`
-	Headers string `json:"headers"` // raw "Key: Value" lines
-	Body    string `json:"body"`
+	Method  string          `json:"method"`
+	URL     string          `json:"url"`
+	Headers json.RawMessage `json:"headers"` // "Key: Value" lines or {"Key":"Value"} object
+	Body    string          `json:"body"`
 }
 
 // aiSourceFlag returns store.FlagAI when a request was issued by the AI assistant
@@ -37,10 +38,15 @@ func (h *Hub) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interceptor's own listener")
 		return
 	}
+	hdr, err := httplines.NormalizeJSON(in.Headers)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	flow, err := h.snd.Send(sender.Request{
 		Method:  in.Method,
 		URL:     in.URL,
-		Headers: parseHeaderLines(in.Headers),
+		Headers: hdr,
 		Body:    []byte(in.Body),
 		Flags:   store.FlagRepeater | aiSourceFlag(r),
 	})

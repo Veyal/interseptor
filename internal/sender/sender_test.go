@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Veyal/interceptor/internal/capture"
@@ -80,6 +81,7 @@ func TestSessionHeadersInjected(t *testing.T) {
 	s, _ := store.Open(t.TempDir())
 	defer s.Close()
 	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return true })
 
 	// Off by default: nothing injected.
 	snd.Send(Request{Method: "GET", URL: upstream.URL + "/a"})
@@ -123,6 +125,68 @@ func TestSessionHeadersInjected(t *testing.T) {
 	snd.Send(Request{Method: "GET", URL: upstream.URL + "/e"})
 	if gotAuth != "" {
 		t.Fatalf("disabled session still injected: %q", gotAuth)
+	}
+}
+
+func TestSessionHeadersScopeGated(t *testing.T) {
+	var gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	s, _ := store.Open(t.TempDir())
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool {
+		return strings.HasPrefix(host, "127.0.0.1")
+	})
+	snd.SetSession(true, []Header{{Key: "Authorization", Value: "Bearer scoped"}})
+
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return false })
+	_, _ = snd.Send(Request{Method: "GET", URL: upstream.URL + "/out"})
+	if gotAuth != "" {
+		t.Fatalf("out-of-scope should not inject, got %q", gotAuth)
+	}
+
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return true })
+	gotAuth = ""
+	_, _ = snd.Send(Request{Method: "GET", URL: upstream.URL + "/in"})
+	if gotAuth != "Bearer scoped" {
+		t.Fatalf("in-scope should inject, got %q", gotAuth)
+	}
+}
+
+func TestSessionHostHeadersOverride(t *testing.T) {
+	var gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	s, _ := store.Open(t.TempDir())
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return true })
+	snd.SetSession(true, []Header{{Key: "Authorization", Value: "Bearer global"}})
+
+	// Per-host override for the test server replaces the global token.
+	hostname := strings.Split(strings.TrimPrefix(upstream.URL, "http://"), ":")[0]
+	snd.SetSessionHostHeaders(map[string][]Header{
+		hostname: {{Key: "Authorization", Value: "Bearer per-host"}},
+	})
+	_, _ = snd.Send(Request{Method: "GET", URL: upstream.URL + "/a"})
+	if gotAuth != "Bearer per-host" {
+		t.Fatalf("expected per-host auth, got %q", gotAuth)
+	}
+
+	// Clearing per-host overrides falls back to global.
+	snd.SetSessionHostHeaders(nil)
+	_, _ = snd.Send(Request{Method: "GET", URL: upstream.URL + "/b"})
+	if gotAuth != "Bearer global" {
+		t.Fatalf("expected global auth after clearing, got %q", gotAuth)
 	}
 }
 
@@ -174,6 +238,7 @@ func TestMacroInjectsFreshToken(t *testing.T) {
 	}
 	defer s.Close()
 	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(host, scheme string, port int, path string) bool { return true })
 	snd.SetMacro(Macro{
 		Enabled:    true,
 		Target:     tokenSrv.URL,

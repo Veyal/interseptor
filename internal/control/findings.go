@@ -48,7 +48,7 @@ func (h *Hub) findingsReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
-	var body struct {
+	var in struct {
 		Severity string  `json:"severity"`
 		Status   string  `json:"status"`
 		Source   string  `json:"source"`
@@ -57,26 +57,28 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 		Detail   string  `json:"detail"`
 		Evidence string  `json:"evidence"`
 		Fix      string  `json:"fix"`
+		Body     string  `json:"body"`    // JSON blocks (new format)
 		FlowIDs  []int64 `json:"flowIds"` // optional: attach these PoC flows on create
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
-	if body.Title == "" {
+	if in.Title == "" {
 		httpErr(w, http.StatusBadRequest, "title required")
 		return
 	}
 	f := &store.Finding{
-		Severity: body.Severity, Status: body.Status, Source: orVal(body.Source, "human"),
-		Title: body.Title, Target: body.Target, Detail: body.Detail, Evidence: body.Evidence, Fix: body.Fix,
+		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
+		Title: in.Title, Target: in.Target, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix,
+		Body: in.Body,
 	}
 	id, err := h.st.CreateFinding(f)
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	for _, fid := range body.FlowIDs {
+	for _, fid := range in.FlowIDs {
 		_ = h.st.AttachFlow(id, fid, "")
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -104,12 +106,13 @@ func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
 		Detail   *string `json:"detail"`
 		Evidence *string `json:"evidence"`
 		Fix      *string `json:"fix"`
+		Body     *string `json:"body"` // JSON blocks
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
-	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix); err != nil {
+	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body); err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

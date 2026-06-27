@@ -35,6 +35,12 @@ const (
 	maxTokens = 768
 )
 
+// Message is one turn in a multi-message completion (user or assistant).
+type Message struct {
+	Role    string
+	Content string
+}
+
 // Client calls a chosen LLM provider with a user-provided key.
 type Client struct {
 	provider string
@@ -66,23 +72,28 @@ func New(provider, key, model string) *Client {
 
 // Complete sends a system + user prompt and returns the model's text reply.
 func (c *Client) Complete(system, user string) (string, error) {
+	return c.CompleteMessages(system, []Message{{Role: "user", Content: user}})
+}
+
+// CompleteMessages sends a system prompt and an ordered message history.
+func (c *Client) CompleteMessages(system string, messages []Message) (string, error) {
 	if c.key == "" {
 		return "", fmt.Errorf("no API key configured")
 	}
 	if c.provider == ProviderOpenRouter {
-		return c.completeOpenRouter(system, user)
+		return c.completeOpenRouterMessages(system, messages)
 	}
-	return c.completeAnthropic(system, user)
+	return c.completeAnthropicMessages(system, messages)
 }
 
 // ---- Anthropic (native Messages API) ----
 
-func (c *Client) completeAnthropic(system, user string) (string, error) {
+func (c *Client) completeAnthropicMessages(system string, messages []Message) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
 		"max_tokens": maxTokens,
 		"system":     system,
-		"messages":   []map[string]string{{"role": "user", "content": user}},
+		"messages":   messageMaps(messages),
 	})
 	req, err := http.NewRequest(http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -122,14 +133,13 @@ func (c *Client) completeAnthropic(system, user string) (string, error) {
 
 // ---- OpenRouter (OpenAI-compatible chat completions) ----
 
-func (c *Client) completeOpenRouter(system, user string) (string, error) {
+func (c *Client) completeOpenRouterMessages(system string, messages []Message) (string, error) {
+	msgs := []map[string]string{{"role": "system", "content": system}}
+	msgs = append(msgs, messageMaps(messages)...)
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
 		"max_tokens": maxTokens,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": user},
-		},
+		"messages":   msgs,
 	})
 	req, err := http.NewRequest(http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -187,22 +197,27 @@ var streamHTTP = &http.Client{}
 // stream ends, the provider reports an error, or ctx is cancelled. onDelta is
 // always called from the calling goroutine.
 func (c *Client) CompleteStream(ctx context.Context, system, user string, onDelta func(string)) error {
+	return c.CompleteStreamMessages(ctx, system, []Message{{Role: "user", Content: user}}, onDelta)
+}
+
+// CompleteStreamMessages is the multi-turn streaming variant of CompleteMessages.
+func (c *Client) CompleteStreamMessages(ctx context.Context, system string, messages []Message, onDelta func(string)) error {
 	if c.key == "" {
 		return fmt.Errorf("no API key configured")
 	}
 	if c.provider == ProviderOpenRouter {
-		return c.streamOpenRouter(ctx, system, user, onDelta)
+		return c.streamOpenRouterMessages(ctx, system, messages, onDelta)
 	}
-	return c.streamAnthropic(ctx, system, user, onDelta)
+	return c.streamAnthropicMessages(ctx, system, messages, onDelta)
 }
 
-func (c *Client) streamAnthropic(ctx context.Context, system, user string, onDelta func(string)) error {
+func (c *Client) streamAnthropicMessages(ctx context.Context, system string, messages []Message, onDelta func(string)) error {
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
 		"max_tokens": maxTokens,
 		"stream":     true,
 		"system":     system,
-		"messages":   []map[string]string{{"role": "user", "content": user}},
+		"messages":   messageMaps(messages),
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -214,15 +229,14 @@ func (c *Client) streamAnthropic(ctx context.Context, system, user string, onDel
 	return c.stream(req, onDelta, anthropicDelta)
 }
 
-func (c *Client) streamOpenRouter(ctx context.Context, system, user string, onDelta func(string)) error {
+func (c *Client) streamOpenRouterMessages(ctx context.Context, system string, messages []Message, onDelta func(string)) error {
+	msgs := []map[string]string{{"role": "system", "content": system}}
+	msgs = append(msgs, messageMaps(messages)...)
 	body, _ := json.Marshal(map[string]any{
 		"model":      c.model,
 		"max_tokens": maxTokens,
 		"stream":     true,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": user},
-		},
+		"messages":   msgs,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -337,6 +351,14 @@ func openRouterDelta(data string) (string, error) {
 
 // apiErrorMessage pulls a provider error message out of a non-streamed error body
 // (both providers wrap it as {"error":{"message":...}}).
+func messageMaps(messages []Message) []map[string]string {
+	out := make([]map[string]string, len(messages))
+	for i, m := range messages {
+		out[i] = map[string]string{"role": m.Role, "content": m.Content}
+	}
+	return out
+}
+
 func apiErrorMessage(raw []byte) string {
 	var e struct {
 		Error *struct {

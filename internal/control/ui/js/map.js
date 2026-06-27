@@ -9,7 +9,7 @@ const MAP_VIEW_KEY = 'mapView';
 function restoreMapView(){
   try{
     const v = localStorage.getItem(MAP_VIEW_KEY);
-    if(v === 'tree' || v === 'table' || v === 'graph') return v;
+    if(v === 'tree' || v === 'table' || v === 'graph' || v === 'params') return v;
   }catch(e){}
   return 'tree';
 }
@@ -23,23 +23,6 @@ export const mapState = {
 
 function mapUsesServerSearch(){
   return mapState.searchScope !== 'path' && mapState.search.trim().length > 0;
-}
-
-export function focusMapFromFlow(f){
-  if(!f) return;
-  document.querySelector('.tab[data-tab="map"]')?.click();
-  mapState.domain=f.host||'';
-  mapState.search=(f.path||'/').split('?')[0];
-  mapState.searchScope='path';
-  mapState.searchNote='';
-  mapState.view='table';
-  setMapView('table');
-  const dom=$('#mapDomain'), sr=$('#mapSearch'), sc=$('#mapSearchScope');
-  if(dom) dom.value=mapState.domain;
-  if(sr) sr.value=mapState.search;
-  if(sc) sc.value='path';
-  loadEndpoints();
-  toast('Map · '+f.method+' '+f.host+mapState.search);
 }
 
 export function focusMapSearch(term, scope='body'){
@@ -174,6 +157,7 @@ export function mapRenderNode(node, open, dim){
 }
 
 function mapHintText(){
+  if(mapState.view === 'params') return 'Parameter names mined from captured traffic — click a row to inspect the sample flow';
   if(mapState.view === 'table') return 'Sortable endpoint list · click a row to inspect · → Rep sends to Repeater';
   if(mapState.view === 'graph') return 'Drag to pan · scroll to zoom · click folder to expand · double-click host to focus domain · click endpoint to inspect';
   return 'Hierarchical site map · click an endpoint to inspect';
@@ -184,17 +168,50 @@ function setMapView(v){
   try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
   const seg = $('#mapViewSeg');
   if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap');
+  const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap'), params = $('#mapParams');
   if(tree) tree.style.display = v === 'tree' ? 'block' : 'none';
   if(tbl) tbl.style.display = v === 'table' ? 'block' : 'none';
   if(wrap) wrap.style.display = v === 'graph' ? 'block' : 'none';
+  if(params) params.style.display = v === 'params' ? 'block' : 'none';
   const exp = $('#mapExpand'), fit = $('#mapFit');
   if(exp) exp.style.display = v === 'tree' ? '' : 'none';
   if(fit) fit.style.display = v === 'graph' ? '' : 'none';
   const hint = $('#mapHint');
   if(hint) hint.textContent = mapHintText();
   mapState._needFit = true;
-  renderMap();
+  if(v === 'params') loadParams();
+  else renderMap();
+}
+
+export async function loadParams(){
+  const warn=$('#mapWarn');
+  if(warn){warn.style.display='block';warn.textContent='Mining parameters…';}
+  try{
+    const q = new URLSearchParams();
+    if(mapState.domain) q.set('host', mapState.domain);
+    q.set('inScope', '1');
+    const d = await api('/api/params?' + q);
+    renderMapParams(d);
+    if(warn) warn.style.display='none';
+    const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
+  }catch(e){if(warn){warn.style.display='block';warn.textContent='';} toast('params: '+e.message);}
+}
+
+function renderMapParams(d){
+  const box=$('#mapParams'); if(!box) return;
+  const hosts=d.hosts||[];
+  if(!hosts.length){box.innerHTML='<div class="hint" style="padding:16px">No parameters found — capture in-scope traffic with query strings or form/JSON bodies.</div>';return;}
+  box.innerHTML=hosts.map(h=>`<div style="margin-bottom:16px">
+    <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--accent);margin-bottom:6px">${esc(h.host)}</div>
+    <table class="rules-tbl"><thead><tr><th>Name</th><th style="width:70px">Source</th><th style="width:50px">Hits</th><th style="width:90px">Sample</th></tr></thead><tbody>
+    ${(h.params||[]).map(p=>`<tr class="map-param-row" data-flow="${p.lastFlowId}" title="${escAttr(p.samplePath||'')}">
+      <td style="font-family:var(--mono);color:var(--fg)">${esc(p.name)}</td>
+      <td style="color:var(--fg3)">${esc(p.source)}</td>
+      <td>${p.hits}</td>
+      <td><button type="button" class="btn xs map-param-inspect">#${p.lastFlowId}</button></td>
+    </tr>`).join('')}
+    </tbody></table></div>`).join('');
+  box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
 }
 
 function renderMapCrumb(eps){
@@ -231,6 +248,7 @@ function mapScopeLabel(scope){
 }
 
 export function renderMap(){
+  if(mapState.view === 'params') return;
   const eps = mapFiltered();
   const hostN = new Set(eps.map(e => e.host)).size;
   const filtered = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
