@@ -6,12 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- **AI assist: ask a free-text question about a flow.** Alongside Explain / Payloads
-  / Summary, the AI panel now has a question box — type anything about the selected
-  request/response(s) ("is the CSRF token validated?", "what auth scheme is this?")
-  and get a streamed answer grounded in the captured exchange. Works for a single
-  flow or a multi-selection. (New `kind:"ask"` + `question` on the assist endpoints.)
+### Changed
+- **AI assist is now a single "Ask AI" question box** instead of the Explain /
+  Payloads / Summary preset modes. Open it on a flow (or a multi-selection) and ask
+  anything about the captured request/response — "is the CSRF token validated?",
+  "what auth scheme is this?", "suggest test payloads" — and the answer streams in,
+  grounded in the exchange. Simpler and more flexible (one box does what the three
+  presets did). Backed by `kind:"ask"` + `question` on the assist endpoints; the
+  preset segmented control and the structured-payload cards were removed.
 
 ### Changed
 - **History uses infinite scroll instead of a hard 500-flow cap.** The list now

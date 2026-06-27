@@ -1,39 +1,42 @@
-// ai.js — the AI assist modal. Explain / Summary stream the model's reply token by
-// token and render it as Markdown; Payloads asks for structured test suggestions
-// and renders them as cards you can copy or load straight into Intruder. A footer
-// action bar turns the analysed flow into one-click Repeater / Intruder loads.
+// ai.js — the AI assist modal. Ask a free-text question about the selected flow(s)
+// and the model's reply streams in token by token, rendered as Markdown. A footer
+// action bar loads the analysed flow into Repeater / Intruder in one click.
 import { $, api, openModal, closeModal, state, toast, renderMD, esc, copyText } from './core.js';
-import { sendToRepeater, sendToIntruder, setSniperPayloads } from './tools.js';
+import { sendToRepeater, sendToIntruder } from './tools.js';
 
-let aiKind = 'explain';     // current mode
-let aiPayloads = [];        // structured suggestions (Payloads mode)
+let aiKind = 'ask';         // only mode now: a free-text question
 let aiLastText = '';        // last streamed/markdown text (for Copy)
 let aiAbort = null;         // AbortController for the in-flight stream
 let aiSeq = 0;              // bumped per request; stale runs must not touch the DOM
-let aiQuestion = '';        // free-text question for the "ask" mode
+let aiQuestion = '';        // the free-text question being asked
 
 // setStatus writes the small status line in the AI modal footer ("Thinking…",
 // "Streaming…", ""). It is called throughout the run; a missing definition threw
 // a ReferenceError before the request even fired, breaking the whole panel.
 function setStatus(s) { const el = $('#aiStatus'); if (el) el.textContent = s || ''; }
 
-export function openAi(kind, ids) {
+// openAi opens the assist panel for the given flow(s) (or the current selection),
+// ready for a free-text question — no preset mode is run; the user asks.
+export function openAi(ids) {
   if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
   state.aiIds = (ids && ids.length) ? ids.slice() : (state.selId != null ? [state.selId] : []);
   if (!state.aiIds.length) { toast('select a flow first'); return; }
+  abortAi();
+  aiLastText = '';
+  const what = state.aiIds.length > 1 ? state.aiIds.length + ' selected flows' : 'this request / response';
+  $('#aiOut').innerHTML = '<div class="hint">Ask anything about ' + what + ' — e.g. <i>“is the CSRF token validated?”</i>, <i>“what auth scheme is this?”</i>, <i>“suggest test payloads”</i>.</div>';
+  setStatus('');
+  updateActionBar();
   openModal($('#aiModal'));
-  $('#aiKindSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.k === kind; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  runAi(kind);
+  const qi = $('#aiQuestion'); if (qi) { qi.value = ''; setTimeout(() => qi.focus(), 30); }
 }
 
 export async function runAi(kind) {
-  const seq = ++aiSeq; // invalidates any in-flight request from a previous mode
+  const seq = ++aiSeq; // invalidates any in-flight request
   aiKind = kind;
   abortAi();
-  aiPayloads = []; aiLastText = '';
-  $('#aiPayloads').innerHTML = ''; $('#aiOut').innerHTML = '';
-  updateActionBar();
-  if (kind === 'suggest') { await loadActions(seq); return; }
+  aiLastText = '';
+  $('#aiOut').innerHTML = '';
   await streamAi(kind, seq);
 }
 
@@ -124,79 +127,10 @@ async function runAiNonStream(kind, seq) {
   } catch (e) { if (seq === aiSeq) showError(e.message); }
 }
 
-// loadActions fetches structured payload suggestions for the (single) flow and
-// renders them as actionable cards.
-async function loadActions(seq) {
-  const id = state.aiIds[0];
-  setStatus('Finding payloads…');
-  $('#aiOut').innerHTML = '<div class="hint">Finding test payloads…</div>';
-  try {
-    const r = await api('/api/ai/actions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flowId: id }) });
-    if (seq !== aiSeq) return; // superseded by a newer mode switch
-    aiPayloads = r.payloads || [];
-    $('#aiOut').innerHTML = aiPayloads.length
-      ? '<div class="hint" style="margin-bottom:8px">' + aiPayloads.length + ' suggested payloads. Each shows the recommended tool — <b>→ Repeater</b> for a one-shot manual probe (sends one request, you read the response), <b>→ Intruder</b> for fuzzing/enumeration over many values (mark <code>§</code> and Start).</div>'
-      : '<div class="hint">No payload suggestions for this request.</div>';
-    renderPayloads(aiPayloads);
-    setStatus('');
-    updateActionBar();
-  } catch (e) { if (seq !== aiSeq) return; aiPayloads = []; showError(e.message); updateActionBar(); }
-}
-
-function renderPayloads(payloads) {
-  const box = $('#aiPayloads');
-  if (!payloads || !payloads.length) { box.innerHTML = ''; return; }
-  box.innerHTML = payloads.map((p, i) => {
-    const rep = (p.tool || '').toLowerCase() === 'repeater'; // AI's recommended tool
-    const repBtn = `<button class="btn${rep ? ' accent' : ''}" data-act="rep" data-i="${i}" title="Load the request into Repeater (payload copied to clipboard)">→ Repeater</button>`;
-    const intrBtn = `<button class="btn${rep ? '' : ' accent'}" data-act="intr" data-i="${i}" title="Stage this point for fuzzing in Intruder">→ Intruder</button>`;
-    return `<div style="border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:8px">
-      <div class="row" style="gap:8px;margin-bottom:5px">
-        <span class="sev Info">${esc(p.point || 'param')}</span>
-        <span class="hint" style="font-size:10px">${rep ? 'one-shot' : 'fuzz'}</span>
-        <div class="spacer"></div>
-        ${rep ? repBtn + intrBtn : intrBtn + repBtn}
-        <button class="btn" data-act="copy" data-i="${i}" title="Copy payload">⧉</button>
-      </div>
-      <code style="display:block;background:var(--bg3);border-radius:4px;padding:6px 8px;overflow-wrap:anywhere;font-size:12px">${esc(p.payload || '')}</code>
-      ${p.why ? `<div class="hint" style="margin-top:5px">${esc(p.why)}</div>` : ''}
-    </div>`;
-  }).join('');
-  box.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
-    const p = payloads[Number(b.dataset.i)];
-    if (b.dataset.act === 'copy') { copyText(p.payload || '', 'payload copied'); return; }
-    if (b.dataset.act === 'rep') { loadRepeater(p.payload); return; }
-    loadIntruder([p.payload]);
-  });
-}
-
-// loadIntruder stages the analysed request in Intruder with the given payload list
-// pre-filled — the user places the § marker(s) and hits Start (load & stage; we
-// never auto-fire attack payloads).
-function loadIntruder(list) {
-  const id = state.aiIds[0]; if (!id) return;
-  const picked = (list || []).filter(Boolean);
-  sendToIntruder({ id });
-  setSniperPayloads(picked.join('\n')); // AI payloads go into the single Sniper list
-  closeModal($('#aiModal'));
-  toast('loaded request + ' + picked.length + ' payload(s) into Intruder · wrap the injection point in § and Start');
-}
-
-// loadRepeater stages the request in Repeater for a one-shot manual probe and copies
-// the payload to the clipboard (Repeater has no payload slot — you paste it at the
-// injection point, then Send).
-function loadRepeater(payload) {
-  const id = state.aiIds[0]; if (!id) return;
-  sendToRepeater({ id });
-  closeModal($('#aiModal'));
-  if (payload) copyText(payload, 'request loaded in Repeater · payload copied — paste it at the injection point');
-}
-
 function updateActionBar() {
   const single = state.aiIds.length === 1;
   $('#aiToRepeater').style.display = single ? '' : 'none';
   $('#aiToIntruder').style.display = single ? '' : 'none';
-  $('#aiAllIntruder').style.display = (single && aiKind === 'suggest' && aiPayloads.length) ? '' : 'none';
 }
 
 function showError(msg) {
@@ -207,14 +141,12 @@ function showError(msg) {
 
 function abortAi() { if (aiAbort) { try { aiAbort.abort(); } catch (e) {} aiAbort = null; } $('#aiStop').style.display = 'none'; }
 
-$('#aiExplainBtn').onclick = () => openAi('explain');
-$('#aiKindSeg').querySelectorAll('button').forEach(b => b.onclick = () => { $('#aiKindSeg').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); runAi(b.dataset.k); });
-// Free-text question: run the "ask" mode and clear the preset seg's active state.
+$('#aiExplainBtn') && ($('#aiExplainBtn').onclick = () => openAi());
+// Ask the typed question about the selected flow(s).
 function runAsk() {
   const q = ($('#aiQuestion').value || '').trim();
   if (!q) { $('#aiQuestion').focus(); return; }
   aiQuestion = q;
-  $('#aiKindSeg').querySelectorAll('button').forEach(x => { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
   runAi('ask');
 }
 $('#aiAskBtn') && ($('#aiAskBtn').onclick = runAsk);
@@ -223,8 +155,4 @@ $('#aiClose').onclick = () => { abortAi(); closeModal($('#aiModal')); };
 $('#aiStop').onclick = abortAi;
 $('#aiToRepeater').onclick = () => { const id = state.aiIds[0]; if (id) { sendToRepeater({ id }); closeModal($('#aiModal')); } };
 $('#aiToIntruder').onclick = () => { const id = state.aiIds[0]; if (id) { sendToIntruder({ id }); closeModal($('#aiModal')); } };
-$('#aiAllIntruder').onclick = () => loadIntruder(aiPayloads.map(p => p.payload));
-$('#aiCopy').onclick = () => {
-  if (aiKind === 'suggest') copyText(aiPayloads.map(p => p.payload).filter(Boolean).join('\n'), 'payloads copied');
-  else copyText(aiLastText || '', 'copied');
-};
+$('#aiCopy').onclick = () => copyText(aiLastText || '', 'copied');

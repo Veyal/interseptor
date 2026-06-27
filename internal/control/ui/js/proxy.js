@@ -706,8 +706,7 @@ function flowGlobalSection(f,head){
   ];
   if(!state.aiDisabled){
     items.push({sep:true},
-      {label:'✨ Ask AI',val:'explain',act:()=>openAi('explain',[f.id])},
-      {label:'✨ Ask AI',val:'payloads',act:()=>openAi('suggest',[f.id])});
+      {label:'✨ Ask AI',act:()=>openAi([f.id])});
   }
   items.push({sep:true},
     {label:'🗺 Show in Map',act:()=>focusMapFromFlow(f)},
@@ -883,7 +882,7 @@ async function openCompare(){
 if($('#selCompare'))$('#selCompare').onclick=openCompare;
 if($('#compareClose'))$('#compareClose').onclick=()=>closeModal($('#compareModal'));
 $('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
-$('#selAsk').onclick=()=>{const ids=[...state.selected];if(ids.length)openAi('summarize',ids);};
+$('#selAsk').onclick=()=>{const ids=[...state.selected];if(ids.length)openAi(ids);};
 $('#selScope').onclick=async()=>{
   const hosts=[...new Set([...state.selected].map(id=>{const f=state.flows.find(x=>x.id===id);return f&&f.host;}).filter(Boolean))];
   if(!hosts.length)return;
