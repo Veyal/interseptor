@@ -252,6 +252,12 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .chip .x:hover{color:var(--red);background:var(--bg1)}
 .chip-clear{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;background:transparent;border:1px dashed var(--line2);border-radius:14px;padding:3px 11px;color:var(--fg2);cursor:pointer}
 .chip-clear:hover{border-color:var(--red);border-style:solid;color:var(--red)}
+/* tag quick-bar: one-click filter chips for the project's tags (right-click to color) */
+.tagbar{flex-wrap:wrap;gap:6px;padding:7px 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.tagchip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;background:var(--bg3);border:1px solid var(--line2);border-radius:12px;padding:2px 9px;color:var(--fg2);cursor:pointer}
+.tagchip:hover{color:var(--fg);border-color:var(--accent)}
+.tagchip.on{background:var(--sel);border-color:currentColor}
+.tagchip em{font-style:normal;font-size:9px;opacity:.7}
 
 /* right-click context menu */
 #ctxmenu{position:fixed;z-index:100;min-width:210px;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 16px 48px var(--shadow);padding:5px;display:none;font-size:11.5px}

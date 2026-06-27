@@ -14,6 +14,7 @@ import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js
 import { loadApiKeys, loadReference, loadMCP } from './apipanel.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
 import { loadFindings } from './findings.js';
+import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
 import './flowmodal.js'; // side-effect: flow inspect popup + modal handlers
 import './ai.js'; // side-effect: wires the AI assist modal (its openAi is also imported by proxy.js)
@@ -143,6 +144,7 @@ function connectEvents(){
     else if(m.type==='settings.update'){loadSettings();applyAiDisabledUI();applyOobDisabledUI();}
     else if(m.type==='notes.update')loadNotes();
     else if(m.type==='findings.update')loadFindings();
+    else if(m.type==='tags.update')loadTags();
     else if(m.type==='human.input')loadHumanInput();
   };
   es.onerror=()=>{/* browser auto-reconnects */};
@@ -297,6 +299,6 @@ applyTheme(currentTheme()); // sync the button icon with the theme applied pre-p
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadApiKeys();loadReference();loadMCP();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
 {const hb=$('#helpBtn');if(hb)hb.onclick=()=>openModal($('#shortcutsModal'));}

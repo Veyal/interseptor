@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Flow tags — quick-bar + per-tag colors.** A tag strip above History shows every
+  tag in use (with flow counts) as one-click filter chips; the active filter is
+  highlighted. Right-click a tag chip to assign a color from a preset palette (or
+  clear it), and that color is applied to the chip and to the tag's chips on history
+  rows. Colors persist (per-tag) and update live across clients over SSE.
 - **Flow tags — manual + AI tagging, chips, and filtering (usable end-to-end).**
   Right-click a History flow → **TAGS** to add tags (prefilled with the flow's
   current tags, so removing one is just deleting it), or tag a whole multi-selection

@@ -1,5 +1,6 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, saveFile, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding } from './findings.js';
+import { tagChipStyle, renderTagBar } from './tags.js';
 import { sendToRepeater, sendToIntruder } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAi } from './ai.js';
@@ -131,7 +132,7 @@ function flowRowHTML(f){
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
+    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -580,7 +581,7 @@ export function syncControls(){
   $('#fSearch').value=state.filters.search;
   const ss=$('#fSearchScope');if(ss)ss.value=state.filters.searchScope||'path';
 }
-export function setFilter(key,val){state.filters[key]=val;syncControls();renderChips();loadFlows();}
+export function setFilter(key,val){state.filters[key]=val;syncControls();renderChips();renderTagBar();loadFlows();}
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]};

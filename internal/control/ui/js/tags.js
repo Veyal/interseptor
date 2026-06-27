@@ -1,0 +1,66 @@
+// tags.js — the History tag quick-bar and per-tag colors. Loads the project's tags
+// (with counts + colors) from /api/tags, renders a clickable filter strip above the
+// flow list, and lets you color a tag via its right-click menu. Tag colors are also
+// applied to the per-row tag chips (rendered in proxy.js via state.tagColors).
+import { $, esc, escAttr, api, state, toast, openCtxMenu } from './core.js';
+import { filterByTag, renderRows } from './proxy.js';
+
+// A small, theme-agnostic preset palette (stored verbatim as validated hex).
+export const TAG_COLORS = [
+  ['red', '#ff5b5b'], ['amber', '#ffb02e'], ['green', '#00c389'],
+  ['blue', '#4aa8ff'], ['violet', '#c08cff'], ['cyan', '#3fd8d0'], ['gray', '#8e8e99'],
+];
+
+// tagChipStyle returns the inline style for a chip in a tag's color ('' = default).
+export function tagChipStyle(tag) {
+  const c = state.tagColors[tag];
+  return c ? `color:${c};border-color:${c}` : '';
+}
+
+export async function loadTags() {
+  try {
+    const d = await api('/api/tags');
+    state.tags = d.tags || [];
+    state.tagColors = {};
+    state.tags.forEach(t => { if (t.color) state.tagColors[t.tag] = t.color; });
+    renderTagBar();
+    renderRows(); // recolor the per-row tag chips with any updated colors
+  } catch (e) { /* tags are non-critical; stay quiet */ }
+}
+
+export function renderTagBar() {
+  const bar = $('#tagBar'); if (!bar) return;
+  if (!state.tags.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = state.tags.map(t => {
+    const on = state.filters.tag === t.tag;
+    return `<button class="tagchip${on ? ' on' : ''}" data-tag="${escAttr(t.tag)}" style="${tagChipStyle(t.tag)}"
+      title="filter by ${escAttr(t.tag)} · right-click to color">${esc(t.tag)} <em>${t.count}</em></button>`;
+  }).join('');
+  bar.querySelectorAll('.tagchip').forEach(b => {
+    b.onclick = () => filterByTag(b.dataset.tag);
+    b.oncontextmenu = e => { e.preventDefault(); openColorMenu(e.clientX, e.clientY, b.dataset.tag); };
+  });
+}
+
+function openColorMenu(x, y, tag) {
+  openCtxMenu(x, y, [
+    {
+      head: 'COLOR · ' + tag,
+      items: TAG_COLORS.map(([name, hex]) => ({
+        label: name, val: hex, on: state.tagColors[tag] === hex, act: () => setTagColor(tag, hex),
+      })).concat([{ label: 'Clear color', danger: true, act: () => setTagColor(tag, '') }]),
+    },
+    { items: [{ label: 'Filter by this tag', act: () => filterByTag(tag) }] },
+  ]);
+}
+
+async function setTagColor(tag, color) {
+  try {
+    await api('/api/tags/' + encodeURIComponent(tag) + '/color', {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color }),
+    });
+    // The server broadcasts tags.update, but refresh locally too for snappiness.
+    await loadTags();
+  } catch (e) { toast(e.message); }
+}
