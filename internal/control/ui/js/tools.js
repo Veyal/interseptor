@@ -533,9 +533,9 @@ export function renderIntr(st){
   if(!res.length){box.innerHTML='<div class="hint" style="padding:12px">'+(running?'sending…':'Set a target, mark § injection points in the template, add payloads, then Start.')+'</div>';return;}
   box.innerHTML=res.map(r=>`<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}">
     <div style="color:var(--fg3)">${r.id}</div>
-    <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
+    <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
     <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
-    <div style="color:var(--fg2);text-align:right">${r.length}</div>
+    <div style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
     <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`).join('');
 }
 intrInit(); // load saved tabs + history, wire editor inputs (seeds the editor too)

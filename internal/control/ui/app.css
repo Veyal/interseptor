@@ -352,6 +352,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-row>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 3px}
 .intr-row .pl{color:var(--fg)}
 .intr-row.flag .pl{color:var(--accent);font-weight:600}
+.intr-anomaly{color:var(--amber);font-weight:700;font-size:11px}
 
 /* scanner */
 .scan-list{width:330px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--bg1)}

@@ -18,6 +18,22 @@ var (
 	tokenRe        = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
 	versionRe      = regexp.MustCompile(`\d+\.\d+`)
 	urlSensitiveRe = regexp.MustCompile(`(?i)[?&](access_?token|api_?key|token|session|password|secret|passwd|auth)=([^&\s]{6,})`)
+
+	// mixedContentRe matches http:// scheme references inside common HTML resource-loading attributes.
+	// We look for src= or href= (for link/script/iframe/img) followed immediately by http://.
+	mixedContentRe = regexp.MustCompile(`(?i)(?:src|href)\s*=\s*["']?http://`)
+
+	// dirListingRe matches the characteristic title of an auto-generated directory listing.
+	dirListingRe = regexp.MustCompile(`(?i)<title>\s*index of /`)
+
+	// privateIPRe matches RFC-1918 / loopback / link-local IP addresses disclosed in response text.
+	privateIPRe = regexp.MustCompile(`(?:^|[^0-9.])` +
+		`(?:127\.0\.0\.\d{1,3}` +
+		`|10\.\d{1,3}\.\d{1,3}\.\d{1,3}` +
+		`|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}` +
+		`|192\.168\.\d{1,3}\.\d{1,3}` +
+		`|169\.254\.\d{1,3}\.\d{1,3})` +
+		`(?:[^0-9.]|$)`)
 )
 
 const maxScanBytes = 256 * 1024 // cap how much of a body we inspect
@@ -227,7 +243,129 @@ func Analyze(f *store.Flow, reqBody, resBody []byte) []store.Issue {
 		}
 	}
 
+	// 17. Missing Referrer-Policy on HTML document responses.
+	// Without this header the browser sends the full URL (including path and query string) in the
+	// Referer header to any third-party resource loaded by the page, leaking sensitive path
+	// parameters and session state.
+	if isHTML(res, f.Mime) && res.Get("Referrer-Policy") == "" {
+		add("Low", "Missing Referrer-Policy header",
+			"The HTML document is served without a Referrer-Policy header. "+
+				"The browser will send the full request URL (path + query string) as the Referer to "+
+				"any third-party resource referenced by the page, potentially disclosing session "+
+				"identifiers, user-specific paths, or other sensitive URL components.",
+			"(no Referrer-Policy response header)",
+			"Send Referrer-Policy: strict-origin-when-cross-origin (or stricter) on HTML responses.")
+	}
+
+	// 18. Mixed content — HTTPS page that references HTTP resources.
+	// An HTTPS page loading scripts, stylesheets, iframes, or images over HTTP allows a
+	// network-level attacker to inject malicious content or degrade the security of the page.
+	// We only inspect HTML responses received over HTTPS to keep noise low.
+	if f.Scheme == "https" && isHTML(res, f.Mime) {
+		if m := mixedContentRe.FindString(resp); m != "" {
+			add("Medium", "Mixed content: HTTPS page loads HTTP resource",
+				"An HTTPS page references at least one resource (script/style/iframe/image) over "+
+					"plain HTTP. Active mixed content (scripts/styles) is blocked by modern browsers, "+
+					"but its presence indicates a configuration defect; passive mixed content (images) "+
+					"is still loaded and can be replaced by a network attacker.",
+				trunc(m, 80),
+				"Update all sub-resource URLs to HTTPS, or use protocol-relative URLs (//…).")
+		}
+	}
+
+	// 19. Open redirect — 3xx Location contains a request parameter that resolves off-host.
+	// We require: (a) a 3xx status, (b) a Location header is present, (c) a request query or
+	// body parameter value (≥8 chars, containing "://" or starting with "//" or a known redirect
+	// param name) appears verbatim in the Location value, and (d) the Location value differs from
+	// the request host. This conservative gate is intentional to minimise false positives from
+	// legitimate same-host redirects.
+	if f.Status >= 300 && f.Status < 400 {
+		if loc := res.Get("Location"); loc != "" {
+			if name, val, ok := openRedirectParam(f.Host, f.Path, req, loc); ok {
+				add("Medium", "Potential open redirect via request parameter",
+					"A redirect response ("+string(rune('0'+f.Status/100))+"xx) sets a Location header "+
+						"whose value is influenced by the request parameter '"+name+"'. "+
+						"If the server does not validate the destination, an attacker can craft a link "+
+						"that redirects victims to an attacker-controlled site after they visit the "+
+						"legitimate application URL.",
+					trunc(name+"="+val+" → Location: "+loc, 120),
+					"Validate redirect destinations against an explicit allow-list of trusted URLs; "+
+						"never accept full URLs from user-controlled input as redirect targets.")
+			}
+		}
+	}
+
+	// 20. Directory listing exposure.
+	// Web-server auto-index pages expose the directory structure and file names of the server,
+	// aiding reconnaissance. The match is conservative: we require both the characteristic
+	// <title>Index of /… pattern and a follow-on <a href= link typical of listing pages.
+	if strings.Contains(resp, "<a href=") && dirListingRe.MatchString(resp) {
+		add("Low", "Directory listing enabled",
+			"The response appears to be an auto-generated directory index (e.g. Apache/nginx "+
+				"autoindex). Directory listings expose file and directory names, software paths, "+
+				"and may reveal sensitive files such as backups, configuration files, or source code.",
+			trunc(dirListingRe.FindString(resp), 80),
+			"Disable directory listing in the web-server configuration (e.g. Options -Indexes in "+
+				"Apache, autoindex off in nginx) and ensure sensitive files are not web-accessible.")
+	}
+
 	return out
+}
+
+// openRedirectParam checks whether any request query or body parameter value
+// appears verbatim in the redirect Location header AND points off-host.
+// We restrict to values ≥8 characters that either start with "http", "//",
+// or match a known redirect-parameter name — keeping false-positive rate low.
+func openRedirectParam(host, path, body, location string) (name, val string, ok bool) {
+	// Build a set of candidate parameter (name, value) pairs from query string and body.
+	var pairs [][2]string
+	collect := func(q string) {
+		for _, kv := range strings.Split(q, "&") {
+			if kv == "" {
+				continue
+			}
+			k, v, _ := strings.Cut(kv, "=")
+			if dec, err := url.QueryUnescape(v); err == nil {
+				v = dec
+			}
+			if len(v) < 8 {
+				continue
+			}
+			// Restrict to values that look like URLs, or parameter names that
+			// are commonly used as redirect targets.
+			lk := strings.ToLower(k)
+			looksLikeURL := strings.HasPrefix(v, "http") || strings.HasPrefix(v, "//")
+			redirectParamName := lk == "next" || lk == "redirect" || lk == "redirect_uri" ||
+				lk == "return" || lk == "returnto" || lk == "url" || lk == "goto" ||
+				lk == "continue" || lk == "dest" || lk == "destination" || lk == "target"
+			if looksLikeURL || redirectParamName {
+				pairs = append(pairs, [2]string{k, v})
+			}
+		}
+	}
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		collect(path[i+1:])
+	}
+	collect(body)
+
+	locLower := strings.ToLower(location)
+	for _, p := range pairs {
+		if !strings.Contains(location, p[1]) {
+			continue
+		}
+		// Confirm the destination is off-host by checking that the Location
+		// does not simply start with / (same-origin) or contain our host.
+		isAbsolute := strings.HasPrefix(locLower, "http") || strings.HasPrefix(locLower, "//")
+		if !isAbsolute {
+			continue
+		}
+		// If the host appears in the Location it is likely a same-site redirect.
+		if strings.Contains(locLower, strings.ToLower(host)) {
+			continue
+		}
+		return p[0], p[1], true
+	}
+	return "", "", false
 }
 
 // reflectedParam returns the first query/body parameter whose value (≥6 chars,

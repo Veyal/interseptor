@@ -343,3 +343,296 @@ func TestNoCookieNoCacheIssue(t *testing.T) {
 		t.Fatalf("should not flag when no cookie is set; got: %s", titles(got))
 	}
 }
+
+// --- Check 17: Missing Referrer-Policy ---
+
+func TestMissingReferrerPolicy(t *testing.T) {
+	// Positive: HTML response without Referrer-Policy → Low finding.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com", Path: "/page", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=63072000"},
+			"X-Content-Type-Options":    {"nosniff"},
+			"X-Frame-Options":           {"DENY"},
+			"Content-Security-Policy":   {"default-src 'self'"},
+			// No Referrer-Policy.
+		}),
+	}
+	got := Analyze(flow, nil, []byte("<html><body>hello</body></html>"))
+	if !has(got, "Missing Referrer-Policy header") {
+		t.Fatalf("expected Referrer-Policy finding; got: %s", titles(got))
+	}
+	for _, i := range got {
+		if i.Title == "Missing Referrer-Policy header" && i.Severity != "Low" {
+			t.Fatalf("expected Low severity, got %s", i.Severity)
+		}
+	}
+}
+
+func TestMissingReferrerPolicyNegative(t *testing.T) {
+	// Negative: HTML response with Referrer-Policy present → no finding.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com", Path: "/page", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=63072000"},
+			"Referrer-Policy":           {"strict-origin-when-cross-origin"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte("<html><body>hello</body></html>"))
+	if has(got, "Missing Referrer-Policy header") {
+		t.Fatalf("should not flag when Referrer-Policy is present; got: %s", titles(got))
+	}
+}
+
+func TestMissingReferrerPolicyNonHTML(t *testing.T) {
+	// Negative: JSON API response without Referrer-Policy → no finding (only HTML is in scope).
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "api.example.com", Path: "/data", Status: 200,
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"application/json"},
+			"Strict-Transport-Security": {"max-age=1"},
+			// No Referrer-Policy — but not HTML, so should not fire.
+		}),
+	}
+	got := Analyze(flow, nil, []byte(`{"ok":true}`))
+	if has(got, "Missing Referrer-Policy header") {
+		t.Fatalf("should not flag Referrer-Policy on non-HTML response; got: %s", titles(got))
+	}
+}
+
+// --- Check 18: Mixed content ---
+
+func TestMixedContentDetected(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"script src", `<html><head><script src="http://cdn.example.com/lib.js"></script></head></html>`},
+		{"link href", `<html><head><link href="http://cdn.example.com/style.css"></head></html>`},
+		{"img src", `<html><body><img src="http://images.cdn.net/photo.jpg"></body></html>`},
+		{"iframe src", `<html><body><iframe src="http://ads.example.net/"></iframe></body></html>`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			flow := &store.Flow{
+				Scheme: "https", Method: "GET", Host: "secure.example.com", Path: "/page", Status: 200, Mime: "text/html",
+				ResHeaders: map[string][]string(http.Header{
+					"Content-Type":              {"text/html; charset=utf-8"},
+					"Strict-Transport-Security": {"max-age=1"},
+					"Referrer-Policy":           {"no-referrer"},
+				}),
+			}
+			got := Analyze(flow, nil, []byte(tc.body))
+			if !has(got, "Mixed content: HTTPS page loads HTTP resource") {
+				t.Fatalf("%s: expected mixed-content finding; got: %s", tc.name, titles(got))
+			}
+			for _, i := range got {
+				if i.Title == "Mixed content: HTTPS page loads HTTP resource" && i.Severity != "Medium" {
+					t.Fatalf("expected Medium severity, got %s", i.Severity)
+				}
+			}
+		})
+	}
+}
+
+func TestMixedContentNegativeHTTPS(t *testing.T) {
+	// Negative: all resources are HTTPS → no mixed-content finding.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "secure.example.com", Path: "/page", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=1"},
+			"Referrer-Policy":           {"no-referrer"},
+		}),
+	}
+	body := `<html><head><script src="https://cdn.example.com/lib.js"></script></head></html>`
+	got := Analyze(flow, nil, []byte(body))
+	if has(got, "Mixed content: HTTPS page loads HTTP resource") {
+		t.Fatalf("should not flag when resources use HTTPS; got: %s", titles(got))
+	}
+}
+
+func TestMixedContentNegativeHTTPPage(t *testing.T) {
+	// Negative: request is plain HTTP, not HTTPS → check does not fire (no downgrade risk).
+	flow := &store.Flow{
+		Scheme: "http", Method: "GET", Host: "insecure.example.com", Path: "/page", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type": {"text/html; charset=utf-8"},
+			"Referrer-Policy": {"no-referrer"},
+		}),
+	}
+	body := `<html><head><script src="http://cdn.example.com/lib.js"></script></head></html>`
+	got := Analyze(flow, nil, []byte(body))
+	if has(got, "Mixed content: HTTPS page loads HTTP resource") {
+		t.Fatalf("should not flag mixed content on plain-HTTP page; got: %s", titles(got))
+	}
+}
+
+// --- Check 19: Open redirect via request parameter ---
+
+func TestOpenRedirectDetected(t *testing.T) {
+	cases := []struct {
+		name   string
+		path   string
+		loc    string
+	}{
+		{
+			"next param with full URL",
+			"/login?next=https://attacker.example.com/steal",
+			"https://attacker.example.com/steal",
+		},
+		{
+			"redirect param protocol-relative",
+			"/logout?redirect=//evil.net/phish",
+			"//evil.net/phish",
+		},
+		{
+			"url param absolute",
+			"/sso?url=https://phisher.org/&state=xyz",
+			"https://phisher.org/",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			flow := &store.Flow{
+				Scheme: "https", Method: "GET", Host: "app.example.com", Path: tc.path, Status: 302,
+				ResHeaders: map[string][]string(http.Header{
+					"Location":                  {tc.loc},
+					"Strict-Transport-Security": {"max-age=1"},
+				}),
+			}
+			got := Analyze(flow, nil, nil)
+			if !has(got, "Potential open redirect via request parameter") {
+				t.Fatalf("%s: expected open-redirect finding; got: %s", tc.name, titles(got))
+			}
+			for _, i := range got {
+				if i.Title == "Potential open redirect via request parameter" && i.Severity != "Medium" {
+					t.Fatalf("expected Medium severity, got %s", i.Severity)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenRedirectSameHostNotFlagged(t *testing.T) {
+	// Negative: redirect target contains our own host → not an open redirect.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com",
+		Path:   "/login?next=https://app.example.com/dashboard",
+		Status: 302,
+		ResHeaders: map[string][]string(http.Header{
+			"Location":                  {"https://app.example.com/dashboard"},
+			"Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	got := Analyze(flow, nil, nil)
+	if has(got, "Potential open redirect via request parameter") {
+		t.Fatalf("should not flag same-host redirects; got: %s", titles(got))
+	}
+}
+
+func TestOpenRedirectRelativeNotFlagged(t *testing.T) {
+	// Negative: redirect is a relative path (no host) → not an open redirect.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com",
+		Path:   "/login?next=/dashboard",
+		Status: 302,
+		ResHeaders: map[string][]string(http.Header{
+			"Location":                  {"/dashboard"},
+			"Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	got := Analyze(flow, nil, nil)
+	if has(got, "Potential open redirect via request parameter") {
+		t.Fatalf("should not flag relative-path redirects; got: %s", titles(got))
+	}
+}
+
+func TestOpenRedirectNon3xx(t *testing.T) {
+	// Negative: 200 response with Location-looking content → not flagged.
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com",
+		Path:   "/page?next=https://attacker.example.com/",
+		Status: 200,
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"application/json"},
+			"Strict-Transport-Security": {"max-age=1"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(`{"ok":true}`))
+	if has(got, "Potential open redirect via request parameter") {
+		t.Fatalf("should not flag non-3xx responses; got: %s", titles(got))
+	}
+}
+
+// --- Check 20: Directory listing ---
+
+func TestDirectoryListingDetected(t *testing.T) {
+	apacheBody := `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html>
+ <head>
+  <title>Index of /var/www/uploads</title>
+ </head>
+ <body>
+<h1>Index of /var/www/uploads</h1>
+<ul><li><a href="backup.tar.gz"> backup.tar.gz</a></li>
+<li><a href="passwords.txt"> passwords.txt</a></li>
+</ul>
+</body></html>`
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com", Path: "/uploads/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=1"},
+			"Referrer-Policy":           {"no-referrer"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(apacheBody))
+	if !has(got, "Directory listing enabled") {
+		t.Fatalf("expected directory-listing finding; got: %s", titles(got))
+	}
+	for _, i := range got {
+		if i.Title == "Directory listing enabled" && i.Severity != "Low" {
+			t.Fatalf("expected Low severity, got %s", i.Severity)
+		}
+	}
+}
+
+func TestDirectoryListingNegativeNormalPage(t *testing.T) {
+	// Negative: a normal HTML page that happens to mention "index" → not flagged.
+	body := `<html><head><title>Welcome to My Site</title></head>
+<body><h1>Site Index</h1><p>Browse our content below.</p>
+<a href="/about">About</a>
+</body></html>`
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com", Path: "/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=1"},
+			"Referrer-Policy":           {"no-referrer"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(body))
+	if has(got, "Directory listing enabled") {
+		t.Fatalf("should not flag a normal HTML page; got: %s", titles(got))
+	}
+}
+
+func TestDirectoryListingNegativeTitleOnlyNoLinks(t *testing.T) {
+	// Negative: title matches but there are no <a href= links → conservative gate requires both.
+	body := `<html><head><title>Index of /</title></head><body><p>Nothing here.</p></body></html>`
+	flow := &store.Flow{
+		Scheme: "https", Method: "GET", Host: "app.example.com", Path: "/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html; charset=utf-8"},
+			"Strict-Transport-Security": {"max-age=1"},
+			"Referrer-Policy":           {"no-referrer"},
+		}),
+	}
+	got := Analyze(flow, nil, []byte(body))
+	if has(got, "Directory listing enabled") {
+		t.Fatalf("should not flag when <a href= links are absent; got: %s", titles(got))
+	}
+}

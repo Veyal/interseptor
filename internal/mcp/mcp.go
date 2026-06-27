@@ -556,6 +556,25 @@ func reqFlowID(a map[string]any) (int, error) {
 	return n, nil
 }
 
+// reqDiffID returns a required flow id read from the first of the supplied alias
+// keys that is present (e.g. "a", "id1", "flowA"), or a helpful error naming the
+// canonical key. Lets diff_flows accept the id-naming an agent guesses.
+func reqDiffID(a map[string]any, keys ...string) (int, error) {
+	for _, k := range keys {
+		if _, ok := a[k]; ok {
+			n, err := reqInt(a, k)
+			if err != nil {
+				return 0, fmt.Errorf("%s must be an integer (got %T %s)", keys[0], a[k], describeValue(k, a[k]))
+			}
+			if n == 0 {
+				return 0, fmt.Errorf("%s is required (a non-zero flow id)", keys[0])
+			}
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("%s is required (an integer flow id)", keys[0])
+}
+
 // argHeaderLines normalizes MCP headers: "Key: Value" lines or a JSON object.
 func argHeaderLines(a map[string]any, key string) (string, error) {
 	v, ok := a[key]
@@ -745,6 +764,32 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			return s.apiGet(fmt.Sprintf("/api/flows/%d/curl", id))
+		})
+
+	s.add("diff_flows",
+		"Diff two captured flows' responses — confirm whether a payload changed the response (baseline vs exploit). Returns status change (X→Y), response-length delta, headers added/removed/changed, and a bounded line-based body diff. Pass two flow ids as a/b (id1/id2 and flowA/flowB also accepted). Body comparison is capped at maxBytes (default 4000).",
+		obj(map[string]any{
+			"a":        p("integer", "baseline flow id"),
+			"b":        p("integer", "comparison (e.g. exploit) flow id"),
+			"maxBytes": p("integer", "cap on response-body bytes compared per side (default 4000)"),
+		}, "a", "b"),
+		func(args map[string]any) (string, error) {
+			aID, err := reqDiffID(args, "a", "id1", "flowA")
+			if err != nil {
+				return "", err
+			}
+			bID, err := reqDiffID(args, "b", "id2", "flowB")
+			if err != nil {
+				return "", err
+			}
+			q := url.Values{}
+			q.Set("a", strconv.Itoa(aID))
+			q.Set("b", strconv.Itoa(bID))
+			q.Set("format", "text")
+			if mb := argInt(args, "maxBytes", 0); mb > 0 {
+				q.Set("maxBytes", strconv.Itoa(mb))
+			}
+			return s.apiGet("/api/flows/diff?" + q.Encode())
 		})
 
 	s.add("set_note",

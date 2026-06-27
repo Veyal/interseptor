@@ -50,6 +50,7 @@ type Result struct {
 	Error     string `json:"error"`
 	FlowID    int64  `json:"flowId"`
 	Flagged   bool   `json:"flagged"`
+	Anomaly   bool   `json:"anomaly"`   // true when length deviates significantly from the typical length
 	Matched   bool   `json:"matched"`   // grep-match hit in the response
 	Extracted string `json:"extracted"` // grep-extract capture from the response
 	Binary    bool   `json:"binary"`    // true when the body is binary/undecodable and grep did not apply
@@ -439,30 +440,111 @@ func (e *Engine) run(spec Spec, jobs []job) {
 	e.fireNotify()
 }
 
-// flagAnomalies marks results whose status differs from the most common status
-// — the classic Intruder "one of these is not like the others" signal.
+// flagAnomalies marks results whose status differs from the most common status,
+// or whose response length deviates significantly from the median length.
+// It also flags results whose grep-match outcome differs from the majority.
+//
+// Length anomaly threshold: a result is anomalous when its length differs from
+// the median by more than max(50 bytes, 20% of the median). This is conservative
+// enough to ignore minor variation (e.g. CSRF-token noise) while catching the
+// meaningful size shifts that indicate a different code path.
 func (e *Engine) flagAnomalies() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	// Only count successfully-sent responses; parse/transport failures (Status 0)
-	// must not skew the modal status or they'd mis-flag the valid responses.
-	counts := map[int]int{}
-	for _, r := range e.results {
+
+	// Collect valid (successfully-sent) results only. Parse/transport failures
+	// (Status 0) must not skew the modal status or median length.
+	type valid struct{ idx int; st int; length int64; matched bool }
+	var valids []valid
+	for i, r := range e.results {
 		if r.Status > 0 {
-			counts[r.Status]++
+			valids = append(valids, valid{i, r.Status, r.Length, r.Matched})
 		}
 	}
-	mode, best := 0, -1
-	for st, c := range counts {
+	if len(valids) == 0 {
+		return
+	}
+
+	// --- modal status ---
+	statusCounts := map[int]int{}
+	for _, v := range valids {
+		statusCounts[v.st]++
+	}
+	modeStatus, best := 0, -1
+	for st, c := range statusCounts {
 		if c > best {
-			best, mode = c, st
+			best, modeStatus = c, st
 		}
 	}
-	for i := range e.results {
-		if st := e.results[i].Status; st > 0 && (st != mode || st >= 500) {
-			e.results[i].Flagged = true
+
+	// --- median response length ---
+	lengths := make([]int64, len(valids))
+	for i, v := range valids {
+		lengths[i] = v.length
+	}
+	medianLen := median(lengths)
+
+	// Tolerance: flag when deviation > max(50 bytes, 20% of median).
+	// This avoids flagging tiny uniform responses (e.g. all-zero length).
+	tolerance := medianLen / 5 // 20%
+	if tolerance < 50 {
+		tolerance = 50
+	}
+
+	// --- grep-match majority ---
+	// Only consider this signal when grep was actually configured (i.e. at
+	// least one result has Matched=true; otherwise it was not used).
+	matchedCount := 0
+	for _, v := range valids {
+		if v.matched {
+			matchedCount++
 		}
 	}
+	// Majority verdict: if more than half matched, a non-match is unusual; vice versa.
+	majorityMatched := matchedCount*2 > len(valids)
+	grepSignalActive := matchedCount > 0 && matchedCount < len(valids)
+
+	for _, v := range valids {
+		statusAnomaly := v.st != modeStatus || v.st >= 500
+		diff := v.length - medianLen
+		if diff < 0 {
+			diff = -diff
+		}
+		lengthAnomaly := diff > tolerance
+		grepAnomaly := grepSignalActive && (v.matched != majorityMatched)
+
+		if lengthAnomaly {
+			e.results[v.idx].Anomaly = true
+		}
+		if statusAnomaly || lengthAnomaly || grepAnomaly {
+			e.results[v.idx].Flagged = true
+		}
+	}
+}
+
+// median returns the median of a slice of int64 values without modifying the
+// original slice. Returns 0 for an empty slice.
+func median(vals []int64) int64 {
+	if len(vals) == 0 {
+		return 0
+	}
+	// Insertion sort is fine here: attack results are bounded by maxRequests (2000).
+	sorted := make([]int64, len(vals))
+	copy(sorted, vals)
+	for i := 1; i < len(sorted); i++ {
+		x := sorted[i]
+		j := i
+		for j > 0 && sorted[j-1] > x {
+			sorted[j] = sorted[j-1]
+			j--
+		}
+		sorted[j] = x
+	}
+	n := len(sorted)
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2
 }
 
 // substitute replaces the i-th §…§ marker with payloads[i].
