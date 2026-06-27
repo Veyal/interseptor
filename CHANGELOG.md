@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Flow tags — REST API + filter.** New endpoints: `PUT /api/flows/{id}/tags`
+  (replace a flow's tags), `POST /api/flows/tags` (add tags to a selection of
+  flows), `GET /api/tags` (tags in use with counts and colors), and
+  `PUT /api/tags/{tag}/color` (hex-validated). History/Map can filter by
+  `?tag=`, flow rows and the flow detail now carry their `tags`, and tag changes
+  broadcast over SSE so clients update live. Tested end-to-end.
 - **Flow tags — storage foundation.** Flows can carry short labels (tags) for
   triage, filtering and Map grouping. Backed by new `flow_tags` and `tag_meta`
   tables (kept off the hot insert/scan path), with normalization (lowercased

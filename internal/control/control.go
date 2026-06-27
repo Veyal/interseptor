@@ -14,6 +14,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -168,6 +169,10 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("GET /api/flows/{id}/analyze", h.analyzeFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", h.flowCurl)
 	h.mux.HandleFunc("PUT /api/flows/{id}/note", h.setFlowNote)
+	h.mux.HandleFunc("PUT /api/flows/{id}/tags", h.setFlowTags)
+	h.mux.HandleFunc("POST /api/flows/tags", h.addFlowTagsBulk)
+	h.mux.HandleFunc("GET /api/tags", h.listTags)
+	h.mux.HandleFunc("PUT /api/tags/{tag}/color", h.setTagColor)
 	h.mux.HandleFunc("POST /api/flows/delete", h.deleteFlows)
 	h.mux.HandleFunc("POST /api/flows/purge", h.purgeFlows)
 	h.mux.HandleFunc("POST /api/flows/gc", h.gcBodies)
@@ -305,8 +310,9 @@ type flowJSON struct {
 	DurationMs int64  `json:"durationMs"`
 	ClientAddr string `json:"clientAddr"`
 	Error      string `json:"error"`
-	Flags      int64  `json:"flags"`
-	Note       string `json:"note"`
+	Flags      int64    `json:"flags"`
+	Note       string   `json:"note"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 type flowDetailJSON struct {
@@ -365,7 +371,7 @@ func toFlowJSON(f *store.Flow) flowJSON {
 		ID: f.ID, TS: f.TS.UnixMilli(), Method: f.Method, Scheme: f.Scheme, Host: f.Host,
 		Port: f.Port, Path: f.Path, Status: f.Status, Mime: f.Mime, ReqLen: f.ReqLen,
 		ResLen: f.ResLen, DurationMs: f.DurationMs, ClientAddr: f.ClientAddr, Error: f.Error, Flags: f.Flags,
-		Note: f.Note,
+		Note: f.Note, Tags: f.Tags,
 	}
 }
 
@@ -392,6 +398,101 @@ func (h *Hub) setFlowNote(w http.ResponseWriter, r *http.Request) {
 	if f, err := h.st.GetFlow(id); err == nil {
 		h.FlowUpdated(f)
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reTagColor restricts tag colors to a hex value (safe to interpolate into CSS).
+var reTagColor = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
+
+// broadcastFlowTags reloads a flow (with tags) and pushes it to clients so the row
+// chips update live.
+func (h *Hub) broadcastFlowTags(id int64) {
+	if f, err := h.st.GetFlow(id); err == nil {
+		_ = h.st.AttachTags([]*store.Flow{f})
+		h.FlowUpdated(f)
+	}
+}
+
+// setFlowTags replaces a flow's tag set ({"tags":[...]}). Used by the inspector and
+// the right-click "Tag…" action.
+func (h *Hub) setFlowTags(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	var in struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	tags, err := h.st.SetFlowTags(id, in.Tags)
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.broadcastFlowTags(id)
+	h.broadcast(map[string]any{"type": "tags.update"})
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// addFlowTagsBulk adds tags to many flows at once ({"flowIds":[...],"add":[...]}) —
+// for tagging a multi-selection from History.
+func (h *Hub) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		FlowIDs []int64  `json:"flowIds"`
+		Add     []string `json:"add"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if len(in.FlowIDs) > maxBulkItems {
+		httpErr(w, http.StatusBadRequest, "too many flows")
+		return
+	}
+	for _, id := range in.FlowIDs {
+		if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
+			httpErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		h.broadcastFlowTags(id)
+	}
+	h.broadcast(map[string]any{"type": "tags.update"})
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(in.FlowIDs)})
+}
+
+// listTags returns every tag in use with flow counts and colors.
+func (h *Hub) listTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := h.st.DistinctTags()
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// setTagColor sets (or clears) a tag's display color ({"color":"#rrggbb"}).
+func (h *Hub) setTagColor(w http.ResponseWriter, r *http.Request) {
+	tag := r.PathValue("tag")
+	var in struct {
+		Color string `json:"color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if in.Color != "" && !reTagColor.MatchString(in.Color) {
+		httpErr(w, http.StatusBadRequest, "color must be a hex like #4aa8ff")
+		return
+	}
+	if err := h.st.SetTagColor(tag, in.Color); err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.broadcast(map[string]any{"type": "tags.update"})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -518,6 +619,7 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	if q.Get("hasNote") == "1" {
 		f.HasNote = true
 	}
+	f.Tag = q.Get("tag")
 	// Negative filters (repeatable): notMethod, notHost, notPath, notStatus.
 	f.NotMethods, f.NotHosts, f.NotPaths = q["notMethod"], q["notHost"], q["notPath"]
 	for _, s := range q["notStatus"] {
@@ -534,6 +636,7 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	if truncated {
 		flows = flows[:limit]
 	}
+	_ = h.st.AttachTags(flows) // best-effort: tag chips on rows
 	inScopeOnly := q.Get("inScope") == "1"
 	out := make([]flowJSON, 0, len(flows))
 	for _, fl := range flows {
@@ -568,6 +671,7 @@ func (h *Hub) getFlow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	_ = h.st.AttachTags([]*store.Flow{f})
 	writeJSON(w, http.StatusOK, flowDetailJSON{
 		flowJSON:    toFlowJSON(f),
 		HTTPVersion: f.HTTPVersion,

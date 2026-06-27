@@ -13,6 +13,68 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 )
 
+// Tag endpoints: set tags on a flow, see them on the flow + list filter, list
+// distinct tags with counts, and set a color.
+func TestTagEndpoints(t *testing.T) {
+	h, s, _ := newHub(t)
+	f1, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/1", Status: 200})
+	f2, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "b.com", Path: "/2", Status: 200})
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	put := func(path, body string) *http.Response {
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+path, strings.NewReader(body))
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT %s: %v", path, err)
+		}
+		return r
+	}
+
+	// Set tags on f1.
+	put("/api/flows/"+itoa(f1)+"/tags", `{"tags":["Auth","IDOR"]}`).Body.Close()
+	// Bulk-add a shared tag to both.
+	bp, _ := http.Post(ts.URL+"/api/flows/tags", "application/json",
+		strings.NewReader(`{"flowIds":[`+itoa(f1)+`,`+itoa(f2)+`],"add":["recon"]}`))
+	bp.Body.Close()
+
+	// Filter History by tag=idor → only f1.
+	r, _ := http.Get(ts.URL + "/api/flows?tag=idor")
+	var fl struct {
+		Flows []struct {
+			ID   int64    `json:"id"`
+			Tags []string `json:"tags"`
+		} `json:"flows"`
+	}
+	json.NewDecoder(r.Body).Decode(&fl)
+	r.Body.Close()
+	if len(fl.Flows) != 1 || fl.Flows[0].ID != f1 {
+		t.Fatalf("tag=idor should match only f1, got %+v", fl.Flows)
+	}
+	if len(fl.Flows[0].Tags) != 3 { // auth, idor, recon (sorted)
+		t.Fatalf("f1 tags = %v", fl.Flows[0].Tags)
+	}
+
+	// List distinct tags: recon=2, auth=1, idor=1.
+	r2, _ := http.Get(ts.URL + "/api/tags")
+	var tl struct {
+		Tags []store.TagCount `json:"tags"`
+	}
+	json.NewDecoder(r2.Body).Decode(&tl)
+	r2.Body.Close()
+	if len(tl.Tags) != 3 || tl.Tags[0].Tag != "recon" || tl.Tags[0].Count != 2 {
+		t.Fatalf("DistinctTags = %+v", tl.Tags)
+	}
+
+	// Set a color; reject a bad one.
+	if rc := put("/api/tags/recon/color", `{"color":"#4aa8ff"}`); rc.StatusCode != http.StatusNoContent {
+		t.Fatalf("set color: %d", rc.StatusCode)
+	}
+	if rc := put("/api/tags/recon/color", `{"color":"javascript:alert(1)"}`); rc.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad color should be rejected, got %d", rc.StatusCode)
+	}
+}
+
 // Importing a HAR must invalidate the endpoints cache, otherwise the Map tab
 // keeps showing the pre-import aggregate until the next live capture.
 func TestImportHARInvalidatesEndpointsCache(t *testing.T) {
