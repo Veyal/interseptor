@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, saveFile, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding } from './findings.js';
 import { tagChipStyle, renderTagBar } from './tags.js';
 import { sendToRepeater, sendToIntruder } from './tools.js';
@@ -268,7 +268,10 @@ export function flowRowClick(id,e){
   const mod=e.ctrlKey||e.metaKey;
   if(mod){
     // Ctrl/Cmd-click toggles this single row in/out of the multi-selection
-    // (non-contiguous pick), without disturbing the rest.
+    // (non-contiguous pick), without disturbing the rest. Seed the set with the
+    // currently-inspected row first, so Ctrl-clicking a second row keeps the first
+    // (plain-clicked) one selected too — not just the Ctrl-clicked one.
+    if(state.selected.size===0&&state.selId!=null&&state.selId!==id)state.selected.add(state.selId);
     state.selected.has(id)?state.selected.delete(id):state.selected.add(id);
     state.lastSelIdx=idx;selectFlow(id);updateSelBar();return;
   }
@@ -468,29 +471,6 @@ function inspectorFlow(){return state.detail||state.flows.find(x=>x.id===state.s
 {const b=$('#insRepeater');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)sendToRepeater(f);else toast('select a flow first');};}
 {const b=$('#insIntruder');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)sendToIntruder(f);else toast('select a flow first');};}
 {const b=$('#insCurl');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)copyCurl(f);else toast('select a flow first');};}
-async function exportHar(){
-  try{
-    const url='/api/export/har'+(state.inScopeOnly?'?inScope=1':'');
-    const r=await fetch(url);
-    if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m;}catch(e){}throw new Error(m);}
-    const blob=await r.blob();
-    const stamp=new Date().toISOString().slice(0,10);
-    const name='interceptor-'+stamp+'.har';
-    const saved=await saveFile(blob,name,'application/json');
-    toast('saved '+saved);
-  }catch(e){
-    if(e&&e.name==='AbortError')return;
-    toast('export: '+e.message);
-  }
-}
-$('#exportHar').onclick=()=>exportHar();
-$('#importHarBtn').onclick=()=>$('#importHarFile').click();
-$('#importHarFile').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{const text=await f.text();const r=await api('/api/import/har',{method:'POST',headers:{'content-type':'application/json'},body:text});
-    toast('imported '+r.imported+' flows');loadFlows();}catch(err){toast('import: '+err.message);}
-  e.target.value='';
-};
 $('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
 $('#aiToggle').onclick=()=>{state.showAI=!state.showAI;$('#aiToggle').classList.toggle('accent',state.showAI);loadFlows();};
 $('#aiOnlyFilter')&&($('#aiOnlyFilter').onclick=()=>{state.aiOnly=!state.aiOnly;$('#aiOnlyFilter').classList.toggle('accent',state.aiOnly);loadFlows();});

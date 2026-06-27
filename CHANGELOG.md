@@ -6,7 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **History Ctrl/Cmd-click multi-select kept only the second row.** A plain click
+  inspects a row but doesn't add it to the multi-select set, so Ctrl/Cmd-clicking a
+  second row selected only that one. Ctrl/Cmd-click now seeds the set with the
+  currently-inspected row first, so both the originally-clicked row and the
+  Ctrl-clicked one end up selected.
+
 ### Removed
+- **History "Export" / "Import" (HAR) toolbar buttons.** Removed from the Proxy
+  History toolbar (unused in practice). The `/api/export/har` and `/api/import/har`
+  endpoints are unchanged, and full project export/import remains in Settings.
 - **History "🔎 discover" filter button.** It only showed content-discovery hits,
   which are already marked with a "DSC" badge on their rows and findable via the
   Discover tab — so the toolbar toggle was redundant. The `?discovery=1` API filter
