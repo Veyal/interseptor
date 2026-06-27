@@ -626,6 +626,33 @@ func (s *Server) registerTools() {
 			return fmt.Sprintf("noted flow %d", id), nil
 		})
 
+	s.add("tag_flow",
+		"Attach short tags to a flow for triage/grouping (e.g. \"auth idor candidate\"). Tags are added to any existing ones (not replaced), shown as chips in History, and the human can filter by them. Comma- or space-separated; lowercased slugs.",
+		obj(map[string]any{
+			"id":     pt("integer"),
+			"tags":   p("string", "comma- or space-separated tags"),
+			"intent": p("string", "optional: a short why, shown to the human"),
+		}, "id", "tags"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id is required")
+			}
+			tags := strings.FieldsFunc(argStr(a, "tags"), func(r rune) bool { return r == ',' || r == ' ' || r == ';' })
+			if len(tags) == 0 {
+				return "", fmt.Errorf("at least one tag is required")
+			}
+			if _, err := s.api(http.MethodPost, "/api/flows/tags", map[string]any{"flowIds": []int{id}, "add": tags}); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("tagged flow %d with %s", id, strings.Join(tags, ", ")), nil
+		})
+
+	s.add("list_tags",
+		"List the tags in use across the project's flows, with how many flows carry each — so you can reuse existing tags instead of inventing near-duplicates.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/tags") })
+
 	s.add("get_notes",
 		"Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings and to-dos. Read it before editing with set_notes.",
 		obj(map[string]any{}),

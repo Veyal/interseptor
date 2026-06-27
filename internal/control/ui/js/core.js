@@ -17,7 +17,7 @@ export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,discoveryOnly:false,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',
-  filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',exclude:[]},notesOnly:false,activity:[],actUnseen:0,flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
+  filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,activity:[],actUnseen:0,flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 export function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
 

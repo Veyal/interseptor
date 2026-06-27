@@ -212,6 +212,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "get_notes", "desc": "Read the project's shared markdown notebook"},
 		{"name": "set_notes", "desc": "Replace the project's shared markdown notebook"},
 		{"name": "append_notes", "desc": "Append a markdown block to the project notebook"},
+		{"name": "tag_flow", "desc": "Attach tags to a flow for triage/grouping"},
+		{"name": "list_tags", "desc": "List tags in use with flow counts"},
 		{"name": "create_finding", "desc": "Record a structured vulnerability finding (durable memory)"},
 		{"name": "list_findings", "desc": "List findings (with PoC flows), filter by severity/status"},
 		{"name": "update_finding", "desc": "Update a finding's status or fields (e.g. mark verified)"},

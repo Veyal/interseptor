@@ -44,6 +44,9 @@ button{cursor:pointer}
 .tab.active{color:var(--accent);background:var(--accentDim)}
 .badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:6px}
 .ai-tag{font-size:9px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
+/* tag chips on a History row — click to filter by that tag */
+.flowtag{font-size:9.5px;font-weight:600;background:var(--bg3);color:var(--fg2);border:1px solid var(--line2);border-radius:4px;padding:0 5px;margin-left:5px;vertical-align:middle;cursor:pointer}
+.flowtag:hover{border-color:var(--accent);color:var(--fg)}
 
 #main{flex:1;min-height:0;position:relative}
 .panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}

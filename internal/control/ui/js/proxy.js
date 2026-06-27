@@ -131,7 +131,7 @@ function flowRowHTML(f){
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}</div>`,
+    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -260,6 +260,9 @@ export function renderRows(){
   $$('#rows .trow').forEach(wireFlowRow);
 }
 export function flowRowClick(id,e){
+  // A click on a tag chip filters History by that tag instead of inspecting the row.
+  const chip=e&&e.target&&e.target.closest&&e.target.closest('.flowtag');
+  if(chip){filterByTag(chip.dataset.tagchip);return;}
   const list=applySort(state.flows),idx=list.findIndex(f=>f.id===id);
   if(idx<0)return;
   const mod=e.ctrlKey||e.metaKey;
@@ -321,6 +324,7 @@ export async function loadFlows(){
   if(f.method)q.set('method',f.method);
   if(f.status)q.set('status',f.status);
   if(f.host)q.set('host',f.host);
+  if(f.tag)q.set('tag',f.tag);
   (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
   if(state.inScopeOnly)q.set('inScope','1');
   if(state.discoveryOnly)q.set('discovery','1');
@@ -579,12 +583,35 @@ export function syncControls(){
 export function setFilter(key,val){state.filters[key]=val;syncControls();renderChips();loadFlows();}
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
-  state.filters={scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',exclude:[]};
+  state.filters={scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]};
   state.notesOnly=false;
   $('#notesFilter')?.classList.remove('accent');
   syncControls();renderChips();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||(f.exclude&&f.exclude.length));}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length));}
+// filterByTag toggles the History tag filter (click a tag chip to filter; click the
+// active one again to clear).
+export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
+// parseTags splits a comma/space/semicolon-separated tag string into a list.
+function parseTags(s){return String(s||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);}
+// tagFlowPrompt edits one flow's tags — prefilled with its current tags, so removing
+// a tag is just deleting it from the field. Replaces the flow's tag set (PUT).
+async function tagFlowPrompt(f){
+  const cur=(f.tags||[]).join(' ');
+  const v=await uiPrompt({title:'Tag flow #'+f.id,value:cur,placeholder:'space- or comma-separated, e.g. auth idor'});
+  if(v==null)return;
+  try{await api('/api/flows/'+f.id+'/tags',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tags:parseTags(v)})});}
+  catch(e){toast(e.message);}
+}
+// tagSelectionPrompt ADDS tags to every selected flow (doesn't clobber existing).
+async function tagSelectionPrompt(){
+  const ids=[...state.selected];if(!ids.length)return;
+  const v=await uiPrompt({title:'Tag '+ids.length+' selected flows',placeholder:'tags to add, e.g. auth candidate'});
+  if(v==null)return;
+  const add=parseTags(v);if(!add.length)return;
+  try{await api('/api/flows/tags',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowIds:ids,add})});toast('tagged '+ids.length+' flow'+(ids.length===1?'':'s'));}
+  catch(e){toast(e.message);}
+}
 // Negative filters: exclude rows matching {field,value}. Toggles off if already present.
 export function addExclude(field,value){
   if(value==null||value==='')return;
@@ -601,6 +628,7 @@ export function renderChips(){
   add('method','method',f.method);
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
+  add('tag','🏷',f.tag);
   add('search',f.searchScope==='body'?'body':'path',f.search);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
   const hasFilters=items.length>0;
@@ -727,6 +755,11 @@ export function showCtx(x,y,f,field){
   // the global section below.
 
   sections.push(flowGlobalSection(f,'REQUEST'));
+  // TAGS: filter by an existing tag, or add tags (to this flow, or the whole selection).
+  const tagItems=(f.tags||[]).map(t=>({label:'🏷 '+t,val:state.filters.tag===t?'filtering':'filter',on:state.filters.tag===t,act:()=>filterByTag(t)}));
+  const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
+  tagItems.push({label:selN?('🏷 Tag '+selN+' selected…'):'🏷 Tag…',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
+  sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
   const fitems=ff.map(x=>({label:'📌 '+x.title,val:x.severity,act:()=>openFinding(x.id)}));
   fitems.push({label:'➕ Add to finding',act:()=>addFlowToFinding(f.id)});

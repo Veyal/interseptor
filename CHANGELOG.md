@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Flow tags — manual + AI tagging, chips, and filtering (usable end-to-end).**
+  Right-click a History flow → **TAGS** to add tags (prefilled with the flow's
+  current tags, so removing one is just deleting it), or tag a whole multi-selection
+  at once. Tags render as clickable chips on history rows — click a chip (or the
+  right-click entry) to filter History to that tag; it shows as a removable filter
+  chip. The AI can tag flows over MCP (`tag_flow`) and reuse existing tags
+  (`list_tags`). Tag edits appear live via SSE.
 - **Flow tags — REST API + filter.** New endpoints: `PUT /api/flows/{id}/tags`
   (replace a flow's tags), `POST /api/flows/tags` (add tags to a selection of
   flows), `GET /api/tags` (tags in use with counts and colors), and
