@@ -40,5 +40,5 @@ func (c *endpointsCache) invalidate() {
 }
 
 func endpointsCacheKey(f store.EndpointFilter) string {
-	return f.Host + "\x00" + f.Search + "\x00" + f.SearchScope
+	return f.Host + "\x00" + f.Search + "\x00" + f.SearchScope + "\x00" + f.Tag
 }

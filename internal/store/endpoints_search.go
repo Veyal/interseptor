@@ -118,6 +118,10 @@ func endpointBaseWhere(f EndpointFilter) ([]string, []any) {
 		where = append(where, "instr(lower(host), lower(?)) > 0")
 		args = append(args, f.Host)
 	}
+	if f.Tag != "" {
+		where = append(where, "EXISTS (SELECT 1 FROM flow_tags ft WHERE ft.flow_id = flows.id AND ft.tag = ?)")
+		args = append(args, normalizeTag(f.Tag))
+	}
 	return where, args
 }
 

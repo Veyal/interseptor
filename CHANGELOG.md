@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Flow tags — Map filter by tag.** The Map tab has a tag selector that restricts
+  the endpoint map to endpoints with at least one flow carrying that tag, so you can
+  see just the attack surface you've triaged under a tag. Backed by `?tag=` on
+  `/api/endpoints` (`EndpointFilter.Tag`, tested).
 - **Flow tags — quick-bar + per-tag colors.** A tag strip above History shows every
   tag in use (with flow counts) as one-click filter chips; the active filter is
   highlighted. Right-click a tag chip to assign a color from a preset palette (or

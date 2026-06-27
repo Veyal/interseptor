@@ -120,6 +120,32 @@ func TestSetAndQueryTags(t *testing.T) {
 	}
 }
 
+func TestEndpointsFilterByTag(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	f1 := tagFlow(t, s, "a.com", "/login")
+	tagFlow(t, s, "a.com", "/public") // untagged
+	s.SetFlowTags(f1, []string{"auth"})
+
+	all, _, err := s.Endpoints(EndpointFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 endpoints unfiltered, got %d", len(all))
+	}
+	tagged, _, err := s.Endpoints(EndpointFilter{Tag: "AUTH"}) // case-insensitive
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tagged) != 1 || tagged[0].Path != "/login" {
+		t.Fatalf("tag=auth should yield only /login, got %+v", tagged)
+	}
+}
+
 func TestTagsDeletedWithFlow(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

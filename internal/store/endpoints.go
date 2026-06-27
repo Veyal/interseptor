@@ -33,6 +33,7 @@ type EndpointFilter struct {
 	Search       string
 	SearchScope  string // path, headers, body, all — see EndpointSearch* constants
 	ExcludeFlags int64
+	Tag          string // only endpoints with at least one flow carrying this tag
 }
 
 // parseStatusCSV turns GROUP_CONCAT(DISTINCT status) ("200,404") into a sorted

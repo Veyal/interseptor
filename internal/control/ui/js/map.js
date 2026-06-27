@@ -15,7 +15,7 @@ function restoreMapView(){
 }
 
 export const mapState = {
-  eps: [], domain: null, method: '', search: '', searchScope: 'path', searchNote: '',
+  eps: [], domain: null, method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, expandAll: false,
   view: restoreMapView(), collapsed: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
   sort: { key: 'path', dir: 1 },
@@ -64,6 +64,7 @@ export async function loadEndpoints(){
   try{
     const params = new URLSearchParams();
     if(mapState.domain) params.set('host', mapState.domain);
+    if(mapState.tag) params.set('tag', mapState.tag);
     if(mapUsesServerSearch()){
       params.set('search', mapState.search.trim());
       params.set('searchScope', mapState.searchScope);
@@ -75,6 +76,7 @@ export async function loadEndpoints(){
     mapState._needFit = true;
     fillMapDomains();
     fillMapMethods();
+    fillMapTags();
     renderMap();
   }catch(e){ toast('map: '+e.message); }
 }
@@ -89,6 +91,18 @@ export function fillMapDomains(){
   sel.innerHTML = `<option value="">All domains (${mapState.eps.length})</option>`
     + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
   sel.value = mapState.domain;
+}
+
+// fillMapTags populates the Map tag filter from the project's tags (state.tags),
+// keeping the current selection. Hidden when there are no tags.
+export function fillMapTags(){
+  const sel = $('#mapTag'); if(!sel) return;
+  const tags = state.tags || [];
+  sel.style.display = tags.length ? '' : 'none';
+  if(mapState.tag && !tags.some(t => t.tag === mapState.tag)) mapState.tag = '';
+  sel.innerHTML = '<option value="">all tags</option>'
+    + tags.map(t => `<option value="${escAttr(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
+  sel.value = mapState.tag;
 }
 
 export function mapCollapseHosts(){
@@ -353,6 +367,8 @@ $('#mapExpand').onclick = () => {
   renderMap();
 };
 $('#mapStatus') && ($('#mapStatus').onchange = e => { mapState.statusClass = Number(e.target.value) || 0; mapState._needFit = true; renderMap(); });
+// Tag is a server-side filter (changes which endpoints come back) — re-fetch.
+$('#mapTag') && ($('#mapTag').onchange = e => { mapState.tag = e.target.value; mapState.domain = null; mapState._needFit = true; loadEndpoints(); });
 
 /* ---- map: node-link graph ---- */
 export function gTrunc(s, n){ return s.length > n ? s.slice(0, n - 1) + '…' : s; }

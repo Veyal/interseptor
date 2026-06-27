@@ -537,6 +537,7 @@ func (h *Hub) listEndpoints(w http.ResponseWriter, r *http.Request) {
 		Search:       q.Get("search"),
 		SearchScope:  q.Get("searchScope"),
 		ExcludeFlags: store.FlagIntruder | store.FlagActiveScan,
+		Tag:          q.Get("tag"),
 	}
 	key := endpointsCacheKey(f)
 	if eps, note, ok := h.epsCache.get(key); ok {
