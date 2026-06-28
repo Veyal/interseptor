@@ -145,12 +145,14 @@ func run() error {
 	hub.GlobalDir = globalDir
 	// Switching projects re-execs this binary with --project <target>: a clean
 	// fresh start on the new project's store/CA, no mid-session store swapping.
+	// The mechanism is platform-specific (syscall.Exec on Unix, spawn-and-exit on
+	// Windows, which has no syscall.Exec) — see reexec_unix.go / reexec_windows.go.
 	hub.SwitchProject = func(target string) error {
 		exe, err := os.Executable()
 		if err != nil {
 			return err
 		}
-		return syscall.Exec(exe, []string{exe, "--project", target}, os.Environ())
+		return reexecProject(exe, target)
 	}
 	prx := proxy.New(st, capture.New(st), ca, eng, hub)
 	prx.Scope = sc
@@ -181,7 +183,7 @@ func run() error {
 		return fmt.Errorf("proxy listen on %s: %w", proxyAddr, err)
 	}
 
-	ctrlLn, err := net.Listen("tcp", controlAddr)
+	ctrlLn, err := listenRetry(controlAddr)
 	if err != nil {
 		return fmt.Errorf("control listen on %s: %w", controlAddr, err)
 	}
@@ -253,7 +255,7 @@ func (m *proxyManager) serve(ln net.Listener) *http.Server {
 
 // Start brings up the initial proxy listener.
 func (m *proxyManager) Start(addr string) error {
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listenRetry(addr)
 	if err != nil {
 		return err
 	}
@@ -261,6 +263,30 @@ func (m *proxyManager) Start(addr string) error {
 	m.addr, m.srv = addr, m.serve(ln)
 	m.mu.Unlock()
 	return nil
+}
+
+// listenRetry binds addr, retrying briefly when the port is still held by a
+// just-exited predecessor. On a Windows project switch the new process is
+// spawned by the old one and must wait for it to release the listeners; the old
+// process sets INTERCEPTOR_REEXEC so only that handoff pays the retry cost — a
+// normal start still fails fast when the port is genuinely taken by something
+// else (so the operator gets an immediate, clear "address in use").
+func listenRetry(addr string) (net.Listener, error) {
+	attempts := 1
+	if os.Getenv("INTERCEPTOR_REEXEC") != "" {
+		attempts = 60 // ~9s at 150ms — covers the predecessor's shutdown
+	}
+	var err error
+	for i := 0; i < attempts; i++ {
+		var ln net.Listener
+		if ln, err = net.Listen("tcp", addr); err == nil {
+			return ln, nil
+		}
+		if i < attempts-1 {
+			time.Sleep(150 * time.Millisecond)
+		}
+	}
+	return nil, err
 }
 
 // Rebind opens a listener on addr and, only if that succeeds, swaps it in and

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Track `.cursor/mcp.json` in the repo.** The documented Cursor MCP config (Streamable HTTP to `http://127.0.0.1:9966/mcp`) is now checked in so a fresh clone connects Cursor to a running Interceptor with no manual setup.
 - **Project `.mcp.json` for Claude Code.** Checks in the Claude Code MCP config (Streamable HTTP to `http://127.0.0.1:9966/mcp`) so Claude Code connects to a running Interceptor — the Claude-Code analogue of `.cursor/mcp.json`.
 
+### Fixed
+- **Project create/switch on Windows.** Switching or creating a project from the web UI did nothing on Windows: the re-exec used `syscall.Exec`, which Windows doesn't implement (it returns "not supported by windows"), so the process never restarted on the new project. The re-exec is now platform-specific — `syscall.Exec` (in-place image swap) on Unix, spawn-a-fresh-process-and-exit on Windows — with a gated `listenRetry` so the spawned child reclaims the proxy/control ports once the old process releases them (a normal start still fails fast on a genuinely taken port). Verified live on Windows: creating a new project re-execs and lands on it.
+
 ## [0.12.0] - 2026-06-28
 
 ### Added
