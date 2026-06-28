@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-28
+
 ### Added
 - **`diff_flows` capability.** New MCP tool `diff_flows` and `GET /api/flows/diff?a=&b=` endpoint compare two captured flows' responses — status change, response-length delta, header add/remove/change, and a bounded line-based body diff. Lets an AI confirm whether a payload actually changed the response (baseline vs exploit). Body comparison is byte-capped like other tools.
 - **Four more passive-scan checks (17–20).** Missing `Referrer-Policy` on HTML responses (Low), mixed content on HTTPS pages (`http://` script/style/img/iframe, Medium), potential open redirect via a request parameter reflected in a 3xx `Location` (Medium, off-host only), and directory-listing exposure via the autoindex title pattern (Low) — each conservatively gated with positive/negative tests.
