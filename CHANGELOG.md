@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-29
+
 ### Changed
 - **Findings is now its own top-level tab.** Promoted out of the Scanner tab into a standalone **Findings** menu (the Scanner tab is now passive-issues only) — findings are first-class, not a sub-view. Flow cross-links ("open finding") and the saved-tab restore now target the new tab.
 - **Findings define Impact instead of Remediation.** A finding now captures its **security impact** (what an attacker gains / business consequence) via a new `impact` field, replacing the old "Remediation" field on curated findings. Shown in the finding detail pane and rendered as `**Impact:**` in the exported report. Passive scanner-issue remediation is unchanged. Stored in a new additive `impact` SQLite column; exposed on create/update (REST + MCP), with legacy `fix` still accepted for back-compat.
