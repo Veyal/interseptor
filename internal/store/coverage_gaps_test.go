@@ -659,7 +659,7 @@ func TestFindingBodyHelpers_MarshalAndBuildRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFinding: %v", err)
 	}
-	if err := s.AttachFlow(fid, flowID, "poc note"); err != nil {
+	if err := s.AttachFlow(fid, flowID, "poc note", -1); err != nil {
 		t.Fatalf("AttachFlow: %v", err)
 	}
 
@@ -708,7 +708,7 @@ func TestFindingBodyHelpers_UpdateFirstTextInBody(t *testing.T) {
 
 	// Update the detail (body != nil constraint: detail only, body=nil path).
 	newDetail := "updated detail"
-	if err := s.UpdateFinding(fid, nil, nil, nil, nil, &newDetail, nil, nil, nil, nil); err != nil {
+	if err := s.UpdateFinding(fid, nil, nil, nil, nil, &newDetail, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateFinding: %v", err)
 	}
 
@@ -807,10 +807,10 @@ func TestMissingFlagAfterDeleteFlowsByHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFinding: %v", err)
 	}
-	if err := s.AttachFlow(fid, keepID, "kept"); err != nil {
+	if err := s.AttachFlow(fid, keepID, "kept", -1); err != nil {
 		t.Fatalf("AttachFlow keep: %v", err)
 	}
-	if err := s.AttachFlow(fid, goneID, "will be purged"); err != nil {
+	if err := s.AttachFlow(fid, goneID, "will be purged", -1); err != nil {
 		t.Fatalf("AttachFlow gone: %v", err)
 	}
 

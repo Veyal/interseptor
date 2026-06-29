@@ -257,3 +257,146 @@ func TestFindingImpactCreateAndPatch(t *testing.T) {
 		t.Fatalf("patch: impact want %q got %q", want, updated.Impact)
 	}
 }
+
+// TestFindingCvssCreateAndPatch verifies the cvss field round-trips through
+// POST /api/findings and PATCH /api/findings/:id.
+func TestFindingCvssCreateAndPatch(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	idStr := func(id int64) string { return strconv.FormatInt(id, 10) }
+
+	// CREATE with cvss + Critical severity.
+	resp, err := http.Post(ts.URL+"/api/findings", "application/json",
+		strings.NewReader(`{"title":"CVSS test","severity":"critical","cvss":"9.8"}`))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var created store.Finding
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create: want 200, got %d", resp.StatusCode)
+	}
+	if created.Cvss != "9.8" {
+		t.Fatalf("create: cvss want %q got %q", "9.8", created.Cvss)
+	}
+	if created.Severity != "Critical" {
+		t.Fatalf("create: severity want Critical got %q", created.Severity)
+	}
+
+	// PATCH cvss with a vector.
+	vector := `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`
+	payload, _ := json.Marshal(map[string]string{"cvss": vector})
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/findings/"+idStr(created.ID), strings.NewReader(string(payload)))
+	r2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch: %v", err)
+	}
+	var updated store.Finding
+	json.NewDecoder(r2.Body).Decode(&updated)
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusOK {
+		t.Fatalf("patch: want 200, got %d", r2.StatusCode)
+	}
+	if updated.Cvss != vector {
+		t.Fatalf("patch: cvss want %q got %q", vector, updated.Cvss)
+	}
+}
+
+// TestFindingAttachFlowPosition verifies the "position" field on
+// POST /api/findings/:id/flows inserts the block at the right index.
+func TestFindingAttachFlowPosition(t *testing.T) {
+	h, s, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	f1, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "t.com", Path: "/a", Status: 200})
+	f2, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "t.com", Path: "/b", Status: 200})
+	f3, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(3), Method: "GET", Host: "t.com", Path: "/c", Status: 200})
+
+	// Create finding with a text block + f1 already attached.
+	resp, _ := http.Post(ts.URL+"/api/findings", "application/json",
+		strings.NewReader(`{"title":"pos test","detail":"intro"}`))
+	var created store.Finding
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+	fid := strconv.FormatInt(created.ID, 10)
+
+	// Attach f1 (append).
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/findings/"+fid+"/flows",
+		strings.NewReader(fmt.Sprintf(`{"flowId":%d,"note":"first"}`, f1)))
+	http.DefaultClient.Do(req)
+
+	// Attach f2 at position 1 (between text and f1).
+	req2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/findings/"+fid+"/flows",
+		strings.NewReader(fmt.Sprintf(`{"flowId":%d,"note":"inserted","position":1}`, f2)))
+	r2, _ := http.DefaultClient.Do(req2)
+	var withPoC store.Finding
+	json.NewDecoder(r2.Body).Decode(&withPoC)
+	r2.Body.Close()
+
+	// Block order must be: text(intro), flow:f2, flow:f1
+	if len(withPoC.Blocks) < 3 {
+		t.Fatalf("expected >=3 blocks, got %d: %+v", len(withPoC.Blocks), withPoC.Blocks)
+	}
+	if withPoC.Blocks[0].Type != "text" {
+		t.Fatalf("block[0] should be text, got %+v", withPoC.Blocks[0])
+	}
+	if withPoC.Blocks[1].Type != "flow" || withPoC.Blocks[1].FlowID != f2 {
+		t.Fatalf("block[1] should be flow f2, got %+v", withPoC.Blocks[1])
+	}
+	if withPoC.Blocks[2].Type != "flow" || withPoC.Blocks[2].FlowID != f1 {
+		t.Fatalf("block[2] should be flow f1, got %+v", withPoC.Blocks[2])
+	}
+
+	// Attach f3 without position → appends at end.
+	req3, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/findings/"+fid+"/flows",
+		strings.NewReader(fmt.Sprintf(`{"flowId":%d,"note":"appended"}`, f3)))
+	r3, _ := http.DefaultClient.Do(req3)
+	var final store.Finding
+	json.NewDecoder(r3.Body).Decode(&final)
+	r3.Body.Close()
+	last := final.Blocks[len(final.Blocks)-1]
+	if last.Type != "flow" || last.FlowID != f3 {
+		t.Fatalf("last block should be f3, got %+v", last)
+	}
+}
+
+// TestListFlowsTagFilter verifies GET /api/flows?tag= wires into FlowFilter.Tag.
+func TestListFlowsTagFilter(t *testing.T) {
+	h, s, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	f1, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/tagged", Status: 200})
+	f2, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "b.com", Path: "/untagged", Status: 200})
+	s.SetFlowTags(f1, []string{"sqli"})
+	_ = f2 // untagged
+
+	// Filter by existing tag.
+	resp, err := http.Get(ts.URL + "/api/flows?tag=sqli")
+	if err != nil {
+		t.Fatalf("GET flows?tag=sqli: %v", err)
+	}
+	var out struct {
+		Flows []store.Flow `json:"flows"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if len(out.Flows) != 1 || out.Flows[0].ID != f1 {
+		t.Fatalf("tag=sqli should return only f1, got %+v", out.Flows)
+	}
+
+	// Filter by non-existent tag → empty list.
+	resp2, _ := http.Get(ts.URL + "/api/flows?tag=nonexistent")
+	var out2 struct {
+		Flows []store.Flow `json:"flows"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&out2)
+	resp2.Body.Close()
+	if len(out2.Flows) != 0 {
+		t.Fatalf("tag=nonexistent should return 0 flows, got %d", len(out2.Flows))
+	}
+}

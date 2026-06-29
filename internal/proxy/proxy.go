@@ -810,6 +810,7 @@ func (s *Server) recordRequest(flow *store.Flow) {
 		log.Printf("proxy: insert flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
+	s.cap.TagIfAuth(flow.ID, flow.Path) // best-effort auth surface tagging
 	if s.events != nil {
 		s.events.FlowCaptured(flow)
 	}
@@ -839,6 +840,7 @@ func (s *Server) record(flow *store.Flow) {
 		log.Printf("proxy: persist flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
+	s.cap.TagIfAuth(flow.ID, flow.Path) // best-effort auth surface tagging
 	if s.events != nil {
 		s.events.FlowCaptured(flow)
 	}

@@ -698,11 +698,12 @@ func (s *Server) registerTools() {
 			"search": p("string", "path substring"),
 			"scheme": pt("string"),
 			"status": p("integer", "class 1-5 (4=4xx)"),
+			"tag":    p("string", "filter by tag (exact, case-insensitive)"),
 			"limit":  p("integer", "default 50"),
 		}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
-			for _, k := range []string{"host", "method", "search", "scheme"} {
+			for _, k := range []string{"host", "method", "search", "scheme", "tag"} {
 				if v := argStr(a, k); v != "" {
 					q.Set(k, v)
 				}
@@ -910,7 +911,7 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a confirmed/suspected vulnerability as a structured finding (the AI's durable memory the human reviews). Always write a description and define the security IMPACT (what an attacker gains / business consequence) first, then attach PoCs with add_finding_poc. Returns the new finding with its id. severity=High|Medium|Low|Info; status defaults to open.",
+		"Record a confirmed/suspected vulnerability as a structured finding (the AI's durable memory the human reviews). Always write a description and define the security IMPACT (what an attacker gains / business consequence) first, then attach PoCs with add_finding_poc. Returns the new finding with its id and a clickable UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
 		obj(map[string]any{
 			"title":    pt("string"),
 			"severity": pt("string"),
@@ -919,24 +920,43 @@ func (s *Server) registerTools() {
 			"detail":   pt("string"),
 			"evidence": pt("string"),
 			"impact":   p("string", "the security impact — what an attacker gains / business consequence"),
+			"cvss":     p("string", "CVSS score or vector string, e.g. 7.5 or CVSS:3.1/AV:N/..."),
+			"body":     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}] for full interleaved control"),
 			"intent":   p("string", "optional: a short 'why' shown to the human in the Activity feed"),
 		}, "title"),
 		func(a map[string]any) (string, error) {
 			if _, err := reqStr(a, "title"); err != nil {
 				return "", err
 			}
-			body := map[string]any{
+			reqBody := map[string]any{
 				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
 			}
 			// impact is the primary field; fix is accepted for back-compat but not advertised.
 			if v := argStr(a, "impact"); v != "" {
-				body["impact"] = v
+				reqBody["impact"] = v
 			} else if v := argStr(a, "fix"); v != "" {
-				body["fix"] = v
+				reqBody["fix"] = v
 			}
-			return s.api(http.MethodPost, "/api/findings", body)
+			if v := argStr(a, "cvss"); v != "" {
+				reqBody["cvss"] = v
+			}
+			if v := argStr(a, "body"); v != "" {
+				reqBody["body"] = v
+			}
+			result, err := s.api(http.MethodPost, "/api/findings", reqBody)
+			if err != nil {
+				return result, err
+			}
+			// Append the UI deep-link URL so the human can navigate directly.
+			var f struct {
+				ID int64 `json:"id"`
+			}
+			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
+				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
+			}
+			return result, nil
 		})
 
 	s.add("list_findings",
@@ -958,7 +978,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("update_finding",
-		"Update a finding's status or any field (e.g. mark verified once you've confirmed the PoC, or false_positive, or set the security impact). Only the fields you pass are changed.",
+		"Update a finding's status or any field (e.g. mark verified once you've confirmed the PoC, or false_positive, or set the security impact). Only the fields you pass are changed. Returns the updated finding with a clickable UI URL.",
 		obj(map[string]any{
 			"id":       pt("integer"),
 			"status":   pt("string"),
@@ -968,6 +988,8 @@ func (s *Server) registerTools() {
 			"detail":   pt("string"),
 			"evidence": pt("string"),
 			"impact":   p("string", "the security impact — what an attacker gains / business consequence"),
+			"cvss":     p("string", "CVSS score or vector string, e.g. 7.5 or CVSS:3.1/AV:N/..."),
+			"body":     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}] for full interleaved control"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqInt(a, "id")
@@ -978,7 +1000,7 @@ func (s *Server) registerTools() {
 				return "", fmt.Errorf("id is required (a non-zero finding id)")
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "target", "detail", "evidence", "impact"} {
+			for _, k := range []string{"status", "severity", "title", "target", "detail", "evidence", "impact", "cvss", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
@@ -987,15 +1009,22 @@ func (s *Server) registerTools() {
 			if v, ok := a["fix"]; ok {
 				body["fix"] = v
 			}
-			return s.api(http.MethodPatch, fmt.Sprintf("/api/findings/%d", id), body)
+			result, err := s.api(http.MethodPatch, fmt.Sprintf("/api/findings/%d", id), body)
+			if err != nil {
+				return result, err
+			}
+			// Append the UI deep-link URL.
+			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
+			return result, nil
 		})
 
 	s.add("add_finding_poc",
-		"Attach a captured flow (a request/response from list_flows) to a finding as proof-of-concept evidence. Attach the baseline and the exploit requests so the human can reproduce it. Optional note explains what the flow demonstrates.",
+		"Attach a captured flow (a request/response from list_flows) to a finding as proof-of-concept evidence. Attach the baseline and the exploit requests so the human can reproduce it. Optional note explains what the flow demonstrates. Optional position (0-based block index) inserts the flow block at that index in the body; omit to append at end.",
 		obj(map[string]any{
 			"findingId": pt("integer"),
 			"flowId":    pt("integer"),
 			"note":      pt("string"),
+			"position":  p("integer", "0-based block index to insert the flow at; omit to append at end"),
 		}, "findingId", "flowId"),
 		func(a map[string]any) (string, error) {
 			fid, err := reqInt(a, "findingId")
@@ -1009,7 +1038,11 @@ func (s *Server) registerTools() {
 			if fid == 0 || flow == 0 {
 				return "", fmt.Errorf("findingId and flowId are required (non-zero integers; got findingId=%d flowId=%d)", fid, flow)
 			}
-			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", fid), map[string]any{"flowId": flow, "note": argStr(a, "note")})
+			reqBody := map[string]any{"flowId": flow, "note": argStr(a, "note")}
+			if pos, ok := a["position"]; ok && pos != nil {
+				reqBody["position"] = pos
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", fid), reqBody)
 		})
 
 	s.add("remove_finding_poc",

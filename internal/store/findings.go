@@ -15,7 +15,7 @@ type Finding struct {
 	ID        int64          `json:"id"`
 	TS        int64          `json:"ts"`        // created, unix millis
 	UpdatedTS int64          `json:"updatedTs"` // last modified, unix millis
-	Severity  string         `json:"severity"`  // High | Medium | Low | Info
+	Severity  string         `json:"severity"`  // Critical | High | Medium | Low | Info
 	Status    string         `json:"status"`    // open | verified | false_positive | wont_fix | fixed
 	Source    string         `json:"source"`    // human | ai | scanner
 	Title     string         `json:"title"`
@@ -24,6 +24,7 @@ type Finding struct {
 	Evidence  string         `json:"evidence"` // legacy only
 	Fix       string         `json:"fix"`      // back-compat: kept but superseded by Impact
 	Impact    string         `json:"impact"`   // security impact — what an attacker gains / business consequence
+	Cvss      string         `json:"cvss,omitempty"` // CVSS score or vector string, e.g. "7.5" or "CVSS:3.1/AV:N/..."
 	Body      string         `json:"body,omitempty"` // stored JSON blocks (use Blocks for rendering)
 	Flows     []FindingFlow  `json:"flows"`           // attached flow metadata (for list sidebar count)
 	Blocks    []FindingBlock `json:"blocks"`          // ordered narrative body (source of truth for UI)
@@ -156,10 +157,18 @@ func initialBody(detail, evidence string) string {
 // appendFlowToBody adds a flow block at the end of the stored body JSON.
 // If the flow is already present, its note is updated. Returns the new body JSON.
 func appendFlowToBody(bodyJSON string, flowID int64, note string) string {
+	return insertFlowIntoBody(bodyJSON, flowID, note, -1)
+}
+
+// insertFlowIntoBody inserts a flow block at position pos (0-based block index)
+// in the stored body JSON. pos < 0 or pos >= len means append at end.
+// If the flow is already present, its note is updated in-place (position unchanged).
+func insertFlowIntoBody(bodyJSON string, flowID int64, note string, pos int) string {
 	var recs []blockRecord
 	if bodyJSON != "" {
 		_ = json.Unmarshal([]byte(bodyJSON), &recs)
 	}
+	// If already present, update the note in-place — don't change position.
 	for i, r := range recs {
 		if r.Type == "flow" && r.FlowID == flowID {
 			recs[i].Note = note
@@ -167,7 +176,14 @@ func appendFlowToBody(bodyJSON string, flowID int64, note string) string {
 			return string(j)
 		}
 	}
-	recs = append(recs, blockRecord{Type: "flow", FlowID: flowID, Note: note})
+	newBlock := blockRecord{Type: "flow", FlowID: flowID, Note: note}
+	if pos < 0 || pos >= len(recs) {
+		recs = append(recs, newBlock)
+	} else {
+		recs = append(recs, blockRecord{}) // grow by one
+		copy(recs[pos+1:], recs[pos:])
+		recs[pos] = newBlock
+	}
 	j, _ := json.Marshal(recs)
 	return string(j)
 }
@@ -233,6 +249,8 @@ func updateFirstTextInBody(bodyJSON, md string) string {
 
 func normalizeFindingSeverity(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "critical":
+		return "Critical"
 	case "high":
 		return "High"
 	case "low":
@@ -283,9 +301,9 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 		f.Body = initialBody(f.Detail, f.Evidence)
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Target, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact)
+		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact, cvss)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Target, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Cvss)
 	if err != nil {
 		return 0, err
 	}
@@ -300,7 +318,7 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 // is updated (MCP backward-compat: AI updates detail → UI sees the change).
 // When body is set, detail is synced from its first text block so MCP list_findings
 // still shows meaningful text.
-func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact *string) error {
+func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, cvss *string) error {
 	// If detail changes and there is an existing body, sync the first text block.
 	if detail != nil && body == nil {
 		var existBody string
@@ -355,6 +373,10 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 		sets = append(sets, "impact=?")
 		args = append(args, *impact)
 	}
+	if cvss != nil {
+		sets = append(sets, "cvss=?")
+		args = append(args, *cvss)
+	}
 	args = append(args, id)
 	_, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
 	return err
@@ -376,10 +398,12 @@ func (s *Store) DeleteFinding(id int64) error {
 	return tx.Commit()
 }
 
-// AttachFlow records a flow as a PoC for a finding and appends (or updates) a
-// flow block in the finding's narrative body. Idempotent on re-attach — updates
-// the note in both tables and in the body block.
-func (s *Store) AttachFlow(findingID, flowID int64, note string) error {
+// AttachFlow records a flow as a PoC for a finding and inserts (or updates) a
+// flow block in the finding's narrative body. pos is the 0-based block index at
+// which to insert the flow block; pass -1 to append at the end. Idempotent on
+// re-attach — updates the note in both tables and in the body block (position
+// unchanged if the block already exists).
+func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -395,10 +419,10 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string) error {
 		return err
 	}
 
-	// Sync flow block into the body.
+	// Sync flow block into the body at the requested position.
 	var bodyJSON string
 	_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON)
-	newBody := appendFlowToBody(bodyJSON, flowID, note)
+	newBody := insertFlowIntoBody(bodyJSON, flowID, note, pos)
 	// Also update detail from first text block if needed.
 	detailSync := firstTextMD(newBody)
 	if _, err := tx.Exec(
@@ -470,13 +494,13 @@ func (s *Store) findingFlows(findingID int64) ([]FindingFlow, error) {
 func scanFinding(sc scanner) (*Finding, error) {
 	var f Finding
 	if err := sc.Scan(&f.ID, &f.TS, &f.UpdatedTS, &f.Severity, &f.Status, &f.Source,
-		&f.Title, &f.Target, &f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact); err != nil {
+		&f.Title, &f.Target, &f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Cvss); err != nil {
 		return nil, err
 	}
 	return &f, nil
 }
 
-const findingCols = `id, ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact`
+const findingCols = `id, ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact, cvss`
 
 // GetFinding loads one finding with its narrative body blocks and PoC flow list.
 func (s *Store) GetFinding(id int64) (*Finding, error) {
@@ -506,7 +530,7 @@ func (s *Store) ListFindings(severity, status string) ([]Finding, error) {
 	}
 	rows, err := s.db.Query(
 		`SELECT `+findingCols+` FROM findings WHERE `+strings.Join(where, " AND ")+
-			` ORDER BY CASE severity WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 WHEN 'Low' THEN 2 ELSE 3 END, id DESC`,
+			` ORDER BY CASE severity WHEN 'Critical' THEN 0 WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 3 ELSE 4 END, id DESC`,
 		args...)
 	if err != nil {
 		return nil, err

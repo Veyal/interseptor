@@ -13,7 +13,7 @@ let bodyBlocks = [];
 let bodyFindingId = null;
 let bodySaveTimer = null;
 
-const sevColor = s => ({ High: 'var(--red)', Medium: 'var(--amber)', Low: 'var(--blue)', Info: 'var(--fg3)' }[s] || 'var(--fg3)');
+const sevColor = s => ({ Critical: 'var(--red)', High: 'var(--red)', Medium: 'var(--amber)', Low: 'var(--blue)', Info: 'var(--fg3)' }[s] || 'var(--fg3)');
 const statusLabel = s => (s || '').replace(/_/g, ' ');
 
 export async function loadFindings() {
@@ -215,6 +215,10 @@ function renderFindingDetail() {
     <div style="margin-bottom:4px">
       <div class="find-sec" style="margin-bottom:4px">Impact</div>
       <textarea id="findImpact" class="rep-edit" rows="2" placeholder="Security impact — what an attacker gains…" style="border-radius:6px">${esc(f.impact || '')}</textarea>
+    </div>
+    <div style="margin-bottom:4px">
+      <div class="find-sec" style="margin-bottom:4px">CVSS</div>
+      <input id="findCvss" class="btn" type="text" value="${escAttr(f.cvss || '')}" placeholder="e.g. 7.5 or CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N" style="width:100%;border-radius:6px;background:var(--bg3)">
     </div>`;
 
   // Load body blocks for this finding.
@@ -248,6 +252,11 @@ function renderFindingDetail() {
   $('#findImpact')?.addEventListener('blur', async () => {
     const impact = $('#findImpact').value;
     try { await api('/api/findings/' + f.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ impact }) }); }
+    catch (err) { toast(err.message); }
+  });
+  $('#findCvss')?.addEventListener('blur', async () => {
+    const cvss = $('#findCvss').value;
+    try { await api('/api/findings/' + f.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cvss }) }); }
     catch (err) { toast(err.message); }
   });
 }
@@ -293,6 +302,21 @@ export function openFinding(id) {
   document.querySelector('.tab[data-tab="findings"]')?.click();
   loadFindings();
 }
+
+// Deep-link: if the URL hash is #finding-<id>, activate the Findings tab and
+// select that finding. Handles both initial page load and hashchange events.
+function handleFindingHash() {
+  const m = location.hash.match(/^#finding-(\d+)$/);
+  if (!m) return;
+  const id = Number(m[1]);
+  if (!id) return;
+  selFinding = id;
+  document.querySelector('.tab[data-tab="findings"]')?.click();
+  loadFindings();
+}
+window.addEventListener('hashchange', handleFindingHash);
+// Run on module load so a direct URL like /#finding-3 opens the right finding.
+handleFindingHash();
 export function addFlowToFinding(flowId) {
   if (flowId) pickFindingForFlows([flowId]);
 }

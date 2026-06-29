@@ -58,6 +58,174 @@ func TestCreateFindingWithImpact(t *testing.T) {
 	}
 }
 
+// TestCreateUpdateFindingUIURL verifies that create_finding and update_finding
+// MCP tool responses include the /#finding-<id> deep-link URL.
+func TestCreateUpdateFindingUIURL(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings":
+			io.WriteString(w, `{"id":42,"title":"test","severity":"High","status":"open","flows":[],"blocks":[]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/findings/42":
+			io.WriteString(w, `{"id":42,"title":"test","severity":"High","status":"verified","flows":[],"blocks":[]}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	script := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_finding","arguments":{"title":"test","severity":"High"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_finding","arguments":{"id":42,"status":"verified"}}}`,
+	}, "\n") + "\n"
+
+	var out bytes.Buffer
+	if err := s.Serve(strings.NewReader(script), &out); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+
+	resps := decodeResponses(t, out.String())
+	if len(resps) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(resps))
+	}
+
+	extract := func(res json.RawMessage) string {
+		var r struct {
+			Content []struct{ Text string `json:"text"` } `json:"content"`
+		}
+		json.Unmarshal(res, &r)
+		if len(r.Content) == 0 {
+			return ""
+		}
+		return r.Content[0].Text
+	}
+
+	createText := extract(resps[0].Result)
+	if !strings.Contains(createText, "/#finding-42") {
+		t.Fatalf("create_finding response missing /#finding-42 URL:\n%s", createText)
+	}
+	updateText := extract(resps[1].Result)
+	if !strings.Contains(updateText, "/#finding-42") {
+		t.Fatalf("update_finding response missing /#finding-42 URL:\n%s", updateText)
+	}
+}
+
+// TestUpdateFindingBodyParam verifies that create_finding and update_finding
+// forward the "body" argument to the REST API, and that update_finding also
+// forwards "cvss".
+func TestUpdateFindingBodyParam(t *testing.T) {
+	var createBody, updateBody map[string]any
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings":
+			json.NewDecoder(r.Body).Decode(&createBody)
+			io.WriteString(w, `{"id":5,"title":"t","severity":"High","status":"open","flows":[],"blocks":[]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/findings/5":
+			json.NewDecoder(r.Body).Decode(&updateBody)
+			io.WriteString(w, `{"id":5,"title":"t","severity":"High","status":"open","flows":[],"blocks":[]}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	bodyJSON := `[{"type":"text","md":"hello"}]`
+
+	// Build valid JSON-RPC messages programmatically to avoid manual escaping.
+	buildCall := func(id int, name string, args map[string]any) string {
+		msg := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"method":  "tools/call",
+			"params":  map[string]any{"name": name, "arguments": args},
+		}
+		b, _ := json.Marshal(msg)
+		return string(b)
+	}
+	createLine := buildCall(1, "create_finding", map[string]any{"title": "t", "severity": "High", "body": bodyJSON, "cvss": "7.5"})
+	updateLine := buildCall(2, "update_finding", map[string]any{"id": 5, "body": bodyJSON, "cvss": "9.8"})
+
+	script := createLine + "\n" + updateLine + "\n"
+
+	var out bytes.Buffer
+	if err := s.Serve(strings.NewReader(script), &out); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+
+	if createBody["body"] != bodyJSON {
+		t.Fatalf("create_finding: body not forwarded, got %v", createBody)
+	}
+	if createBody["cvss"] != "7.5" {
+		t.Fatalf("create_finding: cvss not forwarded, got %v", createBody)
+	}
+	if updateBody["body"] != bodyJSON {
+		t.Fatalf("update_finding: body not forwarded, got %v", updateBody)
+	}
+	if updateBody["cvss"] != "9.8" {
+		t.Fatalf("update_finding: cvss not forwarded, got %v", updateBody)
+	}
+}
+
+// TestListFlowsMCPTagFilter verifies that the list_flows MCP tool forwards the
+// "tag" argument as a ?tag= query param to GET /api/flows.
+func TestListFlowsMCPTagFilter(t *testing.T) {
+	var receivedTag string
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/flows" {
+			receivedTag = r.URL.Query().Get("tag")
+			io.WriteString(w, `{"flows":[]}`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	script := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_flows","arguments":{"tag":"sqli","limit":10}}}` + "\n"
+	var out bytes.Buffer
+	if err := s.Serve(strings.NewReader(script), &out); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if receivedTag != "sqli" {
+		t.Fatalf("expected tag=sqli forwarded, got %q", receivedTag)
+	}
+}
+
+// TestAddFindingPocPosition verifies that add_finding_poc forwards the "position"
+// arg to POST /api/findings/:id/flows.
+func TestAddFindingPocPosition(t *testing.T) {
+	var receivedBody map[string]any
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/flows") {
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			io.WriteString(w, `{"id":1,"title":"t","severity":"High","status":"open","flows":[],"blocks":[]}`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	script := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"add_finding_poc","arguments":{"findingId":1,"flowId":7,"note":"poc","position":2}}}` + "\n"
+	var out bytes.Buffer
+	if err := s.Serve(strings.NewReader(script), &out); err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if pos, ok := receivedBody["position"]; !ok || pos != float64(2) {
+		t.Fatalf("position not forwarded: body=%v", receivedBody)
+	}
+}
+
 type rpcResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`

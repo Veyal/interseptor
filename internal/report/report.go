@@ -237,6 +237,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	if f.Target != "" {
 		b.WriteString("- **Target:** `" + code(f.Target) + "`\n")
 	}
+	if f.Cvss != "" {
+		b.WriteString("- **CVSS:** " + f.Cvss + "\n")
+	}
 	if f.Impact != "" {
 		b.WriteString("- **Impact:** " + f.Impact + "\n")
 	}

@@ -230,6 +230,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE activity ADD COLUMN intent TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()

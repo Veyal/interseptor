@@ -12,10 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **MCP records findings description-first.** `create_finding`/`update_finding` now take `impact` (in place of `fix`), and the `initialize` methodology mandates the workflow: write a finding's **description and impact first**, then **always attach the relevant captured flow(s) as PoC** via `add_finding_poc` — every finding should have a description before evidence and at least one PoC flow when one exists.
 
 ### Added
+- **`cvss` field on findings.** Findings now carry a dedicated `cvss` field (score or vector, e.g. `9.8` or `CVSS:3.1/AV:N/...`) instead of embedding it in the title — stored in a new additive SQLite column, accepted on create/update (REST + MCP), rendered as `**CVSS:**` in the report, and editable in the finding detail pane.
+- **`add_finding_poc` position param.** The MCP tool and `POST /api/findings/:id/flows` accept an optional 0-based `position` to insert a PoC flow block at a specific index in the narrative body (omit = append).
+- **`list_flows` tag filter.** The MCP `list_flows` tool and `GET /api/flows` accept a `tag` argument to filter flows by tag (e.g. `tag:auth`).
+- **`create_finding`/`update_finding` return a UI deep-link.** Their MCP results include `…/#finding-<id>`; navigating to that hash in the web UI activates the Findings tab and selects the finding.
+- **Auto-tag auth flows.** Captured flows whose request path looks like an auth endpoint (`/login`, `/register`, `/logout`, `/auth`, `/oauth`, `/token`, `/sso`, `/mfa`, `/2fa`, `/password`, `/reset`, `/verify`, …) are automatically tagged `auth` (segment-exact, false-positive-guarded), surfacing the auth surface for instant `tag:auth` filtering. Best-effort in the capture/sender/proxy persist path; never blocks forwarding.
+- **`create_finding`/`update_finding` accept a `body` param over MCP.** Lets an agent set the full interleaved block structure directly (previously only reachable via raw REST).
 - **Track `.cursor/mcp.json` in the repo.** The documented Cursor MCP config (Streamable HTTP to `http://127.0.0.1:9966/mcp`) is now checked in so a fresh clone connects Cursor to a running Interceptor with no manual setup.
 - **Project `.mcp.json` for Claude Code.** Checks in the Claude Code MCP config (Streamable HTTP to `http://127.0.0.1:9966/mcp`) so Claude Code connects to a running Interceptor — the Claude-Code analogue of `.cursor/mcp.json`.
 
 ### Fixed
+- **`normalizeFindingSeverity` no longer downgrades "critical".** A severity of `critical` (any case) was silently mapped to `Medium`; it now normalizes to canonical `Critical` (matching the report's severity ranking).
+- **Updating a finding's `detail` preserves interleaved bodies.** A `detail`-only update now replaces just the first text block in place, keeping every flow block in its original position — previously it could reorder/append flows and break the interleaved narrative.
 - **Project create/switch on Windows.** Switching or creating a project from the web UI did nothing on Windows: the re-exec used `syscall.Exec`, which Windows doesn't implement (it returns "not supported by windows"), so the process never restarted on the new project. The re-exec is now platform-specific — `syscall.Exec` (in-place image swap) on Unix, spawn-a-fresh-process-and-exit on Windows — with a gated `listenRetry` so the spawned child reclaims the proxy/control ports once the old process releases them (a normal start still fails fast on a genuinely taken port). Verified live on Windows: creating a new project re-execs and lands on it.
 
 ## [0.12.0] - 2026-06-28

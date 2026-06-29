@@ -102,6 +102,7 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 		Evidence string  `json:"evidence"`
 		Fix      string  `json:"fix"`    // back-compat: still accepted
 		Impact   string  `json:"impact"` // security impact — what an attacker gains / business consequence
+		Cvss     string  `json:"cvss"`   // CVSS score or vector string
 		Body     string  `json:"body"`    // JSON blocks (new format)
 		FlowIDs  []int64 `json:"flowIds"` // optional: attach these PoC flows on create
 	}
@@ -120,7 +121,7 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 	f := &store.Finding{
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
 		Title: in.Title, Target: in.Target, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix,
-		Impact: in.Impact, Body: in.Body,
+		Impact: in.Impact, Cvss: in.Cvss, Body: in.Body,
 	}
 	id, err := h.st.CreateFinding(f)
 	if err != nil {
@@ -128,7 +129,7 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, fid := range in.FlowIDs {
-		_ = h.st.AttachFlow(id, fid, "")
+		_ = h.st.AttachFlow(id, fid, "", -1)
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, _ := h.st.GetFinding(id)
@@ -156,6 +157,7 @@ func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
 		Evidence *string `json:"evidence"`
 		Fix      *string `json:"fix"`    // back-compat: still accepted
 		Impact   *string `json:"impact"` // security impact — what an attacker gains / business consequence
+		Cvss     *string `json:"cvss"`   // CVSS score or vector string
 		Body     *string `json:"body"`   // JSON blocks
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -180,7 +182,7 @@ func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact); err != nil {
+	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Cvss); err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -204,11 +206,14 @@ func (h *Hub) deleteFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 // attachFindingFlow records a flow as PoC evidence for a finding.
+// Optional "position" (0-based block index) controls where the flow block is
+// inserted in the narrative body; omit or -1 to append at the end.
 func (h *Hub) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
-		FlowID int64  `json:"flowId"`
-		Note   string `json:"note"`
+		FlowID   int64  `json:"flowId"`
+		Note     string `json:"note"`
+		Position *int   `json:"position"` // optional 0-based block index; omit = append
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -218,7 +223,11 @@ func (h *Hub) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "flowId required")
 		return
 	}
-	if err := h.st.AttachFlow(id, in.FlowID, in.Note); err != nil {
+	pos := -1
+	if in.Position != nil {
+		pos = *in.Position
+	}
+	if err := h.st.AttachFlow(id, in.FlowID, in.Note, pos); err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

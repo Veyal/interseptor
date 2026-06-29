@@ -371,6 +371,9 @@ func (s *Sender) persist(flow *store.Flow) {
 	if _, err := s.st.InsertFlow(flow); err != nil {
 		return
 	}
+	// Best-effort: tag flows whose path looks like an auth endpoint so the
+	// operator/AI can instantly filter auth surface with tag:auth.
+	s.cap.TagIfAuth(flow.ID, flow.Path)
 	s.persistMu.Lock()
 	fn := s.onPersist
 	s.persistMu.Unlock()
