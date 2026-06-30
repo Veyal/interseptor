@@ -699,7 +699,8 @@ func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
 	}
-	searchScope := strings.ToLower(q.Get("searchScope"))
+	f.SearchScope = strings.ToLower(strings.TrimSpace(q.Get("searchScope")))
+	searchScope := f.SearchScope
 	var searchNote string
 	if searchScope == "body" && strings.TrimSpace(f.Search) != "" {
 		ids, note, err := h.st.FlowIDsBodySearch(f, 8000)

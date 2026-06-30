@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, methodColor, statusColor } from './core.js';
 import { flowPopup } from './flowmodal.js';
 
 // Findings tab: the human reviews/curates the project's vulnerability findings.
@@ -423,7 +423,7 @@ function renderFindingDetail() {
     </div>
     <div class="find-doc-actions" id="findDocActions">
       <button class="btn" id="findAddText">＋ Paragraph</button>
-      <button class="btn" id="findAddFlow">＋ PoC flow (<span id="findSelCount">${state.selected ? state.selected.size : 0}</span> selected)</button>
+      <button class="btn" id="findAddFlow" title="Attach request/response flows as PoC evidence">＋ PoC flow<span id="findPocReady" class="hint"></span></button>
     </div>
     <aside class="find-impact">
       <h3>Impact</h3>
@@ -462,7 +462,8 @@ function renderFindingDetail() {
     const tas = document.querySelectorAll('#findBody .block-text');
     if (tas.length) tas[tas.length - 1].focus();
   };
-  $('#findAddFlow').onclick = () => attachSelectedFlowsAsBlocks(f.id);
+  $('#findAddFlow').onclick = () => addPoCFlowsToFinding(f.id);
+  updateFindPocBtn();
   $('#findImpact')?.addEventListener('blur', async () => {
     const impact = $('#findImpact').value;
     if (findDetailView === 'chain') renderFindingChain($('#findChain'), bodyBlocks, impact);
@@ -476,9 +477,21 @@ function renderFindingDetail() {
   });
 }
 
-async function attachSelectedFlowsAsBlocks(findingId) {
-  const ids = state.selected ? [...state.selected] : [];
-  if (!ids.length) { toast('select flows in Proxy History first'); return; }
+function pocFlowIdsReady() {
+  if (state.selected?.size) return [...state.selected];
+  if (state.selId != null) return [state.selId];
+  return [];
+}
+
+export function updateFindPocBtn() {
+  const hint = $('#findPocReady');
+  if (!hint) return;
+  const n = pocFlowIdsReady().length;
+  hint.textContent = n ? ` · ${n} ready` : '';
+}
+
+async function attachFlowsToFinding(findingId, ids) {
+  if (!ids.length) return;
   try {
     for (const fid of ids) {
       await api('/api/findings/' + findingId + '/flows', {
@@ -488,6 +501,101 @@ async function attachSelectedFlowsAsBlocks(findingId) {
     }
     toast('attached ' + ids.length + ' flow' + (ids.length === 1 ? '' : 's'));
   } catch (e) { toast(e.message); }
+}
+
+async function addPoCFlowsToFinding(findingId) {
+  const ids = pocFlowIdsReady();
+  if (ids.length) await attachFlowsToFinding(findingId, ids);
+  else openFlowPickForFinding(findingId);
+}
+
+let flowPickFindingId = null;
+let flowPickFlows = [];
+let flowPickSel = new Set();
+
+function flowPickIdQuery(q) {
+  const s = (q || '').trim();
+  if (/^#\d+$/.test(s) || /^id:\d+$/i.test(s) || /^\d+$/.test(s)) return s;
+  return '';
+}
+
+function flowPickFilter(q) {
+  const s = (q || '').trim().toLowerCase();
+  if (!s) return flowPickFlows;
+  const idQ = flowPickIdQuery(q);
+  if (idQ) {
+    const raw = idQ.replace(/^#/i, '').replace(/^id:/i, '');
+    const want = Number(raw);
+    return flowPickFlows.filter(f => f.id === want);
+  }
+  return flowPickFlows.filter(f => `${f.method} ${f.host}${f.path} #${f.id}`.toLowerCase().includes(s));
+}
+
+let flowPickSearchTimer = null;
+
+async function flowPickSearch(q) {
+  const idTerm = flowPickIdQuery(q);
+  if (idTerm) {
+    try {
+      const d = await api('/api/flows?search=' + encodeURIComponent(idTerm) + '&searchScope=id&limit=20');
+      const extra = d.flows || [];
+      const seen = new Set(flowPickFlows.map(f => f.id));
+      for (const f of extra) {
+        if (!seen.has(f.id)) { flowPickFlows.push(f); seen.add(f.id); }
+      }
+    } catch (e) { toast(e.message); }
+  }
+  renderFlowPickList(q);
+}
+
+function renderFlowPickList(filter = '') {
+  const list = $('#findFlowPickList');
+  const cnt = $('#ffpCount');
+  const attach = $('#ffpAttach');
+  if (!list) return;
+  const rows = flowPickFilter(filter);
+  if (!rows.length) {
+    list.innerHTML = '<div class="hint" style="padding:12px">No flows match — capture traffic through the proxy first.</div>';
+  } else {
+    list.innerHTML = rows.map(f => {
+      const on = flowPickSel.has(f.id);
+      return `<label class="find-flow-pick${on ? ' on' : ''}" data-id="${f.id}">
+        <input type="checkbox"${on ? ' checked' : ''} aria-label="Select flow #${f.id}">
+        <span class="m" style="color:${methodColor(f.method)}">${esc(f.method)}</span>
+        <span class="p">${esc(f.host)}${esc(f.path || '/')}</span>
+        <span class="sts" style="color:${statusColor(f.status)}">${f.status || '—'}</span>
+        <span class="hint">#${f.id}</span>
+      </label>`;
+    }).join('');
+    list.querySelectorAll('.find-flow-pick').forEach(el => {
+      const id = Number(el.dataset.id);
+      const toggle = () => {
+        flowPickSel.has(id) ? flowPickSel.delete(id) : flowPickSel.add(id);
+        renderFlowPickList($('#ffpSearch')?.value || '');
+      };
+      el.querySelector('input').onchange = () => toggle();
+      el.onclick = e => { if (e.target.tagName !== 'INPUT') toggle(); };
+    });
+  }
+  const n = flowPickSel.size;
+  if (cnt) cnt.textContent = n + ' selected';
+  if (attach) attach.disabled = !n;
+}
+
+async function openFlowPickForFinding(findingId) {
+  flowPickFindingId = findingId;
+  flowPickSel = new Set();
+  flowPickFlows = [];
+  const list = $('#findFlowPickList');
+  if (list) list.innerHTML = '<div class="hint" style="padding:12px">Loading…</div>';
+  const search = $('#ffpSearch');
+  if (search) search.value = '';
+  openModal($('#findFlowPickModal'));
+  try {
+    const d = await api('/api/flows?limit=200');
+    flowPickFlows = d.flows || [];
+    renderFlowPickList();
+  } catch (e) { toast(e.message); if (list) list.innerHTML = ''; }
 }
 
 /* ---- create finding ---- */
@@ -581,4 +689,17 @@ function pickFindingForFlows(ids) {
   };
 }
 $('#fpClose') && ($('#fpClose').onclick = () => closeModal($('#findPickModal')));
+$('#ffpClose') && ($('#ffpClose').onclick = () => closeModal($('#findFlowPickModal')));
+$('#ffpSearch') && ($('#ffpSearch').oninput = e => {
+  clearTimeout(flowPickSearchTimer);
+  const v = e.target.value;
+  flowPickSearchTimer = setTimeout(() => flowPickSearch(v), 200);
+});
+$('#ffpAttach') && ($('#ffpAttach').onclick = async () => {
+  const ids = [...flowPickSel];
+  const fid = flowPickFindingId;
+  closeModal($('#findFlowPickModal'));
+  if (!fid || !ids.length) return;
+  await attachFlowsToFinding(fid, ids);
+});
 $('#selAddFinding') && ($('#selAddFinding').onclick = pickFindingForSelection);

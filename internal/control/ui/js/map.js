@@ -449,10 +449,10 @@ export function renderMap(){
   const filtered = mapFiltered();
   const eps = mapVisibleEps(filtered);
   const hostN = new Set(eps.map(e => e.host)).size;
-  const filtered = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
+  const hasFilters = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
   let countText = eps.length
     ? `${eps.length.toLocaleString()} endpoint${eps.length === 1 ? '' : 's'} · ${hostN} host${hostN === 1 ? '' : 's'}`
-    : (mapState.eps.length ? (filtered ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
+    : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
   if(mapState.truncated && mapState.total > mapState.eps.length) countText += ` (${mapState.total.toLocaleString()} total)`;
   $('#mapCount').textContent = countText;
   const warn = $('#mapWarn');

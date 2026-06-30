@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/Veyal/interceptor/internal/activescan"
+	"github.com/Veyal/interceptor/internal/activescript"
 	"github.com/Veyal/interceptor/internal/checkscript"
 	"github.com/Veyal/interceptor/internal/scanner"
 	"github.com/Veyal/interceptor/internal/store"
@@ -28,25 +30,44 @@ func (h *Hub) listChecks(w http.ResponseWriter, r *http.Request) {
 			checks = got
 		}
 	}
-	// Built-in passive checks (toggleable, not deletable) + active probes
-	// (read-only) so the Checks manager can show every module in one place.
+	builtin := make([]map[string]any, 0, len(scanner.BuiltinChecks))
+	for _, b := range scanner.BuiltinChecks {
+		m := map[string]any{
+			"id": b.ID, "title": b.Title, "category": b.Category,
+			"severity": b.Severity, "description": b.Description,
+			"editable": true,
+		}
+		if h.ChecksDir != "" && checkscript.Exists(h.ChecksDir, b.ID) {
+			m["overridden"] = true
+		}
+		builtin = append(builtin, m)
+	}
+	active := activeCheckList()
+	if h.ActiveChecksDir != "" {
+		for i := range active {
+			id, _ := active[i]["id"].(string)
+			if activescript.Exists(h.ActiveChecksDir, id) {
+				active[i]["overridden"] = true
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"checks":   checks,
-		"builtin":  scanner.BuiltinChecks,
-		"active":   activeCheckList(),
-		"dir":      h.ChecksDir,
-		"disabled": h.checksDisabledList(),
+		"checks":    checks,
+		"builtin":   builtin,
+		"active":    active,
+		"dir":       h.ChecksDir,
+		"activeDir": h.ActiveChecksDir,
+		"disabled":  h.checksDisabledList(),
 	})
 }
 
-// activeCheckList exposes the built-in active-scan probes for the Checks manager
-// (toggleable like passive checks, but only fired when you arm & run an active
-// scan — they send real attack traffic, which is why the run stays consent-gated).
-func activeCheckList() []map[string]string {
-	out := make([]map[string]string, 0, len(activescan.Checks))
+// activeCheckList exposes the built-in active-scan probes for the Checks manager.
+func activeCheckList() []map[string]any {
+	out := make([]map[string]any, 0, len(activescan.Checks))
 	for _, c := range activescan.Checks {
-		out = append(out, map[string]string{
+		out = append(out, map[string]any{
 			"id": c.ID, "class": c.Class, "severity": c.Severity, "title": c.Title, "fix": c.Fix,
+			"editable": true,
 		})
 	}
 	return out
@@ -88,12 +109,25 @@ func (h *Hub) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) getCheck(w http.ResponseWriter, r *http.Request) {
-	src, err := checkscript.Read(h.ChecksDir, r.PathValue("id"))
-	if err != nil {
-		httpErr(w, http.StatusNotFound, err.Error())
+	id := r.PathValue("id")
+	if src, builtin, overridden, err := h.readCheckSource(id); err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": id, "source": src, "builtin": builtin, "overridden": overridden,
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "source": src})
+	httpErr(w, http.StatusNotFound, "check not found")
+}
+
+func (h *Hub) readCheckSource(id string) (src string, builtin, overridden bool, err error) {
+	if h.ChecksDir != "" && checkscript.Exists(h.ChecksDir, id) {
+		src, err = checkscript.Read(h.ChecksDir, id)
+		return src, scanner.IsBuiltinID(id), scanner.IsBuiltinID(id), err
+	}
+	if tpl, ok := scanner.BuiltinTemplate(id); ok {
+		return tpl, true, false, nil
+	}
+	return "", false, false, os.ErrNotExist
 }
 
 func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +151,8 @@ func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) deleteCheck(w http.ResponseWriter, r *http.Request) {
-	if err := checkscript.Delete(h.ChecksDir, r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := checkscript.Delete(h.ChecksDir, id); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

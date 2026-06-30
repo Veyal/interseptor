@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-30
+
+**Usable findings & checks:** attach PoC flows without the proxy-selection dance, jump to any flow by id, and override built-in passive/active checks with editable Starlark.
+
+### Fixed
+- **Map tab crash on load.** `renderMap` declared `filtered` twice (endpoint list + filter-active flag); renamed the boolean to `hasFilters`.
+- **Findings “＋ PoC flow” always rejected.** The button only read Proxy History multi-select (`state.selected`), which plain-click clears; it now falls back to the inspected flow, opens a flow-picker modal when nothing is ready, and shows a “· N ready” hint when History selection applies.
+
+### Added
+- **Proxy History flow-id search.** Search scope **id** (or `#285` / `id:285` in any scope) finds a flow by its numeric id; command palette and the PoC flow picker match ids too.
+
+### Changed
+- **Scanner custom checks list readability.** Wider sidebar, multi-line titles, collapsible built-in/active groups (custom sections open first), and a highlight on the check being edited.
+- **Editable built-in scanner checks.** Click any built-in passive check or active probe to view/edit its Starlark template; **Save** writes `~/.interceptor/checks/<id>.star` or `active-checks/<id>.star` and replaces the compiled built-in on the next scan. **Revert** removes your override and restores the default built-in.
+
 ## [0.16.0] - 2026-06-30
 
 **Map that scales:** large attack surfaces no longer freeze while you search, and ferox/discovery trash collapses into readable clusters instead of a wall of duplicate rows.

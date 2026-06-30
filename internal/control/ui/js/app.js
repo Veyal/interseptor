@@ -223,7 +223,12 @@ function cmdkRender(){
   const items=[];
   cmdkCommands().forEach(c=>{if(!q||(c.t+' '+(c.kw||'')).toLowerCase().includes(q))items.push({label:c.t,kind:'command',run:c.run});});
   if(q){
-    state.flows.filter(f=>(f.method+' '+f.host+f.path).toLowerCase().includes(q)).slice(0,8).forEach(f=>{
+    const idQ=q.replace(/^#/,'').replace(/^id:/,'');
+    const idWant=/^\d+$/.test(idQ)?Number(idQ):0;
+    state.flows.filter(f=>{
+      if(idWant&&f.id===idWant)return true;
+      return (f.method+' '+f.host+f.path+' #'+f.id).toLowerCase().includes(q);
+    }).slice(0,8).forEach(f=>{
       items.push({label:f.method+'  '+f.host+f.path,kind:'flow',sub:String(f.status||'—'),
         run:()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(f.id);}});
     });

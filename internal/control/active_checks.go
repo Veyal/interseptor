@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/Veyal/interceptor/internal/activescan"
@@ -33,12 +34,24 @@ func (h *Hub) listActiveChecks(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) getActiveCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	src, err := activescript.Read(h.ActiveChecksDir, id)
-	if err != nil {
-		httpErr(w, http.StatusNotFound, err.Error())
+	if src, builtin, overridden, err := h.readActiveCheckSource(id); err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": id, "source": src, "builtin": builtin, "overridden": overridden,
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "source": src})
+	httpErr(w, http.StatusNotFound, "active check not found")
+}
+
+func (h *Hub) readActiveCheckSource(id string) (src string, builtin, overridden bool, err error) {
+	if h.ActiveChecksDir != "" && activescript.Exists(h.ActiveChecksDir, id) {
+		src, err = activescript.Read(h.ActiveChecksDir, id)
+		return src, activescan.IsBuiltinID(id), activescan.IsBuiltinID(id), err
+	}
+	if tpl, ok := activescan.BuiltinTemplate(id); ok {
+		return tpl, true, false, nil
+	}
+	return "", false, false, os.ErrNotExist
 }
 
 func (h *Hub) saveActiveCheck(w http.ResponseWriter, r *http.Request) {

@@ -34,11 +34,14 @@ $('#oobModalTunnelCopy')&&($('#oobModalTunnelCopy').onclick=()=>copyText(OOB_TUN
 
 /* ---- custom checks editor ---- */
 let checkMode='code',checkDocsLoaded=false;
+let checkSelId=null,checkSelKind='passive';
 // checkKind tracks which kind of check the editor is editing: 'passive' (inspects
 // a captured flow) or 'active' (sends probes via /api/active-checks). Drives the
 // Save/Test/Delete endpoint and the New template.
 let checkKind='passive';
+let checkBuiltin=false,checkOverridden=false;
 const checkEndpoint=()=>checkKind==='active'?'/api/active-checks':'/api/checks';
+function checkSetEditorReadonly(on){const el=$('#checkId');if(el)el.readOnly=!!on;}
 function checkSetMode(mode){
   checkMode=mode;
   const seg=$('#checkModeSeg');
@@ -65,57 +68,73 @@ function updateCheckFlowHint(){
   const el=$('#checkFlowHint');if(!el)return;
   el.textContent=state.selId!=null?('Test flow: #'+state.selId+' (selected)'):'Test uses latest captured flow';
 }
+function markChecksSelected(box){
+  if(!box)return;
+  box.querySelectorAll('.checks-pick[data-id]').forEach(el=>{
+    const kind=el.dataset.active==='1'?'active':'passive';
+    el.classList.toggle('sel',!!checkSelId&&el.dataset.id===checkSelId&&kind===checkSelKind);
+  });
+}
 export async function loadChecksList(){
   try{
     const d=await api('/api/checks');const box=$('#checksList');if(!box)return;
     const cs=d.checks||[];const dis=new Set(d.disabled||[]);
     const builtin=d.builtin||[];const active=d.active||[];
     const sevBadge=s=>`<span class="sev ${escAttr(s)}" style="font-size:9px">${esc(s)}</span>`;
-    const catBadge=c=>c?`<span style="font-size:9px;color:var(--fg3);border:1px solid var(--line);border-radius:4px;padding:0 4px">${esc(c)}</span>`:'';
-    // Built-in passive checks: toggleable, not deletable/editable. Grouped by category.
+    const catBadge=c=>c?`<span class="checks-cat">${esc(c)}</span>`:'';
+    const builtinIds=new Set(builtin.map(b=>b.id));
+    const activeIds=new Set(active.map(a=>a.id));
+    const customPassive=cs.filter(c=>!builtinIds.has(c.id));
+    const row=(opts)=>{
+      const enId=opts.customActive&&!builtinIds.has(opts.id)&&!activeIds.has(opts.id)?'custom-active:'+opts.id:opts.id;
+      const cb=opts.toggleable!==false?`<input type="checkbox" class="check-en" data-id="${escAttr(enId)}" ${dis.has(enId)?'':'checked'} aria-label="enable ${escAttr(opts.title)}">`:'';
+      const bolt=opts.activeKind==='active'?'<span style="width:14px;flex:none;color:var(--amber);margin-top:2px" title="sends traffic">⚡</span>':'';
+      const pick=opts.pickable?' checks-pick':'';
+      const cls=['checks-row',opts.rowClass||'',pick].filter(Boolean).join(' ');
+      const data=opts.id?` data-id="${escAttr(opts.id)}"${opts.activeKind==='active'?' data-active="1"':''}`:'';
+      const titleColor=opts.error?'var(--red)':'var(--fg)';
+      const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
+      return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
+        ${cb}${bolt}<div class="checks-body">
+        <span class="checks-title" style="color:${titleColor}">${esc(opts.title)}${opts.error?' ⚠':''}</span>
+        <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
+        </div></div>`;
+    };
+    const group=(title,open,body)=>`<details class="checks-group${open?' checks-group-custom':''}"${open?' open':''}><summary>${title}</summary><div class="checks-group-body">${body}</div></details>`;
     let html='';
-    if(builtin.length){
-      html+=`<div class="checks-sec">BUILT-IN · PASSIVE <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0">— toggle on/off; bundled with the app</span></div>`;
-      html+=builtin.map(b=>`<div class="checks-row checks-builtin" title="${escAttr(b.description||'')}" aria-label="built-in check ${escAttr(b.title)}">
-        <input type="checkbox" class="check-en" data-id="${escAttr(b.id)}" ${dis.has(b.id)?'':'checked'} aria-label="enable ${escAttr(b.title)}">
-        <span class="checks-title">${esc(b.title)}</span>${sevBadge(b.severity)}${catBadge(b.category)}</div>`).join('');
-    }
-    // Custom Starlark checks: full CRUD. Click a row to edit.
-    html+=`<div class="checks-sec">CUSTOM · STARLARK <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0">— yours; click to edit</span></div>`;
-    if(!cs.length){
-      html+='<div class="hint" style="padding:6px 10px">No custom checks yet — click <b>+ New check</b>. Built-in checks run out of the box.</div>';
+    let customBody='';
+    if(!customPassive.length){
+      customBody='<div class="hint" style="padding:8px 12px;line-height:1.5">No extra passive checks — customize a <b>built-in</b> (click it) or <b>+ New passive</b>.</div>';
     }else{
-      html+=cs.map(c=>`<div class="checks-row checks-custom" data-id="${escAttr(c.id)}" aria-label="custom check ${escAttr(c.id)}${c.error?' (error)':''}" title="click to edit">
-        <input type="checkbox" class="check-en" data-id="${escAttr(c.id)}" ${dis.has(c.id)?'':'checked'} aria-label="enable check ${escAttr(c.id)}">
-        <span class="checks-title" style="color:${c.error?'var(--red)':'var(--fg)'}">${esc(c.id)}${c.error?' ⚠':''}</span>${catBadge('custom')}</div>`).join('');
+      customBody=customPassive.map(c=>row({id:c.id,title:c.id,pickable:true,activeKind:'passive',rowClass:'checks-custom',category:'custom',error:c.error,hint:'click to edit',aria:'custom check '+c.id})).join('');
     }
-    // Active probes: toggleable like passive, but tagged — they send real traffic
-    // when you arm & run an active scan.
-    if(active.length){
-      html+=`<div class="checks-sec">ACTIVE · PROBES <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0">— toggle on/off; fire only when you arm &amp; run an active scan (sends traffic)</span></div>`;
-      html+=active.map(a=>`<div class="checks-row checks-active" title="${escAttr(a.fix||'')}" aria-label="active probe ${escAttr(a.title)}">
-        <input type="checkbox" class="check-en" data-id="${escAttr(a.id)}" ${dis.has(a.id)?'':'checked'} aria-label="enable ${escAttr(a.title)}">
-        <span style="width:14px;flex:none;color:var(--amber)" title="sends traffic">⚡</span>
-        <span class="checks-title">${esc(a.title)}</span>${sevBadge(a.severity)}${catBadge(a.class)}</div>`).join('');
-    }
-    // User-authored active checks (Starlark, sends traffic) — full CRUD like passive.
+    html+=group(`CUSTOM · PASSIVE (${customPassive.length})`,true,customBody);
     let csA=[];
     try{csA=(await api('/api/active-checks')).checks||[];}catch(e){}
-    html+=`<div class="checks-sec">CUSTOM · ACTIVE <span class="hint" style="font-weight:400;text-transform:none;letter-spacing:0">— yours; author probes (⚡ sends traffic); click to edit</span></div>`;
-    if(!csA.length){
-      html+='<div class="hint" style="padding:6px 10px">No custom active checks — click <b>+ New active</b> to author one.</div>';
+    const customActive=csA.filter(c=>!activeIds.has(c.id));
+    let customActiveBody='';
+    if(!customActive.length){
+      customActiveBody='<div class="hint" style="padding:8px 12px;line-height:1.5">No extra active checks — customize a <b>built-in probe</b> or <b>+ New active</b>.</div>';
     }else{
-      html+=csA.map(c=>`<div class="checks-row checks-custom checks-custom-active" data-id="${escAttr(c.id)}" data-active="1" aria-label="custom active check ${escAttr(c.id)}${c.error?' (error)':''}" title="click to edit">
-        <input type="checkbox" class="check-en" data-id="custom-active:${escAttr(c.id)}" ${dis.has('custom-active:'+c.id)?'':'checked'} aria-label="enable active check ${escAttr(c.id)}">
-        <span style="width:14px;flex:none;color:var(--amber)">⚡</span>
-        <span class="checks-title" style="color:${c.error?'var(--red)':'var(--fg)'}">${esc(c.id)}${c.error?' ⚠':''}</span>${catBadge('active')}</div>`).join('');
+      customActiveBody=customActive.map(c=>row({id:c.id,title:c.id,pickable:true,customActive:true,activeKind:'active',rowClass:'checks-custom checks-custom-active',category:'active',error:c.error,hint:'click to edit',aria:'custom active check '+c.id})).join('');
+    }
+    html+=group(`CUSTOM · ACTIVE (${customActive.length})`,true,customActiveBody);
+    if(builtin.length){
+      const builtinBody=builtin.map(b=>row({id:b.id,title:b.title,pickable:true,rowClass:'checks-builtin',severity:b.severity,category:b.category,overridden:!!b.overridden,hint:(b.description||'')+' — click to edit Starlark override',aria:'built-in check '+b.title,toggleable:true})).join('');
+      html+=group(`BUILT-IN · PASSIVE (${builtin.length}) — click to edit`,false,builtinBody);
+    }
+    if(active.length){
+      const activeBody=active.map(a=>row({id:a.id,title:a.title,pickable:true,rowClass:'checks-active',activeKind:'active',severity:a.severity,category:a.class,overridden:!!a.overridden,hint:(a.fix||'')+' — click to edit Starlark override',aria:'active probe '+a.title,toggleable:true})).join('');
+      html+=group(`ACTIVE · PROBES (${active.length}) — click to edit`,false,activeBody);
     }
     box.innerHTML=html;
-    // Custom rows open the editor (passive + active).
-    box.querySelectorAll('.checks-custom[data-id]').forEach(el=>{
-      const id=el.dataset.id, kind=el.dataset.active==='1'?'active':'passive';
-      el.onclick=e=>{if(e.target.classList.contains('check-en'))return;loadCheck(id,kind);};
-      wireRowKey(el,()=>loadCheck(id,kind));
+    markChecksSelected(box);
+    box.querySelectorAll('.checks-pick[data-id]').forEach(el=>{
+      const id=el.dataset.id,kind=el.dataset.active==='1'?'active':'passive';
+      const builtin=el.classList.contains('checks-builtin')||el.classList.contains('checks-active');
+      const open=()=>builtin?loadBuiltinCheck(id,kind):loadCheck(id,kind);
+      el.onclick=e=>{if(e.target.classList.contains('check-en'))return;open();};
+      wireRowKey(el,open);
     });
     // Any checkbox change (built-in or custom) recomputes the disabled set.
     box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=async()=>{
@@ -139,16 +158,32 @@ function refreshCheckEditorMode(){
   if(describe) describe.style.display = checkKind==='active'?'none':'';
   if(checkKind==='active' && checkMode==='describe') checkSetMode('code');
 }
-export async function loadCheck(id, kind='passive'){
-  checkKind=kind; refreshCheckEditorMode();
-  try{const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));$('#checkId').value=id;$('#checkSrc').value=d.source||'';
-    $('#checkOut').innerHTML='<span class="hint">Loaded <b>'+esc(id)+'</b> ('+(kind==='active'?'active · sends traffic':'passive')+').</span>';}catch(e){toast(e.message);}
+export async function loadBuiltinCheck(id,kind='passive'){
+  checkKind=kind;checkBuiltin=true;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
+  try{
+    const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));
+    checkOverridden=!!d.overridden;
+    $('#checkId').value=id;checkSetEditorReadonly(true);
+    $('#checkSrc').value=d.source||'';
+  const note=checkOverridden?'your Starlark override is active':'edit & Save to write ~/.interceptor/'+(kind==='active'?'active-checks/':'checks/')+id+'.star';
+    $('#checkOut').innerHTML='<span class="hint">Built-in <b>'+esc(id)+'</b> — '+note+'</span>';
+    markChecksSelected($('#checksList'));
+  }catch(e){toast(e.message);}
+}
+export async function loadCheck(id,kind='passive'){
+  checkKind=kind;checkBuiltin=false;checkOverridden=false;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
+  try{const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
+    $('#checkSrc').value=d.source||'';
+    $('#checkOut').innerHTML='<span class="hint">Loaded <b>'+esc(id)+'</b> ('+(kind==='active'?'active · sends traffic':'passive')+'). Edit on <b>Code</b>, then Save.</span>';
+    markChecksSelected($('#checksList'));}catch(e){toast(e.message);}
 }
 export function checkNew(kind='passive'){
-  checkKind=kind; refreshCheckEditorMode();
+  checkKind=kind;checkBuiltin=false;checkOverridden=false;checkSelId=null;checkSelKind=kind;refreshCheckEditorMode();
+  checkSetEditorReadonly(false);
   $('#checkId').value='';
   $('#checkSrc').value = kind==='active' ? ACTIVE_CHECK_TEMPLATE : "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
-  $('#checkOut').innerHTML='<span class="hint">New '+(kind==='active'?'active':'passive')+' check — give it an id and Save.</span>';$('#checkId').focus();
+  $('#checkOut').innerHTML='<span class="hint">New '+(kind==='active'?'active':'passive')+' check — set an id, write Starlark on <b>Code</b>, Test, then Save.</span>';$('#checkId').focus();
+  markChecksSelected($('#checksList'));
 }
 export async function checkTest(){
   const out=$('#checkOut');out.innerHTML='<span class="hint">running…</span>';
@@ -163,13 +198,22 @@ export async function checkTest(){
 export async function checkSave(){
   const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
   try{await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
-    $('#checkOut').innerHTML='<span style="color:var(--accent)">Saved ✓ — '+(checkKind==='active'?'runs on the next active scan':'runs on the next scan')+'.</span>';loadChecksList();}
+    checkOverridden=checkBuiltin||checkOverridden;
+    $('#checkOut').innerHTML='<span style="color:var(--accent)">Saved ✓ — '+(checkKind==='active'?'runs on the next active scan':'runs on the next scan')+(checkBuiltin?' (replaces built-in)':'')+'.</span>';loadChecksList();}
   catch(e){$('#checkOut').innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(e.message)+'</span>';}
 }
 export async function checkDelete(){
   const id=$('#checkId').value.trim();if(!id)return;
-  if(!await uiConfirm('Delete check',`Delete ${checkKind} check <b>${esc(id)}</b>? Its Starlark source will be removed and won't run on future scans.`,'Delete','btn danger','var(--red)'))return;
-  try{await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'DELETE'});checkNew();loadChecksList();toast('deleted '+id);}catch(e){toast(e.message);}
+  if(checkBuiltin&&!checkOverridden){toast('no override saved — nothing to revert');return;}
+  const label=checkBuiltin?'Revert override for built-in check':'Delete check';
+  const body=checkBuiltin?`Delete your Starlark override for <b>${esc(id)}</b>? The compiled built-in will run again.`:`Delete ${checkKind} check <b>${esc(id)}</b>? Its Starlark source will be removed.`;
+  if(!await uiConfirm(label,body,checkBuiltin?'Revert':'Delete','btn danger','var(--red)'))return;
+  try{
+    await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'DELETE'});
+    if(checkBuiltin){await loadBuiltinCheck(id,checkKind);}else{checkNew(checkKind);}
+    loadChecksList();
+    toast(checkBuiltin?'reverted to built-in':'deleted '+id);
+  }catch(e){toast(e.message);}
 }
 async function checkAiGenerate(){
   if(state.aiDisabled){toast('AI features are disabled — enable in Settings → AI assist');return;}

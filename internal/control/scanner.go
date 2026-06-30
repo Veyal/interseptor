@@ -33,6 +33,12 @@ func (h *Hub) scannerRun(w http.ResponseWriter, r *http.Request) {
 		for name, e := range cerrs {
 			log.Printf("scanner: custom check %s failed to compile: %v", name, e)
 		}
+		// A Starlark file with the same id as a built-in overrides it.
+		for _, c := range checks {
+			if scanner.IsBuiltinID(c.ID) {
+				disabled[c.ID] = true
+			}
+		}
 	}
 
 	var all []store.Issue

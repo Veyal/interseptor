@@ -1,5 +1,5 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
-import { flowFindings, addFlowToFinding, openFinding } from './findings.js';
+import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
@@ -449,6 +449,7 @@ function buildFlowParams(){
   if(f.search){
     q.set('search',f.search);
     if(f.searchScope==='body')q.set('searchScope','body');
+    else if(f.searchScope==='id')q.set('searchScope','id');
   }
   if(state.notesOnly)q.set('hasNote','1');
   if(f.method)q.set('method',f.method);
@@ -710,7 +711,13 @@ document.addEventListener('click',()=>{const menu=$('#colPicker'),btn=$('#colPic
 $('#fMethod').onchange=e=>setFilter('method',e.target.value);
 $('#fStatus').onchange=e=>setFilter('status',e.target.value);
 $('#fSearch').oninput=e=>{state.filters.search=e.target.value;renderChips();scheduleReload();};
-if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'path';if(state.filters.search)loadFlows();};
+function syncSearchPlaceholder(){
+  const inp=$('#fSearch'),sc=state.filters.searchScope||'path';
+  if(!inp)return;
+  inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':'Search method / host / path / #id…';
+}
+if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'path';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
+syncSearchPlaceholder();
 if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;$('#notesFilter').classList.toggle('accent',state.notesOnly);loadFlows();};
 // Inspector header actions — operate on the currently-selected flow.
 function inspectorFlow(){return state.detail||flowMap.get(state.selId)||null;}
@@ -889,7 +896,7 @@ export function renderChips(){
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','🏷',f.tag);
-  add('search',f.searchScope==='body'?'body':'path',f.search);
+  add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
   const hasFilters=items.length>0;
   if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
@@ -1103,6 +1110,7 @@ export function updateSelBar(){
   $('#selBar').style.display=n?'flex':'none';
   $('#selCount').textContent=n+' selected';
   const cmp=$('#selCompare');if(cmp)cmp.style.display=n===2?'':'none';
+  updateFindPocBtn();
 }
 function compareWordDiff(a,b){
   const tok=s=>String(s||'').split(/(\s+)/);

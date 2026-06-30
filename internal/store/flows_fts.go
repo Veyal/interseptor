@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -37,6 +38,38 @@ func ftsMatchQuery(term string) string {
 		bits = append(bits, fmt.Sprintf(`"%s"*`, p))
 	}
 	return strings.Join(bits, " OR ")
+}
+
+// flowSearchAsID returns a flow id when term is an id lookup (#123, id:123, or plain
+// digits with scope "id"). Otherwise ok is false and callers should use FTS.
+func flowSearchAsID(term, scope string) (int64, bool) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return 0, false
+	}
+	lower := strings.ToLower(term)
+	var raw string
+	switch {
+	case strings.HasPrefix(term, "#"):
+		raw = term[1:]
+		if raw == "" || strings.TrimSpace(raw) != raw {
+			return 0, false
+		}
+	case strings.HasPrefix(lower, "id:"):
+		raw = strings.TrimSpace(term[len("id:"):])
+	case scope == "id":
+		raw = term
+	default:
+		return 0, false
+	}
+	if raw == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
 }
 
 // appendFTSSearch adds an FTS MATCH clause when term is non-empty.

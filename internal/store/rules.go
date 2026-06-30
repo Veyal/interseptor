@@ -74,7 +74,8 @@ type FlowFilter struct {
 	SortDir      int    // +1 asc, -1 desc; 0 = default for the key
 	Method       string // exact method match
 	Host         string // case-insensitive substring of host
-	Search       string // case-insensitive substring of path
+	Search       string // FTS on host/path/method/note, or exact id when SearchScope=id / #id / id:N
+	SearchScope  string // path (default FTS), body (handled in control), id (exact flow id)
 	Scheme       string // exact scheme match ("http"/"https")
 	StatusClass  int    // 1..5 → 1xx..5xx; 0 = any
 	RequireFlags  int64 // only rows with any of these flag bits set

@@ -74,7 +74,12 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		args = append(args, f.Host)
 	}
 	if f.Search != "" {
-		where, args = appendFTSSearch(where, args, f.Search)
+		if id, ok := flowSearchAsID(f.Search, f.SearchScope); ok {
+			where = append(where, "id = ?")
+			args = append(args, id)
+		} else {
+			where, args = appendFTSSearch(where, args, f.Search)
+		}
 	}
 	if f.StatusClass >= 1 && f.StatusClass <= 5 {
 		lo := f.StatusClass * 100

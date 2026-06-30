@@ -119,18 +119,25 @@ func LoadDir(dir string) ([]*Check, map[string]error) {
 	return checks, errs
 }
 
-// ToActiveChecks wraps compiled user checks as activescan.Check entries (with a
-// "custom-active:" ID namespace so they can't collide with built-in IDs in the
-// shared checks.disabled toggle set).
+// ToActiveChecks wraps compiled user checks as activescan.Check entries. When
+// the file id matches a built-in probe id, the check replaces that built-in
+// (same disable toggle). Otherwise ids are prefixed with custom-active:.
 func ToActiveChecks(checks []*Check) []activescan.Check {
 	out := make([]activescan.Check, 0, len(checks))
 	for _, c := range checks {
 		c := c
-		out = append(out, activescan.Check{
-			ID:    "custom-active:" + c.ID,
-			Title: "Custom active check: " + c.ID,
-			Run:   c.Run,
-		})
+		ac := activescan.Check{Run: c.Run}
+		if meta, ok := activescan.BuiltinMeta(c.ID); ok {
+			ac.ID = c.ID
+			ac.Class = meta.Class
+			ac.Severity = meta.Severity
+			ac.Title = meta.Title
+			ac.Fix = meta.Fix
+		} else {
+			ac.ID = "custom-active:" + c.ID
+			ac.Title = "Custom active check: " + c.ID
+		}
+		out = append(out, ac)
 	}
 	return out
 }

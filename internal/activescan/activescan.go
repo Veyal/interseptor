@@ -210,10 +210,9 @@ func Run(ctx context.Context, t Target, send SendFunc, opts Options) ([]Finding,
 
 	sem := make(chan struct{}, opts.Concurrency)
 	var wg sync.WaitGroup
-	// Built-in probes plus any user-authored (Starlark) active checks.
-	checks := make([]Check, 0, len(Checks)+len(opts.Custom))
-	checks = append(checks, Checks...)
-	checks = append(checks, opts.Custom...)
+	// Built-in probes plus any user-authored (Starlark) active checks. A custom
+	// check whose ID matches a built-in replaces that built-in for this run.
+	checks := mergeChecks(Checks, opts.Custom)
 	for _, p := range points {
 		for _, c := range checks {
 			if opts.Disabled != nil && opts.Disabled[c.ID] {
@@ -256,6 +255,30 @@ func Run(ctx context.Context, t Target, send SendFunc, opts Options) ([]Finding,
 	}
 	wg.Wait()
 	return findings, count
+}
+
+// mergeChecks interleaves built-in probes with custom checks; a custom check with
+// the same ID replaces the built-in (Starlark override).
+func mergeChecks(builtin, custom []Check) []Check {
+	byID := make(map[string]Check, len(builtin)+len(custom))
+	order := make([]string, 0, len(builtin)+len(custom))
+	for _, c := range builtin {
+		byID[c.ID] = c
+		order = append(order, c.ID)
+	}
+	for _, c := range custom {
+		if _, ok := byID[c.ID]; ok {
+			byID[c.ID] = c
+		} else {
+			byID[c.ID] = c
+			order = append(order, c.ID)
+		}
+	}
+	out := make([]Check, 0, len(order))
+	for _, id := range order {
+		out = append(out, byID[id])
+	}
+	return out
 }
 
 // ---- helpers ----
