@@ -4,6 +4,7 @@
 package scope
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 
@@ -11,11 +12,18 @@ import (
 )
 
 type compiled struct {
-	include bool
-	host    string
-	path    string
-	scheme  string
-	port    int
+	include   bool
+	hostExact string
+	hostWild  string // base domain for *.example.com (without the *.)
+	hostRe    *regexp.Regexp
+	pathExact string
+	pathRe    *regexp.Regexp
+	scheme    string
+	port      int
+}
+
+func (r compiled) hasHostConstraint() bool {
+	return r.hostExact != "" || r.hostWild != "" || r.hostRe != nil
 }
 
 // Engine holds a compiled, reloadable rule set.
@@ -40,7 +48,12 @@ func (e *Engine) SetRules(rules []store.ScopeRule) {
 		if include {
 			hasIncl = true
 		}
-		c = append(c, compiled{include: include, host: r.Host, path: r.Path, scheme: r.Scheme, port: r.Port})
+		hostExact, hostWild, hostRe := compileHostPattern(r.Host)
+		pathExact, pathRe := compilePathPattern(r.Path)
+		c = append(c, compiled{
+			include: include, hostExact: hostExact, hostWild: hostWild, hostRe: hostRe,
+			pathExact: pathExact, pathRe: pathRe, scheme: r.Scheme, port: r.Port,
+		})
 	}
 	e.mu.Lock()
 	e.rules, e.hasIncl = c, hasIncl
@@ -70,10 +83,10 @@ func (e *Engine) HostInScope(host string) bool {
 	defer e.mu.RUnlock()
 	included := false
 	for _, r := range e.rules {
-		if r.host == "" {
+		if !r.hasHostConstraint() {
 			continue // path/scheme/port-only rules do not gate session by host
 		}
-		if !hostMatches(r.host, host) {
+		if !hostMatches(r, host) {
 			continue
 		}
 		if r.include {
@@ -110,23 +123,82 @@ func (e *Engine) InScope(f *store.Flow) bool {
 }
 
 func matches(r compiled, f *store.Flow) bool {
-	return hostMatches(r.host, f.Host) &&
-		(r.path == "" || strings.HasPrefix(f.Path, r.path)) &&
+	return hostMatches(r, f.Host) &&
+		pathMatches(r, f.Path) &&
 		(r.scheme == "" || strings.EqualFold(r.scheme, f.Scheme)) &&
 		(r.port == 0 || r.port == f.Port)
 }
 
-// hostMatches supports exact and leading-wildcard patterns: "*.acme.com" matches
-// acme.com and any subdomain; "" matches any host; otherwise an exact match.
-func hostMatches(pattern, host string) bool {
-	if pattern == "" {
+func hostMatches(r compiled, host string) bool {
+	if !r.hasHostConstraint() {
 		return true
 	}
-	pattern = strings.ToLower(pattern)
 	host = strings.ToLower(host)
-	if strings.HasPrefix(pattern, "*.") {
-		base := pattern[2:]
-		return host == base || strings.HasSuffix(host, pattern[1:])
+	if r.hostWild != "" {
+		suffix := "." + r.hostWild
+		return host == r.hostWild || strings.HasSuffix(host, suffix)
 	}
-	return host == pattern
+	if r.hostRe != nil {
+		return r.hostRe.MatchString(host)
+	}
+	return host == r.hostExact
+}
+
+func pathMatches(r compiled, path string) bool {
+	if r.pathExact == "" && r.pathRe == nil {
+		return true
+	}
+	if r.pathRe != nil {
+		return r.pathRe.MatchString(path)
+	}
+	return strings.HasPrefix(path, r.pathExact)
+}
+
+// compileHostPattern supports exact hosts, leading-wildcard (*.acme.com), and
+// regex when the pattern contains regex metacharacters (e.g. .*ohsome.*).
+func compileHostPattern(pattern string) (exact, wildBase string, re *regexp.Regexp) {
+	if pattern == "" {
+		return "", "", nil
+	}
+	pattern = strings.ToLower(pattern)
+	if strings.HasPrefix(pattern, "*.") {
+		return "", strings.TrimPrefix(pattern, "*."), nil
+	}
+	if looksLikeRegex(pattern) {
+		if r, err := regexp.Compile("(?i)" + unwrapRegexSlashes(pattern)); err == nil {
+			return "", "", r
+		}
+	}
+	return pattern, "", nil
+}
+
+func compilePathPattern(pattern string) (exact string, re *regexp.Regexp) {
+	if pattern == "" {
+		return "", nil
+	}
+	if looksLikeRegex(pattern) {
+		if r, err := regexp.Compile(pattern); err == nil {
+			return "", r
+		}
+	}
+	return pattern, nil
+}
+
+func looksLikeRegex(s string) bool {
+	if len(s) >= 2 && s[0] == '/' && s[len(s)-1] == '/' {
+		return true
+	}
+	for _, lit := range []string{".*", "^", "$", "(", ")", "[", "]", "|", "+", "?", `\d`, `\w`, `\s`} {
+		if strings.Contains(s, lit) {
+			return true
+		}
+	}
+	return false
+}
+
+func unwrapRegexSlashes(s string) string {
+	if len(s) >= 2 && s[0] == '/' && s[len(s)-1] == '/' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }

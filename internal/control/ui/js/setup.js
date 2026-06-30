@@ -48,7 +48,7 @@ function renderStep() {
     $('#setupTrusted').onchange = e => { $('#setupNext').disabled = !e.target.checked; };
   } else if (step === 2) {
     b.innerHTML = `<p style="margin:0 0 6px">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
-      <p class="hint" style="margin:0 0 12px">e.g. <code>*.acme.com</code> (host supports a leading wildcard) or <code>api.target.com</code>. You can skip this and add it later from Settings → Target scope.</p>
+      <p class="hint" style="margin:0 0 12px">e.g. <code>*.acme.com</code>, <code>api.target.com</code>, or regex <code>.*ohsome.*</code>. You can skip this and add it later from Settings → Target scope.</p>
       <div class="row" style="gap:8px">
         <input id="setupScopeHost" class="btn" style="flex:1;background:var(--bg3);font-family:var(--mono)" placeholder="*.acme.com" spellcheck="false">
         <button class="btn" id="setupScopeAdd">+ Add to scope</button>

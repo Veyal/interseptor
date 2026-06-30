@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Target scope regex patterns.** Host and path rules accept regex when the pattern contains metacharacters (e.g. `.*ohsome.*` matches `cdn.ohsome.com`) or is wrapped in slashes (`/pattern/`). Leading wildcards (`*.acme.com`) and exact hosts still work as before.
+
 ## [0.18.0] - 2026-06-30
 
 **Control where the UI listens:** change the control-plane port from Settings or the command line — no more digging for env vars.

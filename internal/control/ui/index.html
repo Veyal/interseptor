@@ -574,7 +574,7 @@ Content-Type: application/json
         <section class="set-sec" data-sec="scope" hidden>
           <div class="section">
             <h3>TARGET SCOPE</h3>
-            <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Tip: right-click a flow → <b>Add to scope</b>. Host supports a leading wildcard, e.g. <b style="color:var(--accent)">*.acme.com</b>; path is a prefix.</p>
+            <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Tip: right-click a flow → <b>Add to scope</b>. Host: exact (<b>api.acme.com</b>), wildcard (<b>*.acme.com</b>), or regex (<b>.*ohsome.*</b>, <b>/pattern/</b>). Path: prefix or regex (e.g. <b>/v[12]/.*</b>).</p>
             <p id="scopeDupWarn" class="hint" style="display:none;margin-bottom:8px;color:var(--amber)"></p>
             <table class="rules-tbl">
               <thead><tr><th style="width:34px">On</th><th style="width:96px">Action</th><th>Host</th><th style="width:130px">Path</th><th style="width:84px">Scheme</th><th style="width:60px"></th></tr></thead>
@@ -582,8 +582,8 @@ Content-Type: application/json
             </table>
             <div class="row" style="gap:8px;margin-top:10px">
               <select id="newScopeAction" class="btn"><option value="include">include</option><option value="exclude">exclude</option></select>
-              <input id="newScopeHost" class="btn" style="flex:1;background:var(--bg3)" aria-label="Scope rule — host pattern" placeholder="host e.g. *.acme.com">
-              <input id="newScopePath" class="btn" style="width:130px;background:var(--bg3)" aria-label="Scope rule — path prefix" placeholder="path prefix (opt)">
+              <input id="newScopeHost" class="btn" style="flex:1;background:var(--bg3)" aria-label="Scope rule — host pattern" placeholder="host e.g. *.acme.com or .*ohsome.*">
+              <input id="newScopePath" class="btn" style="width:130px;background:var(--bg3)" aria-label="Scope rule — path prefix" placeholder="path prefix or regex">
               <button class="btn accent" id="addScopeBtn">+ Add</button>
             </div>
           </div>

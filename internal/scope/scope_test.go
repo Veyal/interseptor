@@ -120,3 +120,42 @@ func TestHostInScopeIgnoresPath(t *testing.T) {
 		t.Fatal("unrelated host should be out of scope")
 	}
 }
+
+func TestScopeHostRegex(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: `.*ohsome.*`}})
+	cases := map[string]bool{
+		"cdn.ohsome.com": true,
+		"ohsome.com":     true,
+		"api.ohsome.io":  true,
+		"example.com":    false,
+		"ohsme.com":      false,
+	}
+	for host, want := range cases {
+		if got := e.InScope(flow(host, "/", "https", 443)); got != want {
+			t.Fatalf("regex InScope(%s) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+func TestScopePathRegex(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "api.test", Path: `/v[12]/.*`}})
+	if !e.InScope(flow("api.test", "/v1/users", "https", 443)) {
+		t.Fatal("path regex should match /v1/users")
+	}
+	if !e.InScope(flow("api.test", "/v2/items", "https", 443)) {
+		t.Fatal("path regex should match /v2/items")
+	}
+	if e.InScope(flow("api.test", "/v3/x", "https", 443)) {
+		t.Fatal("path regex should not match /v3/x")
+	}
+}
+
+func TestScopeRegexSlashesAndCase(t *testing.T) {
+	e := New()
+	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: `/.*OHsome.*/`}})
+	if !e.InScope(flow("CDN.Ohsome.COM", "/", "https", 443)) {
+		t.Fatal("slash-wrapped regex should match case-insensitively")
+	}
+}
