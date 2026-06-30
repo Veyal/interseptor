@@ -58,7 +58,7 @@ var agentTools = []aiassist.Tool{
 
 // aiAssistAgentStream runs the tool-use loop, emits tool SSE events, then streams
 // the final answer.
-func (h *Hub) aiAssistAgentStream(w http.ResponseWriter, r *http.Request, in aiAssistReq, flows []assistFlow, provider, key, model string, flusher http.Flusher) {
+func (h *aiAPI) aiAssistAgentStream(w http.ResponseWriter, r *http.Request, in aiAssistReq, flows []assistFlow, provider, key, model string, flusher http.Flusher) {
 	client := aiassist.New(provider, key, model)
 	if !client.SupportsAgentTools() {
 		b, _ := json.Marshal("agent mode requires Anthropic provider — switch in Settings → AI assist")
@@ -142,7 +142,7 @@ func buildAgentAskMessages(flows []assistFlow, history []aiAssistTurn, question 
 	return out
 }
 
-func (h *Hub) execAgentTool(tc aiassist.ToolCall, seed *store.Flow) (result, summary string, ok bool) {
+func (h *aiAPI) execAgentTool(tc aiassist.ToolCall, seed *store.Flow) (result, summary string, ok bool) {
 	summary = agentToolSummary(tc.Name, tc.Input)
 	switch tc.Name {
 	case "send_request":
@@ -154,7 +154,7 @@ func (h *Hub) execAgentTool(tc aiassist.ToolCall, seed *store.Flow) (result, sum
 	}
 }
 
-func (h *Hub) agentSendRequest(args map[string]any, seed *store.Flow) (string, string, bool) {
+func (h *aiAPI) agentSendRequest(args map[string]any, seed *store.Flow) (string, string, bool) {
 	url := agentArgStr(args, "url")
 	if url == "" {
 		return "url is required", agentToolSummary("send_request", args), false
@@ -181,7 +181,7 @@ func (h *Hub) agentSendRequest(args map[string]any, seed *store.Flow) (string, s
 	return out, agentToolSummary("send_request", args), true
 }
 
-func (h *Hub) agentGetFlow(args map[string]any) (string, string, bool) {
+func (h *aiAPI) agentGetFlow(args map[string]any) (string, string, bool) {
 	id := agentArgInt(args, "id", 0)
 	if id == 0 {
 		return "id is required", agentToolSummary("get_flow", args), false

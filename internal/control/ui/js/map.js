@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur } from './core.js';
+import { $, esc, escAttr, state, toast, api, apiTry, methodColor, statusColor, statusText, fmtSize, fmtDur } from './core.js';
 import { sendToRepeater } from './tools.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
@@ -19,6 +19,33 @@ const MAP_ROW_H = 28;
 const MAP_VIEW_KEY = 'mapView';
 const MAP_HIDE_NOISE_KEY = 'mapHideNoise';
 const MAP_COLLAPSE_IDENTICAL_KEY = 'mapCollapseIdentical';
+
+// Static media extensions omitted from the node-link graph (images, fonts, AV).
+const MAP_MEDIA_EXT = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.avif',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.mp4', '.webm', '.mov', '.avi', '.mkv',
+  '.mp3', '.wav', '.ogg', '.m4a', '.flac',
+]);
+
+function isMapMediaEndpoint(e){
+  const path = String(e.path || '/').split('?')[0].split('#')[0].toLowerCase();
+  const leaf = path.slice(path.lastIndexOf('/') + 1);
+  if(leaf === 'favicon.ico') return true;
+  const dot = leaf.lastIndexOf('.');
+  if(dot < 0) return false;
+  return MAP_MEDIA_EXT.has(leaf.slice(dot));
+}
+
+function pruneGraphNode(n){
+  if(n.type === 'ep') return true;
+  n.children = n.children.filter(c => pruneGraphNode(c));
+  return n.children.length > 0;
+}
+
+function graphEps(eps){
+  return eps.filter(e => !isMapMediaEndpoint(e));
+}
 
 function restoreMapHideNoise(){
   try{
@@ -74,28 +101,27 @@ export function focusMapSearch(term, scope='body'){
 export async function loadEndpoints(){
   const warn=$('#mapWarn');
   if(warn&&mapUsesServerSearch()){warn.style.display='block';warn.textContent='Searching bodies…';}
-  try{
-    const params = new URLSearchParams();
-    if(mapState.domain) params.set('host', mapState.domain);
-    if(mapState.tag) params.set('tag', mapState.tag);
-    if(!mapState.hideNoise) params.set('hideNoise', '0');
-    if(mapUsesServerSearch()){
-      params.set('search', mapState.search.trim());
-      params.set('searchScope', mapState.searchScope);
-    }
-    const q = params.toString();
-    const d = await api('/api/endpoints' + (q ? '?' + q : ''));
-    mapState.eps = d.endpoints || [];
-    mapState.total = d.total != null ? d.total : mapState.eps.length;
-    mapState.truncated = !!d.truncated;
-    mapState.searchNote = d.searchNote || '';
-    mapState._dataVersion++; // invalidate buildMapTree / fillMapDomains caches
-    mapState._needFit = true;
-    fillMapDomains();
-    fillMapMethods();
-    fillMapTags();
-    renderMap();
-  }catch(e){ toast('map: '+e.message); }
+  const params = new URLSearchParams();
+  if(mapState.domain) params.set('host', mapState.domain);
+  if(mapState.tag) params.set('tag', mapState.tag);
+  if(!mapState.hideNoise) params.set('hideNoise', '0');
+  if(mapUsesServerSearch()){
+    params.set('search', mapState.search.trim());
+    params.set('searchScope', mapState.searchScope);
+  }
+  const q = params.toString();
+  const d = await apiTry('/api/endpoints' + (q ? '?' + q : ''),{},{label:'Map'});
+  if(!d)return;
+  mapState.eps = d.endpoints || [];
+  mapState.total = d.total != null ? d.total : mapState.eps.length;
+  mapState.truncated = !!d.truncated;
+  mapState.searchNote = d.searchNote || '';
+  mapState._dataVersion++;
+  mapState._needFit = true;
+  fillMapDomains();
+  fillMapMethods();
+  fillMapTags();
+  renderMap();
 }
 
 let _fdKey = -1, _fdHtml = '';
@@ -343,7 +369,7 @@ function hydrateMapTreeNode(body){
 function mapHintText(){
   if(mapState.view === 'params') return 'Parameter names mined from captured traffic — click a row to inspect the sample flow';
   if(mapState.view === 'table') return 'Sortable endpoint list · click a row to inspect · → Rep sends to Repeater';
-  if(mapState.view === 'graph') return 'Drag to pan · scroll to zoom · click folder to expand · double-click host to focus domain · click endpoint to inspect';
+  if(mapState.view === 'graph') return 'Images/fonts/media hidden · drag to pan · scroll to zoom · click folder to expand · double-click host to focus';
   return 'Hierarchical site map · click an endpoint to inspect';
 }
 
@@ -691,6 +717,7 @@ export function gCount(n){
 
 let _gtKey = '', _gtCache = null;
 export function buildGraphTree(eps){
+  eps = graphEps(eps);
   const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + eps.length;
   if(key === _gtKey && _gtCache) return _gtCache;
   const root = { key: '', type: 'root', children: [], cm: new Map(), _gCount: null };
@@ -705,6 +732,7 @@ export function buildGraphTree(eps){
     (e.path || '/').split('?')[0].split('/').filter(Boolean).forEach(seg => { node = child(node, seg, '/'+seg, 'folder'); });
     child(node, 'ep|'+e.method, e.method, 'ep').ep = e;
   });
+  root.children = root.children.filter(c => pruneGraphNode(c));
   _gtKey = key; _gtCache = root;
   return root;
 }

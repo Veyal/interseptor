@@ -45,7 +45,7 @@ type asState struct {
 	skipped  []breaker.Skipped
 }
 
-func (h *Hub) asWriteState(w http.ResponseWriter) {
+func (h *activescanAPI) asWriteState(w http.ResponseWriter) {
 	h.as.mu.Lock()
 	defer h.as.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -63,9 +63,9 @@ func (h *Hub) asAppendLog(e asProbeLog) {
 	h.as.mu.Unlock()
 }
 
-func (h *Hub) asGet(w http.ResponseWriter, r *http.Request) { h.asWriteState(w) }
+func (h *activescanAPI) asGet(w http.ResponseWriter, r *http.Request) { h.asWriteState(w) }
 
-func (h *Hub) asArm(w http.ResponseWriter, r *http.Request) {
+func (h *activescanAPI) asArm(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Armed bool `json:"armed"`
 	}
@@ -80,7 +80,7 @@ func (h *Hub) asArm(w http.ResponseWriter, r *http.Request) {
 	h.asWriteState(w)
 }
 
-func (h *Hub) asStop(w http.ResponseWriter, r *http.Request) {
+func (h *activescanAPI) asStop(w http.ResponseWriter, r *http.Request) {
 	h.as.mu.Lock()
 	if h.as.cancel != nil {
 		h.as.cancel()
@@ -89,7 +89,7 @@ func (h *Hub) asStop(w http.ResponseWriter, r *http.Request) {
 	h.asWriteState(w)
 }
 
-func (h *Hub) asStart(w http.ResponseWriter, r *http.Request) {
+func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID      int64 `json:"flowId"`
 		InScope     bool  `json:"inScope"`
@@ -179,7 +179,7 @@ func (h *Hub) asStart(w http.ResponseWriter, r *http.Request) {
 // asRun executes the scan across targets within a shared request budget.
 // extraFlags is OR'd onto each probe (store.FlagAI when the run was kicked off
 // by the AI over MCP) so the traffic can be recognized in History.
-func (h *Hub) asRun(ctx context.Context, targets []activescan.Target, budget int, extraFlags int64, csrfAware bool) {
+func (h *activescanAPI) asRun(ctx context.Context, targets []activescan.Target, budget int, extraFlags int64, csrfAware bool) {
 	if budget <= 0 {
 		budget = 2000
 	}
@@ -222,7 +222,7 @@ func (h *Hub) asRun(ctx context.Context, targets []activescan.Target, budget int
 }
 
 // asTargets keeps in-scope flows whose endpoint has injection points, deduped.
-func (h *Hub) asTargets(flows []*store.Flow) []activescan.Target {
+func (h *activescanAPI) asTargets(flows []*store.Flow) []activescan.Target {
 	seen := map[string]bool{}
 	var out []activescan.Target
 	for _, f := range flows {
@@ -274,7 +274,7 @@ func (h *Hub) isOwnListener(f *store.Flow) bool {
 	if !isLoopbackHost(f.Host) {
 		return false
 	}
-	for _, addr := range []string{h.SelfAddr, h.currentProxyAddr()} {
+	for _, addr := range []string{h.GetSelfAddr(), h.currentProxyAddr()} {
 		if _, p, err := net.SplitHostPort(addr); err == nil {
 			if n, e := strconv.Atoi(p); e == nil && n == f.Port {
 				return true
@@ -373,7 +373,7 @@ func pathFromTargetURL(raw string) string {
 	return p
 }
 
-func (h *Hub) activescanHistory(w http.ResponseWriter, r *http.Request) {
+func (h *activescanAPI) activescanHistory(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsListFilter(store.FlowFilter{
 		RequireFlags: store.FlagActiveScan,
 		Limit:        atoiOr(r.URL.Query().Get("limit"), 200),

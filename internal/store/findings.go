@@ -553,17 +553,72 @@ func (s *Store) ListFindings(severity, status string) ([]Finding, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for i := range out {
-		if out[i].Flows, err = s.findingFlows(out[i].ID); err != nil {
+	if len(out) > 0 {
+		ids := make([]int64, len(out))
+		for i := range out {
+			ids[i] = out[i].ID
+		}
+		flowsByID, err := s.findingFlowsForIDs(ids)
+		if err != nil {
 			return nil, err
 		}
-		if out[i].Flows == nil {
-			out[i].Flows = []FindingFlow{}
-		}
-		out[i].Blocks = buildBlocks(out[i].Body, out[i].Detail, out[i].Evidence, out[i].Flows)
-		if out[i].Blocks == nil {
-			out[i].Blocks = []FindingBlock{}
+		for i := range out {
+			out[i].Flows = flowsByID[out[i].ID]
+			if out[i].Flows == nil {
+				out[i].Flows = []FindingFlow{}
+			}
+			out[i].Blocks = buildBlocks(out[i].Body, out[i].Detail, out[i].Evidence, out[i].Flows)
+			if out[i].Blocks == nil {
+				out[i].Blocks = []FindingBlock{}
+			}
 		}
 	}
 	return out, nil
+}
+
+// findingFlowsForIDs batch-loads PoC flows for many findings in one query.
+func (s *Store) findingFlowsForIDs(findingIDs []int64) (map[int64][]FindingFlow, error) {
+	out := make(map[int64][]FindingFlow, len(findingIDs))
+	if len(findingIDs) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(findingIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(findingIDs))
+	for i, id := range findingIDs {
+		args[i] = id
+	}
+	rows, err := s.db.Query(
+		`SELECT ff.finding_id, ff.flow_id, ff.ord, ff.note, f.method, f.host, f.path, f.status, f.id IS NOT NULL
+		 FROM finding_flows ff LEFT JOIN flows f ON f.id = ff.flow_id
+		 WHERE ff.finding_id IN (`+placeholders+`) ORDER BY ff.finding_id, ff.ord, ff.flow_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var findingID int64
+		var ff FindingFlow
+		var method, host, path *string
+		var status *int
+		var present bool
+		if err := rows.Scan(&findingID, &ff.FlowID, &ff.Ord, &ff.Note, &method, &host, &path, &status, &present); err != nil {
+			return nil, err
+		}
+		if method != nil {
+			ff.Method = *method
+		}
+		if host != nil {
+			ff.Host = *host
+		}
+		if path != nil {
+			ff.Path = *path
+		}
+		if status != nil {
+			ff.Status = *status
+		}
+		ff.Missing = !present
+		out[findingID] = append(out[findingID], ff)
+	}
+	return out, rows.Err()
 }

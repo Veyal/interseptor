@@ -46,7 +46,7 @@ func headerValue(hdrs map[string][]string, key string) string {
 }
 
 // authzPromoteFromFlow adds/updates an authz identity from a captured flow.
-func (h *Hub) authzPromoteFromFlow(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) authzPromoteFromFlow(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -77,7 +77,7 @@ func (h *Hub) authzPromoteFromFlow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"identities": ids})
 }
 
-func (h *Hub) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]identity, error) {
+func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]identity, error) {
 	f, err := h.st.GetFlow(flowID)
 	if err != nil {
 		return nil, err

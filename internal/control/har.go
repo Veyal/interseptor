@@ -11,7 +11,7 @@ import (
 )
 
 // exportHAR streams the (optionally in-scope) history as a HAR 1.2 document.
-func (h *Hub) exportHAR(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{
 		Limit:        atoiOr(q.Get("limit"), 10000),
@@ -36,7 +36,7 @@ func (h *Hub) exportHAR(w http.ResponseWriter, r *http.Request) {
 }
 
 // importHAR ingests a HAR document, recording each entry as a flow (FlagImported).
-func (h *Hub) importHAR(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
@@ -77,7 +77,7 @@ func (h *Hub) importHAR(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
 }
 
-func (h *Hub) storeBody(b []byte) (string, int64) {
+func (h *projectAPI) storeBody(b []byte) (string, int64) {
 	if len(b) == 0 {
 		return "", 0
 	}

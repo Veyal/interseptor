@@ -159,3 +159,15 @@ func TestScopeRegexSlashesAndCase(t *testing.T) {
 		t.Fatal("slash-wrapped regex should match case-insensitively")
 	}
 }
+
+func TestValidateRuleRejectsInvalidRegex(t *testing.T) {
+	if err := ValidateRule(store.ScopeRule{Host: "[invalid"}); err == nil {
+		t.Fatal("expected error for invalid host regex")
+	}
+	if err := ValidateRule(store.ScopeRule{Path: "[unclosed"}); err == nil {
+		t.Fatal("expected error for invalid path regex")
+	}
+	if err := ValidateRule(store.ScopeRule{Host: "*.acme.com", Path: `/v[12]/.*`}); err != nil {
+		t.Fatalf("valid patterns should pass: %v", err)
+	}
+}

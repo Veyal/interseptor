@@ -12,7 +12,7 @@ import (
 
 // ---- API keys ----
 
-func (h *Hub) listKeys(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) listKeys(w http.ResponseWriter, r *http.Request) {
 	keys, err := h.st.ListAPIKeys()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -24,7 +24,7 @@ func (h *Hub) listKeys(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
 }
 
-func (h *Hub) createKey(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Label string `json:"label"`
 	}
@@ -44,7 +44,7 @@ func (h *Hub) createKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "key": key})
 }
 
-func (h *Hub) deleteKey(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) deleteKey(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -180,7 +180,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/hosts/stats", "Per-host flow counts and byte totals, sorted desc by bytes. Response: {hosts:[{host,flows,bytes}],totalFlows,totalBytes}"},
 }
 
-func (h *Hub) apiReference(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) apiReference(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"baseUrl": "http://" + r.Host, "routes": apiRoutes})
 }
 
@@ -284,6 +284,6 @@ var mcpDescriptor = map[string]any{
 	},
 }
 
-func (h *Hub) apiMCP(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) apiMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mcpDescriptorForRequest(r.Host))
 }

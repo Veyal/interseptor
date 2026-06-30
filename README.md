@@ -107,7 +107,8 @@ CGO_ENABLED=0 go build -o interceptor ./cmd/interceptor
 ### Prebuilt binaries
 
 Each tagged release attaches static binaries for **linux / macOS / windows** (amd64 & arm64) plus a
-`checksums.txt`, built by CI, on the [Releases](https://github.com/Veyal/interceptor/releases) page —
+`checksums.txt` on the [Releases](https://github.com/Veyal/interceptor/releases) page (built by the
+release workflow when a `v*` tag is pushed) —
 download, verify the checksum, `chmod +x`, and run. (`go install` above is equivalent and always
 tracks the latest release.)
 
@@ -235,8 +236,8 @@ Why this exists, who it's for, and what's next live under [`docs/product/`](docs
 [metrics](docs/product/metrics.md) · [MCP cookbook](docs/product/mcp-cookbook.md) ·
 [flagship PRD](docs/product/prd-0001-target-scope.md).
 Performance numbers (≈20 MB idle, ≈1 s cold start) are in [docs/benchmarks.md](docs/benchmarks.md).
-Larger bets ahead: login-macro/401 re-auth session handling, HTTP/2, an extension API, and CI-built
-release binaries.
+Larger bets ahead: login-macro/401 re-auth session handling, HTTP/2, an extension API, and automated
+release binaries for every platform.
 
 ## License
 

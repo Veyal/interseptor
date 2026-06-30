@@ -75,13 +75,19 @@ func (hi *humanInput) answer(id int64, ans string) bool {
 	}
 	p.Answer, p.Answered = ans, true
 	close(p.done)
+	go func(pid int64) {
+		time.Sleep(time.Minute)
+		hi.mu.Lock()
+		delete(hi.prompts, pid)
+		hi.mu.Unlock()
+	}(id)
 	return true
 }
 
 // createHumanInput (POST /api/human-input) registers a prompt and blocks up to
 // humanInputWait for the human to answer; then returns the (possibly still
 // pending) prompt so the AI can either use the answer or poll for it.
-func (h *Hub) createHumanInput(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) createHumanInput(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Message string   `json:"message"`
 		Options []string `json:"options"`
@@ -103,12 +109,12 @@ func (h *Hub) createHumanInput(w http.ResponseWriter, r *http.Request) {
 
 // listHumanInput (GET /api/human-input) returns the pending prompts (UI load /
 // SSE-reconnect recovery).
-func (h *Hub) listHumanInput(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) listHumanInput(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"prompts": h.hi.pending()})
 }
 
 // getHumanInput (GET /api/human-input/{id}) — the AI polls for an answer.
-func (h *Hub) getHumanInput(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) getHumanInput(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	p := h.hi.get(id)
 	if p == nil {
@@ -119,7 +125,7 @@ func (h *Hub) getHumanInput(w http.ResponseWriter, r *http.Request) {
 }
 
 // respondHumanInput (POST /api/human-input/{id}/respond) — the human answers.
-func (h *Hub) respondHumanInput(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) respondHumanInput(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
 		Answer string `json:"answer"`

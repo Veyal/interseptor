@@ -4,10 +4,8 @@
 package intruder
 
 import (
-	"bufio"
 	"encoding/base64"
 	"errors"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interceptor/internal/codec"
+	"github.com/Veyal/interceptor/internal/httplines"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
 )
@@ -403,7 +402,7 @@ func (e *Engine) run(spec Spec, jobs []job) {
 			defer func() { <-sem }()
 			// Substitute payloads into the whole request, then parse — so fuzz points
 			// in the request line / path / headers / body all take effect.
-			method, path, headers, body, perr := parseRaw(substitute(spec.Template, j.payloads))
+			method, path, headers, body, perr := httplines.ParseRawRequest(substitute(spec.Template, j.payloads))
 			res := Result{ID: idx + 1, Payload: j.label}
 			if perr != nil {
 				res.Error = "parse: " + perr.Error()
@@ -560,51 +559,10 @@ func substitute(template string, payloads []string) string {
 	})
 }
 
-func normalizeCRLF(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
-}
-
 func (e *Engine) appendResult(res Result) {
 	e.mu.Lock()
 	e.results = append(e.results, res)
 	e.done = len(e.results)
 	e.mu.Unlock()
 	e.fireNotify()
-}
-
-// parseRaw parses a (payload-substituted) raw request. The request line and
-// headers are parsed with http.ReadRequest; the body is taken as everything
-// after the blank line (Burp-style — no Content-Length required). Content-Length
-// is dropped since the sender recomputes it from the actual body.
-func parseRaw(raw string) (method, path string, headers map[string][]string, body []byte, err error) {
-	norm := normalizeCRLF(raw)
-	head := norm
-	var bodyStr string
-	if i := strings.Index(norm, "\r\n\r\n"); i >= 0 {
-		head = norm[:i] + "\r\n\r\n"
-		bodyStr = norm[i+4:]
-	} else {
-		head = strings.TrimRight(norm, "\r\n") + "\r\n\r\n"
-	}
-
-	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(head)))
-	if err != nil {
-		return "", "", nil, nil, err
-	}
-	h := req.Header.Clone()
-	if h == nil {
-		h = http.Header{}
-	}
-	h.Del("Content-Length")
-	if req.Host != "" {
-		h.Set("Host", req.Host)
-	}
-	return req.Method, orSlash(req.URL.RequestURI()), h, []byte(bodyStr), nil
-}
-
-func orSlash(s string) string {
-	if s == "" {
-		return "/"
-	}
-	return s
 }

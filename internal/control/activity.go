@@ -11,7 +11,7 @@ import (
 // recordActivity persists one AI (MCP) tool call (stamped with the server clock)
 // and returns it with its assigned id. Persisted per-project so the glass-box
 // feed survives restarts; the caller broadcasts it live.
-func (h *Hub) recordActivity(a store.Activity) store.Activity {
+func (h *metaAPI) recordActivity(a store.Activity) store.Activity {
 	a.TS = time.Now().UnixMilli()
 	_, _ = h.st.InsertActivity(&a)
 	return a
@@ -19,7 +19,7 @@ func (h *Hub) recordActivity(a store.Activity) store.Activity {
 
 // postActivity records one AI tool call (POSTed by the MCP server after every
 // call), persists it, and pushes it to all live UI subscribers.
-func (h *Hub) postActivity(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) postActivity(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}
@@ -41,7 +41,7 @@ func (h *Hub) postActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 // listActivity returns the persisted AI activity, newest first.
-func (h *Hub) listActivity(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) listActivity(w http.ResponseWriter, r *http.Request) {
 	if h.aiDisabled() {
 		writeJSON(w, http.StatusOK, map[string]any{"activity": []store.Activity{}})
 		return
@@ -60,7 +60,7 @@ func (h *Hub) listActivity(w http.ResponseWriter, r *http.Request) {
 // clearActivity wipes the persisted AI activity feed (the user pressed Clear).
 // Because the feed is now stored, a client-only clear would reappear on reload —
 // this deletes the rows and tells live clients to drop their copy.
-func (h *Hub) clearActivity(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) clearActivity(w http.ResponseWriter, r *http.Request) {
 	if err := h.st.DeleteActivity(); err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return

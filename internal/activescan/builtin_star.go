@@ -73,12 +73,14 @@ def check(point, baseline, probe):
 `,
 	"active-open-redirect": `# Open redirect (built-in override).
 def check(point, baseline, probe):
-    r = probe("https://evil.example/")
-    if r.status >= 300 and r.status < 400:
-        loc = r.header("Location")
-        if loc and "evil.example" in loc:
-            return [finding("Medium", "Open redirect", evidence="Location: " + loc,
-                fix="Allow-list redirect destinations.")]
+    canary = "interceptor-oob.example"
+    for pl in ("https://" + canary + "/x", "//" + canary + "/x"):
+        r = probe(pl)
+        if r.status >= 300 and r.status < 400:
+            loc = r.header("Location")
+            if loc and canary in loc:
+                return [finding("Medium", "Open redirect", evidence="Location: " + loc,
+                    fix="Allow-list redirect destinations.")]
     return []
 `,
 	"active-lfi": `# Path traversal / LFI (built-in override).
@@ -90,7 +92,8 @@ def check(point, baseline, probe):
                 fix="Normalize paths; deny .. segments.")]
     return []
 `,
-	"active-cmdi": `# Command injection (built-in override).
+	"active-cmdi": `# Command injection (built-in override — timing-based; Starlark cannot
+# measure delays, so this template uses ;id output as a weaker signal).
 def check(point, baseline, probe):
     r = probe(point.value + ";id")
     if re_search("uid=\\d+\\(", r.body) and not re_search("uid=\\d+\\(", baseline.body):
@@ -106,13 +109,17 @@ def check(point, baseline, probe):
     return []
 `,
 	"active-xxe": `# XXE (built-in override — body injection points only).
+# Safe internal-entity canary only — no external entities (matches the Go probe).
 def check(point, baseline, probe):
     if point.kind != "body":
         return []
-    payload = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>'
+    canary = "INTERCEPTOR_XXE_CANARY"
+    payload = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe "' + canary + '">]><foo>&xxe;</foo>'
     r = probe(payload)
-    if re_search("root:.*:0:0:", r.body):
-        return [finding("High", "XML external entity (XXE)", fix="Disable external entities in the XML parser.")]
+    if canary in r.body and canary not in baseline.body:
+        return [finding("High", "XML external entity (XXE)",
+            evidence="internal entity resolved: canary reflected",
+            fix="Disable external entities in the XML parser.")]
     return []
 `,
 }

@@ -5,10 +5,10 @@
 import { $, esc, escAttr, api, state, toast, openCtxMenu } from './core.js';
 import { filterByTag, renderRows } from './proxy.js';
 
-// A small, theme-agnostic preset palette (stored verbatim as validated hex).
+// A small preset palette using theme CSS variables (follows light/dark).
 export const TAG_COLORS = [
-  ['red', '#ff5b5b'], ['amber', '#ffb02e'], ['green', '#00c389'],
-  ['blue', '#4aa8ff'], ['violet', '#c08cff'], ['cyan', '#3fd8d0'], ['gray', '#8e8e99'],
+  ['red', 'var(--red)'], ['amber', 'var(--amber)'], ['green', 'var(--green)'],
+  ['blue', 'var(--blue)'], ['violet', 'var(--violet)'], ['cyan', 'var(--cyan)'], ['gray', 'var(--fg3)'],
 ];
 
 // tagChipStyle returns the inline style for a chip in a tag's color ('' = default).

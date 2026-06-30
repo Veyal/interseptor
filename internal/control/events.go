@@ -12,14 +12,14 @@ import (
 // FlowCaptured implements proxy.Events: it pushes a newly-seen flow (request
 // sent, response not yet known) to all live UI subscribers. Concurrency-safe.
 func (h *Hub) FlowCaptured(f *store.Flow) {
-	h.epsCache.invalidate()
+	h.epsCache.invalidateDebounced()
 	h.broadcast(map[string]any{"type": "flow.new", "flow": toFlowJSON(f)})
 }
 
 // FlowUpdated implements proxy.Events: it pushes the filled-in flow (response or
 // error now known) so the UI can update the existing history row in place.
 func (h *Hub) FlowUpdated(f *store.Flow) {
-	h.epsCache.invalidate()
+	h.epsCache.invalidateDebounced()
 	h.broadcast(map[string]any{"type": "flow.update", "flow": toFlowJSON(f)})
 }
 
@@ -74,7 +74,7 @@ func (h *Hub) broadcast(v any) {
 }
 
 // handleEvents serves the Server-Sent Events stream.
-func (h *Hub) handleEvents(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpErr(w, http.StatusInternalServerError, "streaming unsupported")

@@ -68,4 +68,13 @@ export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.s
 $('#actClear').onclick=async()=>{try{await api('/api/activity',{method:'DELETE'});}catch(e){}state.activity=[];renderActivity();clearActSeen();};
 // Free-text intent filter (substring, case-insensitive).
 const actIntentFilter=$('#actIntentFilter');
-if(actIntentFilter)actIntentFilter.oninput=()=>{actFilter.intent=actIntentFilter.value.trim().toLowerCase();renderActivity();};
+if(actIntentFilter){
+  let actFilterTimer=null;
+  actIntentFilter.oninput=()=>{
+    clearTimeout(actFilterTimer);
+    actFilterTimer=setTimeout(()=>{
+      actFilter.intent=actIntentFilter.value.trim().toLowerCase();
+      renderActivity();
+    },200);
+  };
+}

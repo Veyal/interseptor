@@ -215,7 +215,7 @@ func run() error {
 	cm.handler = hub.Handler()
 	hub.SyncSelfPorts = func() {
 		prx.SelfPorts = selfPorts(cm.Addr(), pm.Addr())
-		hub.SelfAddr = cm.Addr()
+		hub.SetSelfAddr(cm.Addr())
 	}
 
 	proxyAddr := "127.0.0.1:8080"
@@ -234,7 +234,7 @@ func run() error {
 	if err := cm.Start(controlAddr); err != nil {
 		return fmt.Errorf("control listen on %s: %w", controlAddr, err)
 	}
-	hub.SelfAddr = cm.Addr()
+	hub.SetSelfAddr(cm.Addr())
 
 	uiURL := "http://" + cm.Addr()
 	log.Printf("Interceptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)

@@ -11,7 +11,7 @@ import (
 	"github.com/Veyal/interceptor/internal/android"
 )
 
-func (h *Hub) getAndroidStatus(w http.ResponseWriter, r *http.Request) {
+func (h *androidAPI) getAndroidStatus(w http.ResponseWriter, r *http.Request) {
 	rep := map[string]any{
 		"available":           android.Available(),
 		"proxy":               h.currentProxyAddr(),
@@ -52,7 +52,7 @@ type androidRequest struct {
 	RemoveSystemCA bool   `json:"removeSystemCA"`
 }
 
-func (h *Hub) androidDeviceAndPort(in androidRequest) (android.Device, int, error) {
+func (h *androidAPI) androidDeviceAndPort(in androidRequest) (android.Device, int, error) {
 	devs, err := android.Devices()
 	if err != nil {
 		return android.Device{}, 0, err
@@ -65,14 +65,14 @@ func (h *Hub) androidDeviceAndPort(in androidRequest) (android.Device, int, erro
 	return d, port, nil
 }
 
-func (h *Hub) androidWiFiHost(override string) (string, error) {
+func (h *androidAPI) androidWiFiHost(override string) (string, error) {
 	if strings.TrimSpace(override) != "" {
 		return strings.TrimSpace(override), nil
 	}
 	return android.LANHost()
 }
 
-func (h *Hub) validateWiFiProxy(port int) error {
+func (h *androidAPI) validateWiFiProxy(port int) error {
 	host, _ := proxyHostPort(h.currentProxyAddr())
 	if isLoopbackHost(host) {
 		return fmt.Errorf("wifi proxy needs Interceptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings and set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1", port)
@@ -80,7 +80,7 @@ func (h *Hub) validateWiFiProxy(port int) error {
 	return nil
 }
 
-func (h *Hub) postAndroidProxy(w http.ResponseWriter, r *http.Request) {
+func (h *androidAPI) postAndroidProxy(w http.ResponseWriter, r *http.Request) {
 	if !android.Available() {
 		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
 		return
@@ -136,7 +136,7 @@ func (h *Hub) postAndroidProxy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Hub) postAndroidUnproxy(w http.ResponseWriter, r *http.Request) {
+func (h *androidAPI) postAndroidUnproxy(w http.ResponseWriter, r *http.Request) {
 	if !android.Available() {
 		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
 		return
@@ -170,7 +170,7 @@ func (h *Hub) postAndroidUnproxy(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) postAndroidInstallCA(w http.ResponseWriter, r *http.Request) {
+func (h *androidAPI) postAndroidInstallCA(w http.ResponseWriter, r *http.Request) {
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return
@@ -230,7 +230,7 @@ func (h *Hub) postAndroidInstallCA(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) postAndroidSetup(w http.ResponseWriter, r *http.Request) {
+func (h *androidAPI) postAndroidSetup(w http.ResponseWriter, r *http.Request) {
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return

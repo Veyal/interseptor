@@ -110,7 +110,7 @@ func TestAuthzTargetsInScope(t *testing.T) {
 
 	in, _ := s.InsertFlow(&store.Flow{Method: "GET", Host: "in.test", Path: "/a", Scheme: "https", Port: 443, Status: 200})
 	out, _ := s.InsertFlow(&store.Flow{Method: "GET", Host: "out.test", Path: "/b", Scheme: "https", Port: 443, Status: 200})
-	targets := h.authzTargets([]*store.Flow{
+	targets := (&authzAPI{h}).authzTargets([]*store.Flow{
 		mustGetFlow(s, in), mustGetFlow(s, out),
 	}, true)
 	if len(targets) != 1 || targets[0].ID != in {

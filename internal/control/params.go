@@ -27,7 +27,7 @@ type paramAggKey struct {
 	host, name, source string
 }
 
-func (h *Hub) listParams(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	host := q.Get("host")
 	inScope := q.Get("inScope") == "1"
@@ -110,7 +110,7 @@ func (h *Hub) listParams(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) noteParam(agg map[paramAggKey]*minedParam, fl *store.Flow, name, source string) {
+func (h *flowAPI) noteParam(agg map[paramAggKey]*minedParam, fl *store.Flow, name, source string) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return

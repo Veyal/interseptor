@@ -3,6 +3,7 @@ package control
 import (
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Veyal/interceptor/internal/store"
 )
@@ -12,9 +13,10 @@ import (
 // GROUP BY aggregation because only one entry was cached. The cache is
 // invalidated (cleared) whenever flows change.
 type endpointsCache struct {
-	mu    sync.Mutex
-	items map[string]endpointsCacheEntry
-	order []string // LRU order, oldest first
+	mu              sync.Mutex
+	items           map[string]endpointsCacheEntry
+	order           []string // LRU order, oldest first
+	debounceTimer   *time.Timer
 }
 
 type endpointsCacheEntry struct {
@@ -59,8 +61,30 @@ func (c *endpointsCache) set(key string, eps []store.Endpoint, note string, tota
 func (c *endpointsCache) invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.debounceTimer != nil {
+		c.debounceTimer.Stop()
+		c.debounceTimer = nil
+	}
 	c.items = nil
 	c.order = nil
+}
+
+// invalidateDebounced clears the cache after a short quiet period so high traffic
+// does not invalidate on every single captured flow.
+func (c *endpointsCache) invalidateDebounced() {
+	c.mu.Lock()
+	if c.debounceTimer != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.debounceTimer = time.AfterFunc(2*time.Second, func() {
+		c.mu.Lock()
+		c.debounceTimer = nil
+		c.items = nil
+		c.order = nil
+		c.mu.Unlock()
+	})
+	c.mu.Unlock()
 }
 
 func (c *endpointsCache) touch(key string) {

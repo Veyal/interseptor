@@ -23,6 +23,7 @@ import (
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
 	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interceptor/internal/strutil"
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
 
@@ -124,7 +125,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	scheme := r.URL.Scheme
 	host := r.URL.Hostname()
-	port := atoiOr(r.URL.Port(), defaultPort(scheme))
+	port := strutil.AtoiOr(r.URL.Port(), defaultPort(scheme))
 
 	flow := buildFlow(r, scheme, host, port, time.Now())
 	if isUpgradeRequest(r.Header) {
@@ -924,15 +925,6 @@ func defaultPort(scheme string) int {
 	return 80
 }
 
-func atoiOr(s string, def int) int {
-	if s == "" {
-		return def
-	}
-	if n, err := strconv.Atoi(s); err == nil {
-		return n
-	}
-	return def
-}
 
 func hostPort(host string, port int, scheme string) string {
 	if port == defaultPort(scheme) {
@@ -946,5 +938,5 @@ func splitHostPort(hostport string, def int) (string, int) {
 	if err != nil {
 		return hostport, def
 	}
-	return h, atoiOr(p, def)
+	return h, strutil.AtoiOr(p, def)
 }

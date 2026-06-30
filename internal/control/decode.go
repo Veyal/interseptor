@@ -9,7 +9,7 @@ import (
 
 // decode runs one encode/decode transform over the input. A bad input returns
 // 200 with an {error} field (not 500) so the UI can show it inline.
-func (h *Hub) decode(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) decode(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Op    string `json:"op"`
 		Input string `json:"input"`

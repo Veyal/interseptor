@@ -16,7 +16,7 @@ func TestAvailableProjectsSkipsReservedDefault(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := (&Hub{GlobalDir: tmp}).availableProjects()
+	got := (&projectAPI{&Hub{GlobalDir: tmp}}).availableProjects()
 	want := []string{"default", "acme", "beta"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("availableProjects() = %v, want %v", got, want)

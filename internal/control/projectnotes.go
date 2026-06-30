@@ -11,7 +11,7 @@ import (
 // getNotes returns the project's markdown notebook — a per-project scratchpad for
 // credentials, findings, scope notes and to-dos, editable in the UI and by the AI.
 // Legacy inline data-URL images are migrated to SQLite-backed refs on read.
-func (h *Hub) getNotes(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) getNotes(w http.ResponseWriter, r *http.Request) {
 	notes, err := h.st.LoadNotes()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -22,7 +22,7 @@ func (h *Hub) getNotes(w http.ResponseWriter, r *http.Request) {
 
 // putNotes replaces the project's markdown notebook and tells every client to refresh.
 // Inline data-URL images are extracted into SQLite; unreferenced images are GC'd.
-func (h *Hub) putNotes(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Notes string `json:"notes"`
 	}
@@ -39,7 +39,7 @@ func (h *Hub) putNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 // postNotesImage stores one pasted notebook image and returns its id for markdown refs.
-func (h *Hub) postNotesImage(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Mime string `json:"mime"`
 		Data string `json:"data"` // raw base64 or a data: URL
@@ -62,7 +62,7 @@ func (h *Hub) postNotesImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // getNotesImage serves a stored notebook image for preview rendering.
-func (h *Hub) getNotesImage(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) getNotesImage(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		httpErr(w, http.StatusBadRequest, "bad id")

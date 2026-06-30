@@ -28,7 +28,7 @@ func aiSourceFlag(r *http.Request) int64 {
 	return 0
 }
 
-func (h *Hub) repeaterSend(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 	var in repeaterSendJSON
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -57,7 +57,7 @@ func (h *Hub) repeaterSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.flowDetail(flow))
 }
 
-func (h *Hub) repeaterHistory(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) repeaterHistory(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{
 		RequireFlags: store.FlagRepeater,
 		Limit:        atoiOr(r.URL.Query().Get("limit"), 100),
@@ -74,7 +74,7 @@ func (h *Hub) repeaterHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // flowDetail builds the detail DTO for a freshly-sent flow.
-func (h *Hub) flowDetail(f *store.Flow) flowDetailJSON {
+func (h *toolsAPI) flowDetail(f *store.Flow) flowDetailJSON {
 	return flowDetailJSON{
 		flowJSON:    toFlowJSON(f),
 		HTTPVersion: f.HTTPVersion,

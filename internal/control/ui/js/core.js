@@ -216,6 +216,12 @@ new MutationObserver(muts=>{
 
 export async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
 
+/** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
+export async function apiTry(path, opts, {toastOnError=true, label=''}={}){
+  try{return await api(path, opts);}
+  catch(e){if(toastOnError)toast((label?label+': ':'')+e.message);return null;}
+}
+
 export const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
 export const statusColor=s=>!s?'var(--fg3)':s<300?'var(--accent)':s<400?'var(--blue)':s<500?'var(--amber)':'var(--red)';
 export const statusText=s=>({200:'OK',201:'Created',204:'No Content',301:'Moved',302:'Found',304:'Not Modified',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',500:'Internal Server Error',502:'Bad Gateway'}[s]||'');

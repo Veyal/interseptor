@@ -18,7 +18,7 @@ type purgeRequest struct {
 //	{"hosts":["acme.com","*.example.com"],"mode":"delete"|"keepOnly"}
 //
 // Response: {"deleted":<int>,"removedFiles":<int>,"freedBytes":<int>}
-func (h *Hub) purgeFlows(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 	var in purgeRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -58,7 +58,7 @@ func (h *Hub) purgeFlows(w http.ResponseWriter, r *http.Request) {
 //	POST /api/flows/gc
 //
 // Response: {"removedFiles":<int>,"freedBytes":<int>}
-func (h *Hub) gcBodies(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) gcBodies(w http.ResponseWriter, r *http.Request) {
 	removedFiles, freedBytes, err := h.st.GCBodies()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -75,7 +75,7 @@ func (h *Hub) gcBodies(w http.ResponseWriter, r *http.Request) {
 //	GET /api/hosts/stats
 //
 // Response: {"hosts":[{"host":...,"flows":...,"bytes":...}],"totalFlows":...,"totalBytes":...}
-func (h *Hub) hostStats(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) hostStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.st.HostStats()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())

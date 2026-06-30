@@ -10,7 +10,7 @@ import (
 // wsSend opens a fresh WebSocket to a target, sends one message, and returns the
 // frames the server replies with (a WebSocket Repeater). Optional handshake
 // headers are given as "Key: Value" lines, like the session editor.
-func (h *Hub) wsSend(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		URL     string `json:"url"`
 		Message string `json:"message"`

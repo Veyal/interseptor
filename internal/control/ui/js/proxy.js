@@ -202,7 +202,7 @@ function flowRowHTML(f){
   const hasNote=!!(f.note&&String(f.note).trim());
   const stHTML=f.status?String(f.status):(f.error?'ERR':'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
   const grid=flowColGrid();
-  const rowTitle=(hasNote?String(f.note).trim()+' · ':'')+'Click inspect · Shift+click range · Ctrl/Cmd+click toggle';
+  const rowTitle=(pending?'[pending] ':'')+(hasNote?String(f.note).trim()+' · ':'')+'Click inspect · Shift+click range · Ctrl/Cmd+click toggle';
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
@@ -691,7 +691,13 @@ function toggleInspectFind(show){
   if(show&&inspectFindIn){inspectFindIn.focus();inspectFindIn.select();}
   else if(!show&&inspectFindIn){inspectFindIn.value='';renderSide('res');}
 }
-if(inspectFindIn)inspectFindIn.oninput=()=>renderSide('res');
+if(inspectFindIn){
+  let inspectFindTimer=null;
+  inspectFindIn.oninput=()=>{
+    clearTimeout(inspectFindTimer);
+    inspectFindTimer=setTimeout(()=>renderSide('res'),150);
+  };
+}
 if($('#inspectFindClose'))$('#inspectFindClose').onclick=()=>toggleInspectFind(false);
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
@@ -724,7 +730,14 @@ function inspectorFlow(){return state.detail||flowMap.get(state.selId)||null;}
 {const b=$('#insRepeater');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)sendToRepeater(f);else toast('select a flow first');};}
 {const b=$('#insIntruder');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)sendToIntruder(f);else toast('select a flow first');};}
 {const b=$('#insCurl');if(b)b.onclick=()=>{const f=inspectorFlow();if(f)copyCurl(f);else toast('select a flow first');};}
-$('#scopeToggle').onclick=()=>{state.inScopeOnly=!state.inScopeOnly;$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';loadFlows();};
+$('#scopeToggle').onclick=()=>{
+  state.inScopeOnly=!state.inScopeOnly;
+  const st=$('#scopeToggle');
+  st.classList.toggle('accent',state.inScopeOnly);
+  st.textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
+  st.setAttribute('aria-pressed',state.inScopeOnly?'true':'false');
+  loadFlows();
+};
 function syncSourceFilters(){
   $('#manualFilter')?.classList.toggle('accent',state.showManual);
 }

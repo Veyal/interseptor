@@ -121,7 +121,7 @@ func (h *Hub) wireSessionRefresh() {
 	})
 }
 
-func (h *Hub) getSession(w http.ResponseWriter, r *http.Request) {
+func (h *sessionAPI) getSession(w http.ResponseWriter, r *http.Request) {
 	enabled, _, _ := h.st.GetSetting("session.enabled")
 	text, _, _ := h.st.GetSetting("session.headers")
 	unscoped, _, _ := h.st.GetSetting("session.unscoped")
@@ -140,7 +140,7 @@ func (h *Hub) getSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) setSession(w http.ResponseWriter, r *http.Request) {
+func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled     bool               `json:"enabled"`
 		Headers     string             `json:"headers"`
@@ -186,7 +186,7 @@ func (h *Hub) setSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // runLoginMacro executes the recorded login request now and refreshes session headers.
-func (h *Hub) runLoginMacro(w http.ResponseWriter, r *http.Request) {
+func (h *sessionAPI) runLoginMacro(w http.ResponseWriter, r *http.Request) {
 	h.snd.SetLoginMacro(h.loadLoginMacro())
 	hdrs, err := h.snd.RunLoginMacroNow()
 	if err != nil {
@@ -206,7 +206,7 @@ func (h *Hub) runLoginMacro(w http.ResponseWriter, r *http.Request) {
 // testLoginMacro dry-runs the saved login macro without touching the live session:
 // it returns the login response status and the session headers it would capture, so
 // the operator can see what the macro does before relying on it.
-func (h *Hub) testLoginMacro(w http.ResponseWriter, r *http.Request) {
+func (h *sessionAPI) testLoginMacro(w http.ResponseWriter, r *http.Request) {
 	status, hdrs, err := h.snd.TestLoginMacro(h.loadLoginMacro())
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, err.Error())
@@ -222,7 +222,7 @@ func (h *Hub) testLoginMacro(w http.ResponseWriter, r *http.Request) {
 }
 
 // loginMacroFromFlow captures a flow's request as the login macro.
-func (h *Hub) loginMacroFromFlow(w http.ResponseWriter, r *http.Request) {
+func (h *sessionAPI) loginMacroFromFlow(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return

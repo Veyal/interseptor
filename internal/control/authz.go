@@ -47,7 +47,7 @@ type authzRunOut struct {
 	Results        []authzResult `json:"results"`
 }
 
-func (h *Hub) authzIdentities() []identity {
+func (h *authzAPI) authzIdentities() []identity {
 	raw, _, _ := h.st.GetSetting("authz.identities")
 	var ids []identity
 	if raw != "" {
@@ -56,11 +56,11 @@ func (h *Hub) authzIdentities() []identity {
 	return ids
 }
 
-func (h *Hub) getAuthz(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) getAuthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"identities": h.authzIdentities()})
 }
 
-func (h *Hub) setAuthz(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Identities []identity `json:"identities"`
 	}
@@ -78,7 +78,7 @@ func (h *Hub) setAuthz(w http.ResponseWriter, r *http.Request) {
 
 // authzFlowAuth returns Cookie/Authorization from a flow's request plus optional
 // expiry hints parsed from the captured response Set-Cookie headers.
-func (h *Hub) authzFlowAuth(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) authzFlowAuth(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -94,7 +94,7 @@ func (h *Hub) authzFlowAuth(w http.ResponseWriter, r *http.Request) {
 
 // authzCheckSessions replays one flow under each identity and reports whether
 // each session still looks valid (401/403 when auth headers are set = invalid).
-func (h *Hub) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID int64 `json:"flowId"`
 	}
@@ -144,7 +144,7 @@ func (h *Hub) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 // authzRun replays flow(s) under each identity and reports per-identity diffs.
-func (h *Hub) authzRun(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID      int64 `json:"flowId"`
 		InScope     bool  `json:"inScope"`
@@ -223,7 +223,7 @@ func (h *Hub) authzRun(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
+func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 	ro := authzRunOut{
 		FlowID: f.ID, Method: f.Method, Host: f.Host, Path: f.Path,
 	}
@@ -255,7 +255,7 @@ func (h *Hub) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 	return ro
 }
 
-func (h *Hub) authzReplay(f *store.Flow, id identity) authzResult {
+func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	url := flowURLStr(f)
 	body := h.bodyBytes(f.ReqBodyHash)
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
@@ -272,7 +272,7 @@ func (h *Hub) authzReplay(f *store.Flow, id identity) authzResult {
 }
 
 // authzTargets keeps in-scope flows deduped by method+host+path.
-func (h *Hub) authzTargets(flows []*store.Flow, skipStatic bool) []*store.Flow {
+func (h *authzAPI) authzTargets(flows []*store.Flow, skipStatic bool) []*store.Flow {
 	seen := map[string]bool{}
 	var out []*store.Flow
 	for _, f := range flows {
@@ -403,7 +403,7 @@ func extractBearerToken(hdrs map[string][]string) string {
 // endpoint's path to every unique in-scope host seen in history. This detects
 // cross-environment JWT confusion (e.g. a host-A Bearer token accepted on host-B
 // because both environments share the same JWT secret).
-func (h *Hub) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID    int64  `json:"flowId"`    // reference endpoint (path to replay)
 		JWTFlowID int64  `json:"jwtFlowId"` // source of JWT; defaults to flowId

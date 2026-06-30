@@ -13,7 +13,7 @@ import (
 // scannerRun runs the passive scanner over all captured flows (excluding the
 // Intruder's attack traffic) and persists the deduplicated findings. Both the
 // built-in checks and any user-authored Starlark checks (ChecksDir) run.
-func (h *Hub) scannerRun(w http.ResponseWriter, r *http.Request) {
+func (h *scannerAPI) scannerRun(w http.ResponseWriter, r *http.Request) {
 	// Optional ?host= and ?search= focus the scan on one target instead of all
 	// captured traffic (host is a substring match; search matches path/host/method).
 	host := r.URL.Query().Get("host")
@@ -77,7 +77,7 @@ func (h *Hub) scannerRun(w http.ResponseWriter, r *http.Request) {
 	h.scannerIssues(w, r)
 }
 
-func (h *Hub) scannerIssues(w http.ResponseWriter, r *http.Request) {
+func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -90,7 +90,7 @@ func (h *Hub) scannerIssues(w http.ResponseWriter, r *http.Request) {
 }
 
 // scannerReport renders the current findings as a downloadable Markdown report.
-func (h *Hub) scannerReport(w http.ResponseWriter, r *http.Request) {
+func (h *scannerAPI) scannerReport(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())

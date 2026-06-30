@@ -27,7 +27,7 @@ type projectBundle struct {
 	Notes    string            `json:"notes,omitempty"`
 }
 
-func (h *Hub) exportProject(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -54,7 +54,7 @@ func (h *Hub) exportProject(w http.ResponseWriter, r *http.Request) {
 // importProject merges a project into the current session (additive for flows,
 // rules, and scope; applies the upstream-proxy setting). It does not rebind the
 // proxy listener.
-func (h *Hub) importProject(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(io.LimitReader(r.Body, 128<<20))
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
@@ -128,7 +128,7 @@ func (h *Hub) importProject(w http.ResponseWriter, r *http.Request) {
 }
 
 // apiProject reports the active project and the projects available to switch to.
-func (h *Hub) apiProject(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) apiProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"current":   h.ProjectName,
 		"dir":       h.ProjectDir,
@@ -139,7 +139,7 @@ func (h *Hub) apiProject(w http.ResponseWriter, r *http.Request) {
 
 // availableProjects lists "default" plus every named project directory under
 // GlobalDir/projects ("default" first, the rest sorted).
-func (h *Hub) availableProjects() []string {
+func (h *projectAPI) availableProjects() []string {
 	out := []string{"default"}
 	if h.GlobalDir == "" {
 		return out
@@ -178,7 +178,7 @@ func safeProjectTarget(name string) bool {
 // are back. The target is restricted to a plain project name (see
 // safeProjectTarget) so a loopback request can't relocate the process to an
 // arbitrary path.
-func (h *Hub) switchProject(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 	if h.SwitchProject == nil {
 		httpErr(w, http.StatusNotImplemented, "project switching unavailable")
 		return

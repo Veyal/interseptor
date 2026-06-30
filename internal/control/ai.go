@@ -69,7 +69,7 @@ func (in aiAssistReq) ids() []int64 {
 // collectAssistFlows loads up to 20 flows as prompt-ready text (request, response,
 // and — for "summarize" — the passive findings). Per-flow byte budget shrinks for
 // a multi-flow selection to keep the combined prompt manageable.
-func (h *Hub) collectAssistFlows(ids []int64, kind string) []assistFlow {
+func (h *aiAPI) collectAssistFlows(ids []int64, kind string) []assistFlow {
 	const maxFlows = 20
 	if len(ids) > maxFlows {
 		ids = ids[:maxFlows]
@@ -103,7 +103,7 @@ func (h *Hub) collectAssistFlows(ids []int64, kind string) []assistFlow {
 // summarize findings (non-streaming; used as the fallback when the browser can't
 // consume the SSE stream). Disabled unless an API key is configured. The exchange
 // is sent to the provider only here, on an explicit request.
-func (h *Hub) aiAssist(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiAssist(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}
@@ -141,7 +141,7 @@ func (h *Hub) aiAssist(w http.ResponseWriter, r *http.Request) {
 // to the browser token-by-token as Server-Sent Events (`data:` text chunks, then a
 // terminal `event: done` or `event: error`). This is the primary path — it makes
 // the assistant feel responsive instead of stalling on a full completion.
-func (h *Hub) aiAssistStream(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiAssistStream(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}
@@ -215,7 +215,7 @@ const actionsSystem = "You are a web-app security testing assistant. Reply with 
 // UI can render them as cards and load them straight into Intruder. Best-effort:
 // if the model wraps the JSON in prose or fences, extractJSONArray recovers it; an
 // unparseable reply yields an empty list rather than an error.
-func (h *Hub) aiActions(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiActions(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}
@@ -386,7 +386,7 @@ func clip(s string, n int) string {
 
 // aiOpenRouterModels returns the OpenRouter model catalog and optionally validates
 // an API key (?key= for an unsaved key, else stored key / OPENROUTER_API_KEY).
-func (h *Hub) aiOpenRouterModels(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiOpenRouterModels(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}

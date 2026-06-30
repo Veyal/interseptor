@@ -183,7 +183,7 @@ type discoverySpecIn struct {
 	AutoTagAPI *bool             `json:"autoTagApi"`
 }
 
-func (h *Hub) discoveryStart(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryStart(w http.ResponseWriter, r *http.Request) {
 	var in discoverySpecIn
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad JSON")
@@ -235,12 +235,12 @@ func (h *Hub) discoveryStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, h.disc.State())
 }
 
-func (h *Hub) discoveryStop(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryStop(w http.ResponseWriter, r *http.Request) {
 	h.disc.Stop()
 	writeJSON(w, http.StatusOK, map[string]any{"stopping": true})
 }
 
-func (h *Hub) discoveryStateHandler(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryStateHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.disc.State())
 }
 
@@ -279,7 +279,7 @@ type discoveryInspectIn struct {
 
 // discoveryInspect re-issues one discovered URL through the sender so the UI
 // can open the flow inspect modal even when the run did not record hits.
-func (h *Hub) discoveryInspect(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryInspect(w http.ResponseWriter, r *http.Request) {
 	var in discoveryInspectIn
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad JSON")
@@ -309,7 +309,7 @@ func (h *Hub) discoveryInspect(w http.ResponseWriter, r *http.Request) {
 
 // discoveryWordlist serves the built-in default wordlist so the UI can prefill
 // the textarea — users can edit or replace it wholesale.
-func (h *Hub) discoveryWordlist(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryWordlist(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = io.WriteString(w, defaultWordlist)
 }

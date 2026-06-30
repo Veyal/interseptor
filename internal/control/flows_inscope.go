@@ -110,6 +110,6 @@ func (h *Hub) hasInScopeTraffic() bool {
 	return err == nil && len(matched) > 0
 }
 
-func (h *Hub) trafficInScope(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) trafficInScope(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"inScope": h.hasInScopeTraffic()})
 }

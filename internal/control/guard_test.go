@@ -106,7 +106,7 @@ func TestControlBodySizeCapped(t *testing.T) {
 // control listener, so the tool can't be coerced into attacking its own API.
 func TestSendRefusesOwnListener(t *testing.T) {
 	h, _, _ := newHub(t)
-	h.SelfAddr = "127.0.0.1:9966"
+	h.SetSelfAddr("127.0.0.1:9966")
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -209,8 +209,8 @@ func TestPutSettingsRebindsControlAddr(t *testing.T) {
 	if v, ok, _ := st.GetSetting("control.addr"); !ok || v != "127.0.0.1:9967" {
 		t.Fatalf("persisted control.addr = %q, ok=%v", v, ok)
 	}
-	if h.SelfAddr != "127.0.0.1:9967" {
-		t.Fatalf("SelfAddr = %q", h.SelfAddr)
+	if h.GetSelfAddr() != "127.0.0.1:9967" {
+		t.Fatalf("SelfAddr = %q", h.GetSelfAddr())
 	}
 }
 

@@ -352,7 +352,7 @@ func TestFlowRawRequest(t *testing.T) {
 func TestFlowBodyDownload(t *testing.T) {
 	h, s, _ := newHub(t)
 	payload := `{"large":true}`
-	hash, n := h.storeBody([]byte(payload))
+	hash, n := (&projectAPI{h}).storeBody([]byte(payload))
 	id, _ := s.InsertFlow(&store.Flow{
 		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "x.com", Path: "/api",
 		HTTPVersion: "HTTP/1.1", Status: 200, Mime: "application/json",

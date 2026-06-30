@@ -20,7 +20,7 @@ type readinessReport struct {
 	Blockers []string         `json:"blockers"`
 }
 
-func (h *Hub) buildReadiness() readinessReport {
+func (h *authzAPI) buildReadiness() readinessReport {
 	var rep readinessReport
 	add := func(id string, ok bool, detail, fix string) {
 		rep.Checks = append(rep.Checks, readinessCheck{ID: id, OK: ok, Detail: detail, Fix: fix})
@@ -91,7 +91,7 @@ func (h *Hub) buildReadiness() readinessReport {
 	return rep
 }
 
-func (h *Hub) getReadiness(w http.ResponseWriter, r *http.Request) {
+func (h *authzAPI) getReadiness(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.buildReadiness())
 }
 

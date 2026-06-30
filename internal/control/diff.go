@@ -249,7 +249,7 @@ func renderDiffText(d flowDiff) string {
 // diffFlows is the REST handler for GET /api/flows/diff?a=<id>&b=<id>. It loads
 // both flows, caps each response body at maxBytes, computes the diff, and
 // returns it as JSON. ?format=text returns the rendered text block instead.
-func (h *Hub) diffFlows(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) diffFlows(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	aID, okA := parseFlowIDParam(q.Get("a"))
 	bID, okB := parseFlowIDParam(q.Get("b"))
@@ -289,7 +289,7 @@ func (h *Hub) diffFlows(w http.ResponseWriter, r *http.Request) {
 
 // buildFlowDiff loads + decodes both flows' response bodies (capped at max) and
 // returns their diff. Shared by the REST handler and any internal caller.
-func (h *Hub) buildFlowDiff(fa, fb *store.Flow, max int) flowDiff {
+func (h *flowAPI) buildFlowDiff(fa, fb *store.Flow, max int) flowDiff {
 	_, bodyA := decodeForDisplay(fa.ResHeaders, h.bodyBytes(fa.ResBodyHash))
 	_, bodyB := decodeForDisplay(fb.ResHeaders, h.bodyBytes(fb.ResBodyHash))
 	truncated := false

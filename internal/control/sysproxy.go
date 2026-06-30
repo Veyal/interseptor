@@ -9,7 +9,7 @@ import (
 	"github.com/Veyal/interceptor/internal/sysproxy"
 )
 
-func (h *Hub) getSysProxy(w http.ResponseWriter, r *http.Request) {
+func (h *settingsAPI) getSysProxy(w http.ResponseWriter, r *http.Request) {
 	enabled, _ := sysproxy.Status()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"supported": sysproxy.Supported(),
@@ -18,7 +18,7 @@ func (h *Hub) getSysProxy(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) setSysProxy(w http.ResponseWriter, r *http.Request) {
+func (h *settingsAPI) setSysProxy(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}

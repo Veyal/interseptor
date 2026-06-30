@@ -1,13 +1,13 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor } from './core.js';
+import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 export async function loadOob(){
-  try{const d=await api('/api/oob/state');
-    if(document.activeElement!==$('#oobBase'))$('#oobBase').value=d.baseUrl||'';
-    renderOobList(d.interactions||[]);
-  }catch(e){}
+  const d=await apiTry('/api/oob/state',{},{toastOnError:false});
+  if(!d)return;
+  if(document.activeElement!==$('#oobBase'))$('#oobBase').value=d.baseUrl||'';
+  renderOobList(d.interactions||[]);
 }
 function renderOobList(list){
   const c=$('#oobCount');if(c)c.textContent=list.length?list.length+' interaction'+(list.length===1?'':'s'):'';
@@ -326,16 +326,16 @@ export async function renderAsScopePanel(){
   }catch(e){const el=$('#asScopeHosts');if(el)el.textContent='';}
 }
 export async function loadActive(){
-  try{const d=await api('/api/activescan');renderActive(d);}catch(e){}
+  const d=await apiTry('/api/activescan',{},{toastOnError:false,label:'Active scan'});
+  if(d)renderActive(d);
 }
 let asHistoryFlows=[];
 async function loadAsHistory(){
-  try{
-    const d=await api('/api/activescan/history?limit=200');
-    asHistoryFlows=d.flows||[];
-    const st=await api('/api/activescan').catch(()=>null);
-    if(st)renderAsLogs(st);
-  }catch(e){}
+  const d=await apiTry('/api/activescan/history?limit=200',{},{toastOnError:false,label:'Active scan history'});
+  if(!d)return;
+  asHistoryFlows=d.flows||[];
+  const st=await apiTry('/api/activescan',{},{toastOnError:false});
+  if(st)renderAsLogs(st);
 }
 function renderAsLogs(d){
   const box=$('#asLogs'),cnt=$('#asLogCount');

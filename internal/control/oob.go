@@ -9,7 +9,7 @@ import (
 
 // oobBase returns the configured public base URL for OOB payloads, falling back
 // to this request's own origin (loopback — fine for local self-testing only).
-func (h *Hub) oobBase(r *http.Request) string {
+func (h *oobAPI) oobBase(r *http.Request) string {
 	base, _, _ := h.st.GetSetting("oob.baseUrl")
 	if base == "" {
 		base = "http://" + r.Host + "/oob"
@@ -19,7 +19,7 @@ func (h *Hub) oobBase(r *http.Request) string {
 
 // oobCatch records a blind out-of-band callback. It is public (the security guard
 // lets /oob/ through) and only stores request metadata, returning a tiny response.
-func (h *Hub) oobCatch(w http.ResponseWriter, r *http.Request) {
+func (h *oobAPI) oobCatch(w http.ResponseWriter, r *http.Request) {
 	if !h.oobEnabled() {
 		http.NotFound(w, r)
 		return
@@ -36,7 +36,7 @@ func (h *Hub) oobCatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // oobState returns the current base URL and recorded interactions.
-func (h *Hub) oobState(w http.ResponseWriter, r *http.Request) {
+func (h *oobAPI) oobState(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfOOBDisabled(w) {
 		return
 	}
@@ -47,7 +47,7 @@ func (h *Hub) oobState(w http.ResponseWriter, r *http.Request) {
 }
 
 // oobNew mints a fresh token and returns a ready-to-paste payload URL.
-func (h *Hub) oobNew(w http.ResponseWriter, r *http.Request) {
+func (h *oobAPI) oobNew(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfOOBDisabled(w) {
 		return
 	}
@@ -56,7 +56,7 @@ func (h *Hub) oobNew(w http.ResponseWriter, r *http.Request) {
 }
 
 // oobSetBase persists the public base URL (operator sets a target-reachable host).
-func (h *Hub) oobSetBase(w http.ResponseWriter, r *http.Request) {
+func (h *oobAPI) oobSetBase(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfOOBDisabled(w) {
 		return
 	}
@@ -74,7 +74,7 @@ func (h *Hub) oobSetBase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"baseUrl": h.oobBase(r)})
 }
 
-func (h *Hub) oobClear(w http.ResponseWriter, r *http.Request) {
+func (h *oobAPI) oobClear(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfOOBDisabled(w) {
 		return
 	}

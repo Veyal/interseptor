@@ -109,12 +109,12 @@ func parseSuggestedID(s string) string {
 	return ""
 }
 
-func (h *Hub) checksReference(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) checksReference(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"markdown": string(checksReferenceMD)})
 }
 
 // aiChecksGenerate turns a plain-text description into Starlark check source (compile-validated).
-func (h *Hub) aiChecksGenerate(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiChecksGenerate(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}

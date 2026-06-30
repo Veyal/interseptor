@@ -46,7 +46,8 @@ func TestAgentGetFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, summary, ok := h.agentGetFlow(map[string]any{"id": float64(id), "side": "both", "maxBytes": 2000})
+	ai := &aiAPI{h}
+	out, summary, ok := ai.agentGetFlow(map[string]any{"id": float64(id), "side": "both", "maxBytes": 2000})
 	if !ok || summary == "" {
 		t.Fatalf("get_flow failed: ok=%v summary=%q out=%q", ok, summary, out)
 	}
@@ -78,7 +79,8 @@ func TestAgentSendRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, ok := h.agentSendRequest(map[string]any{
+	ai := &aiAPI{h}
+	out, _, ok := ai.agentSendRequest(map[string]any{
 		"method": "GET",
 		"url":    target.URL + "/probe",
 	}, seed)
@@ -92,7 +94,8 @@ func TestAgentSendRequest(t *testing.T) {
 
 func TestExecAgentToolUnknown(t *testing.T) {
 	h, _, _ := newHub(t)
-	out, _, ok := h.execAgentTool(aiassist.ToolCall{Name: "nope"}, nil)
+	ai := &aiAPI{h}
+	out, _, ok := ai.execAgentTool(aiassist.ToolCall{Name: "nope"}, nil)
 	if ok || !strings.Contains(out, "unknown tool") {
 		t.Fatalf("expected unknown tool error, got ok=%v out=%q", ok, out)
 	}

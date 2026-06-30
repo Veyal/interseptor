@@ -33,6 +33,7 @@ import (
 	"github.com/Veyal/interceptor/internal/scope"
 	"github.com/Veyal/interceptor/internal/sender"
 	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interceptor/internal/strutil"
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
 
@@ -53,7 +54,7 @@ type Hub struct {
 	ca     *tlsca.CA
 	rebind     Rebinder // proxy listener
 	ctrlRebind Rebinder // control UI/API listener
-	// SyncSelfPorts updates proxy SelfPorts and hub SelfAddr after a listener rebind.
+	// SyncSelfPorts updates proxy SelfPorts and hub control address after a listener rebind.
 	SyncSelfPorts func()
 	snd    *sender.Sender
 	intr   *intruder.Engine
@@ -79,9 +80,9 @@ type Hub struct {
 	// typically ~/.interceptor/active-checks). Set by cmd.
 	ActiveChecksDir string
 
-	// SelfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
+	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
 	// cmd; the active scanner refuses to target it, so it never attacks its own API.
-	SelfAddr string
+	selfAddr atomic.Pointer[string]
 
 	// ProjectName/ProjectDir identify the active project (Burp-style). Set by cmd;
 	// surfaced at GET /api/version so the UI can show which project is loaded.
@@ -173,157 +174,6 @@ func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
 	srv.ServeHTTP(w, r)
 }
 
-func (h *Hub) routes() {
-	h.mux.HandleFunc("GET /api/flows", h.listFlows)
-	h.mux.HandleFunc("GET /api/flows/inscope", h.trafficInScope)
-	h.mux.HandleFunc("GET /api/params", h.listParams)
-	h.mux.HandleFunc("GET /api/flows/{id}", h.getFlow)
-	h.mux.HandleFunc("GET /api/flows/{id}/raw", h.getFlowRaw)
-	h.mux.HandleFunc("GET /api/flows/{id}/body", h.getFlowBody)
-	h.mux.HandleFunc("GET /api/flows/{id}/ws", h.flowWS)
-	h.mux.HandleFunc("GET /api/flows/{id}/analyze", h.analyzeFlow)
-	h.mux.HandleFunc("GET /api/flows/{id}/curl", h.flowCurl)
-	h.mux.HandleFunc("GET /api/flows/diff", h.diffFlows)
-	h.mux.HandleFunc("PUT /api/flows/{id}/note", h.setFlowNote)
-	h.mux.HandleFunc("PUT /api/flows/{id}/tags", h.setFlowTags)
-	h.mux.HandleFunc("POST /api/flows/tags", h.addFlowTagsBulk)
-	h.mux.HandleFunc("GET /api/tags", h.listTags)
-	h.mux.HandleFunc("PUT /api/tags/{tag}/color", h.setTagColor)
-	h.mux.HandleFunc("POST /api/flows/delete", h.deleteFlows)
-	h.mux.HandleFunc("POST /api/flows/purge", h.purgeFlows)
-	h.mux.HandleFunc("POST /api/flows/gc", h.gcBodies)
-	h.mux.HandleFunc("GET /api/hosts/stats", h.hostStats)
-	h.mux.HandleFunc("GET /api/endpoints", h.listEndpoints)
-	h.mux.HandleFunc("GET /api/notes", h.getNotes)
-	h.mux.HandleFunc("PUT /api/notes", h.putNotes)
-	h.mux.HandleFunc("POST /api/notes/images", h.postNotesImage)
-	h.mux.HandleFunc("GET /api/notes/images/{id}", h.getNotesImage)
-	h.mux.HandleFunc("GET /api/rules", h.listRules)
-	h.mux.HandleFunc("POST /api/rules", h.createRule)
-	h.mux.HandleFunc("PUT /api/rules/{id}", h.updateRule)
-	h.mux.HandleFunc("DELETE /api/rules/{id}", h.deleteRule)
-	h.mux.HandleFunc("GET /api/intercept", h.getIntercept)
-	h.mux.HandleFunc("GET /api/intercept/held/{id}/raw", h.getInterceptHeldRaw)
-	h.mux.HandleFunc("POST /api/intercept/toggle", h.toggleIntercept)
-	h.mux.HandleFunc("POST /api/intercept/filter", h.setInterceptFilter)
-	h.mux.HandleFunc("POST /api/intercept/{id}/forward", h.forwardIntercept)
-	h.mux.HandleFunc("POST /api/intercept/{id}/drop", h.dropIntercept)
-	h.mux.HandleFunc("POST /api/intercept/response/toggle", h.toggleResponseIntercept)
-	h.mux.HandleFunc("POST /api/intercept/response/{id}/forward", h.forwardResponse)
-	h.mux.HandleFunc("POST /api/intercept/response/{id}/drop", h.dropResponse)
-	h.mux.HandleFunc("GET /api/settings", h.getSettings)
-	h.mux.HandleFunc("PUT /api/settings", h.putSettings)
-	h.mux.HandleFunc("GET /api/sysproxy", h.getSysProxy)
-	h.mux.HandleFunc("POST /api/sysproxy", h.setSysProxy)
-	h.mux.HandleFunc("GET /api/android/status", h.getAndroidStatus)
-	h.mux.HandleFunc("POST /api/android/proxy", h.postAndroidProxy)
-	h.mux.HandleFunc("POST /api/android/unproxy", h.postAndroidUnproxy)
-	h.mux.HandleFunc("POST /api/android/install-ca", h.postAndroidInstallCA)
-	h.mux.HandleFunc("POST /api/android/setup", h.postAndroidSetup)
-	h.mux.HandleFunc("GET /api/session", h.getSession)
-	h.mux.HandleFunc("POST /api/session", h.setSession)
-	h.mux.HandleFunc("POST /api/session/login/run", h.runLoginMacro)
-	h.mux.HandleFunc("POST /api/session/login/test", h.testLoginMacro)
-	h.mux.HandleFunc("POST /api/session/login/from-flow/{id}", h.loginMacroFromFlow)
-	h.mux.HandleFunc("POST /api/ai/notes/organize", h.aiNotesOrganize)
-	h.mux.HandleFunc("POST /api/ai/notes/organize/stream", h.aiNotesOrganizeStream)
-	h.mux.HandleFunc("POST /api/ai/checks/generate", h.aiChecksGenerate)
-	h.mux.HandleFunc("POST /api/ai/assist", h.aiAssist)
-	h.mux.HandleFunc("POST /api/ai/assist/stream", h.aiAssistStream)
-	h.mux.HandleFunc("POST /api/ai/actions", h.aiActions)
-	h.mux.HandleFunc("GET /api/ai/openrouter/models", h.aiOpenRouterModels)
-	h.mux.HandleFunc("GET /api/ca.crt", h.getCA)
-	h.mux.HandleFunc("POST /api/repeater/send", h.repeaterSend)
-	h.mux.HandleFunc("GET /api/repeater/history", h.repeaterHistory)
-	h.mux.HandleFunc("POST /api/intruder/start", h.intruderStart)
-	h.mux.HandleFunc("GET /api/intruder/state", h.intruderState)
-	h.mux.HandleFunc("/oob/", h.oobCatch) // public: blind callbacks land here (guard-bypassed)
-	h.mux.HandleFunc("GET /api/oob/state", h.oobState)
-	h.mux.HandleFunc("POST /api/oob/new", h.oobNew)
-	h.mux.HandleFunc("POST /api/oob/base", h.oobSetBase)
-	h.mux.HandleFunc("DELETE /api/oob/interactions", h.oobClear)
-	h.mux.HandleFunc("GET /api/authz", h.getAuthz)
-	h.mux.HandleFunc("POST /api/authz", h.setAuthz)
-	h.mux.HandleFunc("GET /api/readiness", h.getReadiness)
-	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", h.authzFlowAuth)
-	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", h.authzPromoteFromFlow)
-	h.mux.HandleFunc("POST /api/authz/check-sessions", h.authzCheckSessions)
-	h.mux.HandleFunc("POST /api/authz/run", h.authzRun)
-	h.mux.HandleFunc("POST /api/authz/cross-host-replay", h.authzCrossHostReplay)
-	h.mux.HandleFunc("POST /api/discovery/start", h.discoveryStart)
-	h.mux.HandleFunc("POST /api/discovery/stop", h.discoveryStop)
-	h.mux.HandleFunc("GET /api/discovery/state", h.discoveryStateHandler)
-	h.mux.HandleFunc("GET /api/discovery/wordlist", h.discoveryWordlist)
-	h.mux.HandleFunc("GET /api/discovery/seeds", h.discoverySeeds)
-	h.mux.HandleFunc("GET /api/discovery/suggest", h.discoverySuggest)
-	h.mux.HandleFunc("GET /api/discovery/scope-targets", h.discoveryScopeTargets)
-	h.mux.HandleFunc("POST /api/discovery/inspect", h.discoveryInspect)
-	h.mux.HandleFunc("POST /api/scanner/run", h.scannerRun)
-	h.mux.HandleFunc("GET /api/scanner/issues", h.scannerIssues)
-	h.mux.HandleFunc("GET /api/scanner/report", h.scannerReport)
-	h.mux.HandleFunc("GET /api/findings", h.listFindings)
-	h.mux.HandleFunc("GET /api/findings/report", h.findingsReport)
-	h.mux.HandleFunc("POST /api/findings", h.createFinding)
-	h.mux.HandleFunc("GET /api/findings/{id}", h.getFinding)
-	h.mux.HandleFunc("PATCH /api/findings/{id}", h.updateFinding)
-	h.mux.HandleFunc("DELETE /api/findings/{id}", h.deleteFinding)
-	h.mux.HandleFunc("POST /api/findings/{id}/flows", h.attachFindingFlow)
-	h.mux.HandleFunc("DELETE /api/findings/{id}/flows/{flowId}", h.detachFindingFlow)
-	h.mux.HandleFunc("GET /api/checks", h.listChecks)
-	h.mux.HandleFunc("PUT /api/checks/disabled", h.setChecksDisabled)
-	h.mux.HandleFunc("GET /api/checks/reference", h.checksReference)
-	h.mux.HandleFunc("POST /api/checks/test", h.testCheck)
-	h.mux.HandleFunc("GET /api/checks/{id}", h.getCheck)
-	h.mux.HandleFunc("PUT /api/checks/{id}", h.saveCheck)
-	h.mux.HandleFunc("DELETE /api/checks/{id}", h.deleteCheck)
-	// Custom ACTIVE checks (user-authored Starlark probes) — same CRUD + test shape.
-	h.mux.HandleFunc("GET /api/active-checks", h.listActiveChecks)
-	h.mux.HandleFunc("POST /api/active-checks/test", h.testActiveCheck)
-	h.mux.HandleFunc("GET /api/active-checks/{id}", h.getActiveCheck)
-	h.mux.HandleFunc("PUT /api/active-checks/{id}", h.saveActiveCheck)
-	h.mux.HandleFunc("DELETE /api/active-checks/{id}", h.deleteActiveCheck)
-	h.mux.HandleFunc("POST /api/ws/send", h.wsSend)
-	h.mux.HandleFunc("POST /api/decode", h.decode)
-	h.mux.HandleFunc("GET /api/activescan", h.asGet)
-	h.mux.HandleFunc("GET /api/activescan/history", h.activescanHistory)
-	h.mux.HandleFunc("POST /api/activescan/arm", h.asArm)
-	h.mux.HandleFunc("POST /api/activescan/start", h.asStart)
-	h.mux.HandleFunc("POST /api/activescan/stop", h.asStop)
-	h.mux.HandleFunc("GET /api/keys", h.listKeys)
-	h.mux.HandleFunc("POST /api/keys", h.createKey)
-	h.mux.HandleFunc("DELETE /api/keys/{id}", h.deleteKey)
-	h.mux.HandleFunc("GET /api/version", h.apiVersion)
-	h.mux.HandleFunc("GET /api/activity", h.listActivity)
-	h.mux.HandleFunc("POST /api/activity", h.postActivity)
-	h.mux.HandleFunc("DELETE /api/activity", h.clearActivity)
-	h.mux.HandleFunc("POST /api/human-input", h.createHumanInput)
-	h.mux.HandleFunc("GET /api/human-input", h.listHumanInput)
-	h.mux.HandleFunc("GET /api/human-input/{id}", h.getHumanInput)
-	h.mux.HandleFunc("POST /api/human-input/{id}/respond", h.respondHumanInput)
-	h.mux.HandleFunc("GET /api/project", h.apiProject)
-	h.mux.HandleFunc("POST /api/project/switch", h.switchProject)
-	h.mux.HandleFunc("GET /api/reference", h.apiReference)
-	h.mux.HandleFunc("GET /api/mcp", h.apiMCP)
-	// Streamable-HTTP MCP transport: a remote/hosted agent can drive the engine
-	// over the control port without the `interceptor mcp` stdio subcommand.
-	h.mux.HandleFunc("POST /mcp", h.handleMCP)
-	h.mux.HandleFunc("GET /mcp", h.handleMCP)
-	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)
-	h.mux.HandleFunc("GET /api/export/har", h.exportHAR)
-	h.mux.HandleFunc("POST /api/import/har", h.importHAR)
-	h.mux.HandleFunc("GET /api/export/project", h.exportProject)
-	h.mux.HandleFunc("POST /api/import/project", h.importProject)
-	h.mux.HandleFunc("GET /api/views", h.listViews)
-	h.mux.HandleFunc("POST /api/views", h.createView)
-	h.mux.HandleFunc("DELETE /api/views/{id}", h.deleteView)
-	h.mux.HandleFunc("GET /api/scope", h.listScope)
-	h.mux.HandleFunc("POST /api/scope", h.createScope)
-	h.mux.HandleFunc("PUT /api/scope/{id}", h.updateScope)
-	h.mux.HandleFunc("DELETE /api/scope/{id}", h.deleteScope)
-	h.mux.HandleFunc("GET /api/events", h.handleEvents)
-	h.mux.HandleFunc("/", h.serveUI)
-}
-
 // ---- DTOs ----
 
 type flowJSON struct {
@@ -410,7 +260,7 @@ func toFlowJSON(f *store.Flow) flowJSON {
 // setFlowNote attaches (or clears, with an empty string) a free-text note on a
 // flow — used by the inspector's Notes field and the MCP set_note tool. The
 // change is broadcast so every connected client updates the row and open detail.
-func (h *Hub) setFlowNote(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -438,7 +288,7 @@ var reTagColor = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
 
 // broadcastFlowTags reloads a flow (with tags) and pushes it to clients so the row
 // chips update live.
-func (h *Hub) broadcastFlowTags(id int64) {
+func (h *flowAPI) broadcastFlowTags(id int64) {
 	if f, err := h.st.GetFlow(id); err == nil {
 		_ = h.st.AttachTags([]*store.Flow{f})
 		h.FlowUpdated(f)
@@ -447,7 +297,7 @@ func (h *Hub) broadcastFlowTags(id int64) {
 
 // setFlowTags replaces a flow's tag set ({"tags":[...]}). Used by the inspector and
 // the right-click "Tag…" action.
-func (h *Hub) setFlowTags(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) setFlowTags(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -472,7 +322,7 @@ func (h *Hub) setFlowTags(w http.ResponseWriter, r *http.Request) {
 
 // addFlowTagsBulk adds or removes tags on many flows at once
 // ({"flowIds":[...],"add":[...],"remove":[...]}) — for tagging a multi-selection from History.
-func (h *Hub) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowIDs []int64  `json:"flowIds"`
 		Add     []string `json:"add"`
@@ -514,7 +364,7 @@ func (h *Hub) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 }
 
 // listTags returns every tag in use with flow counts and colors.
-func (h *Hub) listTags(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) listTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.st.DistinctTags()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -524,7 +374,7 @@ func (h *Hub) listTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // setTagColor sets (or clears) a tag's display color ({"color":"#rrggbb"}).
-func (h *Hub) setTagColor(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
 	var in struct {
 		Color string `json:"color"`
@@ -552,7 +402,7 @@ func (h *Hub) setTagColor(w http.ResponseWriter, r *http.Request) {
 // SQL placeholder string; no legitimate UI action targets this many at once.
 const maxBulkItems = 100000
 
-func (h *Hub) deleteFlows(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) deleteFlows(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		IDs []int64 `json:"ids"`
 	}
@@ -583,7 +433,7 @@ const maxEndpointList = 12000
 // listEndpoints returns the unique-endpoint map for the attack-surface view —
 // proxied/manual traffic aggregated by (host, method, path); bulk attack traffic
 // (Intruder / active scan) is excluded as noise.
-func (h *Hub) listEndpoints(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := store.EndpointFilter{
 		Host:          q.Get("host"),
@@ -662,7 +512,7 @@ func parseFlowSortQuery(q url.Values) (key string, dir int) {
 	return key, dir
 }
 
-func (h *Hub) listFlows(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := atoiOr(q.Get("limit"), 200)
 	if limit < 1 || limit > 5000 {
@@ -793,7 +643,7 @@ func (h *Hub) loadFlow(w http.ResponseWriter, r *http.Request) (*store.Flow, boo
 	return f, true
 }
 
-func (h *Hub) getFlow(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) getFlow(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return
@@ -809,7 +659,7 @@ func (h *Hub) getFlow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) getFlowRaw(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return
@@ -825,7 +675,7 @@ func (h *Hub) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 // getFlowBody streams just the (decoded) body bytes with Content-Type and a
 // filename extension derived from the MIME type — for downloads when the UI
 // won't render the payload inline.
-func (h *Hub) getFlowBody(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return
@@ -903,7 +753,7 @@ func (h *Hub) rawResponse(f *store.Flow) []byte {
 	return b.Bytes()
 }
 
-func (h *Hub) flowWS(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) flowWS(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -935,7 +785,7 @@ func (h *Hub) bodyBytes(hash string) []byte {
 
 // ---- Rules ----
 
-func (h *Hub) listRules(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) listRules(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.st.ListRules()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -948,7 +798,7 @@ func (h *Hub) listRules(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"rules": out})
 }
 
-func (h *Hub) createRule(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	var in ruleJSON
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -968,7 +818,7 @@ func (h *Hub) createRule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, in)
 }
 
-func (h *Hub) updateRule(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -991,7 +841,7 @@ func (h *Hub) updateRule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, in)
 }
 
-func (h *Hub) deleteRule(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) deleteRule(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -1089,7 +939,7 @@ func (h *Hub) interceptStateWithRaw(includeRaw bool) interceptJSON {
 	return out
 }
 
-func (h *Hub) getInterceptHeldRaw(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) getInterceptHeldRaw(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1118,11 +968,11 @@ func (h *Hub) getInterceptHeldRaw(w http.ResponseWriter, r *http.Request) {
 	httpErr(w, http.StatusNotFound, "not held")
 }
 
-func (h *Hub) getIntercept(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) getIntercept(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 
-func (h *Hub) toggleIntercept(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1135,13 +985,15 @@ func (h *Hub) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.eng.SetEnabled(in.Enabled)
-	_ = h.st.SetSetting("intercept.enabled", boolToFlag(in.Enabled))
+	if !h.persistSetting(w, "intercept.enabled", boolToFlag(in.Enabled)) {
+		return
+	}
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 
 // setInterceptFilter configures the conditional-intercept regex filter and
 // persists it so the choice survives restarts.
-func (h *Hub) setInterceptFilter(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) setInterceptFilter(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1164,13 +1016,19 @@ func (h *Hub) setInterceptFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enabled, target, pattern := h.eng.InterceptFilter()
-	_ = h.st.SetSetting("intercept.filter.enabled", boolToFlag(enabled))
-	_ = h.st.SetSetting("intercept.filter.target", target)
-	_ = h.st.SetSetting("intercept.filter.pattern", pattern)
+	if !h.persistSetting(w, "intercept.filter.enabled", boolToFlag(enabled)) {
+		return
+	}
+	if !h.persistSetting(w, "intercept.filter.target", target) {
+		return
+	}
+	if !h.persistSetting(w, "intercept.filter.pattern", pattern) {
+		return
+	}
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 
-func (h *Hub) forwardIntercept(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1194,7 +1052,7 @@ func (h *Hub) forwardIntercept(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Hub) dropIntercept(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) dropIntercept(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1211,7 +1069,7 @@ func (h *Hub) dropIntercept(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Hub) toggleResponseIntercept(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) toggleResponseIntercept(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1227,7 +1085,7 @@ func (h *Hub) toggleResponseIntercept(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 
-func (h *Hub) forwardResponse(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) forwardResponse(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1251,7 +1109,7 @@ func (h *Hub) forwardResponse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Hub) dropResponse(w http.ResponseWriter, r *http.Request) {
+func (h *interceptAPI) dropResponse(w http.ResponseWriter, r *http.Request) {
 	if h.eng == nil {
 		httpErr(w, http.StatusNotImplemented, "intercept unavailable")
 		return
@@ -1280,12 +1138,23 @@ func (h *Hub) currentProxyAddr() string {
 	return "127.0.0.1:8080"
 }
 
+func (h *Hub) SetSelfAddr(addr string) {
+	h.selfAddr.Store(&addr)
+}
+
+func (h *Hub) GetSelfAddr() string {
+	if p := h.selfAddr.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
 func (h *Hub) currentControlAddr() string {
 	if h.ctrlRebind != nil {
 		return h.ctrlRebind.Addr()
 	}
-	if h.SelfAddr != "" {
-		return h.SelfAddr
+	if addr := h.GetSelfAddr(); addr != "" {
+		return addr
 	}
 	if v, ok, _ := h.st.GetSetting("control.addr"); ok && v != "" {
 		return v
@@ -1293,7 +1162,7 @@ func (h *Hub) currentControlAddr() string {
 	return "127.0.0.1:9966"
 }
 
-func (h *Hub) getSettings(w http.ResponseWriter, r *http.Request) {
+func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
 	aiProvider, _, _ := h.st.GetSetting("ai.provider")
 	if aiProvider == "" {
@@ -1325,7 +1194,15 @@ func (h *Hub) getSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
+func (h *Hub) persistSetting(w http.ResponseWriter, key, val string) bool {
+	if err := h.st.SetSetting(key, val); err != nil {
+		httpErr(w, http.StatusInternalServerError, "failed to save setting: "+err.Error())
+		return false
+	}
+	return true
+}
+
+func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProxyAddr                string  `json:"proxyAddr"`
 		ControlAddr              string  `json:"controlAddr"`
@@ -1373,20 +1250,28 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if in.AiProvider != nil {
-		_ = h.st.SetSetting("ai.provider", *in.AiProvider)
+		if !h.persistSetting(w, "ai.provider", *in.AiProvider) {
+			return
+		}
 	}
 	if in.AiApiKey != nil {
-		_ = h.st.SetSetting("ai.apiKey", *in.AiApiKey)
+		if !h.persistSetting(w, "ai.apiKey", *in.AiApiKey) {
+			return
+		}
 	}
 	if in.AiModel != nil {
-		_ = h.st.SetSetting("ai.model", *in.AiModel)
+		if !h.persistSetting(w, "ai.model", *in.AiModel) {
+			return
+		}
 	}
 	if in.AiDisabled != nil {
 		v := "0"
 		if *in.AiDisabled {
 			v = "1"
 		}
-		_ = h.st.SetSetting("ai.disabled", v)
+		if !h.persistSetting(w, "ai.disabled", v) {
+			return
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.OobEnabled != nil {
@@ -1394,7 +1279,9 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		if *in.OobEnabled {
 			v = "1"
 		}
-		_ = h.st.SetSetting("oob.enabled", v)
+		if !h.persistSetting(w, "oob.enabled", v) {
+			return
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.CaptureScopeOnly != nil {
@@ -1402,7 +1289,9 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		if *in.CaptureScopeOnly {
 			v = "1"
 		}
-		_ = h.st.SetSetting("capture.scopeOnly", v)
+		if !h.persistSetting(w, "capture.scopeOnly", v) {
+			return
+		}
 		if h.SetCaptureScopeOnly != nil {
 			h.SetCaptureScopeOnly(*in.CaptureScopeOnly)
 		}
@@ -1413,7 +1302,9 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 		if *in.SuppressBrowserTelemetry {
 			v = "1"
 		}
-		_ = h.st.SetSetting("capture.suppressBrowserTelemetry", v)
+		if !h.persistSetting(w, "capture.suppressBrowserTelemetry", v) {
+			return
+		}
 		if h.SetSuppressBrowserTelemetry != nil {
 			h.SetSuppressBrowserTelemetry(*in.SuppressBrowserTelemetry)
 		}
@@ -1433,7 +1324,9 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		_ = h.st.SetSetting("proxy.addr", in.ProxyAddr)
+		if !h.persistSetting(w, "proxy.addr", in.ProxyAddr) {
+			return
+		}
 		if h.SyncSelfPorts != nil {
 			h.SyncSelfPorts()
 		}
@@ -1450,8 +1343,10 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		h.SelfAddr = in.ControlAddr
-		_ = h.st.SetSetting("control.addr", in.ControlAddr)
+		h.SetSelfAddr(in.ControlAddr)
+		if !h.persistSetting(w, "control.addr", in.ControlAddr) {
+			return
+		}
 		if h.SyncSelfPorts != nil {
 			h.SyncSelfPorts()
 		}
@@ -1464,13 +1359,15 @@ func (h *Hub) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		_ = h.st.SetSetting("upstream.proxy", *in.UpstreamProxy)
+		if !h.persistSetting(w, "upstream.proxy", *in.UpstreamProxy) {
+			return
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	h.getSettings(w, r)
 }
 
-func (h *Hub) getCA(w http.ResponseWriter, r *http.Request) {
+func (h *settingsAPI) getCA(w http.ResponseWriter, r *http.Request) {
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return
@@ -1557,15 +1454,7 @@ func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {
 	}
 }
 
-func atoiOr(s string, def int) int {
-	if s == "" {
-		return def
-	}
-	if n, err := strconv.Atoi(s); err == nil {
-		return n
-	}
-	return def
-}
+func atoiOr(s string, def int) int { return strutil.AtoiOr(s, def) }
 
 func orVal(s, def string) string {
 	if s == "" {

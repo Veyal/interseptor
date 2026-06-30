@@ -4,7 +4,6 @@
 package sender
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -13,13 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Veyal/interceptor/internal/capture"
+	"github.com/Veyal/interceptor/internal/httplines"
 	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interceptor/internal/strutil"
 )
 
 // Request describes a request to send.
@@ -105,7 +105,7 @@ func (s *Sender) macroToken() (token, name, mode string) {
 	if err != nil {
 		return "", "", ""
 	}
-	method, path, headers, body, err := parseRawRequest(m.Request)
+	method, path, headers, body, err := httplines.ParseRawRequest(m.Request)
 	if err != nil {
 		return "", "", ""
 	}
@@ -146,36 +146,6 @@ func (s *Sender) macroToken() (token, name, mode string) {
 		mode = "header"
 	}
 	return mt[1], m.InjectName, mode
-}
-
-// parseRawRequest parses a raw HTTP request (request line + headers + body after a
-// blank line). Content-Length is dropped (recomputed by the client).
-func parseRawRequest(raw string) (method, path string, headers map[string][]string, body []byte, err error) {
-	norm := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\n", "\r\n")
-	head := norm
-	var bodyStr string
-	if i := strings.Index(norm, "\r\n\r\n"); i >= 0 {
-		head, bodyStr = norm[:i]+"\r\n\r\n", norm[i+4:]
-	} else {
-		head = strings.TrimRight(norm, "\r\n") + "\r\n\r\n"
-	}
-	req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(head)))
-	if err != nil {
-		return "", "", nil, nil, err
-	}
-	h := req.Header.Clone()
-	if h == nil {
-		h = http.Header{}
-	}
-	h.Del("Content-Length")
-	if req.Host != "" {
-		h.Set("Host", req.Host)
-	}
-	p := req.URL.RequestURI()
-	if p == "" {
-		p = "/"
-	}
-	return req.Method, p, h, []byte(bodyStr), nil
 }
 
 // SetSession configures the session headers auto-applied to outgoing sends.
@@ -263,7 +233,7 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	if method == "" {
 		method = http.MethodGet
 	}
-	port := atoiOr(u.Port(), defaultPort(u.Scheme))
+	port := strutil.AtoiOr(u.Port(), defaultPort(u.Scheme))
 	scopeOK := !r.NoSession && s.sessionAllowed(u.Hostname(), u.Scheme, port, u.Path)
 
 	// Token macro: fetch a fresh value (e.g. CSRF) and inject it. Placeholder mode
@@ -415,12 +385,3 @@ func defaultPort(scheme string) int {
 	return 80
 }
 
-func atoiOr(s string, def int) int {
-	if s == "" {
-		return def
-	}
-	if n, err := strconv.Atoi(s); err == nil {
-		return n
-	}
-	return def
-}

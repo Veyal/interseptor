@@ -55,7 +55,7 @@ type notesOrganizeReq struct {
 	Notes string `json:"notes"`
 }
 
-func (h *Hub) notesForOrganize(in notesOrganizeReq) (string, error) {
+func (h *aiAPI) notesForOrganize(in notesOrganizeReq) (string, error) {
 	notes := strings.TrimSpace(in.Notes)
 	if notes == "" {
 		var err error
@@ -94,7 +94,7 @@ func extractFencedMarkdown(s string) string {
 }
 
 // aiNotesOrganize returns reorganized markdown for the project notebook (non-streaming).
-func (h *Hub) aiNotesOrganize(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiNotesOrganize(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}
@@ -123,7 +123,7 @@ func (h *Hub) aiNotesOrganize(w http.ResponseWriter, r *http.Request) {
 }
 
 // aiNotesOrganizeStream streams reorganized markdown token-by-token as SSE.
-func (h *Hub) aiNotesOrganizeStream(w http.ResponseWriter, r *http.Request) {
+func (h *aiAPI) aiNotesOrganizeStream(w http.ResponseWriter, r *http.Request) {
 	if h.denyIfAIDisabled(w) {
 		return
 	}

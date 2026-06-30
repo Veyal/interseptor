@@ -16,7 +16,7 @@ func (h *Hub) SetUpdate(latest string, available bool) {
 
 // apiVersion reports the running version and (once the background check has run)
 // whether a newer release is available.
-func (h *Hub) apiVersion(w http.ResponseWriter, r *http.Request) {
+func (h *metaAPI) apiVersion(w http.ResponseWriter, r *http.Request) {
 	h.updMu.Lock()
 	latest, avail := h.updLatest, h.updAvail
 	h.updMu.Unlock()

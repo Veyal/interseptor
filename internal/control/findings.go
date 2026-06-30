@@ -59,7 +59,7 @@ func checkFindingBodySize(body, detail, evidence, fix string) string {
 // flows attached as PoC evidence — the human (or AI) selects them from History. The
 // AI records findings here as structured memory; the human reviews/curates them.
 
-func (h *Hub) listFindings(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	fs, err := h.st.ListFindings(q.Get("severity"), q.Get("status"))
 	if err != nil {
@@ -75,7 +75,7 @@ func (h *Hub) listFindings(w http.ResponseWriter, r *http.Request) {
 // findingsReport renders the curated findings (with PoC flows) as a downloadable
 // engagement report. Passive-scan issues are omitted by default; pass ?issues=1 to
 // append the passive-scan appendix. ?format=html returns a standalone HTML document.
-func (h *Hub) findingsReport(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	fs, err := h.st.ListFindings("", "")
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -100,7 +100,7 @@ func (h *Hub) findingsReport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Severity string  `json:"severity"`
 		Status   string  `json:"status"`
@@ -145,7 +145,7 @@ func (h *Hub) createFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *Hub) getFinding(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	f, err := h.st.GetFinding(id)
 	if err != nil {
@@ -155,7 +155,7 @@ func (h *Hub) getFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, f)
 }
 
-func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
 		Severity *string `json:"severity"`
@@ -204,7 +204,7 @@ func (h *Hub) updateFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *Hub) deleteFinding(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err := h.st.DeleteFinding(id); err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -217,7 +217,7 @@ func (h *Hub) deleteFinding(w http.ResponseWriter, r *http.Request) {
 // attachFindingFlow records a flow as PoC evidence for a finding.
 // Optional "position" (0-based block index) controls where the flow block is
 // inserted in the narrative body; omit or -1 to append at the end.
-func (h *Hub) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
 		FlowID   int64  `json:"flowId"`
@@ -245,7 +245,7 @@ func (h *Hub) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *Hub) detachFindingFlow(w http.ResponseWriter, r *http.Request) {
+func (h *findingsAPI) detachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	flowID, _ := strconv.ParseInt(r.PathValue("flowId"), 10, 64)
 	if err := h.st.DetachFlow(id, flowID); err != nil {

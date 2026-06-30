@@ -24,7 +24,7 @@ func TestCollectPathSeeds(t *testing.T) {
 	defer st.Close()
 	_, _ = st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "app.test", Path: "/admin/dashboard"})
 	_, _ = st.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "app.test", Path: "/api/v1/health"})
-	h := &Hub{st: st}
+	h := &discoveryAPI{&Hub{st: st}}
 	seeds := h.collectPathSeeds("app.test")
 	if len(seeds) < 4 {
 		t.Fatalf("expected several seeds, got %v", seeds)
@@ -38,7 +38,7 @@ func TestDiscoveryScopeTargets(t *testing.T) {
 	}
 	defer st.Close()
 	_, _ = st.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "acme.com", Enabled: true})
-	h := &Hub{st: st}
+	h := &discoveryAPI{&Hub{st: st}}
 	ts := httptest.NewServer(http.HandlerFunc(h.discoveryScopeTargets))
 	defer ts.Close()
 	resp, err := http.Get(ts.URL)

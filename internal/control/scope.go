@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Veyal/interceptor/internal/scope"
 	"github.com/Veyal/interceptor/internal/store"
 )
 
@@ -17,7 +18,7 @@ func (h *Hub) refreshScope() {
 	h.broadcast(map[string]any{"type": "scope.update"})
 }
 
-func (h *Hub) listScope(w http.ResponseWriter, r *http.Request) {
+func (h *scopeAPI) listScope(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.st.ListScopeRules()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -38,10 +39,14 @@ func validScope(w http.ResponseWriter, r store.ScopeRule) bool {
 		httpErr(w, http.StatusBadRequest, "a scope rule needs at least one of host/path/scheme/port")
 		return false
 	}
+	if err := scope.ValidateRule(r); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return false
+	}
 	return true
 }
 
-func (h *Hub) createScope(w http.ResponseWriter, r *http.Request) {
+func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 	var in store.ScopeRule
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -58,7 +63,7 @@ func (h *Hub) createScope(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, in)
 }
 
-func (h *Hub) updateScope(w http.ResponseWriter, r *http.Request) {
+func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
@@ -81,7 +86,7 @@ func (h *Hub) updateScope(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, in)
 }
 
-func (h *Hub) deleteScope(w http.ResponseWriter, r *http.Request) {
+func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")

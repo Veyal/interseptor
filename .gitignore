@@ -19,7 +19,4 @@
 # Local runtime data (created under ~/.interceptor by default; ignore if run in-tree)
 /.interceptor/
 
-# CI/release workflows are staged locally but not committed yet — pushing
-# .github/workflows/* needs a git token with the `workflow` scope. Re-enable
-# with: git add -f .github/workflows && git commit && git push
-/.github/
+# CI workflows live in .github/workflows/ (commit with git add -f if needed).

@@ -18,7 +18,7 @@ import (
 // and runs it against one injection point of a captured flow (sending real
 // probes) — the active twin of the passive /api/checks surface.
 
-func (h *Hub) listActiveChecks(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) listActiveChecks(w http.ResponseWriter, r *http.Request) {
 	checks := []activescript.Source{}
 	if h.ActiveChecksDir != "" {
 		if got := activescript.List(h.ActiveChecksDir); got != nil {
@@ -32,7 +32,7 @@ func (h *Hub) listActiveChecks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Hub) getActiveCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) getActiveCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if src, builtin, overridden, err := h.readActiveCheckSource(id); err == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -43,7 +43,7 @@ func (h *Hub) getActiveCheck(w http.ResponseWriter, r *http.Request) {
 	httpErr(w, http.StatusNotFound, "active check not found")
 }
 
-func (h *Hub) readActiveCheckSource(id string) (src string, builtin, overridden bool, err error) {
+func (h *checksAPI) readActiveCheckSource(id string) (src string, builtin, overridden bool, err error) {
 	if h.ActiveChecksDir != "" && activescript.Exists(h.ActiveChecksDir, id) {
 		src, err = activescript.Read(h.ActiveChecksDir, id)
 		return src, activescan.IsBuiltinID(id), activescan.IsBuiltinID(id), err
@@ -54,7 +54,7 @@ func (h *Hub) readActiveCheckSource(id string) (src string, builtin, overridden 
 	return "", false, false, os.ErrNotExist
 }
 
-func (h *Hub) saveActiveCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) saveActiveCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCheckSource))
 	var in struct{ Source string }
@@ -70,7 +70,7 @@ func (h *Hub) saveActiveCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "saved": true})
 }
 
-func (h *Hub) deleteActiveCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) deleteActiveCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := activescript.Delete(h.ActiveChecksDir, id); err != nil {
 		httpErr(w, http.StatusNotFound, err.Error())
@@ -84,7 +84,7 @@ func (h *Hub) deleteActiveCheck(w http.ResponseWriter, r *http.Request) {
 // injectable point of the given flow (or the latest in-scope flow). It sends real
 // probes (bounded to a handful) so the user can iterate before saving. A runtime
 // error is returned as 200 + {error} (never 500) to match the passive test path.
-func (h *Hub) testActiveCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) testActiveCheck(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCheckSource))
 	var in struct {
 		Source string `json:"source"`
@@ -140,7 +140,7 @@ func (h *Hub) testActiveCheck(w http.ResponseWriter, r *http.Request) {
 
 // resolveActiveTestFlow returns the requested flow, else the latest in-scope flow
 // that has an injectable point; nil if none.
-func (h *Hub) resolveActiveTestFlow(id int64) *store.Flow {
+func (h *checksAPI) resolveActiveTestFlow(id int64) *store.Flow {
 	if id > 0 {
 		f, err := h.st.GetFlow(id)
 		if err == nil {

@@ -13,7 +13,7 @@ import (
 
 // discoverySeeds returns path segments seen in captured history for a host —
 // passive wordlist seeding from traffic already in the store.
-func (h *Hub) discoverySeeds(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoverySeeds(w http.ResponseWriter, r *http.Request) {
 	host := strings.TrimSpace(r.URL.Query().Get("host"))
 	if host == "" {
 		httpErr(w, http.StatusBadRequest, "host required")
@@ -22,7 +22,7 @@ func (h *Hub) discoverySeeds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"paths": h.collectPathSeeds(host)})
 }
 
-func (h *Hub) collectPathSeeds(host string) []string {
+func (h *discoveryAPI) collectPathSeeds(host string) []string {
 	flows, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 		Host:         host,
 		Limit:        5000,
@@ -54,7 +54,7 @@ func pathSegments(p string) []string {
 }
 
 // discoveryScopeTargets lists base URLs from enabled include-scope rules.
-func (h *Hub) discoveryScopeTargets(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoveryScopeTargets(w http.ResponseWriter, r *http.Request) {
 	rules, _ := h.st.ListScopeRules()
 	seen := map[string]bool{}
 	var bases []string
@@ -79,7 +79,7 @@ func (h *Hub) discoveryScopeTargets(w http.ResponseWriter, r *http.Request) {
 }
 
 // discoverySuggest merges passive seeds with optional AI-ranked path guesses.
-func (h *Hub) discoverySuggest(w http.ResponseWriter, r *http.Request) {
+func (h *discoveryAPI) discoverySuggest(w http.ResponseWriter, r *http.Request) {
 	host := strings.TrimSpace(r.URL.Query().Get("host"))
 	if host == "" {
 		// Derive host from base URL if given.
@@ -119,7 +119,7 @@ func mergePaths(a, b []string) []string {
 }
 
 // aiDiscoveryPaths asks the configured LLM for extra path guesses (best-effort).
-func (h *Hub) aiDiscoveryPaths(host string, seeds []string) ([]string, string) {
+func (h *discoveryAPI) aiDiscoveryPaths(host string, seeds []string) ([]string, string) {
 	if h.aiDisabled() {
 		return nil, "AI disabled in Settings"
 	}

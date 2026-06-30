@@ -16,7 +16,7 @@ var resNotableHeaders = []string{"Set-Cookie", "Content-Security-Policy", "Stric
 // notable security-relevant headers, parameters (injection points), passive
 // scanner hits, and whether it's in scope. Built for an AI agent so it doesn't
 // have to re-fetch and parse the raw exchange.
-func (h *Hub) analyzeFlow(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 	f, ok := h.loadFlow(w, r)
 	if !ok {
 		return

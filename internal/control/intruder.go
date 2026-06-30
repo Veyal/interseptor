@@ -20,7 +20,7 @@ type intruderStartJSON struct {
 	ProcessRules []string   `json:"processRules"`
 }
 
-func (h *Hub) intruderStart(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 	var in intruderStartJSON
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -50,6 +50,6 @@ func (h *Hub) intruderStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.intr.State())
 }
 
-func (h *Hub) intruderState(w http.ResponseWriter, r *http.Request) {
+func (h *toolsAPI) intruderState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.intr.State())
 }

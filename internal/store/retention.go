@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Veyal/interceptor/internal/hostpattern"
 )
 
 // HostStat aggregates flow counts and approximate byte totals for one host.
@@ -19,21 +21,8 @@ type HostStat struct {
 	Bytes int64
 }
 
-// retentionHostMatches is a local copy of the wildcard host-matching logic in
-// internal/scope (which we cannot import — it depends on this package). Behavior
-// is identical: "" matches any host; "*.acme.com" matches "acme.com" and every
-// subdomain; otherwise an exact case-insensitive comparison.
 func retentionHostMatches(pattern, host string) bool {
-	if pattern == "" {
-		return true
-	}
-	pattern = strings.ToLower(pattern)
-	host = strings.ToLower(host)
-	if strings.HasPrefix(pattern, "*.") {
-		base := pattern[2:]
-		return host == base || strings.HasSuffix(host, pattern[1:])
-	}
-	return host == pattern
+	return hostpattern.MatchHost(pattern, host)
 }
 
 // DeleteFlowsByHost removes flows by host pattern and returns how many rows

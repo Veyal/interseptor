@@ -23,7 +23,7 @@ const maxCheckSource = 512 << 10
 // ChecksDir, plus a test endpoint that compiles + runs a check against a flow
 // without saving — so a human (or the AI) can iterate before committing it.
 
-func (h *Hub) listChecks(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) listChecks(w http.ResponseWriter, r *http.Request) {
 	checks := []checkscript.Source{}
 	if h.ChecksDir != "" {
 		if got := checkscript.List(h.ChecksDir); got != nil {
@@ -91,7 +91,7 @@ func (h *Hub) checksDisabledSet() map[string]bool {
 	return dis
 }
 
-func (h *Hub) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Disabled []string `json:"disabled"`
 	}
@@ -108,7 +108,7 @@ func (h *Hub) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"disabled": in.Disabled})
 }
 
-func (h *Hub) getCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) getCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if src, builtin, overridden, err := h.readCheckSource(id); err == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -119,7 +119,7 @@ func (h *Hub) getCheck(w http.ResponseWriter, r *http.Request) {
 	httpErr(w, http.StatusNotFound, "check not found")
 }
 
-func (h *Hub) readCheckSource(id string) (src string, builtin, overridden bool, err error) {
+func (h *checksAPI) readCheckSource(id string) (src string, builtin, overridden bool, err error) {
 	if h.ChecksDir != "" && checkscript.Exists(h.ChecksDir, id) {
 		src, err = checkscript.Read(h.ChecksDir, id)
 		return src, scanner.IsBuiltinID(id), scanner.IsBuiltinID(id), err
@@ -130,7 +130,7 @@ func (h *Hub) readCheckSource(id string) (src string, builtin, overridden bool, 
 	return "", false, false, os.ErrNotExist
 }
 
-func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) saveCheck(w http.ResponseWriter, r *http.Request) {
 	if h.ChecksDir == "" {
 		httpErr(w, http.StatusBadRequest, "checks directory not configured")
 		return
@@ -150,7 +150,7 @@ func (h *Hub) saveCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "saved": true})
 }
 
-func (h *Hub) deleteCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) deleteCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := checkscript.Delete(h.ChecksDir, id); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
@@ -163,7 +163,7 @@ func (h *Hub) deleteCheck(w http.ResponseWriter, r *http.Request) {
 // testCheck compiles source and runs it against a flow (the given id, else the
 // most recent flow), returning findings or the compile/runtime error — never 500
 // for a bad check, so callers can show the error inline.
-func (h *Hub) testCheck(w http.ResponseWriter, r *http.Request) {
+func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 		FlowID int64  `json:"flowId"`
@@ -201,7 +201,7 @@ func (h *Hub) testCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "flowId": f.ID})
 }
 
-func (h *Hub) flowForCheck(f *store.Flow) checkscript.Flow {
+func (h *checksAPI) flowForCheck(f *store.Flow) checkscript.Flow {
 	return checkscript.Flow{
 		ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
 		Path: f.Path, Status: f.Status, Mime: f.Mime,

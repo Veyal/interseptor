@@ -4,10 +4,12 @@
 package scope
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/Veyal/interceptor/internal/hostpattern"
 	"github.com/Veyal/interceptor/internal/store"
 )
 
@@ -133,15 +135,14 @@ func hostMatches(r compiled, host string) bool {
 	if !r.hasHostConstraint() {
 		return true
 	}
-	host = strings.ToLower(host)
-	if r.hostWild != "" {
-		suffix := "." + r.hostWild
-		return host == r.hostWild || strings.HasSuffix(host, suffix)
-	}
 	if r.hostRe != nil {
-		return r.hostRe.MatchString(host)
+		return r.hostRe.MatchString(strings.ToLower(host))
 	}
-	return host == r.hostExact
+	pattern := r.hostExact
+	if r.hostWild != "" {
+		pattern = "*." + r.hostWild
+	}
+	return hostpattern.MatchHost(pattern, host)
 }
 
 func pathMatches(r compiled, path string) bool {
@@ -152,6 +153,43 @@ func pathMatches(r compiled, path string) bool {
 		return r.pathRe.MatchString(path)
 	}
 	return strings.HasPrefix(path, r.pathExact)
+}
+
+// ValidateRule reports whether host/path patterns compile. Call before persisting
+// a scope rule so malformed regex is rejected instead of falling back to literal.
+func ValidateRule(r store.ScopeRule) error {
+	if err := validateHostPattern(r.Host); err != nil {
+		return err
+	}
+	return validatePathPattern(r.Path)
+}
+
+func validateHostPattern(pattern string) error {
+	if pattern == "" {
+		return nil
+	}
+	pattern = strings.ToLower(pattern)
+	if strings.HasPrefix(pattern, "*.") {
+		return nil
+	}
+	if looksLikeRegex(pattern) {
+		if _, err := regexp.Compile("(?i)" + unwrapRegexSlashes(pattern)); err != nil {
+			return fmt.Errorf("invalid host regex %q: %w", pattern, err)
+		}
+	}
+	return nil
+}
+
+func validatePathPattern(pattern string) error {
+	if pattern == "" {
+		return nil
+	}
+	if looksLikeRegex(pattern) {
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid path regex %q: %w", pattern, err)
+		}
+	}
+	return nil
 }
 
 // compileHostPattern supports exact hosts, leading-wildcard (*.acme.com), and
@@ -168,6 +206,7 @@ func compileHostPattern(pattern string) (exact, wildBase string, re *regexp.Rege
 		if r, err := regexp.Compile("(?i)" + unwrapRegexSlashes(pattern)); err == nil {
 			return "", "", r
 		}
+		// Invalid regex should have been rejected by ValidateRule; treat as exact.
 	}
 	return pattern, "", nil
 }

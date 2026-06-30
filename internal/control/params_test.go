@@ -41,7 +41,7 @@ func TestListParamsAggregatesQueryAndForm(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/params?host=app.test", nil)
 	rec := httptest.NewRecorder()
-	h.listParams(rec, req)
+	(&flowAPI{h}).listParams(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}

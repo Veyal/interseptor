@@ -9,7 +9,7 @@ import (
 
 // flowCurl renders a captured flow's request as a runnable curl command, so a
 // tester (or the AI) can reproduce it in a terminal.
-func (h *Hub) flowCurl(w http.ResponseWriter, r *http.Request) {
+func (h *flowAPI) flowCurl(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Veyal/interceptor/internal/httplines"
 )
 
 // LoginMacro records a login request. Running it extracts session credentials
@@ -52,7 +54,7 @@ func runLoginMacroReq(cl *http.Client, m LoginMacro) (int, []Header, error) {
 	if !m.Enabled || m.Target == "" || m.Request == "" {
 		return 0, nil, nil
 	}
-	method, path, headers, body, err := parseRawRequest(m.Request)
+	method, path, headers, body, err := httplines.ParseRawRequest(m.Request)
 	if err != nil {
 		return 0, nil, err
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 )
 
-func (h *Hub) listViews(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) listViews(w http.ResponseWriter, r *http.Request) {
 	views, err := h.st.ListViews()
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
@@ -20,7 +20,7 @@ func (h *Hub) listViews(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"views": views})
 }
 
-func (h *Hub) createView(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) createView(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name string          `json:"name"`
 		Data json.RawMessage `json:"data"`
@@ -46,7 +46,7 @@ func (h *Hub) createView(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, v)
 }
 
-func (h *Hub) deleteView(w http.ResponseWriter, r *http.Request) {
+func (h *projectAPI) deleteView(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "bad id")
