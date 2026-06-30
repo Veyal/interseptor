@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-30
+
+**Regex in target scope:** match hosts and paths with patterns like `.*ohsome.*` without giving up `*.acme.com` wildcards.
+
 ### Added
 - **Target scope regex patterns.** Host and path rules accept regex when the pattern contains metacharacters (e.g. `.*ohsome.*` matches `cdn.ohsome.com`) or is wrapped in slashes (`/pattern/`). Leading wildcards (`*.acme.com`) and exact hosts still work as before.
 
