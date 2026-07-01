@@ -129,12 +129,7 @@ function renderHostSelect(sel,selectedHost){
 
 async function loadNetworkHosts(){
   try{networkHosts=await api('/api/network/hosts');}catch(e){networkHosts=null;}
-  const hint=$('#proxySuggestedHint');
-  if(hint){
-    if(networkHosts?.suggested){
-      hint.innerHTML=`Suggested listen host for mobile Wi‑Fi: <b style="color:var(--accent)">${esc(networkHosts.suggested)}</b>${networkHosts.suggestedLAN&&networkHosts.suggestedLAN!==networkHosts.suggested?' · LAN '+esc(networkHosts.suggestedLAN):''}`;
-    }else hint.textContent='';
-  }
+  const hint=$('#proxySuggestedHint');if(hint)hint.remove();
   renderHostSelect($('#setControlHost'),parseListenAddr(state.controlAddr).host);
 }
 
@@ -288,6 +283,7 @@ export async function loadSettings(){try{const s=await api('/api/settings');stat
   if($('#aiKeyState'))$('#aiKeyState').textContent=s.aiHasKey?'Key configured ✓':'No key set.';
   if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
   if($('#suppressTelemetryToggle'))setSuppressTelemetry(s.suppressBrowserTelemetry!==false);
+  if($('#invisibleProxyToggle'))setInvisibleProxy(!!s.invisibleProxy);
   aiSyncProviderUI();
   applyAiDisabledUI();
   applyOobDisabledUI();
@@ -406,6 +402,12 @@ $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
   const on=!$('#suppressTelemetryToggle').classList.contains('on');
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressBrowserTelemetry:on})});setSuppressTelemetry(on);toast(on?'Browser telemetry suppressed':'Browser telemetry now visible in history');}
   catch(e){toast('telemetry: '+e.message);}
+});
+export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
+$('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
+  const on=!$('#invisibleProxyToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({invisibleProxy:on})});setInvisibleProxy(on);toast(on?'Invisible proxy enabled':'Invisible proxy disabled');}
+  catch(e){toast('invisible: '+e.message);}
 });
 $('#saveUpstreamBtn').onclick=async()=>{
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
@@ -664,8 +666,8 @@ export async function doSwitchProject(target){
   setNote('Switching to "'+target+'" — restarting & reconnecting…');
   try{await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target})});}catch(e){}
   let tries=0;const poll=setInterval(async()=>{tries++;
-    try{await api('/api/version');clearInterval(poll);location.reload();}
-    catch(e){if(tries>60){clearInterval(poll);setNote('Still restarting… reload the page manually if it doesn’t return.');}}
+    try{await api('/api/version?_t='+Date.now());clearInterval(poll);location.reload();}
+    catch(e){if(tries>60){clearInterval(poll);setNote('Still restarting… reload the page manually if it doesn\'t return.');}}
   },500);
 }
 $('#projSwitchBtn').onclick=()=>{const v=($('#projSelect')||{}).value;if(v)doSwitchProject(v);else toast('no other project to open');};

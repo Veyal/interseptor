@@ -52,6 +52,7 @@ type Server struct {
 	upstream            atomic.Pointer[url.URL] // optional chained upstream proxy
 	scopeOnly           atomic.Bool             // when set, only in-scope flows are persisted
 	suppressTelemetry   atomic.Bool             // when set, browser telemetry is not captured or intercepted
+	invisible           atomic.Bool             // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
 	// SelfPorts are this tool's own loopback ports (control plane + proxy). Set
 	// by cmd; traffic to them is forwarded but never recorded, so proxying
@@ -119,8 +120,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !r.URL.IsAbs() {
-		http.Error(w, "this is a forward proxy; use an absolute-URI request", http.StatusBadRequest)
-		return
+		// Invisible (transparent) proxy mode: a client that isn't configured to
+		// use a proxy — e.g. traffic redirected via iptables/pf, DNS spoofing, or
+		// port forwarding — sends an origin-form request: "GET /path" with a Host
+		// header naming the real target. Reconstruct the absolute URL from the
+		// Host header and fall through to normal forwarding. Disabled by default,
+		// matching Burp's "Support invisible proxying" option.
+		if !s.invisible.Load() {
+			http.Error(w, "this is a forward proxy; use an absolute-URI request", http.StatusBadRequest)
+			return
+		}
+		host := r.Host
+		if host == "" {
+			http.Error(w, "invisible proxy: request has no Host header", http.StatusBadRequest)
+			return
+		}
+		r.URL.Scheme = "http"
+		r.URL.Host = host
 	}
 
 	scheme := r.URL.Scheme
@@ -764,6 +780,14 @@ func (s *Server) SetCaptureScopeOnly(v bool) { s.scopeOnly.Store(v) }
 // forwarded without being captured or held by the intercept gate. Enabled by
 // default; users may turn it off to inspect browser background traffic.
 func (s *Server) SetSuppressBrowserTelemetry(v bool) { s.suppressTelemetry.Store(v) }
+
+// SetInvisibleProxy toggles transparent/invisible proxy mode (Burp's "Support
+// invisible proxying"). When enabled, origin-form requests from clients that
+// aren't proxy-configured (traffic redirected via iptables/pf/DNS/port
+// forwarding) are forwarded to the host named in their Host header, instead of
+// being rejected as malformed proxy requests. Absolute-URI and CONNECT requests
+// keep working unchanged.
+func (s *Server) SetInvisibleProxy(v bool) { s.invisible.Store(v) }
 
 // persistable reports whether a flow should be written to history: never our own
 // loopback traffic; never browser telemetry when suppression is on; and — when

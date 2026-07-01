@@ -78,6 +78,8 @@ type Hub struct {
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
 	SetSuppressBrowserTelemetry func(bool)
+	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
+	SetInvisibleProxy func(bool)
 
 	// ChecksDir holds user-authored Starlark scanner checks (global, shared across
 	// projects — typically ~/.interceptor/checks). Set by cmd.
@@ -254,6 +256,7 @@ type settingsJSON struct {
 	OobEnabled               bool   `json:"oobEnabled"`
 	CaptureScopeOnly         bool   `json:"captureScopeOnly"`
 	SuppressBrowserTelemetry bool   `json:"suppressBrowserTelemetry"`
+	InvisibleProxy           bool   `json:"invisibleProxy"`
 	DeviceProxy              string `json:"deviceProxy,omitempty"`
 	DeviceProxyMode          string `json:"deviceProxyMode,omitempty"`
 }
@@ -1214,6 +1217,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
 	// Default to true when the key has never been written (first run).
 	suppressTelemetryOn := !stOK || suppressTelemetry == "1"
+	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
 	aiDisabled, _, _ := h.st.GetSetting("ai.disabled")
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
@@ -1232,6 +1236,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		OobEnabled:               h.oobEnabled(),
 		CaptureScopeOnly:         scopeOnly == "1",
 		SuppressBrowserTelemetry: suppressTelemetryOn,
+		InvisibleProxy:           invisibleProxy == "1",
 	})
 }
 
@@ -1256,6 +1261,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		OobEnabled               *bool   `json:"oobEnabled"`
 		CaptureScopeOnly         *bool   `json:"captureScopeOnly"`
 		SuppressBrowserTelemetry *bool   `json:"suppressBrowserTelemetry"`
+		InvisibleProxy           *bool   `json:"invisibleProxy"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -1349,6 +1355,19 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SetSuppressBrowserTelemetry != nil {
 			h.SetSuppressBrowserTelemetry(*in.SuppressBrowserTelemetry)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.InvisibleProxy != nil {
+		v := "0"
+		if *in.InvisibleProxy {
+			v = "1"
+		}
+		if !h.persistSetting(w, "proxy.invisibleProxy", v) {
+			return
+		}
+		if h.SetInvisibleProxy != nil {
+			h.SetInvisibleProxy(*in.InvisibleProxy)
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}

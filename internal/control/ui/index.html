@@ -16,22 +16,20 @@
 </script>
 </head>
 <body>
-<div id="bar">
+  <div id="bar">
   <div id="logo"></div>
   <span class="brand">INTERCEPTOR</span>
-  <span class="tag">INTERCEPTING PROXY</span>
   <div class="spacer"></div>
-  <div class="row" style="gap:6px" title="Proxy listener — the dot pulses when traffic is captured"><div class="dot" id="capDot"></div><span class="kv">proxy <b id="proxyAddr">…</b></span><button type="button" class="btn kv" id="deviceProxyChip" title="Device proxy endpoint for phones — click to change" style="padding:2px 8px;font-size:inherit">device <b id="deviceProxyAddr">…</b></button><span class="kv" id="capStat" style="color:var(--fg3)">· waiting for traffic</span><span class="kv" id="icptStat" aria-live="polite" style="display:none;color:var(--amber);font-weight:600"></span></div>
-  <span class="kv">control <b id="controlAddr">…</b></span>
-  <button id="cmdkBtn" class="btn" title="Command palette (Ctrl+K)" aria-label="Command palette" style="padding:4px 10px">⌘K</button>
-  <button id="helpBtn" class="btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" style="padding:4px 10px">?</button>
-  <button id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">☾</button>
+  <div class="row" style="gap:6px" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv" id="deviceProxyChip" title="Device proxy endpoint for phones" style="padding:2px 8px;font-size:inherit"><b id="deviceProxyAddr">…</b></button><span class="kv" id="capStat" style="color:var(--fg3)"></span><span class="kv" id="icptStat" aria-live="polite" style="display:none;color:var(--amber);font-weight:600"></span></div>
+  <span class="kv" style="color:var(--fg3)">ctrl <b id="controlAddr">…</b></span>
+  <button id="cmdkBtn" class="btn" title="Ctrl+K" aria-label="Command palette" style="padding:4px 10px">⌘K</button>
+  <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme">☾</button>
 </div>
 
 <div id="humanInputBar" role="region" aria-label="AI is asking for your input" style="display:none"></div>
 
 <div id="tabs" role="tablist" aria-label="Main navigation">
-  <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy">Proxy History</button>
+  <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy">Proxy</button>
   <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
   <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater">Repeater</button>
   <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder">Intruder</button>
@@ -57,9 +55,9 @@
       </div>
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
-      <button class="btn" id="notesFilter" title="Show only flows with a note">📝 notes</button>
-      <button class="btn accent" id="hideTlsFilter" title="Hide TLS handshake failures (PIN rows) — click to show them">⛔ PIN</button>
-      <button class="btn" id="scopeToggle" title="Show only in-scope flows (define scope in Settings → Target scope)" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ in scope</button>
+      <button class="btn" id="notesFilter" title="Flows with notes">📝 notes</button>
+      <button class="btn accent" id="hideTlsFilter" title="Hide TLS failures">⛔ PIN</button>
+      <button class="btn" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
       <button class="btn accent" id="manualFilter" title="Show manual / proxy-captured flows">Manual</button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views ▾</button>
       <div class="spacer"></div>
@@ -70,19 +68,18 @@
     <div id="tagBar" class="tagbar" style="display:none" aria-label="Filter by tag"></div>
     <div id="tlsDiagBanner" class="tls-diag-banner" style="display:none" role="status" aria-live="polite"></div>
     <div id="flowCapBanner" class="hint" style="display:none;padding:5px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg3)"></div>
-    <div id="flowSearchNote" class="hint" style="display:none;padding:5px 12px;background:var(--bg3);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg2)"></div>
     <div id="selBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px">
       <span id="selCount" style="font-weight:700;flex:none"></span>
-      <button class="btn" id="selCompare" title="Compare response bodies of two selected flows">⇄ Compare</button>
-      <button class="btn" id="selAsk" data-ai-ui title="Analyze the selected flows with AI">✨ Ask AI</button>
-      <button class="btn" id="selScope" title="Add the selected hosts to target scope">◎ Add to scope</button>
-      <button class="btn" id="selAddFinding" title="Attach the selected request/responses to a finding as PoC evidence">➕ Add to finding</button>
-      <button class="btn" id="selDelete" title="Delete the selected flows from history" style="color:var(--red)">🗑 Delete</button>
+      <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
+      <button class="btn" id="selAsk" data-ai-ui title="Analyze with AI">✨ Ask AI</button>
+      <button class="btn" id="selScope" title="Add hosts to scope">◎ Scope</button>
+      <button class="btn" id="selAddFinding" title="Attach to finding">➕ Finding</button>
+      <button class="btn" id="selDelete" style="color:var(--red)">🗑 Delete</button>
       <button class="btn" id="selClear" style="margin-left:auto">Clear</button>
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="empty">No traffic yet. Point a client at the proxy and requests will appear here live.</div></div>
+    <div id="rows"><div class="empty">No traffic yet — point a client at the proxy.</div></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
@@ -160,13 +157,13 @@
         <div class="icpt-empty" id="heldEmpty">
           <div class="icpt-empty-i">⏸</div>
           <div class="icpt-empty-t">Nothing on hold</div>
-          <p class="hint">Turn <b>Requests</b> on and matching traffic pauses here — read it, edit the raw HTTP, then <b>Forward</b> (Ctrl+Shift+F) or <b>Drop</b> (Ctrl+D). Turn on <b>Responses</b> to hold replies before they reach the client. Use <b>Only hold when</b> to pause just the requests you care about.</p>
+          <p class="hint">Turn <b>Requests</b> on to pause matching traffic here — edit, then <b>Forward</b> or <b>Drop</b>.</p>
         </div>
       </section>
     </div>
     <!-- match & replace: automatic rewriting, collapsed by default -->
     <details class="icpt-mr">
-      <summary>Match &amp; Replace rules <span class="hint" style="font-weight:400">— rewrite requests/responses automatically (applies to all traffic, not just held)</span></summary>
+      <summary>Match &amp; Replace rules</summary>
       <div class="icpt-mr-body">
         <table class="rules-tbl">
           <thead><tr><th style="width:34px">On</th><th style="width:120px">Type</th><th>Match (regex)</th><th>Replace</th><th style="width:60px"></th></tr></thead>
@@ -208,7 +205,7 @@
           <div class="spacer"></div>
           <div class="seg" id="repResSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button></div>
         </div>
-        <pre id="repResView"><span class="hint" style="padding:14px;display:block;line-height:1.7">Send a request to see the response.<br>Edit the method, URL, headers or body, then <b>Send</b> (Ctrl+Space). Load a captured request via right-click a flow → <b>Repeater</b>. Each tab keeps its own send history (⟲).</span></pre>
+        <pre id="repResView"><span class="hint" style="padding:14px;display:block;line-height:1.7">Send a request to see the response.</span></pre>
       </section>
     </div>
   </div>
@@ -232,7 +229,7 @@
     </div>
     <div class="intr-explain" id="intrHint"></div>
     <details class="intr-opts-disc">
-      <summary>Options — flag matches, extract values, process payloads, presets</summary>
+      <summary>Options — flags, extract, process, presets</summary>
       <div class="intr-opts-row">
         <label class="hint" for="intrGrep">Flag</label>
         <input id="intrGrep" class="btn" style="flex:1;min-width:140px;background:var(--bg3);font-family:var(--mono)" aria-label="Grep — flag responses matching" placeholder="flag if response matches (regex/text)" spellcheck="false">
@@ -248,7 +245,7 @@
     <div class="intr-work">
       <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
       <section class="pane intr-config">
-        <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">wrap each injection point in <b>§…§</b></span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap the selected text in § … § fuzz markers">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load raw HTTP from a file">📂 Load</button></div>
+        <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">use <b>§…§</b> for injection points</span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap selection in § … §">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load from file">📂 Load</button></div>
         <textarea id="intrTemplate" class="rep-edit" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
@@ -261,7 +258,7 @@ Content-Type: application/json
         <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><div class="spacer"></div><span id="intrStats" class="hint"></span><button class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)">⟲ History</button></div>
         <div class="intr-progbar" id="intrProgBar" style="display:none"><div id="intrProgFill"></div></div>
         <div class="intr-head"><div>#</div><div>Payload</div><div style="text-align:center">St</div><div style="text-align:right">Len</div><div style="text-align:right">Time</div></div>
-        <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Set a target, mark <b>§</b> injection points in the template, add payloads, then <b>Start</b>. Results — status, length, response time — stream in here; unusual responses are flagged ⚑.</div></div>
+        <div id="intrResults" class="scroll"><div class="hint" style="padding:12px">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</div></div>
       </section>
     </div>
   </div>
@@ -270,17 +267,14 @@ Content-Type: application/json
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <div id="scanPassiveBar" class="row" style="gap:6px;flex:1;flex-wrap:wrap">
-      <select id="scanTarget" class="btn" style="background:var(--bg3);max-width:230px" title="Scan only this target"><option value="">All in-scope hosts</option></select>
-      <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" aria-label="Scan path filter" placeholder="path filter (optional)" title="Only scan flows whose path/host matches">
+      <select id="scanTarget" class="btn" style="background:var(--bg3);max-width:230px" title="Scan target"><option value="">All in-scope hosts</option></select>
+      <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" aria-label="Path filter" placeholder="path filter">
       <button class="btn accent" id="scanRun">Run scan ▸</button>
-      <button class="btn" id="checksBtn" aria-label="Edit custom scanner checks">✎ Custom checks</button>
+      <button class="btn" id="checksBtn" aria-label="Custom checks">✎ Checks</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
-      <span class="hint" style="font-size:11px">Passive checks over captured traffic — promote confirmed issues to Findings</span>
-      <span aria-hidden="true" style="width:1px;align-self:stretch;background:var(--line2);margin:2px 4px"></span>
-      <span class="hint" style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">OFFENSIVE</span>
-      <button class="btn" id="activeBtn" style="color:var(--red)" aria-label="Open active scan (sends attack requests)">⚡ Active scan</button>
-      <button class="btn" id="oobBtn" data-oob-ui aria-label="Out-of-band interaction catcher">⚲ OOB</button>
+      <button class="btn" id="activeBtn" style="color:var(--red)" aria-label="Active scan">⚡ Active scan</button>
+      <button class="btn" id="oobBtn" data-oob-ui aria-label="OOB">` OOB</button>
       </div>
     </div>
     <div id="scanPassiveView" style="flex:1;display:flex;min-height:0">
@@ -302,7 +296,6 @@ Content-Type: application/json
         <button class="btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export report</button>
         <span id="findCount" class="count"></span>
         <div class="spacer"></div>
-        <span class="hint" style="font-size:11px">Curated vulns with PoC evidence — you or the AI</span>
       </div>
     </div>
     <div id="scanFindingsView" style="flex:1;display:flex;min-height:0;flex-direction:row">
@@ -323,10 +316,9 @@ Content-Type: application/json
       <button class="btn" id="dscWordBtn" aria-expanded="false">Wordlist ▾ <span id="dscWordCount" class="count"></span></button>
       <span id="dscCount" class="count"></span>
       <div class="spacer"></div>
-      <span class="hint" style="font-size:11px;color:var(--amber)">⚡ sends real requests to the target — only test what you're authorized to</span>
     </div>
     <details class="dsc-opts">
-      <summary>Options — extensions, recursion, throttling, filters</summary>
+      <summary>Options</summary>
       <div class="dsc-opts-row">
         <label class="hint">Ext <input id="dscExt" class="btn" style="background:var(--bg3);width:150px" placeholder=".php .bak .json" title="Extensions appended to each word (space/comma separated)"></label>
         <label class="hint" title="Recurse into found directories up to the given depth">Recurse <input type="checkbox" id="dscRec"> depth <input id="dscDepth" class="btn" type="number" min="0" max="8" value="2" style="background:var(--bg3);width:48px"></label>
@@ -339,23 +331,21 @@ Content-Type: application/json
     </details>
     <div id="dscWordWrap" style="display:none;padding:8px 12px;border-bottom:1px solid var(--line)">
       <div class="list-file-bar">
-        <button class="btn" id="dscWordLoad" type="button" title="Replace wordlist from a .txt file">📂 Load file</button>
-        <button class="btn" id="dscWordAppend" type="button" title="Append entries from a file">＋ Append file</button>
-        <span class="hint">SecLists, raft, custom .txt — one path per line (# comments OK)</span>
+        <button class="btn" id="dscWordLoad" type="button" title="Replace wordlist">📂 Load file</button>
+        <button class="btn" id="dscWordAppend" type="button" title="Append entries">＋ Append file</button>
       </div>
       <textarea id="dscWords" spellcheck="false" style="width:100%;height:150px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-family:var(--mono);font-size:12px;padding:8px;resize:vertical" placeholder="one path per line — lines starting with # are ignored"></textarea>
-      <div class="hint" style="margin-top:6px">The built-in list is loaded by default. Paste your own or load a file to go deeper.</div>
+      <div class="hint" style="margin-top:6px">One path per line, # for comments.</div>
     </div>
     <div style="flex:1;display:flex;min-height:0">
-      <div id="dscResults" class="pane" style="flex:1;overflow:auto"><div class="hint" style="padding:16px;line-height:1.7">Enter a base URL and press <b>Start</b> — or right-click a host in History → <b>Discover content</b>.<br><b>◎ From scope</b> fills targets from your include rules; <b>＋ History seeds</b> and <b>✨ AI paths</b> grow the wordlist from captured traffic.</div></div>
+      <div id="dscResults" class="pane" style="flex:1;overflow:auto"><div class="hint" style="padding:16px;line-height:1.7">Enter a base URL and press <b>Start</b>.</div></div>
     </div>
   </div>
 
   <!-- Endpoint map (attack surface) -->
   <div class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map">
     <div class="toolbar">
-      <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">ENDPOINT MAP</span>
-      <select id="mapDomain" class="btn" style="background:var(--bg3);max-width:240px" title="Domain to map (showing one at a time keeps the graph readable)"><option value="">All domains</option></select>
+      <select id="mapDomain" class="btn" style="background:var(--bg3);max-width:240px" title="Filter domain"><option value="">All domains</option></select>
       <input id="mapSearch" class="btn" style="background:var(--bg3);width:150px" aria-label="Search the site map" placeholder="Search…">
       <select id="mapSearchScope" class="btn" style="background:var(--bg3);max-width:130px" title="What to search">
         <option value="path">Path / host</option>
@@ -374,7 +364,6 @@ Content-Type: application/json
       <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
       <span id="mapCount" class="count"></span>
       <div class="spacer"></div>
-      <span id="mapHint" class="hint" style="font-size:11px">Attack surface from captured traffic · click an endpoint to inspect</span>
     </div>
     <div id="mapCrumb" class="map-crumb" style="display:none"></div>
     <div id="mapWarn" class="map-warn" style="display:none"></div>
@@ -390,12 +379,10 @@ Content-Type: application/json
   <!-- Project notes (markdown notebook) -->
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
-      <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">PROJECT NOTES</span>
       <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
       <span id="notesStatus" class="hint" style="font-size:11px;min-width:4.5em;opacity:0;transition:opacity .2s" aria-live="polite"></span>
-      <button class="btn accent" id="notesOrganizeBtn" data-ai-ui title="Reorganize notes with AI — tables, code-formatted secrets, task lists">✨ Organize</button>
+      <button class="btn accent" id="notesOrganizeBtn" data-ai-ui title="Organize with AI">✨ Organize</button>
       <div class="spacer"></div>
-      <span class="hint" style="font-size:11px">Autosaved markdown — paste images (stored in DB, not inline). <kbd>Ctrl</kbd> <kbd>B</kbd> to jump here.</span>
     </div>
     <textarea id="notesEdit" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do" style="flex:1;border:none;outline:none;resize:none;background:var(--bg1);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.6;padding:16px 18px"></textarea>
     <div id="notesPreview" class="md" style="flex:1;overflow:auto;padding:16px 22px;display:none"></div>
@@ -406,7 +393,6 @@ Content-Type: application/json
     <div role="dialog" aria-modal="true" aria-labelledby="notesAiTitle" class="notes-ai-dialog">
       <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:10px">
         <span id="notesAiTitle" style="font-weight:700;color:var(--accent)">✨ Organize notes</span>
-        <span class="hint" id="notesAiStatus">Formatting with tables, code blocks, and task lists…</span>
         <div class="spacer"></div>
         <button class="btn" id="notesAiStop" style="display:none">Stop</button>
         <button class="btn" id="notesAiClose" aria-label="Close">✕</button>
@@ -422,7 +408,7 @@ Content-Type: application/json
         </div>
       </div>
       <div class="row" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line)">
-        <span class="hint">Review the organized draft — Apply replaces your notebook.</span>
+        <span class="hint">Review — <b>Apply</b> replaces your notebook.</span>
         <div class="spacer"></div>
         <button class="btn accent" id="notesAiApply" disabled>Apply to notes</button>
         <button class="btn" id="notesAiCopy" title="Copy organized markdown">⧉ Copy</button>
@@ -433,9 +419,7 @@ Content-Type: application/json
   <!-- Activity (live AI feed) -->
   <div class="panel" id="panel-activity" data-ai-ui role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
-      <span style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--fg2)">AI ACTIVITY</span>
-      <span class="hint">Every action your AI assistant takes over MCP — live. Watch, supervise, and jump in manually anytime.</span>
-      <input id="actIntentFilter" class="btn" style="background:var(--bg3);width:150px;font-weight:400;margin-left:8px" aria-label="Filter activity by intent text" placeholder="Filter intent…" spellcheck="false">
+      <input id="actIntentFilter" class="btn" style="background:var(--bg3);width:150px;font-weight:400;margin-left:8px" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount"></span>
       <button class="btn" id="actClear" style="margin-left:8px">Clear</button>
@@ -460,18 +444,17 @@ Content-Type: application/json
         <section class="set-sec" data-sec="proxy">
           <div class="section">
             <h3>PROXY LISTENER</h3>
-            <p class="hint" id="proxySuggestedHint" style="margin-bottom:10px"></p>
             <div id="proxyListenersList"></div>
             <div class="row" style="gap:8px;margin-top:8px">
               <button class="btn" type="button" id="addProxyListenerBtn">+ Add listener</button>
               <button class="btn accent" id="saveAddrBtn">Apply &amp; rebind</button>
             </div>
-            <p class="hint" style="margin-top:8px">Add multiple listeners to bind loopback and LAN at once (e.g. <b>127.0.0.1:8080</b> + <b>0.0.0.0:8080</b>). Suggested host is marked ★ for mobile Wi‑Fi proxy setup.</p>
+            <p class="hint" style="margin-top:8px">★ marks the suggested host for mobile Wi-Fi proxy.</p>
             <input type="hidden" id="setAddr">
           </div>
           <div class="section">
             <h3>DEVICE PROXY</h3>
-            <p class="hint" style="margin-bottom:10px">Address phones and tablets use for Wi‑Fi proxy / mobileconfig (ADB USB still uses <b>127.0.0.1</b>). <b>Auto</b> picks the best LAN listener — usually invisible until you need to override.</p>
+            <p class="hint" style="margin-bottom:10px">Address phones use for Wi-Fi proxy. ADB USB still uses <b>127.0.0.1</b>.</p>
             <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
               <div class="seg" id="deviceProxyModeSeg"><button type="button" class="on" data-mode="auto">Auto</button><button type="button" data-mode="manual">Manual</button></div>
               <span class="hint" id="deviceProxyResolved">…</span>
@@ -483,42 +466,47 @@ Content-Type: application/json
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn accent" type="button" id="saveDeviceProxyBtn">Save device proxy</button></div>
           </div>
           <div class="section">
-            <h3>CONTROL UI (this window)</h3>
-            <p class="hint" style="margin-bottom:10px">Where the web UI and REST API listen. Change the port to run a second instance, or bind <b>0.0.0.0</b> so remote OOB callbacks can reach <code>/oob</code>. After rebinding, bookmark the new URL — this tab may stop updating if the port changed.</p>
+            <h3>CONTROL UI</h3>
+            <p class="hint" style="margin-bottom:10px">Web UI and REST API listener. Bind <b>0.0.0.0</b> for remote OOB callbacks.</p>
             <div class="field row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
               <div style="flex:1;min-width:180px"><label>Host</label><select id="setControlHost" class="btn" style="width:100%;text-align:left"></select></div>
               <div style="width:100px"><label>Port</label><input id="setControlPort" inputmode="numeric" placeholder="9966" style="width:100%"></div>
             </div>
             <input type="hidden" id="setControlAddr">
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn accent" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
-            <div class="field" style="margin-top:16px"><label>Upstream proxy (chain through another proxy; blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
+            <div class="field" style="margin-top:16px"><label>Upstream proxy (blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
             <div class="row"><button class="btn" id="saveUpstreamBtn">Save upstream</button></div>
           </div>
           <div class="section" id="sysProxySection">
             <h3>SYSTEM PROXY</h3>
-            <p class="hint" style="margin-bottom:10px">Route this computer's HTTP/HTTPS traffic through Interceptor automatically (macOS). Off by default — turn it off when you're done. On other systems, set your OS/browser proxy to the address above manually.</p>
+            <p class="hint" style="margin-bottom:10px">Route this machine's traffic through Interceptor (macOS only).</p>
             <div class="row" style="gap:12px"><button class="toggle" id="sysProxyToggle">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
           <div class="section">
             <h3>CAPTURE POLICY</h3>
-            <p class="hint" style="margin-bottom:10px">On long engagements, save database space by storing only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded — they're just not written to history. Define your target under <b>Target scope</b>; with no scope set, everything is in scope (so this has no effect).</p>
-            <div class="row" style="gap:12px"><button class="toggle" id="capScopeToggle">Saving all traffic</button><span class="hint">Toggle to keep only in-scope flows</span></div>
+            <p class="hint" style="margin-bottom:10px">Store only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded.</p>
+            <div class="row" style="gap:12px"><button class="toggle" id="capScopeToggle">Saving all traffic</button></div>
           </div>
           <div class="section">
             <h3>BROWSER TELEMETRY</h3>
-            <p class="hint" style="margin-bottom:10px">Chrome and Firefox send background traffic — Safe Browsing lookups, update pings, crash reports, captive-portal probes — that clutters history during web-app testing. This suppresses those hosts from capture <em>and</em> the intercept queue. Turn it off if you specifically need to inspect browser background traffic.</p>
-            <div class="row" style="gap:12px"><button class="toggle on" id="suppressTelemetryToggle">Suppressing browser telemetry</button><span class="hint">Toggle to allow browser telemetry into history</span></div>
+            <p class="hint" style="margin-bottom:10px">Suppresses Safe Browsing, update pings, crash reports, and captive-portal probes from capture.</p>
+            <div class="row" style="gap:12px"><button class="toggle on" id="suppressTelemetryToggle">Suppressing</button></div>
+          </div>
+          <div class="section">
+            <h3>INVISIBLE PROXY</h3>
+            <p class="hint" style="margin-bottom:10px">Accept traffic from clients that aren't proxy-configured (e.g. redirected via iptables/pf, DNS spoofing, or port forwarding). Origin-form requests are forwarded to their <b>Host</b> header. <b>Off</b> by default.</p>
+            <div class="row" style="gap:12px"><button class="toggle" id="invisibleProxyToggle">Invisible proxy is off</button></div>
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
           <div class="section">
             <h3>TLS CERTIFICATE AUTHORITY</h3>
-            <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA on the client to intercept HTTPS. Per-host leaf certificates are minted on demand. <b>HTTP works without this</b> — the CA is only needed to decrypt HTTPS.</p>
+            <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA to intercept HTTPS. HTTP works without it.</p>
             <a class="btn accent" id="dlCaBtn" href="/api/ca.crt" download style="text-decoration:none;display:inline-block">Download CA certificate</a>
           </div>
           <div class="section" id="androidAdbSection" style="display:none">
             <h3>ANDROID (ADB)</h3>
-            <p class="hint" style="margin-bottom:10px">USB-connected Android setup via <code>adb</code> (platform-tools on PATH). <b>USB</b> mode uses <code>adb reverse</code> (device → <code>127.0.0.1</code>). <b>Wi‑Fi</b> mode uses your LAN IP — Interceptor must bind <code>0.0.0.0:PORT</code> in Settings → Proxy. Emulators auto-suggest <b>system CA</b>.</p>
+            <p class="hint" style="margin-bottom:10px"><code>adb</code> must be on PATH. <b>USB</b> uses <code>adb reverse</code>. <b>Wi-Fi</b> needs <code>0.0.0.0:PORT</code> binding.</p>
             <div class="android-toolbar">
               <div class="field android-device-field">
                 <label id="androidDeviceLabel">Device</label>
@@ -557,11 +545,11 @@ Content-Type: application/json
               <input type="checkbox" id="androidRemoveSystemCa"> Also remove system CA on clear (root/emulator)
             </label>
             <p class="hint" id="androidAdbHint"></p>
-            <p class="hint" style="margin-top:6px"><b>Setup all</b> uses <code>caMode:auto</code> (emulator → system CA, phone → user CA prompt). <b>User CA</b> needs confirmation on device. <b>System CA</b> needs root or writable-system emulator + reboot.</p>
+            <p class="hint" style="margin-top:6px"><b>Setup all</b> uses auto CA mode (emulator → system, phone → user). <b>System CA</b> needs root or emulator + reboot.</p>
           </div>
           <div class="section" id="iosSection">
             <h3>iOS (SIMULATOR &amp; DEVICE)</h3>
-            <p class="hint" style="margin-bottom:10px">macOS + Xcode: automate <b>Simulator</b> CA via <code>simctl</code> and open a configuration profile (proxy + CA). <b>Physical iPhone</b>: download/open the profile on device Safari (same Wi‑Fi; Interceptor must bind <code>0.0.0.0</code>). Optional: <code>libimobiledevice</code> (<code>idevice_id</code>) lists USB-connected phones. Interceptor does <b>not</b> bypass SSL pinning.</p>
+            <p class="hint" style="margin-bottom:10px">macOS + Xcode for Simulator; download profile on device for physical iPhone. Does <b>not</b> bypass SSL pinning.</p>
             <div class="android-toolbar">
               <div class="field android-device-field">
                 <label id="iosDeviceLabel">Target</label>
@@ -593,11 +581,11 @@ Content-Type: application/json
               <button class="btn" type="button" id="iosOpenProfileBtn">Open profile in simulator</button>
             </div>
             <p class="hint" id="iosHint"></p>
-            <p class="hint" style="margin-top:6px">After installing the profile: Settings → General → VPN &amp; Device Management → trust it → Settings → General → About → <b>Certificate Trust Settings</b> → enable full trust for Interceptor CA.</p>
+            <p class="hint" style="margin-top:6px">After installing: Settings → General → VPN &amp; Device Management → trust it → About → <b>Certificate Trust Settings</b> → enable.</p>
           </div>
           <div class="section" id="iosSshSection">
             <h3>iOS JAILBROKEN (SSH)</h3>
-            <p class="hint" style="margin-bottom:10px">Automate <b>jailbroken</b> devices via <code>ssh</code> (OpenSSH as <code>root</code>). Interceptor opens the configuration profile on the phone — you must still tap <b>Install</b> and enable <b>Certificate Trust Settings</b> (one-time). Credentials are sent per request and are <b>not</b> saved to settings on disk.</p>
+            <p class="hint" style="margin-bottom:10px">Automate jailbroken devices via SSH. Credentials are sent per request, <b>not</b> saved.</p>
             <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:8px">
               <div class="field" style="min-width:140px;flex:1">
                 <label for="iosSshHost">SSH host</label>
@@ -629,14 +617,14 @@ Content-Type: application/json
               <button class="btn" type="button" id="iosSshInstallCaBtn">Install CA (profile)</button>
             </div>
             <p class="hint" id="iosSshHint"></p>
-            <p class="hint" style="margin-top:6px">Requires OpenSSH on the device. Profile includes global HTTP proxy — Interceptor must bind <code>0.0.0.0</code> on the proxy port. Does <b>not</b> bypass SSL pinning.</p>
+            <p class="hint" style="margin-top:6px">Requires OpenSSH on the device. Profile includes global HTTP proxy — Interceptor must bind <code>0.0.0.0</code>.</p>
           </div>
           <div class="section" id="tlsPinningSection">
             <h3>SSL PINNING &amp; MISSING TRAFFIC</h3>
-            <p class="hint" style="margin-bottom:10px;line-height:1.65">Interceptor is a <b>proxy</b> — it decrypts HTTPS only when the client trusts the CA. It does <b>not</b> bypass SSL pinning. If an app pins certificates, you must change the app or hook it on the device (Frida, patched APK, etc.).</p>
+            <p class="hint" style="margin-bottom:10px">Interceptor decrypts HTTPS only when the client trusts the CA. It does <b>not</b> bypass SSL pinning.</p>
             <div id="tlsDiagPanel" class="tls-diag-panel hint" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);line-height:1.6">Checking traffic…</div>
             <label class="hint" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tlsShowBanner" checked> Show TLS blocked banner in Proxy History</label>
-            <details class="ca-how" open><summary>What the verdicts mean</summary>
+            <details class="ca-how" open><summary>Verdicts</summary>
               <ul style="margin:8px 0 4px;padding-left:20px;color:var(--fg2);line-height:1.7">
                 <li><b style="color:var(--red)">TLS blocked</b> — the app sent CONNECT but rejected the MITM cert (<b>pinning or untrusted CA</b>). Look for red <b>PIN</b> rows in History.</li>
                 <li><b style="color:var(--amber)">No traffic</b> — nothing reached the proxy. Check proxy settings, <code>adb reverse</code>, or whether the app ignores the system proxy.</li>
@@ -644,14 +632,13 @@ Content-Type: application/json
                 <li><b style="color:var(--accent)">OK</b> — HTTPS interception is working.</li>
               </ul>
             </details>
-            <details class="ca-how"><summary>How to bypass pinning (on the device — not in Interceptor)</summary>
+            <details class="ca-how"><summary>Bypass pinning (on device)</summary>
               <ul style="margin:8px 0 4px;padding-left:20px;color:var(--fg2);line-height:1.7">
-                <li><b>Frida / objection</b> — runtime hooks for OkHttp <code>CertificatePinner</code>, custom TrustManagers, Flutter/Dart HTTP, etc.</li>
-                <li><b>Patched APK</b> — repack with <code>network_security_config</code> trusting user CAs, or smali patch pinning checks.</li>
-                <li><b>Emulator + system CA</b> — use <b>Setup all</b> above; enough for apps that trust system CAs but do not pin.</li>
-                <li><b>Root + Magisk / LSPosed</b> — persistent bypass modules on a dedicated test phone.</li>
+                <li><b>Frida / objection</b> — runtime hooks for OkHttp, custom TrustManagers, Flutter/Dart HTTP</li>
+                <li><b>Patched APK</b> — repack with <code>network_security_config</code> or smali-patch pinning</li>
+                <li><b>Emulator + system CA</b> — enough for apps that trust system CAs but don't pin</li>
+                <li><b>Root + Magisk / LSPosed</b> — persistent bypass modules</li>
               </ul>
-              <p class="hint" style="margin:8px 0 0">User-installed CAs on Android 7+ are ignored by most production apps — that looks like pinning but is often just CA trust policy.</p>
             </details>
           </div>
           <div class="section">
@@ -688,13 +675,11 @@ Content-Type: application/json
                 <li><b>curl/wget one-off:</b> <code>curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://…</code>. Many tools also honour <code>SSL_CERT_FILE</code>/<code>REQUESTS_CA_BUNDLE</code> pointing at the CA.</li>
               </ol></details>
             </div>
-            <p class="hint" style="margin-top:10px">Trusting the CA is a one-time manual step per client — by design. Interceptor does not modify your OS trust store automatically, so nothing it installs outlives a step you took yourself.</p>
-          </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
           <div class="section">
             <h3>TARGET SCOPE</h3>
-            <p class="hint" style="margin-bottom:10px">With <b>include</b> rules, only matching traffic is in scope; <b>exclude</b> always wins; no rules = everything in scope. Scope focuses the <b>◎ in scope</b> history toggle, the intercept gate, and the scanner. Tip: right-click a flow → <b>Add to scope</b>. Host: exact (<b>api.acme.com</b>), wildcard (<b>*.acme.com</b>), or regex (<b>.*ohsome.*</b>, <b>/pattern/</b>). Path: prefix or regex (e.g. <b>/v[12]/.*</b>).</p>
+            <p class="hint" style="margin-bottom:10px"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.acme.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
             <p id="scopeDupWarn" class="hint" style="display:none;margin-bottom:8px;color:var(--amber)"></p>
             <table class="rules-tbl">
               <thead><tr><th style="width:34px">On</th><th style="width:96px">Action</th><th>Host</th><th style="width:130px">Path</th><th style="width:84px">Scheme</th><th style="width:60px"></th></tr></thead>
@@ -716,7 +701,7 @@ Content-Type: application/json
             </label>
             <p id="aiDisabledHint" class="hint" style="display:none;margin-bottom:12px;color:var(--amber)">AI is off — assist, MCP, Activity, and AI paths in Discover are hidden. Uncheck above to re-enable.</p>
             <div id="aiSettingsFields">
-            <p class="hint" style="margin-bottom:10px">Optional bring-your-own-key assist. The inspector <b>✨</b> (or right-click → ✨ Ask AI) streams explanations, payload suggestions, or summaries. Data goes to your provider only when you ask. <b id="aiKeyState"></b></p>
+            <p class="hint" style="margin-bottom:10px">Bring-your-own-key. Data goes to your provider only when you ask. <b id="aiKeyState"></b></p>
             <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
             <div class="field"><label>API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
             <div class="field" id="setAiModelField">
@@ -737,9 +722,9 @@ Content-Type: application/json
         <section class="set-sec" data-sec="scanner" hidden>
           <div class="section">
             <h3>OUT-OF-BAND (OOB) CATCHER</h3>
-            <p class="hint" style="margin-bottom:12px;line-height:1.65">Blind SSRF/XXE/SQLi proofs need the <b>target</b> to HTTP-call your catcher URL. The default <code>127.0.0.1:9966/oob/…</code> only works for same-machine tests — remote apps cannot reach your localhost, so OOB is <b>off by default</b>. Enable when you have a reachable base URL (ngrok/Cloudflare tunnel, a VPS, or LAN IP with the control plane bound externally) and set it in the OOB modal.</p>
+            <p class="hint" style="margin-bottom:12px">Default <code>127.0.0.1:9966/oob</code> only works for same-machine tests. Enable when you have a reachable base URL.</p>
             <label class="hint" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
-              <input type="checkbox" id="setOobEnabled"> Enable OOB interaction catcher (Scanner → ⚲ OOB)
+              <input type="checkbox" id="setOobEnabled"> Enable OOB catcher
             </label>
             <p id="oobDisabledHint" class="hint" style="display:none;margin-top:8px;color:var(--amber)">OOB is off — the ⚲ button is hidden. Enable above when you have a publicly reachable callback URL.</p>
           </div>
@@ -749,7 +734,7 @@ Content-Type: application/json
             <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
-              <p class="hint" style="margin-bottom:12px">Keys authenticate remote access to the control API when it is exposed beyond localhost. The full token is shown only once, at creation.</p>
+              <p class="hint" style="margin-bottom:12px">Authenticate remote access. Full token shown only once at creation.</p>
               <div class="row" style="gap:8px;margin-bottom:12px">
                 <input id="keyLabel" class="repurl" style="max-width:260px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
                 <button class="btn accent" id="keyCreate">Create key</button>
@@ -770,24 +755,23 @@ Content-Type: application/json
         <section class="set-sec" data-sec="session" hidden>
           <div class="section">
             <h3>SESSION · auth headers</h3>
-            <p class="hint" style="margin-bottom:10px">Headers auto-applied to <b>Repeater</b>, <b>Intruder</b>, and <b>Active scan</b> sends (which bypass the proxy), so a token stays fresh without re-pasting. One <b>Key: Value</b> per line; these <b>replace</b> any existing value on the outgoing request. Typically an <b style="color:var(--accent)">Authorization</b> bearer token or a <b style="color:var(--accent)">Cookie</b>.</p>
-            <p class="hint" style="margin-bottom:10px;color:var(--amber)">Session headers are sent only to hosts that match your <b>Target scope</b> rules (Settings → Target scope). Without scope rules, nothing is injected — add an include rule for your target, or enable the unsafe override below.</p>
+            <p class="hint" style="margin-bottom:10px">Auto-applied to <b>Repeater</b>, <b>Intruder</b>, and <b>Active scan</b> sends. Sent only to in-scope hosts.</p>
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
             <div class="field"><textarea id="setSessionHeaders" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setSessionUnscoped" style="margin-top:2px"> <span><b style="color:var(--red)">Allow on any host (unsafe)</b> — attach session headers even when the send target is outside scope. Only use if you understand the cross-domain leak risk.</span></label>
-            <details class="set-disc">
-              <summary>Per-host overrides (optional — replaces global headers for a specific host)</summary>
+            <details class="section set-disc">
+            <summary>Per-host overrides</summary>
               <div id="hostHdrList" style="margin-top:8px"></div>
               <button class="btn" id="addHostHdrBtn" style="font-size:11px;padding:3px 8px;margin-top:4px">+ Add host</button>
             </details>
           </div>
           <details class="section set-disc">
-            <summary>Token macro (CSRF / re-auth) — optional</summary>
-            <p class="hint" style="margin:10px 0 12px">For apps that rotate a <b>CSRF token</b> every request or expire sessions: before each send, Interceptor fires a <b>refresh request</b>, pulls a value from its response with your regex, and injects it. <b>Header</b> mode sets a header; <b>placeholder</b> mode replaces a marker (e.g. <code>§CSRF§</code>) you put in the request/body.</p>
+            <summary>Token macro (CSRF / re-auth)</summary>
+            <p class="hint" style="margin:10px 0 12px">Before each send, fires a refresh request, extracts a value with regex, and injects it as a header or placeholder.</p>
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="macroOn"> Run token macro before each send</label>
             <div class="field" style="max-width:none"><label>Refresh request <span class="hint">(raw HTTP — request line + headers)</span></label><textarea id="macroReq" rows="4" placeholder="GET /login HTTP/1.1&#10;Host: app.example.com&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <input id="macroTarget" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — target URL" placeholder="https://app.example.com (where to send it)" spellcheck="false">
+              <input id="macroReq" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — target URL" placeholder="https://app.example.com" spellcheck="false">
               <input id="macroExtract" class="btn" style="flex:1;min-width:200px;background:var(--bg3);font-family:var(--mono)" aria-label="Token macro — extract regex" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
             </div>
             <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -797,8 +781,8 @@ Content-Type: application/json
             <p class="hint" style="margin-top:8px;color:var(--amber)">Note: this fires one extra request per send — for Intruder that doubles the request count. Use <b>Save session</b> below to persist.</p>
           </details>
           <details class="section set-disc">
-            <summary>Login macro (session re-auth) — optional</summary>
-            <p class="hint" style="margin:10px 0 12px">Record a <b>login request</b> — Interceptor runs it to extract <b>Cookie</b> / <b>Authorization</b> from the response into session headers. Enable <b>Re-auth on 401</b> to retry sends automatically; set <b>Refresh (sec)</b> for periodic re-login.</p>
+            <summary>Login macro (session re-auth)</summary>
+            <p class="hint" style="margin:10px 0 12px">Runs a login request to extract <b>Cookie</b>/<b>Authorization</b> into session headers.</p>
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="loginMacroOn"> Enable login macro</label>
             <div class="field" style="max-width:none"><label>Login request <span class="hint">(raw HTTP)</span></label><textarea id="loginMacroReq" rows="4" placeholder="POST /api/login HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/json&#10;&#10;{&quot;user&quot;:&quot;…&quot;,&quot;pass&quot;:&quot;…&quot;}" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -812,21 +796,21 @@ Content-Type: application/json
               <span class="hint" id="loginMacroState"></span>
             </div>
             <div id="loginMacroTestOut" class="evidence" style="display:none;margin-top:10px"></div>
-            <p class="hint" style="margin-top:8px">Tip: right-click a login flow in History → <b>Use as login macro</b>. <b>Test</b> is a dry-run — it shows the response &amp; captured session without applying it. Use <b>Save session</b> below to persist.</p>
+            <p class="hint" style="margin-top:8px">Tip: right-click a login flow → <b>Use as login macro</b>.</p>
           </details>
           <div class="row" style="gap:8px;padding:14px 16px"><button class="btn accent" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" style="display:none;font-size:11px;padding:2px 7px;border-radius:4px;background:var(--bg3)"></span></div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
           <div class="section">
             <h3>PROJECT</h3>
-            <p class="hint" style="margin-bottom:12px">Each project keeps its own captured history, rules, and target scope under <code>~/.interceptor/projects/&lt;name&gt;/</code>. Custom scanner checks and the CA are shared globally (<code>~/.interceptor/checks</code>, <code>~/.interceptor/ca</code>). Switching projects restarts Interceptor on the chosen project.</p>
+            <p class="hint" style="margin-bottom:12px">Each project has its own history, rules, and scope under <code>~/.interceptor/projects/&lt;name&gt;/</code>. CA and checks are shared globally. Switching restarts Interceptor.</p>
             <div class="field"><label>Active project</label><div style="font-size:13px"><b id="projNameHint" style="color:var(--accent)">default</b> · <span id="projDirHint" style="color:var(--fg3)">~/.interceptor</span></div></div>
             <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
               <div class="field" style="margin-bottom:0"><label>Switch to a saved project</label><select id="projSelect" class="btn" style="background:var(--bg3);min-width:200px"></select></div>
               <button class="btn accent" id="projSwitchBtn">Open ▸</button>
             </div>
             <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
-              <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label>…or start a new project (name or absolute path)</label><input id="projNew" class="btn" style="background:var(--bg3);width:100%" placeholder="acme-engagement   or   /tmp/scan"></div>
+              <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label>New project</label><input id="projNew" class="btn" style="background:var(--bg3);width:100%" placeholder="acme-engagement"></div>
               <button class="btn" id="projNewBtn">Create &amp; open</button>
             </div>
             <p class="hint" id="projSwitchNote" style="margin-top:12px;display:none;color:var(--accent)"></p>
@@ -834,7 +818,7 @@ Content-Type: application/json
           </div>
           <div class="section">
             <h3>EXPORT / IMPORT</h3>
-            <p class="hint" style="margin-bottom:10px">Save or load a portable session bundle — captured flows, match-&amp;-replace rules, target scope, and the upstream proxy. Import merges into the current project.</p>
+            <p class="hint" style="margin-bottom:10px">Portable session bundle — flows, rules, scope, upstream proxy. Import merges into current project.</p>
             <div class="row" style="gap:8px">
               <a class="btn accent" id="exportProject" href="/api/export/project" download style="text-decoration:none">Export project</a>
               <button class="btn" id="importProjectBtn">Import project</button>
@@ -843,7 +827,7 @@ Content-Type: application/json
           </div>
           <div class="section" id="retentionSection">
             <h3>DATA &amp; RETENTION</h3>
-            <p class="hint" style="margin-bottom:12px">Keep the database small by purging noisy hosts, or keep only the hosts that matter. Reclaiming space also runs body garbage-collection to remove unreferenced body files. <b style="color:var(--red)">Deletion is permanent and cannot be undone.</b></p>
+            <p class="hint" style="margin-bottom:12px">Purge noisy hosts to keep the database small. <b style="color:var(--red)">Deletion is permanent.</b></p>
             <div id="retentionTotals" style="margin-bottom:12px;font-size:12px;color:var(--fg2)"></div>
             <table class="rules-tbl" id="retentionTable">
               <thead><tr><th style="width:30px"><input type="checkbox" id="retSelectAll" title="Select / clear all hosts"></th><th>Host</th><th style="width:80px;text-align:right">Flows</th><th style="width:90px;text-align:right">Size</th><th style="width:72px"></th></tr></thead>
@@ -913,7 +897,7 @@ Content-Type: application/json
     </div>
     <div class="row ai-agent-row" style="padding:0 16px 8px;gap:8px;border-bottom:1px solid var(--line)">
       <label class="ai-agent-toggle"><input type="checkbox" id="aiAgentToggle"> Let AI send requests</label>
-      <span class="hint">When on, the model may probe URLs via Repeater (up to 5 steps per question). Anthropic provider only.</span>
+      <span class="hint">Up to 5 Repeater steps per question. Anthropic only.</span>
     </div>
     <div id="aiBody" style="flex:1;overflow:auto;padding:16px;min-height:140px">
       <div id="aiOut" class="md"></div>
@@ -967,8 +951,7 @@ Content-Type: application/json
 <div id="checksModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
   <div role="dialog" aria-modal="true" aria-labelledby="checksModalTitle" class="checks-dialog">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span id="checksModalTitle" style="font-weight:700;color:var(--accent)">🛡 Scanner checks</span>
-      <span class="hint" style="margin-left:10px">click a custom check to edit · built-ins toggle only</span>
+      <span id="checksModalTitle" style="font-weight:700;color:var(--accent)">🛡 Checks</span>
       <div class="spacer"></div>
       <button class="btn" id="checksClose" aria-label="Close">✕</button>
     </div>
@@ -1018,14 +1001,14 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="activeModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:800px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="activeModalTitle" style="font-weight:700;color:var(--red)">⚡ Active scan</span>
-      <span class="hint" style="margin-left:10px">sends crafted attack requests · scope-restricted</span>
+      <span class="hint" style="margin-left:10px">sends attack requests · scope-restricted</span>
       <div class="spacer"></div><button class="btn" id="asClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
       <div style="border:1px solid var(--red);background:var(--redDim);border-radius:8px;padding:10px 12px">
         <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer;color:var(--fg)">
           <input type="checkbox" id="asArm" style="margin-top:2px">
-          <span><b style="color:var(--red)">Active scanning sends real attack requests</b> (XSS, SQLi, SSTI, traversal, timing probes) to the target. Only enable this for systems you are <b>authorized to test</b>. Stays armed for this session.</span>
+           <span><b style="color:var(--red)">Active scanning sends real attack requests</b> — only enable for systems you're authorized to test.</span>
         </label>
       </div>
       <div class="row" style="gap:14px;flex-wrap:wrap">
@@ -1051,7 +1034,7 @@ Content-Type: application/json
       <div class="spacer"></div><button class="btn" id="oobClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
-      <p class="hint" style="line-height:1.6;margin:0;color:var(--amber)"><b>Remote targets cannot call back to localhost.</b> Set <b>Base URL</b> to an address the target can reach — e.g. an ngrok tunnel (<code>https://xyz.ngrok.io/oob</code>), your VPS, or a LAN IP if the target is on the same network. Same-box testing only: the default <code>127.0.0.1:9966/oob</code> works when the vulnerable app runs on this machine.</p>
+      <p class="hint" style="line-height:1.6;margin:0;color:var(--amber)"><b>Remote targets cannot reach localhost.</b> Set base URL to something reachable — e.g. ngrok, VPS, or LAN IP.</p>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <span class="hint">Base URL</span>
         <input id="oobBase" class="btn" style="flex:1;min-width:240px;background:var(--bg3);font-family:var(--mono)" aria-label="OOB collector base URL" placeholder="http://your-host:port/oob" spellcheck="false">
@@ -1079,7 +1062,6 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="projModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:560px;max-height:86vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="projModalTitle" style="font-weight:700;color:var(--accent)">◧ Projects</span>
-      <span class="hint" style="margin-left:10px">switch or create — each keeps its own history, rules &amp; scope</span>
       <div class="spacer"></div><button class="btn" id="pmClose">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto">
@@ -1094,7 +1076,7 @@ Content-Type: application/json
           <input id="pmNew" class="btn" style="flex:1;min-width:200px;background:var(--bg3)" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
           <button class="btn accent" id="pmNewBtn">＋ Create &amp; open</button>
         </div>
-        <p class="hint" style="margin:8px 0 0">A plain name is saved under <code>~/.interceptor/projects/&lt;name&gt;/</code>. The CA is shared, so you only trust it once. Switching restarts Interceptor on the chosen project and reconnects.</p>
+        <p class="hint" id="pmSwitchNote" style="display:none;color:var(--accent)"></p>
       </div>
       <div id="pmNote" class="hint" style="display:none;color:var(--accent)"></div>
     </div>
@@ -1104,11 +1086,11 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="authzModalTitle" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:760px;max-height:88vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
       <span id="authzModalTitle" style="font-weight:700;color:var(--accent)">🔓 Authorization test</span>
-      <span class="hint" style="margin-left:10px">compare access across roles · IDOR / broken access control</span>
+      <span class="hint" style="margin-left:10px">compare access across roles</span>
       <div class="spacer"></div><button class="btn" id="authzClose" aria-label="Close">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
-      <p class="hint" style="line-height:1.6;margin:0">Define identities (roles) below — the <b>first is the baseline</b> (your privileged user). Each replay swaps in that identity's auth headers. If a lower-privileged role still gets a <b>successful, ~same-size</b> response, it's flagged <b style="color:var(--red)">⚠ same access</b>. Leave headers blank for <b>anonymous</b> (Cookie/Authorization stripped).</p>
+      <p class="hint" style="line-height:1.6;margin:0">Define identities below — the <b>first is the baseline</b>. Each replay swaps auth headers. Lower-privileged roles with <b>~same-size</b> responses are flagged.</p>
       <div class="seg" id="authzMode" role="tablist" aria-label="Authorization test mode">
         <button type="button" data-m="flow" class="on" aria-pressed="true">Selected flow <b id="authzFlow" style="color:var(--accent)"></b></button>
         <button type="button" data-m="scope" aria-pressed="false">All in-scope</button>

@@ -211,6 +211,12 @@ func run() error {
 	if v, ok, _ := st.GetSetting("capture.suppressBrowserTelemetry"); !ok || v == "1" {
 		prx.SetSuppressBrowserTelemetry(true)
 	}
+	// Invisible (transparent) proxy mode: off by default; accept origin-form
+	// requests from non-proxy-configured clients (e.g. iptables/pf/DNS redirect).
+	hub.SetInvisibleProxy = prx.SetInvisibleProxy
+	if v, ok, _ := st.GetSetting("proxy.invisibleProxy"); ok && v == "1" {
+		prx.SetInvisibleProxy(true)
+	}
 	pm.handler = prx
 	cm.handler = hub.Handler()
 	hub.SyncSelfPorts = func() {

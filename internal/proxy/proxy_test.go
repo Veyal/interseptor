@@ -166,6 +166,103 @@ func TestProxyRecordsRequestThenResponse(t *testing.T) {
 	}
 }
 
+// In invisible (transparent) proxy mode, a client that isn't configured as a
+// proxy client — e.g. traffic redirected via iptables/pf/DNS — sends an
+// origin-form request ("GET /path" + Host header). The proxy must forward it to
+// the named host instead of rejecting it as a malformed proxy request.
+func TestProxyInvisibleModeForwardsOriginForm(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Seen-Host", r.Host)
+		w.WriteHeader(200)
+		io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, &recEvents{})
+	srv.SetInvisibleProxy(true)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// Send an origin-form request (no absolute URI, no proxy config) directly to
+	// the proxy port, naming the upstream in the Host header — exactly what a
+	// transparently-redirected client does.
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer conn.Close()
+	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+	fmt.Fprintf(conn, "GET /hello HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", upstreamHost)
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "ok" {
+		t.Fatalf("body = %q, want %q", body, "ok")
+	}
+
+	flows := waitFlows(t, s, 1)
+	f := flows[0]
+	uu, _ := url.Parse(upstream.URL)
+	upHost := uu.Hostname()
+	upPort, _ := strconv.Atoi(uu.Port())
+	if upPort == 0 {
+		upPort = 80
+	}
+	if f.Scheme != "http" || f.Host != upHost || f.Port != upPort || f.Path != "/hello" {
+		t.Fatalf("captured flow = {scheme:%s host:%s port:%d path:%s}, want http/%s/%d/hello", f.Scheme, f.Host, f.Port, f.Path, upHost, upPort)
+	}
+}
+
+// With invisible mode off (the default), an origin-form request is rejected.
+func TestProxyInvisibleModeOffRejectsOriginForm(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, &recEvents{})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "GET /hello HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 // Traffic to our own loopback listeners (control plane / proxy) is forwarded but
 // must never be recorded — otherwise proxying localhost floods history and
 // feedback-loops the live-update SSE.

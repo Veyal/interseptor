@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Invisible (transparent) proxy mode.** A new on/off toggle (Settings → Invisible Proxy, `proxy.invisibleProxy`) lets Interceptor accept traffic from clients that aren't proxy-configured — e.g. redirected via `iptables`/`pf`, DNS spoofing, or port forwarding — matching Burp's "Support invisible proxying". When enabled, origin-form requests (`GET /path` + `Host:` header) are forwarded to the host named in their `Host` header instead of being rejected as malformed proxy requests. Absolute-URI and `CONNECT` requests keep working unchanged. Off by default.
+
+### Changed
+- Consolidated `CLAUDE.md` + `CONTRIBUTING.md` into single `AGENTS.md` with symlinks to `CLAUDE.md`, `.cursorrules`, `.opencode/rules.md`.
+- Added `orchestrator` skill for subagent delegation (architect, backend, frontend, reviewer, tester).
 
 ## [0.22.0] - 2026-07-01
 
