@@ -153,6 +153,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host, port := splitHostPort(r.Host, 443)
+	connectStarted := time.Now()
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -180,7 +181,8 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	tlsConn := tls.Server(clientConn, cfg)
 	if err := tlsConn.Handshake(); err != nil {
-		return // client likely rejected our leaf (pinning)
+		s.recordTLSFailure(host, port, clientConn.RemoteAddr().String(), r, connectStarted, err)
+		return // client rejected our leaf (pinning or untrusted CA)
 	}
 	defer tlsConn.Close()
 

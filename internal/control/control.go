@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interceptor/internal/aiassist"
+	"github.com/Veyal/interceptor/internal/bind"
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/discovery"
 	"github.com/Veyal/interceptor/internal/intercept"
@@ -542,6 +543,9 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Get("discovery") == "1" {
 		f.RequireFlags = store.FlagDiscovery
+	}
+	if q.Get("tlsFailed") == "1" {
+		f.RequireFlags |= store.FlagTLSFailed
 	}
 	switch {
 	case showManual && showAI && !h.aiDisabled():
@@ -1311,11 +1315,10 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.ProxyAddr != "" && in.ProxyAddr != h.currentProxyAddr() {
-		// Refuse to expose the proxy on a non-loopback interface unless the
-		// operator explicitly opts in. This blocks a hostile page (or a slip)
-		// from rebinding the proxy to 0.0.0.0 and putting it on the network.
-		if !isLoopbackHost(in.ProxyAddr) && os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND") == "" {
-			httpErr(w, http.StatusBadRequest, "proxy bind address must be loopback (127.0.0.1/localhost/::1); set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1 to allow external binds")
+		// Refuse to expose the proxy on a non-loopback interface when external bind
+		// is locked down (INTERCEPTOR_ALLOW_EXTERNAL_BIND=0).
+		if !isLoopbackHost(in.ProxyAddr) && !bind.ExternalBindAllowed() {
+			httpErr(w, http.StatusBadRequest, "proxy bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)")
 			return
 		}
 		if h.rebind != nil {
@@ -1333,8 +1336,8 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.ControlAddr != "" && in.ControlAddr != h.currentControlAddr() {
-		if !isLoopbackHost(in.ControlAddr) && os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND") == "" {
-			httpErr(w, http.StatusBadRequest, "control bind address must be loopback (127.0.0.1/localhost/::1); set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1 to allow external binds")
+		if !isLoopbackHost(in.ControlAddr) && !bind.ExternalBindAllowed() {
+			httpErr(w, http.StatusBadRequest, "control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)")
 			return
 		}
 		if h.ctrlRebind != nil {

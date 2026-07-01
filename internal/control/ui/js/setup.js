@@ -43,7 +43,8 @@ function renderStep() {
       <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block;margin-bottom:14px">⤓ Download CA certificate</a>
       <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol style="margin:8px 0 4px;padding-left:22px;color:var(--fg2)">${trust}</ol></details>
       <label class="icpt-chk" style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setupTrusted"> I've installed &amp; trusted the CA</label>
-      <p class="hint" style="margin:8px 0 0">This is a one-time manual step — Interceptor never modifies your OS trust store itself.</p>`;
+      <p class="hint" style="margin:8px 0 0">This is a one-time manual step — Interceptor never modifies your OS trust store itself.</p>
+      <p class="hint" style="margin:10px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg2)"><b>Mobile apps:</b> installing the CA is not enough for most Android/iOS apps. SSL <b>pinning</b> must be bypassed on the device (Frida, patched APK) — Interceptor only detects when pinning blocks traffic (red <b>PIN</b> rows).</p>`;
     $('#setupNext').disabled = true;
     $('#setupTrusted').onchange = e => { $('#setupNext').disabled = !e.target.checked; };
   } else if (step === 2) {

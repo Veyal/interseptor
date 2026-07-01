@@ -67,6 +67,7 @@
     </div>
     <div id="chips"></div>
     <div id="tagBar" class="tagbar" style="display:none" aria-label="Filter by tag"></div>
+    <div id="tlsDiagBanner" class="tls-diag-banner" style="display:none" role="status" aria-live="polite"></div>
     <div id="flowCapBanner" class="hint" style="display:none;padding:5px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg3)"></div>
     <div id="flowSearchNote" class="hint" style="display:none;padding:5px 12px;background:var(--bg3);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg2)"></div>
     <div id="selBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px">
@@ -460,11 +461,11 @@ Content-Type: application/json
             <h3>PROXY LISTENER</h3>
             <div class="field"><label>Bind address &amp; port</label><input id="setAddr" placeholder="127.0.0.1:8080"></div>
             <div class="row" style="gap:8px"><button class="btn accent" id="saveAddrBtn">Apply &amp; rebind</button>
-              <span class="hint">Loopback only by default; bind <b>0.0.0.0:8080</b> for LAN/device capture (needs <b>INTERCEPTOR_ALLOW_EXTERNAL_BIND=1</b>).</span></div>
+              <span class="hint">Defaults to loopback (<b>127.0.0.1:8080</b>); bind <b>0.0.0.0:8080</b> for LAN/device capture. Use <b>127.0.0.1</b> to stay localhost-only.</span></div>
           </div>
           <div class="section">
             <h3>CONTROL UI (this window)</h3>
-            <p class="hint" style="margin-bottom:10px">Where the web UI and REST API listen. Change the port to run a second instance, or bind <b>0.0.0.0</b> so remote OOB callbacks can reach <code>/oob</code> (needs <b>INTERCEPTOR_ALLOW_EXTERNAL_BIND=1</b>). After rebinding, bookmark the new URL — this tab may stop updating if the port changed.</p>
+            <p class="hint" style="margin-bottom:10px">Where the web UI and REST API listen. Change the port to run a second instance, or bind <b>0.0.0.0</b> so remote OOB callbacks can reach <code>/oob</code>. After rebinding, bookmark the new URL — this tab may stop updating if the port changed.</p>
             <div class="field"><label>Bind address &amp; port</label><input id="setControlAddr" placeholder="127.0.0.1:9966"></div>
             <div class="row" style="gap:8px"><button class="btn accent" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
             <div class="field" style="margin-top:16px"><label>Upstream proxy (chain through another proxy; blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
@@ -494,7 +495,7 @@ Content-Type: application/json
           </div>
           <div class="section" id="androidAdbSection" style="display:none">
             <h3>ANDROID (ADB)</h3>
-            <p class="hint" style="margin-bottom:10px">USB-connected Android setup via <code>adb</code> (platform-tools on PATH). <b>USB</b> mode uses <code>adb reverse</code> (device → <code>127.0.0.1</code>). <b>Wi‑Fi</b> mode uses your LAN IP — Interceptor must bind <code>0.0.0.0:PORT</code> (<code>INTERCEPTOR_ALLOW_EXTERNAL_BIND=1</code>). Emulators auto-suggest <b>system CA</b>.</p>
+            <p class="hint" style="margin-bottom:10px">USB-connected Android setup via <code>adb</code> (platform-tools on PATH). <b>USB</b> mode uses <code>adb reverse</code> (device → <code>127.0.0.1</code>). <b>Wi‑Fi</b> mode uses your LAN IP — Interceptor must bind <code>0.0.0.0:PORT</code> in Settings → Proxy. Emulators auto-suggest <b>system CA</b>.</p>
             <div class="android-toolbar">
               <div class="field android-device-field">
                 <label id="androidDeviceLabel">Device</label>
@@ -535,6 +536,64 @@ Content-Type: application/json
             <p class="hint" id="androidAdbHint"></p>
             <p class="hint" style="margin-top:6px"><b>Setup all</b> uses <code>caMode:auto</code> (emulator → system CA, phone → user CA prompt). <b>User CA</b> needs confirmation on device. <b>System CA</b> needs root or writable-system emulator + reboot.</p>
           </div>
+          <div class="section" id="iosSection">
+            <h3>iOS (SIMULATOR &amp; DEVICE)</h3>
+            <p class="hint" style="margin-bottom:10px">macOS + Xcode: automate <b>Simulator</b> CA via <code>simctl</code> and open a configuration profile (proxy + CA). <b>Physical iPhone</b>: download/open the profile on device Safari (same Wi‑Fi; Interceptor must bind <code>0.0.0.0</code>). Optional: <code>libimobiledevice</code> (<code>idevice_id</code>) lists USB-connected phones. Interceptor does <b>not</b> bypass SSL pinning.</p>
+            <div class="android-toolbar">
+              <div class="field android-device-field">
+                <label id="iosDeviceLabel">Target</label>
+                <div class="ui-select" id="iosDeviceSelectWrap">
+                  <button type="button" class="ui-select-trigger" id="iosDeviceTrigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="iosDeviceLabel iosDeviceValue">
+                    <span class="ui-select-value" id="iosDeviceValue">No target selected</span>
+                    <span class="ui-select-caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div class="ui-select-menu" id="iosDeviceMenu" role="listbox" aria-labelledby="iosDeviceLabel" hidden></div>
+                </div>
+                <div class="hint android-device-meta" id="iosDeviceMeta"></div>
+              </div>
+              <div class="field android-mode-field">
+                <label id="iosProxyLabel">Proxy via</label>
+                <div class="seg android-proxy-seg" id="iosProxyMode" role="group" aria-labelledby="iosProxyLabel">
+                  <button type="button" class="on" data-mode="localhost" aria-pressed="true">Simulator</button>
+                  <button type="button" data-mode="wifi" aria-pressed="false">Wi‑Fi (device)</button>
+                </div>
+              </div>
+              <button class="btn" type="button" id="iosRefreshBtn">Refresh</button>
+            </div>
+            <div class="hint android-lan-hint" id="iosLanHint" style="margin:-4px 0 10px;display:none"></div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+              <button class="btn accent" type="button" id="iosSetupAllBtn">Setup all (CA + profile)</button>
+              <a class="btn" id="iosProfileLink" href="/api/ios/profile.mobileconfig" download style="text-decoration:none">Download profile</a>
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+              <button class="btn" type="button" id="iosInstallCaBtn">Install CA — simulator</button>
+              <button class="btn" type="button" id="iosOpenProfileBtn">Open profile in simulator</button>
+            </div>
+            <p class="hint" id="iosHint"></p>
+            <p class="hint" style="margin-top:6px">After installing the profile: Settings → General → VPN &amp; Device Management → trust it → Settings → General → About → <b>Certificate Trust Settings</b> → enable full trust for Interceptor CA.</p>
+          </div>
+          <div class="section" id="tlsPinningSection">
+            <h3>SSL PINNING &amp; MISSING TRAFFIC</h3>
+            <p class="hint" style="margin-bottom:10px;line-height:1.65">Interceptor is a <b>proxy</b> — it decrypts HTTPS only when the client trusts the CA. It does <b>not</b> bypass SSL pinning. If an app pins certificates, you must change the app or hook it on the device (Frida, patched APK, etc.).</p>
+            <div id="tlsDiagPanel" class="tls-diag-panel hint" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);line-height:1.6">Checking traffic…</div>
+            <details class="ca-how" open><summary>What the verdicts mean</summary>
+              <ul style="margin:8px 0 4px;padding-left:20px;color:var(--fg2);line-height:1.7">
+                <li><b style="color:var(--red)">TLS blocked</b> — the app sent CONNECT but rejected the MITM cert (<b>pinning or untrusted CA</b>). Look for red <b>PIN</b> rows in History.</li>
+                <li><b style="color:var(--amber)">No traffic</b> — nothing reached the proxy. Check proxy settings, <code>adb reverse</code>, or whether the app ignores the system proxy.</li>
+                <li><b style="color:var(--amber)">No HTTPS</b> — only cleartext HTTP captured, or HTTPS never went through the proxy.</li>
+                <li><b style="color:var(--accent)">OK</b> — HTTPS interception is working.</li>
+              </ul>
+            </details>
+            <details class="ca-how"><summary>How to bypass pinning (on the device — not in Interceptor)</summary>
+              <ul style="margin:8px 0 4px;padding-left:20px;color:var(--fg2);line-height:1.7">
+                <li><b>Frida / objection</b> — runtime hooks for OkHttp <code>CertificatePinner</code>, custom TrustManagers, Flutter/Dart HTTP, etc.</li>
+                <li><b>Patched APK</b> — repack with <code>network_security_config</code> trusting user CAs, or smali patch pinning checks.</li>
+                <li><b>Emulator + system CA</b> — use <b>Setup all</b> above; enough for apps that trust system CAs but do not pin.</li>
+                <li><b>Root + Magisk / LSPosed</b> — persistent bypass modules on a dedicated test phone.</li>
+              </ul>
+              <p class="hint" style="margin:8px 0 0">User-installed CAs on Android 7+ are ignored by most production apps — that looks like pinning but is often just CA trust policy.</p>
+            </details>
+          </div>
           <div class="section">
             <div style="margin-top:0;display:flex;flex-direction:column;gap:6px">
               <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">HOW TO TRUST IT</div>
@@ -554,7 +613,8 @@ Content-Type: application/json
                 <li>Check <b>Trust this CA to identify websites</b> → OK.</li>
               </ol></details>
               <details class="ca-how"><summary>iOS</summary><ol>
-                <li>Open the <code>.crt</code> in Safari → <b>Allow</b> the profile download → install it in Settings.</li>
+                <li>Use the <b>iOS (Simulator &amp; Device)</b> section above — <b>Setup all</b> for Simulator, or download the profile for a physical iPhone.</li>
+                <li>Settings → <b>General</b> → <b>VPN &amp; Device Management</b> → install the Interceptor profile.</li>
                 <li>Settings → <b>General</b> → <b>About</b> → <b>Certificate Trust Settings</b> → enable full trust for the Interceptor CA.</li>
               </ol></details>
               <details class="ca-how"><summary>Android</summary><ol>

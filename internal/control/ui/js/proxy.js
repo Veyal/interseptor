@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
@@ -8,6 +8,7 @@ import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { prefillDiscovery } from './discovery.js';
 import { focusMapSearch } from './map.js';
+import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.
@@ -200,14 +201,14 @@ function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
   const pending=!f.status&&!f.error;
   const hasNote=!!(f.note&&String(f.note).trim());
-  const stHTML=f.status?String(f.status):(f.error?'ERR':'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
+  const stHTML=f.status?String(f.status):(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
   const grid=flowColGrid();
   const rowTitle=(pending?'[pending] ':'')+(hasNote?String(f.note).trim()+' · ':'')+'Click inspect · Shift+click range · Ctrl/Cmd+click toggle';
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
+    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="found by content discovery">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -305,6 +306,7 @@ function flowRowLiveUpdate(f){
 }
 export function handleFlowNew(f){
   if(!f)return;
+  onFlowMaybeTLS(f);
   if(!sortIsLiveDefault()||!canIncremental()||!flowMatchesFilters(f)){scheduleReload();return;}
   upsertFlow(f);
   refreshMethodFilter();
@@ -314,6 +316,7 @@ export function handleFlowNew(f){
 }
 export function handleFlowUpdate(f){
   if(!f)return;
+  onFlowMaybeTLS(f);
   const ex=flowMap.get(f.id);
   if(ex){
     Object.assign(ex,f); // O(1) refresh — no findIndex over the loaded list
@@ -332,13 +335,17 @@ export function applySort(flows){
   return flows;
 }
 export function getStartedCard(){
+  const diag=getStartedDiagnosisHint();
   return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
     <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
     <div class="hint" style="margin-bottom:14px">Interceptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
+    ${diag}
     <ol style="color:var(--fg2);line-height:2;font-size:12.5px;padding-left:20px;margin:0">
       <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
+      <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
-      <li>Browse — flows stream in here. <b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or ✨ ask AI'}</li>
+      <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
+      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or ✨ ask AI'}</li>
       ${state.aiDisabled?'':`<li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>`}
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
@@ -485,6 +492,7 @@ export async function loadFlows(){
     updateTruncBanner();
     updateSearchNoteBanner();
     refreshMethodFilter();
+    loadTrafficDiagnosis();
   }catch(e){toast('flows: '+e.message);}
 }
 
@@ -549,6 +557,9 @@ export async function selectFlow(id){
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
       await renderWSFrames(id);
+    }else if(d.flags&FLAG_TLS){
+      $('#resView').innerHTML=`<div style="padding:12px;color:var(--fg2);line-height:1.5"><strong style="color:var(--red)">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span style="color:var(--fg3)">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
+      $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
     }else if(!d.status&&!d.error){
       // In-flight request: response not back yet. The flow.update handler
       // re-selects this flow once it lands, filling the pane in automatically.

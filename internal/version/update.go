@@ -180,13 +180,12 @@ func printMCPUpdateNote(out io.Writer) {
 
 func fetchRelease(ctx context.Context, version string) (*releaseInfo, error) {
 	tag := "v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
-	u := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", Repo, tag)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	u := fmt.Sprintf("%s/releases/tags/%s", githubAPIRoot, tag)
+	req, err := newGitHubRequest(ctx, http.MethodGet, u)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := githubHTTP.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +194,7 @@ func fetchRelease(ctx context.Context, version string) (*releaseInfo, error) {
 		return nil, fmt.Errorf("release %s not found", tag)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github release: HTTP %d", resp.StatusCode)
+		return nil, githubAPIError(resp, "github release")
 	}
 	var raw struct {
 		TagName string `json:"tag_name"`

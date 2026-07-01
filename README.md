@@ -138,7 +138,7 @@ directory to reset.
 | Environment variable | Effect |
 |---|---|
 | `INTERCEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
-| `INTERCEPTOR_ALLOW_EXTERNAL_BIND` | Allow binding the proxy to a **non-loopback** address (e.g. `0.0.0.0` to capture a phone on your LAN). Off by default — see [Security model](#security-model). |
+| `INTERCEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](#security-model). |
 | `INTERCEPTOR_CONTROL_URL` | For `interceptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). |
 | `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | Optional fallback key for AI assist when none is set in **Settings → AI**. |
 
@@ -149,8 +149,9 @@ The proxy bind address is also runtime-configurable in **Settings** (and persist
 Both listeners bind **loopback** by default. The control plane additionally **rejects any request
 with a non-loopback `Host` header or a non-loopback `Origin`** — so a web page you happen to visit
 can't quietly drive the API (CSRF) or read your captured traffic via DNS-rebinding. Rebinding the
-**proxy** to a non-loopback address is refused unless you explicitly set
-`INTERCEPTOR_ALLOW_EXTERNAL_BIND=1`. Captured traffic and any AI key never leave your machine except
+**proxy** or **control UI** to a non-loopback address (e.g. `0.0.0.0` for LAN device capture) is
+allowed from Settings; set `INTERCEPTOR_ALLOW_EXTERNAL_BIND=0` to refuse non-loopback binds.
+Captured traffic and any AI key never leave your machine except
 on an explicit AI-assist request to your chosen provider.
 
 ## Drive it with AI (MCP)

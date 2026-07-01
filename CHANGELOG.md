@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-01
+
+### Changed
+- **External bind allowed by default.** Rebinding the proxy or control UI to `0.0.0.0` (or any non-loopback address) no longer requires `INTERCEPTOR_ALLOW_EXTERNAL_BIND=1`. Default listen addresses stay loopback; set `127.0.0.1` in Settings to stay localhost-only. Set `INTERCEPTOR_ALLOW_EXTERNAL_BIND=0` to lock down non-loopback rebinding.
+
+### Added
+- **SSL pinning / TLS MITM failure detector.** When a mobile app sends CONNECT but rejects the proxy's leaf certificate, Interceptor now records a `FlagTLSFailed` flow (tagged `tls-failed`, `ssl-pinning?`) instead of silently dropping the tunnel. New `GET /api/tls-diagnosis` and MCP `detect_ssl_pinning` distinguish **tls_blocked** (pinning or untrusted CA) from **no_traffic** (proxy bypass) and **no_https** (cleartext only). `check_readiness` adds a `tls_intercept` blocker; History shows a red **PIN** badge on failed handshakes. UI: live banner in Proxy History + Settings → TLS → SSL pinning section (explicitly states Interceptor cannot bypass pinning — device-side Frida/APK patch required).
+- **iOS automation (Settings → TLS → iOS).** Simulator: install CA via `simctl keychain add-root-cert` and open a `.mobileconfig` (CA + global HTTP proxy) in Safari. Physical iPhone: download/serve profile at `GET /api/ios/profile.mobileconfig` — install in Safari, enable full trust. MCP: `ios_status`, `ios_setup`, `ios_install_ca`. Optional `libimobiledevice` for USB device listing. Does not bypass SSL pinning (same as Android).
+
+### Fixed
+- **`interceptor update` GitHub 403** — update check sends a proper `User-Agent`, falls back to the public `/releases/latest` redirect when the API is rate-limited, and accepts `GITHUB_TOKEN` for authenticated quota.
+
 ## [0.20.0] - 2026-06-30
 
 ### Added

@@ -33,6 +33,7 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 		"reqLen": f.ReqLen, "resLen": f.ResLen, "durationMs": f.DurationMs,
 		"inScope":                h.sc.InScope(f),
 		"isWebSocket":            f.Flags&store.FlagWebSocket != 0,
+		"isTLSFailed":            f.Flags&store.FlagTLSFailed != 0,
 		"queryParams":            queryParamNames(f.Path),
 		"notableRequestHeaders":  pickHeaders(f.ReqHeaders, reqNotableHeaders),
 		"notableResponseHeaders": pickHeaders(f.ResHeaders, resNotableHeaders),

@@ -162,7 +162,8 @@ func TestIsLoopbackHost(t *testing.T) {
 	}
 }
 
-func TestPutSettingsRejectsExternalControlBind(t *testing.T) {
+func TestPutSettingsRejectsExternalControlBindWhenLocked(t *testing.T) {
+	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -179,10 +180,10 @@ func TestPutSettingsRejectsExternalControlBind(t *testing.T) {
 	}
 
 	if c := put(`{"controlAddr":"0.0.0.0:9966"}`); c != http.StatusBadRequest {
-		t.Fatalf("external control bind 0.0.0.0 must be rejected, got %d", c)
+		t.Fatalf("external control bind 0.0.0.0 must be rejected when locked, got %d", c)
 	}
 	if c := put(`{"controlAddr":"192.168.1.5:9966"}`); c != http.StatusBadRequest {
-		t.Fatalf("LAN control bind must be rejected, got %d", c)
+		t.Fatalf("LAN control bind must be rejected when locked, got %d", c)
 	}
 }
 
@@ -219,7 +220,8 @@ type fakeRebinder struct{ addr string }
 func (f *fakeRebinder) Rebind(addr string) error { f.addr = addr; return nil }
 func (f *fakeRebinder) Addr() string             { return f.addr }
 
-func TestPutSettingsRejectsExternalBind(t *testing.T) {
+func TestPutSettingsRejectsExternalBindWhenLocked(t *testing.T) {
+	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -236,9 +238,32 @@ func TestPutSettingsRejectsExternalBind(t *testing.T) {
 	}
 
 	if c := put("0.0.0.0:8080"); c != http.StatusBadRequest {
-		t.Fatalf("external bind 0.0.0.0 must be rejected, got %d", c)
+		t.Fatalf("external bind 0.0.0.0 must be rejected when locked, got %d", c)
 	}
 	if c := put("192.168.1.5:8080"); c != http.StatusBadRequest {
-		t.Fatalf("LAN bind must be rejected, got %d", c)
+		t.Fatalf("LAN bind must be rejected when locked, got %d", c)
+	}
+}
+
+func TestPutSettingsAllowsExternalBindByDefault(t *testing.T) {
+	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "")
+	h, _, _ := newHub(t)
+	reb := &fakeRebinder{}
+	h.rebind = reb
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(`{"proxyAddr":"0.0.0.0:8080"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("external bind 0.0.0.0 should be allowed by default, got %d", resp.StatusCode)
+	}
+	if reb.addr != "0.0.0.0:8080" {
+		t.Fatalf("rebind addr = %q", reb.addr)
 	}
 }

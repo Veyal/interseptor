@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -87,7 +88,16 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	h.as.mu.Unlock()
 	add("active_scan_armed", armed, armedStatus(armed), "active_scan with arm:true once authorized")
 
-	rep.Ready = proxyAddr != "" && trafficOK && inScopeOK
+	tlsDiag := h.buildTLSDiagnosis("")
+	tlsOK := tlsDiag.Verdict == "ok" || tlsDiag.Verdict == "no_https"
+	tlsDetail := tlsDiag.Detail
+	tlsFix := tlsDiag.Fix
+	if tlsDiag.Verdict == "tls_blocked" {
+		tlsDetail = fmt.Sprintf("%d TLS rejection(s) — pinning or untrusted CA", tlsDiag.TLSFailureCount)
+	}
+	add("tls_intercept", tlsOK, tlsDetail, tlsFix)
+
+	rep.Ready = proxyAddr != "" && trafficOK && inScopeOK && tlsOK
 	return rep
 }
 

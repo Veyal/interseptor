@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Veyal/interceptor/internal/bind"
 	"github.com/Veyal/interceptor/internal/store"
 )
 
@@ -47,7 +48,8 @@ func controlAddrFromPort(port int) (string, error) {
 
 // resolveControlAddr picks the control-plane listen address: CLI override (wins),
 // INTERCEPTOR_CONTROL_ADDR env, persisted control.addr, then defaultControlAddr.
-// A non-loopback bind requires INTERCEPTOR_ALLOW_EXTERNAL_BIND=1.
+// Non-loopback binds are allowed by default; set INTERCEPTOR_ALLOW_EXTERNAL_BIND=0
+// to fall back to loopback-only.
 func resolveControlAddr(st *store.Store, cliOverride string) string {
 	addr := strings.TrimSpace(cliOverride)
 	if addr == "" {
@@ -61,8 +63,8 @@ func resolveControlAddr(st *store.Store, cliOverride string) string {
 	if addr == "" {
 		addr = defaultControlAddr
 	}
-	if !isLoopbackBind(addr) && os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND") == "" {
-		log.Printf("control addr %q is non-loopback; ignoring (set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1 to allow)", addr)
+	if !isLoopbackBind(addr) && !bind.ExternalBindAllowed() {
+		log.Printf("control addr %q is non-loopback; ignoring (external bind disabled via INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
 		return defaultControlAddr
 	}
 	return addr

@@ -10,11 +10,10 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // Version is the baked-in release version — keep it in sync with the git tag.
-const Version = "0.20.0"
+const Version = "0.21.0"
 
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interceptor"
@@ -39,35 +38,51 @@ func isReleaseVersion(v string) bool {
 	return base != "" && !strings.Contains(base, "-") && parseSemver(base) != nil
 }
 
-// CheckLatest queries GitHub for the highest released tag and reports whether it
+// CheckLatest queries GitHub for the latest release tag and reports whether it
 // is newer than the running version. Best-effort: any error (offline, rate
 // limit, etc.) returns ("", false, err) for the caller to ignore quietly.
 func CheckLatest(ctx context.Context) (latest string, newer bool, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+Repo+"/tags?per_page=30", nil)
+	latest, err = checkLatestAPI(ctx)
 	if err != nil {
-		return "", false, err
+		if fb, fbErr := checkLatestRedirect(ctx); fbErr == nil && fb != "" {
+			latest = fb
+			err = nil
+		} else {
+			return "", false, err
+		}
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	cur := parseSemver(String())
+	best := parseSemver(latest)
+	if best == nil {
+		return "", false, fmt.Errorf("github latest release: invalid tag %q", latest)
+	}
+	return latest, cur != nil && cmpSemver(best, cur) > 0, nil
+}
+
+func checkLatestAPI(ctx context.Context) (string, error) {
+	req, err := newGitHubRequest(ctx, http.MethodGet, githubAPIRoot+"/releases/latest")
 	if err != nil {
-		return "", false, err
+		return "", err
+	}
+	resp, err := githubHTTP.Do(req)
+	if err != nil {
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("github tags: HTTP %d", resp.StatusCode)
+		return "", githubAPIError(resp, "github latest release")
 	}
-	var tags []struct {
-		Name string `json:"name"`
+	var raw struct {
+		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return "", false, err
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return "", err
 	}
-	names := make([]string, len(tags))
-	for i, t := range tags {
-		names[i] = t.Name
+	latest := strings.TrimPrefix(strings.TrimSpace(raw.TagName), "v")
+	if latest == "" || parseSemver(latest) == nil {
+		return "", fmt.Errorf("github latest release: invalid tag %q", raw.TagName)
 	}
-	l, n := pickLatest(names, String())
-	return l, n, nil
+	return latest, nil
 }
 
 // pickLatest returns the highest semver tag (without the leading v) and whether

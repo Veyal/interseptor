@@ -104,6 +104,7 @@ $$('#setNav button').forEach(b=>b.onclick=()=>{
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'&&!retentionLoaded){retentionLoaded=true;loadRetention();}
+  if(b.dataset.sec==='tls'){import('./tlsdiag.js').then(m=>m.loadTrafficDiagnosis());loadIOS();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
 });
 
@@ -671,7 +672,7 @@ export async function loadAndroid(){
       if(s.lanHost)html=`<span>LAN host: ${esc(s.lanHost)}</span>`;
       if(androidWifiNeedsProxyBind(s)){
         if(html)html+='<br>';
-        html+=`<span>Wi‑Fi mode needs <code>INTERCEPTOR_ALLOW_EXTERNAL_BIND=1</code> and bind <code>0.0.0.0</code> on the proxy listener.</span> <button type="button" class="btn" id="androidOpenProxyBtn">Settings → Proxy</button>`;
+        html+=`<span>Wi‑Fi mode needs bind <code>0.0.0.0</code> on the proxy listener.</span> <button type="button" class="btn" id="androidOpenProxyBtn">Settings → Proxy</button>`;
       }
       lanHint.innerHTML=html;
       lanHint.style.display=html?'':'none';
@@ -740,4 +741,145 @@ $('#androidUnproxyBtn')&&($('#androidUnproxyBtn').onclick=()=>androidAction(asyn
   const remove=!!($('#androidRemoveSystemCa')||{}).checked;
   const r=await androidPost('/api/android/unproxy',{removeSystemCA:remove});
   toast(r.warning?(r.message+' — '+r.warning):(r.message||'Device proxy cleared'));
+}));
+
+/* ---- iOS (simulator + device profile) ---- */
+let iosDeviceUDID='';
+
+function iosUDID(){return iosDeviceUDID||'';}
+
+function iosDeviceTitle(d){
+  if(d.name)return d.name+(d.booted?' (booted)':'');
+  return d.kind==='simulator'?'iOS Simulator':d.udid||'Device';
+}
+
+function iosDeviceMeta(d){
+  const bits=[];
+  if(d.kind==='simulator')bits.push('simulator');
+  else bits.push('physical');
+  if(d.runtime)bits.push(d.runtime);
+  if(d.state&&d.state!=='Booted'&&d.state!=='connected')bits.push(d.state);
+  if(d.udid)bits.push(d.udid.slice(0,8)+'…');
+  return bits.join(' · ');
+}
+
+function iosProxyMode(){
+  const on=$('#iosProxyMode')?.querySelector('button.on');
+  return on?.dataset.mode==='wifi'?'wifi':'localhost';
+}
+
+function closeIOSDeviceMenu(){
+  const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger');
+  if(menu)menu.hidden=true;
+  if(trigger)trigger.setAttribute('aria-expanded','false');
+}
+
+function toggleIOSDeviceMenu(){
+  const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger');
+  if(!menu||!trigger||trigger.disabled)return;
+  if(!menu.hidden){closeIOSDeviceMenu();return;}
+  menu.hidden=false;
+  trigger.setAttribute('aria-expanded','true');
+}
+
+function renderIOSDevicePicker(devs){
+  const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger'),valueEl=$('#iosDeviceValue'),meta=$('#iosDeviceMeta');
+  if(!menu||!trigger||!valueEl)return;
+  closeIOSDeviceMenu();
+  trigger.disabled=false;
+  if(!devs.length){
+    iosDeviceUDID='';
+    valueEl.textContent='Manual profile (no simulator/device detected)';
+    menu.innerHTML='';
+    if(meta)meta.textContent='Download profile and open on iPhone Safari, or boot a simulator.';
+    return;
+  }
+  if(!devs.some(d=>d.udid===iosDeviceUDID)){
+    const booted=devs.find(d=>d.booted)||devs.find(d=>d.kind==='physical')||devs[0];
+    iosDeviceUDID=booted?booted.udid:'';
+  }
+  menu.innerHTML=devs.map(d=>{
+    const sel=d.udid===iosDeviceUDID;
+    return `<button type="button" role="option" class="ui-select-opt${sel?' sel':''}" data-udid="${escAttr(d.udid)}" aria-selected="${sel?'true':'false'}"><span class="ui-select-opt-title">${esc(iosDeviceTitle(d))}</span><span class="ui-select-opt-sub">${esc(iosDeviceMeta(d))}</span></button>`;
+  }).join('');
+  const cur=devs.find(d=>d.udid===iosDeviceUDID);
+  valueEl.textContent=cur?iosDeviceTitle(cur):'Select target…';
+  if(meta)meta.textContent=cur?iosDeviceMeta(cur):'';
+}
+
+async function iosPost(path,body){
+  const payload={udid:iosUDID(),proxyMode:iosProxyMode(),...body};
+  return api(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+}
+
+function iosWifiNeedsProxyBind(s){
+  return iosProxyMode()==='wifi'&&(!s.externalBindAllowed||isLoopbackProxyBind(s.proxy));
+}
+
+export async function loadIOS(){
+  const sec=$('#iosSection'),hint=$('#iosHint'),lanHint=$('#iosLanHint'),profileLink=$('#iosProfileLink');
+  if(!sec)return;
+  try{
+    const s=await api('/api/ios/status');
+    sec.style.display='';
+    const devs=s.devices||[];
+    renderIOSDevicePicker(devs);
+    if(profileLink){
+      let href='/api/ios/profile.mobileconfig';
+      if(iosProxyMode()==='wifi'&&s.lanHost)href+='?host='+encodeURIComponent(s.lanHost);
+      profileLink.href=href;
+    }
+    if(lanHint){
+      let html='';
+      if(s.lanHost)html=`<span>LAN host: ${esc(s.lanHost)}</span>`;
+      if(iosWifiNeedsProxyBind(s)){
+        if(html)html+='<br>';
+        html+=`<span>Wi‑Fi mode needs bind <code>0.0.0.0</code> on the proxy listener.</span> <button type="button" class="btn" id="iosOpenProxyBtn">Settings → Proxy</button>`;
+      }
+      if(!s.simctlAvailable&&devs.every(d=>d.kind!=='simulator'))html+=(html?'<br>':'')+'<span>Install Xcode for simulator automation (<code>xcrun simctl</code>).</span>';
+      lanHint.innerHTML=html;
+      lanHint.style.display=html?'':'none';
+    }
+    let msg='';
+    if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
+    else if(!s.simctlAvailable)msg='Simulator automation needs Xcode on macOS. Physical devices: download profile → open in Safari on the phone.';
+    if(hint)hint.textContent=msg;
+  }catch(e){
+    if(hint)hint.textContent='';
+  }
+}
+
+async function iosAction(fn){
+  try{await fn();await loadIOS();}catch(e){toast(e.message);}
+}
+
+$('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-mode]');
+  if(!b||b.classList.contains('on'))return;
+  b.parentElement.querySelectorAll('button[data-mode]').forEach(x=>setSeg(x,x===b));
+  loadIOS();
+});
+{const t=$('#iosDeviceTrigger');if(t)t.addEventListener('click',e=>{e.stopPropagation();toggleIOSDeviceMenu();});}
+{const m=$('#iosDeviceMenu');if(m)m.addEventListener('click',e=>{
+  const opt=e.target.closest('.ui-select-opt');
+  if(!opt)return;
+  iosDeviceUDID=opt.dataset.udid||'';
+  closeIOSDeviceMenu();
+  loadIOS();
+});}
+document.addEventListener('click',()=>closeIOSDeviceMenu());
+{const lh=$('#iosLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosOpenProxyBtn'))openSettingsProxy();});}
+$('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(loadIOS));
+$('#iosSetupAllBtn')&&($('#iosSetupAllBtn').onclick=()=>iosAction(async()=>{
+  const r=await iosPost('/api/ios/setup',{});
+  toast(r.message||'iOS setup started');
+  if(r.profileUrl&&r.kind!=='simulator')window.open(r.profileUrl,'_blank');
+}));
+$('#iosInstallCaBtn')&&($('#iosInstallCaBtn').onclick=()=>iosAction(async()=>{
+  const r=await iosPost('/api/ios/install-ca',{});
+  toast(r.message||'Simulator CA installed');
+}));
+$('#iosOpenProfileBtn')&&($('#iosOpenProfileBtn').onclick=()=>iosAction(async()=>{
+  const r=await iosPost('/api/ios/open-profile',{});
+  toast(r.message||'Profile opened in simulator');
 }));

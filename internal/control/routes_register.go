@@ -12,6 +12,7 @@ func (h *Hub) routes() {
 	ai := &aiAPI{h}
 	proj := &projectAPI{h}
 	and := &androidAPI{h}
+	iosH := &iosAPI{h}
 	oob := &oobAPI{h}
 	az := &authzAPI{h}
 	disc := &discoveryAPI{h}
@@ -21,7 +22,7 @@ func (h *Hub) routes() {
 
 	h.registerFlowRoutes(f)
 	h.registerInterceptRoutes(ic)
-	h.registerSettingsRoutes(set, and, sess)
+	h.registerSettingsRoutes(set, and, iosH, sess)
 	h.registerScopeRoutes(sc)
 	h.registerFindingsRoutes(fd)
 	h.registerToolsRoutes(tools)
@@ -76,7 +77,7 @@ func (h *Hub) registerInterceptRoutes(ic *interceptAPI) {
 	h.mux.HandleFunc("POST /api/intercept/response/{id}/drop", ic.dropResponse)
 }
 
-func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, sess *sessionAPI) {
+func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *iosAPI, sess *sessionAPI) {
 	h.mux.HandleFunc("GET /api/settings", set.getSettings)
 	h.mux.HandleFunc("PUT /api/settings", set.putSettings)
 	h.mux.HandleFunc("GET /api/sysproxy", set.getSysProxy)
@@ -87,6 +88,11 @@ func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, sess *se
 	h.mux.HandleFunc("POST /api/android/unproxy", and.postAndroidUnproxy)
 	h.mux.HandleFunc("POST /api/android/install-ca", and.postAndroidInstallCA)
 	h.mux.HandleFunc("POST /api/android/setup", and.postAndroidSetup)
+	h.mux.HandleFunc("GET /api/ios/status", ios.getIOSStatus)
+	h.mux.HandleFunc("GET /api/ios/profile.mobileconfig", ios.getIOSProfile)
+	h.mux.HandleFunc("POST /api/ios/setup", ios.postIOSSetup)
+	h.mux.HandleFunc("POST /api/ios/install-ca", ios.postIOSInstallCA)
+	h.mux.HandleFunc("POST /api/ios/open-profile", ios.postIOSOpenProfile)
 	h.mux.HandleFunc("GET /api/session", sess.getSession)
 	h.mux.HandleFunc("POST /api/session", sess.setSession)
 	h.mux.HandleFunc("POST /api/session/login/run", sess.runLoginMacro)
@@ -185,6 +191,7 @@ func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
 	h.mux.HandleFunc("GET /api/readiness", az.getReadiness)
+	h.mux.HandleFunc("GET /api/tls-diagnosis", az.getTLSDiagnosis)
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/Veyal/interceptor/internal/android"
+	"github.com/Veyal/interceptor/internal/bind"
 )
 
 func (h *androidAPI) getAndroidStatus(w http.ResponseWriter, r *http.Request) {
@@ -16,7 +16,7 @@ func (h *androidAPI) getAndroidStatus(w http.ResponseWriter, r *http.Request) {
 		"available":           android.Available(),
 		"proxy":               h.currentProxyAddr(),
 		"devices":             []android.Device{},
-		"externalBindAllowed": os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND") != "",
+		"externalBindAllowed": bind.ExternalBindAllowed(),
 	}
 	if lan, err := android.LANHost(); err == nil {
 		rep["lanHost"] = lan
@@ -75,7 +75,7 @@ func (h *androidAPI) androidWiFiHost(override string) (string, error) {
 func (h *androidAPI) validateWiFiProxy(port int) error {
 	host, _ := proxyHostPort(h.currentProxyAddr())
 	if isLoopbackHost(host) {
-		return fmt.Errorf("wifi proxy needs Interceptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings and set INTERCEPTOR_ALLOW_EXTERNAL_BIND=1", port)
+		return fmt.Errorf("wifi proxy needs Interceptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings → Proxy", port)
 	}
 	return nil
 }

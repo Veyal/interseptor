@@ -699,6 +699,7 @@ func (s *Server) registerTools() {
 			"scheme": pt("string"),
 			"status": p("integer", "class 1-5 (4=4xx)"),
 			"tag":    p("string", "filter by tag (exact, case-insensitive)"),
+			"tlsFailed": p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
 			"limit":  p("integer", "default 50"),
 		}),
 		func(a map[string]any) (string, error) {
@@ -710,6 +711,9 @@ func (s *Server) registerTools() {
 			}
 			if v := argStr(a, "status"); v != "" {
 				q.Set("status", v)
+			}
+			if argBool(a, "tlsFailed", false) {
+				q.Set("tlsFailed", "1")
 			}
 			q.Set("limit", strconv.Itoa(argInt(a, "limit", 50)))
 			return s.apiGet("/api/flows?" + q.Encode())
@@ -1321,7 +1325,7 @@ func (s *Server) registerTools() {
 	s.add("ca_info", "How to trust the CA so HTTPS can be intercepted (proxy address + CA location).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")
-			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA (a one-time MANUAL step per client — Interceptor never edits the OS trust store for you).\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt).\nTrust it on the client:\n• macOS: open the .crt → Keychain Access → System keychain → set the Interceptor CA to Always Trust.\n• Windows: double-click → Install Certificate → Current User → Trusted Root Certification Authorities.\n• Linux (Debian/Ubuntu): copy to /usr/local/share/ca-certificates/interceptor.crt → sudo update-ca-certificates. (Fedora/RHEL: /etc/pki/ca-trust/source/anchors/ → sudo update-ca-trust.)\n• Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.\n• Android (adb): android_setup (USB reverse + CA) or Settings → TLS → Android (ADB).\n• curl/tools one-off: curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://… (or SSL_CERT_FILE / REQUESTS_CA_BUNDLE).\nHTTP needs none of this — the CA is only for decrypting HTTPS.", strings.TrimSpace(settings), s.base), nil
+			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA (a one-time MANUAL step per client — Interceptor never edits the OS trust store for you).\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt).\nTrust it on the client:\n• macOS: open the .crt → Keychain Access → System keychain → set the Interceptor CA to Always Trust.\n• Windows: double-click → Install Certificate → Current User → Trusted Root Certification Authorities.\n• Linux (Debian/Ubuntu): copy to /usr/local/share/ca-certificates/interceptor.crt → sudo update-ca-certificates. (Fedora/RHEL: /etc/pki/ca-trust/source/anchors/ → sudo update-ca-trust.)\n• Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.\n• Android (adb): android_setup (USB reverse + CA) or Settings → TLS → Android (ADB).\n• iOS: ios_setup (Simulator + profile) or Settings → TLS → iOS → download .mobileconfig → install in Safari → Certificate Trust Settings.\n• curl/tools one-off: curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://… (or SSL_CERT_FILE / REQUESTS_CA_BUNDLE).\nHTTP needs none of this — the CA is only for decrypting HTTPS.", strings.TrimSpace(settings), s.base), nil
 		})
 
 	s.add("android_status",
@@ -1376,8 +1380,46 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/android/unproxy", body)
 		})
 
+	s.add("ios_status",
+		"List iOS simulators (Xcode simctl) and USB iPhones (libimobiledevice): UDID, name, boot state, LAN host, profile URL path.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) {
+			return s.apiGet("/api/ios/status")
+		})
+
+	s.add("ios_setup",
+		"One-click iOS intercept setup. Simulator (macOS+Xcode): install CA via simctl + open configuration profile (proxy + CA) in Safari. Physical iPhone: returns profileUrl — open on device Safari (Wi‑Fi mode; same network as Interceptor). Does not bypass SSL pinning.",
+		obj(map[string]any{
+			"udid":      p("string", "simulator UDID or omit for auto-select booted simulator / sole device"),
+			"proxyMode": p("string", "localhost (simulator, default) or wifi (physical device)"),
+			"wifiHost":  p("string", "LAN IP for Wi‑Fi proxy (default: auto-detect)"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"proxyMode": argStr(a, "proxyMode")}
+			if v := argStr(a, "udid"); v != "" {
+				body["udid"] = v
+			}
+			if v := argStr(a, "wifiHost"); v != "" {
+				body["wifiHost"] = v
+			}
+			return s.api(http.MethodPost, "/api/ios/setup", body)
+		})
+
+	s.add("ios_install_ca",
+		"Install Interceptor CA into a booted iOS Simulator via simctl (macOS + Xcode only). Physical iPhones must use ios_setup profile instead.",
+		obj(map[string]any{
+			"udid": p("string", "simulator UDID or omit for booted simulator"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			if v := argStr(a, "udid"); v != "" {
+				body["udid"] = v
+			}
+			return s.api(http.MethodPost, "/api/ios/install-ca", body)
+		})
+
 	s.add("check_readiness",
-		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, OOB, auth identities, login macro, active-scan arm state. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
+		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, tls_intercept (pinning/CA detection), OOB, auth identities, login macro, active-scan arm state. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			raw, err := s.apiGet("/api/readiness")
@@ -1386,6 +1428,29 @@ func (s *Server) registerTools() {
 			}
 			settings, _ := s.apiGet("/api/settings")
 			return raw + "\n\nCA (HTTPS): " + s.base + "/api/ca.crt\nSettings: " + strings.TrimSpace(settings), nil
+		})
+
+	s.add("detect_ssl_pinning",
+		"Diagnose why mobile/HTTPS traffic isn't appearing: distinguishes SSL pinning or untrusted CA (CONNECT reached proxy but TLS handshake failed) from no traffic or cleartext-only. Returns verdict (ok | tls_blocked | no_traffic | no_https), counts, recent failures, and fix hints. Call after using the app when History is empty or incomplete.",
+		obj(map[string]any{
+			"host": p("string", "optional host substring to focus diagnosis"),
+		}),
+		func(a map[string]any) (string, error) {
+			q := url.Values{}
+			if v := argStr(a, "host"); v != "" {
+				q.Set("host", v)
+			}
+			raw, err := s.apiGet("/api/tls-diagnosis?" + q.Encode())
+			if err != nil {
+				return "", err
+			}
+			var rep struct {
+				Verdict string `json:"verdict"`
+				Detail  string `json:"detail"`
+				Fix     string `json:"fix"`
+			}
+			_ = json.Unmarshal([]byte(raw), &rep)
+			return rep.Verdict + " — " + rep.Detail + "\n\nNote: Interceptor detects pinning but cannot bypass it (canBypass=false). Bypass on the device: Frida/objection, patched APK, or emulator + system CA.\n\n" + raw, nil
 		})
 
 	s.add("scope_from_url",

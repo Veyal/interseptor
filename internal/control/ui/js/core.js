@@ -261,6 +261,7 @@ export const fmtTime=ms=>{const d=new Date(ms);return d.toLocaleTimeString('en-G
 export const fmtDur=ms=>ms<1000?ms+' ms':(ms/1000).toFixed(ms<10000?2:1)+' s';
 
 export const FLAG_WS=32;
+export const FLAG_TLS=16;
 export const FLAG_AI=1024;
 export const FLAG_DISCOVERY=4096;
 export const PRETTY_MAX=256*1024; // only beautify smallish bodies, to stay light

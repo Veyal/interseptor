@@ -54,8 +54,15 @@ func TestResolveControlAddrPriority(t *testing.T) {
 	}
 }
 
-func TestResolveControlAddrRejectsExternalWithoutOptIn(t *testing.T) {
+func TestResolveControlAddrAllowsExternalByDefault(t *testing.T) {
 	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "")
+	if got := resolveControlAddr(nil, "0.0.0.0:9966"); got != "0.0.0.0:9966" {
+		t.Fatalf("got %q, want 0.0.0.0:9966", got)
+	}
+}
+
+func TestResolveControlAddrRejectsExternalWhenLocked(t *testing.T) {
+	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	if got := resolveControlAddr(nil, "0.0.0.0:9966"); got != defaultControlAddr {
 		t.Fatalf("got %q, want default", got)
 	}

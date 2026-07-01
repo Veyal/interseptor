@@ -9,7 +9,7 @@ import { repInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from '
 import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel } from './scanner.js';
 import { loadEndpoints } from './map.js';
 import { loadDiscovery, refreshDiscovery } from './discovery.js';
-import { loadSettings, loadSysProxy, loadAndroid, loadSession, loadProject, openProjectModal, applyAiDisabledUI, applyOobDisabledUI } from './settings.js';
+import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadSession, loadProject, openProjectModal, applyAiDisabledUI, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
 import { loadFindings } from './findings.js';
@@ -20,6 +20,7 @@ import './ai.js'; // side-effect: wires the AI assist modal (its openAi is also 
 import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup } from './setup.js';
+import { loadTrafficDiagnosis } from './tlsdiag.js';
 
 /* ---- tabs ---- */
 function activateTab(t){
@@ -208,7 +209,7 @@ function cmdkCommands(){
     ...(state.aiDisabled?[]:[{t:'Go to Activity',kw:'ai mcp glass box agent log',run:go('activity')}]),
     {t:'Settings: API & MCP',kw:'keys tokens rest mcp reference',run:goSet('api')},
     {t:'Settings: Proxy & network',kw:'listener bind port upstream system proxy capture browser telemetry',run:goSet('proxy')},
-    {t:'Settings: TLS / CA — download CA certificate',kw:'https certificate cert trust install ca download mitm',run:goSet('tls')},
+    {t:'Settings: TLS / CA — download CA certificate',kw:'https certificate cert trust install ca download mitm ssl pinning mobile android',run:goSet('tls')},
     {t:'Settings: Target scope',kw:'include exclude host path in scope',run:goSet('scope')},
     {t:'Settings: AI assist — provider & API key',kw:'anthropic openrouter model api key llm',run:goSet('ai')},
     {t:'Settings: Session / auth headers',kw:'cookie token authorization bearer login',run:goSet('session')},
@@ -329,7 +330,7 @@ applyTheme(currentTheme()); // sync the button icon with the theme applied pre-p
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadSession();loadFlows();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadSession();loadFlows();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
 // First-run setup wizard: shown once after the initial flow load, unless the
 // user already completed/skipped it or already has captured traffic.
 setTimeout(()=>{ if(state.flows && !state.flows.length) maybeShowSetup(); }, 600);
