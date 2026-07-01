@@ -148,7 +148,8 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		prog.step("Installing to %s…", dest)
 		if err := installBinary(dest, bin); err != nil {
 			if errors.Is(err, ErrRestartRequired) {
-				prog.done("Updater started — quit this interceptor process, then run the new binary")
+				prog.done("Windows updater started — it will stop running Interceptor instances, replace the binary, and restart automatically")
+				fmt.Fprintf(out, "\nIf the app does not restart within a minute, run `interceptor stop`, then move %s.new over %s manually.\n", filepath.Base(dest), dest)
 				return err
 			}
 			return err
@@ -417,13 +418,13 @@ func installBinaryWindows(dest string, data []byte) error {
 	if err := os.WriteFile(newPath, data, 0o755); err != nil {
 		return err
 	}
-	// Can't replace a running .exe — hand off to a short-lived updater script.
-	bat := filepath.Join(filepath.Dir(dest), "interceptor-update.bat")
-	script := fmt.Sprintf(`@echo off
-timeout /t 1 /nobreak >nul
-move /y "%s" "%s"
-del "%s"
-`, newPath, dest, bat)
+	// Can't replace a running .exe — hand off to a short-lived updater script
+	// that waits for locks, stops other interceptor.exe processes, retries the
+	// replace, and restarts Interceptor.
+	dir := filepath.Dir(dest)
+	bat := filepath.Join(dir, "interceptor-update.bat")
+	logPath := filepath.Join(dir, "interceptor-update.log")
+	script := windowsUpdateScript(newPath, dest, bat, logPath)
 	if err := os.WriteFile(bat, []byte(script), 0o644); err != nil {
 		return err
 	}
@@ -432,6 +433,48 @@ del "%s"
 		return fmt.Errorf("could not start updater — replace %s with %s manually: %w", dest, newPath, err)
 	}
 	return ErrRestartRequired
+}
+
+// windowsUpdateScript builds a cmd batch file that finishes an in-place update.
+// Exported as a pure function so CI on non-Windows can assert the retry/stop logic.
+func windowsUpdateScript(newPath, dest, bat, logPath string) string {
+	// Paths are quoted; batch treats % as special so double them in literals.
+	return fmt.Sprintf(`@echo off
+setlocal EnableDelayedExpansion
+set "NEW=%s"
+set "DEST=%s"
+set "BAT=%s"
+set "LOG=%s"
+
+REM Let the `+"`interceptor update`"+` CLI exit and release its exe handle.
+timeout /t 3 /nobreak >nul
+
+REM Stop any still-running Interceptor servers so the exe can be replaced.
+for /f "tokens=2" %%%%p in ('tasklist /FI "IMAGENAME eq interceptor.exe" /NH 2^>nul ^| findstr /i "interceptor.exe"') do (
+  taskkill /PID %%%%p /T /F >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
+
+set /a TRY=0
+:retry
+move /Y "%%NEW%%" "%%DEST%%" >nul 2>&1
+if not errorlevel 1 goto success
+set /a TRY+=1
+if !TRY! GEQ 90 goto fail
+timeout /t 2 /nobreak >nul
+goto retry
+
+:success
+if exist "%%NEW%%" del "%%NEW%%" >nul 2>&1
+del "%%BAT%%" >nul 2>&1
+start "" "%%DEST%%"
+exit /b 0
+
+:fail
+echo [%%date%% %%time%%] Could not replace %%DEST%% after 90 attempts.>> "%%LOG%%"
+echo Staged binary kept at %%NEW%%>> "%%LOG%%"
+exit /b 1
+`, newPath, dest, bat, logPath)
 }
 
 func goInstall(ctx context.Context, version string, out io.Writer) error {

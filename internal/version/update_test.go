@@ -109,3 +109,27 @@ func TestAssetCandidates(t *testing.T) {
 		t.Fatalf("unexpected candidates: %v", c)
 	}
 }
+
+func TestWindowsUpdateScript(t *testing.T) {
+	script := windowsUpdateScript(
+		`C:\tools\interceptor.exe.new`,
+		`C:\tools\interceptor.exe`,
+		`C:\tools\interceptor-update.bat`,
+		`C:\tools\interceptor-update.log`,
+	)
+	for _, want := range []string{
+		`set "NEW=C:\tools\interceptor.exe.new"`,
+		`taskkill /PID %%p /T /F`,
+		`:retry`,
+		`if !TRY! GEQ 90 goto fail`,
+		`start "" "%DEST%"`,
+		`interceptor-update.log`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("script missing %q:\n%s", want, script)
+		}
+	}
+	if !strings.Contains(script, "timeout /t 3 /nobreak") {
+		t.Fatal("expected 3s initial wait for update CLI to exit")
+	}
+}

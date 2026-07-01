@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+
+## [0.21.1] - 2026-07-01
+
+### Fixed
+- **Windows interceptor update.** The helper batch script now waits for the CLI to exit, stops other interceptor.exe processes, retries the binary replace (up to 90 attempts), auto-restarts Interceptor, and writes failures to interceptor-update.log beside the binary.
 ## [0.21.0] - 2026-07-01
 
 ### Changed
