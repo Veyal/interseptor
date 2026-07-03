@@ -17,7 +17,7 @@ import (
 // this constant deliberately tracks the last *published* release — bumping it
 // ahead of the tag would break the update-check test, which verifies the named
 // release actually exists on GitHub.
-const Version = "0.24.0"
+const Version = "0.25.0"
 
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interceptor"
