@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-07-03
+
+### Changed
+- **MCP agents are now told where to report Interceptor bugs.** The MCP server's connect-time instructions gain an "IMPROVE INTERCEPTOR" note: if a tool errors, returns something wrong, or lacks a capability the agent needed, it should report it (or ask the human to) at <https://github.com/Veyal/interceptor/issues> — with the tool name, expected vs. actual — while keeping target-app findings out of that tracker. The issues URL is derived from the existing repo constant so it survives a rename.
+
+### Fixed
+- **Adding a second proxy listener failed with "address already in use" on the port already bound.** Adding `127.0.0.1:8083` while `127.0.0.1:8080` was running errored, because the rebind re-bound the *entire* desired address set — including the port the live listener still held (listeners are opened before the old ones close, so the existing port could not be re-bound). The rebind now reconciles against the running set: it binds only newly added addresses, keeps existing listeners untouched, and drains only removed ones. A bad address in the new set still leaves the live listeners intact.
+
 ## [0.27.0] - 2026-07-03
 
 ### Added
