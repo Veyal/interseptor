@@ -495,7 +495,7 @@ function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 export async function intrStart(){
   const target=$('#intrTarget').value.trim();
-  if(!target){toast('enter a target (scheme://host)');return;}
+  if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
   const threads=Math.max(1,parseInt($('#intrThreads').value,10)||1);
   const delayMs=Math.max(0,parseInt($('#intrDelay').value,10)||0);
   const body={target,template:$('#intrTemplate').value,attackType:intrState.type,threads,delayMs,
@@ -505,7 +505,7 @@ export async function intrStart(){
     body.repeat=Math.max(1,parseInt($('#intrRepeat').value,10)||1);
   }else{
     const mk=intrMarkers();
-    if(!mk.length){toast('mark at least one § injection point — or use Null mode for payload-free resends');return;}
+    if(!mk.length){toast('mark at least one § injection point — or use Null mode for payload-free resends');$('#intrTemplate').focus();return;}
     if(intrState.type==='pitchfork'||intrState.type==='cluster'){
       body.payloads=mk.map((_,i)=>intrGetPayloadLines(i));
       if(body.payloads.some(l=>!l.length)){toast('add payloads for every § position');return;}

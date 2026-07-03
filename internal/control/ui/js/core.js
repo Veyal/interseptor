@@ -200,6 +200,20 @@ export function enhanceSelect(sel){
   const mo=new MutationObserver(()=>inst.render());
   mo.observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','hidden','class']});
 
+  // App code frequently does `select.value = x` when populating a form from loaded
+  // data (settings, filters, …) — that never fires a native 'change' event, so the
+  // custom trigger's label would otherwise go stale and show the wrong option.
+  // Intercepting the value setter keeps the visible widget honest without requiring
+  // every call site to remember to call refreshUiSelect() afterward.
+  const nativeValueDesc=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+  if(nativeValueDesc&&nativeValueDesc.set){
+    Object.defineProperty(sel,'value',{
+      configurable:true,
+      get(){return nativeValueDesc.get.call(this);},
+      set(v){nativeValueDesc.set.call(this,v);inst.render();}
+    });
+  }
+
   sel._uiSelect=inst;
   inst.render();
   return sel;

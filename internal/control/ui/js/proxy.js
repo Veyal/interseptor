@@ -368,7 +368,21 @@ export function getStartedCard(){
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
 }
+// The request/response inspector is only useful once a flow is picked. Until then
+// it's ~40% of the screen showing two "select a flow" placeholders while the flow
+// list — the thing you actually scan — is squeezed. So we hide the inspector (and
+// its splitter + note bar) whenever nothing is selected, letting #rows (flex:1)
+// take the full height. It reappears the instant a row is clicked — the same
+// detail-on-demand pattern as Chrome DevTools' Network panel and Burp's history.
+export function syncInspectorVisibility(){
+  const has=!!state.selId;
+  const insp=$('#inspect'),spl=$('#inspectSplitter'),nb=$('#noteBar');
+  if(insp)insp.style.display=has?'flex':'none';
+  if(spl)spl.style.display=has?'':'none';
+  if(nb&&!has)nb.style.display='none';
+}
 export function renderRows(){
+  syncInspectorVisibility();
   const box=$('#rows');
   const flows=applySort(state.flows);
   $('#rowCount').textContent=state.flows.length;
@@ -840,7 +854,7 @@ function openViewsMenu(){
   sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
   openCtxMenu(r.left, r.bottom+2, sections);
 }
-$('#viewsBtn')&&($('#viewsBtn').onclick=openViewsMenu);
+$('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
 /* ---- target scope ---- */
 export async function loadScope(){try{const d=await api('/api/scope');state.scope=d.rules||[];renderScope();}catch(e){}}
 export async function addHostToScope(host){

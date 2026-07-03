@@ -432,12 +432,12 @@ Content-Type: application/json
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <button class="on" data-sec="proxy">Proxy &amp; network</button>
-        <button data-sec="tls">TLS / CA</button>
-        <button data-sec="scope">Target scope</button>
-        <button data-sec="ai">AI assist</button>
-        <button data-sec="scanner">Scanner</button>
-        <button data-sec="session">Session / auth</button>
         <button data-sec="project">Project &amp; data</button>
+        <button data-sec="scope">Target scope</button>
+        <button data-sec="session">Session / auth</button>
+        <button data-sec="tls">TLS / CA</button>
+        <button data-sec="scanner">Scanner</button>
+        <button data-sec="ai">AI assist</button>
         <button data-sec="api">API &amp; MCP</button>
       </nav>
       <div class="settings-body">
@@ -468,9 +468,9 @@ Content-Type: application/json
           <div class="section">
             <h3>CONTROL UI</h3>
             <p class="hint" style="margin-bottom:10px">Web UI and REST API listener. Bind <b>0.0.0.0</b> for remote OOB callbacks.</p>
-            <div class="field row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
-              <div style="flex:1;min-width:180px"><label>Host</label><select id="setControlHost" class="btn" style="width:100%;text-align:left"></select></div>
-              <div style="width:100px"><label>Port</label><input id="setControlPort" inputmode="numeric" placeholder="9966" style="width:100%"></div>
+            <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+              <div class="field" style="flex:1;min-width:180px;max-width:none;margin-bottom:0"><label>Host</label><select id="setControlHost" class="btn" style="width:100%;text-align:left"></select></div>
+              <div class="field" style="width:120px;flex:none;margin-bottom:0"><label>Port</label><input id="setControlPort" inputmode="numeric" placeholder="9966" style="width:100%"></div>
             </div>
             <input type="hidden" id="setControlAddr">
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn accent" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
@@ -702,7 +702,7 @@ Content-Type: application/json
             <p id="aiDisabledHint" class="hint" style="display:none;margin-bottom:12px;color:var(--amber)">AI is off — assist, MCP, Activity, and AI paths in Discover are hidden. Uncheck above to re-enable.</p>
             <div id="aiSettingsFields">
             <p class="hint" style="margin-bottom:10px">Bring-your-own-key. Data goes to your provider only when you ask. <b id="aiKeyState"></b></p>
-            <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
+            <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="glm">GLM Coding Plan (Zhipu / z.ai)</option><option value="openrouter">OpenRouter (many models)</option></select></div>
             <div class="field"><label>API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
             <div class="field" id="setAiModelField">
               <label>Model <span class="hint" id="setAiModelHint">(optional)</span></label>

@@ -192,6 +192,16 @@ function renderDeviceProxyUI(ep){
     const label=mode==='manual'?'manual':'auto';
     chip.textContent=endpoint?endpoint+' ('+label+')':'…';
   }
+  // The header device-proxy chip only earns its slot when it advertises a
+  // phone-reachable LAN address. On loopback it's just a second copy of the
+  // listener addr sitting beside it (127.0.0.1:8080  127.0.0.1:8080) — pure
+  // noise — so hide it there. It reappears the moment a real LAN endpoint exists.
+  const headerChip=$('#deviceProxyChip');
+  if(headerChip){
+    const host=(endpoint||'').replace(/:\d+$/,'').replace(/^\[|\]$/g,'');
+    const loopback=!endpoint||host==='127.0.0.1'||host==='::1'||host==='localhost'||host.startsWith('127.');
+    headerChip.style.display=loopback?'none':'';
+  }
   const resolved=$('#deviceProxyResolved');
   if(resolved){
     const src=ep?.source?(' · '+ep.source.replace(/_/g,' ')):'';
@@ -335,19 +345,54 @@ $('#setAiDisabled')&&($('#setAiDisabled').onchange=async()=>{
   }catch(e){toast(e.message);$('#setAiDisabled').checked=!disabled;}
 });
 
-function aiIsOpenRouter(){return ($('#setAiProvider')||{}).value==='openrouter';}
+function aiProviderVal(){return ($('#setAiProvider')||{}).value;}
+function aiIsOpenRouter(){return aiProviderVal()==='openrouter';}
+function aiIsGLM(){return aiProviderVal()==='glm';}
+// Providers whose model is chosen from a dropdown (vs. a free-text field).
+function aiUsesModelList(){return aiIsOpenRouter()||aiIsGLM();}
+
+// GLM Coding Plan (z.ai) model lineup — curated, newest/flagship first. z.ai's
+// Anthropic-compatible endpoint takes these lowercase ids in the `model` field.
+// There is no "glm-5-flash"; the GLM-5 speed model is glm-5-turbo (the default),
+// and the free flash tier is glm-4.7-flash / glm-4.5-flash.
+const GLM_DEFAULT_MODEL='glm-5-turbo';
+const GLM_MODELS=[
+  {id:'glm-5-turbo',name:'GLM-5-Turbo — GLM-5 speed (default)'},
+  {id:'glm-5.2',name:'GLM-5.2 — flagship · 1M context'},
+  {id:'glm-5.1',name:'GLM-5.1 — 200K context'},
+  {id:'glm-5',name:'GLM-5'},
+  {id:'glm-4.7-flash',name:'GLM-4.7-Flash — fast · free'},
+  {id:'glm-4.5-flash',name:'GLM-4.5-Flash — free'},
+  {id:'glm-4.7',name:'GLM-4.7'},
+  {id:'glm-4.6',name:'GLM-4.6 — 200K context'},
+  {id:'glm-4.5',name:'GLM-4.5'},
+  {id:'glm-4.5-air',name:'GLM-4.5-Air — low cost'},
+  {id:'glm-4-air',name:'GLM-4-Air — ultra-low cost'},
+];
+function populateGlmModels(){
+  const sel=$('#setAiModelSelect');if(!sel)return;
+  const opts=GLM_MODELS.slice();
+  // Keep an unknown-but-saved GLM id selectable so a saved config is never lost.
+  if(savedAiModel&&savedAiModel.startsWith('glm-')&&!opts.some(m=>m.id===savedAiModel))
+    opts.unshift({id:savedAiModel,name:savedAiModel+' (saved)'});
+  sel.innerHTML=opts.map(m=>`<option value="${escAttr(m.id)}">${esc(m.name)}</option>`).join('');
+  const want=(savedAiModel&&opts.some(m=>m.id===savedAiModel))?savedAiModel:GLM_DEFAULT_MODEL;
+  sel.value=want;
+  syncUiSelectStyles(sel);
+  const stateEl=$('#aiValidateState');if(stateEl)stateEl.textContent='';
+}
 
 export function aiSyncProviderUI(){
   if(!$('#setAiProvider'))return;
-  const or=aiIsOpenRouter();
+  const or=aiIsOpenRouter(),glm=aiIsGLM(),usesList=or||glm;
   const inp=$('#setAiModel'),sel=$('#setAiModelSelect'),loadBtn=$('#loadAiModelsBtn'),hint=$('#setAiModelHint');
-  if(inp)inp.style.display=or?'none':'';
-  if(sel){sel.style.display=or?'':'none';syncUiSelectStyles(sel);}
-  if(loadBtn)loadBtn.style.display=or?'':'none';
-  if(hint)hint.textContent=or?'(required — pick from list)':'(optional)';
-  // Agent mode (let-AI-send-requests) is Anthropic-only — disable the toggle so
-  // it isn't a silent no-op under OpenRouter. The hint text is refreshed when the
-  // AI modal opens (ai.js syncAgentToggle).
+  if(inp)inp.style.display=usesList?'none':'';
+  if(sel){sel.style.display=usesList?'':'none';syncUiSelectStyles(sel);}
+  if(loadBtn)loadBtn.style.display=or?'':'none'; // only OpenRouter fetches its list
+  if(hint)hint.textContent=usesList?'(pick from list)':'(optional)';
+  // Agent mode (let-AI-send-requests) needs the Anthropic tool-use format, which
+  // OpenRouter's chat API doesn't expose — disable it there so it isn't a silent
+  // no-op. GLM speaks the Anthropic format, so agent mode stays available.
   const agent=$('#aiAgentToggle');
   if(agent){
     const supported=!or;
@@ -356,6 +401,7 @@ export function aiSyncProviderUI(){
   }
   aiPlaceholders();
   if(or)loadOpenRouterModels(false);
+  else if(glm)populateGlmModels();
 }
 
 export async function loadOpenRouterModels(force){
@@ -388,6 +434,7 @@ export async function loadOpenRouterModels(force){
 export function aiPlaceholders(){if(!$('#setAiProvider'))return;
   const p=$('#setAiProvider').value;
   if(p==='openrouter'){$('#setAiKey').placeholder='sk-or-…';}
+  else if(p==='glm'){$('#setAiKey').placeholder='your GLM Coding Plan key';$('#setAiModel').placeholder='glm-4.6';}
   else{$('#setAiKey').placeholder='sk-ant-…';$('#setAiModel').placeholder='claude-haiku-4-5-20251001';}}
 if($('#setAiProvider'))$('#setAiProvider').onchange=aiSyncProviderUI;
 if($('#loadAiModelsBtn'))$('#loadAiModelsBtn').onclick=()=>loadOpenRouterModels(true);
@@ -417,9 +464,9 @@ $('#saveAiBtn').onclick=async()=>{
   const provider=$('#setAiProvider').value;
   const body={aiProvider:provider};
   if($('#setAiKey').value)body.aiApiKey=$('#setAiKey').value;
-  if(provider==='openrouter'){
+  if(provider==='openrouter'||provider==='glm'){
     const model=($('#setAiModelSelect')||{}).value;
-    if(!model){toast('Select an OpenRouter model from the list');return;}
+    if(!model){toast('Select a '+(provider==='glm'?'GLM':'OpenRouter')+' model from the list');return;}
     body.aiModel=model;
   }else{
     const model=$('#setAiModel').value.trim();
