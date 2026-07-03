@@ -61,6 +61,52 @@ func TestSwitchProjectRejectsPaths(t *testing.T) {
 	}
 }
 
+// The "path" field is a deliberate, separate opt-in for an operator-chosen
+// save folder: absolute paths are accepted there (unlike "target"), but a
+// drive/filesystem root is rejected, and the switch is remembered so it
+// reappears in the project list without retyping the full path.
+func TestSwitchProjectAcceptsExplicitPath(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.GlobalDir = t.TempDir()
+	var gotTarget string
+	h.SwitchProject = func(target string) error { gotTarget = target; return nil }
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	postPath := func(path string) (int, string) {
+		body, _ := json.Marshal(map[string]string{"path": path})
+		resp, err := http.Post(ts.URL+"/api/project/switch", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("post %q: %v", path, err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode, readAll(resp.Body)
+	}
+
+	custom := filepath.Join(t.TempDir(), "acme-engagement")
+	if code, _ := postPath(custom); code != http.StatusAccepted {
+		t.Fatalf("absolute path: expected 202, got %d", code)
+	}
+	time.Sleep(350 * time.Millisecond) // the switch fires after a short delay
+	if gotTarget != custom {
+		t.Fatalf("SwitchProject called with %q, want %q", gotTarget, custom)
+	}
+
+	list := readExternalProjects(h.GlobalDir)
+	if len(list) != 1 || list[0].Path != custom {
+		t.Fatalf("expected the path to be remembered, got %+v", list)
+	}
+
+	// A filesystem/drive root must still be rejected even via "path".
+	root := filepath.VolumeName(custom) + string(filepath.Separator)
+	if root == string(filepath.Separator) {
+		root = string(filepath.Separator)
+	}
+	if code, msg := postPath(root); code != http.StatusBadRequest {
+		t.Fatalf("drive root %q: expected 400, got %d (%s)", root, code, msg)
+	}
+}
+
 // Clearing the activity feed must delete the persisted rows, not just the client
 // copy — otherwise it reappears on reload now that the feed is stored.
 func TestClearActivityEndpoint(t *testing.T) {
@@ -283,17 +329,25 @@ func TestProjectListAndSwitch(t *testing.T) {
 		t.Fatalf("GET project: %v", err)
 	}
 	var info struct {
-		Current   string   `json:"current"`
-		Projects  []string `json:"projects"`
-		CanSwitch bool     `json:"canSwitch"`
+		Current  string `json:"current"`
+		Projects []struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"projects"`
+		CanSwitch bool `json:"canSwitch"`
 	}
 	json.NewDecoder(resp.Body).Decode(&info)
 	resp.Body.Close()
 	if info.Current != "default" || !info.CanSwitch {
 		t.Fatalf("project info: %+v", info)
 	}
-	if len(info.Projects) != 3 || info.Projects[0] != "default" || info.Projects[1] != "acme" || info.Projects[2] != "beta" {
-		t.Fatalf("projects: %v", info.Projects)
+	if len(info.Projects) != 3 || info.Projects[0].Name != "default" || info.Projects[1].Name != "acme" || info.Projects[2].Name != "beta" {
+		t.Fatalf("projects: %+v", info.Projects)
+	}
+	for _, p := range info.Projects {
+		if p.Path != "" {
+			t.Fatalf("named project %q should have an empty path, got %q", p.Name, p.Path)
+		}
 	}
 
 	// Empty target → 400.

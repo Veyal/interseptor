@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Choose a custom save location when creating a project.** Settings → Project & data and the top-bar Projects picker both gain an optional "save location" field — leave it blank to keep the default `~/.interceptor/projects/<name>/`, or point it at any absolute folder (e.g. a client-engagement drive) to store that project's history, rules, and scope there instead. The switch endpoint's existing bare-name-only restriction (a deliberate defense against a loopback request relocating the process to an arbitrary path) is unchanged — a custom path is a separate, explicit opt-in field, rejected if it isn't absolute or resolves to a filesystem/drive root. Chosen folders are remembered (`~/.interceptor/external-projects.json`) so they reappear in the switcher without retyping the path.
+
+### Changed
+- **Custom checks editor revamped.** The modal is much larger (was fixed at 980×820, now scales up to 1400×920) and the sidebar gained a filter box that searches by title/id and auto-expands matching built-in/active groups. Test and Save results now render as color-coded status cards (red for errors with a monospace stack trace, amber for a finding, green for success/no-finding) instead of being crammed into a fixed 140px text box — the output area now grows with content up to a sane cap. The single Revert/Delete button's label and enabled state now update live (grayed-out "↺ Revert" when a built-in has no override to revert, "🗑 Delete" for anything else) instead of a static label that didn't say which action it would take.
+
 ### Fixed
 - **Switching (or creating) a project could reload the UI into stale data from the project you just left.** The reload-readiness check polled `/api/version`, which any live server answers identically — old or new — since the version string doesn't encode which project is loaded. On Windows, the outgoing process keeps the control port bound for up to ~800ms after answering the switch request while the incoming one is still binding, so the client's first poll (at ~500ms) very often hit the *old* process and reloaded before the handover finished, leaving the old project's proxy history and other data on screen until a second, manual refresh. The check now polls `/api/project` and waits for `current` to actually flip to the new project before reloading (bounded by a ~5s grace period so re-selecting the *same* project doesn't hang).
 

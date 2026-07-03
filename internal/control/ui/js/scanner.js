@@ -96,11 +96,11 @@ export async function loadChecksList(){
       const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
       return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
         ${cb}${bolt}<div class="checks-body">
-        <span class="checks-title" style="color:${titleColor}">${esc(opts.title)}${opts.error?' ⚠':''}</span>
+        <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' ⚠':''}</span>
         <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
         </div></div>`;
     };
-    const group=(title,open,body)=>`<details class="checks-group${open?' checks-group-custom':''}"${open?' open':''}><summary>${title}</summary><div class="checks-group-body">${body}</div></details>`;
+    const group=(title,open,body)=>`<details class="checks-group${open?' checks-group-custom':''}"${open?' open':''} data-default-open="${open?'1':'0'}"><summary>${title}</summary><div class="checks-group-body">${body}</div></details>`;
     let html='';
     let customBody='';
     if(!customPassive.length){
@@ -142,7 +142,26 @@ export async function loadChecksList(){
       try{await api('/api/checks/disabled',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({disabled})});
         toast('check '+(cb.checked?'enabled':'disabled'));}catch(e){toast(e.message);}
     });
+    checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
   }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="hint" style="padding:10px;color:var(--red)">Couldn't load checks: ${esc(e.message)}</div>`;}
+}
+// Filters the sidebar by title/id substring match. Groups auto-expand while a
+// filter is active (so a match in a collapsed built-in group is still found)
+// and collapse back to their default open/closed state once cleared.
+function checksApplyFilter(){
+  const q=(($('#checksSearch')||{}).value||'').trim().toLowerCase();
+  const box=$('#checksList');if(!box)return;
+  box.querySelectorAll('.checks-group').forEach(group=>{
+    let anyVisible=false;
+    group.querySelectorAll('.checks-row').forEach(row=>{
+      const hay=(row.querySelector('.checks-title')?.textContent||'')+' '+(row.dataset.id||'');
+      const match=!q||hay.toLowerCase().includes(q);
+      row.style.display=match?'':'none';
+      if(match)anyVisible=true;
+    });
+    if(q){group.classList.toggle('checks-group-empty',!anyVisible);group.open=anyVisible;}
+    else{group.classList.remove('checks-group-empty');group.open=group.dataset.defaultOpen==='1';}
+  });
 }
 const ACTIVE_CHECK_TEMPLATE=`# Active check: send probes at an injection point, confirm a vuln.
 # ⚡ probe(payload) sends a real request — it counts against the run's budget.
@@ -157,6 +176,27 @@ function refreshCheckEditorMode(){
   const describe=$('#checkModeSeg button[data-mode="describe"]');
   if(describe) describe.style.display = checkKind==='active'?'none':'';
   if(checkKind==='active' && checkMode==='describe') checkSetMode('code');
+  const kh=$('#checkKindHint');
+  if(kh){
+    if(checkKind==='active'){kh.style.display='';kh.textContent='⚡ def check(point, baseline, probe): — probe() sends a real request';}
+    else{kh.style.display='none';kh.textContent='';}
+  }
+}
+// The single Delete/Revert button is dual-purpose: for a built-in check it
+// reverts a saved Starlark override (disabled when there's no override to
+// revert); for anything else it deletes the custom check outright. The label
+// switches so the two are never confused.
+function updateCheckDeleteLabel(){
+  const btn=$('#checkDelete');if(!btn)return;
+  if(checkBuiltin){
+    btn.textContent='↺ Revert';
+    btn.title=checkOverridden?'Delete your Starlark override — the built-in check runs again':'No override saved yet — nothing to revert';
+    btn.disabled=!checkOverridden;
+  }else{
+    btn.textContent='🗑 Delete';
+    btn.title='Delete this custom check';
+    btn.disabled=false;
+  }
 }
 export async function loadBuiltinCheck(id,kind='passive'){
   checkKind=kind;checkBuiltin=true;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
@@ -166,7 +206,8 @@ export async function loadBuiltinCheck(id,kind='passive'){
     $('#checkId').value=id;checkSetEditorReadonly(true);
     $('#checkSrc').value=d.source||'';
   const note=checkOverridden?'your Starlark override is active':'edit & Save to write ~/.interceptor/'+(kind==='active'?'active-checks/':'checks/')+id+'.star';
-    $('#checkOut').innerHTML='<span class="hint">Built-in <b>'+esc(id)+'</b> — '+note+'</span>';
+    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Built-in <b>'+esc(id)+'</b> — '+note+'</div>';
+    updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));
   }catch(e){toast(e.message);}
 }
@@ -174,7 +215,8 @@ export async function loadCheck(id,kind='passive'){
   checkKind=kind;checkBuiltin=false;checkOverridden=false;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
   try{const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
     $('#checkSrc').value=d.source||'';
-    $('#checkOut').innerHTML='<span class="hint">Loaded <b>'+esc(id)+'</b> ('+(kind==='active'?'active · sends traffic':'passive')+'). Edit on <b>Code</b>, then Save.</span>';
+    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> ('+(kind==='active'?'active · sends traffic':'passive')+'). Edit on <b>Code</b>, then Save.</div>';
+    updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));}catch(e){toast(e.message);}
 }
 export function checkNew(kind='passive'){
@@ -182,25 +224,32 @@ export function checkNew(kind='passive'){
   checkSetEditorReadonly(false);
   $('#checkId').value='';
   $('#checkSrc').value = kind==='active' ? ACTIVE_CHECK_TEMPLATE : "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
-  $('#checkOut').innerHTML='<span class="hint">New '+(kind==='active'?'active':'passive')+' check — set an id, write Starlark on <b>Code</b>, Test, then Save.</span>';$('#checkId').focus();
+  $('#checkOut').innerHTML='<div class="check-status check-status-pending">New '+(kind==='active'?'active':'passive')+' check — set an id, write Starlark on <b>Code</b>, Test, then Save.</div>';$('#checkId').focus();
+  updateCheckDeleteLabel();
   markChecksSelected($('#checksList'));
 }
 export async function checkTest(){
-  const out=$('#checkOut');out.innerHTML='<span class="hint">running…</span>';
+  const out=$('#checkOut');out.innerHTML='<div class="check-status check-status-pending">running…</div>';
   try{const r=await api(checkEndpoint()+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
-    if(r.error){out.innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(r.error)+'</span>';return;}
+    if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';return;}
     const f=r.finding;
     const note=r.note||(f?('finding on flow #'+(f.flowId||'?')):'no finding');
-    out.innerHTML='<div class="hint" style="margin-bottom:6px">'+esc(note)+(checkKind==='active'?' · ⚡ sent real probes':'')+'</div>'+
-      (f?`<div style="padding:3px 0"><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div>`:'<span class="hint">No finding (check compiles &amp; runs).</span>');
-  }catch(e){out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+    const suffix=checkKind==='active'?' · ⚡ sent real probes':'';
+    out.innerHTML=f
+      ?`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}${suffix}</div><div><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div></div>`
+      :`<div class="check-status check-status-ok"><div class="hint">${esc(note)}${suffix}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
+  }catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>';}
 }
 export async function checkSave(){
   const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
+  const out=$('#checkOut');
+  out.innerHTML='<div class="check-status check-status-pending">saving…</div>';
   try{await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
     checkOverridden=checkBuiltin||checkOverridden;
-    $('#checkOut').innerHTML='<span style="color:var(--accent)">Saved ✓ — '+(checkKind==='active'?'runs on the next active scan':'runs on the next scan')+(checkBuiltin?' (replaces built-in)':'')+'.</span>';loadChecksList();}
-  catch(e){$('#checkOut').innerHTML='<span style="color:var(--red);white-space:pre-wrap">'+esc(e.message)+'</span>';}
+    out.innerHTML='<div class="check-status check-status-ok">Saved ✓ — '+(checkKind==='active'?'runs on the next active scan':'runs on the next scan')+(checkBuiltin?' (replaces built-in)':'')+'.</div>';
+    updateCheckDeleteLabel();
+    loadChecksList();}
+  catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>';}
 }
 export async function checkDelete(){
   const id=$('#checkId').value.trim();if(!id)return;
@@ -242,7 +291,7 @@ async function checkAiGenerate(){
     if(status)status.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';
   }finally{if(btn)btn.disabled=false;}
 }
-export function openChecks(){openModal($('#checksModal'));loadChecksList();updateCheckFlowHint();if(!$('#checkSrc').value)checkNew();checkSetMode('code');}
+export function openChecks(){openModal($('#checksModal'));const s=$('#checksSearch');if(s)s.value='';loadChecksList();updateCheckFlowHint();if(!$('#checkSrc').value)checkNew();checkSetMode('code');}
 if($('#checksBtn'))$('#checksBtn').onclick=openChecks;
 if($('#checksClose'))$('#checksClose').onclick=()=>closeModal($('#checksModal'));
 if($('#checkNew'))$('#checkNew').onclick=()=>checkNew('passive');
@@ -251,6 +300,7 @@ if($('#checkTest'))$('#checkTest').onclick=checkTest;
 if($('#checkSave'))$('#checkSave').onclick=checkSave;
 if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
 if($('#checkModeSeg'))$('#checkModeSeg').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>checkSetMode(b.dataset.mode));
+if($('#checksSearch'))$('#checksSearch').oninput=checksApplyFilter;
 if($('#checkAiGen'))$('#checkAiGen').onclick=checkAiGenerate;
 
 /* ---- decoder ---- */

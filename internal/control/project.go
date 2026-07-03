@@ -132,9 +132,29 @@ func (h *projectAPI) apiProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"current":   h.ProjectName,
 		"dir":       h.ProjectDir,
-		"projects":  h.availableProjects(),
+		"projects":  h.projectEntries(),
 		"canSwitch": h.SwitchProject != nil,
 	})
+}
+
+// projectEntry is one row in the switcher: a named project (Path empty,
+// switch via {target: Name}) or a remembered external-folder project (Path
+// set, switch via {path: Path}).
+type projectEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func (h *projectAPI) projectEntries() []projectEntry {
+	names := h.availableProjects()
+	out := make([]projectEntry, 0, len(names))
+	for _, n := range names {
+		out = append(out, projectEntry{Name: n})
+	}
+	for _, e := range readExternalProjects(h.GlobalDir) {
+		out = append(out, projectEntry{Name: e.Name, Path: e.Path})
+	}
+	return out
 }
 
 // availableProjects lists "default" plus every named project directory under
@@ -173,11 +193,18 @@ func safeProjectTarget(name string) bool {
 	return !strings.ContainsAny(name, `/\`) && !strings.HasPrefix(name, "~") && !strings.HasPrefix(name, "-")
 }
 
-// switchProject relaunches Interceptor pointed at another named project. It
-// answers first, then the process re-execs; the UI reconnects once the listeners
-// are back. The target is restricted to a plain project name (see
-// safeProjectTarget) so a loopback request can't relocate the process to an
-// arbitrary path.
+// switchProject relaunches Interceptor pointed at another project. It answers
+// first, then the process re-execs; the UI reconnects once the listeners are
+// back. Two mutually exclusive inputs:
+//
+//   - "target": a plain project name (see safeProjectTarget) — the common
+//     case, resolved under GlobalDir/projects. A loopback request can't use
+//     this field to relocate the process to an arbitrary path.
+//   - "path": an explicit, absolute directory the operator chose (e.g. "save
+//     this engagement in D:\clients\acme instead of ~/.interceptor"). This is
+//     a deliberate, separate opt-in — the plain "target" field's path
+//     restriction is unchanged — and is remembered so it reappears in the
+//     switcher on future launches instead of requiring the path to be retyped.
 func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 	if h.SwitchProject == nil {
 		httpErr(w, http.StatusNotImplemented, "project switching unavailable")
@@ -185,9 +212,27 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Target string `json:"target"`
+		Path   string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
 		httpErr(w, http.StatusBadRequest, "bad json")
+		return
+	}
+	if path := strings.TrimSpace(in.Path); path != "" {
+		abs, err := filepath.Abs(path)
+		if err != nil || !isSafeExternalPath(abs) {
+			httpErr(w, http.StatusBadRequest, "invalid path: use an absolute folder, not a drive/filesystem root")
+			return
+		}
+		name := filepath.Base(abs)
+		rememberExternalProject(h.GlobalDir, name, abs)
+		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			if err := h.SwitchProject(abs); err != nil {
+				log.Printf("control: project switch to %q failed: %v", abs, err)
+			}
+		}()
 		return
 	}
 	target := strings.TrimSpace(in.Target)

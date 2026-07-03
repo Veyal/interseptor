@@ -696,21 +696,32 @@ $('#importProjectFile').onchange=async e=>{
   e.target.value='';
 };
 // ---- project switching (close current, open another / a new path) ----
+// Each project entry is {name, path}: path is empty for a named project under
+// GlobalDir/projects (switch via {target: name}), or set for an external
+// folder the operator chose explicitly (switch via {path}).
 export async function loadProject(){
   try{const d=await api('/api/project');
     const n=$('#projNameHint');if(n)n.textContent=d.current||'default';
     const dir=$('#projDirHint');if(dir&&d.dir)dir.textContent=d.dir;
-    const sel=$('#projSelect');if(sel)sel.innerHTML=(d.projects||['default']).map(p=>`<option value="${escAttr(p)}"${p===d.current?' disabled':''}>${esc(p)}${p===d.current?' (current)':''}</option>`).join('');
+    const sel=$('#projSelect');
+    if(sel){
+      const list=(d.projects&&d.projects.length)?d.projects:[{name:'default',path:''}];
+      sel.innerHTML=list.map(p=>{
+        const isCur=p.name===d.current;
+        const label=p.path?`${esc(p.name)} — ${esc(p.path)}`:esc(p.name);
+        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${label}${isCur?' (current)':''}</option>`;
+      }).join('');
+    }
     if(!d.canSwitch)['projSwitchBtn','projNewBtn'].forEach(id=>{const b=$('#'+id);if(b){b.disabled=true;b.title='project switching is unavailable in this build';}});
   }catch(e){}
 }
-export async function doSwitchProject(target){
-  if(!target)return;
+export async function doSwitchProject(target,path){
+  if(!target&&!path)return;
   // Surface the "restarting…" message wherever it's visible — the Settings panel
   // note and the top-bar Projects modal share this one switch path.
   const notes=['#projSwitchNote','#pmNote'].map(s=>$(s)).filter(Boolean);
   const setNote=t=>notes.forEach(n=>{n.style.display='block';n.textContent=t;});
-  setNote('Switching to "'+target+'" — restarting & reconnecting…');
+  setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
   // /api/version can't tell them apart and would reload straight back into the
@@ -720,7 +731,7 @@ export async function doSwitchProject(target){
   // hang forever — after that we accept any live reply, same as before.
   let prevProject=null;
   try{prevProject=(await api('/api/project?_t='+Date.now())).current;}catch(e){}
-  try{await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({target})});}catch(e){}
+  try{await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});}catch(e){}
   const graceTries=10; // ~5s worth of polls
   let tries=0;const poll=setInterval(async()=>{tries++;
     try{
@@ -731,8 +742,17 @@ export async function doSwitchProject(target){
     catch(e){if(tries>60){clearInterval(poll);setNote('Still restarting… reload the page manually if it doesn\'t return.');}}
   },500);
 }
-$('#projSwitchBtn').onclick=()=>{const v=($('#projSelect')||{}).value;if(v)doSwitchProject(v);else toast('no other project to open');};
-$('#projNewBtn').onclick=()=>{const v=(($('#projNew')||{}).value||'').trim();if(v)doSwitchProject(v);else toast('enter a project name or path');};
+$('#projSwitchBtn').onclick=()=>{
+  const sel=$('#projSelect');const opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
+  if(!opt){toast('no other project to open');return;}
+  doSwitchProject(opt.value,opt.dataset.path||'');
+};
+$('#projNewBtn').onclick=()=>{
+  const v=(($('#projNew')||{}).value||'').trim();
+  const path=(($('#projNewPath')||{}).value||'').trim();
+  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
+  doSwitchProject(v,path);
+};
 
 // ---- top-bar Projects picker modal (click the project badge) ----
 // Same data + switch endpoint as the Settings panel, surfaced as a prominent,
@@ -743,24 +763,34 @@ async function renderProjModal(){
     const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
     const list=$('#pmList');if(!list)return;
     if(!d.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';const nb=$('#pmNewBtn');if(nb)nb.disabled=true;return;}
-    const others=(d.projects||[]).filter(p=>p!==d.current);
+    const others=(d.projects||[]).filter(p=>p.name!==d.current);
     list.innerHTML=others.length
-      ?others.map(p=>`<button class="btn pm-row" data-proj="${escAttr(p)}" style="text-align:left;background:var(--bg3)">◧ ${esc(p)}</button>`).join('')
+      ?others.map(p=>{
+        const sub=p.path?`<div class="hint" style="font-family:var(--mono);font-size:10px;margin-top:1px">${esc(p.path)}</div>`:'';
+        return `<button class="btn pm-row" data-proj="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}" style="text-align:left;background:var(--bg3);display:block">◧ ${esc(p.name)}${sub}</button>`;
+      }).join('')
       :'<div class="hint">No other saved projects yet — create one below.</div>';
-    list.querySelectorAll('.pm-row').forEach(b=>b.onclick=()=>doSwitchProject(b.dataset.proj));
+    list.querySelectorAll('.pm-row').forEach(b=>b.onclick=()=>doSwitchProject(b.dataset.proj,b.dataset.path||''));
   }catch(e){}
 }
 export async function openProjectModal(){
   const m=$('#projModal');if(!m)return;
   const note=$('#pmNote');if(note){note.style.display='none';note.textContent='';}
   const inp=$('#pmNew');if(inp)inp.value='';
+  const pinp=$('#pmNewPath');if(pinp)pinp.value='';
   openModal(m);
   await renderProjModal();
   if(inp)inp.focus();
 }
 {const c=$('#pmClose');if(c)c.onclick=()=>closeModal($('#projModal'));}
-{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{const v=(($('#pmNew')||{}).value||'').trim();if(v)doSwitchProject(v);else toast('enter a project name');};}
-{const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const v=ni.value.trim();if(v)doSwitchProject(v);}});}
+{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{
+  const v=(($('#pmNew')||{}).value||'').trim();
+  const path=(($('#pmNewPath')||{}).value||'').trim();
+  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
+  doSwitchProject(v,path);
+};}
+{const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
+{const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 $('#saveAddrBtn').onclick=async()=>{
   const addrs=collectProxyAddrs();
   if(!addrs.length){toast('enter at least one listener');return;}

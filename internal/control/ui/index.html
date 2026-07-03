@@ -803,7 +803,7 @@ Content-Type: application/json
         <section class="set-sec" data-sec="project" hidden>
           <div class="section">
             <h3>PROJECT</h3>
-            <p class="hint" style="margin-bottom:12px">Each project has its own history, rules, and scope under <code>~/.interceptor/projects/&lt;name&gt;/</code>. CA and checks are shared globally. Switching restarts Interceptor.</p>
+            <p class="hint" style="margin-bottom:12px">Each project has its own history, rules, and scope, kept under <code>~/.interceptor/projects/&lt;name&gt;/</code> by default — or a folder you choose below. CA and checks are shared globally. Switching restarts Interceptor.</p>
             <div class="field"><label>Active project</label><div style="font-size:13px"><b id="projNameHint" style="color:var(--accent)">default</b> · <span id="projDirHint" style="color:var(--fg3)">~/.interceptor</span></div></div>
             <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
               <div class="field" style="margin-bottom:0"><label>Switch to a saved project</label><select id="projSelect" class="btn" style="background:var(--bg3);min-width:200px"></select></div>
@@ -813,6 +813,7 @@ Content-Type: application/json
               <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label>New project</label><input id="projNew" class="btn" style="background:var(--bg3);width:100%" placeholder="acme-engagement"></div>
               <button class="btn" id="projNewBtn">Create &amp; open</button>
             </div>
+            <div class="field" style="margin-bottom:0;margin-top:8px"><label>Save location <span class="hint">(optional — leave blank to use ~/.interceptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" class="btn" style="background:var(--bg3);width:100%;font-family:var(--mono);font-size:11.5px" placeholder="e.g. D:\engagements\acme-2026"></div>
             <p class="hint" id="projSwitchNote" style="margin-top:12px;display:none;color:var(--accent)"></p>
             <div class="row" style="margin-top:14px"><button class="btn" id="runSetupBtn" type="button">🚀 Run setup wizard again</button><span class="hint">Replays the first-run guide (proxy, CA, scope).</span></div>
           </div>
@@ -957,6 +958,9 @@ Content-Type: application/json
     </div>
     <div class="checks-work">
       <div class="checks-sidebar">
+        <div class="checks-search-wrap">
+          <input id="checksSearch" class="btn checks-search" placeholder="🔎 filter checks…" aria-label="Filter checks" spellcheck="false">
+        </div>
         <div id="checksList" style="flex:1;overflow:auto"></div>
         <div style="padding:8px;border-top:1px solid var(--line);display:flex;gap:6px"><button class="btn accent" id="checkNew" style="flex:1">+ New passive</button><button class="btn" id="checkNewActive" style="flex:1" title="Author an active check that sends probe requests">+ New active ⚡</button></div>
       </div>
@@ -966,7 +970,7 @@ Content-Type: application/json
           <button class="btn" id="checkTest">Test ▸</button>
           <button class="btn accent" id="checkSave">Save</button>
           <div class="spacer"></div>
-          <button class="btn" id="checkDelete" style="color:var(--red)" title="Delete custom check or revert built-in override">Revert</button>
+          <button class="btn" id="checkDelete" style="color:var(--red)" title="Delete custom check, or revert a built-in override">🗑 Delete</button>
         </div>
         <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
           <div class="seg" id="checkModeSeg" role="tablist" aria-label="Check editor mode">
@@ -975,6 +979,7 @@ Content-Type: application/json
             <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
           </div>
           <span class="hint" id="checkFlowHint">Test uses selected flow or latest capture</span>
+          <span class="hint" id="checkKindHint" style="display:none;color:var(--amber)"></span>
         </div>
         <div id="checkPaneCode" class="check-pane">
           <textarea id="checkSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
@@ -1076,6 +1081,7 @@ Content-Type: application/json
           <input id="pmNew" class="btn" style="flex:1;min-width:200px;background:var(--bg3)" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
           <button class="btn accent" id="pmNewBtn">＋ Create &amp; open</button>
         </div>
+        <input id="pmNewPath" class="btn" style="width:100%;margin-top:6px;background:var(--bg3);font-family:var(--mono);font-size:11px" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
         <p class="hint" id="pmSwitchNote" style="display:none;color:var(--accent)"></p>
       </div>
       <div id="pmNote" class="hint" style="display:none;color:var(--accent)"></div>
