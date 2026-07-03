@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-03
+
 ### Security
 - **Removed engagement artifacts committed to the repo** (a one-off bounty script and a pentest spec) that contained real target hosts, vulnerability details, and third-party PII, and **purged them from git history**. Redacted test fixtures that echoed real captured data (CONNECT hosts/IPs, a session-cookie name) to RFC-5737 / RFC-2606 placeholders, and added `.gitignore` guards so engagement artifacts cannot re-enter.
 
