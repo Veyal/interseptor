@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -128,13 +129,138 @@ func Points(t Target) []Point {
 			}
 		}
 	}
-	sort.Slice(pts, func(i, j int) bool {
+
+	// Path segments — each non-empty segment is an injection point (LFI, SQLi and
+	// traversal frequently live in RESTful path components, not just query args).
+	// Named by segment index so With() can replace exactly that segment.
+	if u, err := url.Parse(t.URL); err == nil {
+		segs := strings.Split(u.EscapedPath(), "/")
+		for i, s := range segs {
+			if s == "" {
+				continue
+			}
+			pts = append(pts, Point{"path", strconv.Itoa(i), s})
+		}
+	}
+
+	// Cookie values — parsed from the request Cookie header. Cookies reach the same
+	// backend queries/filters as params and are a classic injection surface.
+	if t.Headers != nil {
+		for name, val := range parseCookies(t.Headers.Get("Cookie")) {
+			pts = append(pts, Point{"cookie", name, val})
+		}
+	}
+
+	// Header injection points — a fixed, curated set of headers that backends
+	// commonly trust or reflect (log-injection SQLi via X-Forwarded-For, host-header
+	// poisoning via X-Forwarded-Host, CORS reflection via Origin, …). Synthesized
+	// even when absent so the specialized checks always have a point to fire on. The
+	// request's Host header is deliberately NOT mutated — that would break vhost
+	// routing; X-Forwarded-Host is the real poisoning vector anyway.
+	for _, hn := range injectableHeaders {
+		v := ""
+		if t.Headers != nil {
+			v = t.Headers.Get(hn)
+		}
+		pts = append(pts, Point{"header", hn, v})
+	}
+
+	sort.SliceStable(pts, func(i, j int) bool {
+		if pk, qk := kindPriority(pts[i].Kind), kindPriority(pts[j].Kind); pk != qk {
+			return pk < qk
+		}
 		if pts[i].Kind != pts[j].Kind {
 			return pts[i].Kind < pts[j].Kind
 		}
 		return pts[i].Name < pts[j].Name
 	})
 	return pts
+}
+
+// injectableHeaders is the curated set of request headers turned into injection
+// points. Kept small and fixed so the per-header probe cost stays bounded.
+var injectableHeaders = []string{
+	"X-Forwarded-For", "X-Forwarded-Host", "Origin", "Referer", "User-Agent",
+}
+
+// kindPriority orders injection points so the classic, highest-value body/query
+// points are scanned before the broader header/cookie/path surface. Under a tight
+// request budget this keeps coverage focused where injections are most likely.
+func kindPriority(kind string) int {
+	switch kind {
+	case "query":
+		return 0
+	case "json":
+		return 1
+	case "form":
+		return 2
+	case "body":
+		return 3
+	case "path":
+		return 4
+	case "cookie":
+		return 5
+	case "header":
+		return 6
+	default:
+		return 9
+	}
+}
+
+// parseCookies splits a Cookie request-header value into name→value pairs. It is
+// lenient (whitespace-trimmed, ignores malformed/valueless entries) — good enough
+// to enumerate injection points without a full RFC 6265 parse.
+func parseCookies(header string) map[string]string {
+	out := map[string]string{}
+	for _, part := range strings.Split(header, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(part, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			continue
+		}
+		out[k] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+// setCookie returns header with cookie name's value replaced by val (or the pair
+// appended if not present), preserving the other cookies' order.
+func setCookie(header, name, val string) string {
+	var parts []string
+	found := false
+	for _, part := range strings.Split(header, ";") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		k, _, ok := strings.Cut(trimmed, "=")
+		if ok && strings.TrimSpace(k) == name {
+			parts = append(parts, name+"="+val)
+			found = true
+			continue
+		}
+		parts = append(parts, trimmed)
+	}
+	if !found {
+		parts = append(parts, name+"="+val)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// cloneHeader returns a deep copy of h (or a fresh Header if h is nil), so a probe
+// can mutate request headers without corrupting the shared baseline Target.
+func cloneHeader(h http.Header) http.Header {
+	out := make(http.Header, len(h))
+	for k, vs := range h {
+		cp := make([]string, len(vs))
+		copy(cp, vs)
+		out[k] = cp
+	}
+	return out
 }
 
 // isXMLBody reports whether the Content-Type or the body prefix indicates XML.
@@ -177,6 +303,27 @@ func (t Target) With(p Point, payload string) Target {
 		// Wholesale body replacement (used by the XXE check which rewrites the
 		// entire XML document rather than a single field value).
 		out.Body = payload
+	case "path":
+		if u, err := url.Parse(t.URL); err == nil {
+			segs := strings.Split(u.EscapedPath(), "/")
+			if idx, err := strconv.Atoi(p.Name); err == nil && idx >= 0 && idx < len(segs) {
+				segs[idx] = payload // raw payload — traversal sequences (../, %2e) survive
+				newPath := strings.Join(segs, "/")
+				u.RawPath = newPath
+				if dec, e := url.PathUnescape(newPath); e == nil {
+					u.Path = dec
+				} else {
+					u.Path = newPath
+				}
+				out.URL = u.String()
+			}
+		}
+	case "header":
+		out.Headers = cloneHeader(t.Headers)
+		out.Headers.Set(p.Name, payload)
+	case "cookie":
+		out.Headers = cloneHeader(t.Headers)
+		out.Headers.Set("Cookie", setCookie(t.Headers.Get("Cookie"), p.Name, payload))
 	}
 	return out
 }

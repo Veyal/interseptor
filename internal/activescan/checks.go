@@ -10,9 +10,11 @@ import (
 
 // Checks is the built-in active-check set.
 var Checks = []Check{
-	xssCheck, sqliErrorCheck, sqliBooleanCheck, sstiCheck,
+	xssCheck, sqliErrorCheck, sqliBooleanCheck, sqliTimeCheck, sstiCheck,
 	openRedirectCheck, pathTraversalCheck, cmdInjectionCheck,
 	xxeCheck, crlfCheck,
+	nosqlCheck, ldapCheck, xpathCheck,
+	hostHeaderCheck, corsReflectionCheck,
 }
 
 // Reflected XSS: inject a marker wrapped in angle brackets/quotes and confirm it
@@ -336,6 +338,199 @@ func xmlStripDoctype(body string) string {
 		}
 	}
 	return body
+}
+
+// ---- time-based blind SQL injection ----
+
+// sqliTimePayloads pair a 6-second delay payload with a 0-second control across
+// the major dialects (MySQL, MSSQL, PostgreSQL), in both string and numeric
+// contexts. A hit requires the slow payload to delay AND the matching control to
+// return fast — the same differential guard the timing cmd-injection check uses.
+var sqliTimePayloads = []struct{ slow, ctrl string }{
+	{"' AND SLEEP(6)-- -", "' AND SLEEP(0)-- -"},                            // MySQL, string context
+	{" AND SLEEP(6)", " AND SLEEP(0)"},                                      // MySQL, numeric context
+	{"'; WAITFOR DELAY '0:0:6'-- ", "'; WAITFOR DELAY '0:0:0'-- "},          // MSSQL
+	{"' || pg_sleep(6)-- ", "' || pg_sleep(0)-- "},                          // PostgreSQL, string context
+	{"'||(SELECT 1 FROM PG_SLEEP(6))||'", "'||(SELECT 1 FROM PG_SLEEP(0))||'"}, // PostgreSQL, subselect
+}
+
+// Time-based blind SQL injection: when error- and boolean-based signals are absent
+// (blind endpoint), a database sleep is the last reliable confirmation. Lower
+// confidence by nature (timing), so it is differentially confirmed against a
+// 0-delay control and a fast baseline.
+var sqliTimeCheck = Check{
+	ID: "active-sqli-time", Class: "sqli", Severity: "High", Title: "SQL injection (time-based blind)",
+	Fix: "Use parameterized queries / prepared statements; never concatenate input into SQL.",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		switch base.Status {
+		case 0, 401, 403, 419, 502:
+			return nil
+		}
+		if base.Duration > 3*time.Second {
+			return nil // baseline already slow; timing is unreliable
+		}
+		for _, pl := range sqliTimePayloads {
+			r := probe(p.Value + pl.slow)
+			if r.Status != 0 && r.Duration >= 5*time.Second {
+				if c := probe(p.Value + pl.ctrl); c.Status != 0 && c.Duration < 3*time.Second {
+					return &Hit{
+						Evidence: fmt.Sprintf("`%s` delayed the response to %.1fs (baseline %.1fs, 0-delay control %.1fs)",
+							trunc(pl.slow, 32), r.Duration.Seconds(), base.Duration.Seconds(), c.Duration.Seconds()),
+						FlowID: r.FlowID,
+					}
+				}
+			}
+		}
+		return nil
+	},
+}
+
+// ---- NoSQL injection (error-based) ----
+
+var nosqlErrRe = regexp.MustCompile(`(?i)(MongoError|MongoServerError|E11000 duplicate key|com\.mongodb|BSONObj|BSONError|CouchDB.{0,40}error|CastError|failed to parse.{0,40}(query|bson)|unexpected token.{0,20}in JSON|SyntaxError: Unexpected (token|end of))`)
+
+// NoSQL injection: break the surrounding query/JSON with quote, backslash, and
+// operator payloads and look for a MongoDB/driver parse error that wasn't already
+// in the baseline. High-signal, low false positive (driver-specific error text).
+var nosqlCheck = Check{
+	ID: "active-nosql", Class: "nosqli", Severity: "High", Title: "NoSQL injection (error-based)",
+	Fix: "Type-check and validate input; use a typed query builder and never pass raw user input into query operators (e.g. $where, $gt).",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		if nosqlErrRe.MatchString(base.Body) {
+			return nil
+		}
+		for _, q := range []string{"'", "\"", "'\"", "\\", "'||'1'=='1", `{"$gt":""}`} {
+			r := probe(p.Value + q)
+			if r.Status != 0 {
+				if m := nosqlErrRe.FindString(r.Body); m != "" {
+					return &Hit{Evidence: "NoSQL/driver error after `" + trunc(q, 16) + "`: " + trunc(m, 80), FlowID: r.FlowID}
+				}
+			}
+		}
+		return nil
+	},
+}
+
+// ---- LDAP injection (error-based) ----
+
+var ldapErrRe = regexp.MustCompile(`(?i)(javax\.naming\.|LDAPException|com\.sun\.jndi\.ldap|LDAP: error code \d+|Invalid DN syntax|supplied argument is not a valid ldap|Bad search filter|ldap_search\(\)|A supplied argument to a function was invalid)`)
+
+// LDAP injection: inject filter-breaking metacharacters and look for an LDAP
+// library error absent from the baseline.
+var ldapCheck = Check{
+	ID: "active-ldap", Class: "ldapi", Severity: "High", Title: "LDAP injection (error-based)",
+	Fix: "Escape LDAP filter metacharacters (RFC 4515) or use a parameterized directory API; never build filters via string concatenation.",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		if ldapErrRe.MatchString(base.Body) {
+			return nil
+		}
+		for _, q := range []string{"*)(&", "*))(|(cn=*", "*)(uid=*))(|(uid=*", "admin*)((|userPassword=*)"} {
+			r := probe(p.Value + q)
+			if r.Status != 0 {
+				if m := ldapErrRe.FindString(r.Body); m != "" {
+					return &Hit{Evidence: "LDAP error after `" + trunc(q, 24) + "`: " + trunc(m, 80), FlowID: r.FlowID}
+				}
+			}
+		}
+		return nil
+	},
+}
+
+// ---- XPath injection (error-based) ----
+
+var xpathErrRe = regexp.MustCompile(`(?i)(XPathException|Expression must evaluate to a node-set|xmlXPathEval|SimpleXMLElement::xpath|System\.Xml\.XPath|MS\.Internal\.Xml|xpath_eval|Empty Path Expression|A closing bracket expected|Invalid predicate|org\.jaxen|net\.sf\.saxon|Unfinished qualified name)`)
+
+// XPath injection: inject expression-breaking characters and look for an XPath
+// engine error absent from the baseline.
+var xpathCheck = Check{
+	ID: "active-xpath", Class: "xpathi", Severity: "High", Title: "XPath injection (error-based)",
+	Fix: "Use parameterized XPath (variable binding) or escape input; never concatenate user input into XPath expressions.",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		if xpathErrRe.MatchString(base.Body) {
+			return nil
+		}
+		for _, q := range []string{"'", "\"", "']", "\"]", "' or '1'='1", "count(//*)"} {
+			r := probe(p.Value + q)
+			if r.Status != 0 {
+				if m := xpathErrRe.FindString(r.Body); m != "" {
+					return &Hit{Evidence: "XPath error after `" + q + "`: " + trunc(m, 80), FlowID: r.FlowID}
+				}
+			}
+		}
+		return nil
+	},
+}
+
+// ---- Host header injection ----
+
+const hostHeaderCanary = "interceptor-host.example"
+
+// hostCanaryAbsRe matches the canary host in an absolute-URL context (//host or
+// http(s)://host) — the strict signal that a spoofable X-Forwarded-Host was used
+// to build a link, rather than merely echoed as harmless text.
+var hostCanaryAbsRe = regexp.MustCompile(`(?i)(?:https?:)?//` + regexp.QuoteMeta(hostHeaderCanary))
+
+// Host header injection: spoof X-Forwarded-Host and confirm the app builds an
+// absolute URL from it — the root cause of password-reset poisoning and web cache
+// poisoning. Fires only on the X-Forwarded-Host header point and only when the
+// canary lands in a redirect Location or an absolute URL in the body.
+var hostHeaderCheck = Check{
+	ID: "active-host-header", Class: "host-header", Severity: "Medium", Title: "Host header injection (X-Forwarded-Host reflected into a URL)",
+	Fix: "Build absolute URLs from a fixed, configured canonical hostname; never trust the Host / X-Forwarded-Host headers. Validate against an allow-list.",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		if p.Kind != "header" || !strings.EqualFold(p.Name, "X-Forwarded-Host") {
+			return nil
+		}
+		if strings.Contains(base.Body, hostHeaderCanary) {
+			return nil
+		}
+		r := probe(hostHeaderCanary)
+		if r.Status == 0 {
+			return nil
+		}
+		if r.Headers != nil {
+			if loc := r.Headers.Get("Location"); strings.Contains(loc, hostHeaderCanary) {
+				return &Hit{Evidence: "X-Forwarded-Host reflected into Location: " + trunc(loc, 80), FlowID: r.FlowID}
+			}
+		}
+		if hostCanaryAbsRe.MatchString(r.Body) {
+			return &Hit{Evidence: "X-Forwarded-Host reflected into an absolute URL in the response body", FlowID: r.FlowID}
+		}
+		return nil
+	},
+}
+
+// ---- CORS misconfiguration (active) ----
+
+const corsCanaryOrigin = "https://interceptor-cors.example"
+
+// CORS misconfiguration: send an arbitrary attacker Origin and confirm the server
+// reflects it into Access-Control-Allow-Origin (optionally with credentials).
+// Fires only on the Origin header point.
+var corsReflectionCheck = Check{
+	ID: "active-cors-reflect", Class: "cors", Severity: "Medium", Title: "CORS misconfiguration (arbitrary Origin reflected)",
+	Fix: "Validate the Origin header against a server-side allow-list before echoing it into Access-Control-Allow-Origin; never reflect arbitrary origins, especially with Allow-Credentials: true.",
+	Run: func(p Point, base Response, probe Prober) *Hit {
+		if p.Kind != "header" || !strings.EqualFold(p.Name, "Origin") {
+			return nil
+		}
+		r := probe(corsCanaryOrigin)
+		if r.Status == 0 || r.Headers == nil {
+			return nil
+		}
+		if !strings.EqualFold(r.Headers.Get("Access-Control-Allow-Origin"), corsCanaryOrigin) {
+			return nil
+		}
+		if strings.EqualFold(r.Headers.Get("Access-Control-Allow-Credentials"), "true") {
+			return &Hit{
+				Severity: "High",
+				Title:    "CORS misconfiguration (arbitrary Origin reflected with credentials)",
+				Evidence: "Access-Control-Allow-Origin reflects " + corsCanaryOrigin + " with Access-Control-Allow-Credentials: true",
+				FlowID:   r.FlowID,
+			}
+		}
+		return &Hit{Evidence: "Access-Control-Allow-Origin reflects arbitrary Origin " + corsCanaryOrigin, FlowID: r.FlowID}
+	},
 }
 
 // XXE (XML External Entity) injection: inject a DOCTYPE with an internal entity

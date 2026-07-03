@@ -108,6 +108,87 @@ def check(point, baseline, probe):
         return [finding("Medium", "CRLF / header injection", fix="Strip CR/LF from input.")]
     return []
 `,
+	"active-sqli-time": `# Time-based blind SQLi (built-in override). Starlark cannot measure response
+# time, so this template falls back to error/boolean signals; the Go probe does
+# the real timing differential.
+def check(point, baseline, probe):
+    r = probe(point.value + "' AND SLEEP(0)-- -")
+    m = re_search('(?i)(SQL syntax|mysql_fetch|ORA-\\d{5}|PostgreSQL.{0,40}ERROR|SQLSTATE\\[)', r.body)
+    if m and not re_search('(?i)(SQL syntax|mysql_fetch|ORA-\\d{5})', baseline.body):
+        return [finding("High", "SQL injection (time-based blind)", evidence=m[:80],
+            fix="Use parameterized queries.")]
+    return []
+`,
+	"active-nosql": `# NoSQL injection (built-in override — error-based).
+def check(point, baseline, probe):
+    sig = '(?i)(MongoError|MongoServerError|E11000 duplicate key|com\\.mongodb|BSONError|CastError|unexpected token.{0,20}in JSON)'
+    if re_search(sig, baseline.body):
+        return []
+    for q in ("'", '"', "\\\\", "'||'1'=='1"):
+        r = probe(point.value + q)
+        m = re_search(sig, r.body)
+        if m:
+            return [finding("High", "NoSQL injection (error-based)", evidence=m[:80],
+                fix="Type-check input; never pass raw input into query operators.")]
+    return []
+`,
+	"active-ldap": `# LDAP injection (built-in override — error-based).
+def check(point, baseline, probe):
+    sig = '(?i)(javax\\.naming\\.|LDAPException|com\\.sun\\.jndi\\.ldap|LDAP: error code \\d+|Invalid DN syntax|Bad search filter)'
+    if re_search(sig, baseline.body):
+        return []
+    for q in ("*)(&", "*))(|(cn=*", "*)(uid=*))(|(uid=*"):
+        r = probe(point.value + q)
+        m = re_search(sig, r.body)
+        if m:
+            return [finding("High", "LDAP injection (error-based)", evidence=m[:80],
+                fix="Escape LDAP metacharacters (RFC 4515).")]
+    return []
+`,
+	"active-xpath": `# XPath injection (built-in override — error-based).
+def check(point, baseline, probe):
+    sig = '(?i)(XPathException|Expression must evaluate to a node-set|xmlXPathEval|SimpleXMLElement::xpath|System\\.Xml\\.XPath|Empty Path Expression)'
+    if re_search(sig, baseline.body):
+        return []
+    for q in ("'", '"', "']", "' or '1'='1"):
+        r = probe(point.value + q)
+        m = re_search(sig, r.body)
+        if m:
+            return [finding("High", "XPath injection (error-based)", evidence=m[:80],
+                fix="Use parameterized XPath (variable binding).")]
+    return []
+`,
+	"active-host-header": `# Host header injection (built-in override — X-Forwarded-Host point only).
+def check(point, baseline, probe):
+    if point.kind != "header" or point.name.lower() != "x-forwarded-host":
+        return []
+    canary = "interceptor-host.example"
+    if canary in baseline.body:
+        return []
+    r = probe(canary)
+    loc = r.header("Location")
+    if (loc and canary in loc) or re_search("(?i)(https?:)?//" + canary, r.body):
+        return [finding("Medium", "Host header injection (X-Forwarded-Host reflected into a URL)",
+            evidence="X-Forwarded-Host canary reflected into a URL",
+            fix="Build absolute URLs from a fixed canonical hostname; never trust Host/X-Forwarded-Host.")]
+    return []
+`,
+	"active-cors-reflect": `# CORS misconfiguration (built-in override — Origin point only).
+def check(point, baseline, probe):
+    if point.kind != "header" or point.name.lower() != "origin":
+        return []
+    origin = "https://interceptor-cors.example"
+    r = probe(origin)
+    if (r.header("Access-Control-Allow-Origin") or "").lower() != origin:
+        return []
+    if (r.header("Access-Control-Allow-Credentials") or "").lower() == "true":
+        return [finding("High", "CORS misconfiguration (arbitrary Origin reflected with credentials)",
+            evidence="ACAO reflects " + origin + " with credentials",
+            fix="Validate Origin against an allow-list; never reflect arbitrary origins with credentials.")]
+    return [finding("Medium", "CORS misconfiguration (arbitrary Origin reflected)",
+        evidence="ACAO reflects " + origin,
+        fix="Validate Origin against a server-side allow-list.")]
+`,
 	"active-xxe": `# XXE (built-in override — body injection points only).
 # Safe internal-entity canary only — no external entities (matches the Go probe).
 def check(point, baseline, probe):

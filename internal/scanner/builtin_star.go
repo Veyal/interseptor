@@ -205,4 +205,135 @@ def check(flow):
             fix="Disable autoindex in the web server config.")]
     return []
 `,
+	checkCloudKey: `# Cloud/API credential or private key exposure (built-in override).
+def check(flow):
+    pat = 'A(?:KIA|SIA|GPA|IDA|ROA)[0-9A-Z]{16}|AIza[0-9A-Za-z_\\-]{35}|gh[posur]_[0-9A-Za-z]{36}|xox[baprs]-[0-9A-Za-z-]{10,48}|(?:sk|rk)_live_[0-9A-Za-z]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
+    m = re_search(pat, flow.res_body)
+    if not m:
+        m = re_search(pat, flow.req_body)
+    if m:
+        return [finding("high", "Cloud/API credential or private key exposed", evidence=m[:10] + "…",
+            fix="Revoke and rotate the secret; keep credentials server-side, never in bodies.")]
+    return []
+`,
+	checkPII: `# Payment card / SSN exposure (built-in override — prefix-based; the Go check
+# adds a Luhn check to cut false positives).
+def check(flow):
+    m = re_search('\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6011[0-9]{12})\\b', flow.res_body)
+    if m:
+        return [finding("medium", "Payment card number exposed in response",
+            evidence=m[:6] + "••••••" + m[-4:],
+            fix="Mask all but the last four digits; never return full PANs.")]
+    return []
+`,
+	checkSourceMap: `# Source map reference exposure (built-in override).
+def check(flow):
+    mime = (flow.mime or "").lower()
+    ct = (flow.res_header("Content-Type") or "").lower()
+    if "javascript" not in mime and "javascript" not in ct:
+        return []
+    if re_search('//[#@] sourceMappingURL=', flow.res_body):
+        return [finding("low", "Source map reference exposed",
+            fix="Strip sourceMappingURL from prod bundles or block .map files.")]
+    return []
+`,
+	checkDebugPage: `# Framework debug page / stack trace (built-in override).
+def check(flow):
+    m = re_search('(?i)(Werkzeug Debugger|Traceback \\(most recent call last\\)|class="Whoops|Action Controller: Exception caught|DEBUG = True|<title>\\s*Runtime Error\\s*</title>|<b>Fatal error</b>|Uncaught (?:Error|Exception|TypeError)|goroutine \\d+ \\[)', flow.res_body)
+    if m:
+        return [finding("high", "Framework debug page or stack trace disclosed", evidence=m[:80],
+            fix="Disable debug mode in production; return generic errors.")]
+    return []
+`,
+	checkWeakCSP: `# Weak Content-Security-Policy (built-in override).
+def check(flow):
+    csp = (flow.res_header("Content-Security-Policy") or "").lower()
+    if not csp:
+        return []
+    weak = []
+    if "unsafe-inline" in csp:
+        weak.append("unsafe-inline")
+    if "unsafe-eval" in csp:
+        weak.append("unsafe-eval")
+    if re_search('(?:default|script|object)-src[^;]*\\*', csp):
+        weak.append("wildcard source")
+    if weak:
+        return [finding("medium", "Weak Content-Security-Policy", evidence=", ".join(weak),
+            fix="Remove unsafe-inline/unsafe-eval and wildcard sources; use nonces or hashes.")]
+    return []
+`,
+	checkWeakHSTS: `# Weak HSTS policy — short max-age (built-in override). Uses a digit-count
+# heuristic (<= 7 digits ≈ under 115 days); the Go check parses the exact value.
+def check(flow):
+    if flow.scheme != "https":
+        return []
+    hsts = flow.res_header("Strict-Transport-Security")
+    if not hsts:
+        return []
+    if re_search('(?i)max-age\\s*=\\s*"?[0-9]{1,7}\\b', hsts):
+        return [finding("low", "Weak HSTS policy (short max-age)", evidence=hsts[:80],
+            fix="Set max-age>=63072000; includeSubDomains; preload.")]
+    return []
+`,
+	checkInsecureForm: `# Form submits over plaintext HTTP (built-in override).
+def check(flow):
+    if flow.scheme != "https":
+        return []
+    if re_search('(?i)<form[^>]+action\\s*=\\s*["\']?http://', flow.res_body):
+        return [finding("medium", "Form submits over plaintext HTTP",
+            fix="Point every form action at an https:// URL.")]
+    return []
+`,
+	checkTabnabbing: `# Reverse tabnabbing (built-in override).
+def check(flow):
+    ct = (flow.res_header("Content-Type") or "").lower()
+    if "html" not in ct and "html" not in (flow.mime or "").lower():
+        return []
+    m = re_search('(?i)<a\\b[^>]*target\\s*=\\s*["\']?_blank[^>]*>', flow.res_body)
+    if m and "noopener" not in m.lower() and "noreferrer" not in m.lower():
+        return [finding("low", "Reverse tabnabbing (target=_blank without noopener)", evidence=m[:80],
+            fix="Add rel=\"noopener noreferrer\" to target=_blank links.")]
+    return []
+`,
+	checkGraphQLIntrospect: `# GraphQL introspection enabled (built-in override).
+def check(flow):
+    if '"__schema"' in flow.res_body and '"queryType"' in flow.res_body:
+        return [finding("medium", "GraphQL introspection enabled",
+            fix="Disable introspection in production (e.g. Apollo introspection:false).")]
+    return []
+`,
+	checkSameSiteNone: `# Cookie SameSite=None without Secure (built-in override).
+def check(flow):
+    c = flow.res_header("Set-Cookie")
+    if not c:
+        return []
+    lc = c.lower()
+    if "samesite=none" in lc and "secure" not in lc:
+        return [finding("medium", "Cookie SameSite=None without Secure", evidence=c[:80],
+            fix="Pair SameSite=None with Secure, or use Lax/Strict.")]
+    return []
+`,
+	checkInsecureWS: `# Insecure WebSocket reference (built-in override).
+def check(flow):
+    if flow.scheme != "https":
+        return []
+    if re_search('(?i)\\bws://[a-z0-9.\\-]', flow.res_body):
+        return [finding("low", "Insecure WebSocket (ws://) reference",
+            fix="Use wss:// (WebSocket over TLS) from secure pages.")]
+    return []
+`,
+	checkJSONP: `# JSONP endpoint reflects callback (built-in override).
+def check(flow):
+    ct = (flow.res_header("Content-Type") or "").lower()
+    if "javascript" not in ct and "javascript" not in (flow.mime or "").lower():
+        return []
+    for n in ("callback", "cb", "jsonp"):
+        v = flow.query_param(n)
+        if v and re_search('^[A-Za-z_$][A-Za-z0-9_$.]{0,60}$', v):
+            body = flow.res_body.lstrip()
+            if body.startswith(v + "("):
+                return [finding("low", "JSONP endpoint reflects callback", evidence=v + "(…",
+                    fix="Prefer CORS-guarded JSON; allow-list callback names.")]
+    return []
+`,
 }

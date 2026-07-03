@@ -40,7 +40,7 @@ there's nothing to report.
 
 | Arg | What it is |
 |---|---|
-| `point` | The injection point being tested (one query/form/json parameter, or the whole XML body). |
+| `point` | The injection point being tested (a query/form/json parameter, a path segment, a cookie, a request header, or the whole XML body). |
 | `baseline` | The **un-mutated** response — what a normal request returns. Use it to suppress false positives (e.g. "the marker was *already* in the body"). |
 | `probe`  | A callback: `probe(payload)` sends one mutated request — with `payload` injected at `point` — and returns its response. |
 
@@ -48,8 +48,8 @@ there's nothing to report.
 
 | Field | Type | Notes |
 |---|---|---|
-| `point.kind` | str | `query`, `form`, `json`, or `body` (the last is the whole XML body, for XXE-style checks). |
-| `point.name` | str | The parameter name (e.g. `id`). For `body` points, `_xml`. |
+| `point.kind` | str | `query`, `form`, `json`, `path`, `cookie`, `header`, or `body` (`body` is the whole XML body, for XXE-style checks). |
+| `point.name` | str | The parameter/cookie/header name (e.g. `id`). For `path` points, the segment index; for `body` points, `_xml`. |
 | `point.value` | str | The parameter's original value. |
 
 ## The response object (`baseline` and each probe result)

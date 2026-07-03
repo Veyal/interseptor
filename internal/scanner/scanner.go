@@ -38,6 +38,47 @@ var (
 	// passive SQL-injection indicator (user input reached a query un-parameterized).
 	// Restricted to error-message phrasing (not bare function names) to keep false positives low.
 	dbErrorRe = regexp.MustCompile(`(?i)(SQL syntax|You have an error in your SQL syntax|mysql_fetch|valid MySQL result|ORA-\d{4,5}|PostgreSQL.{0,40}ERROR|pg_query failed|SQLite[/:.\s].{0,20}error|sqlite3\.OperationalError|SQLSTATE\[|Unclosed quotation mark|quoted string not properly terminated|near ".{0,30}": syntax error|System\.Data\.SqlClient\.SqlException|SqlException)`)
+
+	// cloudKeyRe matches high-confidence, format-distinctive credential/API-key and
+	// private-key patterns. Only well-known fixed-shape tokens are included (never a
+	// generic "long base64" heuristic) so a match is very unlikely to be noise.
+	cloudKeyRe = regexp.MustCompile(
+		`A(?:KIA|SIA|GPA|IDA|ROA|IPA|NPA|NVA|CCA)[0-9A-Z]{16}` + // AWS access key id
+			`|AIza[0-9A-Za-z_\-]{35}` + // Google API key
+			`|gh[posur]_[0-9A-Za-z]{36}` + // GitHub token (ghp_/gho_/ghs_/ghu_/ghr_)
+			`|github_pat_[0-9A-Za-z_]{22,}` + // GitHub fine-grained PAT
+			`|xox[baprs]-[0-9A-Za-z-]{10,48}` + // Slack token
+			`|(?:sk|rk)_live_[0-9A-Za-z]{20,}` + // Stripe live secret / restricted key
+			`|ya29\.[0-9A-Za-z_\-]{20,}` + // Google OAuth access token
+			`|SG\.[0-9A-Za-z_\-]{22}\.[0-9A-Za-z_\-]{43}` + // SendGrid API key
+			`|-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`) // private key block
+
+	// ccCandidateRe finds a run of 13–19 digits (optionally space/dash grouped) that
+	// is then Luhn-validated and prefix-checked in code, keeping card false positives low.
+	ccCandidateRe = regexp.MustCompile(`(?:\d[ -]?){13,19}`)
+	// ssnRe matches a US SSN in the dashed format; range validity is checked in code.
+	ssnRe = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
+
+	// sourceMapRe matches an inline source-map reference comment in a JS response.
+	sourceMapRe = regexp.MustCompile(`(?m)//[#@] sourceMappingURL=`)
+
+	// debugPageRe matches high-signal framework debug/exception pages and language
+	// stack traces (any status code — verbose-error only covers 5xx).
+	debugPageRe = regexp.MustCompile(`(?i)(Werkzeug Debugger|Traceback \(most recent call last\)|class="Whoops|Whoops\\Exception|Symfony\\Component\\[A-Za-z]+\\.{0,40}Exception|Action Controller: Exception caught|You're seeing this error because you have DEBUG = True|<title>\s*Runtime Error\s*</title>|Server Error in '/' Application|<b>Fatal error</b>|<b>Parse error</b>|Uncaught (?:Error|Exception|TypeError)|goroutine \d+ \[|\bat (?:System\.[A-Za-z]|java\.[a-z]+\.))`)
+
+	// cspWeakSourceRe matches a wildcard * in a script/default/object source directive.
+	cspWeakSourceRe = regexp.MustCompile(`(?:default|script|object)-src[^;]*\*`)
+	// hstsMaxAgeRe extracts the max-age seconds from an HSTS header.
+	hstsMaxAgeRe = regexp.MustCompile(`(?i)max-age\s*=\s*"?(\d+)`)
+
+	// formActionHTTPRe matches an HTML form whose action posts over plaintext HTTP.
+	formActionHTTPRe = regexp.MustCompile(`(?i)<form[^>]+action\s*=\s*["']?http://`)
+	// anchorTagRe extracts opening <a> tags for the reverse-tabnabbing check.
+	anchorTagRe = regexp.MustCompile(`(?i)<a\b[^>]*>`)
+	// insecureWSRe matches a plaintext (ws://) WebSocket URL.
+	insecureWSRe = regexp.MustCompile(`(?i)\bws://[a-z0-9.\-]`)
+	// jsIdentRe validates a JSONP callback value is a plain JS identifier/path.
+	jsIdentRe = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$.]{0,60}$`)
 )
 
 const maxScanBytes = 256 * 1024 // cap how much of a body we inspect
@@ -73,6 +114,18 @@ const (
 	checkDirListing        = "directory-listing"
 	checkDBError           = "db-error-sqli"
 	checkPrivateIP         = "private-ip-disclosure"
+	checkCloudKey          = "cloud-key-exposure"
+	checkPII               = "pii-exposure"
+	checkSourceMap         = "source-map-disclosure"
+	checkDebugPage         = "framework-debug-page"
+	checkWeakCSP           = "weak-csp"
+	checkWeakHSTS          = "weak-hsts"
+	checkInsecureForm      = "insecure-form-action"
+	checkTabnabbing        = "reverse-tabnabbing"
+	checkGraphQLIntrospect = "graphql-introspection"
+	checkSameSiteNone      = "samesite-none-insecure"
+	checkInsecureWS        = "insecure-websocket"
+	checkJSONP             = "jsonp-endpoint"
 )
 
 // BuiltinChecks lists every built-in passive check. The Category groups them in
@@ -96,6 +149,18 @@ var BuiltinChecks = []BuiltinCheck{
 	{checkMixedContent, "Mixed content: HTTPS page loads HTTP resource", "Config", "Medium", "An HTTPS page references a resource over plain HTTP."},
 	{checkOpenRedirect, "Potential open redirect via request parameter", "Redirect", "Medium", "A 3xx Location is influenced by a request parameter, off-host."},
 	{checkDirListing, "Directory listing enabled", "Config", "Low", "The response looks like an auto-generated directory index."},
+	{checkCloudKey, "Cloud/API credential or private key exposed", "Secrets", "High", "A response or request body contains a well-known API key, cloud credential, or private-key block."},
+	{checkPII, "Personal data (card/SSN) exposed in response", "Disclosure", "Medium", "A Luhn-valid payment card number or a US SSN appears in the response body."},
+	{checkSourceMap, "Source map reference exposed", "Disclosure", "Low", "A JavaScript response references a sourceMappingURL, which may expose original source."},
+	{checkDebugPage, "Framework debug / stack-trace page", "Disclosure", "High", "The response is a framework debug page or language stack trace, leaking internals."},
+	{checkWeakCSP, "Weak Content-Security-Policy", "Headers", "Medium", "A CSP is present but permits unsafe-inline, unsafe-eval, or a wildcard script source."},
+	{checkWeakHSTS, "Weak HSTS policy (short max-age)", "Headers", "Low", "HSTS is set but its max-age is under 180 days, shrinking the HTTPS-enforcement window."},
+	{checkInsecureForm, "Form submits over plaintext HTTP", "Config", "Medium", "An HTML form's action posts to an http:// URL, exposing submitted data."},
+	{checkTabnabbing, "Reverse tabnabbing (target=_blank without noopener)", "Config", "Low", "An external link opens in a new tab without rel=noopener, exposing window.opener."},
+	{checkGraphQLIntrospect, "GraphQL introspection enabled", "Disclosure", "Medium", "The response contains a GraphQL introspection schema, revealing the full API surface."},
+	{checkSameSiteNone, "Cookie SameSite=None without Secure", "Cookies", "Medium", "A cookie declares SameSite=None but is not marked Secure."},
+	{checkInsecureWS, "Insecure WebSocket (ws://) reference", "Config", "Low", "An HTTPS page references a plaintext ws:// WebSocket endpoint."},
+	{checkJSONP, "JSONP endpoint reflects callback", "Disclosure", "Low", "A javascript response wraps data in a caller-supplied callback — cross-origin data theft surface."},
 }
 
 // Analyze runs all passive checks (none disabled) — kept for the existing 3-arg
@@ -391,7 +456,338 @@ func AnalyzeWithDisabled(f *store.Flow, reqBody, resBody []byte, disabled map[st
 		}
 	}
 
+	// Cloud/API credential or private key exposed (in either body).
+	if on(checkCloudKey) {
+		if m := cloudKeyRe.FindString(resp); m != "" {
+			add("High", "Cloud/API credential or private key exposed in response",
+				"The response body contains what looks like a live API key, cloud credential, or private-key block. Secrets returned to clients are cached, logged, and trivially exfiltrated.",
+				redactSecret(m),
+				"Never return secrets to clients. Revoke and rotate the exposed credential, and move it server-side into a secrets manager.")
+		} else if m := cloudKeyRe.FindString(req); m != "" {
+			add("High", "Cloud/API credential or private key exposed in request",
+				"The request body carries what looks like an API key, cloud credential, or private-key block. Even over TLS these end up in proxy/access logs and browser history.",
+				redactSecret(m),
+				"Send credentials via short-lived tokens in Authorization headers, keep them out of bodies and logs, and rotate anything exposed.")
+		}
+	}
+
+	// Personal data (payment card / SSN) in the response.
+	if on(checkPII) {
+		if m := findPaymentCard(resp); m != "" {
+			add("Medium", "Payment card number exposed in response",
+				"The response body contains a Luhn-valid payment card number. Exposing PAN data is a PCI-DSS violation and a serious privacy risk.",
+				m, // already masked
+				"Never return full PANs to clients; mask all but the last four digits and keep card data in a PCI-compliant vault.")
+		} else if m := findSSN(resp); m != "" {
+			add("Medium", "US Social Security Number exposed in response",
+				"The response body contains a string matching a valid US Social Security Number format.",
+				maskSSN(m),
+				"Do not return SSNs to clients; mask or omit them and restrict access server-side.")
+		}
+	}
+
+	// Source-map reference exposed in a JS response.
+	if on(checkSourceMap) {
+		if (containsAny(f.Mime, "javascript") || containsAny(res.Get("Content-Type"), "javascript")) && sourceMapRe.MatchString(resp) {
+			add("Low", "Source map reference exposed",
+				"A JavaScript response references a sourceMappingURL. If the .map file is reachable it exposes original, unminified source (and sometimes comments/paths) to anyone.",
+				trunc(sourceMapRe.FindString(resp), 80),
+				"Strip sourceMappingURL comments from production bundles, or ensure .map files are not served publicly.")
+		}
+	}
+
+	// Framework debug page / language stack trace (any status).
+	if on(checkDebugPage) {
+		if m := debugPageRe.FindString(resp); m != "" {
+			add("High", "Framework debug page or stack trace disclosed",
+				"The response looks like a framework debug page or a language stack trace. These leak source paths, framework versions, SQL, and sometimes an interactive console — a major reconnaissance and, for some debuggers, RCE surface.",
+				trunc(m, 80),
+				"Disable debug mode in production (e.g. Flask DEBUG=False, Django DEBUG=False, display_errors=Off, ASP.NET customErrors) and return generic error pages.")
+		}
+	}
+
+	// Weak Content-Security-Policy (present but permissive).
+	if on(checkWeakCSP) {
+		if csp := res.Get("Content-Security-Policy"); csp != "" {
+			lc := strings.ToLower(csp)
+			var weak []string
+			if strings.Contains(lc, "unsafe-inline") {
+				weak = append(weak, "'unsafe-inline'")
+			}
+			if strings.Contains(lc, "unsafe-eval") {
+				weak = append(weak, "'unsafe-eval'")
+			}
+			if cspWeakSourceRe.MatchString(lc) {
+				weak = append(weak, "a wildcard * source")
+			}
+			if len(weak) > 0 {
+				add("Medium", "Weak Content-Security-Policy",
+					"A Content-Security-Policy is set but permits "+strings.Join(weak, ", ")+
+						", which largely defeats its XSS-containment purpose (inline/eval'd or arbitrarily-sourced scripts still execute).",
+					trunc(csp, 120),
+					"Remove 'unsafe-inline'/'unsafe-eval' and wildcard sources; use nonces or hashes for inline scripts and an explicit source allow-list.")
+			}
+		}
+	}
+
+	// Weak HSTS policy — present but with a short max-age. A short window means the
+	// browser stops enforcing HTTPS soon after the last visit, re-opening the SSL-
+	// strip surface. (Missing includeSubDomains alone is deliberately NOT flagged —
+	// it is extremely common and would drown the list; the fix still recommends it.)
+	if on(checkWeakHSTS) {
+		if f.Scheme == "https" {
+			if hsts := res.Get("Strict-Transport-Security"); hsts != "" {
+				if secs := hstsMaxAge(hsts); secs > 0 && secs < 15552000 { // under 180 days
+					add("Low", "Weak HSTS policy (short max-age)",
+						"Strict-Transport-Security is present but its max-age is short, so the browser stops enforcing HTTPS soon after the last visit — re-opening the SSL-strip / downgrade surface.",
+						trunc(hsts, 80),
+						"Set Strict-Transport-Security: max-age=63072000; includeSubDomains; preload.")
+				}
+			}
+		}
+	}
+
+	// Form submitting over plaintext HTTP from an HTTPS page.
+	if on(checkInsecureForm) {
+		if f.Scheme == "https" && isHTML(res, f.Mime) {
+			if m := formActionHTTPRe.FindString(resp); m != "" {
+				add("Medium", "Form submits over plaintext HTTP",
+					"An HTML form on this HTTPS page posts to an http:// action URL. The submitted data (potentially credentials) is sent in cleartext and can be read or modified by any on-path attacker.",
+					trunc(m, 80),
+					"Point every form action at an https:// URL.")
+			}
+		}
+	}
+
+	// Reverse tabnabbing — external target=_blank link without rel=noopener.
+	if on(checkTabnabbing) {
+		if isHTML(res, f.Mime) {
+			if m := findTabnabbingAnchor(resp); m != "" {
+				add("Low", "Reverse tabnabbing (target=_blank without noopener)",
+					"An external link opens in a new tab (target=_blank) without rel=noopener. The opened page can rewrite window.opener.location to redirect this tab to a phishing page.",
+					trunc(m, 80),
+					"Add rel=\"noopener noreferrer\" to every target=_blank link (modern browsers imply noopener, but set it explicitly for older ones).")
+			}
+		}
+	}
+
+	// GraphQL introspection enabled (schema returned to the client).
+	if on(checkGraphQLIntrospect) {
+		if strings.Contains(resp, `"__schema"`) && strings.Contains(resp, `"queryType"`) {
+			add("Medium", "GraphQL introspection enabled",
+				"The response contains a GraphQL introspection result (__schema/queryType). Introspection hands an attacker the entire API surface — every type, field, and mutation.",
+				`"__schema" present in response`,
+				"Disable introspection in production (e.g. Apollo introspection:false) or restrict it to authenticated internal users.")
+		}
+	}
+
+	// Cookie with SameSite=None but no Secure.
+	if on(checkSameSiteNone) {
+		for _, c := range res.Values("Set-Cookie") {
+			lc := strings.ToLower(c)
+			if strings.Contains(lc, "samesite=none") && !strings.Contains(lc, "secure") {
+				add("Medium", "Cookie SameSite=None without Secure",
+					"A cookie is set with SameSite=None but without the Secure attribute. Browsers reject this combination (the cookie may be dropped), and it signals the cookie was intended for cross-site use without transport protection.",
+					trunc(c, 80),
+					"Always pair SameSite=None with Secure; otherwise use SameSite=Lax or Strict.")
+				break
+			}
+		}
+	}
+
+	// Insecure WebSocket (ws://) reference on an HTTPS page.
+	if on(checkInsecureWS) {
+		if f.Scheme == "https" && (isHTML(res, f.Mime) || containsAny(f.Mime, "javascript")) {
+			if m := insecureWSRe.FindString(resp); m != "" {
+				add("Low", "Insecure WebSocket (ws://) reference",
+					"An HTTPS page references a plaintext ws:// WebSocket endpoint. The WebSocket data is unencrypted and readable/modifiable by an on-path attacker (and browsers block ws:// from https pages).",
+					trunc(m, 80),
+					"Use wss:// (WebSocket over TLS) for all WebSocket connections from secure pages.")
+			}
+		}
+	}
+
+	// JSONP endpoint reflecting a caller-supplied callback.
+	if on(checkJSONP) {
+		if containsAny(f.Mime, "javascript") || containsAny(res.Get("Content-Type"), "javascript") {
+			if name, cb := jsonpCallback(f.Path, resp); cb != "" {
+				add("Low", "JSONP endpoint reflects callback",
+					"This endpoint returns JavaScript that wraps its data in a caller-supplied callback function ("+name+"). Any site can include it as a <script> and read the data cross-origin, bypassing the same-origin policy.",
+					trunc(cb+"(…", 60),
+					"Prefer CORS-guarded JSON over JSONP; if JSONP is required, allow-list callback names and never expose sensitive data through it.")
+			}
+		}
+	}
+
 	return out
+}
+
+// redactSecret shows only the leading, format-identifying portion of a matched
+// secret so the finding is actionable without printing the full credential.
+func redactSecret(s string) string {
+	if strings.HasPrefix(s, "-----BEGIN") {
+		return trunc(s, 40)
+	}
+	if len(s) <= 10 {
+		return s
+	}
+	return s[:10] + "…(redacted)"
+}
+
+// findPaymentCard returns a masked payment card number found in s (Luhn-valid,
+// known IIN prefix), or "".
+func findPaymentCard(s string) string {
+	for _, cand := range ccCandidateRe.FindAllString(s, 32) {
+		digits := stripNonDigits(cand)
+		if len(digits) < 13 || len(digits) > 19 {
+			continue
+		}
+		if !luhnValid(digits) || !knownCardPrefix(digits) {
+			continue
+		}
+		return digits[:6] + strings.Repeat("•", len(digits)-10) + digits[len(digits)-4:]
+	}
+	return ""
+}
+
+// findSSN returns the first range-valid US SSN in s, or "".
+func findSSN(s string) string {
+	for _, m := range ssnRe.FindAllString(s, 32) {
+		if validSSN(m) {
+			return m
+		}
+	}
+	return ""
+}
+
+func maskSSN(s string) string {
+	if len(s) == 11 { // ddd-dd-dddd
+		return "•••-••-" + s[7:]
+	}
+	return "•••-••-••••"
+}
+
+func stripNonDigits(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteByte(byte(r))
+		}
+	}
+	return b.String()
+}
+
+func luhnValid(digits string) bool {
+	sum, alt := 0, false
+	for i := len(digits) - 1; i >= 0; i-- {
+		n := int(digits[i] - '0')
+		if alt {
+			n *= 2
+			if n > 9 {
+				n -= 9
+			}
+		}
+		sum += n
+		alt = !alt
+	}
+	return sum%10 == 0
+}
+
+// knownCardPrefix requires a recognised card IIN so random Luhn-valid digit runs
+// (e.g. order ids that happen to pass Luhn) don't get flagged.
+func knownCardPrefix(d string) bool {
+	switch {
+	case d[0] == '4' && (len(d) == 13 || len(d) == 16 || len(d) == 19): // Visa
+		return true
+	case len(d) == 16 && d[0] == '5' && d[1] >= '1' && d[1] <= '5': // Mastercard 51-55
+		return true
+	case len(d) == 16 && strings.HasPrefix(d, "2") && d[1] >= '2' && d[1] <= '7': // Mastercard 2221-2720 (approx)
+		return true
+	case len(d) == 15 && (strings.HasPrefix(d, "34") || strings.HasPrefix(d, "37")): // Amex
+		return true
+	case len(d) == 16 && (strings.HasPrefix(d, "6011") || strings.HasPrefix(d, "65")): // Discover
+		return true
+	}
+	return false
+}
+
+// validSSN rejects the well-known invalid SSN ranges.
+func validSSN(s string) bool {
+	// s is ddd-dd-dddd
+	area, grp, ser := s[0:3], s[4:6], s[7:11]
+	if area == "000" || area == "666" || area[0] == '9' {
+		return false
+	}
+	if grp == "00" || ser == "0000" {
+		return false
+	}
+	return true
+}
+
+// hstsMaxAge parses the max-age seconds from an HSTS header (0 if absent).
+func hstsMaxAge(h string) int {
+	m := hstsMaxAgeRe.FindStringSubmatch(h)
+	if len(m) < 2 {
+		return 0
+	}
+	n := 0
+	for _, r := range m[1] {
+		n = n*10 + int(r-'0')
+		if n > 1<<30 { // clamp; anything this large is "strong" anyway
+			return 1 << 30
+		}
+	}
+	return n
+}
+
+// findTabnabbingAnchor returns the first <a> tag that opens an external http(s)
+// link in a new tab without rel=noopener/noreferrer, or "".
+func findTabnabbingAnchor(html string) string {
+	for _, tag := range anchorTagRe.FindAllString(html, 64) {
+		lc := strings.ToLower(tag)
+		if !strings.Contains(lc, "target=") || !strings.Contains(lc, "_blank") {
+			continue
+		}
+		if !strings.Contains(lc, "href=\"http") && !strings.Contains(lc, "href='http") && !strings.Contains(lc, "href=http") {
+			continue
+		}
+		if strings.Contains(lc, "noopener") || strings.Contains(lc, "noreferrer") {
+			continue
+		}
+		return tag
+	}
+	return ""
+}
+
+// jsonpCallback returns the callback param name and value if the response looks
+// like JSONP wrapping data in a caller-supplied callback, else ("", "").
+func jsonpCallback(path, resp string) (name, cb string) {
+	for _, n := range []string{"callback", "cb", "jsonp", "jsonpcallback", "jsoncallback"} {
+		v := queryParam(path, n)
+		if v == "" || !jsIdentRe.MatchString(v) {
+			continue
+		}
+		t := strings.TrimLeft(resp, " \t\r\n")
+		t = strings.TrimPrefix(t, "/**/")
+		t = strings.TrimLeft(t, " \t")
+		if strings.HasPrefix(t, v+"(") {
+			return n, v
+		}
+	}
+	return "", ""
+}
+
+// queryParam extracts a single query parameter value from a request path+query.
+func queryParam(path, key string) string {
+	i := strings.IndexByte(path, '?')
+	if i < 0 {
+		return ""
+	}
+	vals, err := url.ParseQuery(path[i+1:])
+	if err != nil {
+		return ""
+	}
+	return vals.Get(key)
 }
 
 // openRedirectParam checks whether any request query or body parameter value

@@ -12,6 +12,8 @@ decide. These are living documents — PRs that change product direction update 
 | [improvements.md](improvements.md) | UX/ease + API/MCP gap analysis (what to improve and why) |
 | [metrics.md](metrics.md) | North Star (Weekly Active Hunters) + funnel KPIs + privacy-first measurement |
 | [prd-0001-target-scope.md](prd-0001-target-scope.md) | Flagship PRD for the #1 next feature — and the PRD template |
+| [prd-0002-active-scanning.md](prd-0002-active-scanning.md) | Active scanning (with & without AI) — shipped |
+| [prd-0003-rule-packs.md](prd-0003-rule-packs.md) | Decoupled, signed scan-rule distribution — draft |
 
 ## TL;DR
 

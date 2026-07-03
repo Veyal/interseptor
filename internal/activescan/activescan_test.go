@@ -16,7 +16,7 @@ import (
 func TestPointsAndMutation(t *testing.T) {
 	// query
 	q := Points(Target{Method: "GET", URL: "http://h/p?a=1&b=2"})
-	if len(q) != 2 {
+	if countKind(q, "query") != 2 {
 		t.Fatalf("expected 2 query points, got %+v", q)
 	}
 	mutated := (Target{URL: "http://h/p?a=1&b=2"}).With(Point{"query", "a", "1"}, "PWN")
@@ -26,18 +26,83 @@ func TestPointsAndMutation(t *testing.T) {
 	// form
 	hdr := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
 	f := Points(Target{Method: "POST", URL: "http://h/p", Headers: hdr, Body: "x=1&y=2"})
-	if len(f) != 2 {
+	if countKind(f, "form") != 2 {
 		t.Fatalf("expected 2 form points, got %+v", f)
 	}
 	// json
 	jt := Target{Method: "POST", URL: "http://h/p", Headers: http.Header{"Content-Type": {"application/json"}}, Body: `{"u":"bob","n":5}`}
 	jp := Points(jt)
-	if len(jp) != 2 {
+	if countKind(jp, "json") != 2 {
 		t.Fatalf("expected 2 json points, got %+v", jp)
 	}
 	jm := jt.With(Point{"json", "u", "bob"}, "PWN")
 	if !strings.Contains(jm.Body, `"u":"PWN"`) {
 		t.Fatalf("json mutation wrong: %s", jm.Body)
+	}
+}
+
+// TestPathCookieHeaderPoints verifies the extended injection surface: path
+// segments, cookie values, and the curated header set are all enumerated, and
+// that mutation replaces exactly the targeted location without corrupting the
+// shared baseline Target's headers.
+func TestPathCookieHeaderPoints(t *testing.T) {
+	hdr := http.Header{"Cookie": {"sid=abc; theme=dark"}, "User-Agent": {"curl/8"}}
+	tg := Target{Method: "GET", URL: "http://h/api/users/42", Headers: hdr}
+	pts := Points(tg)
+
+	kinds := map[string]int{}
+	var pathSeg, cookieName string
+	for _, p := range pts {
+		kinds[p.Kind]++
+		if p.Kind == "path" && p.Value == "42" {
+			pathSeg = p.Name
+		}
+		if p.Kind == "cookie" && p.Name == "sid" {
+			cookieName = p.Name
+		}
+	}
+	if kinds["path"] < 2 { // "api","users","42"
+		t.Fatalf("expected path segment points, got %+v", pts)
+	}
+	if kinds["cookie"] != 2 {
+		t.Fatalf("expected 2 cookie points, got %d (%+v)", kinds["cookie"], pts)
+	}
+	if kinds["header"] != len(injectableHeaders) {
+		t.Fatalf("expected %d header points, got %d", len(injectableHeaders), kinds["header"])
+	}
+	if pathSeg == "" || cookieName == "" {
+		t.Fatalf("did not find expected path/cookie points: %+v", pts)
+	}
+
+	// query/form/json/body points must sort before path/cookie/header (budget priority).
+	mixed := Points(Target{Method: "GET", URL: "http://h/a/b?q=1", Headers: hdr})
+	if mixed[0].Kind != "query" {
+		t.Fatalf("query point should sort first, got %q first: %+v", mixed[0].Kind, mixed)
+	}
+
+	// path mutation replaces the right segment, keeping traversal sequences literal.
+	pm := tg.With(Point{"path", pathSeg, "42"}, "../../../etc/passwd")
+	if !strings.Contains(pm.URL, "../../../etc/passwd") || strings.Contains(pm.URL, "/42") {
+		t.Fatalf("path mutation wrong: %s", pm.URL)
+	}
+
+	// cookie mutation replaces one value, preserves the other, and does NOT mutate
+	// the baseline Target's header map.
+	cm := tg.With(Point{"cookie", "sid", "abc"}, "PWN")
+	if got := cm.Headers.Get("Cookie"); !strings.Contains(got, "sid=PWN") || !strings.Contains(got, "theme=dark") {
+		t.Fatalf("cookie mutation wrong: %s", got)
+	}
+	if tg.Headers.Get("Cookie") != "sid=abc; theme=dark" {
+		t.Fatalf("baseline Cookie header was mutated: %s", tg.Headers.Get("Cookie"))
+	}
+
+	// header mutation sets the header on a cloned map, leaving baseline intact.
+	hm := tg.With(Point{"header", "User-Agent", "curl/8"}, "PWN")
+	if hm.Headers.Get("User-Agent") != "PWN" {
+		t.Fatalf("header mutation wrong: %s", hm.Headers.Get("User-Agent"))
+	}
+	if tg.Headers.Get("User-Agent") != "curl/8" {
+		t.Fatalf("baseline User-Agent header was mutated: %s", tg.Headers.Get("User-Agent"))
 	}
 }
 
@@ -174,6 +239,126 @@ func TestCmdInjectionTimingRequiresControlToRun(t *testing.T) {
 	}
 	if cmdInjectionCheck.Run(Point{Value: "h"}, Response{Status: 200, Duration: 40 * time.Millisecond}, probe) != nil {
 		t.Fatal("must not confirm cmd-injection when the sleep-0 control did not run")
+	}
+}
+
+func TestSQLiTimeDetector(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.Contains(payload, "SLEEP(6)") || strings.Contains(payload, "pg_sleep(6)") || strings.Contains(payload, "0:0:6") {
+			return Response{Status: 200, FlowID: 30, Duration: 6 * time.Second}
+		}
+		return Response{Status: 200, Duration: 40 * time.Millisecond} // 0-delay control is fast
+	}
+	if sqliTimeCheck.Run(Point{Value: "1"}, Response{Status: 200, Duration: 30 * time.Millisecond}, probe) == nil {
+		t.Fatal("expected time-based SQLi hit")
+	}
+	// flat latency → no hit
+	flat := func(payload string) Response { return Response{Status: 200, Duration: 30 * time.Millisecond} }
+	if sqliTimeCheck.Run(Point{Value: "1"}, Response{Status: 200, Duration: 30 * time.Millisecond}, flat) != nil {
+		t.Fatal("flat latency must not flag time-based SQLi")
+	}
+	// slow-but-uncontrolled (control never ran) → no hit
+	uncontrolled := func(payload string) Response {
+		if strings.Contains(payload, "SLEEP(6)") {
+			return Response{Status: 200, FlowID: 31, Duration: 6 * time.Second}
+		}
+		return Response{Status: 0} // control did not execute
+	}
+	if sqliTimeCheck.Run(Point{Value: "1"}, Response{Status: 200, Duration: 30 * time.Millisecond}, uncontrolled) != nil {
+		t.Fatal("must not confirm time-based SQLi when the 0-delay control did not run")
+	}
+}
+
+func TestNoSQLDetector(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.ContainsAny(payload, `'"\`) {
+			return Response{Status: 500, FlowID: 32, Body: `MongoServerError: unexpected token in JSON at position 5`}
+		}
+		return Response{Status: 200, Body: "ok"}
+	}
+	if nosqlCheck.Run(Point{Value: "1"}, Response{Status: 200, Body: "ok"}, probe) == nil {
+		t.Fatal("expected NoSQL error-based hit")
+	}
+	// baseline already errors → cannot attribute → no hit
+	base := Response{Status: 500, Body: "MongoServerError: boom"}
+	if nosqlCheck.Run(Point{Value: "1"}, base, probe) != nil {
+		t.Fatal("must not flag NoSQL when baseline already errors")
+	}
+}
+
+func TestLDAPDetector(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.Contains(payload, ")(") {
+			return Response{Status: 500, FlowID: 33, Body: "javax.naming.directory.InvalidSearchFilterException: Bad search filter"}
+		}
+		return Response{Status: 200, Body: "ok"}
+	}
+	if ldapCheck.Run(Point{Value: "admin"}, Response{Status: 200, Body: "ok"}, probe) == nil {
+		t.Fatal("expected LDAP error-based hit")
+	}
+}
+
+func TestXPathDetector(t *testing.T) {
+	probe := func(payload string) Response {
+		if strings.Contains(payload, "'") {
+			return Response{Status: 500, FlowID: 34, Body: "Error: Expression must evaluate to a node-set."}
+		}
+		return Response{Status: 200, Body: "ok"}
+	}
+	if xpathCheck.Run(Point{Value: "1"}, Response{Status: 200, Body: "ok"}, probe) == nil {
+		t.Fatal("expected XPath error-based hit")
+	}
+}
+
+func TestHostHeaderDetector(t *testing.T) {
+	// Reflected into an absolute URL in the body → hit.
+	body := func(payload string) Response {
+		if payload == hostHeaderCanary {
+			return Response{Status: 200, FlowID: 35, Body: `<a href="https://` + hostHeaderCanary + `/reset">reset</a>`}
+		}
+		return Response{Status: 200, Body: "ok"}
+	}
+	if hostHeaderCheck.Run(Point{Kind: "header", Name: "X-Forwarded-Host"}, Response{Status: 200, Body: "ok"}, body) == nil {
+		t.Fatal("expected host-header hit when canary lands in an absolute URL")
+	}
+	// Reflected only as plain text (not a URL) → no hit (strict).
+	plain := func(payload string) Response {
+		return Response{Status: 200, FlowID: 36, Body: "Welcome, host " + hostHeaderCanary}
+	}
+	if hostHeaderCheck.Run(Point{Kind: "header", Name: "X-Forwarded-Host"}, Response{Status: 200, Body: "ok"}, plain) != nil {
+		t.Fatal("plain-text reflection (no URL context) must not flag host-header injection")
+	}
+	// Wrong point (query) → skipped.
+	if hostHeaderCheck.Run(Point{Kind: "query", Name: "q"}, Response{Status: 200}, body) != nil {
+		t.Fatal("host-header check must only fire on the X-Forwarded-Host header point")
+	}
+}
+
+func TestCORSReflectionDetector(t *testing.T) {
+	// Reflected Origin with credentials → High.
+	creds := func(payload string) Response {
+		return Response{Status: 200, FlowID: 37, Headers: http.Header{
+			"Access-Control-Allow-Origin":      {corsCanaryOrigin},
+			"Access-Control-Allow-Credentials": {"true"},
+		}}
+	}
+	h := corsReflectionCheck.Run(Point{Kind: "header", Name: "Origin"}, Response{Status: 200}, creds)
+	if h == nil || h.Severity != "High" {
+		t.Fatalf("expected High CORS-with-credentials hit, got %+v", h)
+	}
+	// Reflected without credentials → Medium (base severity, no override).
+	noCreds := func(payload string) Response {
+		return Response{Status: 200, FlowID: 38, Headers: http.Header{"Access-Control-Allow-Origin": {corsCanaryOrigin}}}
+	}
+	if corsReflectionCheck.Run(Point{Kind: "header", Name: "Origin"}, Response{Status: 200}, noCreds) == nil {
+		t.Fatal("expected CORS reflection hit without credentials")
+	}
+	// Not reflected → no hit.
+	safe := func(payload string) Response {
+		return Response{Status: 200, Headers: http.Header{"Access-Control-Allow-Origin": {"https://trusted.example"}}}
+	}
+	if corsReflectionCheck.Run(Point{Kind: "header", Name: "Origin"}, Response{Status: 200}, safe) != nil {
+		t.Fatal("a server that does not reflect the attacker Origin must not flag")
 	}
 }
 
@@ -428,6 +613,17 @@ func TestXXEStripDoctype(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected exactly 1 DOCTYPE after injection, found %d:\n%s", count, injected)
 	}
+}
+
+// countKind returns how many points in pts have the given kind.
+func countKind(pts []Point, kind string) int {
+	n := 0
+	for _, p := range pts {
+		if p.Kind == kind {
+			n++
+		}
+	}
+	return n
 }
 
 // hasBodyPoint returns true if any point in pts is a body/_xml point.

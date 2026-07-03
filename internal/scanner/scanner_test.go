@@ -49,6 +49,119 @@ func TestDBErrorPossibleSQLi(t *testing.T) {
 	}
 }
 
+func htmlFlow(body string) *store.Flow {
+	return &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"text/html"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+}
+
+func TestCloudKeyExposure(t *testing.T) {
+	f := &store.Flow{Scheme: "https", Method: "GET", Host: "api.example", Path: "/config", Status: 200,
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"application/json"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	for _, secret := range []string{
+		`{"aws":"AKIAIOSFODNN7EXAMPLE"}`,
+		`token=ghp_1234567890abcdefghijklmnopqrstuvwxyz`,
+		`-----BEGIN RSA PRIVATE KEY-----\nMIIE...`,
+		`{"g":"AIzaSyA1234567890abcdefghijklmnopqrstuv"}`,
+	} {
+		got := Analyze(f, nil, []byte(secret))
+		if !has(got, "Cloud/API credential or private key exposed in response") {
+			t.Fatalf("expected cloud-key finding for %q; got %s", secret, titles(got))
+		}
+	}
+	// Evidence must be redacted (not the full secret).
+	got := Analyze(f, nil, []byte(`AKIAIOSFODNN7EXAMPLE`))
+	for _, is := range got {
+		if is.Title == "Cloud/API credential or private key exposed in response" && strings.Contains(is.Evidence, "N7EXAMPLE") {
+			t.Fatalf("secret must be redacted in evidence, got %q", is.Evidence)
+		}
+	}
+	// Negative: an ordinary token-shaped-but-not-matching string does not flag.
+	benign := Analyze(f, nil, []byte(`{"id":"abc123","name":"widget"}`))
+	if has(benign, "Cloud/API credential or private key exposed in response") {
+		t.Fatalf("benign body must not flag cloud key; got %s", titles(benign))
+	}
+}
+
+func TestPIIExposure(t *testing.T) {
+	f := &store.Flow{Scheme: "https", Method: "GET", Host: "api.example", Path: "/u", Status: 200,
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"application/json"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	// 4111111111111111 is the canonical Luhn-valid Visa test PAN.
+	if !has(Analyze(f, nil, []byte(`{"card":"4111111111111111"}`)), "Payment card number exposed in response") {
+		t.Fatal("expected payment-card finding for a Luhn-valid Visa PAN")
+	}
+	// A 16-digit run that fails Luhn must NOT flag (false-positive guard).
+	if has(Analyze(f, nil, []byte(`{"order":"4111111111111112"}`)), "Payment card number exposed in response") {
+		t.Fatal("Luhn-invalid digit run must not flag as a card")
+	}
+	// Valid-format SSN flags; an obviously-invalid area (000) does not.
+	if !has(Analyze(f, nil, []byte(`ssn: 123-45-6789`)), "US Social Security Number exposed in response") {
+		t.Fatal("expected SSN finding")
+	}
+	if has(Analyze(f, nil, []byte(`ref 000-12-3456`)), "US Social Security Number exposed in response") {
+		t.Fatal("invalid SSN area 000 must not flag")
+	}
+}
+
+func TestConfigAndHeaderPassiveChecks(t *testing.T) {
+	// Weak CSP + weak HSTS on an HTML page.
+	f := &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{
+			"Content-Type":              {"text/html"},
+			"Content-Security-Policy":   {"default-src 'self'; script-src 'self' 'unsafe-inline'"},
+			"Strict-Transport-Security": {"max-age=3600"},
+			"Set-Cookie":                {"sid=1; SameSite=None"},
+		})}
+	got := Analyze(f, nil, []byte(`<html><body>
+	  <form action="http://insecure.example/login"></form>
+	  <a href="https://evil.example" target="_blank">x</a>
+	  <script>var w = new WebSocket("ws://app.example/live");</script>
+	</body></html>`))
+	for _, want := range []string{
+		"Weak Content-Security-Policy",
+		"Weak HSTS policy (short max-age)",
+		"Form submits over plaintext HTTP",
+		"Reverse tabnabbing (target=_blank without noopener)",
+		"Cookie SameSite=None without Secure",
+		"Insecure WebSocket (ws://) reference",
+	} {
+		if !has(got, want) {
+			t.Fatalf("expected %q; got %s", want, titles(got))
+		}
+	}
+	// noopener present → no tabnabbing finding.
+	safe := Analyze(htmlFlow(""), nil, []byte(`<a href="https://evil.example" target="_blank" rel="noopener">x</a>`))
+	if has(safe, "Reverse tabnabbing (target=_blank without noopener)") {
+		t.Fatalf("rel=noopener must suppress tabnabbing; got %s", titles(safe))
+	}
+}
+
+func TestDisclosurePassiveChecks(t *testing.T) {
+	// Framework debug page (any status).
+	dbg := &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/x", Status: 200, Mime: "text/html",
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"text/html"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	if !has(Analyze(dbg, nil, []byte(`<h1>Traceback (most recent call last)</h1>`)), "Framework debug page or stack trace disclosed") {
+		t.Fatal("expected framework debug finding")
+	}
+	// Source map reference in JS.
+	js := &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/a.js", Status: 200, Mime: "application/javascript",
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"application/javascript"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	if !has(Analyze(js, nil, []byte("var x=1;\n//# sourceMappingURL=a.js.map")), "Source map reference exposed") {
+		t.Fatal("expected source-map finding")
+	}
+	// GraphQL introspection.
+	gql := &store.Flow{Scheme: "https", Method: "POST", Host: "app.example", Path: "/graphql", Status: 200,
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"application/json"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	if !has(Analyze(gql, nil, []byte(`{"data":{"__schema":{"queryType":{"name":"Query"}}}}`)), "GraphQL introspection enabled") {
+		t.Fatal("expected GraphQL introspection finding")
+	}
+	// JSONP reflection.
+	jsonp := &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/api?callback=renderData", Status: 200, Mime: "application/javascript",
+		ResHeaders: map[string][]string(http.Header{"Content-Type": {"application/javascript"}, "Strict-Transport-Security": {"max-age=63072000; includeSubDomains"}})}
+	if !has(Analyze(jsonp, nil, []byte(`renderData({"secret":42})`)), "JSONP endpoint reflects callback") {
+		t.Fatal("expected JSONP finding")
+	}
+}
+
 func TestDisabledBuiltinSkipped(t *testing.T) {
 	// Disabling the security-headers check must suppress the merged finding.
 	flow := &store.Flow{Scheme: "https", Method: "GET", Host: "app.example", Path: "/", Status: 200, Mime: "text/html",
