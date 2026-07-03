@@ -819,11 +819,17 @@ Content-Type: application/json
           </div>
           <div class="section">
             <h3>EXPORT / IMPORT</h3>
-            <p class="hint" style="margin-bottom:10px">Portable session bundle — flows, rules, scope, upstream proxy. Import merges into current project.</p>
+            <p class="hint" style="margin-bottom:10px">Portable session bundle (JSON) — flows, rules, scope, upstream proxy. Import <b>merges</b> into the current project. Good for sharing traffic with other tools.</p>
             <div class="row" style="gap:8px">
               <a class="btn accent" id="exportProject" href="/api/export/project" download style="text-decoration:none">Export project</a>
               <button class="btn" id="importProjectBtn">Import project</button>
               <input type="file" id="importProjectFile" accept=".json,application/json" style="display:none">
+            </div>
+            <p class="hint" style="margin:16px 0 10px">Full project archive (.zip) — a <b>lossless</b> copy of the whole project (database + captured bodies) to move an engagement to another machine intact. Import creates a <b>new</b> project you can switch to. The global CA &amp; custom checks aren't included.</p>
+            <div class="row" style="gap:8px">
+              <a class="btn accent" id="exportFull" href="/api/export/full" download style="text-decoration:none">Export full project</a>
+              <button class="btn" id="importFullBtn">Import full project</button>
+              <input type="file" id="importFullFile" accept=".zip,application/zip" style="display:none">
             </div>
           </div>
           <div class="section" id="retentionSection">

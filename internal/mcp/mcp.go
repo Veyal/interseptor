@@ -1088,6 +1088,37 @@ func (s *Server) registerTools() {
 			return s.apiGet(p)
 		})
 
+	s.add("export_full_project",
+		"Write a lossless, portable archive of the ENTIRE active project (a consistent DB snapshot + every captured body blob) to a zip file on the server filesystem. Unlike export_report/HAR, restoring it reproduces the project byte-for-byte on another machine. The global CA and custom checks are not included. Returns the path and size.",
+		obj(map[string]any{
+			"path": p("string", "absolute path to write the .zip to, e.g. /backups/acme.zip"),
+		}, "path"),
+		func(a map[string]any) (string, error) {
+			path := strings.TrimSpace(argStr(a, "path"))
+			if path == "" {
+				return "", fmt.Errorf("path is required (absolute .zip path to write)")
+			}
+			return s.api(http.MethodPost, "/api/export/full/file", map[string]any{"path": path})
+		})
+
+	s.add("import_full_project",
+		"Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project under ~/.interceptor/projects/<name>. Refuses to overwrite an existing project unless overwrite=true. After import, switch to the project to open it.",
+		obj(map[string]any{
+			"path":      p("string", "absolute path to the .zip archive to restore"),
+			"name":      p("string", "new project name (plain name, no path separators)"),
+			"overwrite": p("boolean", "replace an existing project of that name (default false)"),
+		}, "path", "name"),
+		func(a map[string]any) (string, error) {
+			path := strings.TrimSpace(argStr(a, "path"))
+			name := strings.TrimSpace(argStr(a, "name"))
+			if path == "" || name == "" {
+				return "", fmt.Errorf("path and name are required")
+			}
+			return s.api(http.MethodPost, "/api/import/full/file", map[string]any{
+				"path": path, "name": name, "overwrite": argBool(a, "overwrite", false),
+			})
+		})
+
 	s.add("send_request",
 		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body.",
 		obj(map[string]any{

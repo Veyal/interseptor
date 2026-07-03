@@ -684,6 +684,22 @@ $('#retSelectAll')&&($('#retSelectAll').onclick=function(){
 });
 
 $('#exportProject').onclick=()=>toast('Downloading project export…');
+const exportFull=$('#exportFull');if(exportFull)exportFull.onclick=()=>toast('Downloading full project archive…');
+const importFullBtn=$('#importFullBtn');if(importFullBtn)importFullBtn.onclick=()=>$('#importFullFile').click();
+const importFullFile=$('#importFullFile');
+if(importFullFile)importFullFile.onchange=async e=>{
+  const f=e.target.files[0];if(!f){return;}
+  const def=(f.name||'project').replace(/\.zip$/i,'').replace(/[^A-Za-z0-9._-]/g,'-')||'imported';
+  const name=prompt('Import as a new project named:',def);
+  if(name){
+    try{
+      const r=await api('/api/import/full?name='+encodeURIComponent(name.trim()),{method:'POST',body:f});
+      toast('Imported project "'+r.name+'" — open it from the project switcher below');
+      loadProject();
+    }catch(err){toast('import: '+err.message);}
+  }
+  e.target.value='';
+};
 const runSetupBtn=$('#runSetupBtn');
 if(runSetupBtn)runSetupBtn.onclick=()=>{import('./setup.js').then(m=>m.openSetup()).catch(e=>toast(e.message));};
 const dlCa=$('#dlCaBtn');if(dlCa)dlCa.onclick=()=>toast('Downloading CA certificate — trust it on the client');

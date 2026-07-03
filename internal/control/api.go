@@ -236,6 +236,8 @@ var mcpDescriptor = map[string]any{
 		{"name": "add_finding_poc", "desc": "Attach a request/response flow to a finding as PoC evidence"},
 		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
 		{"name": "export_report", "desc": "Engagement report (curated findings + PoCs; passive scan omitted unless includeIssues=true). format=html optional"},
+		{"name": "export_full_project", "desc": "Write a lossless portable archive of the whole project (DB + captured bodies) to a server-side .zip path"},
+		{"name": "import_full_project", "desc": "Restore a full-project .zip archive into a new named project under ~/.interceptor/projects"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
 		{"name": "start_intruder", "desc": "Run Sniper/Battering/Pitchfork/Cluster payload attack"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},
