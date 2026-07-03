@@ -362,10 +362,10 @@ func TestConnectUpstreamHost(t *testing.T) {
 	cases := []struct {
 		name, connectHost, sni, want string
 	}{
-		{"IP CONNECT target with SNI uses SNI", "172.67.204.174", "connect.treasury.id", "connect.treasury.id"},
-		{"IPv6 CONNECT target with SNI uses SNI", "2606:4700:3031::1", "connect.treasury.id", "connect.treasury.id"},
-		{"domain CONNECT target is left untouched even with SNI", "connect.treasury.id", "connect.treasury.id", "connect.treasury.id"},
-		{"IP CONNECT target with no SNI falls back to the IP", "172.67.204.174", "", "172.67.204.174"},
+		{"IP CONNECT target with SNI uses SNI", "192.0.2.10", "connect.example.com", "connect.example.com"},
+		{"IPv6 CONNECT target with SNI uses SNI", "2001:db8::1", "connect.example.com", "connect.example.com"},
+		{"domain CONNECT target is left untouched even with SNI", "connect.example.com", "connect.example.com", "connect.example.com"},
+		{"IP CONNECT target with no SNI falls back to the IP", "192.0.2.10", "", "192.0.2.10"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -19,4 +19,11 @@
 # Local runtime data (created under ~/.interceptor by default; ignore if run in-tree)
 /.interceptor/
 
+# Engagement / working artifacts must never be committed (real target data, PII,
+# findings dumps). Keep these out of a public repo.
+scripts/fix-findings-*.ps1
+docs/SPEC-agent-pentest*.md
+*-bounty.ps1
+*.har
+
 # CI workflows live in .github/workflows/ (commit with git add -f if needed).
