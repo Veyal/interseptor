@@ -1210,8 +1210,13 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	aiKey, _, _ := h.st.GetSetting("ai.apiKey")
 	aiModel, _, _ := h.st.GetSetting("ai.model")
 	envKey := os.Getenv("ANTHROPIC_API_KEY")
-	if aiProvider == "openrouter" {
+	switch aiProvider {
+	case "openrouter":
 		envKey = os.Getenv("OPENROUTER_API_KEY")
+	case aiassist.ProviderGLM:
+		if envKey = os.Getenv("GLM_API_KEY"); envKey == "" {
+			envKey = os.Getenv("ZAI_API_KEY")
+		}
 	}
 	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")

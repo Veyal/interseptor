@@ -90,6 +90,57 @@ func TestOpenRouterDefaultsModel(t *testing.T) {
 	}
 }
 
+func TestGLMDefaultsModelAndEndpoint(t *testing.T) {
+	c := New(ProviderGLM, "k", "")
+	if c.model != defaultGLMModel {
+		t.Fatalf("expected default GLM model %q, got %q", defaultGLMModel, c.model)
+	}
+	if c.endpoint != glmEndpoint {
+		t.Fatalf("expected GLM endpoint, got %q", c.endpoint)
+	}
+	if c.provider != ProviderGLM {
+		t.Fatalf("expected provider to stay glm, got %q", c.provider)
+	}
+}
+
+// GLM speaks the Anthropic Messages wire format but authenticates with a Bearer
+// token instead of x-api-key.
+func TestGLMUsesBearerAuthAndAnthropicFormat(t *testing.T) {
+	var gotAuth, gotAPIKey, gotVersion string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("x-api-key")
+		gotVersion = r.Header.Get("anthropic-version")
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &gotBody)
+		io.WriteString(w, `{"content":[{"type":"text","text":"GLM reply."}]}`)
+	}))
+	defer srv.Close()
+
+	c := New(ProviderGLM, "glm-test-key", "glm-4.6")
+	c.endpoint = srv.URL
+	out, err := c.Complete("sys", "explain this request")
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if out != "GLM reply." {
+		t.Fatalf("unexpected reply: %q", out)
+	}
+	if gotAuth != "Bearer glm-test-key" {
+		t.Fatalf("expected Bearer auth, got %q", gotAuth)
+	}
+	if gotAPIKey != "" {
+		t.Fatalf("GLM must not send x-api-key, got %q", gotAPIKey)
+	}
+	if gotVersion != "2023-06-01" {
+		t.Fatalf("expected anthropic-version header, got %q", gotVersion)
+	}
+	if gotBody["model"] != "glm-4.6" || gotBody["system"] != "sys" {
+		t.Fatalf("request body wrong: %v", gotBody)
+	}
+}
+
 func TestUnknownProviderFallsBackToAnthropic(t *testing.T) {
 	c := New("", "k", "")
 	if c.provider != ProviderAnthropic || c.endpoint != anthropicEndpoint {

@@ -3,8 +3,11 @@
 // the user supplies an API key, and it only ever talks to the configured
 // provider — captured traffic is sent only when the user explicitly asks.
 //
-// Two providers are supported: Anthropic (native Messages API) and OpenRouter
-// (OpenAI-compatible chat completions, which fronts many models).
+// Three providers are supported: Anthropic (native Messages API), OpenRouter
+// (OpenAI-compatible chat completions, which fronts many models), and GLM — the
+// Zhipu "GLM Coding Plan", which exposes an Anthropic-compatible Messages endpoint
+// (so it reuses the Anthropic request/response path, just a different base URL and
+// a Bearer token).
 package aiassist
 
 import (
@@ -23,13 +26,18 @@ import (
 const (
 	ProviderAnthropic  = "anthropic"
 	ProviderOpenRouter = "openrouter"
+	ProviderGLM        = "glm"
 )
 
 const (
 	defaultAnthropicModel  = "claude-haiku-4-5-20251001"
 	defaultOpenRouterModel = "anthropic/claude-3.5-haiku"
+	defaultGLMModel        = "glm-5-turbo"
 	anthropicEndpoint      = "https://api.anthropic.com/v1/messages"
 	openRouterEndpoint     = "https://openrouter.ai/api/v1/chat/completions"
+	// GLM Coding Plan's Anthropic-compatible endpoint. Same wire format as the
+	// native Messages API; authenticated with a Bearer token instead of x-api-key.
+	glmEndpoint = "https://api.z.ai/api/anthropic/v1/messages"
 	// maxTokens caps the reply length. Kept modest so answers stay fast and tight —
 	// the assistant is told to be brief, and this is the hard ceiling.
 	maxTokens = 768
@@ -60,6 +68,12 @@ func New(provider, key, model string) *Client {
 		if c.model == "" {
 			c.model = defaultOpenRouterModel
 		}
+	case ProviderGLM:
+		c.provider = ProviderGLM
+		c.endpoint = glmEndpoint
+		if c.model == "" {
+			c.model = defaultGLMModel
+		}
 	default:
 		c.provider = ProviderAnthropic
 		c.endpoint = anthropicEndpoint
@@ -68,6 +82,19 @@ func New(provider, key, model string) *Client {
 		}
 	}
 	return c
+}
+
+// setAnthropicAuth applies the auth + version headers for the Anthropic Messages
+// wire format. GLM's compatible endpoint wants a Bearer token; Anthropic's native
+// API wants x-api-key.
+func (c *Client) setAnthropicAuth(req *http.Request) {
+	if c.provider == ProviderGLM {
+		req.Header.Set("Authorization", "Bearer "+c.key)
+	} else {
+		req.Header.Set("x-api-key", c.key)
+	}
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("content-type", "application/json")
 }
 
 // Complete sends a system + user prompt and returns the model's text reply.
@@ -99,9 +126,7 @@ func (c *Client) completeAnthropicMessages(system string, messages []Message) (s
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("x-api-key", c.key)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("content-type", "application/json")
+	c.setAnthropicAuth(req)
 
 	raw, err := c.do(req)
 	if err != nil {
@@ -223,9 +248,7 @@ func (c *Client) streamAnthropicMessages(ctx context.Context, system string, mes
 	if err != nil {
 		return err
 	}
-	req.Header.Set("x-api-key", c.key)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("content-type", "application/json")
+	c.setAnthropicAuth(req)
 	return c.stream(req, onDelta, anthropicDelta)
 }
 

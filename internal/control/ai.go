@@ -30,9 +30,14 @@ func (h *Hub) aiCreds() (provider, key string, ok bool) {
 	}
 	key, _, _ = h.st.GetSetting("ai.apiKey")
 	if key == "" {
-		if provider == aiassist.ProviderOpenRouter {
+		switch provider {
+		case aiassist.ProviderOpenRouter:
 			key = os.Getenv("OPENROUTER_API_KEY")
-		} else {
+		case aiassist.ProviderGLM:
+			if key = os.Getenv("GLM_API_KEY"); key == "" {
+				key = os.Getenv("ZAI_API_KEY")
+			}
+		default:
 			key = os.Getenv("ANTHROPIC_API_KEY")
 		}
 	}
