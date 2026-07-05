@@ -163,9 +163,113 @@ function scheduleMapRefresh(){
 }
 
 /* ---- live events ---- */
+// STALE_GAP_MS: native EventSource auto-reconnects on drop but replays nothing —
+// any broadcasts the server fanned out while this tab had no open connection
+// (backgrounded tab throttled/suspended, laptop sleep, brief network blip) are
+// simply gone (confirmed server-side: internal/control/events.go drops a
+// disconnected client's channel outright, no replay buffer). A live per-event
+// handler can't distinguish "nothing happened" from "something happened but we
+// missed the broadcast," so past a threshold gap we stop trusting incremental
+// per-event catch-up and do one full resync instead. The server emits a named
+// `hello` SSE event (event: hello) on every connection, including reconnects —
+// used here purely as a reconnect signal, not parsed as a payload.
+const STALE_GAP_MS=8000;
+let lastSSEMsgAt=0;   // wall-clock time of the last message/connection event seen
+let sseConnectedOnce=false; // false until the very first `hello` (initial connect)
+function resyncAfterStaleReconnect(){
+  // Full-refresh path per panel/global state a long gap could have gone stale
+  // for. Mirrors scheduleReload()'s "just refetch everything" philosophy but
+  // applied beyond just the flow list, since ANY event type could have been
+  // dropped, not only flow.new/flow.update.
+  scheduleReload();
+  loadScope();
+  loadRules();
+  loadTags();
+  if(document.querySelector('.tab[data-tab="intruder"]')?.classList.contains('active'))scheduleIntr();
+  if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
+  if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
+  if(document.querySelector('.tab[data-tab="notes"]')?.classList.contains('active'))loadNotes();
+  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))renderActivity();
+  if(document.querySelector('.tab[data-tab="discover"]')?.classList.contains('active'))loadDiscoverModule().then(m=>m.refreshDiscovery());
+  if(document.querySelector('.tab[data-tab="map"]')?.classList.contains('active'))loadMapModule().then(m=>m.loadEndpoints());
+  refreshIntercept().then(()=>renderIcptStat());
+  loadHumanInput();
+}
+/* ---- SSE event contract convention ----
+   The event stream (`/api/events`) currently mixes several different contracts
+   per the UI-REDESIGN-ROADMAP.md §4 audit:
+     - payload-inline:        the message carries the full changed object, no
+                               refetch needed at all (flow.new/flow.update when
+                               `m.flow` is present, intercept.update, activity).
+     - always-reload:         the message is just a nudge ("something changed");
+                               the handler unconditionally refetches, regardless
+                               of which tab/panel is open (rules.update,
+                               notes.update, findings.update, tags.update,
+                               views.update, session.update, settings.update).
+     - panel-gated nudge:     refetch only if the relevant panel is the active
+                               tab, to avoid needless work for a panel the user
+                               isn't looking at (scanner.update, discovery.update
+                               — the latter also sets a nav-rail badge when the
+                               panel is inactive instead of silently no-op'ing).
+     - modal-gated nudge:     same idea as panel-gated, but gated on a modal's
+                               open state instead of a tab (checks.update,
+                               activescan.update, oob.update — all three follow
+                               the exact same shape: "reload this modal's list
+                               if it's currently open, else do nothing since
+                               there's no badge/affordance for these modals").
+     - conditional/derived:   the handler's action depends on more than just
+                               "which panel is open" (flow.new/flow.update
+                               without a payload, ws.frame keyed to the selected
+                               flow id, scope.update fanning out to up to 3
+                               different panels' reload calls).
+   This registry doesn't migrate every event (that's explicitly out of scope for
+   this pass — see UI-REDESIGN-ROADMAP.md §4's "partial, correct, and
+   well-documented is better than complete-but-risky") but gives the modal-gated
+   and always-reload shapes ONE shared helper each, so the next contributor
+   adding a modal-nudge event has a documented pattern to extend instead of
+   copy-pasting a fourth `if($('#xModal').style.display==='flex')...` clause.
+   `onModalUpdate` generalizes the same "refresh if open, else no-op" contract
+   the Phase 3 Discover/Map badges already established for tabs (see
+   setNavDot/clearNavDot above) — for events with no badge affordance, "else"
+   is simply a no-op instead of setting a dot. */
+// onModalUpdate: reload a modal's contents only while it's open — the shared
+// shape behind checks.update/activescan.update/oob.update below.
+function onModalUpdate(modalId,reloadFn){
+  const m=$('#'+modalId);
+  if(m&&m.style.display==='flex')reloadFn();
+}
+// SSE_HANDLERS documents (and, for the modal-gated group, implements) each
+// event's contract in one place. Events not listed here are still handled
+// directly in the es.onmessage dispatcher below — this is a partial migration,
+// not a full replacement of the if/else chain (see the comment above).
+const SSE_HANDLERS={
+  'checks.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('checksModal',loadChecksList)},
+  'activescan.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('activeModal',loadActive)},
+  'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
+  'notes.update':{contract:'always-reload',run:loadNotes},
+  'findings.update':{contract:'always-reload',run:loadFindings},
+  'tags.update':{contract:'always-reload',run:loadTags},
+};
 function connectEvents(){
   const es=new EventSource('/api/events');
-  es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
+  // Fires on the initial connect AND every browser auto-reconnect (the server
+  // sends it fresh on each new stream, see handleEvents in events.go). The very
+  // first `hello` is just the normal boot connection — the boot sequence already
+  // loaded everything, so it never triggers a resync. Every `hello` after that IS
+  // a reconnect by definition (this handler only runs once per open connection);
+  // treat any reconnect following a gap longer than STALE_GAP_MS since the last
+  // thing we saw (a message, or the previous connection) as "may have missed
+  // broadcasts" and resync.
+  es.addEventListener('hello',()=>{
+    const now=Date.now();
+    const gap=lastSSEMsgAt?now-lastSSEMsgAt:Infinity;
+    if(sseConnectedOnce&&gap>STALE_GAP_MS)resyncAfterStaleReconnect();
+    sseConnectedOnce=true;
+    lastSSEMsgAt=now;
+  });
+  es.onmessage=e=>{lastSSEMsgAt=Date.now();let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    const handler=SSE_HANDLERS[m.type];
+    if(handler){handler.run(m);return;}
     if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
@@ -178,14 +282,8 @@ function connectEvents(){
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#activeModal')&&$('#activeModal').style.display==='flex')renderAsScopePanel();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
-    else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
-    else if(m.type==='activescan.update'){if($('#activeModal')&&$('#activeModal').style.display==='flex')loadActive();}
-    else if(m.type==='oob.update'){if($('#oobModal')&&$('#oobModal').style.display==='flex')loadOob();}
     else if(m.type==='discovery.update'){if(document.querySelector('.tab[data-tab="discover"]').classList.contains('active'))loadDiscoverModule().then(mod=>mod.refreshDiscovery());else setNavDot('discBadge',true);}
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyAiDisabledUI();applyOobDisabledUI();}
-    else if(m.type==='notes.update')loadNotes();
-    else if(m.type==='findings.update')loadFindings();
-    else if(m.type==='tags.update')loadTags();
     else if(m.type==='human.input')loadHumanInput();
   };
   es.onerror=()=>{/* browser auto-reconnects */};

@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, createVirtualList } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, prettify, copyText, uiPrompt, uiConfirm, closeModals, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
@@ -194,11 +194,28 @@ function toggleColPicker(){
 }
 
 function flowExcluded(f){return (f.flags&EXCLUDE_NORM)!==0&&(f.flags&FLAG_AI)===0;}
+// canIncremental used to unconditionally bail to a full /api/flows reload
+// whenever scope-mode/search/exclude-filters were active — degrading every new
+// flow event to a full reload for the common pentester workflow (scope mode on).
+// It's now a narrow "is every active filter one flowMatchesFilters() can decide
+// purely from the flow object the client already has" gate. Two things are NOT
+// safely decidable client-side, so they still force a full reload:
+//   - inScopeOnly: scope rules support wildcard-subdomain and regex host/path
+//     patterns with include/exclude precedence (internal/scope/scope.go) —
+//     reimplementing that in JS would risk drifting from the server's semantics
+//     (this app's "zero change to what data ends up displayed" rule takes
+//     priority over incrementalism here).
+//   - an active text search: the default (path) scope is SQLite FTS5
+//     (unicode61 tokenizer, per-token prefix match, OR-joined —
+//     internal/store/flows_fts.go) and the body scope requires reading a
+//     response body the client doesn't have; neither is a simple field compare
+//     a client-side check can faithfully reproduce. (id-scope search *is*
+//     trivially exact — `f.id === N` — but is rare enough not to special-case.)
+// Everything else the toolbar can filter by (method/host/scheme/status/tag/
+// hasNote/exclude-rules) is a simple, already-duplicated field comparison — see
+// flowMatchesFilters() below — so those stay incremental.
 function canIncremental(){
-  if(state.inScopeOnly)return false;
-  if(state.filters.search)return false;
-  if(state.filters.exclude&&state.filters.exclude.length)return false;
-  return true;
+  return !state.inScopeOnly&&!(state.filters.search&&state.filters.search.trim());
 }
 function flowMatchesFilters(f){
   const fl=state.filters;
@@ -206,10 +223,12 @@ function flowMatchesFilters(f){
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
   if(!state.showManual&&!(f.flags&FLAG_AI))return false;
   if(!state.showAI&&(f.flags&FLAG_AI))return false;
+  if(state.notesOnly&&!(f.note&&String(f.note).trim()))return false;
   if(fl.scheme&&f.scheme!==fl.scheme)return false;
   if(fl.method&&f.method!==fl.method)return false;
   if(fl.host&&!f.host.toLowerCase().includes(fl.host.toLowerCase()))return false;
   if(fl.status&&Math.floor((f.status||0)/100)!==Number(fl.status))return false;
+  if(fl.tag&&!(f.tags||[]).includes(fl.tag))return false;
   for(const e of fl.exclude||[]){
     const v=String(e.value);
     if(e.field==='method'&&f.method===v)return false;
@@ -326,39 +345,71 @@ export function upsertFlow(f){
   $('#rowCount').textContent=state.flows.length;
 }
 let liveRenderQueued=false;
-function flowRowLiveUpdate(f){
-  if(state.flows.length>=VIRT_MIN){
-    // Virtualized mode: a per-event full window rebuild janks under heavy traffic
-    // (one renderRows per flow). Coalesce — many events per frame collapse to one.
-    if(liveRenderQueued)return;
-    liveRenderQueued=true;
-    requestAnimationFrame(()=>{liveRenderQueued=false;renderRows();});
-    return;
-  }
-  patchFlowRow(f);
+function queueFullWindowRebuild(){
+  // Virtualized mode, insert path: a new row at the front shifts every other
+  // row's window index, which a single DOM patch can't express — the window
+  // itself has to be recomputed. Coalesce via rAF so a burst of inserts in the
+  // same frame collapses to one rebuild (same behavior as before this change).
+  if(liveRenderQueued)return;
+  liveRenderQueued=true;
+  requestAnimationFrame(()=>{liveRenderQueued=false;renderRows();});
+}
+// flowRowLiveUpdate is the keyed-reconciliation entry point for a live SSE flow
+// event (new or updated) once it's already been accepted into flowStore/state.flows.
+// `isNew` distinguishes an insert (which can move every row's window index) from
+// an in-place update (which never changes order/count — id/sort key are
+// immutable, so an update can only ever change what a row *displays*, never
+// where it sits). That distinction is what lets updates patch a single DOM node
+// even while virtualized, instead of falling back to a full window rebuild.
+function flowRowLiveUpdate(f,isNew){
+  if(!flowVirt.isActive()){patchFlowRow(f);return;}
+  if(isNew){queueFullWindowRebuild();return;}
+  // Virtualized + update: the row is either currently rendered (patch it directly,
+  // same surgical replace patchFlowRow already does for the non-virtualized case)
+  // or it's scrolled out of the rendered window (nothing on screen needs to
+  // change at all — nothing to patch, and no rebuild needed either).
+  const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
+  if(row)patchFlowRow(f);
 }
 export function handleFlowNew(f){
   if(!f)return;
   onFlowMaybeTLS(f);
-  if(!sortIsLiveDefault()||!canIncremental()||!flowMatchesFilters(f)){scheduleReload();return;}
+  if(!sortIsLiveDefault()||!canIncremental()){scheduleReload();return;}
+  if(!flowMatchesFilters(f))return; // doesn't match the active filters — nothing to show, no reload needed
   upsertFlow(f);
   refreshMethodFilter();
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   if(!proxy||!proxy.classList.contains('active'))return;
-  flowRowLiveUpdate(f);
+  flowRowLiveUpdate(f,true);
 }
 export function handleFlowUpdate(f){
   if(!f)return;
   onFlowMaybeTLS(f);
+  const proxy=document.querySelector('.panel[data-panel="proxy"]');
+  const active=proxy&&proxy.classList.contains('active');
   if(flowStore.byId.has(f.id)){
+    // Already visible in the loaded list. A previously-matching flow can stop
+    // matching on update (e.g. its status now falls outside an active status
+    // filter) — remove it from the list in that case rather than leaving a
+    // stale row. Same ambiguous-case handling applies to a flow that newly
+    // starts matching (see the else-branch below): insert/remove a single row
+    // instead of a full reload either way.
+    if(!canIncremental()){storeUpsertFlow(flowStore,f);if(active)flowRowLiveUpdate(f,false);return;}
+    if(!flowMatchesFilters(f)){
+      removeFlow(flowStore,f.id);
+      if(state.selected)state.selected.delete(f.id);
+      $('#rowCount').textContent=state.flows.length;
+      if(active){const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');if(row)row.remove();else if(flowVirt.isActive())queueFullWindowRebuild();}
+      return;
+    }
     storeUpsertFlow(flowStore,f); // O(1) in-place refresh — no findIndex over the loaded list
-    const proxy=document.querySelector('.panel[data-panel="proxy"]');
-    if(!proxy||!proxy.classList.contains('active'))return;
-    flowRowLiveUpdate(f);
+    if(!active)return;
+    flowRowLiveUpdate(f,false);
     return;
   }
-  if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);refreshMethodFilter();flowRowLiveUpdate(f);}
-  else scheduleReload();
+  if(canIncremental()&&flowMatchesFilters(f)){upsertFlow(f);refreshMethodFilter();if(active)flowRowLiveUpdate(f,true);}
+  else if(!canIncremental())scheduleReload();
+  // else: doesn't match filters and was never in the list — nothing to do.
 }
 
 export function getStartedCard(){
