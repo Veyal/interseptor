@@ -55,31 +55,33 @@
       </div>
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
-      <button class="btn" id="notesFilter" title="Flows with notes">📝 notes</button>
-      <button class="btn accent" id="hideTlsFilter" title="Hide TLS failures">⛔ PIN</button>
-      <button class="btn" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
-      <button class="btn accent" id="manualFilter" title="Show manual / proxy-captured flows">Manual</button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views ▾</button>
       <div class="spacer"></div>
       <span class="count"><b id="rowCount">0</b> flows</span>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-haspopup="menu" aria-expanded="false">▦ Cols</button>
     </div>
+    <div class="toolbar toolbar-secondary">
+      <button class="uisw" id="notesFilter" title="Flows with notes">📝 notes</button>
+      <button class="uisw" id="hideTlsFilter" title="Hide TLS failures">⛔ PIN</button>
+      <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
+      <button class="uisw" id="manualFilter" title="Show manual / proxy-captured flows">Manual</button>
+    </div>
     <div id="chips"></div>
     <div id="tagBar" class="tagbar" style="display:none" aria-label="Filter by tag"></div>
     <div id="tlsDiagBanner" class="tls-diag-banner" style="display:none" role="status" aria-live="polite"></div>
-    <div id="flowCapBanner" class="hint" style="display:none;padding:5px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg3)"></div>
-    <div id="selBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px">
-      <span id="selCount" style="font-weight:700;flex:none"></span>
+    <div id="flowCapBanner" class="hint info-banner" style="display:none"></div>
+    <div id="selBar" class="row sel-bar" style="display:none">
+      <span id="selCount" class="sel-count"></span>
       <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
       <button class="btn" id="selAsk" data-ai-ui title="Analyze with AI">✨ Ask AI</button>
       <button class="btn" id="selScope" title="Add hosts to scope">◎ Scope</button>
       <button class="btn" id="selAddFinding" title="Attach to finding">➕ Finding</button>
-      <button class="btn" id="selDelete" style="color:var(--red)">🗑 Delete</button>
-      <button class="btn" id="selClear" style="margin-left:auto">Clear</button>
+      <button class="btn btn-danger" id="selDelete">🗑 Delete</button>
+      <button class="btn sel-clear" id="selClear">Clear</button>
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="empty">No traffic yet — point a client at the proxy.</div></div>
+    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p></div></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
@@ -120,10 +122,10 @@
         <pre id="resView"><span style="color:var(--fg3)">Select a flow to inspect its response.</span></pre>
       </div>
     </div>
-    <div id="noteBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line)">
-      <span class="lbl" style="flex:none">📝 NOTE</span>
-      <input id="noteInput" type="text" maxlength="2000" aria-label="Note for the selected flow" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)" style="flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
-      <span id="noteSaved" style="flex:none;color:var(--accent);font-size:11px;opacity:0;transition:opacity .2s">✓ saved</span>
+    <div id="noteBar" class="row note-bar" style="display:none">
+      <span class="lbl">📝 NOTE</span>
+      <input id="noteInput" type="text" maxlength="2000" aria-label="Note for the selected flow" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)">
+      <span id="noteSaved" class="note-saved" style="opacity:0">✓ saved</span>
     </div>
   </div>
 

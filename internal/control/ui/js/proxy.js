@@ -64,7 +64,8 @@ loadProxyPrefs();
 function syncHideTlsFilter(){
   const btn=$('#hideTlsFilter');
   if(!btn)return;
-  btn.classList.toggle('accent',state.hideTlsFailed);
+  btn.classList.toggle('on',state.hideTlsFailed);
+  btn.setAttribute('aria-pressed',state.hideTlsFailed?'true':'false');
   btn.title=state.hideTlsFailed?'TLS handshake failures hidden — click to show PIN rows':'Showing TLS handshake failures — click to hide PIN rows';
 }
 export function setShowTlsFailed(show){
@@ -284,7 +285,7 @@ export function patchFlowRow(f){
   }
   if(!flowMatchesFilters(f))return;
   const box=$('#rows');
-  if(!box||box.querySelector('.empty')||box.querySelector('#gsMcp')){renderRows();return;}
+  if(!box||box.querySelector('.state-empty')||box.querySelector('#gsMcp')){renderRows();return;}
   const tmp=document.createElement('div');
   tmp.innerHTML=flowRowHTML(f);
   const nr=tmp.firstElementChild;
@@ -396,9 +397,9 @@ export function renderRows(){
   $('#rowCount').textContent=state.flows.length;
   if(!flows.length){
     if(anyFilter()||state.inScopeOnly){
-      box.innerHTML='<div class="empty">No flows match the current filters.<br><button class="btn" id="emptyClear" style="margin-top:12px">Clear filters</button></div>';
+      box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🔍</div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">No flows match the current filters.</p><button class="btn" id="emptyClear">Clear filters</button></div>';
       const c=document.getElementById('emptyClear');if(c)c.onclick=()=>{
-        if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('accent');st.textContent='◎ in scope';}}
+        if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
         clearAllFilters();
       };
     }else{
@@ -753,7 +754,7 @@ function syncSearchPlaceholder(){
 }
 if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'path';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
-if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;$('#notesFilter').classList.toggle('accent',state.notesOnly);loadFlows();};
+if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;const nf=$('#notesFilter');nf.classList.toggle('on',state.notesOnly);nf.setAttribute('aria-pressed',state.notesOnly?'true':'false');loadFlows();};
 if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   const next=!state.hideTlsFailed;
   if(next&&state.filters.tag==='tls-failed')state.filters.tag='';
@@ -770,13 +771,15 @@ function inspectorFlow(){return state.detail||flowStore.byId.get(state.selId)||n
 $('#scopeToggle').onclick=()=>{
   state.inScopeOnly=!state.inScopeOnly;
   const st=$('#scopeToggle');
-  st.classList.toggle('accent',state.inScopeOnly);
+  st.classList.toggle('on',state.inScopeOnly);
   st.textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
   st.setAttribute('aria-pressed',state.inScopeOnly?'true':'false');
   loadFlows();
 };
 function syncSourceFilters(){
-  $('#manualFilter')?.classList.toggle('accent',state.showManual);
+  const mf=$('#manualFilter'); if(!mf)return;
+  mf.classList.toggle('on',state.showManual);
+  mf.setAttribute('aria-pressed',state.showManual?'true':'false');
 }
 export { syncSourceFilters };
 function toggleSourceFilter(which){
@@ -815,7 +818,7 @@ function applyView(v){
   let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
   state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
   state.inScopeOnly=!!f.inScope;
-  syncControls();$('#scopeToggle').classList.toggle('accent',state.inScopeOnly);$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
+  syncControls();$('#scopeToggle').classList.toggle('on',state.inScopeOnly);$('#scopeToggle').setAttribute('aria-pressed',state.inScopeOnly?'true':'false');$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
   renderChips();loadFlows();
   toast('applied view: '+v.name);
 }
@@ -900,7 +903,7 @@ export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]};
   state.notesOnly=false;
-  $('#notesFilter')?.classList.remove('accent');
+  {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncControls();renderChips();loadFlows();
 }
 export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length));}

@@ -138,6 +138,20 @@ button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit
 .tr-len{color:var(--fg2);text-align:right}
 .tr-t{color:var(--fg3);text-align:right}
 .empty{padding:30px;text-align:center;color:var(--fg3);font-size:12px}
+/* .sel-bar — the multi-selection action bar (Proxy's #selBar, shown on demand
+   above the history table when rows are selected). `display` stays inline
+   (toggled at runtime); this class only carries the static box styling. */
+.sel-bar{align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:6px}
+.sel-bar .sel-count{font-weight:700;flex:none}
+.sel-bar .sel-clear{margin-left:auto}
+/* .note-bar — the per-flow note editor strip below the inspector (Proxy's
+   #noteBar). `display` stays inline (toggled at runtime); #noteSaved's
+   `opacity` also stays inline (it's an animated save-confirmation flash, not
+   a static style). */
+.note-bar{align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line)}
+.note-bar .lbl{flex:none}
+.note-bar input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit}
+.note-bar .note-saved{flex:none;color:var(--accent);font-size:11px;transition:opacity .2s}
 .col-picker{position:fixed;z-index:150;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:6px 0;min-width:168px;box-shadow:0 8px 24px var(--shadow)}
 .col-picker label{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;font-size:12px;color:var(--fg);user-select:none}
 .col-picker label:hover{background:var(--bg3)}
@@ -337,6 +351,10 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .chip .x:hover{color:var(--red);background:var(--bg1)}
 .chip-clear{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;background:transparent;border:1px dashed var(--line2);border-radius:14px;padding:3px 11px;color:var(--fg2);cursor:pointer}
 .chip-clear:hover{border-color:var(--red);border-style:solid;color:var(--red)}
+/* .info-banner — thin dismissible status strip (Proxy's "loading older flows"/
+   "scroll for more" banner). `display` stays inline (toggled at runtime by JS);
+   this class only carries the static box styling. */
+.info-banner{padding:5px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:11px;color:var(--fg3)}
 /* tag quick-bar: one-click filter chips for the project's tags (right-click to color) */
 .tagbar{flex-wrap:wrap;gap:6px;padding:7px 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
 .tagchip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;background:var(--bg3);border:1px solid var(--line2);border-radius:12px;padding:2px 9px;color:var(--fg2);cursor:pointer}
