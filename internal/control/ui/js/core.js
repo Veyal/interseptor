@@ -326,7 +326,22 @@ new MutationObserver(muts=>{
   }
 }).observe(document.documentElement,{childList:true,subtree:true});
 
-export async function api(path,opts){const r=await fetch(path,opts);if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();}
+export async function api(path,opts){
+  opts=opts||{};
+  // Remote (cookie-authed) sessions must carry an anti-CSRF header on mutations;
+  // it is harmless on the loopback path. Safe methods (GET/HEAD) skip it.
+  const method=(opts.method||'GET').toUpperCase();
+  if(method!=='GET'&&method!=='HEAD'){
+    opts.headers=Object.assign({'X-Interceptor-CSRF':'1'},opts.headers||{});
+  }
+  const r=await fetch(path,opts);
+  if(r.status===401){ // remote session expired / not signed in → go to login
+    if(location.pathname!=='/login'){ location.href='/login'; }
+    throw new Error('unauthorized');
+  }
+  if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}
+  const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
+}
 
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
 export async function apiTry(path, opts, {toastOnError=true, label=''}={}){

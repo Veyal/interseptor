@@ -126,7 +126,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
   label TEXT,
   prefix TEXT NOT NULL,
   hash TEXT NOT NULL,
-  created INTEGER NOT NULL
+  created INTEGER NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'full',
+  expires INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS scope_rules (
@@ -267,6 +269,9 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE findings ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
+		// Collaboration: scoped/expiring API keys (existing keys → full, never-expire).
+		`ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
+		`ALTER TABLE api_keys ADD COLUMN expires INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()

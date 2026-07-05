@@ -284,6 +284,7 @@ func run() error {
 	<-stop
 
 	log.Println("shutting down…")
+	hub.StopTunnel() // tear down any Cloudflare quick tunnel child process
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cm.Shutdown(ctx)

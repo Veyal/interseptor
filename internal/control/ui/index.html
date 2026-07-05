@@ -872,16 +872,36 @@ Content-Type: application/json
         </section>
         <section class="set-sec" data-sec="api" hidden>
           <div class="section">
-            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
+            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
-              <p class="hint" style="margin-bottom:12px">Authenticate remote access. Full token shown only once at creation.</p>
-              <div class="row" style="gap:8px;margin-bottom:12px">
-                <input id="keyLabel" class="repurl" style="max-width:260px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
+              <p class="hint" style="margin-bottom:12px">Authenticate remote access. Full token shown only once at creation. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
+              <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <input id="keyLabel" class="repurl" style="max-width:220px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
+                <select id="keyScope" class="repurl" style="max-width:130px" aria-label="Key scope"><option value="full">Full access</option><option value="read">Read-only</option></select>
+                <select id="keyExpiry" class="repurl" style="max-width:130px" aria-label="Key expiry"><option value="0">Never expires</option><option value="3600">1 hour</option><option value="86400">1 day</option><option value="604800">7 days</option></select>
                 <button class="btn accent" id="keyCreate">Create key</button>
               </div>
               <div id="keyNew" class="evidence" style="display:none"></div>
-              <table class="rules-tbl"><thead><tr><th style="width:150px">Prefix</th><th>Label</th><th style="width:160px">Created</th><th style="width:70px"></th></tr></thead><tbody id="keyList"></tbody></table>
+              <table class="rules-tbl"><thead><tr><th style="width:130px">Prefix</th><th>Label</th><th style="width:80px">Scope</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="keyList"></tbody></table>
+            </div>
+            <div id="apiShare" class="api-pane" style="display:none">
+              <h3>SHARE THIS SESSION</h3>
+              <p class="hint" style="margin-bottom:12px">Expose Interceptor over a Cloudflare tunnel so a teammate — or an AI agent on your VPS — can reach it with an access key. No public IP needed. <b style="color:var(--amber)">This publishes your captured traffic;</b> share read-only keys with reviewers and stop when done.</p>
+              <div id="shareStatus" class="evidence" style="margin-bottom:12px">Loading…</div>
+              <div class="row" style="gap:8px;margin-bottom:20px">
+                <button class="btn accent" id="shareStart">Start sharing</button>
+                <button class="btn danger" id="shareStop" style="display:none">Stop sharing</button>
+              </div>
+              <h3 style="margin-top:8px">SYNC WITH A PEER</h3>
+              <p class="hint" style="margin-bottom:12px">Pull a teammate's captured flows &amp; findings into this project, or push yours to theirs. Additive union — nothing is overwritten, duplicates are skipped.</p>
+              <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                <input id="peerUrl" class="repurl" style="min-width:280px;flex:1" aria-label="Peer URL" placeholder="https://teammate.trycloudflare.com">
+                <input id="peerKey" class="repurl" type="password" style="max-width:200px" aria-label="Peer access key" placeholder="their full-access key (ick_…)">
+                <input id="peerLabel" class="repurl" style="max-width:130px" aria-label="Peer label" placeholder="label (optional)">
+              </div>
+              <div class="row" style="gap:8px"><button class="btn accent" id="peerPull">Pull ↓</button><button class="btn" id="peerPush">Push ↑</button></div>
+              <div id="mergeResult" class="hint" style="margin-top:10px"></div>
             </div>
             <div id="apiRest" class="api-pane" style="display:none">
               <h3>REST API REFERENCE</h3>

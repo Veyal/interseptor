@@ -154,7 +154,7 @@ func TestMCPEndpointAuth(t *testing.T) {
 	if code := post(""); code == http.StatusUnauthorized {
 		t.Fatalf("keyless: /mcp should be open, got 401")
 	}
-	token, _, err := s.CreateAPIKey("agent")
+	token, _, err := s.CreateAPIKey("agent", store.ScopeFull, 0)
 	if err != nil {
 		t.Fatalf("CreateAPIKey: %v", err)
 	}

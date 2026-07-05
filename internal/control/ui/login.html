@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interceptor — Sign in</title>
+<style>
+  :root{ --bg:#0e1116; --bg2:#161b22; --line:#2a313c; --fg:#e6edf3; --muted:#8b949e; --accent:#3b82f6; --danger:#f85149; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+        background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  .card{ width:min(92vw,380px); background:var(--bg2); border:1px solid var(--line); border-radius:14px;
+         padding:28px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  h1{ margin:0 0 4px; font-size:20px; }
+  p.sub{ margin:0 0 20px; color:var(--muted); font-size:13px; }
+  label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  input{ width:100%; padding:11px 12px; background:var(--bg); border:1px solid var(--line); border-radius:8px;
+         color:var(--fg); font:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  input:focus{ outline:none; border-color:var(--accent); }
+  button{ width:100%; margin-top:16px; padding:11px; background:var(--accent); color:#fff; border:0;
+           border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled{ opacity:.6; cursor:default; }
+  .err{ margin-top:14px; color:var(--danger); font-size:13px; min-height:18px; }
+  .foot{ margin-top:18px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+  <form class="card" id="f">
+    <h1>Interceptor</h1>
+    <p class="sub">Enter your access key to view this session.</p>
+    <label for="tok">Access key</label>
+    <input id="tok" type="password" autocomplete="off" placeholder="ick_…" autofocus>
+    <button id="go" type="submit">Sign in</button>
+    <div class="err" id="err"></div>
+    <div class="foot">Read-only keys can watch; full keys can act. Keys are issued by the operator.</div>
+  </form>
+<script>
+  const f=document.getElementById('f'), tok=document.getElementById('tok'),
+        err=document.getElementById('err'), go=document.getElementById('go');
+  f.addEventListener('submit', async (e)=>{
+    e.preventDefault(); err.textContent=''; go.disabled=true;
+    try{
+      const r=await fetch('/api/session/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:tok.value.trim()})});
+      if(r.ok){ location.href='/'; return; }
+      const d=await r.json().catch(()=>({}));
+      err.textContent=d.error||('Sign-in failed ('+r.status+')');
+    }catch(ex){ err.textContent='Network error'; }
+    go.disabled=false;
+  });
+</script>
+</body>
+</html>

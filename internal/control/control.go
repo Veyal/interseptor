@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,6 +39,7 @@ import (
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/strutil"
 	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interceptor/internal/tunnel"
 )
 
 //go:embed ui
@@ -116,6 +118,8 @@ type Hub struct {
 	mcpSrv      *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
 	mcpKeysSeen atomic.Bool // last-known "API keys exist" — mcpAuthorized fails closed on a store error once true
 
+	tun *tunnel.Manager // Cloudflare quick-tunnel manager (remote sharing)
+
 	as asState // active-scan state (armed/running/findings)
 
 	autopwnMu     sync.Mutex      // guards lazy engine + tool-bus construction
@@ -162,6 +166,16 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 	h.disc.SetScope(h.discInScope)
 	h.disc.SetNotifier(h.onDiscoveryUpdate)
 	h.disc.SetRecorder(h.discoveryRecord)
+	h.tun = tunnel.New(func() string {
+		addr := h.currentControlAddr()
+		if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+			return p
+		}
+		return "9966"
+	})
+	h.tun.SetOnURL(func(url string) {
+		h.broadcast(map[string]any{"type": "tunnel.update", "url": url})
+	})
 	h.wireSessionRefresh()
 	h.wireSessionScope()
 	h.refreshScope()
@@ -185,16 +199,30 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
 
 // handleMCP serves the Streamable-HTTP MCP transport. The backing mcp.Server is
-// built lazily from the request's own Host so its tool calls loop back to this
-// control server (the same wiring the `interceptor mcp` stdio subcommand uses).
+// built against this control server's own LOOPBACK address — not the request Host
+// — so its tool calls always loop back locally even when the client reached us
+// over a tunnel (a tunnel Host would send the tool bus back out over the internet,
+// where the auth gate would then 401 the unauthenticated internal calls).
 func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
 	h.mcpMu.Lock()
 	if h.mcpSrv == nil {
-		h.mcpSrv = mcp.New("http://" + r.Host)
+		h.mcpSrv = mcp.New(h.loopbackControlBase())
 	}
 	srv := h.mcpSrv
 	h.mcpMu.Unlock()
 	srv.ServeHTTP(w, r)
+}
+
+// loopbackControlBase returns an http://127.0.0.1:<port> base URL for the control
+// plane, derived from its current listen address (which may be 0.0.0.0). Used to
+// keep the in-process MCP tool bus on loopback regardless of external exposure.
+func (h *Hub) loopbackControlBase() string {
+	addr := h.currentControlAddr()
+	port := "9966"
+	if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+		port = p
+	}
+	return "http://127.0.0.1:" + port
 }
 
 // ---- DTOs ----

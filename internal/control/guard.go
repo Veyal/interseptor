@@ -5,71 +5,189 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/Veyal/interceptor/internal/store"
 )
 
-// securityGuard protects the loopback-only control plane from browser-driven
-// attacks. Both listeners bind 127.0.0.1, but a web page the user visits can
-// still POST to http://127.0.0.1:9966 (CSRF), and via DNS rebinding a foreign
-// origin can be made to resolve to loopback and read responses. Two checks,
-// applied to every control request, defeat both:
+// securityGuard protects the control plane. It has two trust modes:
 //
-//   - Host must name the loopback interface. A rebinding attack reaches us with
-//     the attacker's Host (e.g. evil.com), so rejecting non-loopback Hosts kills
-//     it — this is the primary DNS-rebinding defense.
-//   - Origin, when present, must be loopback. A cross-site fetch carries the
-//     attacker's Origin, so rejecting it kills classic CSRF.
+//   - Loopback trust (unchanged, the local default): a request that arrives on a
+//     loopback connection with a loopback Host and no API key is allowed, exactly
+//     as before. The embedded UI, curl, and the in-process MCP tool bus all reach
+//     us this way. DNS-rebinding is defeated by the loopback-Host requirement and
+//     classic CSRF by the loopback-Origin check.
+//   - Key trust (remote access): a request carrying a VALID API key is authorized
+//     regardless of Host/Origin/connection — this is what lets an AI agent on a VPS
+//     or a collaborator's browser reach Interceptor over a Cloudflare tunnel. A
+//     read-only key may only read (GET/HEAD + SSE); a full key may also mutate. The
+//     cookie path (browser login) additionally requires an anti-CSRF header and a
+//     same-origin Origin on mutations, since a cookie is an ambient credential.
 //
-// Legitimate clients — the embedded UI, curl, the MCP server — send a loopback
-// Host and either no Origin or the loopback Origin, so they pass untouched.
-// maxRequestBody bounds every control request body as a DoS backstop: handlers
-// decode JSON into memory and several read unbounded string fields (notes, rule
-// patterns, repeater bodies, session headers). The largest legitimate body is a
-// project import (128 MiB), so the global cap sits there; tighter per-endpoint
-// limits (checks 512 KiB, HAR 64 MiB, OOB 512 B) still apply on top. A var (not a
-// const) so tests can lower it. Loopback + AI/MCP make an oversized body a real
-// local DoS vector despite the loopback bind.
+// A non-loopback request WITHOUT a valid key is closed (401, or a redirect to the
+// login page for a browser navigation) — so accidentally exposing the port never
+// leaks the captured pentest data.
+//
+// maxRequestBody bounds every control request body as a DoS backstop (see below).
 var maxRequestBody int64 = 128 << 20
+
+// sessionCookie is the name of the httpOnly cookie holding a browser session's
+// API token (set by the login endpoint, cleared by logout).
+const sessionCookie = "ick_session"
 
 func (h *Hub) securityGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The OOB interaction catcher is deliberately public: blind callbacks from a
-		// target arrive with a foreign Host/Origin and no auth. It only records request
-		// metadata (no control actions), so it bypasses the loopback/CSRF checks.
+		// target arrive with a foreign Host/Origin and no auth. It only records
+		// request metadata (no control actions), so it bypasses all checks.
 		if strings.HasPrefix(r.URL.Path, "/oob/") {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Primary defense: the connection's SERVER-SIDE local address. A remote
-		// client can spoof any Host header, but it cannot make its packets arrive on
-		// our loopback interface — so if the connection landed on a non-loopback
-		// local address, reject regardless of Host. This closes a spoofed-Host bypass
-		// when the control plane is bound to a routable interface. When the local
-		// address is unavailable (unusual transports/tests) we fall back to the Host
-		// check alone, preserving existing loopback-bind behavior.
+		// Pre-auth surface: the login page and the session endpoints must be
+		// reachable before a remote browser has a session. They mint/clear the
+		// cookie themselves and are rate-limited; they perform no privileged action.
+		if r.URL.Path == "/login" || r.URL.Path == "/api/session/auth" || r.URL.Path == "/api/session/logout" {
+			r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		tok, via := authToken(r)
+		keyOK, scope := false, ""
+		if tok != "" && h.st != nil {
+			keyOK, scope, _ = h.st.VerifyAPIKeyScope(tok)
+		}
+
+		loopbackConn := true
 		if la, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && !isLoopbackAddr(la) {
-			httpErr(w, http.StatusForbidden, "the control plane only accepts loopback requests (non-loopback connection)")
-			return
+			loopbackConn = false
 		}
-		if !isLoopbackHost(r.Host) {
-			httpErr(w, http.StatusForbidden, "the control plane only accepts loopback requests (rejected Host)")
+		loopbackHost := isLoopbackHost(r.Host)
+
+		switch {
+		case keyOK:
+			// Authenticated remote (or local) client. Bypass the loopback Host/Origin
+			// checks; enforce scope, MCP tier, and CSRF for the ambient-cookie path.
+			if isMutatingMethod(r.Method) {
+				if scope == store.ScopeRead {
+					httpErr(w, http.StatusForbidden, "this key is read-only — it may view but not modify")
+					return
+				}
+				if via == authViaCookie {
+					if r.Header.Get("X-Interceptor-CSRF") != "1" {
+						httpErr(w, http.StatusForbidden, "missing X-Interceptor-CSRF header")
+						return
+					}
+					if o := r.Header.Get("Origin"); o != "" && !sameHostOrigin(o, r.Host) {
+						httpErr(w, http.StatusForbidden, "cross-origin request rejected")
+						return
+					}
+				}
+			}
+			// The MCP tool surface requires a FULL-scope key: a read-only watcher
+			// gets no tool access (they observe via the UI + SSE). This also sidesteps
+			// MCP's loopback re-entrancy — MCP tool calls re-enter as unauthenticated
+			// loopback POSTs, so scope can't be re-checked there.
+			if r.URL.Path == "/mcp" && scope != store.ScopeFull {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
+				httpErr(w, http.StatusForbidden, "the MCP endpoint requires a full-access key")
+				return
+			}
+			// A URL query token (?token=) is only honored for the SSE stream, whose
+			// EventSource client cannot set an Authorization header; everywhere else a
+			// query token is refused so tokens don't leak through general URL logging.
+			if via == authViaQuery && r.URL.Path != "/api/events" {
+				httpErr(w, http.StatusForbidden, "a URL token is only valid for the event stream")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			next.ServeHTTP(w, r)
 			return
-		}
-		if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
-			httpErr(w, http.StatusForbidden, "cross-origin request rejected")
+
+		case loopbackConn && loopbackHost:
+			// Unauthenticated loopback: the legacy local-trust path, byte-for-byte
+			// unchanged so local development keeps working with no login.
+			if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
+				httpErr(w, http.StatusForbidden, "cross-origin request rejected")
+				return
+			}
+			if r.URL.Path == "/mcp" && !h.mcpAuthorized(r) {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
+				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			next.ServeHTTP(w, r)
 			return
-		}
-		// Optional API-key auth for the remote-agent surface: once the operator has
-		// created at least one key, the Streamable-HTTP MCP endpoint requires a valid
-		// bearer token. Keyless installs stay open (loopback trust); the /api surface
-		// and embedded UI remain loopback-only and are not gated here.
-		if r.URL.Path == "/mcp" && !h.mcpAuthorized(r) {
+
+		default:
+			// Non-loopback connection (or spoofed Host) without a valid key: closed.
+			// A browser navigation is redirected to the login page; anything else
+			// (fetch/curl/MCP) gets a 401 so the client can present a key.
 			w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
-			httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth")
+			if tok == "" && wantsHTML(r) {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+			httpErr(w, http.StatusUnauthorized, "remote access to Interceptor requires an API key — open /login or send Authorization: Bearer <key>")
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
-		next.ServeHTTP(w, r)
 	})
+}
+
+// auth token sources, in precedence order.
+const (
+	authViaBearer = "bearer"
+	authViaCookie = "cookie"
+	authViaQuery  = "query"
+)
+
+// authToken extracts the presented API token and how it arrived. Precedence:
+// Authorization: Bearer header (curl / MCP / pull-push), then the session cookie
+// (browser login), then a ?token= query param (only meaningful for SSE).
+func authToken(r *http.Request) (token, via string) {
+	if t := bearerToken(r); t != "" {
+		return t, authViaBearer
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+		return c.Value, authViaCookie
+	}
+	if t := r.URL.Query().Get("token"); t != "" {
+		return t, authViaQuery
+	}
+	return "", ""
+}
+
+// isMutatingMethod reports whether an HTTP method can change server state.
+func isMutatingMethod(m string) bool {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	default:
+		return true
+	}
+}
+
+// wantsHTML reports whether a request looks like a browser navigation (so an
+// unauthenticated one should be redirected to the login page rather than 401'd).
+func wantsHTML(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// sameHostOrigin reports whether an Origin header's host matches the request Host
+// (scheme/port aside for the host comparison — the tunnel terminates TLS upstream
+// so the proxied Host and Origin host agree).
+func sameHostOrigin(origin, host string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	oh := u.Hostname()
+	rh := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		rh = h
+	}
+	return strings.EqualFold(oh, rh)
 }
 
 // mcpAuthorized reports whether a request to /mcp may proceed. Auth is opt-in:

@@ -259,4 +259,16 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /mcp", h.handleMCP)
 	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /api/events", meta.handleEvents)
+	// Browser session auth (remote access): login page + cookie mint/clear.
+	h.mux.HandleFunc("GET /login", h.serveLogin)
+	h.mux.HandleFunc("POST /api/session/auth", h.sessionLogin)
+	h.mux.HandleFunc("POST /api/session/logout", h.sessionLogout)
+	// Share (remote access via Cloudflare quick tunnel).
+	h.mux.HandleFunc("GET /api/share/status", h.shareStatus)
+	h.mux.HandleFunc("POST /api/share/start", h.shareStart)
+	h.mux.HandleFunc("POST /api/share/stop", h.shareStop)
+	// Project merge (pull/push union with a peer).
+	h.mux.HandleFunc("POST /api/merge/file", h.mergeFile)
+	h.mux.HandleFunc("POST /api/merge/pull", h.mergePull)
+	h.mux.HandleFunc("POST /api/merge/push", h.mergePush)
 }

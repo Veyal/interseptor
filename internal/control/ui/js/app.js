@@ -289,6 +289,7 @@ function connectEvents(){
     else if(m.type==='autopwn.update'){const onTab=document.querySelector('.tab[data-tab="autopwn"]').classList.contains('active');if(!onTab)setNavDot('autopwnBadge',true);loadAutopwnModule().then(mod=>mod.onAutopwnUpdate(m));}
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyAiDisabledUI();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
+    else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };
   es.onerror=()=>{/* browser auto-reconnects */};
 }

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Veyal/interceptor/internal/store"
 )
 
 func TestSecurityGuardHostAndOrigin(t *testing.T) {
@@ -35,10 +37,12 @@ func TestSecurityGuardHostAndOrigin(t *testing.T) {
 		t.Fatalf("ipv6 loopback should pass, got %d", c)
 	}
 
-	// Blocked: DNS-rebinding (foreign Host) and classic CSRF (foreign Origin).
-	if c := code("evil.com:9966", ""); c != http.StatusForbidden {
-		t.Fatalf("non-loopback Host (DNS rebind) must be blocked, got %d", c)
+	// Blocked: DNS-rebinding (foreign Host) is now unauthorized (401) — a valid key
+	// is required for any non-loopback surface — rather than a flat 403.
+	if c := code("evil.com:9966", ""); c != http.StatusUnauthorized {
+		t.Fatalf("non-loopback Host (DNS rebind) must require auth (401), got %d", c)
 	}
+	// Classic CSRF (foreign Origin) on a loopback Host is still a flat 403.
 	if c := code("127.0.0.1:9966", "http://evil.com"); c != http.StatusForbidden {
 		t.Fatalf("cross-origin (CSRF) must be blocked, got %d", c)
 	}
@@ -69,12 +73,13 @@ func TestSecurityGuardRejectsSpoofedHostOnNonLoopbackConn(t *testing.T) {
 	}
 
 	// Spoofed loopback Host, but the connection landed on a routable local
-	// address → rejected (this is the bypass the fix closes).
-	if c := codeWithLocalAddr("127.0.0.1:9966", "192.168.1.10:9966"); c != http.StatusForbidden {
-		t.Fatalf("spoofed Host on non-loopback local addr must be blocked, got %d", c)
+	// address → rejected. Without a key this is now 401 (auth required) — still
+	// firmly blocked, and the connection can't reach any handler.
+	if c := codeWithLocalAddr("127.0.0.1:9966", "192.168.1.10:9966"); c != http.StatusUnauthorized {
+		t.Fatalf("spoofed Host on non-loopback local addr must be blocked (401), got %d", c)
 	}
-	if c := codeWithLocalAddr("localhost:9966", "10.0.0.5:9966"); c != http.StatusForbidden {
-		t.Fatalf("spoofed localhost Host on LAN local addr must be blocked, got %d", c)
+	if c := codeWithLocalAddr("localhost:9966", "10.0.0.5:9966"); c != http.StatusUnauthorized {
+		t.Fatalf("spoofed localhost Host on LAN local addr must be blocked (401), got %d", c)
 	}
 
 	// Genuine loopback connection with loopback Host → allowed (UI keeps working).
@@ -184,6 +189,91 @@ func TestRuleRejectsOverlongPattern(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("overlong rule pattern: got %d, want 400", resp.StatusCode)
+	}
+}
+
+// A valid API key authorizes a NON-loopback request (the remote-access path),
+// with scope enforced: a full key may mutate, a read-only key may not, and the
+// query-token form is only honored for the SSE stream.
+func TestSecurityGuardKeyAuth(t *testing.T) {
+	h, st, _ := newHub(t)
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	g := h.securityGuard(next)
+
+	full, _, err := st.CreateAPIKey("agent", store.ScopeFull, 0)
+	if err != nil {
+		t.Fatalf("CreateAPIKey full: %v", err)
+	}
+	read, _, err := st.CreateAPIKey("viewer", store.ScopeRead, 0)
+	if err != nil {
+		t.Fatalf("CreateAPIKey read: %v", err)
+	}
+
+	// Simulate a genuine non-loopback (tunnel) connection with a tunnel Host.
+	req := func(method, path, bearer, cookie, query string, csrf bool) *http.Request {
+		url := "http://x.trycloudflare.com" + path
+		if query != "" {
+			url += "?" + query
+		}
+		r := httptest.NewRequest(method, url, nil)
+		r.Host = "x.trycloudflare.com"
+		ctx := context.WithValue(r.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.ParseIP("10.0.0.9"), Port: 9966})
+		r = r.WithContext(ctx)
+		if bearer != "" {
+			r.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		if cookie != "" {
+			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
+		}
+		if csrf {
+			r.Header.Set("X-Interceptor-CSRF", "1")
+		}
+		return r
+	}
+	code := func(r *http.Request) int {
+		rec := httptest.NewRecorder()
+		g.ServeHTTP(rec, r)
+		return rec.Code
+	}
+
+	// No key on a remote connection → 401.
+	if c := code(req(http.MethodGet, "/api/flows", "", "", "", false)); c != http.StatusUnauthorized {
+		t.Fatalf("remote no key: want 401, got %d", c)
+	}
+	// Full key, bearer → GET and mutating both pass.
+	if c := code(req(http.MethodGet, "/api/flows", full, "", "", false)); c != http.StatusNoContent {
+		t.Fatalf("full key GET: want 204, got %d", c)
+	}
+	if c := code(req(http.MethodPost, "/api/scope", full, "", "", false)); c != http.StatusNoContent {
+		t.Fatalf("full key POST (bearer): want 204, got %d", c)
+	}
+	// Read key → GET passes, mutating is 403.
+	if c := code(req(http.MethodGet, "/api/flows", read, "", "", false)); c != http.StatusNoContent {
+		t.Fatalf("read key GET: want 204, got %d", c)
+	}
+	if c := code(req(http.MethodPost, "/api/scope", read, "", "", false)); c != http.StatusForbidden {
+		t.Fatalf("read key POST: want 403, got %d", c)
+	}
+	// Cookie-authed mutation requires the CSRF header.
+	if c := code(req(http.MethodPost, "/api/scope", "", full, "", false)); c != http.StatusForbidden {
+		t.Fatalf("cookie POST without CSRF header: want 403, got %d", c)
+	}
+	if c := code(req(http.MethodPost, "/api/scope", "", full, "", true)); c != http.StatusNoContent {
+		t.Fatalf("cookie POST with CSRF header: want 204, got %d", c)
+	}
+	// A ?token= query is only honored for the SSE stream.
+	if c := code(req(http.MethodGet, "/api/events", "", "", "token="+full, false)); c != http.StatusNoContent {
+		t.Fatalf("query token on /api/events: want 204, got %d", c)
+	}
+	if c := code(req(http.MethodGet, "/api/flows", "", "", "token="+full, false)); c != http.StatusForbidden {
+		t.Fatalf("query token off /api/events: want 403, got %d", c)
+	}
+	// /mcp requires a full-scope key even for a valid read key.
+	if c := code(req(http.MethodPost, "/mcp", read, "", "", false)); c != http.StatusForbidden {
+		t.Fatalf("read key on /mcp: want 403, got %d", c)
+	}
+	if c := code(req(http.MethodPost, "/mcp", full, "", "", false)); c == http.StatusUnauthorized || c == http.StatusForbidden {
+		t.Fatalf("full key on /mcp must be authorized by the guard, got %d", c)
 	}
 }
 

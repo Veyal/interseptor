@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Veyal/interceptor/internal/store"
 	"github.com/Veyal/interceptor/internal/version"
@@ -26,7 +27,9 @@ func (h *metaAPI) listKeys(w http.ResponseWriter, r *http.Request) {
 
 func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Label string `json:"label"`
+		Label     string `json:"label"`
+		Scope     string `json:"scope"`     // "full" (default) | "read"
+		ExpiresIn int64  `json:"expiresIn"` // seconds from now; 0 = never
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -35,7 +38,11 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	if in.Label == "" {
 		in.Label = "key"
 	}
-	token, key, err := h.st.CreateAPIKey(in.Label)
+	var expires int64
+	if in.ExpiresIn > 0 {
+		expires = time.Now().UnixMilli() + in.ExpiresIn*1000
+	}
+	token, key, err := h.st.CreateAPIKey(in.Label, store.NormalizeScope(in.Scope), expires)
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
