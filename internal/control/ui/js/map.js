@@ -402,7 +402,7 @@ export async function loadParams(){
 function renderMapParams(d){
   const box=$('#mapParams'); if(!box) return;
   const hosts=d.hosts||[];
-  if(!hosts.length){box.innerHTML='<div class="hint" style="padding:16px">No parameters found — capture in-scope traffic with query strings or form/JSON bodies.</div>';return;}
+  if(!hosts.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🔬</div><div class="state-empty-title">No parameters found</div><p class="state-empty-hint">Capture in-scope traffic with query strings or form/JSON bodies.</p></div>';return;}
   box.innerHTML=hosts.map(h=>`<div style="margin-bottom:16px">
     <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--accent);margin-bottom:6px">${esc(h.host)}</div>
     <table class="rules-tbl"><thead><tr><th>Name</th><th style="width:70px">Source</th><th style="width:50px">Hits</th><th style="width:90px">Sample</th></tr></thead><tbody>
@@ -498,12 +498,12 @@ export function renderMap(){
 export function renderMapTree(eps){
   const box = $('#mapTree'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="hint" style="padding:12px">No endpoints match — capture traffic or relax the filters.</div>';
+    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗺️</div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
     mapState._treeHosts = null;
     return;
   }
   if(eps.length > MAP_TREE_EAGER_MAX && (mapState.expandAll || mapState.search)){
-    box.innerHTML = `<div class="hint" style="padding:16px;line-height:1.6">Too many endpoints (${eps.length.toLocaleString()}) to render expanded — switch to <b>Table</b> view, filter by domain, or narrow your search.</div>`;
+    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon">⚠️</div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
     mapState._treeHosts = null;
     return;
   }
@@ -568,7 +568,7 @@ function wireMapTableRows(box){
 function renderMapTable(eps){
   const box = $('#mapTable'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="hint" style="padding:16px">No endpoints match — capture traffic or relax the filters.</div>';
+    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗺️</div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
     return;
   }
   const sorted = mapSortEps(eps);

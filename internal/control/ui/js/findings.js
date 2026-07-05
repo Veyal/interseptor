@@ -67,7 +67,7 @@ function renderFindings() {
   const box = $('#findList'); if (!box) return;
   const c = $('#findCount'); if (c) c.textContent = findings.length ? findings.length + ' finding' + (findings.length === 1 ? '' : 's') : '';
   if (!findings.length) {
-    box.innerHTML = '<div class="hint" style="padding:12px">No findings yet — create one, or the AI records them as it tests.</div>';
+    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🔎</div><div class="state-empty-title">No findings yet</div><p class="state-empty-hint">Create one, or the AI records them as it tests.</p></div>';
     selFinding = null; renderFindingDetail(); return;
   }
   if (!selFinding || !findings.some(f => f.id === selFinding)) selFinding = findings[0].id;
@@ -377,7 +377,7 @@ async function flushBodySave(fid, snapshot) {
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
   const f = findings.find(x => x.id === selFinding);
-  if (!f) { box.innerHTML = '<div class="hint" style="padding:16px">Select a finding.</div>'; return; }
+  if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗂️</div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
   const missBanner = (() => {

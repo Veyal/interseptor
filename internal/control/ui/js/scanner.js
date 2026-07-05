@@ -62,7 +62,7 @@ async function loadCheckDocs(){
     const d=await api('/api/checks/reference');
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
-  }catch(e){box.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+  }catch(e){box.innerHTML='<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">'+esc(e.message)+'</p></div>';}
 }
 function updateCheckFlowHint(){
   const el=$('#checkFlowHint');if(!el)return;
@@ -143,7 +143,7 @@ export async function loadChecksList(){
         toast('check '+(cb.checked?'enabled':'disabled'));}catch(e){toast(e.message);}
     });
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
-  }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="hint" style="padding:10px;color:var(--red)">Couldn't load checks: ${esc(e.message)}</div>`;}
+  }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">Couldn't load checks: ${esc(e.message)}</p></div>`;}
 }
 // Filters the sidebar by title/id substring match. Groups auto-expand while a
 // filter is active (so a match in a collapsed built-in group is still found)
@@ -501,7 +501,7 @@ export function scanGroups(){
 }
 export function renderScan(){
   const list=$('#scanList');
-  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="hint" style="padding:12px">No issues found. Capture some traffic, then Run scan.</div>';$('#scanDetail').innerHTML='<div class="hint" style="padding:16px">Select a finding.</div>';return;}
+  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon">🛡️</div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon">📋</div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';return;}
   const groups=scanState.groups=scanGroups();
   const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
   $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;

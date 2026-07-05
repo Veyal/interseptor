@@ -272,29 +272,45 @@ Content-Type: application/json
   <!-- SCANNER -->
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
-      <div id="scanPassiveBar" class="row" style="gap:6px;flex:1;flex-wrap:wrap">
-      <select id="scanTarget" class="btn" style="background:var(--bg3);max-width:230px" title="Scan target"><option value="">All in-scope hosts</option></select>
-      <input id="scanFilter" class="btn" style="background:var(--bg3);width:150px" aria-label="Path filter" placeholder="path filter">
-      <button class="btn accent" id="scanRun">Run scan ▸</button>
+      <div id="scanPassiveBar" class="row find-toolbar-row">
+      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target"><option value="">All in-scope hosts</option></select>
+      <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
+      <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
       <button class="btn" id="checksBtn" aria-label="Custom checks">✎ Checks</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
-      <button class="btn" id="activeBtn" style="color:var(--red)" aria-label="Active scan">⚡ Active scan</button>
-      <button class="btn" id="oobBtn" data-oob-ui aria-label="OOB">` OOB</button>
       </div>
     </div>
-    <div id="scanPassiveView" style="flex:1;display:flex;min-height:0">
-      <div id="scanList" class="scan-list"><div class="hint" style="padding:12px">Run a scan to find issues.</div></div>
-      <div id="scanDetail" class="pane" style="flex:1"><div class="hint" style="padding:16px">Select an issue.</div></div>
+    <div class="toolbar toolbar-secondary scan-tools-bar">
+      <span class="hint scan-tools-label">Other tools — send real traffic:</span>
+      <div class="spacer"></div>
+      <button class="btn scan-tool-btn" id="activeBtn" aria-label="Active scan">⚡ Active scan</button>
+      <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">` OOB</button>
+    </div>
+    <div id="scanPassiveView" class="scan-passive-view">
+      <div id="scanList" class="scan-list">
+        <div class="state-empty">
+          <div class="state-empty-icon">🛡️</div>
+          <div class="state-empty-title">No issues yet</div>
+          <p class="state-empty-hint">Run a scan to find issues.</p>
+        </div>
+      </div>
+      <div id="scanDetail" class="pane scan-detail-pane">
+        <div class="state-empty">
+          <div class="state-empty-icon">📋</div>
+          <div class="state-empty-title">No issue selected</div>
+          <p class="state-empty-hint">Select an issue from the list to view its details.</p>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- FINDINGS -->
   <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
     <div class="toolbar">
-      <div id="scanFindingsBar" class="row" style="gap:6px;flex:1;flex-wrap:wrap">
-        <button class="btn accent" id="findNew">＋ New finding</button>
-        <select id="findExportFmt" class="btn" title="Report download format" aria-label="Report format">
+      <div id="scanFindingsBar" class="row find-toolbar-row">
+        <button class="btn btn-primary" id="findNew">＋ New finding</button>
+        <select id="findExportFmt" class="btn btn-field" title="Report download format" aria-label="Report format">
           <option value="md">Markdown</option>
           <option value="html">HTML</option>
           <option value="pdf">PDF</option>
@@ -304,9 +320,21 @@ Content-Type: application/json
         <div class="spacer"></div>
       </div>
     </div>
-    <div id="scanFindingsView" style="flex:1;display:flex;min-height:0;flex-direction:row">
-      <div id="findList" class="scan-list"><div class="hint" style="padding:12px">No findings yet.</div></div>
-      <div id="findDetail" class="find-detail"><div class="hint" style="padding:16px">Select a finding.</div></div>
+    <div id="scanFindingsView" class="find-view">
+      <div id="findList" class="scan-list">
+        <div class="state-empty">
+          <div class="state-empty-icon">🔎</div>
+          <div class="state-empty-title">No findings yet</div>
+          <p class="state-empty-hint">Create one, or the AI records them as it tests.</p>
+        </div>
+      </div>
+      <div id="findDetail" class="find-detail">
+        <div class="state-empty">
+          <div class="state-empty-icon">🗂️</div>
+          <div class="state-empty-title">No finding selected</div>
+          <p class="state-empty-hint">Select a finding from the list to view its details.</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -360,29 +388,32 @@ Content-Type: application/json
   <!-- Endpoint map (attack surface) -->
   <div class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map">
     <div class="toolbar">
-      <select id="mapDomain" class="btn" style="background:var(--bg3);max-width:240px" title="Filter domain"><option value="">All domains</option></select>
-      <input id="mapSearch" class="btn" style="background:var(--bg3);width:150px" aria-label="Search the site map" placeholder="Search…">
-      <select id="mapSearchScope" class="btn" style="background:var(--bg3);max-width:130px" title="What to search">
+      <select id="mapDomain" class="btn btn-field map-domain" title="Filter domain"><option value="">All domains</option></select>
+      <input id="mapSearch" class="btn btn-field map-search" aria-label="Search the site map" placeholder="Search…">
+      <select id="mapSearchScope" class="btn btn-field map-search-scope" title="What to search">
         <option value="path">Path / host</option>
         <option value="headers">Headers</option>
         <option value="body">Body</option>
         <option value="all">All</option>
       </select>
-      <select id="mapMethod" class="btn" style="background:var(--bg3)"><option value="">method</option></select>
-      <select id="mapStatus" class="btn" style="background:var(--bg3)"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
-      <button type="button" class="toggle on" id="mapHideNoise" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hiding 403/404-only</button>
-      <button type="button" class="toggle on" id="mapCollapseIdentical" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapsing identical</button>
-      <select id="mapTag" class="btn" style="background:var(--bg3);max-width:160px" title="Show only endpoints with flows carrying this tag"><option value="">all tags</option></select>
       <div class="seg" id="mapViewSeg"><button data-v="tree" class="on">Tree</button><button data-v="table">Table</button><button data-v="graph">Graph</button><button data-v="params">Params</button></div>
-      <button class="btn" id="mapExpand">Expand all</button>
-      <button class="btn" id="mapFit" title="Fit graph to view" style="display:none" aria-label="Fit graph to view">⤢ Fit</button>
-      <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
       <span id="mapCount" class="count"></span>
       <div class="spacer"></div>
     </div>
+    <div class="toolbar toolbar-secondary">
+      <select id="mapMethod" class="btn btn-field"><option value="">method</option></select>
+      <select id="mapStatus" class="btn btn-field"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
+      <select id="mapTag" class="btn btn-field map-tag" title="Show only endpoints with flows carrying this tag"><option value="">all tags</option></select>
+      <button type="button" class="uisw on" id="mapHideNoise" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hiding 403/404-only</button>
+      <button type="button" class="uisw on" id="mapCollapseIdentical" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapsing identical</button>
+      <div class="spacer"></div>
+      <button class="btn" id="mapExpand">Expand all</button>
+      <button class="btn" id="mapFit" title="Fit graph to view" style="display:none" aria-label="Fit graph to view">⤢ Fit</button>
+      <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
+    </div>
     <div id="mapCrumb" class="map-crumb" style="display:none"></div>
     <div id="mapWarn" class="map-warn" style="display:none"></div>
-    <div id="mapTree" style="flex:1;overflow:auto;padding:10px 14px;font-size:12.5px"></div>
+    <div id="mapTree" class="map-tree"></div>
     <div id="mapTable" class="map-table-wrap" style="display:none;flex:1;overflow:auto;min-height:0"></div>
     <div id="mapGraphWrap" style="display:none;flex:1;min-height:0;position:relative">
       <div id="mapGraphTip" class="map-graph-tip" style="display:none" role="tooltip"></div>
@@ -1158,44 +1189,46 @@ Content-Type: application/json
   </div>
 </div>
 <div id="findCreateModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div role="dialog" aria-modal="true" aria-labelledby="fcTitleLbl" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:560px;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span id="fcTitleLbl" style="font-weight:700;color:var(--accent)">＋ New finding</span>
-      <div class="spacer"></div><button class="btn" id="fcClose" aria-label="Close">✕</button>
+  <div role="dialog" aria-modal="true" aria-labelledby="fcTitleLbl" class="modal-shell find-create-dialog">
+    <div class="modal-shell-head">
+      <span id="fcTitleLbl" class="modal-shell-title">＋ New finding</span>
+      <button class="btn" id="fcClose" aria-label="Close">✕</button>
     </div>
-    <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
-      <input id="fcTitle" class="btn" style="background:var(--bg3);text-align:left" placeholder="Title (e.g. IDOR on /api/user/{id})" aria-label="Finding title">
-      <select id="fcSeverity" class="btn" style="background:var(--bg3)" aria-label="Severity">
+    <div class="modal-shell-body find-create-body">
+      <input id="fcTitle" class="btn btn-field find-create-title" placeholder="Title (e.g. IDOR on /api/user/{id})" aria-label="Finding title">
+      <select id="fcSeverity" class="btn btn-field" aria-label="Severity">
         <option>High</option><option selected>Medium</option><option>Low</option><option>Info</option>
       </select>
-      <textarea id="fcDetail" class="rep-edit" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Details / how to reproduce (markdown)"></textarea>
-      <div class="row"><div class="spacer"></div><button class="btn accent" id="fcSave">Create finding</button></div>
+      <textarea id="fcDetail" class="rep-edit find-create-detail" spellcheck="false" placeholder="Details / how to reproduce (markdown)"></textarea>
+    </div>
+    <div class="modal-shell-foot">
+      <button class="btn btn-primary" id="fcSave">Create finding</button>
     </div>
   </div>
 </div>
 <div id="findPickModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div role="dialog" aria-modal="true" aria-labelledby="fpTitleLbl" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:520px;max-height:80vh;width:92%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span id="fpTitleLbl" style="font-weight:700;color:var(--accent)">➕ Add to finding</span>
-      <div class="spacer"></div><button class="btn" id="fpClose" aria-label="Close">✕</button>
+  <div role="dialog" aria-modal="true" aria-labelledby="fpTitleLbl" class="modal-shell find-pick-dialog">
+    <div class="modal-shell-head">
+      <span id="fpTitleLbl" class="modal-shell-title">➕ Add to finding</span>
+      <button class="btn" id="fpClose" aria-label="Close">✕</button>
     </div>
-    <div id="findPickList" style="padding:12px 14px;overflow:auto"></div>
+    <div id="findPickList" class="modal-shell-body"></div>
   </div>
 </div>
 <div id="findFlowPickModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-  <div role="dialog" aria-modal="true" aria-labelledby="ffpTitleLbl" style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;max-width:640px;max-height:80vh;width:94%;display:flex;flex-direction:column;box-shadow:0 20px 60px var(--shadow)">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <span id="ffpTitleLbl" style="font-weight:700;color:var(--accent)">Pick PoC flows</span>
-      <div class="spacer"></div><button class="btn" id="ffpClose" aria-label="Close">✕</button>
+  <div role="dialog" aria-modal="true" aria-labelledby="ffpTitleLbl" class="modal-shell find-flow-pick-dialog">
+    <div class="modal-shell-head">
+      <span id="ffpTitleLbl" class="modal-shell-title">Pick PoC flows</span>
+      <button class="btn" id="ffpClose" aria-label="Close">✕</button>
     </div>
-    <div style="padding:8px 14px;border-bottom:1px solid var(--line)">
-      <input id="ffpSearch" class="btn" style="width:100%;background:var(--bg3);text-align:left" placeholder="Filter by host, path, method, or flow id (#285)…" aria-label="Filter flows">
+    <div class="find-flow-pick-search">
+      <input id="ffpSearch" class="btn btn-field find-flow-pick-search-input" placeholder="Filter by host, path, method, or flow id (#285)…" aria-label="Filter flows">
     </div>
-    <div id="findFlowPickList" style="padding:8px 14px;overflow:auto;flex:1;min-height:120px"></div>
-    <div class="row" style="padding:10px 14px;border-top:1px solid var(--line);gap:8px">
+    <div id="findFlowPickList" class="modal-shell-body find-flow-pick-list"></div>
+    <div class="modal-shell-foot find-flow-pick-foot">
       <span class="hint" id="ffpCount">0 selected</span>
       <div class="spacer"></div>
-      <button class="btn accent" id="ffpAttach" disabled>Attach as PoC</button>
+      <button class="btn btn-primary" id="ffpAttach" disabled>Attach as PoC</button>
     </div>
   </div>
 </div>
