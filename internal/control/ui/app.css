@@ -992,3 +992,51 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--bg2);border:1px soli
 .dsc-type{min-width:90px}
 .dsc-rep-h{min-width:52px}
 .dsc-note{padding:6px 12px;color:var(--amber)}
+
+/* ---- Autopilot (autonomous AI pentester) ---- */
+.ap-hint{flex:1;min-width:200px;max-width:360px;font-family:var(--mono)}
+.ap-num{display:flex;align-items:center;gap:5px;font-size:var(--fs-micro);color:var(--fg3);white-space:nowrap}
+.ap-num input{width:76px;text-align:right}
+.ap-num>span{opacity:.7}
+/* .ap-status — live status/phase pill; color set per-phase via inline var only */
+.ap-status{margin-left:0;letter-spacing:.4px;text-transform:uppercase}
+.ap-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
+.ap-run{flex:1;display:flex;flex-direction:column;min-height:0;padding:var(--sp-3)}
+/* budget meters */
+.ap-meters{display:flex;gap:var(--sp-3);flex-wrap:wrap;margin-bottom:var(--sp-3)}
+.ap-meter{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3)}
+.ap-meter-top{display:flex;justify-content:space-between;font-size:var(--fs-caption);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--fg3);margin-bottom:5px}
+.ap-meter-val{color:var(--fg2);text-transform:none;letter-spacing:0;font-weight:600;font-family:var(--mono)}
+.ap-meter-bar{height:6px;border-radius:var(--r-pill);background:var(--bg3);overflow:hidden}
+.ap-meter-fill{height:100%;background:var(--grad-accent);border-radius:var(--r-pill);transition:width .3s ease}
+.ap-meter-fill.warn{background:var(--amber)}
+.ap-meter-fill.over{background:var(--red)}
+/* pipeline: plan + candidates side by side */
+.ap-pipeline{flex:1;display:flex;gap:var(--sp-3);min-height:0}
+.ap-plan-pane,.ap-cand-pane{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.ap-plan,.ap-candidates{flex:1;overflow:auto;padding:var(--sp-2) var(--sp-3)}
+.ap-plan-step{padding:6px 8px;border-radius:var(--r-sm);margin-bottom:3px;background:var(--bg2);font-family:var(--mono);font-size:var(--fs-body);color:var(--fg2);line-height:var(--lh-tight)}
+.ap-plan-step .ap-sev{font-weight:700;margin-right:6px}
+.ap-plan-empty{color:var(--fg3);font-size:var(--fs-body);padding:var(--sp-2)}
+/* candidate cards */
+.ap-cand{border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 9px;margin-bottom:5px;background:var(--bg2)}
+.ap-cand-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ap-cand-class{font-weight:700;font-family:var(--mono);font-size:var(--fs-body);color:var(--fg)}
+.ap-cand-sev{font-size:var(--fs-caption);font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.ap-cand-target{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:var(--fs-micro);color:var(--fg3)}
+.ap-cand-outcome{margin-top:4px;font-size:var(--fs-micro);font-family:var(--ui);display:flex;align-items:center;gap:5px}
+.ap-out-verifying{color:var(--amber)}
+.ap-out-filed{color:var(--accent)}
+.ap-out-rejected{color:var(--red)}
+.ap-out-skipped{color:var(--fg3)}
+.ap-cand-link{color:var(--accent);text-decoration:none;font-weight:600;cursor:pointer}
+.ap-cand-link:hover{text-decoration:underline}
+.ap-glassbox{margin-top:var(--sp-3);text-align:center}
+/* run history */
+.ap-history{border-top:1px solid var(--line);padding:var(--sp-3)}
+.ap-history-head{font-size:var(--fs-caption);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg3);margin-bottom:var(--sp-2)}
+.ap-history-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:var(--fs-body)}
+.ap-history-row:last-child{border-bottom:none}
+.ap-hist-status{font-weight:700;font-size:var(--fs-caption);letter-spacing:.4px;text-transform:uppercase;min-width:76px}
+.ap-hist-time{color:var(--fg3);font-family:var(--mono);font-size:var(--fs-micro)}
+.ap-hist-sum{color:var(--fg2);font-family:var(--mono);font-size:var(--fs-micro);margin-left:auto}

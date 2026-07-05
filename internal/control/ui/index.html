@@ -36,6 +36,10 @@
 
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
+  <div class="nav-rail-group" data-nav-group="autopilot">
+    <div class="nav-rail-group-label">Autopilot</div>
+    <button class="tab" id="tab-autopwn" role="tab" aria-selected="false" aria-controls="panel-autopwn" data-tab="autopwn" data-group="Autopilot">Autopilot<span id="autopwnBadge" class="nav-dot" aria-label="Unread Autopilot updates"></span></button>
+  </div>
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
     <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
@@ -69,6 +73,46 @@
 </div>
 
 <div id="main">
+  <!-- AUTOPILOT (autonomous AI pentester) -->
+  <div class="panel" id="panel-autopwn" role="tabpanel" aria-labelledby="tab-autopwn" data-panel="autopwn">
+    <div class="toolbar">
+      <input id="apTargetHint" class="btn btn-field ap-hint" placeholder="Target hint (optional) — e.g. focus on /api/*" spellcheck="false" aria-label="Target hint for the run">
+      <label class="ap-num" title="Hard cap on total requests sent this run"><span>⇉</span><input id="apMaxReq" class="btn btn-field" type="number" min="1" value="2000" aria-label="Max requests">req</label>
+      <label class="ap-num" title="Hard cap on LLM tokens spent this run"><span>◈</span><input id="apMaxTok" class="btn btn-field" type="number" min="1000" step="1000" value="500000" aria-label="Max tokens">tok</label>
+      <label class="ap-num" title="Hard wall-clock limit in minutes"><span>⏱</span><input id="apMaxMin" class="btn btn-field" type="number" min="1" value="30" aria-label="Max wall-clock minutes">min</label>
+      <button class="btn btn-primary" id="apStart">Start ▸</button>
+      <button class="btn btn-danger" id="apStop" disabled title="Kill switch — cancels the run immediately">■ Stop</button>
+      <span id="apStatus" class="badge ap-status" style="display:none"></span>
+      <div class="spacer"></div>
+    </div>
+    <div class="ap-body" id="apBody">
+      <div class="state-empty" id="apEmpty">
+        <div class="state-empty-icon">🤖</div>
+        <div class="state-empty-title">Autopilot is idle</div>
+        <p class="state-empty-hint">Fully-autonomous AI pentester — it reads your captured history, plans and runs active security testing against your <b>in-scope</b> targets, and files <b>only machine-verified</b> findings. Set budgets and press <b>Start</b>.</p>
+        <p class="state-empty-hint state-empty-cmdk">Add <b>target scope rules</b> in Settings first — Autopilot refuses to run without a defined boundary.</p>
+      </div>
+      <div id="apRun" class="ap-run" style="display:none">
+        <div class="ap-meters" id="apMeters"></div>
+        <div class="ap-pipeline">
+          <section class="pane ap-plan-pane">
+            <div class="pane-head"><span class="lbl">PLAN</span><span id="apPhaseNote" class="hint"></span></div>
+            <div id="apPlan" class="ap-plan scroll"></div>
+          </section>
+          <section class="pane ap-cand-pane">
+            <div class="pane-head"><span class="lbl">CANDIDATES</span><span id="apCandCounts" class="hint"></span></div>
+            <div id="apCandidates" class="ap-candidates scroll"></div>
+          </section>
+        </div>
+        <p class="hint ap-glassbox">Every request is visible in <b>Proxy History</b>; every step in the <b>Activity</b> feed (the glass box); verified findings land in <b>Findings</b>.</p>
+      </div>
+      <div class="ap-history" id="apHistoryWrap" style="display:none">
+        <div class="ap-history-head">PAST RUNS</div>
+        <div id="apHistory" class="ap-history-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- PROXY -->
   <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
     <div class="toolbar">

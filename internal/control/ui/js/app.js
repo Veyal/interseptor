@@ -26,9 +26,10 @@ import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from '
 // static-importing them buys nothing. Discover and Map are the only two panels
 // whose code never runs unless the user actually visits them — see
 // loadDiscoverModule()/loadMapModule() below for the dynamic import() (Phase 4a).
-let discoverMod=null, mapMod=null;
+let discoverMod=null, mapMod=null, autopwnMod=null;
 function loadDiscoverModule(){ return discoverMod || (discoverMod=import('./discovery.js')); }
 function loadMapModule(){ return mapMod || (mapMod=import('./map.js')); }
+function loadAutopwnModule(){ return autopwnMod || (autopwnMod=import('./autopwn.js')); }
 
 /* ---- nav-rail badges (Discover/Map off-screen-update dots) ---- */
 // Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
@@ -60,6 +61,7 @@ function activateTab(t){
   if(t.dataset.tab==='findings')loadFindings();
   if(t.dataset.tab==='discover'){clearNavDot('discBadge');loadDiscoverModule().then(m=>m.loadDiscovery());}
   if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
+  if(t.dataset.tab==='autopwn'){clearNavDot('autopwnBadge');loadAutopwnModule().then(m=>m.loadAutopwn());}
   if(t.dataset.tab==='notes')loadNotes();
 }
 function goToNotes(){
@@ -192,6 +194,7 @@ function resyncAfterStaleReconnect(){
   if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))renderActivity();
   if(document.querySelector('.tab[data-tab="discover"]')?.classList.contains('active'))loadDiscoverModule().then(m=>m.refreshDiscovery());
   if(document.querySelector('.tab[data-tab="map"]')?.classList.contains('active'))loadMapModule().then(m=>m.loadEndpoints());
+  if(document.querySelector('.tab[data-tab="autopwn"]')?.classList.contains('active'))loadAutopwnModule().then(m=>m.refreshAutopwn());
   refreshIntercept().then(()=>renderIcptStat());
   loadHumanInput();
 }
@@ -283,6 +286,7 @@ function connectEvents(){
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
     else if(m.type==='discovery.update'){if(document.querySelector('.tab[data-tab="discover"]').classList.contains('active'))loadDiscoverModule().then(mod=>mod.refreshDiscovery());else setNavDot('discBadge',true);}
+    else if(m.type==='autopwn.update'){const onTab=document.querySelector('.tab[data-tab="autopwn"]').classList.contains('active');if(!onTab)setNavDot('autopwnBadge',true);loadAutopwnModule().then(mod=>mod.onAutopwnUpdate(m));}
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyAiDisabledUI();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
   };
@@ -319,6 +323,7 @@ function cmdkCommands(){
   const go=name=>()=>document.querySelector('.tab[data-tab="'+name+'"]').click();
   const goSet=sec=>()=>{document.querySelector('.tab[data-tab="settings"]').click();const b=document.querySelector('#setNav button[data-sec="'+sec+'"]');if(b)b.click();};
   return [
+    ...(state.aiDisabled?[]:[{t:'Go to Autopilot',kw:'autopilot autopwn autonomous ai pentest agent run scan verified findings',run:go('autopwn')}]),
     {t:'Go to Proxy',kw:'proxy history flows requests traffic inspect captured',run:go('proxy')},
     {t:'Go to Intercept',kw:'hold forward drop match replace rules',run:go('intercept')},
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
