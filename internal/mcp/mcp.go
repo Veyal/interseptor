@@ -1376,6 +1376,33 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/activescan/stop", nil) })
 
+	s.add("autopwn_start",
+		"Launch a FULLY AUTONOMOUS pentest run: the engine reads captured in-scope history, plans and executes active testing using Interceptor's own tools, verifies every candidate through a 4-gate verifier, and files ONLY machine-proven findings (no 'possible' issues). Scope-gated — refuses to start without target-scope rules; own listeners are never probed. Budgets (maxRequests/maxTokens/maxWallMs) are hard kill switches. Returns immediately with a runId; the run continues in the background — poll autopwn_state. targetHint optionally steers the planning phase.",
+		obj(map[string]any{
+			"maxRequests": p("integer", "hard cap on real HTTP sends (0 = engine default)"),
+			"maxTokens":   p("integer", "advisory LLM token ceiling (0 = unbounded)"),
+			"maxWallMs":   p("integer", "hard wall-clock kill in milliseconds (0 = unbounded)"),
+			"targetHint":  p("string", "optional operator steer for the planning phase"),
+		}),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/autopwn/start", map[string]any{
+				"budget": map[string]any{
+					"maxRequests": argInt(a, "maxRequests", 0),
+					"maxTokens":   argInt(a, "maxTokens", 0),
+					"maxWallMs":   argInt(a, "maxWallMs", 0),
+				},
+				"targetHint": argStr(a, "targetHint"),
+			})
+		})
+
+	s.add("autopwn_state", "Autonomous-pentest run progress: phase, budget consumption, and candidate/verified/filed/rejected counts for the current or last run.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/autopwn/state") })
+
+	s.add("autopwn_stop", "Stop the running autonomous pentest (kill switch — cancels the run context immediately).",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/autopwn/stop", nil) })
+
 	s.add("decode",
 		"Encode/decode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode, smart (auto-detect one layer).",
 		obj(map[string]any{

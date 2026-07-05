@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interceptor/internal/aiassist"
+	"github.com/Veyal/interceptor/internal/autopwn"
 	"github.com/Veyal/interceptor/internal/bind"
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/discovery"
@@ -116,6 +117,10 @@ type Hub struct {
 	mcpKeysSeen atomic.Bool // last-known "API keys exist" — mcpAuthorized fails closed on a store error once true
 
 	as asState // active-scan state (armed/running/findings)
+
+	autopwnMu     sync.Mutex      // guards lazy engine + tool-bus construction
+	autopwnEngine *autopwn.Engine // autonomous-pentest ("Autopilot") run engine (built lazily)
+	autopwnTools  *mcp.Server     // in-process tool bus (built lazily once the control addr is known)
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
 	updLatest string

@@ -34,6 +34,7 @@ func (h *Hub) routes() {
 	h.registerAuthzRoutes(az)
 	h.registerDiscoveryRoutes(disc)
 	h.registerMetaRoutes(meta)
+	h.registerAutopwnRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
 }
@@ -228,6 +229,16 @@ func (h *Hub) registerDiscoveryRoutes(disc *discoveryAPI) {
 	h.mux.HandleFunc("GET /api/discovery/suggest", disc.discoverySuggest)
 	h.mux.HandleFunc("GET /api/discovery/scope-targets", disc.discoveryScopeTargets)
 	h.mux.HandleFunc("POST /api/discovery/inspect", disc.discoveryInspect)
+}
+
+// registerAutopwnRoutes wires the autonomous-pentest ("Autopilot") run lifecycle.
+// The handlers hang off *Hub directly (the engine is a Hub-owned singleton built
+// lazily), so there is no dedicated API facade type.
+func (h *Hub) registerAutopwnRoutes() {
+	h.mux.HandleFunc("POST /api/autopwn/start", h.autopwnStart)
+	h.mux.HandleFunc("POST /api/autopwn/stop", h.autopwnStop)
+	h.mux.HandleFunc("GET /api/autopwn/state", h.autopwnStateHandler)
+	h.mux.HandleFunc("GET /api/autopwn/runs", h.autopwnRuns)
 }
 
 func (h *Hub) registerMetaRoutes(meta *metaAPI) {
