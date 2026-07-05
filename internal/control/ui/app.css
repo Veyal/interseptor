@@ -56,21 +56,48 @@ button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
 /* top bar */
-#bar{height:38px;flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 13px;user-select:none;z-index:10}
+#bar{height:var(--topbar-h);flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 13px;user-select:none;z-index:10}
 #logo{width:15px;height:15px;border-radius:4px;background:var(--accent);box-shadow:0 0 10px var(--accentDim)}
 .brand{font-weight:700;letter-spacing:.5px}
 .tag{font-size:9.5px;color:var(--fg3);letter-spacing:1.5px}
 .kv{font-size:10.5px;color:var(--fg2)}
 .kv b{color:var(--fg);font-weight:600}
+/* breadcrumb — "Group / Panel" context indicator, updated on every tab switch */
+#crumb{font-size:11px;color:var(--fg3);font-family:var(--ui);display:flex;align-items:center;gap:5px;white-space:nowrap}
+#crumb .crumb-group{color:var(--fg3)}
+#crumb .crumb-sep{color:var(--fg3);opacity:.5}
+#crumb .crumb-panel{color:var(--fg2);font-weight:600}
 #themeToggle{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--bg3);color:var(--fg2);font-size:13px;line-height:1}
 #themeToggle:hover{color:var(--fg);background:var(--line)}
+/* #cmdkBtn — the command palette affordance. Per the redesign roadmap this was
+   "under-discovered" as a bare icon; it's now a labeled pill sized to sit
+   comfortably in the top bar, with the shortcut shown as a <kbd>. */
+#cmdkBtn{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;font-family:var(--ui);font-size:11.5px;font-weight:600}
+#cmdkBtn .cmdk-label{color:var(--fg2)}
+#cmdkBtn kbd{font-family:var(--ui);font-size:9.5px;font-weight:700;color:var(--fg3);background:var(--bg1);border:1px solid var(--line2);border-radius:4px;padding:1px 5px;line-height:1.4}
+#cmdkBtn:hover kbd{color:var(--fg2)}
 
-/* tabs */
-#tabs{height:40px;flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 10px;overflow-x:auto;z-index:9;box-shadow:0 4px 20px rgba(0,0,0,0.1)}
-.tab{font-size:12px;font-weight:600;color:var(--fg2);padding:7px 14px;border-radius:7px}
-.tab:hover{color:var(--fg)}
+/* app row — holds the nav rail + #main side by side, below the top bar */
+#appRow{flex:1;min-height:0;display:flex;flex-direction:row}
+
+/* nav rail — persistent left navigation, grouped into 5 labeled sections
+   (replaces the old flat #tabs horizontal strip). Same element id (#tabs,
+   role=tablist) as before — only its layout/placement changed, so existing
+   JS selectors ($('#tabs'), .tab, data-tab, aria-controls) keep working. */
+#tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-right:1px solid var(--line);border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:var(--sp-3) var(--sp-2);overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:4px 0 20px rgba(0,0,0,0.08)}
+.nav-rail-group{display:flex;flex-direction:column;gap:2px}
+.nav-rail-group+.nav-rail-group{margin-top:var(--sp-3)}
+.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-caption);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg3);padding:4px 10px 3px}
+.nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:var(--sp-2)}
+.tab{position:relative;font-family:var(--ui);font-size:12.5px;font-weight:600;color:var(--fg2);padding:8px 12px;border-radius:7px;text-align:left;display:flex;align-items:center;width:100%}
+.tab:hover{color:var(--fg);background:var(--bg3)}
 .tab.active{color:var(--accent);background:var(--accentDim)}
-.badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:6px}
+.badge{font-size:10px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:9px;padding:1px 6px;margin-left:auto}
+/* .nav-dot — lightweight off-screen-update indicator for rail items that don't
+   have a numeric badge yet (Discover/Map). Mirrors .badge placement but as a
+   plain dot, per the roadmap's "fold into the rail's badge system" ask. */
+.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);margin-left:auto;flex:none;display:none}
+.nav-dot.on{display:block}
 .ai-tag{font-size:9px;font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 /* tag chips on a History row — click to filter by that tag */
 .flowtag{font-size:9.5px;font-weight:600;background:var(--bg3);color:var(--fg2);border:1px solid var(--line2);border-radius:4px;padding:0 5px;margin-left:5px;vertical-align:middle;cursor:pointer}
@@ -279,6 +306,13 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .state-empty-icon{font-size:34px;opacity:.45;line-height:1}
 .state-empty-title{font-size:var(--fs-lg);font-weight:700;color:var(--fg2)}
 .state-empty-hint{max-width:440px;margin:0;color:var(--fg3);font-size:var(--fs-body);line-height:var(--lh-normal)}
+/* .state-empty-cmdk — the command-palette callout line added to a few
+   representative empty states (Proxy history, Scanner issues) per the
+   redesign roadmap's "surface the palette in every empty state" goal. Dimmer
+   than the primary hint so it reads as a secondary, always-available escape
+   hatch rather than competing with the panel-specific call to action. */
+.state-empty-cmdk{opacity:.7;display:flex;align-items:center;justify-content:center;gap:5px;margin-top:2px}
+.state-empty-cmdk kbd{font-size:9.5px}
 
 /* .state-error — shared error-state component (icon + message + optional
    retry button), red-tinted. Replaces hand-rolled inline red innerHTML. */
@@ -456,7 +490,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .settings-search{font-family:var(--ui);width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12.5px;color:var(--fg);margin-bottom:8px}
 .settings-search::placeholder{color:var(--fg3)}
 .settings-search:focus{border-color:var(--accent)}
-.settings-nav-empty{font-family:var(--ui);font-size:12px;color:var(--fg3);padding:8px 12px}
+.settings-nav-empty{font-family:var(--ui);font-size:12px;color:var(--fg3);padding:8px 12px;line-height:1.5}
+.settings-nav-empty kbd{font-size:9px;padding:1px 4px}
 .settings-nav-group{display:flex;flex-direction:column;gap:3px}
 .settings-nav-group+.settings-nav-group{margin-top:var(--sp-3)}
 .settings-nav-group-label{font-family:var(--ui);font-size:var(--fs-caption);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg3);padding:6px 12px 2px}

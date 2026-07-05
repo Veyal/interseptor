@@ -6,9 +6,14 @@ import { retentionStats, loadRetention } from './settings.js';
 import { openAi } from './ai.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
-import { prefillDiscovery } from './discovery.js';
-import { focusMapSearch } from './map.js';
 import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+
+// discovery.js and map.js are dynamically imported (not statically, like the
+// modules above) because they are the two panels lazy-loaded on first visit
+// (Phase 4a, UI-REDESIGN-ROADMAP.md §4) — a static import here would defeat
+// that by pulling them in at boot via proxy.js's own always-loaded chain.
+const prefillDiscovery=(...args)=>import('./discovery.js').then(m=>m.prefillDiscovery(...args));
+const focusMapSearch=(...args)=>import('./map.js').then(m=>m.focusMapSearch(...args));
 
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.

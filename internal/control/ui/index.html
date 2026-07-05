@@ -6,6 +6,11 @@
 <title>Interceptor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='4'%20fill='%2300e08a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
+<!-- Modulepreload hints for the tabs users most often visit right after Proxy
+     (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
+     doesn't stall on module fetch/parse (Phase 4a, UI-REDESIGN-ROADMAP.md §4). -->
+<link rel="modulepreload" href="/js/tools.js">
+<link rel="modulepreload" href="/js/scanner.js">
 <script>
 // Apply the saved (or system) theme before first paint to avoid a flash.
 (function(){try{
@@ -19,30 +24,48 @@
   <div id="bar">
   <div id="logo"></div>
   <span class="brand">INTERCEPTOR</span>
+  <span id="crumb" aria-live="polite"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
   <div class="spacer"></div>
   <div class="row" style="gap:6px" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv" id="deviceProxyChip" title="Device proxy endpoint for phones" style="padding:2px 8px;font-size:inherit"><b id="deviceProxyAddr">…</b></button><span class="kv" id="capStat" style="color:var(--fg3)"></span><span class="kv" id="icptStat" aria-live="polite" style="display:none;color:var(--amber);font-weight:600"></span></div>
   <span class="kv" style="color:var(--fg3)">ctrl <b id="controlAddr">…</b></span>
-  <button id="cmdkBtn" class="btn" title="Ctrl+K" aria-label="Command palette" style="padding:4px 10px">⌘K</button>
+  <button id="cmdkBtn" class="btn" title="Ctrl+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme">☾</button>
 </div>
 
 <div id="humanInputBar" role="region" aria-label="AI is asking for your input" style="display:none"></div>
 
-<div id="tabs" role="tablist" aria-label="Main navigation">
-  <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy">Proxy</button>
-  <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
-  <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater">Repeater</button>
-  <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder">Intruder</button>
-  <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner">Scanner</button>
-  <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings">Findings</button>
-  <button class="tab" id="tab-discover" role="tab" aria-selected="false" aria-controls="panel-discover" data-tab="discover">Discover</button>
-  <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map">Map</button>
-  <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes">Notes</button>
-  <button class="tab" id="tab-activity" data-ai-ui role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
-  <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings">Settings</button>
-  <div class="spacer"></div>
-  <span id="projBadge" role="button" tabindex="0" style="align-self:center;margin-left:10px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:6px;display:none;cursor:pointer" title="Active project — click to switch or create a project" aria-label="Active project — click to switch or create a project" aria-haspopup="dialog"></span>
-  <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="align-self:center;padding:0 12px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
+<div id="appRow">
+<div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
+  <div class="nav-rail-group" data-nav-group="capture">
+    <div class="nav-rail-group-label">Capture</div>
+    <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
+    <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept" data-group="Capture">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
+  </div>
+  <div class="nav-rail-group" data-nav-group="test">
+    <div class="nav-rail-group-label">Test</div>
+    <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test">Repeater</button>
+    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test">Intruder</button>
+  </div>
+  <div class="nav-rail-group" data-nav-group="recon">
+    <div class="nav-rail-group-label">Recon</div>
+    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon">Scanner</button>
+    <button class="tab" id="tab-discover" role="tab" aria-selected="false" aria-controls="panel-discover" data-tab="discover" data-group="Recon">Discover<span id="discBadge" class="nav-dot" aria-label="Unread discovery updates"></span></button>
+    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon">Map<span id="mapBadge" class="nav-dot" aria-label="Unread map updates"></span></button>
+  </div>
+  <div class="nav-rail-group" data-nav-group="report">
+    <div class="nav-rail-group-label">Report</div>
+    <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report">Findings</button>
+    <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report">Notes</button>
+    <button class="tab" id="tab-activity" data-ai-ui role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
+  </div>
+  <div class="nav-rail-group" data-nav-group="configure">
+    <div class="nav-rail-group-label">Configure</div>
+    <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure">Settings</button>
+  </div>
+  <div class="nav-rail-foot">
+    <span id="projBadge" role="button" tabindex="0" style="padding:5px 9px;font-size:11px;font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:6px;display:none;cursor:pointer" title="Active project — click to switch or create a project" aria-label="Active project — click to switch or create a project" aria-haspopup="dialog"></span>
+    <a id="verBadge" href="https://github.com/Veyal/interceptor/releases" target="_blank" rel="noopener" style="padding:2px 9px;font-size:11px;color:var(--fg3);text-decoration:none" title="Interceptor"></a>
+  </div>
 </div>
 
 <div id="main">
@@ -81,7 +104,7 @@
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p></div></div>
+    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
@@ -295,6 +318,7 @@ Content-Type: application/json
           <div class="state-empty-icon">🛡️</div>
           <div class="state-empty-title">No issues yet</div>
           <p class="state-empty-hint">Run a scan to find issues.</p>
+          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
         </div>
       </div>
       <div id="scanDetail" class="pane scan-detail-pane">
@@ -479,7 +503,7 @@ Content-Type: application/json
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings</div>
+        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -929,6 +953,7 @@ Content-Type: application/json
       </div>
     </div>
   </div>
+</div>
 </div>
 
 <div id="ctxmenu"></div>

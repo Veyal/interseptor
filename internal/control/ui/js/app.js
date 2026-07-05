@@ -7,8 +7,6 @@ import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReloa
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel } from './scanner.js';
-import { loadEndpoints } from './map.js';
-import { loadDiscovery, refreshDiscovery } from './discovery.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyAiDisabledUI, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
@@ -21,6 +19,31 @@ import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
+// discover.js and map.js are NOT imported here: every other feature module is
+// already reachable from the boot sequence below (loadIssues/loadFindings/
+// loadSettings/etc. all run unconditionally on load, and proxy.js's own import
+// chain pulls in tags/ai/authz/tlsdiag/flowmodal regardless of active tab), so
+// static-importing them buys nothing. Discover and Map are the only two panels
+// whose code never runs unless the user actually visits them — see
+// loadDiscoverModule()/loadMapModule() below for the dynamic import() (Phase 4a).
+let discoverMod=null, mapMod=null;
+function loadDiscoverModule(){ return discoverMod || (discoverMod=import('./discovery.js')); }
+function loadMapModule(){ return mapMod || (mapMod=import('./map.js')); }
+
+/* ---- nav-rail badges (Discover/Map off-screen-update dots) ---- */
+// Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
+// visit) but as a simple on/off dot per the roadmap's minimal-first-pass ask —
+// full SSE-contract unification is a later, separate step.
+function setNavDot(id,on){ const el=$('#'+id); if(el)el.classList.toggle('on',!!on); }
+function clearNavDot(id){ setNavDot(id,false); }
+
+/* ---- breadcrumb (top bar "Group / Panel" context) ---- */
+function updateCrumb(t){
+  const crumb=$('#crumb'); if(!crumb)return;
+  const g=crumb.querySelector('.crumb-group'), p=crumb.querySelector('.crumb-panel');
+  if(g)g.textContent=t.dataset.group||'';
+  if(p)p.textContent=(t.textContent||'').trim().replace(/\d+$/,'').trim();
+}
 
 /* ---- tabs ---- */
 function activateTab(t){
@@ -31,11 +54,12 @@ function activateTab(t){
   t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
   $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
   try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
+  updateCrumb(t);
   if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
   if(t.dataset.tab==='scanner')loadScanTargets();
   if(t.dataset.tab==='findings')loadFindings();
-  if(t.dataset.tab==='discover')loadDiscovery();
-  if(t.dataset.tab==='map')loadEndpoints();
+  if(t.dataset.tab==='discover'){clearNavDot('discBadge');loadDiscoverModule().then(m=>m.loadDiscovery());}
+  if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
   if(t.dataset.tab==='notes')loadNotes();
 }
 function goToNotes(){
@@ -48,14 +72,17 @@ $$('.tab').forEach(t=>{
   // Roving tabindex: only the active tab is in the tab sequence initially
   t.tabIndex=t.classList.contains('active')?0:-1;
 });
-// Roving arrow-key navigation within the tablist (ARIA tablist pattern).
+// Roving arrow-key navigation within the tablist (ARIA tablist pattern). The
+// rail is vertical, so Up/Down walks it; Left/Right are also accepted so
+// muscle memory from the old horizontal strip still works.
 $('#tabs').addEventListener('keydown',e=>{
-  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
   const tabs=$$('.tab');
   const idx=tabs.indexOf(document.activeElement);
   if(idx<0)return;
   e.preventDefault();
-  const next=e.key==='ArrowRight'?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
+  const fwd=e.key==='ArrowRight'||e.key==='ArrowDown';
+  const next=fwd?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
   next.focus();
   activateTab(next);
 });
@@ -131,7 +158,7 @@ function scheduleMapRefresh(){
     const sig=state.flows.length+':'+((state.flows[0]&&state.flows[0].id)||0);
     if(sig===mapLoadedSig) return;
     mapLoadedSig=sig;
-    loadEndpoints();
+    loadMapModule().then(m=>m.loadEndpoints());
   },2000);
 }
 
@@ -139,7 +166,7 @@ function scheduleMapRefresh(){
 function connectEvents(){
   const es=new EventSource('/api/events');
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
-    if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();}
+    if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
     else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
@@ -154,7 +181,7 @@ function connectEvents(){
     else if(m.type==='checks.update'){if($('#checksModal')&&$('#checksModal').style.display==='flex')loadChecksList();}
     else if(m.type==='activescan.update'){if($('#activeModal')&&$('#activeModal').style.display==='flex')loadActive();}
     else if(m.type==='oob.update'){if($('#oobModal')&&$('#oobModal').style.display==='flex')loadOob();}
-    else if(m.type==='discovery.update'){if(document.querySelector('.tab[data-tab="discover"]').classList.contains('active'))refreshDiscovery();}
+    else if(m.type==='discovery.update'){if(document.querySelector('.tab[data-tab="discover"]').classList.contains('active'))loadDiscoverModule().then(mod=>mod.refreshDiscovery());else setNavDot('discBadge',true);}
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyAiDisabledUI();applyOobDisabledUI();}
     else if(m.type==='notes.update')loadNotes();
     else if(m.type==='findings.update')loadFindings();
