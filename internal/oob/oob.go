@@ -41,11 +41,19 @@ type Interaction struct {
 }
 
 // Catcher records OOB interactions in memory.
+//
+// The interaction ring (items/seq/notify) is guarded by mu; the token→probe
+// correlation map (corr/corrOrder) is guarded by its own cmu so correlation is
+// purely additive metadata and never contends with the hot recording path.
 type Catcher struct {
 	mu     sync.Mutex
 	items  []Interaction
 	seq    int64
 	notify func()
+
+	cmu       sync.Mutex
+	corr      map[string]Correlation
+	corrOrder []string // insertion order, for bounding the map
 }
 
 // New returns an empty Catcher.

@@ -222,17 +222,30 @@ func (s *Server) callTool(params json.RawMessage) any {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return toolError("invalid params: " + err.Error())
 	}
-	t, ok := s.tools[p.Name]
-	if !ok {
-		return toolError("unknown tool: " + p.Name)
+	text, err := s.runTool(p.Name, p.Arguments)
+	if err != nil {
+		return toolError(err.Error())
 	}
-	if p.Arguments == nil {
-		p.Arguments = map[string]any{}
+	return map[string]any{"content": []map[string]any{{"type": "text", "text": text}}}
+}
+
+// runTool is the single execution path for every tool invocation, whether it
+// arrives over JSON-RPC (callTool) or in-process (Call). It looks the tool up,
+// runs it, and fires the best-effort Activity report — timing, summary, intent,
+// and result snippet — identically for both callers, so the live AI-activity
+// feed and FlagAI History tagging behave the same regardless of transport.
+func (s *Server) runTool(name string, args map[string]any) (string, error) {
+	t, ok := s.tools[name]
+	if !ok {
+		return "", fmt.Errorf("unknown tool: %s", name)
+	}
+	if args == nil {
+		args = map[string]any{}
 	}
 	start := time.Now()
-	text, err := t.call(p.Arguments)
+	text, err := t.call(args)
 	if s.report != nil {
-		a := Activity{Tool: p.Name, Summary: activitySummary(p.Name, p.Arguments), OK: err == nil, Ms: time.Since(start).Milliseconds(), Intent: argStr(p.Arguments, "intent")}
+		a := Activity{Tool: name, Summary: activitySummary(name, args), OK: err == nil, Ms: time.Since(start).Milliseconds(), Intent: argStr(args, "intent")}
 		if err != nil {
 			a.Result = firstLine(err.Error(), 160)
 		} else {
@@ -240,10 +253,17 @@ func (s *Server) callTool(params json.RawMessage) any {
 		}
 		s.report(a)
 	}
-	if err != nil {
-		return toolError(err.Error())
-	}
-	return map[string]any{"content": []map[string]any{{"type": "text", "text": text}}}
+	return text, err
+}
+
+// Call invokes a registered tool by name in-process, returning its text result.
+// It is the seam the autonomous pentest engine (internal/autopwn) uses to drive
+// all tools without a JSON-RPC round-trip. Activity logging + FlagAI History
+// tagging still happen via the tool's own REST calls, exactly as for JSON-RPC:
+// Call routes through the same runTool helper as callTool, so the Activity
+// report (timing, summary, intent, outcome) is emitted identically.
+func (s *Server) Call(name string, args map[string]any) (string, error) {
+	return s.runTool(name, args)
 }
 
 func toolError(msg string) any {

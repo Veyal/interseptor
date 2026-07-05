@@ -194,6 +194,38 @@ CREATE TABLE IF NOT EXISTS tag_meta (
   tag TEXT PRIMARY KEY,
   color TEXT NOT NULL DEFAULT ''
 );
+
+-- One row per autonomous-pentest ("Autopilot") run. The scope/plan/budget/summary
+-- columns hold opaque JSON snapshots the engine owns; the store never inspects them.
+CREATE TABLE IF NOT EXISTS pentest_run (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planning',
+  scope TEXT NOT NULL DEFAULT '',
+  plan TEXT NOT NULL DEFAULT '',
+  budget TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_pentest_run_ts ON pentest_run(ts);
+
+-- The machine proof-record behind a verified finding (1:1 with a finding,
+-- keyed by finding_id — one proof-record per finding). Distinguishes a
+-- machine-proven finding from an operator's hand-set verified status.
+CREATE TABLE IF NOT EXISTS finding_verification (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  finding_id INTEGER NOT NULL UNIQUE,
+  run_id INTEGER NOT NULL DEFAULT 0,
+  vuln_class TEXT NOT NULL DEFAULT '',
+  gates TEXT NOT NULL DEFAULT '',
+  repro_count INTEGER NOT NULL DEFAULT 0,
+  oob_token TEXT NOT NULL DEFAULT '',
+  baseline_flow INTEGER NOT NULL DEFAULT 0,
+  payload_flow INTEGER NOT NULL DEFAULT 0,
+  confidence INTEGER NOT NULL DEFAULT 0,
+  ts INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_finding_verification_run ON finding_verification(run_id);
 `
 
 // Open creates (or opens) the database and body store under dir.
