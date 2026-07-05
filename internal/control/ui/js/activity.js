@@ -34,8 +34,8 @@ export function renderActivity(){
   const a=all.filter(passesFilter);
   const total=all.length;
   $('#actCount').textContent=total?(a.length<total?a.length+' / '+total:total+(total===1?' action':' actions')):'';
-  if(!total){box.innerHTML='<div class="empty">No AI activity yet.<br>Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</div>';return;}
-  if(!a.length){box.innerHTML='<div class="empty">No activity matches the current filter.</div>';return;}
+  if(!total){box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🛰️</div><div class="state-empty-title">No AI activity yet</div><p class="state-empty-hint">Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</p></div>';return;}
+  if(!a.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🔍</div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No activity matches the current filter.</p></div>';return;}
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
     const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows

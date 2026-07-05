@@ -313,38 +313,47 @@ Content-Type: application/json
   <!-- Content discovery (forced-browse) -->
   <div class="panel" id="panel-discover" role="tabpanel" aria-labelledby="tab-discover" data-panel="discover">
     <div class="toolbar">
-      <input id="dscBase" class="btn" style="background:var(--bg3);flex:1;min-width:240px;font-family:var(--mono)" placeholder="https://target.com/  (base URL)" spellcheck="false" aria-label="Base URL to brute-force">
-      <button class="btn accent" id="dscStart">Start ▸</button>
-      <button class="btn danger" id="dscStop" disabled>Stop</button>
+      <input id="dscBase" class="btn btn-field dsc-base" placeholder="https://target.com/  (base URL)" spellcheck="false" aria-label="Base URL to brute-force">
+      <button class="btn btn-primary" id="dscStart">Start ▸</button>
+      <button class="btn btn-danger" id="dscStop" disabled>Stop</button>
+      <span id="dscCount" class="count"></span>
+      <div class="spacer"></div>
+    </div>
+    <div class="toolbar toolbar-secondary">
       <button class="btn" id="dscScope" title="Fill base URL from in-scope include rules">◎ From scope</button>
       <button class="btn" id="dscSeeds" title="Add path segments from captured history for this host">＋ History seeds</button>
       <button class="btn" id="dscAi" data-ai-ui title="Ask AI to suggest paths (needs AI key in Settings)">✨ AI paths</button>
       <button class="btn" id="dscWordBtn" aria-expanded="false">Wordlist ▾ <span id="dscWordCount" class="count"></span></button>
-      <span id="dscCount" class="count"></span>
       <div class="spacer"></div>
     </div>
     <details class="dsc-opts">
       <summary>Options</summary>
       <div class="dsc-opts-row">
-        <label class="hint">Ext <input id="dscExt" class="btn" style="background:var(--bg3);width:150px" placeholder=".php .bak .json" title="Extensions appended to each word (space/comma separated)"></label>
-        <label class="hint" title="Recurse into found directories up to the given depth">Recurse <input type="checkbox" id="dscRec"> depth <input id="dscDepth" class="btn" type="number" min="0" max="8" value="2" style="background:var(--bg3);width:48px"></label>
-        <label class="hint">Threads <input id="dscThreads" class="btn" type="number" min="1" max="64" value="20" style="background:var(--bg3);width:64px"></label>
-        <label class="hint">Delay ms <input id="dscDelay" class="btn" type="number" min="0" value="0" style="background:var(--bg3);width:64px" title="Throttle: ms between dispatches"></label>
-        <label class="hint">Soft-404 len <input id="dscFilterLen" class="btn" type="number" min="0" value="0" style="background:var(--bg3);width:84px" title="Suppress results whose body length equals this (manual soft-404 filter)"></label>
+        <label class="hint">Ext <input id="dscExt" class="btn btn-field dsc-ext" placeholder=".php .bak .json" title="Extensions appended to each word (space/comma separated)"></label>
+        <label class="hint" title="Recurse into found directories up to the given depth">Recurse <input type="checkbox" id="dscRec"> depth <input id="dscDepth" class="btn btn-field dsc-num-sm" type="number" min="0" max="8" value="2"></label>
+        <label class="hint">Threads <input id="dscThreads" class="btn btn-field dsc-num-md" type="number" min="1" max="64" value="20"></label>
+        <label class="hint">Delay ms <input id="dscDelay" class="btn btn-field dsc-num-md" type="number" min="0" value="0" title="Throttle: ms between dispatches"></label>
+        <label class="hint">Soft-404 len <input id="dscFilterLen" class="btn btn-field dsc-num-lg" type="number" min="0" value="0" title="Suppress results whose body length equals this (manual soft-404 filter)"></label>
         <label class="hint" title="Re-issue each found URL so it lands in History and the Map"><input type="checkbox" id="dscRecord" checked> Save hits to History/Map</label>
         <label class="hint" title="Auto-tag recorded endpoints that look like APIs (/api, /v1, .json, …) with the 'api' tag"><input type="checkbox" id="dscAutoTagApi" checked> Tag APIs</label>
       </div>
     </details>
-    <div id="dscWordWrap" style="display:none;padding:8px 12px;border-bottom:1px solid var(--line)">
+    <div id="dscWordWrap" class="dsc-word-wrap" style="display:none">
       <div class="list-file-bar">
         <button class="btn" id="dscWordLoad" type="button" title="Replace wordlist">📂 Load file</button>
         <button class="btn" id="dscWordAppend" type="button" title="Append entries">＋ Append file</button>
       </div>
-      <textarea id="dscWords" spellcheck="false" style="width:100%;height:150px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:6px;font-family:var(--mono);font-size:12px;padding:8px;resize:vertical" placeholder="one path per line — lines starting with # are ignored"></textarea>
-      <div class="hint" style="margin-top:6px">One path per line, # for comments.</div>
+      <textarea id="dscWords" class="dsc-words" spellcheck="false" placeholder="one path per line — lines starting with # are ignored"></textarea>
+      <div class="hint dsc-words-hint">One path per line, # for comments.</div>
     </div>
-    <div style="flex:1;display:flex;min-height:0">
-      <div id="dscResults" class="pane" style="flex:1;overflow:auto"><div class="hint" style="padding:16px;line-height:1.7">Enter a base URL and press <b>Start</b>.</div></div>
+    <div class="dsc-body">
+      <div id="dscResults" class="pane dsc-results">
+        <div class="state-empty">
+          <div class="state-empty-icon">🔎</div>
+          <div class="state-empty-title">No scan yet</div>
+          <p class="state-empty-hint">Enter a base URL and press <b>Start</b>.</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -386,8 +395,8 @@ Content-Type: application/json
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
       <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
-      <span id="notesStatus" class="hint" style="font-size:11px;min-width:4.5em;opacity:0;transition:opacity .2s" aria-live="polite"></span>
-      <button class="btn accent" id="notesOrganizeBtn" data-ai-ui title="Organize with AI">✨ Organize</button>
+      <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
+      <button class="btn btn-primary" id="notesOrganizeBtn" data-ai-ui title="Organize with AI">✨ Organize</button>
       <div class="spacer"></div>
     </div>
     <textarea id="notesEdit" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do" style="flex:1;border:none;outline:none;resize:none;background:var(--bg1);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.6;padding:16px 18px"></textarea>
@@ -396,10 +405,9 @@ Content-Type: application/json
 
   <!-- Notes AI organize preview -->
   <div id="notesAiModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-    <div role="dialog" aria-modal="true" aria-labelledby="notesAiTitle" class="notes-ai-dialog">
-      <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:10px">
-        <span id="notesAiTitle" style="font-weight:700;color:var(--accent)">✨ Organize notes</span>
-        <div class="spacer"></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="notesAiTitle" class="modal-shell notes-ai-dialog">
+      <div class="modal-shell-head">
+        <span id="notesAiTitle" class="modal-shell-title">✨ Organize notes</span>
         <button class="btn" id="notesAiStop" style="display:none">Stop</button>
         <button class="btn" id="notesAiClose" aria-label="Close">✕</button>
       </div>
@@ -413,11 +421,11 @@ Content-Type: application/json
           <div id="notesAiOut" class="md notes-ai-out"></div>
         </div>
       </div>
-      <div class="row" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line)">
+      <div class="modal-shell-foot">
         <span class="hint">Review — <b>Apply</b> replaces your notebook.</span>
         <div class="spacer"></div>
-        <button class="btn accent" id="notesAiApply" disabled>Apply to notes</button>
         <button class="btn" id="notesAiCopy" title="Copy organized markdown">⧉ Copy</button>
+        <button class="btn btn-primary" id="notesAiApply" disabled>Apply to notes</button>
       </div>
     </div>
   </div>
@@ -425,10 +433,10 @@ Content-Type: application/json
   <!-- Activity (live AI feed) -->
   <div class="panel" id="panel-activity" data-ai-ui role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
-      <input id="actIntentFilter" class="btn" style="background:var(--bg3);width:150px;font-weight:400;margin-left:8px" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
+      <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount"></span>
-      <button class="btn" id="actClear" style="margin-left:8px">Clear</button>
+      <button class="btn act-clear" id="actClear">Clear</button>
     </div>
     <div id="actFeed" class="scroll"></div>
   </div>

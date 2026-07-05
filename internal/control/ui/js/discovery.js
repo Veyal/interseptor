@@ -127,25 +127,25 @@ function render(st){
   if(!box) return;
   const results = (st && st.results) || [];
   if(!results.length){
-    if(running){ box.innerHTML = '<div class="hint" style="padding:16px">Calibrating &amp; probing…</div>'; return; }
-    if(st && st.tried){ box.innerHTML = '<div class="empty" style="padding:24px">No paths found.<br>Try a bigger wordlist, add extensions, or check the base URL is reachable.</div>'; return; }
+    if(running){ box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">⏳</div><div class="state-empty-title">Calibrating &amp; probing…</div></div>'; return; }
+    if(st && st.tried){ box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🕳️</div><div class="state-empty-title">No paths found</div><p class="state-empty-hint">Try a bigger wordlist, add extensions, or check the base URL is reachable.</p></div>'; return; }
     return;
   }
   const rows = results.map(r=>{
     const c = statusColor(r.status);
-    const dir = r.dir ? '<span title="directory" style="color:var(--fg3)"> /</span>' : '';
-    const redir = r.redirect ? `<span class="hint" style="margin-left:8px">→ ${esc(r.redirect)}</span>` : '';
-    const depth = r.depth ? `<span class="hint" style="margin-left:6px">d${r.depth}</span>` : '';
-    return `<div class="trow dsc-row" data-url="${escAttr(r.url)}" data-flow="${r.flowId||''}" style="display:flex;align-items:center;gap:10px;padding:5px 12px;border-bottom:1px solid var(--line);cursor:pointer" title="${escAttr(r.url)} — click to inspect">
-      <span style="font-weight:700;color:${c};min-width:34px">${r.status||'—'}</span>
-      <span class="hint" style="min-width:74px;text-align:right">${fmtSize(r.length||0)}</span>
-      <span class="dsc-path" style="flex:1;font-family:var(--mono);font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.path)}${dir}${depth}${redir}</span>
-      <span class="hint" style="min-width:90px">${esc((r.contentType||'').split(';')[0])}</span>
+    const dir = r.dir ? '<span class="dsc-dir" title="directory"> /</span>' : '';
+    const redir = r.redirect ? `<span class="hint dsc-redir">→ ${esc(r.redirect)}</span>` : '';
+    const depth = r.depth ? `<span class="hint dsc-depth">d${r.depth}</span>` : '';
+    return `<div class="trow dsc-row" data-url="${escAttr(r.url)}" data-flow="${r.flowId||''}" title="${escAttr(r.url)} — click to inspect">
+      <span class="dsc-code" style="color:${c}">${r.status||'—'}</span>
+      <span class="hint dsc-size">${fmtSize(r.length||0)}</span>
+      <span class="dsc-path">${esc(r.path)}${dir}${depth}${redir}</span>
+      <span class="hint dsc-type">${esc((r.contentType||'').split(';')[0])}</span>
       <button class="btn dsc-rep" data-url="${escAttr(r.url)}" title="Send to Repeater">→ Rep</button>
     </div>`;
   }).join('');
-  const note = st && st.note ? `<div class="hint" style="padding:6px 12px;color:var(--amber)">${esc(st.note)}</div>` : '';
-  box.innerHTML = `<div style="position:sticky;top:0;background:var(--bg2);border-bottom:1px solid var(--line2);padding:5px 12px;display:flex;gap:10px;font-size:9px;font-weight:700;letter-spacing:.5px;color:var(--fg3)"><span style="min-width:34px">CODE</span><span style="min-width:74px;text-align:right">SIZE</span><span style="flex:1">PATH</span><span style="min-width:90px">TYPE</span><span style="min-width:52px"></span></div>${rows}${note}`;
+  const note = st && st.note ? `<div class="hint dsc-note">${esc(st.note)}</div>` : '';
+  box.innerHTML = `<div class="dsc-header"><span class="dsc-code">CODE</span><span class="dsc-size">SIZE</span><span class="dsc-path-h">PATH</span><span class="dsc-type">TYPE</span><span class="dsc-rep-h"></span></div>${rows}${note}`;
   box.querySelectorAll('.dsc-row').forEach(row=>row.onclick=e=>{
     if(e.target.closest('.dsc-rep')) return;
     dscOpenResult(row.dataset.url, parseInt(row.dataset.flow,10)||0);
