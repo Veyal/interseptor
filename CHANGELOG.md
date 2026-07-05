@@ -7,15 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 > **Archive:** Release notes for 0.11.0 and earlier live in [CHANGELOG/archive/pre-0.12.md](CHANGELOG/archive/pre-0.12.md).
 
-## [0.27.1] - 2026-07-03
-
-### Changed
-- **MCP agents are now told where to report Interceptor bugs.** The MCP server's connect-time instructions gain an "IMPROVE INTERCEPTOR" note: if a tool errors, returns something wrong, or lacks a capability the agent needed, it should report it (or ask the human to) at <https://github.com/Veyal/interceptor/issues> — with the tool name, expected vs. actual — while keeping target-app findings out of that tracker. The issues URL is derived from the existing repo constant so it survives a rename.
-
-### Fixed
-- **Adding a second proxy listener failed with "address already in use" on the port already bound.** Adding `127.0.0.1:8083` while `127.0.0.1:8080` was running errored, because the rebind re-bound the *entire* desired address set — including the port the live listener still held (listeners are opened before the old ones close, so the existing port could not be re-bound). The rebind now reconciles against the running set: it binds only newly added addresses, keeps existing listeners untouched, and drains only removed ones. A bad address in the new set still leaves the live listeners intact.
-
 ## [Unreleased]
+
+## [0.28.0] - 2026-07-05
 
 ### Added
 - **Autonomous AI pentester ("Autopilot") design.** Added [docs/AUTONOMOUS-PENTEST.md](docs/AUTONOMOUS-PENTEST.md), the architecture + phased build plan for an AI agent that reads captured history, autonomously runs active security testing using Interceptor's own tools (in-process access to all MCP tools), tracks every step in the Activity feed with every request visible in History, and files **only machine-verified true-positive findings** via a 4-gate verifier (differential reproduction → adversarial verifier agent → out-of-band proof for blind classes → human confirm for Critical/High). Grounded in a two-pass read-only audit of the existing AI-agent, MCP, active-scan, findings, OOB, and sender machinery. Implementation lands over Phases 0-4 on `feat/autonomous-pentest`.
@@ -105,6 +99,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Proxy History flow search-note banner (`updateSearchNoteBanner` is now a no-op).
 - **Dead code: `store.ClearIssues`.** Removed the unused `Store.ClearIssues` method (`internal/store/issues.go`) — zero callers across `internal/control`, `internal/mcp`, `cmd/`, or tests. Part of the backend cleanup pass from [docs/UI-REDESIGN-ROADMAP.md](docs/UI-REDESIGN-ROADMAP.md).
 - **UI redesign Phase 1c frontend dead-code cleanup.** Removed `applySort()` from `js/proxy.js` (a confirmed identity passthrough now that sort is server-side) and inlined its 4 call sites to reference `state.flows`/lists directly; removed `updateSearchNoteBanner()` (an empty no-op) and its call site in `loadFlows()`. Removed 4 orphaned null-guarded DOM lookups with no matching element in `index.html`: `#helpBtn` (`js/app.js`, whole guard block removed), `#fScheme` (`js/proxy.js` `syncControls()`), `#mapHint`/`mapHintText()` (`js/map.js` `setMapView()` — the helper had no other callers), `#proxySuggestedHint` (`js/settings.js` `loadNetworkHosts()`, whole guard removed). Zero behavior change; `go build ./...` and `go vet ./...` verified green.
+
+## [0.27.1] - 2026-07-03
+
+### Changed
+- **MCP agents are now told where to report Interceptor bugs.** The MCP server's connect-time instructions gain an "IMPROVE INTERCEPTOR" note: if a tool errors, returns something wrong, or lacks a capability the agent needed, it should report it (or ask the human to) at <https://github.com/Veyal/interceptor/issues> — with the tool name, expected vs. actual — while keeping target-app findings out of that tracker. The issues URL is derived from the existing repo constant so it survives a rename.
+
+### Fixed
+- **Adding a second proxy listener failed with "address already in use" on the port already bound.** Adding `127.0.0.1:8083` while `127.0.0.1:8080` was running errored, because the rebind re-bound the *entire* desired address set — including the port the live listener still held (listeners are opened before the old ones close, so the existing port could not be re-bound). The rebind now reconciles against the running set: it binds only newly added addresses, keeps existing listeners untouched, and drains only removed ones. A bad address in the new set still leaves the live listeners intact.
 
 ## [0.27.0] - 2026-07-03
 
