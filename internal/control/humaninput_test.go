@@ -92,3 +92,86 @@ func TestHumanInputHandoff(t *testing.T) {
 		t.Fatalf("answered prompt should not be pending, got %d", len(d3.Prompts))
 	}
 }
+
+// A prompt nobody ever answers must expire — not stay in the pending map (and
+// the UI banner) forever — and any caller still blocked on it must unblock
+// with a clear "expired" state rather than hang.
+func TestHumanInputExpiresWhenUnanswered(t *testing.T) {
+	hi := newHumanInput()
+
+	// Inject a fake clock so the test doesn't need to sleep out a real hour.
+	fakeNow := time.Now()
+	hi.now = func() time.Time { return fakeNow }
+
+	p := hi.create("stale question nobody answered", nil)
+
+	// A caller blocked on p.done must be released once the prompt expires.
+	waitDone := make(chan struct{})
+	go func() {
+		<-p.done
+		close(waitDone)
+	}()
+
+	// Not yet expired: still pending, waiter still blocked.
+	if got := hi.get(p.ID); got == nil || got.Answered {
+		t.Fatalf("prompt should still be pending before expiry, got %+v", got)
+	}
+	select {
+	case <-waitDone:
+		t.Fatal("waiter unblocked before expiry")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Age the clock past the expiry bound.
+	fakeNow = fakeNow.Add(humanInputExpiry + time.Minute)
+
+	got := hi.get(p.ID)
+	if got == nil {
+		t.Fatal("expired prompt should still be retrievable (with an expired state), not vanish immediately")
+	}
+	if !got.Answered || !got.Expired {
+		t.Fatalf("expired prompt should be marked answered+expired, got %+v", got)
+	}
+	if got.Answer == "" {
+		t.Fatalf("expired prompt should carry a clear expired message, got %+v", got)
+	}
+
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter did not unblock after the prompt expired")
+	}
+
+	// pending() must not list an expired prompt (matches the UI banner contract).
+	for _, pp := range hi.pending() {
+		if pp.ID == p.ID {
+			t.Fatalf("expired prompt should not be listed as pending: %+v", pp)
+		}
+	}
+}
+
+// An already-answered prompt must not be re-marked expired even after the
+// expiry bound passes — answer() already owns its own delayed cleanup.
+func TestHumanInputExpiryDoesNotClobberAnAnsweredPrompt(t *testing.T) {
+	hi := newHumanInput()
+	fakeNow := time.Now()
+	hi.now = func() time.Time { return fakeNow }
+
+	p := hi.create("question", nil)
+	if !hi.answer(p.ID, "yes") {
+		t.Fatal("answer should have succeeded")
+	}
+
+	fakeNow = fakeNow.Add(humanInputExpiry + time.Minute)
+
+	got := hi.get(p.ID)
+	if got == nil {
+		t.Fatal("answered prompt should still be retrievable shortly after answering")
+	}
+	if got.Expired {
+		t.Fatalf("answered prompt should never be marked expired, got %+v", got)
+	}
+	if got.Answer != "yes" {
+		t.Fatalf("answer should be preserved, got %q", got.Answer)
+	}
+}

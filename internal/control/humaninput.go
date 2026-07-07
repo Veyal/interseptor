@@ -18,12 +18,23 @@ import (
 
 const humanInputWait = 40 * time.Second
 
+// humanInputExpiry bounds how long an unanswered prompt lives. Without this,
+// an abandoned AI question (operator never responds) stays in the prompts
+// map — and the UI banner — forever, slowly accumulating memory and clutter
+// across a long-running session. An hour is long enough that a genuinely
+// slow-to-respond operator isn't cut off, but short enough that stale
+// prompts don't pile up indefinitely.
+const humanInputExpiry = time.Hour
+
+const expiredAnswerMsg = "expired — no answer given"
+
 type humanPrompt struct {
 	ID       int64    `json:"id"`
 	TS       int64    `json:"ts"`
 	Message  string   `json:"message"`
 	Options  []string `json:"options,omitempty"`
 	Answered bool     `json:"answered"`
+	Expired  bool     `json:"expired,omitempty"`
 	Answer   string   `json:"answer,omitempty"`
 	done     chan struct{}
 }
@@ -32,56 +43,103 @@ type humanInput struct {
 	mu      sync.Mutex
 	seq     int64
 	prompts map[int64]*humanPrompt
+	now     func() time.Time // overridden in tests
 }
 
-func newHumanInput() *humanInput { return &humanInput{prompts: map[int64]*humanPrompt{}} }
+func newHumanInput() *humanInput {
+	return &humanInput{prompts: map[int64]*humanPrompt{}, now: time.Now}
+}
 
 func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
 	hi.mu.Lock()
 	defer hi.mu.Unlock()
 	hi.seq++
-	p := &humanPrompt{ID: hi.seq, TS: time.Now().UnixMilli(), Message: msg, Options: opts, done: make(chan struct{})}
+	p := &humanPrompt{ID: hi.seq, TS: hi.now().UnixMilli(), Message: msg, Options: opts, done: make(chan struct{})}
 	hi.prompts[p.ID] = p
 	return p
 }
 
+// get returns the prompt, lazily expiring it first if it's been pending
+// longer than humanInputExpiry.
 func (hi *humanInput) get(id int64) *humanPrompt {
 	hi.mu.Lock()
-	defer hi.mu.Unlock()
-	return hi.prompts[id]
+	p, expired := hi.expireLocked(id)
+	hi.mu.Unlock()
+	if expired {
+		hi.scheduleCleanup(id)
+	}
+	return p
 }
 
 func (hi *humanInput) pending() []humanPrompt {
 	hi.mu.Lock()
-	defer hi.mu.Unlock()
+	ids := make([]int64, 0, len(hi.prompts))
+	for id := range hi.prompts {
+		ids = append(ids, id)
+	}
+	var expiredIDs []int64
 	out := []humanPrompt{}
-	for _, p := range hi.prompts {
-		if !p.Answered {
+	for _, id := range ids {
+		p, expired := hi.expireLocked(id)
+		if expired {
+			expiredIDs = append(expiredIDs, id)
+		}
+		if p != nil && !p.Answered {
 			out = append(out, *p)
 		}
+	}
+	hi.mu.Unlock()
+	for _, id := range expiredIDs {
+		hi.scheduleCleanup(id)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// answer resolves a pending prompt and unblocks the waiting AI call. Returns false
-// if the id is unknown or already answered.
-func (hi *humanInput) answer(id int64, ans string) bool {
-	hi.mu.Lock()
-	defer hi.mu.Unlock()
+// expireLocked checks prompt id and, if it's still pending past
+// humanInputExpiry, marks it answered+expired and unblocks any waiter. Must
+// be called with hi.mu held. Returns the (possibly now-expired) prompt and
+// whether it was just expired by this call (so the caller can schedule
+// cleanup outside the lock).
+func (hi *humanInput) expireLocked(id int64) (*humanPrompt, bool) {
 	p := hi.prompts[id]
 	if p == nil || p.Answered {
+		return p, false
+	}
+	if hi.now().Sub(time.UnixMilli(p.TS)) < humanInputExpiry {
+		return p, false
+	}
+	p.Answer, p.Answered, p.Expired = expiredAnswerMsg, true, true
+	close(p.done)
+	return p, true
+}
+
+// answer resolves a pending prompt and unblocks the waiting AI call. Returns false
+// if the id is unknown, already answered, or already expired.
+func (hi *humanInput) answer(id int64, ans string) bool {
+	hi.mu.Lock()
+	p := hi.prompts[id]
+	if p == nil || p.Answered {
+		hi.mu.Unlock()
 		return false
 	}
 	p.Answer, p.Answered = ans, true
 	close(p.done)
+	hi.mu.Unlock()
+	hi.scheduleCleanup(id)
+	return true
+}
+
+// scheduleCleanup removes a resolved (answered or expired) prompt from the
+// map after a short delay, giving the UI/poller time to observe the final
+// state before it disappears.
+func (hi *humanInput) scheduleCleanup(id int64) {
 	go func(pid int64) {
 		time.Sleep(time.Minute)
 		hi.mu.Lock()
 		delete(hi.prompts, pid)
 		hi.mu.Unlock()
 	}(id)
-	return true
 }
 
 // createHumanInput (POST /api/human-input) registers a prompt and blocks up to
