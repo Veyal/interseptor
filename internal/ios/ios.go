@@ -4,6 +4,7 @@
 package ios
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,12 +12,36 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
+)
+
+// execTimeout bounds every simctl/idevice_id/ideviceinfo invocation. Device
+// enumeration and keychain add-root-cert are normally fast, but simctl can be
+// slow on a cold simulator boot — 30s comfortably covers both while still
+// guaranteeing the HTTP handler goroutine can't hang forever on a wedged
+// process (flaky USB, simulator waiting on Xcode).
+var execTimeout = 30 * time.Second
+
+// simctlCommandName, ideviceCommandNames, and execExtraEnv are overridden in
+// tests to point simctlExec/ideviceExec at a fake binary instead of the real
+// tools.
+var (
+	simctlCommandName = "xcrun"
+	execExtraEnv      []string
 )
 
 // simctlExec runs xcrun simctl. Overridden in tests.
 var simctlExec = func(args ...string) ([]byte, error) {
-	cmd := exec.Command("xcrun", append([]string{"simctl"}, args...)...)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, simctlCommandName, append([]string{"simctl"}, args...)...)
+	if len(execExtraEnv) > 0 {
+		cmd.Env = append(os.Environ(), execExtraEnv...)
+	}
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return out, fmt.Errorf("xcrun simctl %s: timed out after %s", strings.Join(args, " "), execTimeout)
+	}
 	if err != nil {
 		return out, fmt.Errorf("xcrun simctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
@@ -25,8 +50,16 @@ var simctlExec = func(args ...string) ([]byte, error) {
 
 // ideviceExec runs libimobiledevice tools when present. Overridden in tests.
 var ideviceExec = func(tool string, args ...string) ([]byte, error) {
-	cmd := exec.Command(tool, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, tool, args...)
+	if len(execExtraEnv) > 0 {
+		cmd.Env = append(os.Environ(), execExtraEnv...)
+	}
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return out, fmt.Errorf("%s %s: timed out after %s", tool, strings.Join(args, " "), execTimeout)
+	}
 	if err != nil {
 		return out, fmt.Errorf("%s %s: %w: %s", tool, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
@@ -61,12 +94,12 @@ const (
 
 // Device is a simulator or USB-connected iOS device.
 type Device struct {
-	Kind     string `json:"kind"`
-	UDID     string `json:"udid"`
-	Name     string `json:"name"`
-	State    string `json:"state,omitempty"`
-	Runtime  string `json:"runtime,omitempty"`
-	Booted   bool   `json:"booted,omitempty"`
+	Kind            string `json:"kind"`
+	UDID            string `json:"udid"`
+	Name            string `json:"name"`
+	State           string `json:"state,omitempty"`
+	Runtime         string `json:"runtime,omitempty"`
+	Booted          bool   `json:"booted,omitempty"`
 	SuggestedTarget string `json:"suggestedTarget,omitempty"` // simulator | physical
 }
 
@@ -85,10 +118,10 @@ func Simulators() ([]Device, error) {
 func parseSimctlDevices(raw []byte) ([]Device, error) {
 	var doc struct {
 		Devices map[string][]struct {
-			Name   string `json:"name"`
-			UDID   string `json:"udid"`
-			State  string `json:"state"`
-			IsAvailable bool `json:"isAvailable"`
+			Name        string `json:"name"`
+			UDID        string `json:"udid"`
+			State       string `json:"state"`
+			IsAvailable bool   `json:"isAvailable"`
 		} `json:"devices"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -104,12 +137,12 @@ func parseSimctlDevices(raw []byte) ([]Device, error) {
 				continue
 			}
 			dev := Device{
-				Kind:    KindSimulator,
-				UDID:    d.UDID,
-				Name:    d.Name,
-				State:   d.State,
-				Runtime: runtimeLabel(runtime),
-				Booted:  strings.EqualFold(d.State, "Booted"),
+				Kind:            KindSimulator,
+				UDID:            d.UDID,
+				Name:            d.Name,
+				State:           d.State,
+				Runtime:         runtimeLabel(runtime),
+				Booted:          strings.EqualFold(d.State, "Booted"),
 				SuggestedTarget: "simulator",
 			}
 			if dev.Booted {

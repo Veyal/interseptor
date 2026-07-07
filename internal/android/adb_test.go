@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -341,6 +342,41 @@ func TestInstallSystemCAInvalidPEM(t *testing.T) {
 	})
 	if err := InstallSystemCA(Device{Serial: "dev", State: "device"}, []byte("not a cert")); err == nil {
 		t.Fatal("expected error for invalid PEM")
+	}
+}
+
+// TestAdbExecTimesOutOnHang proves the real (non-stubbed) adbExec no longer
+// blocks forever on a wedged adb process (flaky USB, device waiting on a
+// prompt): it must give up and return an error well before a real hang
+// would. It points adbCommandName at this test binary re-invoked in
+// "helper process" mode, which just sleeps — simulating a hung adb.
+func TestAdbExecTimesOutOnHang(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
+	}
+
+	origName := adbCommandName
+	origTimeout := adbTimeout
+	origEnv := adbExtraEnv
+	adbCommandName = os.Args[0]
+	adbTimeout = 500 * time.Millisecond
+	adbExtraEnv = []string{"GO_WANT_HELPER_PROCESS=1"}
+	t.Cleanup(func() {
+		adbCommandName = origName
+		adbTimeout = origTimeout
+		adbExtraEnv = origEnv
+	})
+
+	start := time.Now()
+	_, err := adbExec("-test.run=TestAdbExecTimesOutOnHang")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error from hung adb process")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("adbExec took %v, expected to return quickly after the %v bound", elapsed, adbTimeout)
 	}
 }
 

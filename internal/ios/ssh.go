@@ -15,11 +15,22 @@ import (
 )
 
 const (
-	defaultSSHUser      = "root"
-	defaultSSHPort      = 22
-	profileRemotePath   = "/tmp/interceptor.mobileconfig"
-	sshConnectTimeout   = 12 * time.Second
+	defaultSSHUser    = "root"
+	defaultSSHPort    = 22
+	profileRemotePath = "/tmp/interceptor.mobileconfig"
+	sshConnectTimeout = 12 * time.Second
 )
+
+// sshCommandTimeout bounds how long we wait for a remote command to finish
+// once the SSH session is open. The connection itself already has
+// sshConnectTimeout; without this, a remote command that never returns
+// (device stuck, shell waiting on input) would hang the HTTP handler
+// goroutine forever. The x/crypto/ssh session API has no deadline/context
+// support, so this is enforced with a goroutine + select: on timeout we
+// close the session (best-effort — it may not kill the remote process) and
+// return an error so the caller unblocks. A var (not const) so tests can
+// shrink it instead of waiting out a real 30s bound.
+var sshCommandTimeout = 30 * time.Second
 
 // SSHOpts configures SSH access to a jailbroken iOS device.
 type SSHOpts struct {
@@ -278,17 +289,39 @@ func parsePrivateKey(pem []byte, passphrase string) (ssh.Signer, error) {
 	return signer, nil
 }
 
+// runSSHCommand executes cmd over an established SSH session and bounds the
+// wait with sshCommandTimeout. The ssh package's Session type has no
+// deadline/context support, so CombinedOutput runs in a goroutine and the
+// caller selects on it vs. a timer; on timeout the session is closed
+// (best-effort — this cannot force-kill the remote process, but it does
+// guarantee the HTTP handler goroutine unblocks).
 func runSSHCommand(client *ssh.Client, cmd string) (string, error) {
 	sess, err := client.NewSession()
 	if err != nil {
 		return "", err
 	}
 	defer sess.Close()
-	out, err := sess.CombinedOutput(cmd)
-	if err != nil {
-		return string(out), fmt.Errorf("%s: %w: %s", cmd, err, strings.TrimSpace(string(out)))
+
+	type result struct {
+		out []byte
+		err error
 	}
-	return string(out), nil
+	done := make(chan result, 1)
+	go func() {
+		out, err := sess.CombinedOutput(cmd)
+		done <- result{out, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			return string(r.out), fmt.Errorf("%s: %w: %s", cmd, r.err, strings.TrimSpace(string(r.out)))
+		}
+		return string(r.out), nil
+	case <-time.After(sshCommandTimeout):
+		_ = sess.Close()
+		return "", fmt.Errorf("%s: timed out after %s waiting for the remote command", cmd, sshCommandTimeout)
+	}
 }
 
 func openProfileOnDevice(client *ssh.Client, profileURL string) (method string, steps []string, err error) {

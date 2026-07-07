@@ -1,8 +1,10 @@
 package ios
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
@@ -90,4 +92,36 @@ func TestResolveDeviceBootedSimulator(t *testing.T) {
 func TestSimctlAvailableFalseOnNonDarwin(t *testing.T) {
 	// On Windows CI this should be false; on macOS dev machines may be true — just call it.
 	_ = SimctlAvailable()
+}
+
+// TestIdeviceExecTimesOutOnHang proves the real (non-stubbed) ideviceExec no
+// longer blocks forever on a wedged idevice_id/ideviceinfo process (flaky
+// USB, device waiting on a trust prompt): it must give up and return an
+// error well before a real hang would. It re-invokes this test binary in
+// "helper process" mode, which just sleeps — simulating a hung process.
+func TestIdeviceExecTimesOutOnHang(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
+	}
+
+	origTimeout := execTimeout
+	origEnv := execExtraEnv
+	execTimeout = 500 * time.Millisecond
+	execExtraEnv = []string{"GO_WANT_HELPER_PROCESS=1"}
+	t.Cleanup(func() {
+		execTimeout = origTimeout
+		execExtraEnv = origEnv
+	})
+
+	start := time.Now()
+	_, err := ideviceExec(os.Args[0], "-test.run=TestIdeviceExecTimesOutOnHang")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error from hung idevice process")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("ideviceExec took %v, expected to return quickly after the %v bound", elapsed, execTimeout)
+	}
 }

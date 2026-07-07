@@ -4,6 +4,7 @@
 package android
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/x509"
 	"encoding/binary"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -22,10 +24,32 @@ const (
 	certRemotePath = "/sdcard/Download/" + certRemoteName
 )
 
+// adbTimeout bounds every adb invocation. Device enumeration is normally
+// sub-second, but a CA push/root/remount can take a few seconds on a slow
+// device — 30s comfortably covers both while still guaranteeing the HTTP
+// handler goroutine can't hang forever on a wedged adb (flaky USB, device
+// waiting on an on-device prompt).
+var adbTimeout = 30 * time.Second
+
+// adbCommandName and adbExtraEnv are overridden in tests to point adbExec at
+// a fake binary instead of the real "adb" on PATH.
+var (
+	adbCommandName = "adb"
+	adbExtraEnv    []string
+)
+
 // adbExec runs adb subcommands. Overridden in tests.
 var adbExec = func(args ...string) ([]byte, error) {
-	cmd := exec.Command("adb", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), adbTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, adbCommandName, args...)
+	if len(adbExtraEnv) > 0 {
+		cmd.Env = append(os.Environ(), adbExtraEnv...)
+	}
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return out, fmt.Errorf("adb %s: timed out after %s (device unresponsive?)", strings.Join(args, " "), adbTimeout)
+	}
 	if err != nil {
 		return out, fmt.Errorf("adb %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
