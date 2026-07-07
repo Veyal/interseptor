@@ -329,10 +329,22 @@ func parseEditedRequest(raw []byte, orig *http.Request) (*http.Request, error) {
 		return nil, err
 	}
 	r.RequestURI = "" // required for client requests
-	// The raw is origin-form; restore the forwarding target from the original.
+	// The raw is origin-form, so http.ReadRequest can never populate URL.Host
+	// from the request line — it always comes out empty. The routing target
+	// (what net/http.Transport actually dials) must instead follow the Host
+	// header text, which IS correctly parsed from the edited raw bytes: this
+	// is what lets an operator's Host-header edit actually retarget the
+	// connection, instead of silently keeping the request routed to the
+	// pre-edit original while the wire Host header shows the edited value
+	// (a confused-deputy / vhost-smuggling primitive). Falling back to the
+	// original host only when the edited request has no Host at all keeps the
+	// common (unedited) case byte-for-byte unchanged.
 	r.URL.Scheme = orig.URL.Scheme
-	if r.URL.Host == "" {
+	if r.Host != "" {
+		r.URL.Host = r.Host
+	} else if r.URL.Host == "" {
 		r.URL.Host = orig.URL.Host
+		r.Host = orig.URL.Host
 	}
 	r.RemoteAddr = orig.RemoteAddr
 

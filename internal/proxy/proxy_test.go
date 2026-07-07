@@ -631,6 +631,142 @@ func TestProxyMITMTunnelsWebSocketUpgrade(t *testing.T) {
 	}
 }
 
+// Live-repro for the MITM (HTTPS) path: the same confused-deputy bug as the
+// plain-HTTP path, but here the CONNECT tunnel has already picked destination
+// A's TCP/TLS connection before the plaintext request inside it is ever seen.
+// Editing the Host header of a held request inside that tunnel must open a
+// brand-new outbound connection to the edited (B) target and forward the
+// decrypted request there — exactly what Repeater does when sending a request
+// wherever its Host says to go — rather than silently keep using A's tunnel.
+func TestProxyMITMInterceptEditedHostRetargetsConnection(t *testing.T) {
+	upCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("upstream CA: %v", err)
+	}
+
+	// Two independent TLS upstreams signed by the same CA, standing in for the
+	// audit's two local test targets.
+	newTLSTarget := func(body string) net.Listener {
+		leaf, err := upCA.LeafForHost("127.0.0.1")
+		if err != nil {
+			t.Fatalf("leaf: %v", err)
+		}
+		ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*leaf}})
+		if err != nil {
+			t.Fatalf("upstream listen: %v", err)
+		}
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer c.Close()
+					br := bufio.NewReader(c)
+					req, err := http.ReadRequest(br)
+					if err != nil {
+						return
+					}
+					req.Body.Close()
+					fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+				}()
+			}
+		}()
+		return ln
+	}
+	targetA := newTLSTarget("response-from-A")
+	defer targetA.Close()
+	targetB := newTLSTarget("response-from-B")
+	defer targetB.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), ca, eng, nil)
+	upPool := x509.NewCertPool()
+	upPool.AppendCertsFromPEM(upCA.CertPEM())
+	srv.tr.TLSClientConfig = &tls.Config{RootCAs: upPool} // proxy trusts both upstreams
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// Client CONNECTs to target A and completes the MITM TLS handshake.
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer raw.Close()
+	raw.SetDeadline(time.Now().Add(4 * time.Second))
+	fmt.Fprintf(raw, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", targetA.Addr().String(), targetA.Addr().String())
+	connResp, err := http.ReadResponse(bufio.NewReader(raw), &http.Request{Method: "CONNECT"})
+	if err != nil || connResp.StatusCode != 200 {
+		t.Fatalf("CONNECT failed: %v / %v", err, connResp)
+	}
+	clientPool := x509.NewCertPool()
+	clientPool.AppendCertsFromPEM(ca.CertPEM())
+	tlsClient := tls.Client(raw, &tls.Config{RootCAs: clientPool, ServerName: "127.0.0.1"})
+	if err := tlsClient.Handshake(); err != nil {
+		t.Fatalf("client TLS handshake: %v", err)
+	}
+
+	done := make(chan string, 1)
+	go func() {
+		fmt.Fprintf(tlsClient, "GET /secret.txt HTTP/1.1\r\nHost: %s\r\n\r\n", targetA.Addr().String())
+		br := bufio.NewReader(tlsClient)
+		resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+		if err != nil {
+			done <- "err:" + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- string(b)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	// The operator edits the raw request's Host header to target B before forwarding.
+	edited := fmt.Sprintf("GET /secret.txt HTTP/1.1\r\nHost: %s\r\n\r\n", targetB.Addr().String())
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+
+	select {
+	case body := <-done:
+		if body != "response-from-B" {
+			t.Fatalf("editing Host over MITM must retarget the outbound connection: got body %q, want %q", body, "response-from-B")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	bHost, bPortStr, _ := net.SplitHostPort(targetB.Addr().String())
+	bPort, _ := strconv.Atoi(bPortStr)
+	f := waitFlows(t, s, 1)[0]
+	if f.Host != bHost || f.Port != bPort {
+		t.Fatalf("recorded flow target = %s:%d, want the real destination %s:%d", f.Host, f.Port, bHost, bPort)
+	}
+}
+
 func TestUpstreamProxyConfig(t *testing.T) {
 	s, err := store.Open(t.TempDir())
 	if err != nil {
@@ -760,6 +896,174 @@ func TestProxyInterceptHoldThenForward(t *testing.T) {
 	f := waitFlows(t, s, 1)[0]
 	if f.Flags&store.FlagIntercepted == 0 {
 		t.Fatalf("expected FlagIntercepted set, flags=%d", f.Flags)
+	}
+}
+
+// Live-repro regression for the confused-deputy / vhost-smuggling bug: holding
+// a request to one target and editing its Host header before forwarding must
+// actually retarget the TCP connection to the new host — not silently keep
+// connecting to the original target while claiming (on the wire) to be the
+// edited one. Two independent local upstreams stand in for the audit's two
+// local test targets.
+func TestProxyInterceptEditedHostRetargetsConnection(t *testing.T) {
+	targetA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "response-from-A")
+	}))
+	defer targetA.Close()
+	targetB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "response-from-B")
+	}))
+	defer targetB.Close()
+
+	uA, _ := url.Parse(targetA.URL)
+	uB, _ := url.Parse(targetB.URL)
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), nil, eng, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+
+	done := make(chan string, 1)
+	go func() {
+		// The client asks for target A...
+		resp, err := client.Get(targetA.URL + "/secret.txt")
+		if err != nil {
+			done <- "err:" + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- string(b)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	// ...but the operator edits the raw request's Host header to target B
+	// before forwarding.
+	edited := fmt.Sprintf("GET /secret.txt HTTP/1.1\r\nHost: %s\r\n\r\n", uB.Host)
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+
+	select {
+	case body := <-done:
+		// The connection must actually go to B now — not A.
+		if body != "response-from-B" {
+			t.Fatalf("editing Host must retarget the connection: got body %q, want %q (confused-deputy: connected to A but claimed to be B)", body, "response-from-B")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	if f.Flags&store.FlagEdited == 0 {
+		t.Fatalf("expected FlagEdited set, flags=%d", f.Flags)
+	}
+	// History must stay honest about where the request actually went — not the
+	// stale pre-edit target.
+	if f.Host != uB.Hostname() {
+		t.Fatalf("recorded flow.Host = %q, want the real destination %q", f.Host, uB.Hostname())
+	}
+	wantPort, _ := strconv.Atoi(uB.Port())
+	if f.Port != wantPort {
+		t.Fatalf("recorded flow.Port = %d, want the real destination port %d", f.Port, wantPort)
+	}
+	if got := f.ReqHeaders["Host"]; len(got) != 1 || got[0] != uB.Host {
+		t.Fatalf("recorded wire Host header = %v, want [%q]", got, uB.Host)
+	}
+	// targetA must never have seen this request.
+	if f.Host == uA.Hostname() && f.Port == func() int { p, _ := strconv.Atoi(uA.Port()); return p }() {
+		t.Fatal("flow still recorded against the original (pre-edit) target")
+	}
+}
+
+// Regression: an UNEDITED held request must still route to the original host
+// (existing behavior preserved) — this is the common case and must not
+// regress when the edited-Host retargeting fix lands.
+func TestProxyInterceptUneditedHoldStillRoutesToOriginalHost(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok-from-original")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), nil, eng, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+
+	done := make(chan string, 1)
+	go func() {
+		resp, err := client.Get(upstream.URL + "/held")
+		if err != nil {
+			done <- "err:" + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- string(b)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+	// Forward the held raw dump completely unedited (round-tripped verbatim).
+	if err := eng.Forward(eng.Queue()[0].ID, eng.Queue()[0].Raw); err != nil {
+		t.Fatalf("Forward: %v", err)
+	}
+
+	select {
+	case body := <-done:
+		if body != "ok-from-original" {
+			t.Fatalf("unedited hold should still route to the original host: got %q", body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	uOrig, _ := url.Parse(upstream.URL)
+	f := waitFlows(t, s, 1)[0]
+	if f.Host != uOrig.Hostname() {
+		t.Fatalf("flow.Host = %q, want original host %q", f.Host, uOrig.Hostname())
 	}
 }
 

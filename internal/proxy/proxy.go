@@ -581,10 +581,25 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			out = d.Request
 			out.RequestURI = ""
 			out.URL.Scheme = flow.Scheme
-			out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 			if d.Edited {
 				flow.Flags |= store.FlagEdited
+				// An edited Host header must actually retarget the connection —
+				// not just the wire header — or the operator gets a confused-deputy
+				// primitive: connect to the original host while claiming (on the
+				// wire) to be talking to the edited one. parseEditedRequest already
+				// derives out.URL.Host from the edited Host text (falling back to
+				// the original when Host wasn't touched), so trust it here and
+				// bring flow.Host/Port along so dialing, the wire header, and the
+				// recorded history all agree on where the request actually went.
+				if h, p, ok := splitHostPortOK(out.URL.Host); ok {
+					if p == 0 {
+						p = defaultPort(flow.Scheme) // edited Host had no explicit port
+					}
+					flow.Host, flow.Port = h, p
+				}
 			}
+			out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
+			out.Host = out.URL.Host
 		}
 	}
 
@@ -1080,4 +1095,21 @@ func splitHostPort(hostport string, def int) (string, int) {
 		return hostport, def
 	}
 	return h, strutil.AtoiOr(p, def)
+}
+
+// splitHostPortOK parses a URL host[:port] string (as produced by
+// parseEditedRequest from an edited Host header) into a bare host and port.
+// ok is false only when hostport is empty. A bare host with no ":port" suffix
+// is a valid result (it just means "use the request's scheme default port"):
+// port comes back 0 and the caller is responsible for supplying that default,
+// since only the caller knows the scheme.
+func splitHostPortOK(hostport string) (host string, port int, ok bool) {
+	if hostport == "" {
+		return "", 0, false
+	}
+	if h, p, err := net.SplitHostPort(hostport); err == nil {
+		return h, strutil.AtoiOr(p, 0), true
+	}
+	// No ":port" suffix — bare host, port left for the caller to default.
+	return hostport, 0, true
 }

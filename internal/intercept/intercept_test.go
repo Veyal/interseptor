@@ -141,6 +141,50 @@ func TestForwardWithEditedRaw(t *testing.T) {
 	if d.Request.URL.Path != "/changed" || d.Request.URL.Scheme != "https" || d.Request.Header.Get("X-Edited") != "yes" {
 		t.Fatalf("edited request not applied: %s %s %v", d.Request.URL.Scheme, d.Request.URL.Path, d.Request.Header)
 	}
+	// Host unedited: routing target (URL.Host) must still be the original host —
+	// regression guard for the common (unedited) case.
+	if d.Request.URL.Host != "example.com" {
+		t.Fatalf("unedited Host should keep routing to the original host: URL.Host=%q", d.Request.URL.Host)
+	}
+	if d.Request.Host != "example.com" {
+		t.Fatalf("unedited Host header mismatch: Host=%q", d.Request.Host)
+	}
+}
+
+// Regression for the confused-deputy bug: parseEditedRequest previously always
+// forced URL.Host back to the pre-edit original (origin-form parsing via
+// http.ReadRequest can never populate URL.Host from the Host header text), so
+// an operator editing the Host header in the intercept UI had the edit
+// silently ignored for connection routing while the wire Host header still
+// carried the edited value — connect to A, claim to be B. Editing Host must
+// now retarget where the request is routed, exactly like a real proxy/client.
+func TestForwardWithEditedHostRetargetsRouting(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	req := newReq(t, "GET", "https://original.example.com/orig", "")
+
+	got := make(chan Decision, 1)
+	go func() { got <- e.Hold(&store.Flow{}, req, nil) }()
+
+	waitQueue(t, e, 1)
+	raw := "GET /orig HTTP/1.1\r\nHost: retargeted.example.com:8443\r\n\r\n"
+	if err := e.Forward(e.Queue()[0].ID, []byte(raw)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+	d := recvDecision(t, got)
+	if d.Drop || !d.Edited {
+		t.Fatalf("expected edited forward, got %+v", d)
+	}
+	// The routing target (URL.Host, which net/http.Transport actually dials)
+	// must follow the edited Host header, not the stale pre-edit original.
+	if d.Request.URL.Host != "retargeted.example.com:8443" {
+		t.Fatalf("edited Host must retarget URL.Host: got %q, want %q", d.Request.URL.Host, "retargeted.example.com:8443")
+	}
+	// The wire Host header and the routing target must always agree — no more
+	// "connect to A, tell A the Host is B".
+	if d.Request.Host != d.Request.URL.Host {
+		t.Fatalf("wire Host header %q must match routing target URL.Host %q", d.Request.Host, d.Request.URL.Host)
+	}
 }
 
 // Editing a held request's body should not require hand-fixing Content-Length:
