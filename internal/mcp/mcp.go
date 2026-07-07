@@ -1802,9 +1802,10 @@ func (s *Server) registerTools() {
 	s.add("get_authz", "List saved authorization-test identities (name + auth headers per role).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
 
-	s.add("set_authz", "Save authorization-test identities.",
+	s.add("set_authz",
+		"Save authorization-test identities. Replaces the full identity list — call get_authz first if you want to keep existing ones. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
-			"identities": p("array", "objects with name + headers (Cookie/Authorization lines)"),
+			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodPost, "/api/authz", map[string]any{"identities": a["identities"]})

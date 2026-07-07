@@ -3,6 +3,7 @@ package control
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,55 @@ type identity struct {
 	Headers    string `json:"headers"` // "Key: Value" lines (Cookie / Authorization / …)
 	Broken     bool   `json:"broken,omitempty"`
 	BrokenNote string `json:"brokenNote,omitempty"` // e.g. "locked after rate-limit test"
+}
+
+// UnmarshalJSON accepts headers as a "Key: Value\n..." string (canonical form),
+// an array of "Key: Value" strings, or a {"Key":"Value"} object — callers
+// (including AI clients) commonly send the latter two despite the documented
+// string form, and previously any non-string shape failed the whole request
+// with an opaque "bad json".
+func (id *identity) UnmarshalJSON(b []byte) error {
+	type alias identity
+	var raw struct {
+		alias
+		Headers json.RawMessage `json:"headers"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*id = identity(raw.alias)
+	id.Headers = normalizeHeaderLines(raw.Headers)
+	return nil
+}
+
+// normalizeHeaderLines coerces a headers field (string, []string, or
+// map[string]string) into canonical "Key: Value\n..." lines.
+func normalizeHeaderLines(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return strings.Join(arr, "\n")
+	}
+	var m map[string]string
+	if err := json.Unmarshal(raw, &m); err == nil {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		lines := make([]string, 0, len(keys))
+		for _, k := range keys {
+			lines = append(lines, k+": "+m[k])
+		}
+		return strings.Join(lines, "\n")
+	}
+	return ""
 }
 
 type authzResult struct {
@@ -65,7 +115,7 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 		Identities []identity `json:"identities"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+		httpErr(w, http.StatusBadRequest, "bad json: "+err.Error())
 		return
 	}
 	b, _ := json.Marshal(in.Identities)

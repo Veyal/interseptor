@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **`POST /api/authz` always returned `400 "bad json"`.** `identity.Headers` is stored as a single `"Key: Value\n..."` string, but the `set_authz` tool description told callers to send `headers` as an array or object — any non-string shape failed the whole JSON decode with an opaque error, and there was no way to seed an authz identity from a bearer token pulled out of a login response body. Added a custom `identity.UnmarshalJSON` that accepts a string, `["Key: Value", ...]`, or `{"Key":"Value"}` and normalizes to the canonical string form; the 400 now also includes the real decode error. Fixes [#1](https://github.com/Veyal/interceptor/issues/1). (`internal/control/authz.go`.)
 - **Map domain selector collapsed to a single host.** The endpoint Map sent the selected domain as a server-side `host=` filter on every `/api/endpoints` load, but the domain dropdown is built from the fetched endpoints — so once a domain was selected, any reload (a background `flow.new`/refresh) re-fetched only that host, rebuilt the dropdown with just that one domain, and left the user unable to switch to any other host. The `host=` filter is now applied **only** during a body/header search (where scoping is intended); a plain load always fetches all hosts, so the dropdown stays complete and domain filtering happens client-side. (`internal/control/ui/js/map.js`.)
 
 ### Removed
