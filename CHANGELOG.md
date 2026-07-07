@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Map domain selector collapsed to a single host.** The endpoint Map sent the selected domain as a server-side `host=` filter on every `/api/endpoints` load, but the domain dropdown is built from the fetched endpoints — so once a domain was selected, any reload (a background `flow.new`/refresh) re-fetched only that host, rebuilt the dropdown with just that one domain, and left the user unable to switch to any other host. The `host=` filter is now applied **only** during a body/header search (where scoping is intended); a plain load always fetches all hosts, so the dropdown stays complete and domain filtering happens client-side. (`internal/control/ui/js/map.js`.)
+
 ### Removed
 - **Content-discovery (forced-browse) feature.** The built-in directory/endpoint brute-forcer has been removed: its probes polluted Proxy History, and AI agents leaned on it instead of running purpose-built tools. Deleted the `internal/discovery` engine, the Discover UI tab/panel, the `/api/discovery/*` routes, and the MCP tools `start_discovery` / `stop_discovery` / `discovery_state` / `get_discovery_wordlist` / `suggest_discovery_paths`. The MCP RECON guidance now tells agents to run a real forced-browser (feroxbuster / gobuster / ffuf) **through the proxy** so hits still land in History, then triage with `list_flows` / `host_stats`; the autopilot planner no longer proposes `start_discovery`. Existing flows captured by the old feature are untouched (the `FlagDiscovery` bit and its "DSC" history badge are retained so legacy data still labels correctly).
 

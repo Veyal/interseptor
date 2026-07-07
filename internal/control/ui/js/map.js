@@ -102,10 +102,15 @@ export async function loadEndpoints(){
   const warn=$('#mapWarn');
   if(warn&&mapUsesServerSearch()){warn.style.display='block';warn.textContent='Searching bodies…';}
   const params = new URLSearchParams();
-  if(mapState.domain) params.set('host', mapState.domain);
   if(mapState.tag) params.set('tag', mapState.tag);
   if(!mapState.hideNoise) params.set('hideNoise', '0');
   if(mapUsesServerSearch()){
+    // Scope a body/header search to the selected host — but NEVER host-filter a
+    // plain load. The domain dropdown is populated from the fetched endpoints
+    // (fillMapDomains), so fetching only one host would collapse the selector to
+    // that single domain and hide every other host (leaving the user unable to
+    // switch domains). Plain domain filtering is applied client-side in mapFiltered.
+    if(mapState.domain) params.set('host', mapState.domain);
     params.set('search', mapState.search.trim());
     params.set('searchScope', mapState.searchScope);
   }
