@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,6 +31,16 @@ const (
 	launcherControlStart = 9966
 	launcherProxyStart   = 8080
 	launcherPortSpan     = 500
+	// launcherTokenHeader carries the local-operator proof required on every
+	// mutating launcher route (start/stop). Read-only routes (GET / and
+	// GET /api/instances) stay open since they're loopback-only informational
+	// reads with no side effects.
+	launcherTokenHeader = "X-Interceptor-Launcher-Token"
+	// bindConfirmTimeout bounds how long handleStart waits for a spawned
+	// child to actually accept connections on its control port before
+	// answering the start request — a short, bounded poll, not a hang.
+	bindConfirmTimeout  = 2 * time.Second
+	bindConfirmInterval = 50 * time.Millisecond
 )
 
 // runLauncher runs a small dashboard process that starts/stops per-project
@@ -65,25 +78,25 @@ func runLauncher(args []string) error {
 	}
 	_ = reg.Reconcile(proc.Alive)
 
+	token, err := loadOrCreateLauncherToken(globalDir)
+	if err != nil {
+		return fmt.Errorf("create launcher token: %w", err)
+	}
+
 	lh := &launcherServer{
 		globalDir:   globalDir,
 		projectsDir: filepath.Join(globalDir, "projects"),
 		logsDir:     logsDir,
 		exe:         exe,
 		reg:         reg,
+		token:       token,
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", lh.serveDashboard)
-	mux.HandleFunc("GET /api/instances", lh.handleList)
-	mux.HandleFunc("POST /api/instances/{project}/start", lh.handleStart)
-	mux.HandleFunc("POST /api/instances/{project}/stop", lh.handleStop)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return fmt.Errorf("launcher listen on %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: lh.routes()}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("launcher serve: %v", err)
@@ -103,8 +116,71 @@ func runLauncher(args []string) error {
 type launcherServer struct {
 	globalDir, projectsDir, logsDir, exe string
 	reg                                  *launcher.Registry
+	token                                string // required via X-Interceptor-Launcher-Token on mutating routes
 
 	mu sync.Mutex // serializes check-then-spawn / check-then-stop
+}
+
+// routes builds the launcher's HTTP handler. GET / and GET /api/instances
+// are loopback-only informational reads and stay open with no credential;
+// the mutating start/stop routes require lh.token via requireLauncherToken
+// so that no local process (or loopback-reachable web page) can spawn or
+// kill a pentest session without proof of local operator intent.
+func (lh *launcherServer) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", lh.serveDashboard)
+	mux.HandleFunc("GET /api/instances", lh.handleList)
+	mux.Handle("POST /api/instances/{project}/start", lh.requireLauncherToken(http.HandlerFunc(lh.handleStart)))
+	mux.Handle("POST /api/instances/{project}/stop", lh.requireLauncherToken(http.HandlerFunc(lh.handleStop)))
+	return mux
+}
+
+// requireLauncherToken rejects a mutating request unless it carries the
+// exact launcher token via the X-Interceptor-Launcher-Token header. The
+// comparison is constant-time to avoid a timing side-channel on an
+// otherwise-local secret.
+func (lh *launcherServer) requireLauncherToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := r.Header.Get(launcherTokenHeader)
+		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(lh.token)) != 1 {
+			launcherErr(w, http.StatusUnauthorized, "missing or invalid "+launcherTokenHeader+" header — read the token from ~/.interceptor/launcher.token")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// loadOrCreateLauncherToken generates a fresh random token on every launcher
+// start and writes it to <globalDir>/launcher.token with 0600 permissions,
+// overwriting any previous token so stale tokens never accumulate (an old
+// copy of the token becomes worthless the moment a new launcher starts).
+func loadOrCreateLauncherToken(globalDir string) (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate launcher token: %w", err)
+	}
+	tok := hex.EncodeToString(buf)
+
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(globalDir, "launcher.token")
+	// Write via a temp file + rename so a crash mid-write never leaves a
+	// truncated token on disk, then tighten permissions before the rename
+	// target is visible under its final name.
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(tok), 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	return tok, nil
 }
 
 type instanceView struct {
@@ -240,13 +316,48 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Reap the child so it doesn't zombie, and drop it from the registry the
 	// moment it exits on its own (crash, `interceptor stop`, etc.) rather than
 	// waiting for the next Reconcile to notice a dead pid.
+	exited := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
 		_ = logFile.Close()
 		_ = lh.reg.Remove(project)
+		close(exited)
 	}()
 
+	// Confirm the child actually bound its control port before answering
+	// 200 — cmd.Start() only proves the process launched, not that it came
+	// up successfully. This is a short, bounded poll: it returns the moment
+	// the port answers, and never blocks the success path.
+	if !waitForBind(controlAddr, bindConfirmTimeout, exited) {
+		launcherErr(w, http.StatusGatewayTimeout, fmt.Sprintf(
+			"%q started (pid %d) but its control port %s did not come up within %s — check %s",
+			project, inst.PID, controlAddr, bindConfirmTimeout, filepath.Join(lh.logsDir, project+".log")))
+		return
+	}
+
 	writeLauncherJSON(w, http.StatusOK, runningView(inst))
+}
+
+// waitForBind polls addr with short TCP dials until something accepts a
+// connection, the exited channel closes (the child died before binding), or
+// timeout elapses. It returns as soon as the port answers, so the success
+// path is never slower than the child's actual startup time.
+func waitForBind(addr string, timeout time.Duration, exited <-chan struct{}) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-exited:
+			return false
+		default:
+		}
+		conn, err := net.DialTimeout("tcp", addr, bindConfirmInterval)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		time.Sleep(bindConfirmInterval)
+	}
+	return false
 }
 
 func (lh *launcherServer) handleStop(w http.ResponseWriter, r *http.Request) {
@@ -325,8 +436,17 @@ func (lh *launcherServer) serveDashboard(w http.ResponseWriter, r *http.Request)
 		http.NotFound(w, r)
 		return
 	}
+	// The dashboard page itself is an unauthenticated informational read
+	// (loopback-only), but the mutating start/stop buttons it renders need
+	// the launcher token to succeed against the now-protected API. Loading
+	// this page IS the proof of local operator intent, so it's safe to hand
+	// the token to the page's own JS here — a JSON-encoded string literal
+	// keeps it safe to embed regardless of what characters hex happens to
+	// contain (it never will, but this avoids relying on that).
+	tokJSON, _ := json.Marshal(lh.token)
+	page := strings.Replace(launcherDashboardHTML, "__LAUNCHER_TOKEN__", string(tokJSON), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(launcherDashboardHTML))
+	_, _ = w.Write([]byte(page))
 }
 
 const launcherDashboardHTML = `<!doctype html>
@@ -356,6 +476,7 @@ const launcherDashboardHTML = `<!doctype html>
   <button onclick="startProject(document.getElementById('newName').value); document.getElementById('newName').value=''">+ Start project</button>
 </div>
 <script>
+const LAUNCHER_TOKEN = __LAUNCHER_TOKEN__;
 function esc(s){return String(s).replace(/[&<>"']/g, function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 async function refresh(){
   const res = await fetch('/api/instances');
@@ -377,11 +498,11 @@ async function refresh(){
 async function startProject(name){
   name = (name || '').trim();
   if(!name) return;
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/start', {method:'POST'});
+  await fetch('/api/instances/'+encodeURIComponent(name)+'/start', {method:'POST', headers:{'X-Interceptor-Launcher-Token': LAUNCHER_TOKEN}});
   refresh();
 }
 async function stopProject(name){
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/stop', {method:'POST'});
+  await fetch('/api/instances/'+encodeURIComponent(name)+'/stop', {method:'POST', headers:{'X-Interceptor-Launcher-Token': LAUNCHER_TOKEN}});
   refresh();
 }
 refresh();
