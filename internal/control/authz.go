@@ -85,7 +85,17 @@ type authzResult struct {
 	BodyHash       string `json:"bodyHash,omitempty"`
 	Same           bool   `json:"sameAsBaseline"`
 	SessionInvalid bool   `json:"sessionInvalid,omitempty"`
-	Broken         bool   `json:"broken,omitempty"`
+	// AccessDenied is true whenever a replay with auth headers got 401/403,
+	// regardless of whether it looks like session expiry or correctly-working
+	// access control. SessionInvalid is the narrower, evidence-backed subset of
+	// this (see sessionLooksInvalid) — AccessDenied preserves the rest of the
+	// signal instead of dropping it when the evidence is inconclusive.
+	AccessDenied bool `json:"accessDenied,omitempty"`
+	Broken       bool `json:"broken,omitempty"`
+
+	// resHeaders is the replay response's headers, used only to evaluate
+	// sessionLooksInvalid's auth-challenge evidence; not serialized.
+	resHeaders map[string][]string `json:"-"`
 }
 
 type authzRunOut struct {
@@ -171,8 +181,11 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 		Status         int    `json:"status"`
 		Error          string `json:"error"`
 		SessionInvalid bool   `json:"sessionInvalid"`
-		HasAuth        bool   `json:"hasAuth"`
-		Broken         bool   `json:"broken,omitempty"`
+		// AccessDenied is the broader, unevidenced signal (401/403 with auth
+		// headers set) — see authzResult.AccessDenied.
+		AccessDenied bool `json:"accessDenied,omitempty"`
+		HasAuth      bool `json:"hasAuth"`
+		Broken       bool `json:"broken,omitempty"`
 	}
 	var out []check
 	for _, id := range ids {
@@ -186,7 +199,8 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 			Name:           id.Name,
 			Status:         rr.Status,
 			Error:          rr.Error,
-			SessionInvalid: sessionLooksInvalid(rr.Status, hasAuth),
+			SessionInvalid: sessionLooksInvalid(rr.Status, hasAuth, rr.resHeaders),
+			AccessDenied:   accessDenied(rr.Status, hasAuth),
 			HasAuth:        hasAuth,
 		})
 	}
@@ -294,7 +308,8 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 		hasAuth := identityHasAuth(id)
 		rr := h.authzReplay(f, id)
 		rr.Name = id.Name
-		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth)
+		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth, rr.resHeaders)
+		rr.AccessDenied = accessDenied(rr.Status, hasAuth)
 		if !haveBase {
 			ro.BaselineStatus, baseLen, baseHash, baseMime, haveBase = rr.Status, rr.Length, rr.BodyHash, rr.Mime, true
 		} else {
@@ -313,6 +328,7 @@ func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	rr := authzResult{Name: id.Name}
 	if flow != nil {
 		rr.Status, rr.Length, rr.Mime, rr.Error, rr.FlowID = flow.Status, flow.ResLen, flow.Mime, flow.Error, flow.ID
+		rr.resHeaders = flow.ResHeaders
 		if flow.ResBodyHash != "" {
 			resBody := h.bodyBytes(flow.ResBodyHash)
 			rr.BodyHash = bodySHA256(resBody)
@@ -382,9 +398,69 @@ func identityHasAuth(id identity) bool {
 	return false
 }
 
-// sessionLooksInvalid is true when a replay with auth headers got 401/403.
-func sessionLooksInvalid(status int, hasAuth bool) bool {
-	return hasAuth && (status == http.StatusUnauthorized || status == http.StatusForbidden)
+// sessionLooksInvalid is true only when there is actual evidence that a
+// replay's session/credential expired, not merely that the response was
+// 401/403. A bare non-2xx is ambiguous: it's exactly as consistent with
+// "access control is now correctly denying this identity" (e.g. right after a
+// developer fixes the very IDOR this tool exists to catch) as it is with a
+// dead session — reporting both cases identically turns the tool's own
+// success into a false "your session died" signal. Evidence of real expiry
+// is an explicit auth challenge on the response: a WWW-Authenticate header,
+// or a redirect (3xx) whose Location looks like a login page. See
+// accessDenied for the broader (unevidenced) signal this narrows.
+func sessionLooksInvalid(status int, hasAuth bool, resHeaders map[string][]string) bool {
+	if !accessDeniedStatus(status) && !isRedirect(status) {
+		return false
+	}
+	if !hasAuth {
+		return false
+	}
+	return looksLikeAuthChallenge(status, resHeaders)
+}
+
+// accessDenied is true whenever a replay with auth headers got 401/403 —
+// regardless of whether it looks like session expiry. This is the broader,
+// unevidenced signal: "this identity was denied", without claiming to know
+// why. Use sessionLooksInvalid for the narrower, evidence-backed subset.
+func accessDenied(status int, hasAuth bool) bool {
+	return hasAuth && accessDeniedStatus(status)
+}
+
+func accessDeniedStatus(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+func isRedirect(status int) bool {
+	return status >= 300 && status < 400
+}
+
+// looksLikeAuthChallenge reports whether a response carries a signal specific
+// to authentication (rather than generic access control): a WWW-Authenticate
+// challenge header, or a redirect to what looks like a login/sign-in page.
+func looksLikeAuthChallenge(status int, resHeaders map[string][]string) bool {
+	if resHeaders == nil {
+		return false
+	}
+	for k, vs := range resHeaders {
+		if strings.EqualFold(k, "WWW-Authenticate") && len(vs) > 0 && strings.TrimSpace(vs[0]) != "" {
+			return true
+		}
+	}
+	if !isRedirect(status) {
+		return false
+	}
+	for k, vs := range resHeaders {
+		if !strings.EqualFold(k, "Location") || len(vs) == 0 {
+			continue
+		}
+		loc := strings.ToLower(vs[0])
+		for _, hint := range []string{"login", "signin", "sign-in", "/auth", "sso"} {
+			if strings.Contains(loc, hint) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cookieExpiryHints parses Set-Cookie attributes from a captured response.

@@ -56,14 +56,41 @@ func TestApplyIdentityHeadersOverridesCookie(t *testing.T) {
 }
 
 func TestSessionInvalid401(t *testing.T) {
-	if !sessionLooksInvalid(401, true) {
-		t.Fatal("401 with auth should be invalid")
+	// A 401/403 accompanied by an actual auth-challenge signal (WWW-Authenticate,
+	// or a redirect to a login page) is real evidence of session/credential
+	// expiry.
+	challenge := map[string][]string{"Www-Authenticate": {`Bearer realm="api"`}}
+	if !sessionLooksInvalid(401, true, challenge) {
+		t.Fatal("401 with auth + WWW-Authenticate should be invalid")
 	}
-	if sessionLooksInvalid(401, false) {
+	if sessionLooksInvalid(401, false, challenge) {
 		t.Fatal("401 without auth is not a session error")
 	}
-	if sessionLooksInvalid(200, true) {
+	if sessionLooksInvalid(200, true, challenge) {
 		t.Fatal("200 should be valid")
+	}
+	redirect := map[string][]string{"Location": {"/login?returnTo=/api/me"}}
+	if !sessionLooksInvalid(302, true, redirect) {
+		t.Fatal("redirect to a login page should be invalid")
+	}
+}
+
+// A bare 403/401 with NO auth-challenge evidence is exactly the ambiguous case
+// this fix addresses: right after a developer fixes an IDOR, the tool's own
+// success (access now correctly denied) must not be reported the same way as
+// "your session died" — sessionLooksInvalid must not fire without evidence.
+func TestSessionInvalidRequiresEvidenceNotBareStatus(t *testing.T) {
+	plainForbidden := map[string][]string{"Content-Type": {"application/json"}}
+	if sessionLooksInvalid(403, true, plainForbidden) {
+		t.Fatal("bare 403 with no auth-challenge signal should NOT be reported as sessionInvalid — it's ambiguous with correctly-working access control")
+	}
+	if sessionLooksInvalid(401, true, plainForbidden) {
+		t.Fatal("bare 401 with no auth-challenge signal should NOT be reported as sessionInvalid")
+	}
+	// Access is still flagged as denied — the information isn't dropped, just
+	// correctly labeled as ambiguous rather than "session expired".
+	if !accessDenied(403, true) {
+		t.Fatal("403 with auth should still be surfaced as access-denied")
 	}
 }
 
