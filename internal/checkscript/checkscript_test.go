@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const hstsCheck = `
@@ -156,5 +157,32 @@ def check(flow):
 	}
 	if _, err := c.Run(httpsFlow()); err == nil {
 		t.Fatal("expected the step limit to abort a runaway loop")
+	}
+}
+
+// A runaway comprehension at MODULE TOP LEVEL (outside any function) must also
+// be bounded. Starlark disallows for/while loops at module scope, but list/dict
+// comprehensions are legal there — so Compile itself (which executes the module
+// top level via starlark.ExecFile) must set a step limit, not just Run. Without
+// the fix this either hangs or allocates unbounded memory; with the fix it must
+// fail fast with a clear error.
+func TestCompileIsBounded(t *testing.T) {
+	const src = `
+x = [i * i for i in range(1000000000)]
+def check(flow):
+    return []
+`
+	done := make(chan error, 1)
+	go func() {
+		_, err := Compile("runaway", src)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected Compile to fail on a runaway module-level comprehension")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Compile did not return within 5s — module-level execution is not step-bounded")
 	}
 }

@@ -45,9 +45,13 @@ func predeclared() starlark.StringDict {
 }
 
 // Compile parses and compiles an active check, requiring a callable
-// check(point, baseline, probe).
+// check(point, baseline, probe). Module top-level code can't use for/while
+// loops, but comprehensions are legal there, so the compile thread is
+// step-bounded the same as Run's — otherwise a runaway comprehension at
+// module scope could hang or OOM the process before check() is ever called.
 func Compile(id, src string) (*Check, error) {
 	thread := &starlark.Thread{Name: "compile:active:" + id} // no Load ⇒ load() disabled
+	thread.SetMaxExecutionSteps(maxSteps)
 	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
 	if err != nil {
 		return nil, fmt.Errorf("active check %q: %w", id, err)
