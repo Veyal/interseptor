@@ -64,9 +64,10 @@ async function loadFlowAuthHint(flowId){
   try{
     const d=await api('/api/authz/flow-auth/'+flowId);
     const hints=(d.cookieHints||[]);
-    if(!hints.length&&!d.requestAuth){box.style.display='none';return;}
+    const authLine=[d.cookie?'Cookie: '+d.cookie:'',d.authorization?'Authorization: '+d.authorization:''].filter(Boolean).join('\n');
+    if(!hints.length&&!authLine){box.style.display='none';return;}
     let t='';
-    if(d.requestAuth)t+='Captured request auth: <span style="font-family:var(--mono);color:var(--fg2)">'+esc(d.requestAuth.replace(/\n/g,' · '))+'</span>. ';
+    if(authLine)t+='Captured request auth: <span style="font-family:var(--mono);color:var(--fg2)">'+esc(authLine.replace(/\n/g,' · '))+'</span>. ';
     if(hints.length)t+='Cookie hints: '+hints.map(h=>esc(h)).join('; ')+'.';
     box.innerHTML=t+' Use <b>⧉ From flow</b> to fill the baseline identity.';
     box.style.display='';
@@ -131,11 +132,12 @@ async function fillFromFlow(){
   if(!fid){toast('select a flow first');return;}
   try{
     const d=await api('/api/authz/flow-auth/'+fid);
-    if(!d.requestAuth){toast('no Cookie/Authorization on that request');return;}
+    const requestAuth=[d.cookie?'Cookie: '+d.cookie:'',d.authorization?'Authorization: '+d.authorization:''].filter(Boolean).join('\n');
+    if(!requestAuth){toast('no Cookie/Authorization on that request');return;}
     const ids=collectIds();
     let i=ids.findIndex(x=>!x.headers.trim());
     if(i<0){ids.unshift({name:'',headers:''});i=0;}
-    ids[i].headers=d.requestAuth;
+    ids[i].headers=requestAuth;
     if(!ids[i].name)ids[i].name='from flow';
     renderIdentities(ids);
     toast('filled identity from flow #'+fid);
