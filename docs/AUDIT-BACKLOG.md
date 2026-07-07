@@ -1,5 +1,48 @@
 # Interceptor — Audit Backlog (CLEARED)
 
+## v0.29.0 post-release audit (2026-07-07) — CLEARED
+
+A 6-agent parallel audit (each with an isolated live instance, real end-to-end
+testing, and a spot-check of prior "FIXED" claims below) covering the proxy/
+capture/TLS/WS core, the attack engines (Repeater/Intruder/Scanner/checks/
+active-scan/OOB), authz/findings/reporting, the AI-workspace/mobile layer +
+all unmerged branches, and the control API/MCP registry/full UI. Every finding
+below was fixed via TDD in an isolated git worktree, merged into `main`, and
+verified with a combined `go build ./... && go vet ./... && go test ./...`
+after each merge. See `CHANGELOG.md` `[Unreleased]` for user-facing detail.
+
+| id | severity | area | resolution |
+|----|----|----|----|
+| A1 | Critical | checkscript/activescript | **FIXED** — `Compile()` never bounded Starlark execution steps (only `Run()` did); a ~90-byte module-scope comprehension could OOM-kill the process. Both `Compile()`s now call `SetMaxExecutionSteps`. |
+| A2 | High | launcher | **FIXED** — instance start/stop had zero auth; any local process or loopback-CSRF page could kill/spawn pentest sessions. Added a per-process token (`~/.interceptor/launcher.token`) required on mutating routes, plus bind confirmation before returning success. |
+| A3 | High | proxy/intercept | **FIXED** — editing the Host header on a held request changed the wire header but not the actual connection target (confused-deputy/vhost-smuggling). Connection routing now follows the edited Host, on both plain-HTTP and HTTPS-MITM paths. |
+| A4 | Medium | mcp/store | **FIXED** — `append_notes` was client-side GET-then-PUT with no atomicity; concurrent agents could silently lose an entry. Now atomic server-side (`Store.AppendNote`, `PATCH /api/notes`). |
+| A5 | Medium | report | **FIXED** — the default Markdown findings report didn't sanitize finding text, allowing forged headings/status lines from untrusted content. HTML export was already safe; Markdown now neutralizes line-start structural markers too. |
+| A6 | Medium | ios | **FIXED** — no-device manual setup returned a broken `port=0` proxy config in the `.mobileconfig` URL. |
+| A7 | Medium | authz | **FIXED** — `authz_check_sessions` reported any 401/403 as "session invalid," including the exact moment a fixed IDOR correctly starts denying access. Now requires real evidence (WWW-Authenticate / login redirect); plain denial is reported separately via `accessDenied`. |
+| A8 | Medium | findings | **FIXED** — `createFinding` silently discarded failed PoC flow attachments; now surfaced via a `warnings` array. |
+| A9 | Medium | ui/authz.js | **FIXED** — "⧉ From flow" read a `d.requestAuth` field the backend never sent; always failed. Now reads the real `cookie`/`authorization`/`suggestedHeaders` fields. |
+| A10 | Medium | ui/scanner.js | **FIXED** — testing a passive check always showed "No finding" (JS only handled the active-check response shape). Now branches on the real shape. |
+| A11 | Medium | control/api.go | **FIXED** — `/api/reference` was missing 44 registered routes (autopwn/*, human-input/*, share/*, and more); MCP stdio config snippet hardcoded port 9966 regardless of the actual instance. Both fixed. |
+| A12 | Medium | docs | **FIXED** — README claimed 84 MCP tools (actual 83) and still advertised the removed content-discovery feature. |
+| A13 | Low | android/ios | **FIXED** — `adbExec`/`simctlExec`/`ideviceExec`/SSH post-dial exec had no timeout; a wedged device command could hang a handler goroutine forever. All now bounded (~30s). |
+| A14 | Low | intruder | **FIXED** — `threads<=0` silently clamped to 1 with no signal to the caller; now a clear 400. |
+| A15 | Low | humaninput | **FIXED** — unanswered prompts never expired, accumulating forever. Now expire after 1 hour, unblocking any waiter. |
+| A16 | Low | tlsca (test) | **FIXED** — `TestLoadOrCreateDirPerms` was a permanent Windows false-positive (NTFS doesn't map POSIX bits). Now skips the POSIX assertion on Windows only. |
+| A17 | Low | ui/proxy.js, ui/notes.js | **FIXED** — purge-toast referenced a nonexistent `freedBytes` field; the AI-notes-organize stream bypassed the shared CSRF/401-handling wrapper (not exploitable — the server enforces CSRF independently — but broke the 401→login redirect on session expiry). |
+| A18 | Low | proc (Windows) | **DEFERRED** — added `AliveInterceptor(pid)` (image-name-verified, closes a narrow PID-reuse race) but did **not** wire it into `launcher.go`'s kill path: that file has no build tag and can't reference a Windows-only symbol without a cross-platform shim in `internal/proc`'s OS-agnostic entry point, which needs equivalent-but-different logic on Unix (image-name isn't available the same way) — a small but real design decision, deferred rather than rushed. |
+| A19 | — | branches | **RESOLVED (housekeeping)** — `feat/ai-workspace-and-backlog`, `feat/autonomous-pentest`, `feat/collab-and-autopilot-fix`, `loop/pm-autonomous`, `loop/ui-and-bugs`, `redesign/ui-overhaul` were all already fully merged into `main` (0 commits ahead, confirmed ancestors) before this audit started. Deleted locally and on origin. |
+| A20 | — | discovery | **NOTED, no action** — content-discovery was already fully removed from `main` (commit `5d28f58`) before this audit started; the initial task brief assumed it still needed trimming and was stale by one day. |
+
+**Known pre-existing, unrelated flakiness**: `internal/activescan`'s
+`TestRunFindsAndBoundsRequests`/`TestRunHonorsDisabledChecks` intermittently
+fail only under full-suite parallel load (`go test ./...`) and pass reliably
+in isolation (`-run`, `-count=3`+). Confirmed present on a clean pre-audit
+checkout and untouched by any of this cycle's changes — likely an ordering/
+timing dependency worth a follow-up investigation, not a regression.
+
+---
+
 Output of a PM-driven, multi-iteration audit loop (22 iterations across backend
 correctness, security, UI/UX, frontend, API contract, performance, test coverage,
 accessibility, lifecycle/concurrency, malformed-input, resource/DoS, cross-cutting
