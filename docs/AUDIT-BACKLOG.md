@@ -1,4 +1,4 @@
-# Interceptor — Audit Backlog (CLEARED)
+# Interseptor — Audit Backlog (CLEARED)
 
 ## v0.29.0 post-release audit (2026-07-07) — CLEARED
 
@@ -14,7 +14,7 @@ after each merge. See `CHANGELOG.md` `[Unreleased]` for user-facing detail.
 | id | severity | area | resolution |
 |----|----|----|----|
 | A1 | Critical | checkscript/activescript | **FIXED** — `Compile()` never bounded Starlark execution steps (only `Run()` did); a ~90-byte module-scope comprehension could OOM-kill the process. Both `Compile()`s now call `SetMaxExecutionSteps`. |
-| A2 | High | launcher | **FIXED** — instance start/stop had zero auth; any local process or loopback-CSRF page could kill/spawn pentest sessions. Added a per-process token (`~/.interceptor/launcher.token`) required on mutating routes, plus bind confirmation before returning success. |
+| A2 | High | launcher | **FIXED** — instance start/stop had zero auth; any local process or loopback-CSRF page could kill/spawn pentest sessions. Added a per-process token (`~/.interseptor/launcher.token`) required on mutating routes, plus bind confirmation before returning success. |
 | A3 | High | proxy/intercept | **FIXED** — editing the Host header on a held request changed the wire header but not the actual connection target (confused-deputy/vhost-smuggling). Connection routing now follows the edited Host, on both plain-HTTP and HTTPS-MITM paths. |
 | A4 | Medium | mcp/store | **FIXED** — `append_notes` was client-side GET-then-PUT with no atomicity; concurrent agents could silently lose an entry. Now atomic server-side (`Store.AppendNote`, `PATCH /api/notes`). |
 | A5 | Medium | report | **FIXED** — the default Markdown findings report didn't sanitize finding text, allowing forged headings/status lines from untrusted content. HTML export was already safe; Markdown now neutralizes line-start structural markers too. |
@@ -30,7 +30,7 @@ after each merge. See `CHANGELOG.md` `[Unreleased]` for user-facing detail.
 | A15 | Low | humaninput | **FIXED** — unanswered prompts never expired, accumulating forever. Now expire after 1 hour, unblocking any waiter. |
 | A16 | Low | tlsca (test) | **FIXED** — `TestLoadOrCreateDirPerms` was a permanent Windows false-positive (NTFS doesn't map POSIX bits). Now skips the POSIX assertion on Windows only. |
 | A17 | Low | ui/proxy.js, ui/notes.js | **FIXED** — purge-toast referenced a nonexistent `freedBytes` field; the AI-notes-organize stream bypassed the shared CSRF/401-handling wrapper (not exploitable — the server enforces CSRF independently — but broke the 401→login redirect on session expiry). |
-| A18 | Low | proc (Windows) | **DEFERRED** — added `AliveInterceptor(pid)` (image-name-verified, closes a narrow PID-reuse race) but did **not** wire it into `launcher.go`'s kill path: that file has no build tag and can't reference a Windows-only symbol without a cross-platform shim in `internal/proc`'s OS-agnostic entry point, which needs equivalent-but-different logic on Unix (image-name isn't available the same way) — a small but real design decision, deferred rather than rushed. |
+| A18 | Low | proc (Windows) | **DEFERRED** — added `AliveInterseptor(pid)` (image-name-verified, closes a narrow PID-reuse race) but did **not** wire it into `launcher.go`'s kill path: that file has no build tag and can't reference a Windows-only symbol without a cross-platform shim in `internal/proc`'s OS-agnostic entry point, which needs equivalent-but-different logic on Unix (image-name isn't available the same way) — a small but real design decision, deferred rather than rushed. |
 | A19 | — | branches | **RESOLVED (housekeeping)** — `feat/ai-workspace-and-backlog`, `feat/autonomous-pentest`, `feat/collab-and-autopilot-fix`, `loop/pm-autonomous`, `loop/ui-and-bugs`, `redesign/ui-overhaul` were all already fully merged into `main` (0 commits ahead, confirmed ancestors) before this audit started. Deleted locally and on origin. |
 | A20 | — | discovery | **NOTED, no action** — content-discovery was already fully removed from `main` (commit `5d28f58`) before this audit started; the initial task brief assumed it still needed trimming and was stale by one day. |
 
@@ -112,7 +112,7 @@ campaign that resolved every remaining open item.
   AI's distinct workflows (intent change, or a >20s time gap), so a multi-step
   sequence reads as one block. CSS-light, no backend change.
 - **Auto-CA-trust** — **DECISION: document, do not automate.** Trusting the CA is a
-  one-time manual step per client by design (Interceptor never edits the OS trust
+  one-time manual step per client by design (Interseptor never edits the OS trust
   store). The Settings → TLS panel and the `ca_info` MCP tool both carry concise
   per-OS trust steps (macOS / Windows / Linux / Firefox / iOS / Android + curl).
 

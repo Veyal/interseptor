@@ -10,7 +10,7 @@ assistants alike. They describe how the existing code is written; match it.
 2. **Green before commit.** `go test ./...`, `go test -race ./...`, and `go vet ./...` must all
    pass. Concurrency-bearing packages (`proxy`, `intercept`, `intruder`, `control`) must be
    race-clean.
-3. **No cgo, single static binary.** `CGO_ENABLED=0 go build ./cmd/interceptor` must succeed.
+3. **No cgo, single static binary.** `CGO_ENABLED=0 go build ./cmd/interseptor` must succeed.
    Use pure-Go dependencies only (e.g. `modernc.org/sqlite`, never `mattn/go-sqlite3`).
 4. **A CHANGELOG entry per change.** Add a bullet under `## [Unreleased]` in
    [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog: `Added`/`Changed`/`Fixed`/`Removed`).
@@ -30,7 +30,7 @@ assistants alike. They describe how the existing code is written; match it.
 ## Architecture & package conventions
 
 - `internal/*` packages each own **one** responsibility and depend downward only
-  (see the table in [README.md](README.md)); `cmd/interceptor` does the wiring. Don't create
+  (see the table in [README.md](README.md)); `cmd/interseptor` does the wiring. Don't create
   import cycles — the control plane talks to other packages through small interfaces
   (e.g. `proxy.Events`), never the reverse.
 - **Storage:** bodies stream to disk via `io.TeeReader` and are content-addressed/deduped —
@@ -81,6 +81,6 @@ assistants alike. They describe how the existing code is written; match it.
 
 - [ ] `go test ./...` and `go test -race ./...` pass
 - [ ] `go vet ./...` is clean
-- [ ] `CGO_ENABLED=0 go build ./cmd/interceptor` succeeds
+- [ ] `CGO_ENABLED=0 go build ./cmd/interseptor` succeeds
 - [ ] New behavior is covered by a test
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`

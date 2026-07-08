@@ -1,7 +1,7 @@
 # MCP Cookbook — three recipes for the AI-assisted pentester
 
 *For Priya + Atlas: copy these prompts into your MCP client after connecting
-`interceptor mcp` or `POST http://127.0.0.1:9966/mcp`.*
+`interseptor mcp` or `POST http://127.0.0.1:9966/mcp`.*
 
 ## Recipe 1 — Map an API from captured traffic
 
@@ -20,9 +20,9 @@
 
 **Goal:** Find hidden paths, with every hit landing in History for triage.
 
-Interceptor has no built-in forced-browser (the old `start_discovery` /
+Interseptor has no built-in forced-browser (the old `start_discovery` /
 `discovery_state` / `suggest_discovery_paths` tools were removed — see
-CHANGELOG). Run a real tool instead, pointed **through** the Interceptor
+CHANGELOG). Run a real tool instead, pointed **through** the Interseptor
 proxy, so every request it fires is captured like any other traffic:
 
 ```

@@ -8,14 +8,14 @@ needs those tools installed (the order-of-magnitude gap is the point — see bel
 
 ## Headline numbers
 
-| Metric | Interceptor | Reference (widely reported) |
+| Metric | Interseptor | Reference (widely reported) |
 |---|---|---|
 | **Idle RSS** | **~20 MB** | Burp: ~3,500 MB idle; enterprise installs "16–17 GB RAM" |
 | **Cold start → serving UI** | **~1 s** (first run also generates the CA) | JVM tools: several seconds + JVM warmup |
 | **Binary size** | **~16.7 MB**, one static file, no runtime | Burp/ZAP: JVM + install; HTTP Toolkit: Electron |
 | **Capture throughput** | **~444 MB/s**, 1.5 KB + 18 allocs/op | — (we stream; we don't buffer bodies) |
 
-The idle-RSS figure is the differentiator: Interceptor uses roughly **1/100th** of Burp's idle
+The idle-RSS figure is the differentiator: Interseptor uses roughly **1/100th** of Burp's idle
 memory because it's a compiled native binary that streams bodies to disk instead of holding full
 HTTP history (with bodies) in a JVM heap.
 
@@ -31,7 +31,7 @@ go test ./internal/capture/ -bench BenchmarkTeeBody -benchmem -run '^$'
 **Cold start + idle RSS:**
 
 ```bash
-CGO_ENABLED=0 go build -o ib ./cmd/interceptor
+CGO_ENABLED=0 go build -o ib ./cmd/interseptor
 INTERCEPTOR_NO_BROWSER=1 ./ib &           # time until http://127.0.0.1:9966/ answers
 ps -o rss= -p $!                          # idle resident memory (KB)
 ```

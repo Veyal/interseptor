@@ -1,4 +1,4 @@
-# Interceptor — Improvement Analysis (UX/ease + API/MCP)
+# Interseptor — Improvement Analysis (UX/ease + API/MCP)
 
 *Owner: Product · Last updated: 2026-06-22*
 
@@ -10,7 +10,7 @@ to operate the tool**. Items marked **▶ now** are being executed this slice.
 
 | # | Gap today | Impact | Recommendation | Pri |
 |---|---|---|---|---|
-| A1 | **No real MCP server** — `/api/mcp` is only a *descriptor*; an agent can't actually call tools | Blocks the entire intent | **Ship `interceptor mcp`** — a stdio JSON-RPC MCP server exposing the control API as tools (list/get/search flows, send request, intruder, scanner, intercept, rules, ws frames, settings, CA). **▶ now** | P0 |
+| A1 | **No real MCP server** — `/api/mcp` is only a *descriptor*; an agent can't actually call tools | Blocks the entire intent | **Ship `interseptor mcp`** — a stdio JSON-RPC MCP server exposing the control API as tools (list/get/search flows, send request, intruder, scanner, intercept, rules, ws frames, settings, CA). **▶ now** | P0 |
 | A2 | **Hard to connect** — even with a server, users won't know the config | High | UI **MCP tab shows a copy-paste client config** + live connection/health. **▶ now** | P0 |
 | A3 | **Large results blow the agent's context** — raw bodies can be tens of KB | High | Tools return **bounded previews by default** with an explicit "full" fetch; `list_flows` returns compact summaries. **▶ now** (designed into the tools) | P0 |
 | A4 | **Result predictability** — a few endpoints return bare arrays/strings | Med | Keep every API/tool result a small, documented JSON shape; `GET /api/reference` already enumerates routes | P1 |
@@ -36,7 +36,7 @@ to operate the tool**. Items marked **▶ now** are being executed this slice.
 
 ## This slice (executing now)
 
-1. **A1 — real MCP server** (`internal/mcp`, `interceptor mcp` subcommand) with bounded-preview tools.
+1. **A1 — real MCP server** (`internal/mcp`, `interseptor mcp` subcommand) with bounded-preview tools.
 2. **A2 — MCP setup in the UI** (copy-paste config + how-to) and an updated `/api/mcp` descriptor.
 3. **A3 — bounded results** baked into the MCP tools.
 4. **B1 (partial) — onboarding/MCP-setup ease** surfaced where the user already is.

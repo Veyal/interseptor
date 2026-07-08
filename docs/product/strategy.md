@@ -1,4 +1,4 @@
-# Interceptor — Product Strategy
+# Interseptor — Product Strategy
 
 *Owner: Product · Last updated: 2026-06-22 · Status: living document*
 
@@ -10,7 +10,7 @@ weight of a JVM — and that an AI agent or CI job can drive as easily as a huma
 
 ## Intent (read this first)
 
-**Interceptor is an intercepting proxy built to be operated by a penetration tester *and their AI
+**Interseptor is an intercepting proxy built to be operated by a penetration tester *and their AI
 assistant together.*** The human and the AI are **both first-class users of the same engine**:
 
 - the **human** gets a fast, low-friction web UI to watch, intercept, replay, fuzz, and scan traffic;
@@ -81,7 +81,7 @@ Three pillars:
 The market is **barbell-shaped**: free OSS (ZAP, mitmproxy, Hetty) at one end, **$475/yr Burp Pro**
 (and 5-figure Enterprise) at the other, with **Caido (~$200/yr) as the disruptive middle**.
 
-| | Burp Pro | OWASP ZAP | Caido | **Interceptor** |
+| | Burp Pro | OWASP ZAP | Caido | **Interseptor** |
 |---|---|---|---|---|
 | Runtime | JVM (heavy) | JVM (heavy) | Rust (native) | **Go (native, 1 binary)** |
 | Price | ~$475/yr | Free | Freemium (~$200/yr) | **Free + open** |
@@ -89,7 +89,7 @@ The market is **barbell-shaped**: free OSS (ZAP, mitmproxy, Hetty) at one end, *
 | Scriptable API | Extensions (Java) | API + automation | Workflows (JS) | **REST + SSE + MCP** |
 | Best for | Pro pentests | Free automation/CI | Bug bounty (paid) | **Bug bounty + dev + agents (free)** |
 
-**Our two-sentence position:** *Interceptor gives you Caido-class speed at Hetty's price (free and
+**Our two-sentence position:** *Interseptor gives you Caido-class speed at Hetty's price (free and
 open), with a scriptable API none of the lightweight tools match. It's the intercepting proxy for
 people who want Burp's workflow without Burp's weight, cost, or lock-in.*
 

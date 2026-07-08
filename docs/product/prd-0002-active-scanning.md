@@ -4,7 +4,7 @@
 
 ## 1. Problem & intent
 
-Interceptor's scanner today is **passive** — it inspects traffic that already happened. The biggest
+Interseptor's scanner today is **passive** — it inspects traffic that already happened. The biggest
 capability gap vs Burp/ZAP is **active scanning**: deliberately *sending crafted requests* to a target
 to confirm vulnerabilities (reflected XSS, SQLi, SSTI, open redirect, …) rather than just guessing
 from observed responses.

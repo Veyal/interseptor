@@ -3,12 +3,12 @@
 > The passive twin of this guide is [`docs/custom-checks.md`](custom-checks.md) — read that first if
 > you haven't; this page only covers what's *different* about active checks.
 
-Interceptor's **active** scanner is extensible too: drop a check written in **Starlark** into your
+Interseptor's **active** scanner is extensible too: drop a check written in **Starlark** into your
 active-checks folder and it runs alongside the built-in active probes when you arm & run an active
 scan, sending real mutated requests to confirm vulnerabilities. This page is the **standard** every
 active check is written against.
 
-- **Where checks live:** `~/.interceptor/active-checks/*.star` (global — shared across all projects,
+- **Where checks live:** `~/.interseptor/active-checks/*.star` (global — shared across all projects,
   like the CA). The folder is created on first save; you can also create it by hand.
 - **When they run:** only when you **arm & run an active scan** (the **Active scan** dialog, or
   `POST /api/activescan/start`). They never run passively. Files are re-read each run, so editing a
@@ -79,7 +79,7 @@ Method:
 ## Example
 
 ```python
-# ~/.interceptor/active-checks/error-based-sqli.star
+# ~/.interseptor/active-checks/error-based-sqli.star
 def check(point, baseline, probe):
     r = probe("'")                          # ⚡ sends a real mutated request
     if re_search("(?i)SQL syntax", r.body):

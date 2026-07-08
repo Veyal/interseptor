@@ -1,4 +1,4 @@
-# Interceptor — Master UI/UX Redesign & Refactoring Roadmap
+# Interseptor — Master UI/UX Redesign & Refactoring Roadmap
 
 Produced by a three-way fan-out audit (Feature Archaeologist, UI/UX Architect, Performance
 Engineer) against the current codebase on `redesign/ui-overhaul`, synthesized into one execution
@@ -8,7 +8,7 @@ plan. Read-only audit — no source files were changed to produce this document.
 
 ## 1. Executive Summary
 
-Interceptor's backend (`internal/store`, `internal/proxy`, `internal/control`) is well-engineered:
+Interseptor's backend (`internal/store`, `internal/proxy`, `internal/control`) is well-engineered:
 streaming body capture, real keyset pagination, bounded body search, circuit-breakered active
 scanning, and a REST/MCP surface that stays in sync by construction (all 84 MCP tools map onto
 existing REST routes, confirmed by direct grep). The redesign should **not** touch that

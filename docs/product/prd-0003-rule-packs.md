@@ -8,7 +8,7 @@
 ## 1. Summary
 
 Move the **scan-rule catalog** (passive + active checks) into a separate, versioned, signed
-**rules repo** that Interceptor can **sync on demand** into its check directories — so new detections
+**rules repo** that Interseptor can **sync on demand** into its check directories — so new detections
 ship without a new binary. The built-in Go checks stay in the binary as the always-works **offline
 baseline**; rule packs *augment* them. Sync is **explicit, pinned, and integrity-verified** — never a
 silent background download — and **new active checks install disabled** because they emit attack
@@ -22,13 +22,13 @@ slow, and it couples security content to app cadence. Every serious scanner deco
 templates, Semgrep rules, Suricata/Snort signatures, ClamAV, Burp's BApp store. We should too.
 
 We are **most of the way there already**: both engines load user `.star` checks from disk
-(`~/.interceptor/checks` for passive via `internal/checkscript`, `~/.interceptor/active-checks` for
+(`~/.interseptor/checks` for passive via `internal/checkscript`, `~/.interseptor/active-checks` for
 active via `internal/activescript`), both sandbox execution (no net/files/clock), same-id checks
 override built-ins, and CI already compile-validates every template (`TestBuiltinTemplatesCompile`,
 `TestActiveBuiltinTemplatesCompile`). What's missing is a **canonical rule source** and a **safe way
 to pull from it**.
 
-The trap to avoid: naive "auto-download rules." Interceptor is a **security tool that is itself a MITM
+The trap to avoid: naive "auto-download rules." Interseptor is a **security tool that is itself a MITM
 proxy**, prized for being a **self-contained, offline, no-phone-home** single binary. Two properties
 make silent auto-update actively dangerous here:
 
@@ -41,9 +41,9 @@ make silent auto-update actively dangerous here:
 ## 3. Goals / Non-goals
 
 **Goals**
-- A separate **`interceptor-rules`** repo: curated passive + active `.star` checks with a manifest,
+- A separate **`interseptor-rules`** repo: curated passive + active `.star` checks with a manifest,
   CI-gated to compile and pass detection tests.
-- Interceptor can **install/update a pinned, signed rule pack** into its check dirs, on demand.
+- Interseptor can **install/update a pinned, signed rule pack** into its check dirs, on demand.
 - **Reproducibility:** record the installed pack id+version; surface it on findings and in reports.
 - **Trust split by risk:** synced passive checks enable automatically (sandboxed, harmless); synced
   **active** checks install **disabled**, behind an explicit review + enable.
@@ -63,7 +63,7 @@ make silent auto-update actively dangerous here:
   detections and a couple of reviewed active checks, without re-installing.
 - **Pentester on a locked-down client network:** runs fully offline; downloads a signed pack on a
   separate machine and **imports the file**; the report cites the exact pack version.
-- **Contributor / the AI via MCP:** opens a PR of a new `.star` check against `interceptor-rules`; CI
+- **Contributor / the AI via MCP:** opens a PR of a new `.star` check against `interseptor-rules`; CI
   validates it; it ships in the next pack — no Go, no binary release.
 - **Cautious operator:** never syncs; keeps the shipped built-ins only. Nothing changes for them.
 
@@ -75,16 +75,16 @@ make silent auto-update actively dangerous here:
   "passive"|"active", class, severity, title }], }`.
 - A detached **signature** over the pack (ed25519 / minisign).
 
-**FR2 — The rules repo.** `interceptor-rules` holds the sources + tests; CI (a) compiles every check
+**FR2 — The rules repo.** `interseptor-rules` holds the sources + tests; CI (a) compiles every check
 (reuse the existing compile gate), (b) runs per-check detection unit tests (positive + negative
 fixtures — mirrors the strict-FP bar in the codebase), (c) validates the manifest, (d) builds and
 **signs** the release tarball. Only signed, CI-green tags become installable packs.
 
-**FR3 — Sync (explicit).** `interceptor rules status|update|pin <version>` CLI and a
+**FR3 — Sync (explicit).** `interseptor rules status|update|pin <version>` CLI and a
 `Settings → Rules` panel. Update fetches a specific tag, **verifies the signature against a public key
 pinned in the binary**, checks `minAppVersion`, then unpacks into the check dirs. No auto-schedule.
 
-**FR4 — Air-gapped import.** `interceptor rules import <file>` / a UI file-picker installs a
+**FR4 — Air-gapped import.** `interseptor rules import <file>` / a UI file-picker installs a
 pre-downloaded signed pack with the same verification — no network.
 
 **FR5 — Trust split.** On install, passive checks are active immediately. New **active** checks are
@@ -138,7 +138,7 @@ pack (atomic install to a temp dir, then swap).
 - Air-gapped `import` of a downloaded signed pack works with networking disabled.
 - After install, `scan_report` output names the pack `id@version`.
 - User-local `.star` with the same id overrides a pack check; a pack check overrides the built-in.
-- The `interceptor-rules` CI fails a check that doesn't compile or fails its negative-FP fixture.
+- The `interseptor-rules` CI fails a check that doesn't compile or fails its negative-FP fixture.
 
 ## 9. Success metrics
 
@@ -152,7 +152,7 @@ pack (atomic install to a temp dir, then swap).
 
 ## 10. Rollout / phasing
 
-1. **Phase 1 — content + reproducibility (no online sync):** stand up `interceptor-rules` with the
+1. **Phase 1 — content + reproducibility (no online sync):** stand up `interseptor-rules` with the
    manifest + CI compile/FP-fixture gate; support **signed file import** and the reproducibility
    stamp. Ships the safety-critical parts first, no network surface.
 2. **Phase 2 — signed online sync + UI:** `rules sync/pin`, the `Settings → Rules` panel, the

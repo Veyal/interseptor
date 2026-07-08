@@ -1,4 +1,4 @@
-# Interceptor — Agent Rules
+# Interseptor — Agent Rules
 
 Single source of truth (symlinked: `CLAUDE.md`, `.cursorrules`, `.opencode/rules.md`).
 
@@ -9,8 +9,8 @@ HTTP/HTTPS intercepting proxy + security toolkit. Single static Go binary (no cg
 ## Build & Test
 
 ```bash
-go run ./cmd/interceptor                    # run
-CGO_ENABLED=0 go build ./cmd/interceptor    # build
+go run ./cmd/interseptor                    # run
+CGO_ENABLED=0 go build ./cmd/interseptor    # build
 go test ./...                               # test
 go test -race ./...                         # race check (must be clean)
 go vet ./...                                # static analysis (must be clean)
@@ -20,7 +20,7 @@ All three checks must pass before every commit.
 
 ## Architecture
 
-`internal/*` packages, each one responsibility, wired by `cmd/interceptor`. Key packages: `store` (SQLite + content-addressed bodies), `proxy` (forward + MITM), `control` (REST + SSE + embedded UI), `sender`, `intruder`, `activescan`, `ios`, `android`, `mcp`, `scope`.
+`internal/*` packages, each one responsibility, wired by `cmd/interseptor`. Key packages: `store` (SQLite + content-addressed bodies), `proxy` (forward + MITM), `control` (REST + SSE + embedded UI), `sender`, `intruder`, `activescan`, `ios`, `android`, `mcp`, `scope`.
 
 UI: `internal/control/ui/` — embedded via `//go:embed`, no build step. Native ES modules in `js/`. `core.js` = shared foundation, each feature = one module.
 

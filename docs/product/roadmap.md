@@ -1,4 +1,4 @@
-# Interceptor — Roadmap
+# Interseptor — Roadmap
 
 *Owner: Product · Last updated: 2026-06-26 · Horizon: rolling. Now/Next/Later, not dates.*
 
@@ -29,7 +29,7 @@ verified live). See [CHANGELOG.md](../../CHANGELOG.md).
 
 | Shipped | Notes |
 |---|---|
-| **Real MCP server** (`interceptor mcp`) | stdio JSON-RPC, **18 tools**, bounded results |
+| **Real MCP server** (`interseptor mcp`) | stdio JSON-RPC, **18 tools**, bounded results |
 | **MCP setup in the UI** + AI-friendly API | copy-paste client config; `/api/reference` self-documents |
 | **Target scope** (PRD-0001) | include/exclude rules focus history + intercept + scanner |
 | **Response interception** | response match-&-replace + hold/edit/drop |

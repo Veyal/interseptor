@@ -1,4 +1,4 @@
-# Interceptor — Success Metrics
+# Interseptor — Success Metrics
 
 *Owner: Product · Last updated: 2026-06-22*
 

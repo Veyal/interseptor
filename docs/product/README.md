@@ -1,6 +1,6 @@
 # Product
 
-Product-management home for Interceptor: why we're building it, for whom, what's next, and how we
+Product-management home for Interseptor: why we're building it, for whom, what's next, and how we
 decide. These are living documents — PRs that change product direction update them.
 
 ## The docs
