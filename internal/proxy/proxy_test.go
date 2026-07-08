@@ -14,12 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Veyal/interceptor/internal/capture"
 	"github.com/Veyal/interceptor/internal/intercept"
 	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interceptor/internal/strutil"
 	"github.com/Veyal/interceptor/internal/tlsca"
 )
 
@@ -767,6 +769,172 @@ func TestProxyMITMInterceptEditedHostRetargetsConnection(t *testing.T) {
 	}
 }
 
+// Security regression for the HTTPS-MITM path: the same self-listener guard
+// proven over plain HTTP in TestProxyInterceptEditedHostToOwnListenerIsRefused
+// must also hold inside the MITM tunnel. The CONNECT tunnel picks target A's
+// TLS connection up front, but the held plaintext request inside it can still
+// be edited to point Host at Interceptor's own loopback listener before
+// forwarding — gateAndForward is the single funnel point for both the
+// plain-HTTP and MITM paths, so this proves the guard added there covers both.
+func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
+	upCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("upstream CA: %v", err)
+	}
+	leaf, err := upCA.LeafForHost("127.0.0.1")
+	if err != nil {
+		t.Fatalf("leaf: %v", err)
+	}
+	targetA, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*leaf}})
+	if err != nil {
+		t.Fatalf("upstream listen: %v", err)
+	}
+	defer targetA.Close()
+	go func() {
+		for {
+			c, err := targetA.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				req, err := http.ReadRequest(br)
+				if err != nil {
+					return
+				}
+				req.Body.Close()
+				body := "response-from-A"
+				fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+			}()
+		}
+	}()
+
+	// Stand in for Interceptor's own listener. This MUST speak TLS on the same
+	// CA the proxy's transport trusts: gateAndForward carries flow.Scheme
+	// ("https") through an edited Host unchanged, so inside a MITM session
+	// the retargeted dial is always TLS. Using a plain-HTTP stand-in here
+	// would make the TLS handshake itself the thing that blocks the request,
+	// masking whether the self-listener guard is actually doing its job — a
+	// TLS-speaking stand-in isolates the guard as the only possible blocker.
+	var ownHits int32
+	ownLeaf, err := upCA.LeafForHost("127.0.0.1")
+	if err != nil {
+		t.Fatalf("own leaf: %v", err)
+	}
+	ownLn, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{*ownLeaf}})
+	if err != nil {
+		t.Fatalf("own listen: %v", err)
+	}
+	defer ownLn.Close()
+	go func() {
+		for {
+			c, err := ownLn.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				req, err := http.ReadRequest(br)
+				if err != nil {
+					return
+				}
+				req.Body.Close()
+				atomic.AddInt32(&ownHits, 1)
+				body := `{"keys":["leaked-secret"]}`
+				fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+			}()
+		}
+	}()
+	_, ownPortStr, _ := net.SplitHostPort(ownLn.Addr().String())
+	ownPort, _ := strconv.Atoi(ownPortStr)
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), ca, eng, nil)
+	srv.SelfPorts = []int{ownPort}
+	upPool := x509.NewCertPool()
+	upPool.AppendCertsFromPEM(upCA.CertPEM())
+	srv.tr.TLSClientConfig = &tls.Config{RootCAs: upPool}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer raw.Close()
+	raw.SetDeadline(time.Now().Add(4 * time.Second))
+	fmt.Fprintf(raw, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", targetA.Addr().String(), targetA.Addr().String())
+	connResp, err := http.ReadResponse(bufio.NewReader(raw), &http.Request{Method: "CONNECT"})
+	if err != nil || connResp.StatusCode != 200 {
+		t.Fatalf("CONNECT failed: %v / %v", err, connResp)
+	}
+	clientPool := x509.NewCertPool()
+	clientPool.AppendCertsFromPEM(ca.CertPEM())
+	tlsClient := tls.Client(raw, &tls.Config{RootCAs: clientPool, ServerName: "127.0.0.1"})
+	if err := tlsClient.Handshake(); err != nil {
+		t.Fatalf("client TLS handshake: %v", err)
+	}
+
+	done := make(chan string, 1)
+	go func() {
+		fmt.Fprintf(tlsClient, "GET /secret.txt HTTP/1.1\r\nHost: %s\r\n\r\n", targetA.Addr().String())
+		br := bufio.NewReader(tlsClient)
+		resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+		if err != nil {
+			done <- "err:" + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- string(b)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	// The operator (or a prompt-injected AI agent) edits Host inside the MITM
+	// tunnel to Interceptor's own listener and asks to forward — refused.
+	edited := fmt.Sprintf("GET /api/keys HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n", ownPort)
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+
+	select {
+	case body := <-done:
+		if strings.Contains(body, "leaked-secret") {
+			t.Fatalf("own-listener response body leaked back to the client over the MITM tunnel: %q", body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	if n := atomic.LoadInt32(&ownHits); n != 0 {
+		t.Fatalf("own listener received %d request(s) over the MITM path; the guard must refuse before ever dialing it", n)
+	}
+}
+
 func TestUpstreamProxyConfig(t *testing.T) {
 	s, err := store.Open(t.TempDir())
 	if err != nil {
@@ -1064,6 +1232,199 @@ func TestProxyInterceptUneditedHoldStillRoutesToOriginalHost(t *testing.T) {
 	f := waitFlows(t, s, 1)[0]
 	if f.Host != uOrig.Hostname() {
 		t.Fatalf("flow.Host = %q, want original host %q", f.Host, uOrig.Hostname())
+	}
+}
+
+// Security regression: the Host-retargeting fix (see
+// TestProxyInterceptEditedHostRetargetsConnection) lets an operator edit a held
+// request's Host header to genuinely redirect the outbound connection — but it
+// never checked whether the new target is Interceptor's OWN loopback listener
+// (control plane or proxy). Without this guard, an MCP-driving AI agent (or
+// prompt-injected content reaching one) could hold a request via set_intercept,
+// then call forward_request with Host: 127.0.0.1:<control-port> and a
+// control-API path (e.g. GET /api/keys). The proxy would dial that address for
+// real; because the resulting connection is genuinely loopback-sourced with a
+// loopback Host header, the control API's unauthenticated-loopback trust path
+// (internal/control/guard.go) would grant it full access — reading API keys,
+// findings, captured credentials, settings — all disguised as an ordinary
+// "forward this request" action. This is the same class of attack that
+// Repeater/Intruder/WS-repeater/the AI agent tool already refuse via
+// targetsOwnListener/isOwnListener (internal/control/activescan.go); this test
+// asserts the Intercept-forward path gets the same protection, enforced against
+// the FINAL (post-edit) target rather than the pre-edit one.
+func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), nil, eng, nil)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// Stand in for Interceptor's own control-plane listener: a real HTTP
+	// server on a loopback port that srv.SelfPorts knows about. If the guard
+	// fails to refuse, this handler would actually receive the "attack"
+	// request and reply with a distinctive body proving the leak.
+	var ownHits int32
+	own := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&ownHits, 1)
+		io.WriteString(w, `{"keys":["leaked-secret"]}`)
+	}))
+	defer own.Close()
+	uOwn, _ := url.Parse(own.URL)
+	ownPort, _ := strconv.Atoi(uOwn.Port())
+	srv.SelfPorts = []int{ownPort}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "response-from-upstream")
+	}))
+	defer upstream.Close()
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+
+	type result struct {
+		status int
+		body   string
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := client.Get(upstream.URL + "/held")
+		if err != nil {
+			done <- result{0, "err:" + err.Error()}
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- result{resp.StatusCode, string(b)}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	// The operator (or a prompt-injected AI agent) edits Host to Interceptor's
+	// own listener and asks to forward a crafted control-API request — this
+	// must be refused, not dialed.
+	edited := fmt.Sprintf("GET /api/keys HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n", ownPort)
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+
+	select {
+	case r := <-done:
+		if r.status < 400 {
+			t.Fatalf("expected the forward to be refused (>=400), got status=%d body=%q", r.status, r.body)
+		}
+		if strings.Contains(r.body, "leaked-secret") {
+			t.Fatalf("own-listener response body leaked back to the client: %q", r.body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	// The strongest assertion: Interceptor's own listener must never have
+	// received the "attack" request at all — the guard refuses before dialing.
+	if n := atomic.LoadInt32(&ownHits); n != 0 {
+		t.Fatalf("own listener received %d request(s); the guard must refuse before ever dialing it", n)
+	}
+}
+
+// Regression: editing Host to a normal, non-self target must keep working
+// exactly as TestProxyInterceptEditedHostRetargetsConnection already proves —
+// the self-listener guard must not over-trigger on legitimate retargets. This
+// test exercises the same scenario end-to-end once more with an explicit
+// SelfPorts set (disjoint from both targets), to prove the guard only refuses
+// genuine self-targeting, not retargeting in general.
+func TestProxyInterceptEditedHostToNonSelfTargetStillForwards(t *testing.T) {
+	targetA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "response-from-A")
+	}))
+	defer targetA.Close()
+	targetB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "response-from-B")
+	}))
+	defer targetB.Close()
+
+	uA, _ := url.Parse(targetA.URL)
+	uB, _ := url.Parse(targetB.URL)
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	eng := intercept.New()
+	eng.SetEnabled(true)
+	srv := New(s, capture.New(s), nil, eng, nil)
+	// A SelfPorts entry that matches neither target — the guard must not refuse
+	// a legitimate retarget just because SelfPorts is non-empty.
+	srv.SelfPorts = []int{1}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	proxyURL, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}, Timeout: 5 * time.Second}
+
+	done := make(chan string, 1)
+	go func() {
+		resp, err := client.Get(targetA.URL + "/secret.txt")
+		if err != nil {
+			done <- "err:" + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- string(b)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(eng.Queue()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(eng.Queue()) != 1 {
+		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
+	}
+
+	edited := fmt.Sprintf("GET /secret.txt HTTP/1.1\r\nHost: %s\r\n\r\n", uB.Host)
+	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
+		t.Fatalf("Forward edited: %v", err)
+	}
+
+	select {
+	case body := <-done:
+		if body != "response-from-B" {
+			t.Fatalf("editing Host to a non-self target must still retarget the connection: got body %q, want %q", body, "response-from-B")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("client never got a response after forward")
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	if f.Host != uB.Hostname() {
+		t.Fatalf("recorded flow.Host = %q, want the real destination %q", f.Host, uB.Hostname())
+	}
+	if f.Host == uA.Hostname() && f.Port == strutil.AtoiOr(uA.Port(), 0) {
+		t.Fatal("flow still recorded against the original (pre-edit) target")
 	}
 }
 

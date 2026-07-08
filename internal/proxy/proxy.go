@@ -600,6 +600,23 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			}
 			out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 			out.Host = out.URL.Host
+
+			// Refuse to dial Interceptor's own loopback listeners (control plane or
+			// proxy) once the edit is resolved to its FINAL target — this must run
+			// after the Host retarget above, not before, or an edited Host would slip
+			// past it entirely. Without this, an MCP-driving AI agent (or
+			// prompt-injected content reaching one) could hold a request, edit its
+			// Host to 127.0.0.1:<control-port>, and forward a crafted control-API
+			// request (e.g. GET /api/keys); the resulting connection is genuinely
+			// loopback-sourced with a loopback Host header, so the control API's
+			// unauthenticated-loopback trust path (internal/control/guard.go) would
+			// grant it full access. Repeater/Intruder/WS-repeater/the AI agent tool
+			// already refuse this exact class of self-targeting via
+			// targetsOwnListener/isOwnListener; this mirrors that guard using the
+			// same SelfPorts loopback-port set the proxy already keeps in sync.
+			if s.isOwnListenerTarget(flow.Host, flow.Port) {
+				return nil, false, fmt.Errorf("refusing to forward to Interceptor's own listener")
+			}
 		}
 	}
 
@@ -894,6 +911,27 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 		}
 	}
 	return true
+}
+
+// isOwnListenerTarget reports whether host:port names one of Interceptor's own
+// loopback listeners (control plane or proxy) — the same SelfPorts set
+// shouldCapture uses to keep our own UI/API traffic out of history. Mirrors
+// internal/control's targetsOwnListener/isOwnListener (loopback-normalized:
+// 127.x / ::1 / localhost, not a literal string match), which Repeater,
+// Intruder, WS-repeater, and the AI agent tool already use to refuse being
+// coerced into attacking Interceptor's own control API. Used by
+// gateAndForward after Host-retargeting is resolved, so an edited Host can't
+// slip a forward past this check.
+func (s *Server) isOwnListenerTarget(host string, port int) bool {
+	if len(s.SelfPorts) == 0 || !isLoopbackName(host) {
+		return false
+	}
+	for _, p := range s.SelfPorts {
+		if p == port {
+			return true
+		}
+	}
+	return false
 }
 
 // SetCaptureScopeOnly switches between persisting all traffic (false) and only
