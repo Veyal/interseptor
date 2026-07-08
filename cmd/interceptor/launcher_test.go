@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -10,6 +11,39 @@ import (
 
 	"github.com/Veyal/interceptor/internal/launcher"
 )
+
+// TestResolveLauncherAddr mirrors flags_test.go's coverage of
+// resolveControlAddr: the launcher dashboard's -addr flag must honor the
+// same INTERCEPTOR_ALLOW_EXTERNAL_BIND policy as the main control/proxy
+// listeners rather than binding non-loopback unconditionally.
+func TestResolveLauncherAddr(t *testing.T) {
+	tests := []struct {
+		name     string
+		addr     string
+		allowExt string // "" = unset
+		wantAddr string
+	}{
+		{"loopback host:port always allowed", "127.0.0.1:9965", "0", "127.0.0.1:9965"},
+		{"localhost always allowed", "localhost:9965", "0", "localhost:9965"},
+		{"empty falls back to default", "", "0", defaultLauncherAddr},
+		{"non-loopback allowed by default (unset)", "0.0.0.0:9965", "", "0.0.0.0:9965"},
+		{"non-loopback allowed explicitly", "0.0.0.0:9965", "1", "0.0.0.0:9965"},
+		{"non-loopback blocked falls back to default", "0.0.0.0:9965", "0", defaultLauncherAddr},
+		{"non-loopback blocked (false)", "10.0.0.5:9965", "false", defaultLauncherAddr},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.allowExt == "" {
+				os.Unsetenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND")
+			} else {
+				t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", tc.allowExt)
+			}
+			if got := resolveLauncherAddr(tc.addr); got != tc.wantAddr {
+				t.Fatalf("resolveLauncherAddr(%q) with ALLOW_EXTERNAL_BIND=%q = %q, want %q", tc.addr, tc.allowExt, got, tc.wantAddr)
+			}
+		})
+	}
+}
 
 // TestHandleStopUsesStrictAliveInterceptorCheck is a wiring test: it swaps
 // the launcher's liveness/kill indirections for fakes and asserts handleStop

@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Veyal/interceptor/internal/bind"
 	"github.com/Veyal/interceptor/internal/launcher"
 	"github.com/Veyal/interceptor/internal/proc"
 )
@@ -41,6 +42,32 @@ var (
 	launcherForce    = proc.Force
 )
 
+// resolveLauncherAddr applies the same loopback-bind policy as the main
+// control/proxy listeners (see cmd/interceptor/flags.go's resolveControlAddr
+// and internal/bind) to the launcher dashboard's -addr flag: a non-loopback
+// bind is only honored when INTERCEPTOR_ALLOW_EXTERNAL_BIND permits it,
+// otherwise it's ignored in favor of the loopback default.
+//
+// This matters more here than for the main control plane: serveDashboard
+// serves an unauthenticated page (no session/token) that can start/stop
+// project instances and reveals each instance's control address, so an
+// unintended non-loopback bind would expose that to the LAN/internet with
+// no gate at all. Known tradeoff: even a policy-approved external bind
+// still has no per-request auth — external bind here is opt-in and the
+// operator is assumed to have made that call deliberately, same as for the
+// main control/proxy listeners.
+func resolveLauncherAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		addr = defaultLauncherAddr
+	}
+	if !isLoopbackBind(addr) && !bind.ExternalBindAllowed() {
+		log.Printf("launcher addr %q is non-loopback; ignoring (external bind disabled via INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
+		return defaultLauncherAddr
+	}
+	return addr
+}
+
 // runLauncher runs a small dashboard process that starts/stops per-project
 // Interceptor instances (each its own OS process, its own control+proxy
 // ports, sharing only the global CA and Starlark checks) and tracks them in
@@ -50,10 +77,11 @@ var (
 func runLauncher(args []string) error {
 	fs := flag.NewFlagSet("launcher", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	addr := fs.String("addr", defaultLauncherAddr, "launcher dashboard listen address")
+	addrFlag := fs.String("addr", defaultLauncherAddr, "launcher dashboard listen address")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	addr := resolveLauncherAddr(*addrFlag)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -90,9 +118,9 @@ func runLauncher(args []string) error {
 	mux.HandleFunc("POST /api/instances/{project}/start", lh.handleStart)
 	mux.HandleFunc("POST /api/instances/{project}/stop", lh.handleStop)
 
-	ln, err := net.Listen("tcp", *addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("launcher listen on %s: %w", *addr, err)
+		return fmt.Errorf("launcher listen on %s: %w", addr, err)
 	}
 	srv := &http.Server{Handler: mux}
 	go func() {
@@ -100,7 +128,7 @@ func runLauncher(args []string) error {
 			log.Printf("launcher serve: %v", err)
 		}
 	}()
-	log.Printf("Interceptor launcher: dashboard on http://%s", *addr)
+	log.Printf("Interceptor launcher: dashboard on http://%s", addr)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
