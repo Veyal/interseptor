@@ -16,19 +16,27 @@
 
 **Tip:** Add an include-scope rule (`add_scope_rule`) first so `list_flows` isn't noisy.
 
-## Recipe 2 — Agent-driven content discovery
+## Recipe 2 — Content discovery through the proxy
 
-**Goal:** Find hidden paths without leaving Interceptor.
+**Goal:** Find hidden paths, with every hit landing in History for triage.
+
+Interceptor has no built-in forced-browser (the old `start_discovery` /
+`discovery_state` / `suggest_discovery_paths` tools were removed — see
+CHANGELOG). Run a real tool instead, pointed **through** the Interceptor
+proxy, so every request it fires is captured like any other traffic:
 
 ```
 1. list_scope — confirm the target is in scope
-2. suggest_discovery_paths for the host (merges history seeds + AI if a key is set)
-3. start_discovery with baseUrl=https://target/ and wordlist from step 2
-4. Poll discovery_state until running=false
+2. Run a forced-browse tool through the proxy, e.g.:
+   feroxbuster -u https://target/ --proxy http://127.0.0.1:8080 -k
+   (or gobuster / ffuf configured with the same proxy)
+3. list_flows with search set to the target host to see what landed
+4. host_stats for a per-host summary of what was hit
 5. send_request on interesting hits; run_scanner for passive follow-up
 ```
 
-**Human takeover:** Watch the Discover tab and History (`?discovery=1` filter) live.
+**Human takeover:** Watch Proxy History live — hits appear as normal
+captured flows, no separate Discover tab.
 
 ## Recipe 3 — Triage scanner findings and fuzz
 
