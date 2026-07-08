@@ -4,8 +4,8 @@ import { $, esc, state, api, toast } from './core.js';
 const VERDICT = {
   ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '✓' },
   tls_blocked: { label: 'TLS blocked — pinning or untrusted CA', color: 'var(--red)', icon: '⛔' },
-  no_traffic: { label: 'No traffic reached proxy', color: 'var(--amber)', icon: '○' },
-  no_https: { label: 'No HTTPS intercepted yet', color: 'var(--amber)', icon: '?' },
+  no_traffic: { label: 'No traffic captured yet', color: 'var(--amber)', icon: '○' },
+  no_https: { label: 'No HTTPS traffic intercepted yet (HTTP only so far)', color: 'var(--amber)', icon: '?' },
 };
 
 export const BANNER_HIDDEN_KEY = 'tlsDiagBannerHidden';
@@ -175,5 +175,14 @@ export function getStartedDiagnosisHint() {
 }
 
 export function onFlowMaybeTLS(f) {
-  if (f && (f.flags & 16)) loadTrafficDiagnosis();
+  if (!f) return;
+  // A TLS-relevant flow (handshake failure/success) can always flip the
+  // verdict. But "no_traffic"/"no_https" are about traffic volume, not TLS
+  // specifically — any new flow (including plain HTTP) can move TotalFlows
+  // off zero and stale-out one of those two verdicts, so re-check on every
+  // flow while the banner is showing either, not just TLS-flagged ones.
+  // Otherwise a run of non-TLS traffic never clears an initial "no traffic
+  // reached the proxy yet" reading taken at page load.
+  const stalable = lastDiag && (lastDiag.verdict === 'no_traffic' || lastDiag.verdict === 'no_https');
+  if ((f.flags & 16) || stalable) loadTrafficDiagnosis();
 }
