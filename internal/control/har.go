@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/harx"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/harx"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // exportHAR streams the (optionally in-scope) history as a HAR 1.2 document.
@@ -31,7 +31,7 @@ func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 		flows = kept
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", `attachment; filename="interceptor.har"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor.har"`)
 	w.Write(harx.Build(flows, h.bodyBytes))
 }
 

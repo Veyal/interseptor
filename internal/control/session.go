@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // parseSessionHeaders turns "Key: Value" lines into sender.Header entries.

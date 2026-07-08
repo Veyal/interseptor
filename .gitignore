@@ -6,8 +6,9 @@
 .claude/settings.local.json
 
 # Compiled binary
+/interseptor
+/interseptor.exe
 /interceptor
-/interceptor.exe
 *.exe
 *.exe~
 
@@ -16,8 +17,8 @@
 /_*.log
 /.claude/launch.json
 
-# Local runtime data (created under ~/.interceptor by default; ignore if run in-tree)
-/.interceptor/
+# Local runtime data (created under ~/.interseptor by default; ignore if run in-tree)
+/.interseptor/
 
 # Engagement / working artifacts must never be committed (real target data, PII,
 # findings dumps). Keep these out of a public repo.

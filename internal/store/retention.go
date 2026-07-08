@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/hostpattern"
+	"github.com/Veyal/interseptor/internal/hostpattern"
 )
 
 // HostStat aggregates flow counts and approximate byte totals for one host.

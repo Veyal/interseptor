@@ -53,7 +53,7 @@ func TestDecodeForDisplay(t *testing.T) {
 		if outHdr["Content-Length"][0] != "55" { // len(plain)
 			t.Fatalf("%s: Content-Length not corrected: %v", c.enc, outHdr["Content-Length"])
 		}
-		if outHdr["X-Interceptor-Decoded"][0] != c.enc {
+		if outHdr["X-Interseptor-Decoded"][0] != c.enc {
 			t.Fatalf("%s: missing decoded marker", c.enc)
 		}
 	}

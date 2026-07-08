@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func (h *projectAPI) listViews(w http.ResponseWriter, r *http.Request) {

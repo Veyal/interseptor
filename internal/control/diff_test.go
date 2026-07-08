@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // The pure diff helper must summarize a status change, a header added, and a

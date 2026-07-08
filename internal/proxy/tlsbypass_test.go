@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 // A host on the bypass list must be tunneled raw: the client completes TLS with

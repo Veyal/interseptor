@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // BenchmarkTeeBody measures the capture hot path: streaming a body through the
@@ -19,7 +19,7 @@ func BenchmarkTeeBody(b *testing.B) {
 	defer s.Close()
 	c := New(s)
 
-	payload := bytes.Repeat([]byte("interceptor-streaming-body-"), 4096) // ~108 KB
+	payload := bytes.Repeat([]byte("interseptor-streaming-body-"), 4096) // ~108 KB
 	b.SetBytes(int64(len(payload)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -21,10 +21,10 @@ func procFromProcFS(pid int) (Proc, bool) {
 	exePath, _ := os.Readlink(filepath.Join(dir, "exe"))
 	exeBase := baseFromPath(exePath)
 
-	if matchesInterceptor(comm) {
+	if matchesInterseptor(comm) {
 		return Proc{PID: pid, Path: exePath}, true
 	}
-	if exeBase != "" && matchesInterceptor(exeBase) {
+	if exeBase != "" && matchesInterseptor(exeBase) {
 		return Proc{PID: pid, Path: exePath}, true
 	}
 	return Proc{}, false

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescan"
 )
 
 func TestCompileRunFindsVuln(t *testing.T) {

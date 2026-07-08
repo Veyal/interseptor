@@ -33,12 +33,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/oob"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/oob"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // vulnServer is a deliberately-vulnerable HTTP server whose flaws are

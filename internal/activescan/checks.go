@@ -103,7 +103,7 @@ var sstiCheck = Check{
 	},
 }
 
-const redirectCanary = "interceptor-oob.example"
+const redirectCanary = "interseptor-oob.example"
 
 // Open redirect: confirm a 3xx Location (or it) points at our off-host canary.
 var openRedirectCheck = Check{
@@ -180,7 +180,7 @@ var cmdInjectionCheck = Check{
 
 // crlfHeaderName is the injected header the CRLF check looks for in response headers.
 // Using a distinctive, unlikely-to-collide name minimises false positives.
-const crlfHeaderName = "Interceptorcrlfcanary"
+const crlfHeaderName = "Interseptorcrlfcanary"
 
 // crlfPayloads are the CRLF sequences tried, in several encodings, since web
 // servers and reverse proxies normalise input differently:
@@ -247,7 +247,7 @@ var crlfCheck = Check{
 }
 
 // xxeCanary is the string the server echoes back if it resolves the internal entity.
-const xxeCanary = "INTERCEPTOR_XXE_CANARY"
+const xxeCanary = "INTERSEPTOR_XXE_CANARY"
 
 // xxeInjectDoctype rewrites an XML body to prepend a DOCTYPE declaration that
 // defines an internal entity mapping "xxe" → xxeCanary, then injects &xxe; as
@@ -463,7 +463,7 @@ var xpathCheck = Check{
 
 // ---- Host header injection ----
 
-const hostHeaderCanary = "interceptor-host.example"
+const hostHeaderCanary = "interseptor-host.example"
 
 // hostCanaryAbsRe matches the canary host in an absolute-URL context (//host or
 // http(s)://host) — the strict signal that a spoofable X-Forwarded-Host was used
@@ -502,7 +502,7 @@ var hostHeaderCheck = Check{
 
 // ---- CORS misconfiguration (active) ----
 
-const corsCanaryOrigin = "https://interceptor-cors.example"
+const corsCanaryOrigin = "https://interseptor-cors.example"
 
 // CORS misconfiguration: send an arbitrary attacker Origin and confirm the server
 // reflects it into Access-Control-Allow-Origin (optionally with credentials).

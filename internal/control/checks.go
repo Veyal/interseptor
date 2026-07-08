@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Veyal/interceptor/internal/activescan"
-	"github.com/Veyal/interceptor/internal/activescript"
-	"github.com/Veyal/interceptor/internal/checkscript"
-	"github.com/Veyal/interceptor/internal/scanner"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescript"
+	"github.com/Veyal/interseptor/internal/checkscript"
+	"github.com/Veyal/interseptor/internal/scanner"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // maxCheckSource bounds a user/AI-supplied Starlark check source before it is

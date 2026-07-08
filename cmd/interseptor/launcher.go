@@ -22,9 +22,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/launcher"
-	"github.com/Veyal/interceptor/internal/proc"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/launcher"
+	"github.com/Veyal/interseptor/internal/proc"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 	// mutating launcher route (start/stop). Read-only routes (GET / and
 	// GET /api/instances) stay open since they're loopback-only informational
 	// reads with no side effects.
-	launcherTokenHeader = "X-Interceptor-Launcher-Token"
+	launcherTokenHeader = "X-Interseptor-Launcher-Token"
 	// bindConfirmTimeout bounds how long handleStart waits for a spawned
 	// child to actually accept connections on its control port before
 	// answering the start request — a short, bounded poll, not a hang.
@@ -46,19 +46,19 @@ const (
 
 // launcherAlive/launcherGraceful/launcherForce are indirections over the proc
 // package so tests can substitute fakes and assert the launcher's kill path
-// calls the PID-reuse-safe AliveInterceptor check rather than the generic
+// calls the PID-reuse-safe AliveInterseptor check rather than the generic
 // Alive (which would happily report a recycled, unrelated PID as "our
 // process"). Production code always uses the real proc functions below.
 var (
-	launcherAlive    = proc.AliveInterceptor
+	launcherAlive    = proc.AliveInterseptor
 	launcherGraceful = proc.Graceful
 	launcherForce    = proc.Force
 )
 
 // resolveLauncherAddr applies the same loopback-bind policy as the main
-// control/proxy listeners (see cmd/interceptor/flags.go's resolveControlAddr
+// control/proxy listeners (see cmd/interseptor/flags.go's resolveControlAddr
 // and internal/bind) to the launcher dashboard's -addr flag: a non-loopback
-// bind is only honored when INTERCEPTOR_ALLOW_EXTERNAL_BIND permits it,
+// bind is only honored when INTERSEPTOR_ALLOW_EXTERNAL_BIND permits it,
 // otherwise it's ignored in favor of the loopback default.
 //
 // This matters more here than for the main control plane: serveDashboard
@@ -75,16 +75,16 @@ func resolveLauncherAddr(addr string) string {
 		addr = defaultLauncherAddr
 	}
 	if !isLoopbackBind(addr) && !bind.ExternalBindAllowed() {
-		log.Printf("launcher addr %q is non-loopback; ignoring (external bind disabled via INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
+		log.Printf("launcher addr %q is non-loopback; ignoring (external bind disabled via INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
 		return defaultLauncherAddr
 	}
 	return addr
 }
 
 // runLauncher runs a small dashboard process that starts/stops per-project
-// Interceptor instances (each its own OS process, its own control+proxy
+// Interseptor instances (each its own OS process, its own control+proxy
 // ports, sharing only the global CA and Starlark checks) and tracks them in
-// ~/.interceptor/instances.json. Closing the launcher does NOT stop the
+// ~/.interseptor/instances.json. Closing the launcher does NOT stop the
 // project instances it spawned — they're independent processes so an active
 // proxy session survives the dashboard going away.
 func runLauncher(args []string) error {
@@ -100,7 +100,10 @@ func runLauncher(args []string) error {
 	if err != nil {
 		return err
 	}
-	globalDir := filepath.Join(home, ".interceptor")
+	if err := migrateDataDir(home); err != nil {
+		return fmt.Errorf("migrate data dir: %w", err)
+	}
+	globalDir := filepath.Join(home, newDataDirName)
 	logsDir := filepath.Join(globalDir, "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return err
@@ -141,7 +144,7 @@ func runLauncher(args []string) error {
 			log.Printf("launcher serve: %v", err)
 		}
 	}()
-	log.Printf("Interceptor launcher: dashboard on http://%s", addr)
+	log.Printf("Interseptor launcher: dashboard on http://%s", addr)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -155,7 +158,7 @@ func runLauncher(args []string) error {
 type launcherServer struct {
 	globalDir, projectsDir, logsDir, exe string
 	reg                                  *launcher.Registry
-	token                                string // required via X-Interceptor-Launcher-Token on mutating routes
+	token                                string // required via X-Interseptor-Launcher-Token on mutating routes
 
 	mu sync.Mutex // serializes check-then-spawn / check-then-stop
 }
@@ -175,14 +178,14 @@ func (lh *launcherServer) routes() http.Handler {
 }
 
 // requireLauncherToken rejects a mutating request unless it carries the
-// exact launcher token via the X-Interceptor-Launcher-Token header. The
+// exact launcher token via the X-Interseptor-Launcher-Token header. The
 // comparison is constant-time to avoid a timing side-channel on an
 // otherwise-local secret.
 func (lh *launcherServer) requireLauncherToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get(launcherTokenHeader)
 		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(lh.token)) != 1 {
-			launcherErr(w, http.StatusUnauthorized, "missing or invalid "+launcherTokenHeader+" header — read the token from ~/.interceptor/launcher.token")
+			launcherErr(w, http.StatusUnauthorized, "missing or invalid "+launcherTokenHeader+" header — read the token from ~/.interseptor/launcher.token")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -244,7 +247,7 @@ func runningView(inst launcher.Instance) instanceView {
 		StartedAt:   inst.StartedAt,
 		UIURL:       "http://" + inst.ControlAddr,
 		MCPURL:      "http://" + inst.ControlAddr + "/mcp",
-		MCPEnvHint:  "INTERCEPTOR_CONTROL_URL=http://" + inst.ControlAddr,
+		MCPEnvHint:  "INTERSEPTOR_CONTROL_URL=http://" + inst.ControlAddr,
 	}
 }
 
@@ -330,8 +333,8 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command(lh.exe, "--project", project, "--control-port", strconv.Itoa(controlPort))
 	cmd.Env = append(os.Environ(),
-		"INTERCEPTOR_PROXY_ADDR="+proxyAddr,
-		"INTERCEPTOR_NO_BROWSER=1",
+		"INTERSEPTOR_PROXY_ADDR="+proxyAddr,
+		"INTERSEPTOR_NO_BROWSER=1",
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -353,7 +356,7 @@ func (lh *launcherServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reap the child so it doesn't zombie, and drop it from the registry the
-	// moment it exits on its own (crash, `interceptor stop`, etc.) rather than
+	// moment it exits on its own (crash, `interseptor stop`, etc.) rather than
 	// waiting for the next Reconcile to notice a dead pid.
 	exited := make(chan struct{})
 	go func() {
@@ -489,7 +492,7 @@ func (lh *launcherServer) serveDashboard(w http.ResponseWriter, r *http.Request)
 }
 
 const launcherDashboardHTML = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Interceptor — Projects</title>
+<html><head><meta charset="utf-8"><title>Interseptor — Projects</title>
 <style>
   body{font:14px/1.4 -apple-system,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;margin:0;padding:32px}
   h1{font-size:18px;margin:0 0 20px}
@@ -508,7 +511,7 @@ const launcherDashboardHTML = `<!doctype html>
   .new{margin-top:22px;display:flex;gap:8px}
 </style></head>
 <body>
-<h1>Interceptor — running projects</h1>
+<h1>Interseptor — running projects</h1>
 <div class="grid" id="grid"></div>
 <div class="new">
   <input id="newName" placeholder="new project name…">
@@ -537,11 +540,11 @@ async function refresh(){
 async function startProject(name){
   name = (name || '').trim();
   if(!name) return;
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/start', {method:'POST', headers:{'X-Interceptor-Launcher-Token': LAUNCHER_TOKEN}});
+  await fetch('/api/instances/'+encodeURIComponent(name)+'/start', {method:'POST', headers:{'X-Interseptor-Launcher-Token': LAUNCHER_TOKEN}});
   refresh();
 }
 async function stopProject(name){
-  await fetch('/api/instances/'+encodeURIComponent(name)+'/stop', {method:'POST', headers:{'X-Interceptor-Launcher-Token': LAUNCHER_TOKEN}});
+  await fetch('/api/instances/'+encodeURIComponent(name)+'/stop', {method:'POST', headers:{'X-Interseptor-Launcher-Token': LAUNCHER_TOKEN}});
   refresh();
 }
 refresh();

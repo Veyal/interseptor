@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestNormalizeCLIArgsControlPortUnderscore(t *testing.T) {
@@ -32,8 +32,8 @@ func TestControlAddrFromPort(t *testing.T) {
 }
 
 func TestResolveControlAddrPriority(t *testing.T) {
-	t.Setenv("INTERCEPTOR_CONTROL_ADDR", "127.0.0.1:9999")
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "")
+	t.Setenv("INTERSEPTOR_CONTROL_ADDR", "127.0.0.1:9999")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "")
 
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -48,21 +48,21 @@ func TestResolveControlAddrPriority(t *testing.T) {
 	if got := resolveControlAddr(st, ""); got != "127.0.0.1:9999" {
 		t.Fatalf("env: got %q", got)
 	}
-	t.Setenv("INTERCEPTOR_CONTROL_ADDR", "")
+	t.Setenv("INTERSEPTOR_CONTROL_ADDR", "")
 	if got := resolveControlAddr(st, ""); got != "127.0.0.1:8888" {
 		t.Fatalf("persisted: got %q", got)
 	}
 }
 
 func TestResolveControlAddrAllowsExternalByDefault(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "")
 	if got := resolveControlAddr(nil, "0.0.0.0:9966"); got != "0.0.0.0:9966" {
 		t.Fatalf("got %q, want 0.0.0.0:9966", got)
 	}
 }
 
 func TestResolveControlAddrRejectsExternalWhenLocked(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	if got := resolveControlAddr(nil, "0.0.0.0:9966"); got != defaultControlAddr {
 		t.Fatalf("got %q, want default", got)
 	}

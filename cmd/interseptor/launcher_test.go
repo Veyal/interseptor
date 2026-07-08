@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/launcher"
+	"github.com/Veyal/interseptor/internal/launcher"
 )
 
 // newTestLauncherServer builds a launcherServer rooted at a fresh temp dir,
@@ -76,7 +76,7 @@ func TestWrongTokenRejected(t *testing.T) {
 	mux := lh.routes()
 
 	req := httptest.NewRequest("POST", "/api/instances/acme/start", nil)
-	req.Header.Set("X-Interceptor-Launcher-Token", "not-the-real-token")
+	req.Header.Set("X-Interseptor-Launcher-Token", "not-the-real-token")
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -110,7 +110,7 @@ func TestCorrectTokenStartSucceedsPastAuth(t *testing.T) {
 	mux := lh.routes()
 
 	req := httptest.NewRequest("POST", "/api/instances/acme/start", nil)
-	req.Header.Set("X-Interceptor-Launcher-Token", tok)
+	req.Header.Set("X-Interseptor-Launcher-Token", tok)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -137,7 +137,7 @@ func TestDashboardEmbedsLauncherToken(t *testing.T) {
 	if !strings.Contains(body, tok) {
 		t.Fatal("dashboard HTML does not embed the launcher token — its start/stop buttons would fail auth")
 	}
-	if !strings.Contains(body, "X-Interceptor-Launcher-Token") {
+	if !strings.Contains(body, "X-Interseptor-Launcher-Token") {
 		t.Fatal("dashboard JS does not appear to send the launcher token header")
 	}
 }
@@ -259,7 +259,7 @@ func TestLoadOrCreateLauncherTokenPersistsAndPermissions(t *testing.T) {
 
 // TestResolveLauncherAddr mirrors flags_test.go's coverage of
 // resolveControlAddr: the launcher dashboard's -addr flag must honor the
-// same INTERCEPTOR_ALLOW_EXTERNAL_BIND policy as the main control/proxy
+// same INTERSEPTOR_ALLOW_EXTERNAL_BIND policy as the main control/proxy
 // listeners rather than binding non-loopback unconditionally.
 func TestResolveLauncherAddr(t *testing.T) {
 	tests := []struct {
@@ -279,9 +279,9 @@ func TestResolveLauncherAddr(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.allowExt == "" {
-				os.Unsetenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND")
+				os.Unsetenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND")
 			} else {
-				t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", tc.allowExt)
+				t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", tc.allowExt)
 			}
 			if got := resolveLauncherAddr(tc.addr); got != tc.wantAddr {
 				t.Fatalf("resolveLauncherAddr(%q) with ALLOW_EXTERNAL_BIND=%q = %q, want %q", tc.addr, tc.allowExt, got, tc.wantAddr)
@@ -290,10 +290,10 @@ func TestResolveLauncherAddr(t *testing.T) {
 	}
 }
 
-// TestHandleStopUsesStrictAliveInterceptorCheck is a wiring test: it swaps
+// TestHandleStopUsesStrictAliveInterseptorCheck is a wiring test: it swaps
 // the launcher's liveness/kill indirections for fakes and asserts handleStop
 // consults the PID-reuse-safe check (launcherAlive, backed by
-// proc.AliveInterceptor in production) rather than a generic "is this PID
+// proc.AliveInterseptor in production) rather than a generic "is this PID
 // alive" check that can't distinguish our child from an unrelated process
 // that has since reused a recycled PID.
 //
@@ -301,7 +301,7 @@ func TestResolveLauncherAddr(t *testing.T) {
 // test, so this proves the wiring instead: the fake "strict" check is the
 // only one consulted, and a PID that's alive-but-not-ours (as the fake
 // reports) is correctly treated as not running.
-func TestHandleStopUsesStrictAliveInterceptorCheck(t *testing.T) {
+func TestHandleStopUsesStrictAliveInterseptorCheck(t *testing.T) {
 	origAlive, origGraceful, origForce := launcherAlive, launcherGraceful, launcherForce
 	t.Cleanup(func() {
 		launcherAlive, launcherGraceful, launcherForce = origAlive, origGraceful, origForce
@@ -373,7 +373,7 @@ func TestHandleStopUsesStrictAliveInterceptorCheck(t *testing.T) {
 		t.Fatal("handleStop never called the strict liveness check (launcherAlive) — kill path is not wired to it")
 	}
 	if graceful != 0 {
-		t.Fatalf("handleStop called Graceful %d time(s) for a PID the strict check said was not ours — kill path is not respecting AliveInterceptor's verdict", graceful)
+		t.Fatalf("handleStop called Graceful %d time(s) for a PID the strict check said was not ours — kill path is not respecting AliveInterseptor's verdict", graceful)
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d (strict check says not running)", rec.Code, http.StatusNotFound)
@@ -479,11 +479,11 @@ func TestHandleStopGracefulThenForceWhenStillAlive(t *testing.T) {
 	}
 }
 
-// TestLauncherAliveDefaultsToAliveInterceptor guards against a future edit
+// TestLauncherAliveDefaultsToAliveInterseptor guards against a future edit
 // silently repointing the launcherAlive indirection at the generic
-// proc.Alive (which is PID-reuse-unsafe) instead of proc.AliveInterceptor.
-func TestLauncherAliveDefaultsToAliveInterceptor(t *testing.T) {
-	// Both launcherAlive and proc.AliveInterceptor should agree on an
+// proc.Alive (which is PID-reuse-unsafe) instead of proc.AliveInterseptor.
+func TestLauncherAliveDefaultsToAliveInterseptor(t *testing.T) {
+	// Both launcherAlive and proc.AliveInterseptor should agree on an
 	// obviously-dead PID; this is a smoke check that the indirection is
 	// still pointed at *some* proc-package function and hasn't been
 	// replaced with something that always returns true/false.

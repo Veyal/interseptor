@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // Project merge = additive union of a peer's flows + findings into the active
@@ -24,7 +24,7 @@ import (
 // mergeArchiveFile unpacks a full-project archive to a scratch dir and merges it
 // into the active project, returning the merge stats. Shared by mergeFile/mergePull.
 func (h *Hub) mergeArchiveFile(zipPath, label string) (store.MergeStats, error) {
-	scratch, err := os.MkdirTemp("", "interceptor-merge-*")
+	scratch, err := os.MkdirTemp("", "interseptor-merge-*")
 	if err != nil {
 		return store.MergeStats{}, err
 	}
@@ -45,7 +45,7 @@ func (h *Hub) mergeArchiveFile(zipPath, label string) (store.MergeStats, error) 
 // merges it into the active project. Requires a full-scope key (guarded).
 func (h *Hub) mergeFile(w http.ResponseWriter, r *http.Request) {
 	label := strings.TrimSpace(r.URL.Query().Get("label"))
-	tmp, err := os.CreateTemp("", "interceptor-merge-up-*.zip")
+	tmp, err := os.CreateTemp("", "interseptor-merge-up-*.zip")
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -129,7 +129,7 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
-	arc, err := os.CreateTemp("", "interceptor-push-*.zip")
+	arc, err := os.CreateTemp("", "interseptor-push-*.zip")
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -174,7 +174,7 @@ func downloadPeerArchive(url, key string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("peer returned %d", resp.StatusCode)
 	}
-	tmp, err := os.CreateTemp("", "interceptor-pull-*.zip")
+	tmp, err := os.CreateTemp("", "interseptor-pull-*.zip")
 	if err != nil {
 		return "", err
 	}

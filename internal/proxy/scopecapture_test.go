@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 type capScope struct{ in bool }

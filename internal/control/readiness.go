@@ -43,7 +43,7 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	if deviceEP.Endpoint != "" && deviceEP.Endpoint != proxyAddr {
 		proxyDetail += " · device proxy " + deviceEP.Endpoint
 	}
-	add("proxy", proxyAddr != "", proxyDetail, "start Interceptor or check bind address in Settings")
+	add("proxy", proxyAddr != "", proxyDetail, "start Interseptor or check bind address in Settings")
 
 	includes := 0
 	if rules, err := h.st.ListScopeRules(); err == nil {

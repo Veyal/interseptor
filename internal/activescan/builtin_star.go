@@ -1,7 +1,7 @@
 package activescan
 
 // BuiltinTemplate returns default Starlark for a built-in active probe.
-// Saving to ~/.interceptor/active-checks/<id>.star overrides the Go probe.
+// Saving to ~/.interseptor/active-checks/<id>.star overrides the Go probe.
 func BuiltinTemplate(id string) (string, bool) {
 	t, ok := builtinStarlark[id]
 	return t, ok
@@ -73,7 +73,7 @@ def check(point, baseline, probe):
 `,
 	"active-open-redirect": `# Open redirect (built-in override).
 def check(point, baseline, probe):
-    canary = "interceptor-oob.example"
+    canary = "interseptor-oob.example"
     for pl in ("https://" + canary + "/x", "//" + canary + "/x"):
         r = probe(pl)
         if r.status >= 300 and r.status < 400:
@@ -162,7 +162,7 @@ def check(point, baseline, probe):
 def check(point, baseline, probe):
     if point.kind != "header" or point.name.lower() != "x-forwarded-host":
         return []
-    canary = "interceptor-host.example"
+    canary = "interseptor-host.example"
     if canary in baseline.body:
         return []
     r = probe(canary)
@@ -177,7 +177,7 @@ def check(point, baseline, probe):
 def check(point, baseline, probe):
     if point.kind != "header" or point.name.lower() != "origin":
         return []
-    origin = "https://interceptor-cors.example"
+    origin = "https://interseptor-cors.example"
     r = probe(origin)
     if (r.header("Access-Control-Allow-Origin") or "").lower() != origin:
         return []
@@ -194,7 +194,7 @@ def check(point, baseline, probe):
 def check(point, baseline, probe):
     if point.kind != "body":
         return []
-    canary = "INTERCEPTOR_XXE_CANARY"
+    canary = "INTERSEPTOR_XXE_CANARY"
     payload = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe "' + canary + '">]><foo>&xxe;</foo>'
     r = probe(payload)
     if canary in r.body and canary not in baseline.body:

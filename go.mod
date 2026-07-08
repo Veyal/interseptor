@@ -1,4 +1,4 @@
-module github.com/Veyal/interceptor
+module github.com/Veyal/interseptor
 
 go 1.25.0
 

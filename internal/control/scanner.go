@@ -4,10 +4,10 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/checkscript"
-	"github.com/Veyal/interceptor/internal/report"
-	"github.com/Veyal/interceptor/internal/scanner"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/checkscript"
+	"github.com/Veyal/interseptor/internal/report"
+	"github.com/Veyal/interseptor/internal/scanner"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // scannerRun runs the passive scanner over all captured flows (excluding the
@@ -97,6 +97,6 @@ func (h *scannerAPI) scannerReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="interceptor-findings.md"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-findings.md"`)
 	w.Write([]byte(report.Findings(issues)))
 }

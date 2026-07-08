@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // FlowCaptured implements proxy.Events: it pushes a newly-seen flow (request

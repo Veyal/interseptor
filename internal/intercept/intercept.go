@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // ErrNotHeld is returned when resolving an id that is not (or no longer) held.

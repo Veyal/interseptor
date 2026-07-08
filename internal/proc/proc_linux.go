@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-// List returns every running interceptor process (excluding the caller).
+// List returns every running interseptor process (excluding the caller).
 func List() ([]Proc, error) {
 	self := os.Getpid()
 	entries, err := os.ReadDir("/proc")
@@ -31,11 +31,11 @@ func List() ([]Proc, error) {
 	return procs, nil
 }
 
-// aliveInterceptor reports whether pid is alive AND /proc identifies it as an
-// Interceptor binary, closing the same PID-reuse race that aliveInterceptor
+// aliveInterseptor reports whether pid is alive AND /proc identifies it as an
+// Interseptor binary, closing the same PID-reuse race that aliveInterseptor
 // guards against on Windows. Falls back to the generic liveness check when
 // /proc isn't readable (e.g. sandboxed environments without procfs).
-func aliveInterceptor(pid int) bool {
+func aliveInterseptor(pid int) bool {
 	if _, ok := procFromProcFS(pid); ok {
 		return true
 	}

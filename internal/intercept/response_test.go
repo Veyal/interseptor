@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestApplyResponseRules(t *testing.T) {

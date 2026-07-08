@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/harx"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/harx"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // projectBundle is a portable session: captured flows (as HAR), match-&-replace
@@ -47,7 +47,7 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 		Settings: map[string]string{"upstream.proxy": up, "authz.identities": authz},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", `attachment; filename="interceptor-project.json"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-project.json"`)
 	json.NewEncoder(w).Encode(bundle)
 }
 
@@ -193,7 +193,7 @@ func safeProjectTarget(name string) bool {
 	return !strings.ContainsAny(name, `/\`) && !strings.HasPrefix(name, "~") && !strings.HasPrefix(name, "-")
 }
 
-// switchProject relaunches Interceptor pointed at another project. It answers
+// switchProject relaunches Interseptor pointed at another project. It answers
 // first, then the process re-execs; the UI reconnects once the listeners are
 // back. Two mutually exclusive inputs:
 //
@@ -201,7 +201,7 @@ func safeProjectTarget(name string) bool {
 //     case, resolved under GlobalDir/projects. A loopback request can't use
 //     this field to relocate the process to an arbitrary path.
 //   - "path": an explicit, absolute directory the operator chose (e.g. "save
-//     this engagement in D:\clients\acme instead of ~/.interceptor"). This is
+//     this engagement in D:\clients\acme instead of ~/.interseptor"). This is
 //     a deliberate, separate opt-in — the plain "target" field's path
 //     restriction is unchanged — and is remembered so it reappears in the
 //     switcher on future launches instead of requiring the path to be retyped.

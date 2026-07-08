@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestMatchField(t *testing.T) {
@@ -238,7 +238,7 @@ func TestDisableDrainsQueue(t *testing.T) {
 func TestApplyHeaderRule(t *testing.T) {
 	e := New()
 	if err := e.SetRules([]store.Rule{
-		{Enabled: true, Type: "req-header", Match: `User-Agent: .*`, Replace: "User-Agent: interceptor"},
+		{Enabled: true, Type: "req-header", Match: `User-Agent: .*`, Replace: "User-Agent: interseptor"},
 	}); err != nil {
 		t.Fatalf("SetRules: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestApplyHeaderRule(t *testing.T) {
 	if err := e.ApplyRules(req); err != nil {
 		t.Fatalf("ApplyRules: %v", err)
 	}
-	if got := req.Header.Get("User-Agent"); got != "interceptor" {
+	if got := req.Header.Get("User-Agent"); got != "interseptor" {
 		t.Fatalf("header rule not applied: %q", got)
 	}
 }

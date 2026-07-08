@@ -3,7 +3,7 @@ package report
 import (
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // ProjectHTML renders the same engagement report as Project, as a self-contained
@@ -15,7 +15,7 @@ func ProjectHTML(findings []store.Finding, issues []store.Issue) string {
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	b.WriteString("<title>Interceptor — Engagement Report</title>\n")
+	b.WriteString("<title>Interseptor — Engagement Report</title>\n")
 	b.WriteString("<style>")
 	b.WriteString(reportHTMLCSS)
 	b.WriteString("</style>\n</head>\n<body>\n<article class=\"md\">\n")

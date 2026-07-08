@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/activescan/breaker"
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/activescan/breaker"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 const updateType = "autopwn.update"

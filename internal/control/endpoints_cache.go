@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // endpoints cache — a small LRU keyed by filter. Toggling between "All domains"

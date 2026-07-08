@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/checkscript"
+	"github.com/Veyal/interseptor/internal/checkscript"
 )
 
 func TestMigrateGlobalChecks(t *testing.T) {

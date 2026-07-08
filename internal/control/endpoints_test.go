@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/harx"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/harx"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // Tag endpoints: set tags on a flow, see them on the flow + list filter, list

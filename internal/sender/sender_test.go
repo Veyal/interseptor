@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestSendCapturesAsFlow(t *testing.T) {

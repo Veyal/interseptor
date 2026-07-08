@@ -6,7 +6,7 @@ These are ready-to-copy examples of **user-authored active checks** — Starlark
 
 ## How to use one
 
-1. Copy the `.star` file into `~/.interceptor/active-checks/`
+1. Copy the `.star` file into `~/.interseptor/active-checks/`
    (create the folder if it doesn't exist — it lives alongside the CA and the passive `checks/`
    folder, shared across all projects).
 2. Open the UI → **Scanner → ✎ Custom checks**. The script appears under **CUSTOM · ACTIVE** ⚡.

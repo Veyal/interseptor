@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/codec"
-	"github.com/Veyal/interceptor/internal/httplines"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/codec"
+	"github.com/Veyal/interseptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // maxRequests bounds a single attack so a huge payload list cannot run away.

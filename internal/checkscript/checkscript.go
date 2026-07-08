@@ -23,7 +23,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // maxSteps bounds a single check run so a pathological script can't hang a scan.

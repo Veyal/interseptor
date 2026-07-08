@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 func readAll(r io.Reader) string { b, _ := io.ReadAll(r); return string(b) }
@@ -199,7 +199,7 @@ func TestMCPDescriptorMatchesRegistry(t *testing.T) {
 }
 
 // GET /api/mcp must report the real running version (version.String(), which
-// resolves via debug.ReadBuildInfo() for `go install .../interceptor@vX.Y.Z`
+// resolves via debug.ReadBuildInfo() for `go install .../interseptor@vX.Y.Z`
 // installs) rather than the stale baked-in version.Version placeholder.
 func TestMCPDescriptorReportsResolvedVersion(t *testing.T) {
 	v, ok := mcpDescriptor["version"].(string)

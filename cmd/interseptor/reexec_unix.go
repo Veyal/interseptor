@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-// reexecProject replaces the current process image with a fresh Interceptor
+// reexecProject replaces the current process image with a fresh Interseptor
 // pointed at the named project. syscall.Exec keeps the same PID and atomically
 // swaps the image, so the proxy/control listeners (opened close-on-exec) are
 // released exactly as the new image rebinds them — no port-handoff race.

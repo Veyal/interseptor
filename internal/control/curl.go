@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Veyal/interceptor/internal/curlgen"
+	"github.com/Veyal/interseptor/internal/curlgen"
 )
 
 // flowCurl renders a captured flow's request as a runnable curl command, so a

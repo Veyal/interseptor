@@ -21,11 +21,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/strutil"
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 // Events is an optional sink notified when a flow is captured (used by the
@@ -180,7 +180,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case dropped:
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
-		http.Error(w, "request dropped by interceptor", http.StatusBadGateway)
+		http.Error(w, "request dropped by interseptor", http.StatusBadGateway)
 	case err != nil:
 		s.fail(w, flow, "upstream: "+err.Error())
 	default:
@@ -303,7 +303,7 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 	if dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
-		writeSimpleResponse(conn, http.StatusBadGateway, "request dropped by interceptor")
+		writeSimpleResponse(conn, http.StatusBadGateway, "request dropped by interseptor")
 		return false
 	}
 	if err != nil {
@@ -601,7 +601,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 			out.Host = out.URL.Host
 
-			// Refuse to dial Interceptor's own loopback listeners (control plane or
+			// Refuse to dial Interseptor's own loopback listeners (control plane or
 			// proxy) once the edit is resolved to its FINAL target — this must run
 			// after the Host retarget above, not before, or an edited Host would slip
 			// past it entirely. Without this, an MCP-driving AI agent (or
@@ -615,7 +615,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			// targetsOwnListener/isOwnListener; this mirrors that guard using the
 			// same SelfPorts loopback-port set the proxy already keeps in sync.
 			if s.isOwnListenerTarget(flow.Host, flow.Port) {
-				return nil, false, fmt.Errorf("refusing to forward to Interceptor's own listener")
+				return nil, false, fmt.Errorf("refusing to forward to Interseptor's own listener")
 			}
 		}
 	}
@@ -664,7 +664,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
-		http.Error(w, "response dropped by interceptor", http.StatusBadGateway)
+		http.Error(w, "response dropped by interseptor", http.StatusBadGateway)
 		return
 	} else if transformed {
 		copyHeader(w.Header(), hdr)
@@ -729,7 +729,7 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
 		s.record(flow)
-		writeSimpleResponse(conn, http.StatusBadGateway, "response dropped by interceptor")
+		writeSimpleResponse(conn, http.StatusBadGateway, "response dropped by interseptor")
 		return nil
 	} else if transformed {
 		flow.Status, flow.ResHeaders, flow.Mime = st, hdr.Clone(), hdr.Get("Content-Type")
@@ -913,13 +913,13 @@ func (s *Server) shouldCapture(flow *store.Flow) bool {
 	return true
 }
 
-// isOwnListenerTarget reports whether host:port names one of Interceptor's own
+// isOwnListenerTarget reports whether host:port names one of Interseptor's own
 // loopback listeners (control plane or proxy) — the same SelfPorts set
 // shouldCapture uses to keep our own UI/API traffic out of history. Mirrors
 // internal/control's targetsOwnListener/isOwnListener (loopback-normalized:
 // 127.x / ::1 / localhost, not a literal string match), which Repeater,
 // Intruder, WS-repeater, and the AI agent tool already use to refuse being
-// coerced into attacking Interceptor's own control API. Used by
+// coerced into attacking Interseptor's own control API. Used by
 // gateAndForward after Host-retargeting is resolved, so an edited Host can't
 // slip a forward past this check.
 func (s *Server) isOwnListenerTarget(host string, port int) bool {

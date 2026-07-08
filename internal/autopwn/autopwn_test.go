@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/oob"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/oob"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // --- fakes ---------------------------------------------------------------
@@ -618,7 +618,7 @@ func TestStartRefusesConcurrentRun(t *testing.T) {
 }
 
 // (defect 1) A candidate whose Target/probe URL is out of the run's scope
-// snapshot, and one that is an Interceptor own listener, are both SKIPPED (never
+// snapshot, and one that is an Interseptor own listener, are both SKIPPED (never
 // probed) and file nothing, while an in-scope candidate in the same run still
 // files. This proves the verifier's re-send path enforces the safety boundary.
 func TestOutOfScopeAndOwnListenerCandidatesSkipped(t *testing.T) {

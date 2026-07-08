@@ -3,7 +3,7 @@ package capture
 import (
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // TestIsAuthPath exercises the segment-aware path classifier.

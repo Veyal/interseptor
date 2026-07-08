@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // Start launches an autonomous run in a background goroutine and returns the new

@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 var sevRank = map[string]int{"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
@@ -21,7 +21,7 @@ var sevOrder = []string{"Critical", "High", "Medium", "Low", "Info"}
 // summary line. Output is deterministic for a given set of issues.
 func Findings(issues []store.Issue) string {
 	var b strings.Builder
-	b.WriteString("# Interceptor — Passive Scan Findings\n\n")
+	b.WriteString("# Interseptor — Passive Scan Findings\n\n")
 	if len(issues) == 0 {
 		b.WriteString("_No findings._\n")
 		return b.String()
@@ -87,7 +87,7 @@ func Findings(issues []store.Issue) string {
 // operator exports.
 func Project(findings []store.Finding, issues []store.Issue) string {
 	var b strings.Builder
-	b.WriteString("# Interceptor — Engagement Report\n\n")
+	b.WriteString("# Interseptor — Engagement Report\n\n")
 	if len(findings) == 0 && len(issues) == 0 {
 		b.WriteString("_No findings recorded._\n")
 		return b.String()

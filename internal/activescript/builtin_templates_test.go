@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/activescan"
-	"github.com/Veyal/interceptor/internal/activescript"
+	"github.com/Veyal/interseptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescript"
 )
 
 func TestActiveBuiltinTemplatesCompile(t *testing.T) {
@@ -28,7 +28,7 @@ func TestActiveXXETemplateUsesSafeCanaryNotFileRead(t *testing.T) {
 	if strings.Contains(src, `<!ENTITY`) && strings.Contains(src, "SYSTEM") {
 		t.Fatal("active-xxe template must not use SYSTEM/file-read entities")
 	}
-	if !strings.Contains(src, "INTERCEPTOR_XXE_CANARY") {
+	if !strings.Contains(src, "INTERSEPTOR_XXE_CANARY") {
 		t.Fatal("active-xxe template must use the internal-entity canary")
 	}
 }

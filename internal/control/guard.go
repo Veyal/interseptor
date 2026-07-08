@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // securityGuard protects the control plane. It has two trust modes:
@@ -18,7 +18,7 @@ import (
 //     classic CSRF by the loopback-Origin check.
 //   - Key trust (remote access): a request carrying a VALID API key is authorized
 //     regardless of Host/Origin/connection — this is what lets an AI agent on a VPS
-//     or a collaborator's browser reach Interceptor over a Cloudflare tunnel. A
+//     or a collaborator's browser reach Interseptor over a Cloudflare tunnel. A
 //     read-only key may only read (GET/HEAD + SSE); a full key may also mutate. The
 //     cookie path (browser login) additionally requires an anti-CSRF header and a
 //     same-origin Origin on mutations, since a cookie is an ambient credential.
@@ -74,8 +74,8 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 					return
 				}
 				if via == authViaCookie {
-					if r.Header.Get("X-Interceptor-CSRF") != "1" {
-						httpErr(w, http.StatusForbidden, "missing X-Interceptor-CSRF header")
+					if r.Header.Get("X-Interseptor-CSRF") != "1" {
+						httpErr(w, http.StatusForbidden, "missing X-Interseptor-CSRF header")
 						return
 					}
 					if o := r.Header.Get("Origin"); o != "" && !sameHostOrigin(o, r.Host) {
@@ -89,7 +89,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			// MCP's loopback re-entrancy — MCP tool calls re-enter as unauthenticated
 			// loopback POSTs, so scope can't be re-checked there.
 			if r.URL.Path == "/mcp" && scope != store.ScopeFull {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
+				w.Header().Set("WWW-Authenticate", `Bearer realm="interseptor"`)
 				httpErr(w, http.StatusForbidden, "the MCP endpoint requires a full-access key")
 				return
 			}
@@ -112,7 +112,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				return
 			}
 			if r.URL.Path == "/mcp" && !h.mcpAuthorized(r) {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
+				w.Header().Set("WWW-Authenticate", `Bearer realm="interseptor"`)
 				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth")
 				return
 			}
@@ -124,12 +124,12 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			// Non-loopback connection (or spoofed Host) without a valid key: closed.
 			// A browser navigation is redirected to the login page; anything else
 			// (fetch/curl/MCP) gets a 401 so the client can present a key.
-			w.Header().Set("WWW-Authenticate", `Bearer realm="interceptor"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="interseptor"`)
 			if tok == "" && wantsHTML(r) {
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
-			httpErr(w, http.StatusUnauthorized, "remote access to Interceptor requires an API key — open /login or send Authorization: Bearer <key>")
+			httpErr(w, http.StatusUnauthorized, "remote access to Interseptor requires an API key — open /login or send Authorization: Bearer <key>")
 			return
 		}
 	})

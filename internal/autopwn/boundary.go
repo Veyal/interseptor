@@ -5,10 +5,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/scope"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/strutil"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // boundaryGuard enforces the run's hard safety boundary (docs/AUTONOMOUS-PENTEST.md
@@ -46,7 +46,7 @@ func newBoundaryGuard(scopeJSON string, isOwnListener func(rawURL string) bool) 
 }
 
 // allowed reports whether a raw URL may be probed: it must parse to an absolute
-// URL, be in the snapshot scope, and not be one of Interceptor's own listeners.
+// URL, be in the snapshot scope, and not be one of Interseptor's own listeners.
 // The reason names the first boundary that rejected it ("" when allowed).
 func (g *boundaryGuard) allowed(rawURL string) (ok bool, reason string) {
 	if strings.TrimSpace(rawURL) == "" {

@@ -8,7 +8,7 @@
 # `probe(payload)` sends a REAL mutated request (recorded in History, session-auth
 # applied, counts against the run's request budget).
 #
-# Copy into ~/.interceptor/active-checks/ and arm & run an active scan.
+# Copy into ~/.interseptor/active-checks/ and arm & run an active scan.
 
 def check(point, baseline, probe):
     marker = "xk7qz9m2"

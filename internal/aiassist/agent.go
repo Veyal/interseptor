@@ -160,8 +160,8 @@ func (c *Client) completeOpenAIAgentTurn(ctx context.Context, system string, mes
 	}
 	req.Header.Set("Authorization", "Bearer "+c.key)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interceptor")
-	req.Header.Set("X-Title", "Interceptor")
+	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interseptor")
+	req.Header.Set("X-Title", "Interseptor")
 	raw, err := c.do(req)
 	if err != nil {
 		return nil, err

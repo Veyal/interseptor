@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/activescan"
-	"github.com/Veyal/interceptor/internal/activescan/breaker"
-	"github.com/Veyal/interceptor/internal/activescan/csrf"
-	"github.com/Veyal/interceptor/internal/activescript"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescan/breaker"
+	"github.com/Veyal/interseptor/internal/activescan/csrf"
+	"github.com/Veyal/interseptor/internal/activescript"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // asProbeLog is one active-scan probe (saved as a FlagActiveScan flow when sent).

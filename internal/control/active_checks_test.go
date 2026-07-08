@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // insertScannableFlow inserts a flow that targets upstream (an httptest server)

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	certRemoteName = "interceptor-ca.crt"
+	certRemoteName = "interseptor-ca.crt"
 	certRemotePath = "/sdcard/Download/" + certRemoteName
 )
 
@@ -349,7 +349,7 @@ func DisableProxy(d Device, port int) error {
 
 // InstallUserCA pushes the CA to the device and opens the system install prompt.
 func InstallUserCA(d Device, certPEM []byte) error {
-	path, err := writeTempCert(certPEM, "interceptor-ca-*.crt")
+	path, err := writeTempCert(certPEM, "interseptor-ca-*.crt")
 	if err != nil {
 		return err
 	}
@@ -375,7 +375,7 @@ func InstallSystemCA(d Device, certPEM []byte) error {
 		return err
 	}
 	block, _ := pem.Decode(certPEM)
-	path, err := writeTempCert(block.Bytes, "interceptor-ca-*.0")
+	path, err := writeTempCert(block.Bytes, "interseptor-ca-*.0")
 	if err != nil {
 		return err
 	}
@@ -396,7 +396,7 @@ func InstallSystemCA(d Device, certPEM []byte) error {
 	return nil
 }
 
-// RemoveSystemCA deletes the Interceptor CA from the system trust store (rooted/emulator).
+// RemoveSystemCA deletes the Interseptor CA from the system trust store (rooted/emulator).
 func RemoveSystemCA(d Device, certPEM []byte) error {
 	remotePath, err := systemCAPath(certPEM)
 	if err != nil {

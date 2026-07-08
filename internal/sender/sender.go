@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/httplines"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/strutil"
 )
 
 // Request describes a request to send.

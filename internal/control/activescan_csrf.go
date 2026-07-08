@@ -4,9 +4,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/activescan/csrf"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/activescan/csrf"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // csrfHeadersForHost returns Laravel/session CSRF material for active-scan probes.

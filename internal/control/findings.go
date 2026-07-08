@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/report"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/report"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // maxFindingBodyBytes is the maximum total byte size of a finding's narrative
@@ -92,11 +92,11 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	switch format {
 	case "html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="interceptor-report.html"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
 		w.Write([]byte(report.ProjectHTML(fs, issues)))
 	default:
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="interceptor-report.md"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
 		w.Write([]byte(report.Project(fs, issues)))
 	}
 }

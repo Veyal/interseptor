@@ -69,13 +69,13 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		}
 		target = latest
 		if !opts.Force && !newer && String() == latest {
-			fmt.Fprintf(out, "interceptor v%s is already up to date\n", String())
+			fmt.Fprintf(out, "interseptor v%s is already up to date\n", String())
 			return nil
 		}
 		if opts.Check {
 			cur := String()
 			if cur == latest {
-				fmt.Fprintf(out, "interceptor v%s is up to date\n", cur)
+				fmt.Fprintf(out, "interseptor v%s is up to date\n", cur)
 			} else {
 				fmt.Fprintf(out, "update available: v%s (you have v%s)\n", latest, cur)
 			}
@@ -92,7 +92,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		cur := String()
 		ver := strings.TrimPrefix(rel.Tag, "v")
 		if cur == ver {
-			fmt.Fprintf(out, "interceptor v%s is up to date\n", cur)
+			fmt.Fprintf(out, "interseptor v%s is up to date\n", cur)
 		} else {
 			fmt.Fprintf(out, "update available: v%s (you have v%s)\n", ver, cur)
 		}
@@ -108,7 +108,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	}
 	ver := strings.TrimPrefix(rel.Tag, "v")
 	if !opts.Force && ver == String() {
-		fmt.Fprintf(out, "interceptor v%s is already up to date\n", String())
+		fmt.Fprintf(out, "interseptor v%s is already up to date\n", String())
 		return nil
 	}
 
@@ -148,13 +148,13 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 		prog.step("Installing to %s…", dest)
 		if err := installBinary(dest, bin); err != nil {
 			if errors.Is(err, ErrRestartRequired) {
-				prog.done("Windows updater started — it will stop running Interceptor instances, replace the binary, and restart automatically")
-				fmt.Fprintf(out, "\nIf the app does not restart within a minute, run `interceptor stop`, then move %s.new over %s manually.\n", filepath.Base(dest), dest)
+				prog.done("Windows updater started — it will stop running Interseptor instances, replace the binary, and restart automatically")
+				fmt.Fprintf(out, "\nIf the app does not restart within a minute, run `interseptor stop`, then move %s.new over %s manually.\n", filepath.Base(dest), dest)
 				return err
 			}
 			return err
 		}
-		prog.done("Updated to interceptor v%s → %s", ver, dest)
+		prog.done("Updated to interseptor v%s → %s", ver, dest)
 		printMCPUpdateNote(out)
 		return nil
 	}
@@ -166,17 +166,17 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	gopath, _ := exec.LookPath("go")
 	_ = gopath
 	if bin, err := goInstallBin(); err == nil {
-		prog.done("Installed interceptor v%s via go install → %s", ver, bin)
+		prog.done("Installed interseptor v%s via go install → %s", ver, bin)
 	} else {
-		prog.done("Installed interceptor v%s via go install (ensure $(go env GOPATH)/bin is on your PATH)", ver)
+		prog.done("Installed interseptor v%s via go install (ensure $(go env GOPATH)/bin is on your PATH)", ver)
 	}
 	printMCPUpdateNote(out)
 	return nil
 }
 
 func printMCPUpdateNote(out io.Writer) {
-	fmt.Fprintf(out, "\nMCP: if Cursor uses Streamable HTTP (http://127.0.0.1:9966/mcp), restart Interceptor to pick up this build — no MCP config change needed.\n")
-	fmt.Fprintf(out, "     stdio clients: restart the MCP server or use scripts/interceptor-mcp to resolve the updated binary on PATH.\n")
+	fmt.Fprintf(out, "\nMCP: if Cursor uses Streamable HTTP (http://127.0.0.1:9966/mcp), restart Interseptor to pick up this build — no MCP config change needed.\n")
+	fmt.Fprintf(out, "     stdio clients: restart the MCP server or use scripts/interseptor-mcp to resolve the updated binary on PATH.\n")
 }
 
 func fetchRelease(ctx context.Context, version string) (*releaseInfo, error) {
@@ -280,7 +280,7 @@ func releaseAssetExists(ctx context.Context, url string) bool {
 	if err != nil {
 		return false
 	}
-	req.Header.Set("User-Agent", "interceptor/"+String()+" (https://github.com/"+Repo+")")
+	req.Header.Set("User-Agent", "interseptor/"+String()+" (https://github.com/"+Repo+")")
 	resp, err := githubWebHTTP.Do(req)
 	if err == nil {
 		defer resp.Body.Close()
@@ -293,7 +293,7 @@ func releaseAssetExists(ctx context.Context, url string) bool {
 		return false
 	}
 	req.Header.Set("Range", "bytes=0-0")
-	req.Header.Set("User-Agent", "interceptor/"+String()+" (https://github.com/"+Repo+")")
+	req.Header.Set("User-Agent", "interseptor/"+String()+" (https://github.com/"+Repo+")")
 	resp, err = githubWebHTTP.Do(req)
 	if err != nil {
 		return false
@@ -328,10 +328,19 @@ func pickAsset(rel *releaseInfo, version string) (name, url string) {
 	return "", ""
 }
 
+// assetCandidates lists the archive names to look for, newest naming first.
+// It intentionally also lists the pre-rebrand "interceptor_*"/"interceptor-*"
+// names as a fallback: releases published before the product rename used that
+// naming, and self-update must keep finding those until a release built under
+// the renamed .goreleaser.yaml (binary/project_name: interseptor) is cut.
 func assetCandidates(version, goos, goarch string) []string {
 	osToken, archToken := platformTokens(goos, goarch)
 	v := strings.TrimPrefix(version, "v")
 	base := []string{
+		fmt.Sprintf("interseptor_%s_%s_%s", v, osToken, archToken),
+		fmt.Sprintf("interseptor_%s_%s", osToken, archToken),
+		fmt.Sprintf("interseptor-%s-%s-%s", v, osToken, archToken),
+		fmt.Sprintf("interseptor-%s-%s", osToken, archToken),
 		fmt.Sprintf("interceptor_%s_%s_%s", v, osToken, archToken),
 		fmt.Sprintf("interceptor_%s_%s", osToken, archToken),
 		fmt.Sprintf("interceptor-%s-%s-%s", v, osToken, archToken),
@@ -459,11 +468,23 @@ func untarGz(data []byte) ([]byte, error) {
 			continue
 		}
 		base := filepath.Base(h.Name)
-		if base == "interceptor" || base == "interceptor.exe" {
+		if isReleaseBinaryName(base) {
 			return io.ReadAll(io.LimitReader(tr, 128<<20))
 		}
 	}
-	return nil, fmt.Errorf("interceptor binary not found in archive")
+	return nil, fmt.Errorf("interseptor binary not found in archive")
+}
+
+// isReleaseBinaryName matches both the renamed binary and the pre-rebrand
+// name, so self-update keeps working against archives built before the
+// product rename (see assetCandidates).
+func isReleaseBinaryName(base string) bool {
+	switch base {
+	case "interseptor", "interseptor.exe", "interceptor", "interceptor.exe":
+		return true
+	default:
+		return false
+	}
 }
 
 func unzipBin(data []byte) ([]byte, error) {
@@ -473,7 +494,7 @@ func unzipBin(data []byte) ([]byte, error) {
 	}
 	for _, f := range zr.File {
 		base := filepath.Base(f.Name)
-		if base != "interceptor" && base != "interceptor.exe" {
+		if !isReleaseBinaryName(base) {
 			continue
 		}
 		rc, err := f.Open()
@@ -483,7 +504,7 @@ func unzipBin(data []byte) ([]byte, error) {
 		defer rc.Close()
 		return io.ReadAll(io.LimitReader(rc, 128<<20))
 	}
-	return nil, fmt.Errorf("interceptor binary not found in zip")
+	return nil, fmt.Errorf("interseptor binary not found in zip")
 }
 
 func installBinary(dest string, data []byte) error {
@@ -507,11 +528,11 @@ func installBinaryWindows(dest string, data []byte) error {
 		return err
 	}
 	// Can't replace a running .exe — hand off to a short-lived updater script
-	// that waits for locks, stops other interceptor.exe processes, retries the
-	// replace, and restarts Interceptor.
+	// that waits for locks, stops other interseptor.exe processes, retries the
+	// replace, and restarts Interseptor.
 	dir := filepath.Dir(dest)
-	bat := filepath.Join(dir, "interceptor-update.bat")
-	logPath := filepath.Join(dir, "interceptor-update.log")
+	bat := filepath.Join(dir, "interseptor-update.bat")
+	logPath := filepath.Join(dir, "interseptor-update.log")
 	script := windowsUpdateScript(newPath, dest, bat, logPath)
 	if err := os.WriteFile(bat, []byte(script), 0o644); err != nil {
 		return err
@@ -534,11 +555,11 @@ set "DEST=%s"
 set "BAT=%s"
 set "LOG=%s"
 
-REM Let the `+"`interceptor update`"+` CLI exit and release its exe handle.
+REM Let the `+"`interseptor update`"+` CLI exit and release its exe handle.
 timeout /t 3 /nobreak >nul
 
-REM Stop any still-running Interceptor servers so the exe can be replaced.
-for /f "tokens=2" %%%%p in ('tasklist /FI "IMAGENAME eq interceptor.exe" /NH 2^>nul ^| findstr /i "interceptor.exe"') do (
+REM Stop any still-running Interseptor servers so the exe can be replaced.
+for /f "tokens=2" %%%%p in ('tasklist /FI "IMAGENAME eq interseptor.exe" /NH 2^>nul ^| findstr /i "interseptor.exe"') do (
   taskkill /PID %%%%p /T /F >nul 2>&1
 )
 timeout /t 1 /nobreak >nul
@@ -569,7 +590,7 @@ func goInstall(ctx context.Context, version string, out io.Writer) error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("go toolchain not found in PATH")
 	}
-	mod := "github.com/Veyal/interceptor/cmd/interceptor@v" + strings.TrimPrefix(version, "v")
+	mod := "github.com/Veyal/interseptor/cmd/interseptor@v" + strings.TrimPrefix(version, "v")
 	cmd := exec.CommandContext(ctx, "go", "install", mod)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	cmd.Stdout = out
@@ -589,7 +610,7 @@ func goInstallBin() (string, error) {
 	if gopath == "" {
 		return "", fmt.Errorf("empty GOPATH")
 	}
-	name := "interceptor"
+	name := "interseptor"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}

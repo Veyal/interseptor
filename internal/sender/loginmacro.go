@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/httplines"
 )
 
 // LoginMacro records a login request. Running it extracts session credentials

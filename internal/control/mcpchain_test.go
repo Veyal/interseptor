@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/control"
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/control"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // Full chain: a send_request driven through the MCP server (as the stdio

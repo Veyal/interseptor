@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 // TestTLSHandshakeFailureRecorded verifies that a client rejecting the MITM leaf

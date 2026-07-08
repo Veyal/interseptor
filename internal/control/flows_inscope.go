@@ -3,7 +3,7 @@ package control
 import (
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // queryInScopeFlows pages through captured traffic until want in-scope rows are

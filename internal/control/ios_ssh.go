@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/ios"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/ios"
 )
 
 type iosSSHRequest struct {

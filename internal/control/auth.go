@@ -13,7 +13,7 @@ import (
 // and receives an httpOnly session cookie so subsequent same-origin fetches and
 // the EventSource stream authenticate automatically (EventSource cannot set an
 // Authorization header). The cookie is SameSite=Strict + Secure (over the tunnel)
-// and mutations additionally require the X-Interceptor-CSRF header (see guard.go).
+// and mutations additionally require the X-Interseptor-CSRF header (see guard.go).
 
 // loginRateLimiter throttles /api/session/auth per remote IP so the 192-bit key
 // space can't be brute-forced online. A minimal fixed-window counter is enough.

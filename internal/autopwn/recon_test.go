@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/aiagent"
 )
 
 // reconDigest must drive the read-only recon tools over the executor and fold

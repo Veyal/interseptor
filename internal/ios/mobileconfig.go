@@ -33,11 +33,11 @@ func BuildMobileConfig(certPEM []byte, opts ProfileOpts) ([]byte, error) {
 	}
 	name := opts.DisplayName
 	if name == "" {
-		name = "Interceptor"
+		name = "Interseptor"
 	}
 	org := opts.Organization
 	if org == "" {
-		org = "Interceptor"
+		org = "Interseptor"
 	}
 	rootUUID := newPayloadUUID()
 	proxyUUID := newPayloadUUID()
@@ -45,7 +45,7 @@ func BuildMobileConfig(certPEM []byte, opts ProfileOpts) ([]byte, error) {
 	certB64 := base64.StdEncoding.EncodeToString(block.Bytes)
 	certName := strings.TrimSuffix(cert.Subject.CommonName, "")
 	if certName == "" {
-		certName = "Interceptor CA"
+		certName = "Interseptor CA"
 	}
 
 	// Unsigned profile — user installs via Safari; must enable full trust for the CA.
@@ -57,15 +57,15 @@ func BuildMobileConfig(certPEM []byte, opts ProfileOpts) ([]byte, error) {
   <array>
     <dict>
       <key>PayloadCertificateFileName</key>
-      <string>interceptor-ca.crt</string>
+      <string>interseptor-ca.crt</string>
       <key>PayloadContent</key>
       <data>%s</data>
       <key>PayloadDescription</key>
-      <string>Trust the Interceptor CA to decrypt HTTPS during testing.</string>
+      <string>Trust the Interseptor CA to decrypt HTTPS during testing.</string>
       <key>PayloadDisplayName</key>
       <string>%s Root CA</string>
       <key>PayloadIdentifier</key>
-      <string>com.interceptor.ca.%s</string>
+      <string>com.interseptor.ca.%s</string>
       <key>PayloadType</key>
       <string>com.apple.security.root</string>
       <key>PayloadUUID</key>
@@ -75,11 +75,11 @@ func BuildMobileConfig(certPEM []byte, opts ProfileOpts) ([]byte, error) {
     </dict>
     <dict>
       <key>PayloadDescription</key>
-      <string>Route HTTP/HTTPS through the Interceptor proxy.</string>
+      <string>Route HTTP/HTTPS through the Interseptor proxy.</string>
       <key>PayloadDisplayName</key>
-      <string>Interceptor Proxy</string>
+      <string>Interseptor Proxy</string>
       <key>PayloadIdentifier</key>
-      <string>com.interceptor.proxy.%s</string>
+      <string>com.interseptor.proxy.%s</string>
       <key>PayloadType</key>
       <string>com.apple.proxy.http.global</string>
       <key>PayloadUUID</key>
@@ -97,11 +97,11 @@ func BuildMobileConfig(certPEM []byte, opts ProfileOpts) ([]byte, error) {
     </dict>
   </array>
   <key>PayloadDescription</key>
-  <string>Install Interceptor CA and HTTP proxy for mobile app testing.</string>
+  <string>Install Interseptor CA and HTTP proxy for mobile app testing.</string>
   <key>PayloadDisplayName</key>
   <string>%s</string>
   <key>PayloadIdentifier</key>
-  <string>com.interceptor.profile.%s</string>
+  <string>com.interseptor.profile.%s</string>
   <key>PayloadRemovalDisallowed</key>
   <false/>
   <key>PayloadType</key>
@@ -215,7 +215,7 @@ func Setup(d Device, certPEM []byte, opts SetupOpts) (*SetupResult, error) {
 	res.NeedsUserAction = true
 	switch d.Kind {
 	case KindSimulator:
-		res.Message = "Simulator CA installed — in Safari tap Allow → install profile → Settings → General → VPN & Device Management → trust profile. Then Settings → General → About → Certificate Trust Settings → enable full trust for Interceptor CA."
+		res.Message = "Simulator CA installed — in Safari tap Allow → install profile → Settings → General → VPN & Device Management → trust profile. Then Settings → General → About → Certificate Trust Settings → enable full trust for Interseptor CA."
 	default:
 		res.Message = "Open the profile URL on the iPhone (same Wi‑Fi as this machine), install the profile, enable certificate trust, then browse the app. SSL pinning still requires Frida or a patched IPA on device."
 	}

@@ -1,5 +1,5 @@
 // Package ios — SSH helpers for jailbroken iOS devices (OpenSSH as root).
-// Credentials are supplied per request and are never persisted by Interceptor.
+// Credentials are supplied per request and are never persisted by Interseptor.
 package ios
 
 import (
@@ -17,7 +17,7 @@ import (
 const (
 	defaultSSHUser    = "root"
 	defaultSSHPort    = 22
-	profileRemotePath = "/tmp/interceptor.mobileconfig"
+	profileRemotePath = "/tmp/interseptor.mobileconfig"
 	sshConnectTimeout = 12 * time.Second
 )
 
@@ -130,7 +130,7 @@ func SSHStatus(opts SSHOpts) (*SSHResult, error) {
 	return res, nil
 }
 
-// SSHInstallCA opens the Interceptor mobileconfig on the device for manual install.
+// SSHInstallCA opens the Interseptor mobileconfig on the device for manual install.
 func SSHInstallCA(opts SSHOpts, profileURL string) (*SSHResult, error) {
 	profileURL = strings.TrimSpace(profileURL)
 	if profileURL == "" {
@@ -201,7 +201,7 @@ func BuildProfileURL(baseURL, proxyHost string, proxyPort int) string {
 }
 
 func trustInstallMessage() string {
-	return "Profile install UI opened on device — tap Install, then Settings → General → VPN & Device Management → trust the profile → Settings → General → About → Certificate Trust Settings → enable full trust for Interceptor CA. Interceptor cannot enable full trust silently."
+	return "Profile install UI opened on device — tap Install, then Settings → General → VPN & Device Management → trust the profile → Settings → General → About → Certificate Trust Settings → enable full trust for Interseptor CA. Interseptor cannot enable full trust silently."
 }
 
 func resolveSSHOpts(opts SSHOpts) (SSHOpts, error) {

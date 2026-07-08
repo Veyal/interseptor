@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/sysproxy"
+	"github.com/Veyal/interseptor/internal/sysproxy"
 )
 
 func (h *settingsAPI) getSysProxy(w http.ResponseWriter, r *http.Request) {

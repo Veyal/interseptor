@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/codec"
+	"github.com/Veyal/interseptor/internal/codec"
 )
 
 // decodeMax caps decompressed output so a compression bomb (tiny body → huge
@@ -14,7 +14,7 @@ const decodeMax = 24 << 20 // 24 MiB (matches codec.decompressMax)
 // decodeForDisplay returns headers and body suitable for human inspection. When
 // the body carries a recognized Content-Encoding (gzip / deflate / br / zstd) it
 // is decompressed, the encoding header dropped, Content-Length corrected, and an
-// X-Interceptor-Decoded marker added so the reader knows it was unpacked — so
+// X-Interseptor-Decoded marker added so the reader knows it was unpacked — so
 // the inspector shows readable text instead of compressed bytes (which look like
 // undecrypted garbage). On any failure the originals are returned unchanged;
 // display must never break, and a non-compressed body passes through untouched.
@@ -40,7 +40,7 @@ func decodeForDisplay(headers map[string][]string, body []byte) (map[string][]st
 		}
 	}
 	out["Content-Length"] = []string{strconv.Itoa(len(dec))}
-	out["X-Interceptor-Decoded"] = []string{enc}
+	out["X-Interseptor-Decoded"] = []string{enc}
 	return out, dec
 }
 

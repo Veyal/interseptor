@@ -1,5 +1,5 @@
 // Package mcp implements a Model Context Protocol server over stdio so an AI
-// agent can operate Interceptor as a set of tools. It is a thin, well-described
+// agent can operate Interseptor as a set of tools. It is a thin, well-described
 // front end over the running control API (REST) — every tool maps to an endpoint
 // the web UI also uses, so the human and the agent drive the same engine.
 package mcp
@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/httplines"
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 const protocolVersion = "2024-11-05"
@@ -161,16 +161,16 @@ func (s *Server) handleLine(line []byte, out io.Writer) {
 }
 
 // mcpInstructions is the guidance surfaced to an AI agent on connect: the
-// pentest workflow, plus a pointer to report bugs/gaps in Interceptor itself.
+// pentest workflow, plus a pointer to report bugs/gaps in Interseptor itself.
 func mcpInstructions() string {
-	return "Interceptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\n" +
+	return "Interseptor — an AI web-pentest workspace; a human watches everything you do and can take over manually, so record your work as you go.\n\n" +
 		"SETUP: check_readiness (structured JSON blockers: OOB, scope, auth identities, login macro) → fix blockers → scope_from_url → ca_info + route traffic through proxy. Re-run check_readiness if list_flows/scans come back empty.\n\n" +
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
-		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interceptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
+		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
 		"SCAN: run_scanner (passive) → active_scan arm:true inScope:true csrfAware:true → cross_host_token_replay mode:auto for SSO/JWT apps → oob_* for blind callbacks.\n\n" +
 		"RECORD: write findings like an annotated notebook, not a text dump — alternate short markdown text blocks with attached flows: text → flow → text → flow. create_finding for the opening text (what/where, concise, markdown) → add_finding_poc to attach the request/response that proves it (position:N to interleave, not just append) → add another text block (via update_finding body) explaining what that flow shows → repeat per step of the chain → close with impact. Prefer attaching the actual flow over pasting its URL/headers/body as plaintext into evidence/detail — the human can open a flow inline, they can't usefully read a wall of raw HTTP text. detail-only update_finding calls preserve the interleaved body blocks.\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools. Use request_human_input before destructive or ambiguous steps.\n\n" +
-		"IMPROVE INTERCEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interceptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there."
+		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there."
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -187,7 +187,7 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 		return map[string]any{
 			"protocolVersion": ver,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "interceptor", "version": version.String()},
+			"serverInfo":      map[string]any{"name": "interseptor", "version": version.String()},
 			"instructions":    mcpInstructions(),
 		}, nil
 	case "tools/list":
@@ -300,8 +300,8 @@ func (s *Server) marshalResponse(id json.RawMessage, result any, rerr *rpcError)
 // endpoint. A client POSTs a JSON-RPC message (or batch) and receives the
 // JSON-RPC response as application/json. The server is stateless — no
 // Mcp-Session-Id is required — and offers no server-initiated SSE stream, so
-// GET returns 405 (per spec). This lets a hosted/remote agent drive Interceptor
-// without launching the `interceptor mcp` stdio subcommand. Bind localhost-only;
+// GET returns 405 (per spec). This lets a hosted/remote agent drive Interseptor
+// without launching the `interseptor mcp` stdio subcommand. Bind localhost-only;
 // it shares the (unauthenticated, local) trust model of the control API it fronts.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -429,13 +429,13 @@ func (s *Server) api(method, path string, body any) (string, error) {
 	}
 	// Marks every call as AI-originated so the control plane can tag the
 	// resulting Repeater/Intruder/scan sends (FlagAI) and show them in History.
-	req.Header.Set("X-Interceptor-Source", "ai")
+	req.Header.Set("X-Interseptor-Source", "ai")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := s.cl.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("control API unreachable at %s — is `interceptor` running? (%v)", s.base, err)
+		return "", fmt.Errorf("control API unreachable at %s — is `interseptor` running? (%v)", s.base, err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -1144,7 +1144,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("import_full_project",
-		"Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project under ~/.interceptor/projects/<name>. Refuses to overwrite an existing project unless overwrite=true. After import, switch to the project to open it.",
+		"Restore a full-project archive (from export_full_project) on the server filesystem into a NEW named project under ~/.interseptor/projects/<name>. Refuses to overwrite an existing project unless overwrite=true. After import, switch to the project to open it.",
 		obj(map[string]any{
 			"path":      p("string", "absolute path to the .zip archive to restore"),
 			"name":      p("string", "new project name (plain name, no path separators)"),
@@ -1388,7 +1388,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/activescan/stop", nil) })
 
 	s.add("autopwn_start",
-		"Launch a FULLY AUTONOMOUS pentest run: the engine reads captured in-scope history, plans and executes active testing using Interceptor's own tools, verifies every candidate through a 4-gate verifier, and files ONLY machine-proven findings (no 'possible' issues). Scope-gated — refuses to start without target-scope rules; own listeners are never probed. Budgets (maxRequests/maxTokens/maxWallMs) are hard kill switches. Returns immediately with a runId; the run continues in the background — poll autopwn_state. targetHint optionally steers the planning phase.",
+		"Launch a FULLY AUTONOMOUS pentest run: the engine reads captured in-scope history, plans and executes active testing using Interseptor's own tools, verifies every candidate through a 4-gate verifier, and files ONLY machine-proven findings (no 'possible' issues). Scope-gated — refuses to start without target-scope rules; own listeners are never probed. Budgets (maxRequests/maxTokens/maxWallMs) are hard kill switches. Returns immediately with a runId; the run continues in the background — poll autopwn_state. targetHint optionally steers the planning phase.",
 		obj(map[string]any{
 			"maxRequests": p("integer", "hard cap on real HTTP sends (0 = engine default)"),
 			"maxTokens":   p("integer", "advisory LLM token ceiling (0 = unbounded)"),
@@ -1427,7 +1427,7 @@ func (s *Server) registerTools() {
 	s.add("ca_info", "How to trust the CA so HTTPS can be intercepted (proxy address + CA location).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			settings, _ := s.apiGet("/api/settings")
-			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA (a one-time MANUAL step per client — Interceptor never edits the OS trust store for you).\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interceptor/ca/ca.crt).\nTrust it on the client:\n• macOS: open the .crt → Keychain Access → System keychain → set the Interceptor CA to Always Trust.\n• Windows: double-click → Install Certificate → Current User → Trusted Root Certification Authorities.\n• Linux (Debian/Ubuntu): copy to /usr/local/share/ca-certificates/interceptor.crt → sudo update-ca-certificates. (Fedora/RHEL: /etc/pki/ca-trust/source/anchors/ → sudo update-ca-trust.)\n• Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.\n• Android (adb): android_setup (USB reverse + CA) or Settings → TLS → Android (ADB).\n• iOS: ios_setup (Simulator + profile) or Settings → TLS → iOS → download .mobileconfig → install in Safari → Certificate Trust Settings.\n• curl/tools one-off: curl --cacert ~/.interceptor/ca/ca.crt -x http://127.0.0.1:8080 https://… (or SSL_CERT_FILE / REQUESTS_CA_BUNDLE).\nHTTP needs none of this — the CA is only for decrypting HTTPS.", strings.TrimSpace(settings), s.base), nil
+			return fmt.Sprintf("To intercept HTTPS, point the client at the proxy and trust the local CA (a one-time MANUAL step per client — Interseptor never edits the OS trust store for you).\nSettings: %s\nCA download: %s/api/ca.crt (also at ~/.interseptor/ca/ca.crt).\nTrust it on the client:\n• macOS: open the .crt → Keychain Access → System keychain → set the Interseptor CA to Always Trust.\n• Windows: double-click → Install Certificate → Current User → Trusted Root Certification Authorities.\n• Linux (Debian/Ubuntu): copy to /usr/local/share/ca-certificates/interseptor.crt → sudo update-ca-certificates. (Fedora/RHEL: /etc/pki/ca-trust/source/anchors/ → sudo update-ca-trust.)\n• Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.\n• Android (adb): android_setup (USB reverse + CA) or Settings → TLS → Android (ADB).\n• iOS: ios_setup (Simulator + profile) or Settings → TLS → iOS → download .mobileconfig → install in Safari → Certificate Trust Settings.\n• curl/tools one-off: curl --cacert ~/.interseptor/ca/ca.crt -x http://127.0.0.1:8080 https://… (or SSL_CERT_FILE / REQUESTS_CA_BUNDLE).\nHTTP needs none of this — the CA is only for decrypting HTTPS.", strings.TrimSpace(settings), s.base), nil
 		})
 
 	s.add("android_status",
@@ -1444,7 +1444,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("android_setup",
-		"One-click Android HTTPS intercept via adb: set global proxy + install CA. USB mode uses adb reverse (default). Wi‑Fi mode uses host LAN IP (Interceptor must bind 0.0.0.0). caMode auto picks system CA for emulators, user CA for physical devices.",
+		"One-click Android HTTPS intercept via adb: set global proxy + install CA. USB mode uses adb reverse (default). Wi‑Fi mode uses host LAN IP (Interseptor must bind 0.0.0.0). caMode auto picks system CA for emulators, user CA for physical devices.",
 		obj(map[string]any{
 			"serial":    p("string", "device serial when multiple are connected"),
 			"proxyMode": p("string", "usb (default) or wifi"),
@@ -1469,10 +1469,10 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("android_teardown",
-		"Clear Android global proxy and adb reverse. Optionally remove the Interceptor system CA (rooted device/emulator).",
+		"Clear Android global proxy and adb reverse. Optionally remove the Interseptor system CA (rooted device/emulator).",
 		obj(map[string]any{
 			"serial":         p("string", "device serial when multiple connected"),
-			"removeSystemCA": p("boolean", "remove Interceptor CA from /system/etc/security/cacerts/ (default false)"),
+			"removeSystemCA": p("boolean", "remove Interseptor CA from /system/etc/security/cacerts/ (default false)"),
 		}),
 		func(a map[string]any) (string, error) {
 			body := map[string]any{"removeSystemCA": argBool(a, "removeSystemCA", false)}
@@ -1490,7 +1490,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("ios_setup",
-		"One-click iOS intercept setup. Simulator (macOS+Xcode): install CA via simctl + open configuration profile (proxy + CA) in Safari. Physical iPhone: returns profileUrl — open on device Safari (Wi‑Fi mode; same network as Interceptor). Does not bypass SSL pinning.",
+		"One-click iOS intercept setup. Simulator (macOS+Xcode): install CA via simctl + open configuration profile (proxy + CA) in Safari. Physical iPhone: returns profileUrl — open on device Safari (Wi‑Fi mode; same network as Interseptor). Does not bypass SSL pinning.",
 		obj(map[string]any{
 			"udid":      p("string", "simulator UDID or omit for auto-select booted simulator / sole device"),
 			"proxyMode": p("string", "localhost (simulator, default) or wifi (physical device)"),
@@ -1508,7 +1508,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("ios_install_ca",
-		"Install Interceptor CA into a booted iOS Simulator via simctl (macOS + Xcode only). Physical iPhones must use ios_setup profile instead.",
+		"Install Interseptor CA into a booted iOS Simulator via simctl (macOS + Xcode only). Physical iPhones must use ios_setup profile instead.",
 		obj(map[string]any{
 			"udid": p("string", "simulator UDID or omit for booted simulator"),
 		}),
@@ -1527,7 +1527,7 @@ func (s *Server) registerTools() {
 			"port":     p("integer", "SSH port (default 22)"),
 			"user":     p("string", "SSH user (default root)"),
 			"password": p("string", "SSH password (e.g. default jailbreak passwords)"),
-			"keyPath":  p("string", "path to SSH private key on the Interceptor host"),
+			"keyPath":  p("string", "path to SSH private key on the Interseptor host"),
 		}),
 		func(a map[string]any) (string, error) {
 			host := argStr(a, "host")
@@ -1557,7 +1557,7 @@ func (s *Server) registerTools() {
 			"port":      p("integer", "SSH port (default 22)"),
 			"user":      p("string", "SSH user (default root)"),
 			"password":  p("string", "SSH password"),
-			"keyPath":   p("string", "path to SSH private key on the Interceptor host"),
+			"keyPath":   p("string", "path to SSH private key on the Interseptor host"),
 			"proxyHost": p("string", "LAN IP embedded in profile proxy (default: device proxy auto-selection)"),
 		}),
 		func(a map[string]any) (string, error) {
@@ -1581,13 +1581,13 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("ios_ssh_install_ca",
-		"Open the Interceptor mobileconfig (CA + proxy) on a jailbroken iOS device via SSH. Same manual trust steps as ios_ssh_setup but only triggers profile install UI.",
+		"Open the Interseptor mobileconfig (CA + proxy) on a jailbroken iOS device via SSH. Same manual trust steps as ios_ssh_setup but only triggers profile install UI.",
 		obj(map[string]any{
 			"host":      p("string", "device IP or hostname (required)"),
 			"port":      p("integer", "SSH port (default 22)"),
 			"user":      p("string", "SSH user (default root)"),
 			"password":  p("string", "SSH password"),
-			"keyPath":   p("string", "path to SSH private key on the Interceptor host"),
+			"keyPath":   p("string", "path to SSH private key on the Interseptor host"),
 			"proxyHost": p("string", "LAN IP for profile proxy settings (default: device proxy auto-selection)"),
 		}),
 		func(a map[string]any) (string, error) {
@@ -1642,7 +1642,7 @@ func (s *Server) registerTools() {
 				Fix     string `json:"fix"`
 			}
 			_ = json.Unmarshal([]byte(raw), &rep)
-			return rep.Verdict + " — " + rep.Detail + "\n\nNote: Interceptor detects pinning but cannot bypass it (canBypass=false). Bypass on the device: Frida/objection, patched APK, or emulator + system CA.\n\n" + raw, nil
+			return rep.Verdict + " — " + rep.Detail + "\n\nNote: Interseptor detects pinning but cannot bypass it (canBypass=false). Bypass on the device: Frida/objection, patched APK, or emulator + system CA.\n\n" + raw, nil
 		})
 
 	s.add("scope_from_url",

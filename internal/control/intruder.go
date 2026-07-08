@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/intruder"
 )
 
 type intruderStartJSON struct {
@@ -27,7 +27,7 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.targetsOwnListener(in.Target) {
-		httpErr(w, http.StatusForbidden, "refusing to attack Interceptor's own listener")
+		httpErr(w, http.StatusForbidden, "refusing to attack Interseptor's own listener")
 		return
 	}
 	if in.Threads <= 0 {

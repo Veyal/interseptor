@@ -1,4 +1,4 @@
-// Package control serves the Interceptor UI and the REST + SSE control API on
+// Package control serves the Interseptor UI and the REST + SSE control API on
 // the fixed localhost control port. It bridges the browser UI to the store and
 // the intercept engine and pushes live events (captured flows, hold-queue
 // changes) over Server-Sent Events.
@@ -25,20 +25,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/autopwn"
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/intruder"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/oob"
-	"github.com/Veyal/interceptor/internal/scope"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/strutil"
-	"github.com/Veyal/interceptor/internal/tlsca"
-	"github.com/Veyal/interceptor/internal/tunnel"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/autopwn"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/oob"
+	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/tunnel"
 )
 
 //go:embed ui
@@ -88,11 +88,11 @@ type Hub struct {
 	SetAutoBypassOnPinFailure func(bool)
 
 	// ChecksDir holds user-authored Starlark scanner checks (global, shared across
-	// projects — typically ~/.interceptor/checks). Set by cmd.
+	// projects — typically ~/.interseptor/checks). Set by cmd.
 	ChecksDir string
 
 	// ActiveChecksDir holds user-authored Starlark ACTIVE checks (global, shared —
-	// typically ~/.interceptor/active-checks). Set by cmd.
+	// typically ~/.interseptor/active-checks). Set by cmd.
 	ActiveChecksDir string
 
 	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
@@ -103,8 +103,8 @@ type Hub struct {
 	// surfaced at GET /api/version so the UI can show which project is loaded.
 	ProjectName string
 	ProjectDir  string
-	// GlobalDir is ~/.interceptor (named projects live in GlobalDir/projects).
-	// SwitchProject re-launches Interceptor into another project; nil if unsupported.
+	// GlobalDir is ~/.interseptor (named projects live in GlobalDir/projects).
+	// SwitchProject re-launches Interseptor into another project; nil if unsupported.
 	GlobalDir     string
 	SwitchProject func(target string) error
 
@@ -1513,7 +1513,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.ControlAddr != "" && in.ControlAddr != h.currentControlAddr() {
 		if !isLoopbackHost(in.ControlAddr) && !bind.ExternalBindAllowed() {
-			httpErr(w, http.StatusBadRequest, "control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)")
+			httpErr(w, http.StatusBadRequest, "control bind address must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)")
 			return
 		}
 		if h.ctrlRebind != nil {
@@ -1552,7 +1552,7 @@ func (h *settingsAPI) getCA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-	w.Header().Set("Content-Disposition", `attachment; filename="interceptor-ca.crt"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-ca.crt"`)
 	w.Write(h.ca.CertPEM())
 }
 

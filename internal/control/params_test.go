@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func writeParamTestBody(t *testing.T, s *store.Store, content string) string {

@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// List returns every running interceptor process (excluding the caller).
+// List returns every running interseptor process (excluding the caller).
 func List() ([]Proc, error) {
 	self := os.Getpid()
 	out, err := exec.Command("tasklist", "/FO", "CSV", "/NH").Output()
@@ -31,7 +31,7 @@ func List() ([]Proc, error) {
 			continue
 		}
 		image := strings.Trim(row[0], `"`)
-		if !matchesInterceptor(image) {
+		if !matchesInterseptor(image) {
 			continue
 		}
 		pid, err := strconv.Atoi(strings.Trim(row[1], `"`))
@@ -66,17 +66,17 @@ func Alive(pid int) bool {
 	return strings.Contains(s, strconv.Itoa(pid))
 }
 
-// aliveInterceptor reports whether pid both exists AND names an Interceptor
+// aliveInterseptor reports whether pid both exists AND names an Interseptor
 // executable, matching List()'s image-name filter. Unlike Alive (a generic
-// "does this PID exist" check relied on elsewhere for non-Interceptor PIDs),
-// this guards specifically against PID reuse: if a spawned interceptor.exe
+// "does this PID exist" check relied on elsewhere for non-Interseptor PIDs),
+// this guards specifically against PID reuse: if a spawned interseptor.exe
 // child has already exited and the OS recycles its PID onto an unrelated
-// process before the launcher notices, aliveInterceptor reports false rather
+// process before the launcher notices, aliveInterseptor reports false rather
 // than mistaking the new process for the old one — so a caller about to
 // taskkill /F /T a registry PID can reconfirm it's still really an
-// Interceptor process first. Exported via the cross-platform AliveInterceptor
+// Interseptor process first. Exported via the cross-platform AliveInterseptor
 // wrapper in proc.go.
-func aliveInterceptor(pid int) bool {
+func aliveInterseptor(pid int) bool {
 	out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH").Output()
 	if err != nil {
 		return false
@@ -96,5 +96,5 @@ func aliveInterceptor(pid int) bool {
 	if rowPID != strconv.Itoa(pid) {
 		return false
 	}
-	return matchesInterceptor(image)
+	return matchesInterseptor(image)
 }

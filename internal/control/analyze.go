@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/Veyal/interceptor/internal/scanner"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/scanner"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 var reqNotableHeaders = []string{"Authorization", "Cookie", "X-Api-Key", "X-Auth-Token", "Content-Type", "Origin", "Referer", "User-Agent"}

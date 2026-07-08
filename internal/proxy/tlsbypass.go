@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/hostpattern"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/hostpattern"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // SetTLSBypassHosts replaces the set of host patterns that are tunneled raw

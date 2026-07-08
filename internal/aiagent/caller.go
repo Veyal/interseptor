@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/aiassist"
 )
 
 // ErrNoToolSupport is returned when the configured provider has no tool-calling

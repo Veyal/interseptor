@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
-// aiSourceFlag maps the X-Interceptor-Source request header to FlagAI (only the
+// aiSourceFlag maps the X-Interseptor-Source request header to FlagAI (only the
 // MCP server sets it), case-insensitively; anything else contributes no flag.
 func TestAISourceFlag(t *testing.T) {
 	mk := func(v string) *http.Request {
 		r, _ := http.NewRequest(http.MethodGet, "/", nil)
 		if v != "" {
-			r.Header.Set("X-Interceptor-Source", v)
+			r.Header.Set("X-Interseptor-Source", v)
 		}
 		return r
 	}
@@ -32,7 +32,7 @@ func TestAISourceFlag(t *testing.T) {
 	}
 }
 
-// A Repeater send carrying the X-Interceptor-Source: ai header (i.e. from the AI
+// A Repeater send carrying the X-Interseptor-Source: ai header (i.e. from the AI
 // over MCP) is tagged FlagAI and shows up in Proxy/History, while an ordinary
 // Repeater send stays hidden there (it has its own view).
 func TestRepeaterSendAISourceShowsInHistory(t *testing.T) {
@@ -51,7 +51,7 @@ func TestRepeaterSendAISourceShowsInHistory(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/repeater/send", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
 		if ai {
-			req.Header.Set("X-Interceptor-Source", "ai")
+			req.Header.Set("X-Interseptor-Source", "ai")
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -122,7 +122,7 @@ func TestRepeaterSendBroadcastsFlowNewSSE(t *testing.T) {
 		body, _ := json.Marshal(map[string]string{"method": "GET", "url": target.URL + "/live"})
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/repeater/send", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Interceptor-Source", "ai")
+		req.Header.Set("X-Interseptor-Source", "ai")
 		r, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Errorf("send: %v", err)

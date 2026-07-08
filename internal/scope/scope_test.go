@@ -3,7 +3,7 @@ package scope
 import (
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func flow(host, path, scheme string, port int) *store.Flow {

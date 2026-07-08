@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/scanner"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/scanner"
 )
 
 // assistSystem is the system prompt for the explain/suggest/summarize prose modes.

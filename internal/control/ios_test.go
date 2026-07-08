@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 func TestIOSProfileEndpoint(t *testing.T) {

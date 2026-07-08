@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // POST /api/flows/purge with mode=delete removes matching flows, runs GC,

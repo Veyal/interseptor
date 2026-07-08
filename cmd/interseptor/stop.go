@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/proc"
+	"github.com/Veyal/interseptor/internal/proc"
 )
 
 func runStop(args []string) error {
@@ -28,14 +28,14 @@ func runStop(args []string) error {
 
 	procs, err := proc.List()
 	if err != nil {
-		return fmt.Errorf("find interceptor processes: %w", err)
+		return fmt.Errorf("find interseptor processes: %w", err)
 	}
 	if len(procs) == 0 {
-		fmt.Println("no Interceptor process is running")
+		fmt.Println("no Interseptor process is running")
 		return nil
 	}
 
-	fmt.Printf("stopping %d Interceptor process(es)…\n", len(procs))
+	fmt.Printf("stopping %d Interseptor process(es)…\n", len(procs))
 	for _, p := range procs {
 		fmt.Printf("  · PID %d  %s\n", p.PID, p.Path)
 		if doForce {

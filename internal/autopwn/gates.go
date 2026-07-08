@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // agentVerifierSystem is the Gate-2 system prompt. It frames the model as an

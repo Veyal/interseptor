@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/proc"
+	"github.com/Veyal/interseptor/internal/proc"
 )
 
 // spawnNamed copies the current test binary to dir under name and starts it
 // re-invoking only TestHelperProcessSleep (guarded by GO_WANT_HELPER_PROCESS,
 // below), turning it into a long-lived process under a chosen image name —
-// letting these tests exercise AliveInterceptor's image-name check against a
+// letting these tests exercise AliveInterseptor's image-name check against a
 // real "interceptor.exe"-named process without needing the full production
 // binary.
 func spawnNamed(t *testing.T, name string) (pid int, cleanup func()) {
@@ -45,7 +45,7 @@ func spawnNamed(t *testing.T, name string) (pid int, cleanup func()) {
 // TestHelperProcessSleep is not a real test: it's invoked as a subprocess
 // (see spawnNamed) purely so the copied binary stays alive under its
 // renamed image long enough for the parent test to observe it via
-// AliveInterceptor. It exits immediately unless GO_WANT_HELPER_PROCESS=1.
+// AliveInterseptor. It exits immediately unless GO_WANT_HELPER_PROCESS=1.
 func TestHelperProcessSleep(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
@@ -53,20 +53,20 @@ func TestHelperProcessSleep(t *testing.T) {
 	time.Sleep(5 * time.Second)
 }
 
-func TestAliveInterceptorAcceptsInterceptorImage(t *testing.T) {
-	pid, cleanup := spawnNamed(t, "interceptor.exe")
+func TestAliveInterseptorAcceptsInterseptorImage(t *testing.T) {
+	pid, cleanup := spawnNamed(t, "interseptor.exe")
 	defer cleanup()
 
 	deadline := time.Now().Add(2 * time.Second)
-	for !proc.AliveInterceptor(pid) && time.Now().Before(deadline) {
+	for !proc.AliveInterseptor(pid) && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !proc.AliveInterceptor(pid) {
-		t.Fatalf("AliveInterceptor(%d) = false, want true for a process named interceptor.exe", pid)
+	if !proc.AliveInterseptor(pid) {
+		t.Fatalf("AliveInterseptor(%d) = false, want true for a process named interseptor.exe", pid)
 	}
 }
 
-func TestAliveInterceptorRejectsOtherImage(t *testing.T) {
+func TestAliveInterseptorRejectsOtherImage(t *testing.T) {
 	pid, cleanup := spawnNamed(t, "not-interceptor.exe")
 	defer cleanup()
 
@@ -79,24 +79,24 @@ func TestAliveInterceptorRejectsOtherImage(t *testing.T) {
 		t.Fatalf("helper process %d never came up", pid)
 	}
 
-	if proc.AliveInterceptor(pid) {
-		t.Fatalf("AliveInterceptor(%d) = true, want false for a process not named interceptor(.exe)", pid)
+	if proc.AliveInterseptor(pid) {
+		t.Fatalf("AliveInterseptor(%d) = true, want false for a process not named interceptor(.exe)", pid)
 	}
 }
 
-// TestAliveInterceptorRejectsSystemProcess confirms the PID-reuse guard:
+// TestAliveInterseptorRejectsSystemProcess confirms the PID-reuse guard:
 // PID 4 (System) always exists on Windows but is never an Interceptor
-// process, so AliveInterceptor must say false even though generic Alive
+// process, so AliveInterseptor must say false even though generic Alive
 // (tested separately in proc_test.go) says true for the same PID.
-func TestAliveInterceptorRejectsSystemProcess(t *testing.T) {
-	if proc.AliveInterceptor(4) {
-		t.Fatal("AliveInterceptor(4) = true, want false (PID 4 is System, not an Interceptor process)")
+func TestAliveInterseptorRejectsSystemProcess(t *testing.T) {
+	if proc.AliveInterseptor(4) {
+		t.Fatal("AliveInterseptor(4) = true, want false (PID 4 is System, not an Interceptor process)")
 	}
 }
 
-func TestAliveInterceptorRejectsNonExistentPID(t *testing.T) {
+func TestAliveInterseptorRejectsNonExistentPID(t *testing.T) {
 	const deadPID = 99999999
-	if proc.AliveInterceptor(deadPID) {
-		t.Fatalf("AliveInterceptor(%d) = true, want false", deadPID)
+	if proc.AliveInterseptor(deadPID) {
+		t.Fatalf("AliveInterseptor(%d) = true, want false", deadPID)
 	}
 }

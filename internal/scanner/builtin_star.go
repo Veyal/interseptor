@@ -1,7 +1,7 @@
 package scanner
 
 // BuiltinTemplate returns the default Starlark source for a built-in passive check.
-// Saving this to ~/.interceptor/checks/<id>.star overrides the compiled Go check.
+// Saving this to ~/.interseptor/checks/<id>.star overrides the compiled Go check.
 func BuiltinTemplate(id string) (string, bool) {
 	t, ok := builtinStarlark[id]
 	return t, ok

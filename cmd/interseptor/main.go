@@ -1,4 +1,4 @@
-// Command interceptor runs the Interceptor intercepting proxy: an HTTP/HTTPS
+// Command interseptor runs the Interseptor intercepting proxy: an HTTP/HTTPS
 // forward proxy plus a localhost control plane that serves the web UI.
 package main
 
@@ -21,15 +21,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/control"
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/proxy"
-	"github.com/Veyal/interceptor/internal/scope"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/tlsca"
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/control"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/proxy"
+	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 const defaultControlAddr = "127.0.0.1:9966"
@@ -55,7 +55,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version", "-v", "--version":
-			fmt.Println("interceptor v" + version.String())
+			fmt.Println("interseptor v" + version.String())
 			return
 		case "update":
 			if err := runUpdate(os.Args[2:]); err != nil {
@@ -83,11 +83,11 @@ func main() {
 			return
 		}
 	}
-	// `interceptor mcp` runs a Model Context Protocol server on stdio that drives
-	// a separately-running interceptor via its control API. All protocol traffic
+	// `interseptor mcp` runs a Model Context Protocol server on stdio that drives
+	// a separately-running interseptor via its control API. All protocol traffic
 	// is on stdout; logs go to stderr so they can't corrupt the JSON-RPC stream.
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
-		base := os.Getenv("INTERCEPTOR_CONTROL_URL")
+		base := os.Getenv("INTERSEPTOR_CONTROL_URL")
 		if base == "" {
 			base = "http://" + resolveControlAddr(nil, "")
 		}
@@ -106,10 +106,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	globalDir := filepath.Join(home, ".interceptor")
+	if err := migrateDataDir(home); err != nil {
+		return fmt.Errorf("migrate data dir: %w", err)
+	}
+	globalDir := filepath.Join(home, newDataDirName)
 
-	// --project <name|path> (or INTERCEPTOR_PROJECT) skips the startup prompt.
-	fs := flag.NewFlagSet("interceptor", flag.ContinueOnError)
+	// --project <name|path> (or INTERSEPTOR_PROJECT) skips the startup prompt.
+	fs := flag.NewFlagSet("interseptor", flag.ContinueOnError)
 	projectFlag := fs.String("project", "", "project name or directory (skips the startup picker)")
 	openFlag := fs.Bool("open", false, "open the UI in your browser on start (default: don't)")
 	controlPortFlag := fs.Int("control-port", 0, "control UI/API TCP port on loopback (default 9966)")
@@ -119,7 +122,7 @@ func run() error {
 	}
 	projectArg := *projectFlag
 	if projectArg == "" {
-		projectArg = os.Getenv("INTERCEPTOR_PROJECT")
+		projectArg = os.Getenv("INTERSEPTOR_PROJECT")
 	}
 	// No terminal prompt: selecting/creating/switching projects all happen in the
 	// web UI (top-bar project badge). A plain launch resumes the last project the
@@ -244,7 +247,7 @@ func run() error {
 	}
 
 	proxyAddrs := control.LoadProxyAddrs(st)
-	if v := os.Getenv("INTERCEPTOR_PROXY_ADDR"); v != "" {
+	if v := os.Getenv("INTERSEPTOR_PROXY_ADDR"); v != "" {
 		proxyAddrs = []string{v} // env wins (lets you run a second instance / custom port without the UI)
 	}
 	// Never record traffic aimed at our own listeners, so proxying localhost
@@ -260,17 +263,17 @@ func run() error {
 	hub.SetSelfAddr(cm.Addr())
 
 	uiURL := "http://" + cm.Addr()
-	log.Printf("Interceptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
+	log.Printf("Interseptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
 	// Quiet, daemon-style start by default: only open the browser when the operator
-	// opts in (--open / INTERCEPTOR_OPEN_BROWSER), so restarts and headless runs
+	// opts in (--open / INTERSEPTOR_OPEN_BROWSER), so restarts and headless runs
 	// don't pop a new tab. The UI URL is logged above to open yourself.
-	if *openFlag || os.Getenv("INTERCEPTOR_OPEN_BROWSER") != "" {
+	if *openFlag || os.Getenv("INTERSEPTOR_OPEN_BROWSER") != "" {
 		openBrowser(uiURL)
 	}
 
 	// Best-effort update check (every run). Non-blocking; silent on failure;
-	// opt out with INTERCEPTOR_NO_UPDATE_CHECK. Result is also served at /api/version.
-	if os.Getenv("INTERCEPTOR_NO_UPDATE_CHECK") == "" {
+	// opt out with INTERSEPTOR_NO_UPDATE_CHECK. Result is also served at /api/version.
+	if os.Getenv("INTERSEPTOR_NO_UPDATE_CHECK") == "" {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 			defer cancel()
@@ -280,7 +283,7 @@ func run() error {
 			}
 			hub.SetUpdate(latest, newer)
 			if newer {
-				log.Printf("↑ A new version is available: v%s (you have v%s) — run `interceptor update` or see https://github.com/%s/releases", latest, version.String(), version.Repo)
+				log.Printf("↑ A new version is available: v%s (you have v%s) — run `interseptor update` or see https://github.com/%s/releases", latest, version.String(), version.Repo)
 			}
 		}()
 	}
@@ -561,12 +564,12 @@ func (m *proxyManager) Shutdown(ctx context.Context) {
 // listenRetry binds addr, retrying briefly when the port is still held by a
 // just-exited predecessor. On a Windows project switch the new process is
 // spawned by the old one and must wait for it to release the listeners; the old
-// process sets INTERCEPTOR_REEXEC so only that handoff pays the retry cost — a
+// process sets INTERSEPTOR_REEXEC so only that handoff pays the retry cost — a
 // normal start still fails fast when the port is genuinely taken by something
 // else (so the operator gets an immediate, clear "address in use").
 func listenRetry(addr string) (net.Listener, error) {
 	attempts := 1
-	if os.Getenv("INTERCEPTOR_REEXEC") != "" {
+	if os.Getenv("INTERSEPTOR_REEXEC") != "" {
 		attempts = 60 // ~9s at 150ms — covers the predecessor's shutdown
 	}
 	var err error
@@ -597,9 +600,9 @@ func selfPorts(addrs ...string) []int {
 }
 
 // openBrowser best-effort opens url in the default browser.
-// (--open / INTERCEPTOR_OPEN_BROWSER); INTERCEPTOR_NO_BROWSER hard-disables it.
+// (--open / INTERSEPTOR_OPEN_BROWSER); INTERSEPTOR_NO_BROWSER hard-disables it.
 func openBrowser(url string) {
-	if os.Getenv("INTERCEPTOR_NO_BROWSER") != "" {
+	if os.Getenv("INTERSEPTOR_NO_BROWSER") != "" {
 		return
 	}
 	var cmd string

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // classifyTLSError turns a failed MITM handshake into an operator-facing message.

@@ -388,7 +388,7 @@ func testCAPEM(t *testing.T) []byte {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "Test Interceptor CA"},
+		Subject:      pkix.Name{CommonName: "Test Interseptor CA"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		IsCA:         true,

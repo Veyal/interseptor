@@ -3,7 +3,7 @@ package control
 import (
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/netutil"
+	"github.com/Veyal/interseptor/internal/netutil"
 )
 
 func (h *settingsAPI) getNetworkHosts(w http.ResponseWriter, r *http.Request) {

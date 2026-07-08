@@ -4,11 +4,11 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/Veyal/interceptor/internal/checkscript"
+	"github.com/Veyal/interseptor/internal/checkscript"
 )
 
 // migrateGlobalChecks merges any per-project checks folders into the global
-// ~/.interceptor/checks directory (shared across all projects, like the CA).
+// ~/.interseptor/checks directory (shared across all projects, like the CA).
 func migrateGlobalChecks(globalDir, projectsDir string) {
 	checksDir := filepath.Join(globalDir, "checks")
 	for _, name := range listProjects(projectsDir) {

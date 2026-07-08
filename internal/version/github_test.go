@@ -42,8 +42,8 @@ func TestCheckLatestGitHubHeaders(t *testing.T) {
 	if latest != "9.9.9" || !newer {
 		t.Fatalf("latest=%q newer=%v", latest, newer)
 	}
-	if !strings.HasPrefix(ua, "interceptor/") {
-		t.Fatalf("User-Agent = %q, want interceptor/… prefix", ua)
+	if !strings.HasPrefix(ua, "interseptor/") {
+		t.Fatalf("User-Agent = %q, want interseptor/… prefix", ua)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestCheckLatestGitHub403(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("GITHUB_TOKEN", "")
-	t.Setenv("INTERCEPTOR_GITHUB_TOKEN", "")
+	t.Setenv("INTERSEPTOR_GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -121,7 +121,7 @@ func TestCheckLatestSkipsAPIWithoutToken(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("GITHUB_TOKEN", "")
-	t.Setenv("INTERCEPTOR_GITHUB_TOKEN", "")
+	t.Setenv("INTERSEPTOR_GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 
 	apiHits := 0
@@ -171,7 +171,7 @@ func TestFetchReleaseAPI403Fallback(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		ext = ".zip"
 	}
-	asset := fmt.Sprintf("interceptor_1.2.3_%s_%s%s", osToken, archToken, ext)
+	asset := fmt.Sprintf("interseptor_1.2.3_%s_%s%s", osToken, archToken, ext)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

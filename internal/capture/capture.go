@@ -5,7 +5,7 @@ package capture
 import (
 	"io"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // Capturer creates body-capturing tees backed by a Store.

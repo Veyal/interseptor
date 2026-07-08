@@ -190,8 +190,8 @@ func (c *Client) completeOpenRouterMessages(system string, messages []Message) (
 	req.Header.Set("Authorization", "Bearer "+c.key)
 	req.Header.Set("Content-Type", "application/json")
 	// OpenRouter attribution headers (optional but recommended).
-	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interceptor")
-	req.Header.Set("X-Title", "Interceptor")
+	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interseptor")
+	req.Header.Set("X-Title", "Interseptor")
 
 	raw, err := c.do(req)
 	if err != nil {
@@ -284,8 +284,8 @@ func (c *Client) streamOpenRouterMessages(ctx context.Context, system string, me
 	}
 	req.Header.Set("Authorization", "Bearer "+c.key)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interceptor")
-	req.Header.Set("X-Title", "Interceptor")
+	req.Header.Set("HTTP-Referer", "https://github.com/Veyal/interseptor")
+	req.Header.Set("X-Title", "Interseptor")
 	return c.stream(req, onDelta, openRouterDelta)
 }
 

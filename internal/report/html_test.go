@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestProjectHTMLContainsStructure(t *testing.T) {

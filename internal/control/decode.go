@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/codec"
+	"github.com/Veyal/interseptor/internal/codec"
 )
 
 // decode runs one encode/decode transform over the input. A bad input returns

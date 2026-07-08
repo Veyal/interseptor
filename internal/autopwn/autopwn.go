@@ -1,6 +1,6 @@
 // Package autopwn is the autonomous-pentest ("Autopilot") run engine: the Phase-2
 // orchestration core that reads captured in-scope history, plans and executes
-// active security testing using Interceptor's own ~84 tools, verifies every
+// active security testing using Interseptor's own ~84 tools, verifies every
 // candidate through the 4-gate verifier, and files ONLY machine-proven findings.
 //
 // The engine composes the Phase-0/1 building blocks (internal/mcp tool bus,
@@ -30,12 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/oob"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/verify"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/oob"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/verify"
 )
 
 // ErrRunActive is returned by Start when a run is already in flight.
@@ -99,7 +99,7 @@ type Deps struct {
 	// probes (built by control from the request host + persisted oob base).
 	OOBBaseURL string
 
-	// IsOwnListener reports whether a raw URL targets one of Interceptor's own
+	// IsOwnListener reports whether a raw URL targets one of Interseptor's own
 	// listeners (proxy / control). Control passes a predicate wrapping its
 	// isOwnListener; the verify phase never probes a target this returns true for.
 	// When nil, no URL is treated as an own listener (tests may pass a simple

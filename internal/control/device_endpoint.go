@@ -5,8 +5,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/netutil"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/netutil"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 const (

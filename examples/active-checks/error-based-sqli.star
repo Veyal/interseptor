@@ -7,7 +7,7 @@
 # applied, counts against the run's request budget). `point` tells you what you're
 # injecting into; `baseline` is the un-mutated response for comparison.
 #
-# Copy into ~/.interceptor/active-checks/ and arm & run an active scan.
+# Copy into ~/.interseptor/active-checks/ and arm & run an active scan.
 
 def check(point, baseline, probe):
     r = probe("'")

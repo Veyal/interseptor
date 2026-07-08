@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // panicEvents implements Events plus a WSFramed notifier that always panics,

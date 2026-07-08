@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/aiassist"
 )
 
 const notesOrganizeSystem = `You reorganize pentest engagement notebooks into rich, scannable Markdown.

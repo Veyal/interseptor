@@ -8,15 +8,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/checkscript"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/checkscript"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 //go:embed checks_reference.md
 var checksReferenceMD []byte
 
-const checksGenerateSystem = `You write Interceptor passive scanner checks in Starlark (Python-like, sandboxed).
+const checksGenerateSystem = `You write Interseptor passive scanner checks in Starlark (Python-like, sandboxed).
 
 Reply with ONLY valid Starlark source — no markdown fences, no explanation, no imports.
 

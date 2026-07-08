@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestFindingsEmpty(t *testing.T) {
@@ -54,7 +54,7 @@ func TestProjectRendersFindingsAndPoCsAndAppendix(t *testing.T) {
 	out := Project(findings, issues)
 
 	// Title + summary counts curated findings.
-	if !strings.Contains(out, "# Interceptor — Engagement Report") {
+	if !strings.Contains(out, "# Interseptor — Engagement Report") {
 		t.Fatalf("missing title:\n%s", out)
 	}
 	if !strings.Contains(out, "2 findings: 1 High, 1 Low") {

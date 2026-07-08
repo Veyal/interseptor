@@ -12,7 +12,7 @@ func TestNormalizeProxyAddrsDedupes(t *testing.T) {
 }
 
 func TestValidateProxyAddrsRejectsExternalWhenLocked(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	if err := validateProxyAddrs([]string{"0.0.0.0:8080"}); err == nil {
 		t.Fatal("expected external bind rejection")
 	}

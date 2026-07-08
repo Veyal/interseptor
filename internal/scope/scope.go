@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Veyal/interceptor/internal/hostpattern"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/hostpattern"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 type compiled struct {

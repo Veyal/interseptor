@@ -1,4 +1,4 @@
-// Package proc discovers and stops running Interceptor processes by image name.
+// Package proc discovers and stops running Interseptor processes by image name.
 package proc
 
 import (
@@ -7,18 +7,18 @@ import (
 )
 
 const (
-	unixBinaryName    = "interceptor"
-	windowsBinaryName = "interceptor.exe"
+	unixBinaryName    = "interseptor"
+	windowsBinaryName = "interseptor.exe"
 )
 
-// Proc is a discovered interceptor process.
+// Proc is a discovered interseptor process.
 type Proc struct {
 	PID  int
 	Path string // absolute path to the binary, if known
 }
 
-// matchesInterceptor reports whether baseName is an Interceptor executable.
-func matchesInterceptor(baseName string) bool {
+// matchesInterseptor reports whether baseName is an Interseptor executable.
+func matchesInterseptor(baseName string) bool {
 	baseName = strings.TrimSpace(baseName)
 	return baseName == unixBinaryName || baseName == windowsBinaryName
 }
@@ -32,8 +32,8 @@ func baseFromPath(path string) string {
 	return filepath.Base(path)
 }
 
-// AliveInterceptor reports whether pid is alive *and* is actually running an
-// Interceptor binary (image name "interceptor"/"interceptor.exe"), not some
+// AliveInterseptor reports whether pid is alive *and* is actually running an
+// Interseptor binary (image name "interseptor"/"interseptor.exe"), not some
 // unrelated process that has since reused a recycled PID. Callers that are
 // about to signal/kill a PID they previously recorded (e.g. the launcher's
 // stop/allocatePorts paths) should prefer this over the generic Alive(pid) —
@@ -41,6 +41,6 @@ func baseFromPath(path string) string {
 // tell "our child is still alive" apart from "some other process now has
 // this PID". Falls back to Alive(pid) on platforms/paths where a cheap,
 // per-PID image-name check isn't available (see per-OS implementations).
-func AliveInterceptor(pid int) bool {
-	return aliveInterceptor(pid)
+func AliveInterseptor(pid int) bool {
+	return aliveInterseptor(pid)
 }

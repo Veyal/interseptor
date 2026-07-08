@@ -46,7 +46,7 @@ func TestLatestCachePathUnderInterceptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(filepath.Dir(path)) != ".interceptor" {
+	if filepath.Base(filepath.Dir(path)) != ".interseptor" {
 		t.Fatalf("path=%s", path)
 	}
 }

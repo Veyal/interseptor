@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestTeeBodyStreamsAndStores(t *testing.T) {

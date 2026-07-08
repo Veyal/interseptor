@@ -3,11 +3,11 @@
 > Want to *confirm* a vuln by sending real traffic instead of inspecting passively? See
 > [Writing custom ACTIVE checks](custom-active-checks.md). This page covers the **passive** scanner.
 
-Interceptor's passive scanner is extensible: drop a check written in **Starlark** (a small,
+Interseptor's passive scanner is extensible: drop a check written in **Starlark** (a small,
 Python-like language) into your checks folder and it runs on every scan, right alongside the
 built-in checks. This page is the **standard** every check is written against.
 
-- **Where checks live:** `~/.interceptor/checks/*.star` (global — shared across all projects, like the CA).
+- **Where checks live:** `~/.interseptor/checks/*.star` (global — shared across all projects, like the CA).
 - **When they run:** every time you **Run scan** (or `POST /api/scanner/run`). Files are re-read
   each run, so editing a check takes effect immediately — no restart.
 - **Why Starlark:** it's deterministic and **sandboxed** — a check cannot read files, open network
@@ -57,7 +57,7 @@ Methods:
 ## Example
 
 ```python
-# ~/.interceptor/checks/missing-hsts.star
+# ~/.interseptor/checks/missing-hsts.star
 def check(flow):
     if flow.scheme == "https" and not flow.res_header("Strict-Transport-Security"):
         return [finding(

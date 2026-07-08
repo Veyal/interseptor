@@ -1,4 +1,4 @@
-// Package sysproxy points the operating system's HTTP/HTTPS proxy at Interceptor
+// Package sysproxy points the operating system's HTTP/HTTPS proxy at Interseptor
 // (and turns it back off). It only ever acts on an explicit user request — it is
 // never enabled automatically. macOS is supported via `networksetup`; on other
 // platforms callers should set the proxy (127.0.0.1:8080) manually.

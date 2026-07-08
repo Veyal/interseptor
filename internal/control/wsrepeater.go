@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/wsrepeater"
+	"github.com/Veyal/interseptor/internal/wsrepeater"
 )
 
 // wsSend opens a fresh WebSocket to a target, sends one message, and returns the
@@ -26,7 +26,7 @@ func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.targetsOwnListener(in.URL) {
-		httpErr(w, http.StatusForbidden, "refusing to send to Interceptor's own listener")
+		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
 	hdrs := map[string]string{}

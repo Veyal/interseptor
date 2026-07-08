@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/activescan/csrf"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/activescan/csrf"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // flowAuthPayload is the structured auth material MCP agents consume.

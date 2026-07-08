@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestReadinessEndpoint(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // ResponseDecision is the outcome of holding a response: forward the (possibly

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestSecurityGuardHostAndOrigin(t *testing.T) {
@@ -145,7 +145,7 @@ func TestControlBodySizeCapped(t *testing.T) {
 	}
 }
 
-// Repeater/Intruder/WS must refuse a target that points at Interceptor's own
+// Repeater/Intruder/WS must refuse a target that points at Interseptor's own
 // control listener, so the tool can't be coerced into attacking its own API.
 func TestSendRefusesOwnListener(t *testing.T) {
 	h, _, _ := newHub(t)
@@ -226,7 +226,7 @@ func TestSecurityGuardKeyAuth(t *testing.T) {
 			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
 		}
 		if csrf {
-			r.Header.Set("X-Interceptor-CSRF", "1")
+			r.Header.Set("X-Interseptor-CSRF", "1")
 		}
 		return r
 	}
@@ -291,7 +291,7 @@ func TestIsLoopbackHost(t *testing.T) {
 }
 
 func TestPutSettingsRejectsExternalControlBindWhenLocked(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -367,7 +367,7 @@ func (f *fakeRebinder) Addrs() []string {
 }
 
 func TestPutSettingsRejectsExternalBindWhenLocked(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "0")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "0")
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -392,7 +392,7 @@ func TestPutSettingsRejectsExternalBindWhenLocked(t *testing.T) {
 }
 
 func TestPutSettingsAllowsExternalBindByDefault(t *testing.T) {
-	t.Setenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND", "")
+	t.Setenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND", "")
 	h, _, _ := newHub(t)
 	reb := &fakeRebinder{}
 	h.rebind = reb

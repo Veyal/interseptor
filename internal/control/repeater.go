@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/httplines"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/httplines"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 type repeaterSendJSON struct {
@@ -18,11 +18,11 @@ type repeaterSendJSON struct {
 }
 
 // aiSourceFlag returns store.FlagAI when a request was issued by the AI assistant
-// over MCP — the MCP server stamps every control call with X-Interceptor-Source:
+// over MCP — the MCP server stamps every control call with X-Interseptor-Source:
 // ai. It lets the control plane distinguish AI-originated Repeater/Intruder/scan
 // sends from a human's and surface them in Proxy/History.
 func aiSourceFlag(r *http.Request) int64 {
-	if strings.EqualFold(r.Header.Get("X-Interceptor-Source"), "ai") {
+	if strings.EqualFold(r.Header.Get("X-Interseptor-Source"), "ai") {
 		return store.FlagAI
 	}
 	return 0
@@ -35,7 +35,7 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.targetsOwnListener(in.URL) {
-		httpErr(w, http.StatusForbidden, "refusing to send to Interceptor's own listener")
+		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
 	hdr, err := httplines.NormalizeJSON(in.Headers)

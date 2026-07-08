@@ -2,7 +2,7 @@
 // message, and captures the frames the server returns — a "Repeater" for
 // WebSockets. It speaks enough of RFC 6455 to do this with no external deps:
 // the client handshake, masked client frames, and frame reading. TLS
-// verification is skipped (wss), matching how Interceptor talks to targets.
+// verification is skipped (wss), matching how Interseptor talks to targets.
 package wsrepeater
 
 import (

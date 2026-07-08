@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/android"
-	"github.com/Veyal/interceptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/android"
+	"github.com/Veyal/interseptor/internal/bind"
 )
 
 func (h *androidAPI) getAndroidStatus(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func (h *androidAPI) validateWiFiProxy(port int) error {
 	if h.hasExternalProxyOnPort(port) {
 		return nil
 	}
-	return fmt.Errorf("wifi proxy needs Interceptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings → Proxy", port)
+	return fmt.Errorf("wifi proxy needs Interseptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings → Proxy", port)
 }
 
 func (h *androidAPI) postAndroidProxy(w http.ResponseWriter, r *http.Request) {

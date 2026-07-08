@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/sender"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/sender"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 const maxAgentToolSteps = 5
@@ -160,7 +160,7 @@ func (h *aiAPI) agentSendRequest(args map[string]any, seed *store.Flow) (string,
 		return "url is required", agentToolSummary("send_request", args), false
 	}
 	if h.targetsOwnListener(url) {
-		return "refusing to send to Interceptor's own listener", agentToolSummary("send_request", args), false
+		return "refusing to send to Interseptor's own listener", agentToolSummary("send_request", args), false
 	}
 	method := agentArgStr(args, "method")
 	if method == "" {

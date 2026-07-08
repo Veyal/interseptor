@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // normalizeCLIArgs maps underscore spellings to the flag names registered with
@@ -47,13 +47,13 @@ func controlAddrFromPort(port int) (string, error) {
 }
 
 // resolveControlAddr picks the control-plane listen address: CLI override (wins),
-// INTERCEPTOR_CONTROL_ADDR env, persisted control.addr, then defaultControlAddr.
-// Non-loopback binds are allowed by default; set INTERCEPTOR_ALLOW_EXTERNAL_BIND=0
+// INTERSEPTOR_CONTROL_ADDR env, persisted control.addr, then defaultControlAddr.
+// Non-loopback binds are allowed by default; set INTERSEPTOR_ALLOW_EXTERNAL_BIND=0
 // to fall back to loopback-only.
 func resolveControlAddr(st *store.Store, cliOverride string) string {
 	addr := strings.TrimSpace(cliOverride)
 	if addr == "" {
-		addr = strings.TrimSpace(os.Getenv("INTERCEPTOR_CONTROL_ADDR"))
+		addr = strings.TrimSpace(os.Getenv("INTERSEPTOR_CONTROL_ADDR"))
 	}
 	if addr == "" && st != nil {
 		if v, ok, _ := st.GetSetting("control.addr"); ok && v != "" {
@@ -64,7 +64,7 @@ func resolveControlAddr(st *store.Store, cliOverride string) string {
 		addr = defaultControlAddr
 	}
 	if !isLoopbackBind(addr) && !bind.ExternalBindAllowed() {
-		log.Printf("control addr %q is non-loopback; ignoring (external bind disabled via INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
+		log.Printf("control addr %q is non-loopback; ignoring (external bind disabled via INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
 		return defaultControlAddr
 	}
 	return addr

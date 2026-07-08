@@ -15,13 +15,13 @@ func TestPickAsset(t *testing.T) {
 	rel := &releaseInfo{
 		Tag: "v1.2.3",
 		Assets: []releaseAsset{
-			{Name: "interceptor_1.2.3_linux_amd64.tar.gz", URL: "https://ex/linux"},
-			{Name: "interceptor_1.2.3_darwin_arm64.tar.gz", URL: "https://ex/darwin"},
+			{Name: "interseptor_1.2.3_linux_amd64.tar.gz", URL: "https://ex/linux"},
+			{Name: "interseptor_1.2.3_darwin_arm64.tar.gz", URL: "https://ex/darwin"},
 			{Name: "checksums.txt", URL: "https://ex/sums"},
 		},
 	}
 	name, url := pickAssetFor(rel, "1.2.3", "linux", "amd64")
-	if name != "interceptor_1.2.3_linux_amd64.tar.gz" || url != "https://ex/linux" {
+	if name != "interseptor_1.2.3_linux_amd64.tar.gz" || url != "https://ex/linux" {
 		t.Fatalf("linux: %q %q", name, url)
 	}
 	name, url = pickAssetFor(rel, "1.2.3", "darwin", "arm64")
@@ -58,7 +58,7 @@ func TestUntarGz(t *testing.T) {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
-	_ = tw.WriteHeader(&tar.Header{Name: "interceptor", Mode: 0o755, Size: 3})
+	_ = tw.WriteHeader(&tar.Header{Name: "interseptor", Mode: 0o755, Size: 3})
 	_, _ = tw.Write([]byte("bin"))
 	_ = tw.Close()
 	_ = gw.Close()
@@ -105,25 +105,25 @@ func TestProgressReaderReports(t *testing.T) {
 
 func TestAssetCandidates(t *testing.T) {
 	c := assetCandidates("0.7.0", "linux", "amd64")
-	if len(c) < 2 || c[0] != "interceptor_0.7.0_linux_amd64.tar.gz" {
+	if len(c) < 2 || c[0] != "interseptor_0.7.0_linux_amd64.tar.gz" {
 		t.Fatalf("unexpected candidates: %v", c)
 	}
 }
 
 func TestWindowsUpdateScript(t *testing.T) {
 	script := windowsUpdateScript(
-		`C:\tools\interceptor.exe.new`,
-		`C:\tools\interceptor.exe`,
-		`C:\tools\interceptor-update.bat`,
-		`C:\tools\interceptor-update.log`,
+		`C:\tools\interseptor.exe.new`,
+		`C:\tools\interseptor.exe`,
+		`C:\tools\interseptor-update.bat`,
+		`C:\tools\interseptor-update.log`,
 	)
 	for _, want := range []string{
-		`set "NEW=C:\tools\interceptor.exe.new"`,
+		`set "NEW=C:\tools\interseptor.exe.new"`,
 		`taskkill /PID %%p /T /F`,
 		`:retry`,
 		`if !TRY! GEQ 90 goto fail`,
 		`start "" "%DEST%"`,
-		`interceptor-update.log`,
+		`interseptor-update.log`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("script missing %q:\n%s", want, script)

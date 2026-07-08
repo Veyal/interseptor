@@ -10,7 +10,7 @@ func TestResolveProjectDir(t *testing.T) {
 	// Use OS-absolute paths so the assertions hold on every platform (on Windows
 	// a bare "/home/u" is not absolute and filepath.Abs would prepend the drive).
 	home := t.TempDir()
-	projects := filepath.Join(home, ".interceptor", "projects")
+	projects := filepath.Join(home, ".interseptor", "projects")
 
 	// a bare name lands under projects/
 	if name, dir := resolveProjectDir(projects, "acme", home); name != "acme" || dir != filepath.Join(projects, "acme") {

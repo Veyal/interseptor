@@ -35,7 +35,7 @@ var githubWebHTTP = &http.Client{
 
 // newGitHubRequest builds a GitHub REST request with the headers GitHub requires.
 // Unauthenticated calls are rate-limited (~60/h per IP); set GITHUB_TOKEN or
-// INTERCEPTOR_GITHUB_TOKEN for a higher quota.
+// INTERSEPTOR_GITHUB_TOKEN for a higher quota.
 func newGitHubRequest(ctx context.Context, method, url string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
@@ -43,7 +43,7 @@ func newGitHubRequest(ctx context.Context, method, url string) (*http.Request, e
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "interceptor/"+String()+" (https://github.com/"+Repo+")")
+	req.Header.Set("User-Agent", "interseptor/"+String()+" (https://github.com/"+Repo+")")
 	if tok := githubToken(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
@@ -51,7 +51,7 @@ func newGitHubRequest(ctx context.Context, method, url string) (*http.Request, e
 }
 
 func githubToken() string {
-	for _, k := range []string{"GITHUB_TOKEN", "INTERCEPTOR_GITHUB_TOKEN", "GH_TOKEN"} {
+	for _, k := range []string{"GITHUB_TOKEN", "INTERSEPTOR_GITHUB_TOKEN", "GH_TOKEN"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			return v
 		}
@@ -121,7 +121,7 @@ func checkLatestRedirect(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "interceptor/"+String()+" (https://github.com/"+Repo+")")
+	req.Header.Set("User-Agent", "interseptor/"+String()+" (https://github.com/"+Repo+")")
 	client := githubWebHTTP
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}

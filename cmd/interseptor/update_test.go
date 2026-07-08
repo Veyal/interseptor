@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 func TestRunUpdateCheckOnly(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // PUT /api/flows/{id}/note attaches a note that then appears in the flow detail

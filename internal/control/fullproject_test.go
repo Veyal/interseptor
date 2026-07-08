@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // A full-project archive must round-trip losslessly: export from one hub, import

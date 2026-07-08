@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestMergeSeedHeadersFillsAuth(t *testing.T) {

@@ -69,7 +69,7 @@ func rememberExternalProject(globalDir, name, path string) {
 // isSafeExternalPath reports whether abs (already made absolute) is a
 // reasonable project directory: not empty, not a filesystem/drive root (e.g.
 // "/", "C:\", or the drive-relative "C:"), so a mistyped path can't point
-// Interceptor's data — and the next re-exec's MkdirAll — at the top of a drive.
+// Interseptor's data — and the next re-exec's MkdirAll — at the top of a drive.
 func isSafeExternalPath(abs string) bool {
 	if abs == "" {
 		return false

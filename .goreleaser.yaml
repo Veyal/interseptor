@@ -1,11 +1,11 @@
 version: 2
 
-project_name: interceptor
+project_name: interseptor
 
 builds:
-  - id: interceptor
-    main: ./cmd/interceptor
-    binary: interceptor
+  - id: interseptor
+    main: ./cmd/interseptor
+    binary: interseptor
     env:
       - CGO_ENABLED=0
     goos:
@@ -35,6 +35,9 @@ checksum:
 release:
   github:
     owner: Veyal
+    # NOTE: still the pre-rebrand repo name — the GitHub repository itself has
+    # not been renamed yet (a coordinated, non-code step; see internal/version/
+    # version.go's Repo constant). Flip this to "interseptor" once it is.
     name: interceptor
   draft: false
   prerelease: false

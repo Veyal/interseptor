@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/ios"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/ios"
 )
 
 func (h *iosAPI) getIOSStatus(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +55,7 @@ func (h *iosAPI) getIOSProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := ios.BuildMobileConfig(h.ca.CertPEM(), ios.ProfileOpts{
-		DisplayName: "Interceptor",
+		DisplayName: "Interseptor",
 		ProxyHost:   host,
 		ProxyPort:   port,
 	})
@@ -64,7 +64,7 @@ func (h *iosAPI) getIOSProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-apple-aspen-config")
-	w.Header().Set("Content-Disposition", `attachment; filename="interceptor.mobileconfig"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="interseptor.mobileconfig"`)
 	w.Write(body)
 }
 
@@ -97,7 +97,7 @@ func (h *iosAPI) validateIOSWiFiProxy(port int) error {
 	if h.hasExternalProxyOnPort(port) {
 		return nil
 	}
-	return fmt.Errorf("Wi‑Fi proxy needs Interceptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings → Proxy", port)
+	return fmt.Errorf("Wi‑Fi proxy needs Interseptor listening on a LAN address — rebind to 0.0.0.0:%d in Settings → Proxy", port)
 }
 
 func (h *iosAPI) profileBaseURL(r *http.Request) string {
@@ -147,7 +147,7 @@ func (h *iosAPI) postIOSSetup(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"ok": true, "profileUrl": profileURL, "proxy": host + ":" + strconv.Itoa(port),
 				"needsUserAction": true,
-				"message":         "Open the profile URL on the iPhone (Safari), install the profile, then Settings → General → About → Certificate Trust Settings → enable full trust for Interceptor CA.",
+				"message":         "Open the profile URL on the iPhone (Safari), install the profile, then Settings → General → About → Certificate Trust Settings → enable full trust for Interseptor CA.",
 			})
 			return
 		}

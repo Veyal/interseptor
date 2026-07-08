@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // tlsFailureSummary is one recorded CONNECT→TLS-failure for the diagnosis report.
@@ -23,7 +23,7 @@ type tlsDiagnosisReport struct {
 	Verdict         string              `json:"verdict"`
 	Detail          string              `json:"detail"`
 	Fix             string              `json:"fix,omitempty"`
-	CanBypass       bool                `json:"canBypass"` // always false — Interceptor is a proxy, not a pin bypass tool
+	CanBypass       bool                `json:"canBypass"` // always false — Interseptor is a proxy, not a pin bypass tool
 	BypassHints     []string            `json:"bypassHints,omitempty"`
 	TLSFailureCount int64               `json:"tlsFailureCount"`
 	HTTPSOkCount    int64               `json:"httpsOkCount"`
@@ -33,7 +33,7 @@ type tlsDiagnosisReport struct {
 }
 
 var tlsBypassHints = []string{
-	"Interceptor cannot bypass SSL pinning — it only detects when the app rejects the MITM certificate.",
+	"Interseptor cannot bypass SSL pinning — it only detects when the app rejects the MITM certificate.",
 	"Frida / objection at runtime (hook OkHttp CertificatePinner, TrustManager, etc.)",
 	"Repack the APK: disable pinning in network_security_config or patch smali",
 	"Emulator with system CA (Settings → Android → Setup all) — works only if the app does not pin",

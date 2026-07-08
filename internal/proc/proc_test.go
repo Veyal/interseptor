@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/proc"
+	"github.com/Veyal/interseptor/internal/proc"
 )
 
 func TestListExcludesSelf(t *testing.T) {
@@ -50,24 +50,24 @@ func TestAliveInitProcess(t *testing.T) {
 	}
 }
 
-func TestAliveInterceptorNonExistentProcess(t *testing.T) {
+func TestAliveInterseptorNonExistentProcess(t *testing.T) {
 	const deadPID = 99999999
-	if proc.AliveInterceptor(deadPID) {
-		t.Fatalf("AliveInterceptor(%d) = true, want false", deadPID)
+	if proc.AliveInterseptor(deadPID) {
+		t.Fatalf("AliveInterseptor(%d) = true, want false", deadPID)
 	}
 }
 
-func TestAliveInterceptorRejectsNonInterceptorProcess(t *testing.T) {
+func TestAliveInterseptorRejectsNonInterseptorProcess(t *testing.T) {
 	// The test binary itself (or its "go test" host process) is alive but is
-	// not an "interceptor"/"interceptor.exe" image — AliveInterceptor must
+	// not an "interseptor"/"interseptor.exe" image — AliveInterseptor must
 	// say false even though the generic Alive(pid) says true, which is
 	// exactly the PID-reuse scenario it exists to guard against.
 	self := os.Getpid()
 	if !proc.Alive(self) {
 		t.Fatal("Alive(self) = false, want true (sanity check)")
 	}
-	if proc.AliveInterceptor(self) {
-		t.Fatalf("AliveInterceptor(self=%d) = true, want false — the test process is not an interceptor binary", self)
+	if proc.AliveInterseptor(self) {
+		t.Fatalf("AliveInterseptor(self=%d) = true, want false — the test process is not an interseptor binary", self)
 	}
 }
 

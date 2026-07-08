@@ -20,7 +20,7 @@ func latestCachePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".interceptor", "update-check.json"), nil
+	return filepath.Join(home, ".interseptor", "update-check.json"), nil
 }
 
 func readLatestCache() (latestCheckCache, bool) {

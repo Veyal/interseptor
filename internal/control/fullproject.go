@@ -77,7 +77,7 @@ func addFileToZip(zw *zip.Writer, srcPath, name string) error {
 // its path; the caller must remove it. VACUUM INTO requires the target not to
 // exist, so the temp file is created then removed before the snapshot.
 func (h *Hub) snapshotDB() (string, error) {
-	tmp, err := os.CreateTemp("", "interceptor-snap-*.db")
+	tmp, err := os.CreateTemp("", "interseptor-snap-*.db")
 	if err != nil {
 		return "", err
 	}
@@ -169,7 +169,7 @@ func (h *Hub) projectImportDir(name string) (string, error) {
 	return filepath.Join(h.GlobalDir, "projects", name), nil
 }
 
-// dirHasProject reports whether dir already holds an interceptor project (so an
+// dirHasProject reports whether dir already holds an interseptor project (so an
 // import doesn't silently clobber a live engagement without --overwrite).
 func dirHasProject(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, archiveDBName))
@@ -181,7 +181,7 @@ func archiveFilename(project string) string {
 	if !safeProjectTarget(project) {
 		project = "project"
 	}
-	return "interceptor-" + project + ".zip"
+	return "interseptor-" + project + ".zip"
 }
 
 // --- HTTP handlers: streaming (UI) ---
@@ -216,7 +216,7 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// archive/zip needs random access, so spool the upload to a temp file first.
-	tmp, err := os.CreateTemp("", "interceptor-import-*.zip")
+	tmp, err := os.CreateTemp("", "interseptor-import-*.zip")
 	if err != nil {
 		httpErr(w, http.StatusInternalServerError, err.Error())
 		return

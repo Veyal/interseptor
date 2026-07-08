@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/capture"
-	"github.com/Veyal/interceptor/internal/intercept"
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/strutil"
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/capture"
+	"github.com/Veyal/interseptor/internal/intercept"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 // wsTextFrame builds an RFC 6455 text frame (payload < 126 bytes).
@@ -773,7 +773,7 @@ func TestProxyMITMInterceptEditedHostRetargetsConnection(t *testing.T) {
 // proven over plain HTTP in TestProxyInterceptEditedHostToOwnListenerIsRefused
 // must also hold inside the MITM tunnel. The CONNECT tunnel picks target A's
 // TLS connection up front, but the held plaintext request inside it can still
-// be edited to point Host at Interceptor's own loopback listener before
+// be edited to point Host at Interseptor's own loopback listener before
 // forwarding — gateAndForward is the single funnel point for both the
 // plain-HTTP and MITM paths, so this proves the guard added there covers both.
 func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
@@ -810,7 +810,7 @@ func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 		}
 	}()
 
-	// Stand in for Interceptor's own listener. This MUST speak TLS on the same
+	// Stand in for Interseptor's own listener. This MUST speak TLS on the same
 	// CA the proxy's transport trusts: gateAndForward carries flow.Scheme
 	// ("https") through an edited Host unchanged, so inside a MITM session
 	// the retargeted dial is always TLS. Using a plain-HTTP stand-in here
@@ -915,7 +915,7 @@ func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 	}
 
 	// The operator (or a prompt-injected AI agent) edits Host inside the MITM
-	// tunnel to Interceptor's own listener and asks to forward — refused.
+	// tunnel to Interseptor's own listener and asks to forward — refused.
 	edited := fmt.Sprintf("GET /api/keys HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n", ownPort)
 	if err := eng.Forward(eng.Queue()[0].ID, []byte(edited)); err != nil {
 		t.Fatalf("Forward edited: %v", err)
@@ -1238,7 +1238,7 @@ func TestProxyInterceptUneditedHoldStillRoutesToOriginalHost(t *testing.T) {
 // Security regression: the Host-retargeting fix (see
 // TestProxyInterceptEditedHostRetargetsConnection) lets an operator edit a held
 // request's Host header to genuinely redirect the outbound connection — but it
-// never checked whether the new target is Interceptor's OWN loopback listener
+// never checked whether the new target is Interseptor's OWN loopback listener
 // (control plane or proxy). Without this guard, an MCP-driving AI agent (or
 // prompt-injected content reaching one) could hold a request via set_intercept,
 // then call forward_request with Host: 127.0.0.1:<control-port> and a
@@ -1270,7 +1270,7 @@ func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 	defer ln.Close()
 	go srv.Serve(ln)
 
-	// Stand in for Interceptor's own control-plane listener: a real HTTP
+	// Stand in for Interseptor's own control-plane listener: a real HTTP
 	// server on a loopback port that srv.SelfPorts knows about. If the guard
 	// fails to refuse, this handler would actually receive the "attack"
 	// request and reply with a distinctive body proving the leak.
@@ -1316,7 +1316,7 @@ func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 		t.Fatalf("expected 1 held request, got %d", len(eng.Queue()))
 	}
 
-	// The operator (or a prompt-injected AI agent) edits Host to Interceptor's
+	// The operator (or a prompt-injected AI agent) edits Host to Interseptor's
 	// own listener and asks to forward a crafted control-API request — this
 	// must be refused, not dialed.
 	edited := fmt.Sprintf("GET /api/keys HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n\r\n", ownPort)
@@ -1336,7 +1336,7 @@ func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 		t.Fatal("client never got a response after forward")
 	}
 
-	// The strongest assertion: Interceptor's own listener must never have
+	// The strongest assertion: Interseptor's own listener must never have
 	// received the "attack" request at all — the guard refuses before dialing.
 	if n := atomic.LoadInt32(&ownHits); n != 0 {
 		t.Fatalf("own listener received %d request(s); the guard must refuse before ever dialing it", n)

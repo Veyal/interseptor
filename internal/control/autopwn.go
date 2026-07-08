@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
-	"github.com/Veyal/interceptor/internal/aiassist"
-	"github.com/Veyal/interceptor/internal/autopwn"
-	"github.com/Veyal/interceptor/internal/mcp"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/autopwn"
+	"github.com/Veyal/interseptor/internal/mcp"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // autopwnAskTimeout bounds how long an autonomous run blocks on a human confirm
@@ -113,7 +113,7 @@ func (h *Hub) autopwnOOBBase() string {
 
 // autopwnIsOwnListener parses a raw target URL into a host/port and defers to the
 // existing isOwnListener predicate, so the verify phase never probes one of
-// Interceptor's own loopback listeners (control plane / proxy).
+// Interseptor's own loopback listeners (control plane / proxy).
 func (h *Hub) autopwnIsOwnListener(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {

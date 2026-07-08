@@ -7,7 +7,7 @@ import (
 )
 
 func TestListenRetryBindsFreePort(t *testing.T) {
-	t.Setenv("INTERCEPTOR_REEXEC", "") // no retry window — must bind immediately
+	t.Setenv("INTERSEPTOR_REEXEC", "") // no retry window — must bind immediately
 	ln, err := listenRetry("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listenRetry on a free port: %v", err)
@@ -16,7 +16,7 @@ func TestListenRetryBindsFreePort(t *testing.T) {
 }
 
 func TestListenRetryFailsFastWhenTaken(t *testing.T) {
-	t.Setenv("INTERCEPTOR_REEXEC", "") // not a re-exec → single attempt, fail fast
+	t.Setenv("INTERSEPTOR_REEXEC", "") // not a re-exec → single attempt, fail fast
 	held, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -24,12 +24,12 @@ func TestListenRetryFailsFastWhenTaken(t *testing.T) {
 	defer held.Close()
 	if ln, err := listenRetry(held.Addr().String()); err == nil {
 		ln.Close()
-		t.Fatal("expected listenRetry to fail fast on an occupied port without INTERCEPTOR_REEXEC")
+		t.Fatal("expected listenRetry to fail fast on an occupied port without INTERSEPTOR_REEXEC")
 	}
 }
 
 func TestListenRetryWaitsForRelease(t *testing.T) {
-	t.Setenv("INTERCEPTOR_REEXEC", "1") // simulate a project-switch handoff
+	t.Setenv("INTERSEPTOR_REEXEC", "1") // simulate a project-switch handoff
 	held, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

@@ -1,5 +1,5 @@
 # Flag HTTPS responses that omit HSTS.
-# Copy into ~/.interceptor/checks/ and Run scan.
+# Copy into ~/.interseptor/checks/ and Run scan.
 
 def check(flow):
     if flow.scheme == "https" and not flow.res_header("Strict-Transport-Security"):

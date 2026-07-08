@@ -98,8 +98,8 @@ func create(crtPath, keyPath string) (*CA, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName:   "Interceptor CA",
-			Organization: []string{"Interceptor"},
+			CommonName:   "Interseptor CA",
+			Organization: []string{"Interseptor"},
 		},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(caValidity),

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/store"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 // ---- API keys ----
@@ -95,7 +95,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/intercept/response/toggle", "Enable/disable response interception ({enabled})"},
 	{"POST", "/api/intercept/response/{id}/forward", "Forward a held intercepted response (optionally edited)"},
 	{"POST", "/api/intercept/response/{id}/drop", "Drop a held intercepted response"},
-	{"POST", "/api/repeater/send", "Send a request from Repeater. Body: {method, url, headers?, body?} — headers is \"Key: Value\" lines or a {\"Key\":\"Value\"} object; refuses targets that resolve to Interceptor's own listeners. Response: flow detail (id, status, headers, body hashes)"},
+	{"POST", "/api/repeater/send", "Send a request from Repeater. Body: {method, url, headers?, body?} — headers is \"Key: Value\" lines or a {\"Key\":\"Value\"} object; refuses targets that resolve to Interseptor's own listeners. Response: flow detail (id, status, headers, body hashes)"},
 	{"GET", "/api/repeater/history", "Repeater send history"},
 	{"POST", "/api/intruder/start", "Start a Sniper/Battering/Pitchfork/Cluster attack. Body: {target, template, attackType, payloads, repeat?, threads?, delayMs?, grepMatch?, grepExtract?, processRules?} — template marks fuzz points with §…§, payloads is a list of payload lists. Response: attack state"},
 	{"GET", "/api/intruder/state", "Current attack progress + results"},
@@ -142,12 +142,12 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/sysproxy", "System-proxy status (supported/enabled)"},
 	{"POST", "/api/sysproxy", "Enable/disable the OS system proxy (macOS). Body: {enabled}"},
 	{"GET", "/api/android/status", "ADB availability, connected devices, and device proxy state"},
-	{"POST", "/api/android/proxy", "Route a USB-connected Android device through Interceptor (adb reverse + global proxy). Body: {serial?, proxyMode?, wifiHost?} — proxyMode is usb (default) or wifi"},
+	{"POST", "/api/android/proxy", "Route a USB-connected Android device through Interseptor (adb reverse + global proxy). Body: {serial?, proxyMode?, wifiHost?} — proxyMode is usb (default) or wifi"},
 	{"POST", "/api/android/unproxy", "Clear the Android device global proxy and adb reverse. Body: {serial?, removeSystemCA?}"},
-	{"POST", "/api/android/install-ca", "Install the Interceptor CA on Android. Body: {serial?, mode?} — mode is user|system|auto (default user)"},
+	{"POST", "/api/android/install-ca", "Install the Interseptor CA on Android. Body: {serial?, mode?} — mode is user|system|auto (default user)"},
 	{"POST", "/api/android/setup", "One-click Android setup: proxy + CA. Body: {serial?, proxyMode?, caMode?, wifiHost?} — proxyMode usb|wifi (default usb), caMode user|system|auto (default auto)"},
 	{"GET", "/api/ios/status", "iOS simulators + USB devices, simctl/idevice availability, profile path"},
-	{"GET", "/api/ios/profile.mobileconfig", "Configuration profile: Interceptor CA + global HTTP proxy (?host=&port=)"},
+	{"GET", "/api/ios/profile.mobileconfig", "Configuration profile: Interseptor CA + global HTTP proxy (?host=&port=)"},
 	{"POST", "/api/ios/setup", "One-click iOS setup: simctl CA + profile (simulator) or profile URL (device). Body: {udid?, proxyMode?, wifiHost?}"},
 	{"POST", "/api/ios/install-ca", "Install CA on booted iOS Simulator via simctl. Body: {udid?}"},
 	{"POST", "/api/ios/open-profile", "Open profile install URL in simulator Safari. Body: {udid?, target?}"},
@@ -252,13 +252,13 @@ func (h *metaAPI) apiReference(w http.ResponseWriter, r *http.Request) {
 // ---- MCP descriptor ----
 
 var mcpDescriptor = map[string]any{
-	"name":    "interceptor",
+	"name":    "interseptor",
 	"version": version.String(),
 	"status":  "ready",
-	"note":    "Run `interceptor` first. See GET /api/mcp for Cursor (HTTP /mcp) and stdio client configs.",
+	"note":    "Run `interseptor` first. See GET /api/mcp for Cursor (HTTP /mcp) and stdio client configs.",
 	"transport": map[string]any{
 		"type":    "stdio",
-		"command": "interceptor",
+		"command": "interseptor",
 		"args":    []string{"mcp"},
 	},
 	// Alternative transport for hosted/remote agents that cannot spawn the
@@ -291,7 +291,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "delete_finding", "desc": "Permanently delete a finding (cannot be undone)"},
 		{"name": "export_report", "desc": "Engagement report (curated findings + PoCs; passive scan omitted unless includeIssues=true). format=html optional"},
 		{"name": "export_full_project", "desc": "Write a lossless portable archive of the whole project (DB + captured bodies) to a server-side .zip path"},
-		{"name": "import_full_project", "desc": "Restore a full-project .zip archive into a new named project under ~/.interceptor/projects"},
+		{"name": "import_full_project", "desc": "Restore a full-project .zip archive into a new named project under ~/.interseptor/projects"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
 		{"name": "start_intruder", "desc": "Run Sniper/Battering/Pitchfork/Cluster payload attack"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},

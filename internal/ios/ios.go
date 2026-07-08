@@ -254,12 +254,12 @@ func ResolveDevice(udid string, devices []Device) (Device, error) {
 	return Device{}, errors.New("no booted simulator or connected iPhone — boot a simulator or connect a device")
 }
 
-// InstallCASimulator adds the Interceptor CA to a simulator trust store.
+// InstallCASimulator adds the Interseptor CA to a simulator trust store.
 func InstallCASimulator(d Device, certPEM []byte) error {
 	if !SimctlAvailable() {
 		return errors.New("Xcode simctl not available — install Xcode on macOS for simulator automation")
 	}
-	path, err := writeTempCert(certPEM, "interceptor-ios-ca-*.crt")
+	path, err := writeTempCert(certPEM, "interseptor-ios-ca-*.crt")
 	if err != nil {
 		return err
 	}

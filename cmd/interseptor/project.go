@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// resolveProjectDir maps a --project / INTERCEPTOR_PROJECT value to a display
+// resolveProjectDir maps a --project / INTERSEPTOR_PROJECT value to a display
 // name and an absolute data directory. A bare token (no path separator) is a
 // named project under projectsDir; anything that looks like a path (absolute,
 // "~/…", or containing a separator) is used as a literal directory.
@@ -95,7 +95,7 @@ func writeLastProject(globalDir, name string) {
 
 // selectProject decides which project directory to use, with no terminal
 // interaction — selecting, creating, and switching projects all happen in the
-// web UI. Precedence: an explicit --project/INTERCEPTOR_PROJECT value wins;
+// web UI. Precedence: an explicit --project/INTERSEPTOR_PROJECT value wins;
 // otherwise the most recently active project (remembered across restarts) is
 // resumed; failing that, the "default" project, which is the global root itself
 // so existing single-project installs keep working unchanged.

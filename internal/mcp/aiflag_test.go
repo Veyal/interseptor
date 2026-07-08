@@ -8,12 +8,12 @@ import (
 )
 
 // Every control-plane call the MCP server makes must be stamped
-// X-Interceptor-Source: ai, so the control plane can tag AI-originated
+// X-Interseptor-Source: ai, so the control plane can tag AI-originated
 // Repeater/Intruder/scan sends and surface them in Proxy/History.
 func TestAPIStampsAISourceHeader(t *testing.T) {
 	var got string
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.Header.Get("X-Interceptor-Source")
+		got = r.Header.Get("X-Interseptor-Source")
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"flows":[]}`)
 	}))
@@ -24,6 +24,6 @@ func TestAPIStampsAISourceHeader(t *testing.T) {
 		t.Fatalf("api: %v", err)
 	}
 	if got != "ai" {
-		t.Fatalf("X-Interceptor-Source = %q, want \"ai\"", got)
+		t.Fatalf("X-Interseptor-Source = %q, want \"ai\"", got)
 	}
 }

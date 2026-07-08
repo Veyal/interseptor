@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 type har struct {
@@ -81,7 +81,7 @@ type harTimings struct {
 func Build(flows []*store.Flow, body func(hash string) []byte) []byte {
 	doc := har{Log: harLog{
 		Version: "1.2",
-		Creator: harNamed{Name: "Interceptor", Version: "0.1.0"},
+		Creator: harNamed{Name: "Interseptor", Version: "0.1.0"},
 	}}
 	for _, f := range flows {
 		reqBody := body(f.ReqBodyHash)

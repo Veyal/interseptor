@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Veyal/interceptor/internal/scope"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/scope"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // refreshScope reloads the live scope matcher from the store and announces it.

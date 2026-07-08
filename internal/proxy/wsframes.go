@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // wsPreviewMax bounds how many payload bytes are captured per frame.

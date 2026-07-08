@@ -34,7 +34,7 @@ func (h *Hub) shareStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hasKeys {
-		httpErr(w, http.StatusBadRequest, "create an access key before sharing — a tunnel must never expose Interceptor unauthenticated")
+		httpErr(w, http.StatusBadRequest, "create an access key before sharing — a tunnel must never expose Interseptor unauthenticated")
 		return
 	}
 	if !h.tun.Installed() {

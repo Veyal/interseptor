@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/activescript"
+	"github.com/Veyal/interseptor/internal/activescript"
 )
 
 func TestExampleActiveChecksCompile(t *testing.T) {

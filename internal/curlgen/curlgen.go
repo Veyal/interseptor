@@ -1,7 +1,7 @@
 // Package curlgen renders a captured request as a runnable curl command, so a
 // tester (or the AI) can reproduce and iterate on it in a terminal. It favors
 // security-testing fidelity: the exact path is preserved (--path-as-is) and TLS
-// verification is skipped (-k), matching how Interceptor itself talks to targets.
+// verification is skipped (-k), matching how Interseptor itself talks to targets.
 package curlgen
 
 import (

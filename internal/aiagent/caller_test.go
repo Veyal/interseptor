@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/aiassist"
+	"github.com/Veyal/interseptor/internal/aiassist"
 )
 
 func TestClientToolCallerAnthropicWire(t *testing.T) {

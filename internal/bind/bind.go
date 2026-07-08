@@ -7,10 +7,10 @@ import (
 )
 
 // ExternalBindAllowed reports whether non-loopback proxy/control binds are permitted.
-// Allowed by default; set INTERCEPTOR_ALLOW_EXTERNAL_BIND=0 (or false/no/off) to
+// Allowed by default; set INTERSEPTOR_ALLOW_EXTERNAL_BIND=0 (or false/no/off) to
 // lock down to loopback-only rebinding via Settings or CLI.
 func ExternalBindAllowed() bool {
-	v := strings.TrimSpace(os.Getenv("INTERCEPTOR_ALLOW_EXTERNAL_BIND"))
+	v := strings.TrimSpace(os.Getenv("INTERSEPTOR_ALLOW_EXTERNAL_BIND"))
 	if v == "" {
 		return true
 	}

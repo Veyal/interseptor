@@ -1,6 +1,6 @@
-// Package launcher tracks running per-project Interceptor instances so a
+// Package launcher tracks running per-project Interseptor instances so a
 // single dashboard process can start/stop/discover them: the registry is a
-// small JSON file (~/.interceptor/instances.json) mapping project name to
+// small JSON file (~/.interseptor/instances.json) mapping project name to
 // {controlAddr, proxyAddr, pid}, written by whichever process spawns an
 // instance and pruned lazily via Reconcile.
 package launcher

@@ -3,7 +3,7 @@ package control
 import (
 	"net/http"
 
-	"github.com/Veyal/interceptor/internal/version"
+	"github.com/Veyal/interseptor/internal/version"
 )
 
 // SetUpdate records the result of the background update check (called by cmd) so

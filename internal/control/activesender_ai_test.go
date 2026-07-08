@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Veyal/interceptor/internal/activescan"
-	"github.com/Veyal/interceptor/internal/activescan/breaker"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescan/breaker"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // activeSender accepts extra flags OR'd onto each probe it records, so an

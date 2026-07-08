@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/bind"
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/bind"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // LoadProxyAddrs reads persisted proxy listeners for process startup.
@@ -79,7 +79,7 @@ func validateProxyAddrs(addrs []string) error {
 			return err
 		}
 		if !isLoopbackHost(proxyListenHost(addr)) && !bind.ExternalBindAllowed() {
-			return fmt.Errorf("proxy bind %s must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERCEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
+			return fmt.Errorf("proxy bind %s must be loopback (127.0.0.1/localhost/::1); external bind is disabled (INTERSEPTOR_ALLOW_EXTERNAL_BIND=0)", addr)
 		}
 	}
 	return nil

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/tlsca"
+	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
 func TestParseSimctlDevices(t *testing.T) {
@@ -38,7 +38,7 @@ func TestBuildMobileConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, err := BuildMobileConfig(ca.CertPEM(), ProfileOpts{
-		DisplayName: "Interceptor Test",
+		DisplayName: "Interseptor Test",
 		ProxyHost:   "192.168.1.10",
 		ProxyPort:   8080,
 	})
@@ -51,7 +51,7 @@ func TestBuildMobileConfig(t *testing.T) {
 		"com.apple.proxy.http.global",
 		"192.168.1.10",
 		"<integer>8080</integer>",
-		"Interceptor Test",
+		"Interseptor Test",
 	} {
 		if !contains(s, want) {
 			t.Fatalf("profile missing %q", want)

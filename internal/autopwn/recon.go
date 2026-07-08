@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/aiagent"
+	"github.com/Veyal/interseptor/internal/aiagent"
 )
 
 // reconSampleLimit bounds the endpoint sample injected into the planning prompt.

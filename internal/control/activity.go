@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Veyal/interceptor/internal/store"
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 // recordActivity persists one AI (MCP) tool call (stamped with the server clock)

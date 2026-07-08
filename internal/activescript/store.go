@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Veyal/interceptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/activescan"
 )
 
 // validID constrains a check id (its file stem) to a safe slug — no path
