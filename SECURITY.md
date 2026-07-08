@@ -28,4 +28,25 @@ weaknesses it *reports about a target application* you point it at.
 
 ## Supported versions
 
-Interceptor is pre-1.0; security fixes land on the latest release and `main`.
+Security fixes land on the **latest release** (and `main`). Interceptor is a single-maintainer
+project — older releases are not backported; if you're on an older version, upgrade to the latest
+release to pick up fixes.
+
+## Self-update trust model
+
+`interceptor update` downloads a prebuilt binary from the matching GitHub release and, when the
+release includes a `checksums.txt`, verifies the downloaded binary's SHA-256 against it before
+installing. That checksum is fetched from **the same GitHub release** as the binary itself, so this
+defends against transport corruption and a tampered mirror/CDN — it does **not** independently
+attest that the release itself is what the maintainer intended to publish (a compromised release
+would ship a matching, equally compromised checksum). If you need a stronger integrity guarantee,
+build from source instead of using a prebuilt binary or `interceptor update`.
+
+## Windows CA-directory permissions
+
+The local CA's private key directory (`~/.interceptor/ca/`) is created with restrictive POSIX-style
+permissions (`0o700`) as defense in depth. On Windows/NTFS this request doesn't translate into a real
+ACL restriction — Go's directory creation there doesn't map POSIX permission bits to NTFS ACLs, so
+the directory is not meaningfully access-restricted at the OS level on that platform. Windows users
+who need the CA private key protected from other local accounts should apply an explicit ACL to
+`~/.interceptor/ca/` themselves (e.g. via `icacls`).
