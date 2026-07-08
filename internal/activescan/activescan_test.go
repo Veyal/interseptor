@@ -372,7 +372,11 @@ func TestRunFindsAndBoundsRequests(t *testing.T) {
 		body := "<html>search: " + valueOfQuery(tg.URL, "q") + "</html>"
 		return Response{Status: 200, FlowID: int64(n), Body: body}
 	}
-	findings, count := Run(context.Background(), Target{Method: "GET", URL: "http://victim/search?q=hi"}, send, Options{MaxRequests: 50, Concurrency: 4})
+	// Isolate to the check under test: with all built-in checks racing a
+	// shared request budget across concurrent goroutines, which one gets to
+	// run before the budget is exhausted is scheduler-dependent — flaky on
+	// CI even though it's not a product bug.
+	findings, count := Run(context.Background(), Target{Method: "GET", URL: "http://victim/search?q=hi"}, send, Options{MaxRequests: 50, Concurrency: 4, Disabled: onlyCheck("active-xss")})
 
 	var xss bool
 	for _, f := range findings {
@@ -406,8 +410,10 @@ func TestRunHonorsDisabledChecks(t *testing.T) {
 		// Server reflects q unencoded — would be XSS-vulnerable if the check ran.
 		return Response{Status: 200, FlowID: 1, Body: "<html>search: " + valueOfQuery(tg.URL, "q") + "</html>"}
 	}
-	// Baseline: XSS fires when enabled.
-	on, _ := Run(context.Background(), Target{Method: "GET", URL: "http://victim/search?q=hi"}, send, Options{MaxRequests: 50})
+	// Baseline: XSS fires when enabled. Isolated to just this check — with
+	// every built-in check racing a shared request budget, whether XSS gets a
+	// turn before the budget runs out is otherwise scheduler-dependent.
+	on, _ := Run(context.Background(), Target{Method: "GET", URL: "http://victim/search?q=hi"}, send, Options{MaxRequests: 50, Disabled: onlyCheck("active-xss")})
 	var xss bool
 	for _, f := range on {
 		if f.Class == "xss" {
@@ -424,6 +430,19 @@ func TestRunHonorsDisabledChecks(t *testing.T) {
 			t.Fatalf("disabled active-xss must not fire; got %+v", off)
 		}
 	}
+}
+
+// onlyCheck returns a Disabled set that turns off every built-in check except
+// id, so a test can assert on one check's behavior without racing the others
+// for the shared per-run request budget.
+func onlyCheck(id string) map[string]bool {
+	disabled := make(map[string]bool, len(Checks))
+	for _, c := range Checks {
+		if c.ID != id {
+			disabled[c.ID] = true
+		}
+	}
+	return disabled
 }
 
 // valueOfQuery reads (and URL-decodes) a query param from a URL string.

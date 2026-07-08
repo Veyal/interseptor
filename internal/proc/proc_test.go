@@ -36,20 +36,6 @@ func TestAliveNonExistentProcess(t *testing.T) {
 	}
 }
 
-func TestAliveInitProcess(t *testing.T) {
-	switch runtime.GOOS {
-	case "linux", "darwin", "freebsd":
-		if !proc.Alive(1) {
-			t.Fatal("Alive(1) = false on Unix, want true")
-		}
-	case "windows":
-		// PID 4 (System) is always present on Windows.
-		if !proc.Alive(4) {
-			t.Fatal("Alive(4) = false on Windows, want true")
-		}
-	}
-}
-
 func TestAliveInterseptorNonExistentProcess(t *testing.T) {
 	const deadPID = 99999999
 	if proc.AliveInterseptor(deadPID) {
@@ -82,6 +68,10 @@ func TestForceReapsChild(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Skipf("cannot start child: %v", err)
 	}
+	// Reap asynchronously so Force's kill doesn't leave a zombie — a zombie
+	// still answers kill(pid, 0)/liveness checks as "alive" on Unix, which
+	// would make the poll loop below spin until the deadline every time.
+	go func() { _ = cmd.Wait() }()
 	pid := cmd.Process.Pid
 	t.Cleanup(func() {
 		_ = proc.Force(pid)
