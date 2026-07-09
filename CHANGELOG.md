@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 > **Archive:** Release notes for 0.11.0 and earlier live in [CHANGELOG/archive/pre-0.12.md](CHANGELOG/archive/pre-0.12.md).
 
+## [Unreleased]
+
+### Changed
+- **Dev-build fallback version advanced to the published `1.0.0`.** Now that v1.0.0 is released, `internal/version/version.go`'s fallback `Version` constant (which dev builds report when no git tag is baked in) moved from `0.29.0` to `1.0.0`. Follows the documented post-release step in CONTRIBUTING.md §"Cutting a release".
+
 ## [1.0.0] - 2026-07-09
 
 ### Changed
