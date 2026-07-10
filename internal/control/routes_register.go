@@ -260,6 +260,7 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /login", h.serveLogin)
 	h.mux.HandleFunc("POST /api/session/auth", h.sessionLogin)
 	h.mux.HandleFunc("POST /api/session/logout", h.sessionLogout)
+	h.mux.HandleFunc("GET /api/session/access-key", h.sessionAccessKey)
 	// Share (remote access via Cloudflare quick tunnel).
 	h.mux.HandleFunc("GET /api/share/status", h.shareStatus)
 	h.mux.HandleFunc("POST /api/share/start", h.shareStart)

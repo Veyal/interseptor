@@ -18,6 +18,10 @@ type Store struct {
 	db        *sql.DB
 	bodiesDir string
 
+	// keys is an optional separate SQLite handle for API keys (global across
+	// projects). When nil, API-key ops use db (project-local, legacy/tests).
+	keys *sql.DB
+
 	// notesMu guards the read-modify-write in AppendNote so concurrent callers
 	// (two AI agents, or an agent + a human editing in the UI) can't race between
 	// reading the current notes and writing the appended result — see AppendNote.
@@ -294,7 +298,19 @@ func Open(dir string) (*Store, error) {
 }
 
 // Close closes the underlying database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	var first error
+	if s.keys != nil && s.keys != s.db {
+		if err := s.keys.Close(); err != nil && first == nil {
+			first = err
+		}
+		s.keys = nil
+	}
+	if err := s.db.Close(); err != nil && first == nil {
+		first = err
+	}
+	return first
+}
 
 // InsertFlow stores a new flow and sets f.ID to the assigned row id.
 func (s *Store) InsertFlow(f *Flow) (int64, error) {

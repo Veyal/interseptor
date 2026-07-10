@@ -831,14 +831,16 @@ Content-Type: application/json
             <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
-              <p class="hint" style="margin-bottom:12px">Authenticate remote access. Full token shown only once at creation. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
+              <p class="hint" style="margin-bottom:12px">Authenticate remote access. New tokens are shown once at creation. If you're signed in remotely, <b>Show session key</b> reveals the key in your current browser session so you can copy it again. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
               <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
                 <input id="keyLabel" class="repurl" style="max-width:220px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
                 <select id="keyScope" class="repurl" style="max-width:130px" aria-label="Key scope"><option value="full">Full access</option><option value="read">Read-only</option></select>
                 <select id="keyExpiry" class="repurl" style="max-width:130px" aria-label="Key expiry"><option value="0">Never expires</option><option value="3600">1 hour</option><option value="86400">1 day</option><option value="604800">7 days</option></select>
                 <button class="btn btn-primary" id="keyCreate">Create key</button>
+                <button class="btn" id="keyRevealSession" title="Reveal the API key for this browser session">Show session key</button>
               </div>
               <div id="keyNew" class="evidence" style="display:none"></div>
+              <div id="keySession" class="evidence" style="display:none"></div>
               <table class="rules-tbl"><thead><tr><th style="width:130px">Prefix</th><th>Label</th><th style="width:80px">Scope</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="keyList"></tbody></table>
             </div>
             <div id="apiShare" class="api-pane" style="display:none">

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **MCP finding format enforcement (impact-first sections).** `initialize` instructions and `create_finding` / `update_finding` now prescribe a required template (`## Summary` impact-first, `## Evidence`, `## Impact`, PoC flows, explicit "NOT confirmed", `## Needs Verification`). Walls of text without markdown headings are rejected; softer gaps (missing Impact, Critical/High without a flow, unhighlighted credentials, `needs_verification` without instructions) return `FORMAT WARNING` hints so the agent can self-correct. Fixes [#6](https://github.com/Veyal/interseptor/issues/6). (`internal/mcp/finding_format.go`, `internal/mcp/mcp.go`.)
+- **Show session access key in Settings → API Keys.** Remote (cookie) sessions get a **Show session key** button that returns the current login token via `GET /api/session/access-key` (cookie-authed only — bearer alone is refused). Lets you copy the key again without digging through chat history. (`internal/control/auth.go`, `internal/control/ui/js/apipanel.js`.)
+
+### Fixed
+- **API keys survive project switches.** Keys lived in each project's SQLite DB, so a Tailscale/remote login key minted on `default` stopped working after switching to another project (empty `api_keys` table → login rejected). Keys now live in a global `~/.interseptor/keys.db` (like the CA); existing project-local keys are migrated on first open. (`internal/store/keys_global.go`, `cmd/interseptor/main.go`.)
+- **Remote UI mutations 403'd after the Interseptor rename.** Cookie-authed POSTs (project switch, settings, etc.) sent `X-Interceptor-CSRF` while the guard required `X-Interseptor-CSRF`. UI now sends the new name; the guard accepts both spellings. (`internal/control/ui/js/core.js`, `internal/control/guard.go`.)
+
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.2.0`.** Now that v1.2.0 is released, `internal/version/version.go`'s fallback `Version` constant (which dev builds report when no git tag is baked in) moved from `1.1.0` to `1.2.0`. Follows the documented post-release step in CONTRIBUTING.md §"Cutting a release".
 

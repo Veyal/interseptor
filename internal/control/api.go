@@ -165,6 +165,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/session/login/from-flow/{id}", "Capture a flow's request as the login macro. Body: {enabled?, refreshSecs?, reauthOn401?}"},
 	{"POST", "/api/session/auth", "Verify a submitted API key and set the browser session cookie; returns granted scope"},
 	{"POST", "/api/session/logout", "Clear the browser session cookie"},
+	{"GET", "/api/session/access-key", "Return the current browser session's API token (cookie-authed only) so the operator can copy it again from Settings → API Keys"},
 	{"GET", "/login", "Login page (embedded HTML form) for remote/cookie-authed sessions"},
 	{"GET", "/api/authz", "List saved authz test identities (roles)"},
 	{"POST", "/api/authz", "Save authz identities (replaces the full list). Body: {identities: [{name, headers}]} — headers accepted as a \"Key: Value\" string, an array of such strings, or a {\"Key\":\"Value\"} object"},

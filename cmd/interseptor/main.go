@@ -137,6 +137,11 @@ func run() error {
 		return err
 	}
 	defer st.Close()
+	// API keys are global (like the CA) so a remote/Tailscale login survives
+	// project switches — each project DB used to have its own empty key table.
+	if err := st.AttachGlobalKeys(globalDir); err != nil {
+		return fmt.Errorf("global API keys: %w", err)
+	}
 	// Remember the active project so the next plain launch resumes it. Only bare
 	// names (and "default") are remembered — an explicit --project /path is a
 	// one-off and must not clobber the UI-selected project.

@@ -104,6 +104,39 @@ func (h *Hub) sessionLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// sessionAccessKey returns the API token for the current browser session so the
+// operator can copy it again from Settings → API Keys (tokens are otherwise
+// shown only once at creation, and the session cookie is HttpOnly).
+//
+// Only the cookie path is honored — a Bearer Authorization header is refused so
+// a stolen bearer can't be used to exfiltrate "the session key" via this route
+// (the bearer already is the key). Requires a still-valid stored key.
+func (h *Hub) sessionAccessKey(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil || c.Value == "" {
+		httpErr(w, http.StatusUnauthorized, "no browser session — sign in at /login first")
+		return
+	}
+	ok, scope, err := h.st.VerifyAPIKeyScope(c.Value)
+	if err != nil {
+		httpErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		httpErr(w, http.StatusUnauthorized, "session key is invalid or expired — sign in again")
+		return
+	}
+	prefix := c.Value
+	if len(prefix) > 12 {
+		prefix = prefix[:12]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":  c.Value,
+		"scope":  scope,
+		"prefix": prefix,
+	})
+}
+
 // serveLogin serves the login page (a minimal embedded HTML form).
 func (h *Hub) serveLogin(w http.ResponseWriter, r *http.Request) {
 	data, err := uiFS.ReadFile("ui/login.html")

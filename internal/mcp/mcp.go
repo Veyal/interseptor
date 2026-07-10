@@ -175,7 +175,8 @@ func mcpInstructions() string {
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
 		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
 		"SCAN: run_scanner (passive) → active_scan arm:true inScope:true csrfAware:true → cross_host_token_replay mode:auto for SSO/JWT apps → oob_* for blind callbacks.\n\n" +
-		"RECORD: write findings like an annotated notebook, not a text dump — alternate short markdown text blocks with attached flows (and screenshots when useful): text → flow → text → image → flow. create_finding for the opening text (what/where, concise, markdown) → add_finding_poc to attach the request/response that proves it (position:N to interleave, not just append) → add_finding_image for browser screenshots / XSS popups / admin panels (base64; never put data/path inside body JSON) → add another text block (via update_finding body) explaining what that evidence shows → repeat per step of the chain → close with impact. Prefer attaching the actual flow/image over pasting URL/headers/body as plaintext into evidence/detail — the human can open evidence inline. detail-only update_finding calls preserve the interleaved body blocks.\n\n" +
+		"RECORD: write findings like an annotated notebook, not a wall of text — alternate short markdown text blocks with attached flows (and screenshots when useful): text → flow → text → image → flow. create_finding for the opening text → add_finding_poc (position:N to interleave) → add_finding_image for screenshots (base64; never put data/path inside body JSON) → more text blocks via update_finding body. Prefer attaching the actual flow/image over pasting raw HTTP into evidence/detail.\n\n" +
+		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools. Use request_human_input before destructive or ambiguous steps.\n\n" +
 		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there."
 }
@@ -956,23 +957,38 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a confirmed/suspected vulnerability as a structured finding (the AI's durable memory the human reviews) — write it like a notebook, not a text dump. Start with a short markdown text block (via detail, or body[0]) stating what/where; then attach evidence with add_finding_poc so the finished record reads text → flow → text → flow, each text block explaining the flow next to it. Keep prose to the point; prefer attaching the actual request/response flow over pasting its URL/headers/body as plaintext into detail/evidence — a human can open an attached flow inline but can't skim a raw HTTP dump. Define the security IMPACT (what an attacker gains / business consequence) last. Returns the new finding with its id and a clickable UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open (use needs_verification when the human must check something before the finding is final, and put exact steps in verificationInstructions).",
+		"Record a confirmed/suspected vulnerability as a structured finding (the AI's durable memory the human reviews). "+findingFormatGuide+" Short openings via detail are OK; expand to the full sectioned body before considering the finding done. Prefer add_finding_poc over pasting raw HTTP into detail/evidence. Returns the new finding with its id and a clickable UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open (use needs_verification + verificationInstructions when the human must check something). Walls of text without ## headings are rejected.",
 		obj(map[string]any{
 			"title":                    pt("string"),
 			"severity":                 pt("string"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
 			"target":                   pt("string"),
-			"detail":                   p("string", "opening markdown text block — concise what/where; avoid pasting raw request/response text here, attach a flow instead"),
+			"detail":                   p("string", "opening markdown — prefer ## Summary / ## Evidence / ## Impact; short what/where OK if you expand next"),
 			"evidence":                 p("string", "legacy plaintext evidence field — prefer add_finding_poc (attaches an actual flow) over describing a request/response in prose here"),
-			"impact":                   p("string", "the security impact — what an attacker gains / business consequence"),
+			"impact":                   p("string", "security impact — what an attacker gains / CIA consequence (also put ## Impact in body)"),
 			"cvss":                     p("string", "CVSS score or vector string, e.g. 7.5 or CVSS:3.1/AV:N/..."),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human reviewer (what to download/run/check)"),
-			"body":                     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}] — build the full text/flow/text/flow narrative here in one call if you already have flow ids; markdown in each text block, one short idea per block"),
+			"body":                     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}] — text blocks MUST use ## Summary / ## Evidence / ## Impact; interleave with flow blocks"),
 			"intent":                   p("string", "optional: a short 'why' shown to the human in the Activity feed"),
 		}, "title"),
 		func(a map[string]any) (string, error) {
 			if _, err := reqStr(a, "title"); err != nil {
 				return "", err
+			}
+			impact := argStr(a, "impact")
+			if impact == "" {
+				impact = argStr(a, "fix")
+			}
+			hard, warns := validateFindingFormat(findingFormatInput{
+				Severity:                 argStr(a, "severity"),
+				Status:                   argStr(a, "status"),
+				Detail:                   argStr(a, "detail"),
+				Impact:                   impact,
+				Body:                     argStr(a, "body"),
+				VerificationInstructions: argStr(a, "verificationInstructions"),
+			})
+			if hard != nil {
+				return "", hard
 			}
 			reqBody := map[string]any{
 				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
@@ -1005,6 +1021,7 @@ func (s *Server) registerTools() {
 			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
 				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
 			}
+			result += formatWarningsBlock(warns)
 			return result, nil
 		})
 
@@ -1027,7 +1044,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("update_finding",
-		"Update a finding's status or any field (e.g. mark verified once you've confirmed the PoC, needs_verification when the human must check something, or false_positive, or set the security impact / verificationInstructions). Only the fields you pass are changed. To add a text block between/after flows attached via add_finding_poc, pass a full `body` array (get_flow/list_findings to see current blocks, insert a {type:'text',md} entry at the right index, then send the whole array back) — this keeps the record readable as text → flow → text → flow instead of one block of prose at the end. A detail-only update leaves existing body blocks untouched. Returns the updated finding with a clickable UI URL.",
+		"Update a finding's status or any field (e.g. mark verified, needs_verification, false_positive, or set impact / verificationInstructions). Only the fields you pass are changed. When sending `body` or `detail`, follow REQUIRED FORMAT (## Summary impact-first, ## Evidence, ## Impact). To interleave text between flows, pass the FULL `body` array. A detail-only update leaves existing body blocks untouched. Returns the updated finding with a clickable UI URL. Walls of text without ## headings are rejected.",
 		obj(map[string]any{
 			"id":                       pt("integer"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
@@ -1039,7 +1056,7 @@ func (s *Server) registerTools() {
 			"impact":                   p("string", "the security impact — what an attacker gains / business consequence"),
 			"cvss":                     p("string", "CVSS score or vector string, e.g. 7.5 or CVSS:3.1/AV:N/..."),
 			"verificationInstructions": p("string", "exact steps for the human when status is needs_verification"),
-			"body":                     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}]. Send the FULL ordered array (not a delta) to interleave short markdown text blocks between flow blocks — text/flow/text/flow, one idea per text block"),
+			"body":                     p("string", "JSON array string of blocks [{type:'text',md},{type:'flow',flowId,note}]. Text blocks MUST use ## Summary / ## Evidence / ## Impact; send the FULL ordered array"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
 			id, err := reqInt(a, "id")
@@ -1048,6 +1065,35 @@ func (s *Server) registerTools() {
 			}
 			if id == 0 {
 				return "", fmt.Errorf("id is required (a non-zero finding id)")
+			}
+			// Validate narrative shape when the agent is rewriting body/detail.
+			_, hasNarrative := a["body"]
+			if !hasNarrative {
+				_, hasNarrative = a["detail"]
+			}
+			var warns []string
+			if hasNarrative {
+				impact := argStr(a, "impact")
+				if impact == "" {
+					impact = argStr(a, "fix")
+				}
+				hard, w := validateFindingFormat(findingFormatInput{
+					Severity:                 argStr(a, "severity"),
+					Status:                   argStr(a, "status"),
+					Detail:                   argStr(a, "detail"),
+					Impact:                   impact,
+					Body:                     argStr(a, "body"),
+					VerificationInstructions: argStr(a, "verificationInstructions"),
+				})
+				if hard != nil {
+					return "", hard
+				}
+				warns = w
+			} else if st := argStr(a, "status"); strings.Contains(strings.ToLower(strings.ReplaceAll(st, "-", "_")), "needs_verification") ||
+				strings.Contains(strings.ToLower(st), "needsverification") {
+				if argStr(a, "verificationInstructions") == "" {
+					warns = append(warns, "status is needs_verification but verificationInstructions is empty — tell the human exactly what to check")
+				}
 			}
 			body := map[string]any{}
 			for _, k := range []string{"status", "severity", "title", "target", "detail", "evidence", "impact", "cvss", "verificationInstructions", "body"} {
@@ -1065,6 +1111,7 @@ func (s *Server) registerTools() {
 			}
 			// Append the UI deep-link URL.
 			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
+			result += formatWarningsBlock(warns)
 			return result, nil
 		})
 

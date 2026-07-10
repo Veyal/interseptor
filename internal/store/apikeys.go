@@ -51,7 +51,7 @@ func (s *Store) CreateAPIKey(label, scope string, expires int64) (token string, 
 		expires = 0
 	}
 
-	res, err := s.db.Exec(
+	res, err := s.keysDB().Exec(
 		`INSERT INTO api_keys (label, prefix, hash, created, scope, expires) VALUES (?,?,?,?,?,?)`,
 		label, prefix, hash, now, scope, expires)
 	if err != nil {
@@ -63,7 +63,7 @@ func (s *Store) CreateAPIKey(label, scope string, expires int64) (token string, 
 
 // ListAPIKeys returns all key metadata (never the token or hash), newest first.
 func (s *Store) ListAPIKeys() ([]APIKey, error) {
-	rows, err := s.db.Query(`SELECT id, label, prefix, created, scope, expires FROM api_keys ORDER BY id DESC`)
+	rows, err := s.keysDB().Query(`SELECT id, label, prefix, created, scope, expires FROM api_keys ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *Store) ListAPIKeys() ([]APIKey, error) {
 
 // DeleteAPIKey revokes a key by id.
 func (s *Store) DeleteAPIKey(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM api_keys WHERE id = ?`, id)
+	_, err := s.keysDB().Exec(`DELETE FROM api_keys WHERE id = ?`, id)
 	return err
 }
 
@@ -90,7 +90,7 @@ func (s *Store) DeleteAPIKey(id int64) error {
 // creates a key, a valid bearer token is required.
 func (s *Store) HasAPIKeys() (bool, error) {
 	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(1) FROM api_keys`).Scan(&n); err != nil {
+	if err := s.keysDB().QueryRow(`SELECT COUNT(1) FROM api_keys`).Scan(&n); err != nil {
 		return false, err
 	}
 	return n > 0, nil
@@ -112,7 +112,7 @@ func (s *Store) VerifyAPIKeyScope(token string) (ok bool, scope string, err erro
 	}
 	sum := sha256.Sum256([]byte(token))
 	var expires int64
-	err = s.db.QueryRow(
+	err = s.keysDB().QueryRow(
 		`SELECT scope, expires FROM api_keys WHERE hash = ?`,
 		hex.EncodeToString(sum[:]),
 	).Scan(&scope, &expires)

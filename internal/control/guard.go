@@ -74,7 +74,9 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 					return
 				}
 				if via == authViaCookie {
-					if r.Header.Get("X-Interseptor-CSRF") != "1" {
+					// Accept both spellings: the rename Interceptor→Interseptor left
+					// some clients briefly sending the old header name.
+					if !csrfHeaderOK(r) {
 						httpErr(w, http.StatusForbidden, "missing X-Interseptor-CSRF header")
 						return
 					}
@@ -156,6 +158,13 @@ func authToken(r *http.Request) (token, via string) {
 		return t, authViaQuery
 	}
 	return "", ""
+}
+
+// csrfHeaderOK reports whether the request carries the anti-CSRF marker used by
+// cookie-authenticated browser sessions. Accepts both Interseptor (current) and
+// Interceptor (pre-rename) spellings so a mismatched UI/binary pair still works.
+func csrfHeaderOK(r *http.Request) bool {
+	return r.Header.Get("X-Interseptor-CSRF") == "1" || r.Header.Get("X-Interceptor-CSRF") == "1"
 }
 
 // isMutatingMethod reports whether an HTTP method can change server state.

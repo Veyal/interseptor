@@ -261,6 +261,14 @@ func TestSecurityGuardKeyAuth(t *testing.T) {
 	if c := code(req(http.MethodPost, "/api/scope", "", full, "", true)); c != http.StatusNoContent {
 		t.Fatalf("cookie POST with CSRF header: want 204, got %d", c)
 	}
+	// Pre-rename UI header spelling must also be accepted.
+	{
+		r := req(http.MethodPost, "/api/scope", "", full, "", false)
+		r.Header.Set("X-Interceptor-CSRF", "1")
+		if c := code(r); c != http.StatusNoContent {
+			t.Fatalf("cookie POST with legacy X-Interceptor-CSRF: want 204, got %d", c)
+		}
+	}
 	// A ?token= query is only honored for the SSE stream.
 	if c := code(req(http.MethodGet, "/api/events", "", "", "token="+full, false)); c != http.StatusNoContent {
 		t.Fatalf("query token on /api/events: want 204, got %d", c)

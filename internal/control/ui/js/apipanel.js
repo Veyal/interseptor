@@ -29,6 +29,21 @@ export async function createApiKey(){
   }catch(e){toast(e.message);}
 }
 
+/** Reveal the API token for the current cookie session (remote Tailscale login). */
+export async function revealSessionKey(){
+  const box=$('#keySession'); if(!box)return;
+  try{
+    const d=await api('/api/session/access-key');
+    box.style.display='block';
+    box.innerHTML='Session access key ('+esc(d.scope||'full')+(d.prefix?' · '+esc(d.prefix)+'…':'')+') — <button class="btn" id="keySessionCopy" style="padding:2px 10px;vertical-align:middle">Copy</button><br><b style="color:var(--accent);user-select:all;word-break:break-all">'+esc(d.token)+'</b>';
+    const cp=$('#keySessionCopy'); if(cp)cp.onclick=()=>copyText(d.token,'Access key copied');
+  }catch(e){
+    box.style.display='block';
+    box.innerHTML='<span style="color:var(--amber)">'+esc(e.message||'No session key')+'</span><div class="hint" style="margin-top:6px">This only works when signed in via /login (cookie session). Loopback use has no session key.</div>';
+  }
+}
+{const rb=$('#keyRevealSession'); if(rb)rb.onclick=revealSessionKey;}
+
 /* ---- Share (Cloudflare tunnel) + peer sync ---- */
 export async function loadShare(){
   try{const s=await api('/api/share/status');

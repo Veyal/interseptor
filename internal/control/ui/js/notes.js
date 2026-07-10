@@ -121,7 +121,7 @@ export async function organizeNotes(){
     // remote (cookie-authed) sessions, and redirecting to /login on 401 rather
     // than surfacing a raw fetch error.
     const r=await fetch('/api/ai/notes/organize/stream',{
-      method:'POST',headers:{'content-type':'application/json','X-Interceptor-CSRF':'1'},
+      method:'POST',headers:{'content-type':'application/json','X-Interseptor-CSRF':'1'},
       body:JSON.stringify({notes:src}),signal:ctrl.signal,
     });
     if(r.status===401){
