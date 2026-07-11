@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Self-update from pre-rename `interceptor` binaries.** v1.3.0 release assets now include `interceptor_*` archives (binary named `interceptor` inside) alongside `interseptor_*`, so older `interceptor update` clients can find and extract the build. Goreleaser publishes both names going forward.
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.3.0`.** Now that v1.3.0 is released, `internal/version/version.go`'s fallback `Version` constant (which dev builds report when no git tag is baked in) moved from `1.2.0` to `1.3.0`. Follows the documented post-release step in CONTRIBUTING.md §"Cutting a release".
 

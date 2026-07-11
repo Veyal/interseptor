@@ -17,14 +17,41 @@ builds:
       - arm64
     ldflags:
       - -s -w
+  # Same binary under the pre-rename name so legacy `interceptor update`
+  # self-updaters can extract it from interceptor_* archives.
+  - id: interceptor-legacy
+    main: ./cmd/interseptor
+    binary: interceptor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
 
 archives:
   - id: default
+    ids: [interseptor]
     format: tar.gz
     format_overrides:
       - goos: windows
         format: zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+  - id: legacy
+    ids: [interceptor-legacy]
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "interceptor_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
       - README.md
