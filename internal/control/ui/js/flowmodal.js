@@ -19,6 +19,15 @@ export async function flowPopup(id){
   fmRenderSide('req'); fmRenderSide('res');
 }
 
+// Clickable markdown flow refs (renderMD → .md-flow-link) open the same modal.
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a.md-flow-link');
+  if (!a) return;
+  e.preventDefault();
+  const id = Number(a.dataset.flow);
+  if (id) flowPopup(id);
+});
+
 export async function fmRenderSide(side){
   const el = side === 'req' ? $('#fmReq') : $('#fmRes');
   const dec = side === 'req' ? $('#fmReqDecode') : $('#fmResDecode');
@@ -50,6 +59,11 @@ $('#fmClose') && ($('#fmClose').onclick = () => closeModal($('#flowModal')));
 $('#fmCopyUrl') && ($('#fmCopyUrl').onclick = () => {
   const url = state.fm && (state.fm.url || fmFlowUrl(state.fm.detail));
   if(url) copyText(url, 'URL copied');
+});
+$('#fmCopyLink') && ($('#fmCopyLink').onclick = () => {
+  const id = state.fm && state.fm.id;
+  if(!id) return;
+  copyText(location.origin + '/#flow-' + id, 'Flow link copied');
 });
 $('#fmProxy') && ($('#fmProxy').onclick = () => {
   const d = state.fm && state.fm.detail, id = state.fm && state.fm.id;

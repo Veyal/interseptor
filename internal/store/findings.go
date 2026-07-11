@@ -56,6 +56,11 @@ type FindingBlock struct {
 	Path   string `json:"path,omitempty"`
 	Status int    `json:"status,omitempty"`
 
+	// ReqRaw / ResRaw are reconstructed HTTP messages for report export only
+	// (same shape as GET /api/flows/{id}/raw). Never stored; omitted from list APIs.
+	ReqRaw string `json:"reqRaw,omitempty"`
+	ResRaw string `json:"resRaw,omitempty"`
+
 	// URL is set at read time for image blocks (GET /api/findings/images/{hash}).
 	URL string `json:"url,omitempty"`
 
@@ -79,6 +84,10 @@ type FindingFlow struct {
 	// Missing is true when the referenced flow row no longer exists in the flows
 	// table (purged via prune_history / GC). The attachment row and note survive.
 	Missing bool `json:"missing,omitempty"`
+
+	// ReqRaw / ResRaw are report-export enrichments (not stored).
+	ReqRaw string `json:"reqRaw,omitempty"`
+	ResRaw string `json:"resRaw,omitempty"`
 }
 
 // blockRecord is the minimal form written to the body column (no enriched metadata).

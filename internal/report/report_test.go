@@ -364,3 +364,63 @@ func TestProjectRendersImageBlock(t *testing.T) {
 		t.Fatalf("missing image note absent:\n%s", out)
 	}
 }
+
+func TestProjectIncludesFlowRequestResponseBodies(t *testing.T) {
+	findings := []store.Finding{
+		{ID: 1, Severity: "High", Status: "verified", Title: "Token mint",
+			Blocks: []store.FindingBlock{
+				{Type: "text", MD: "Client credentials grant returns a bearer token."},
+				{Type: "flow", FlowID: 42, Method: "POST", Host: "connect.example.com", Path: "/auth/sign-in", Status: 200,
+					Note: "minted client_credentials token",
+					ReqRaw: "POST /auth/sign-in HTTP/1.1\r\nHost: connect.example.com\r\nContent-Type: application/json\r\n\r\n{\"grant_type\":\"client_credentials\"}",
+					ResRaw: "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"access_token\":\"tok\"}"},
+			}},
+	}
+	out := Project(findings, nil)
+	for _, want := range []string{
+		"POST connect.example.com/auth/sign-in",
+		"**Request**",
+		"```http",
+		"POST /auth/sign-in HTTP/1.1",
+		"Host: connect.example.com",
+		`{"grant_type":"client_credentials"}`,
+		"**Response**",
+		"HTTP/1.1 200 OK",
+		`{"access_token":"tok"}`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	// Missing flows must not emit empty fences.
+	missing := []store.Finding{
+		{ID: 2, Severity: "Medium", Status: "open", Title: "Gone",
+			Blocks: []store.FindingBlock{
+				{Type: "flow", FlowID: 99, Missing: true, Note: "was here"},
+			}},
+	}
+	missOut := Project(missing, nil)
+	if strings.Contains(missOut, "```http") {
+		t.Fatalf("missing flow should not emit http fences:\n%s", missOut)
+	}
+	if !strings.Contains(missOut, "evidence no longer in history") {
+		t.Fatalf("missing note absent:\n%s", missOut)
+	}
+}
+
+func TestProjectHTMLRendersHTTPFences(t *testing.T) {
+	findings := []store.Finding{
+		{ID: 1, Severity: "High", Status: "verified", Title: "IDOR",
+			Blocks: []store.FindingBlock{
+				{Type: "flow", FlowID: 1, Method: "GET", Host: "app.example.com", Path: "/u/2", Status: 200,
+					ReqRaw: "GET /u/2 HTTP/1.1\nHost: app.example.com\n\n",
+					ResRaw: "HTTP/1.1 200 OK\n\n{\"id\":2}"},
+			}},
+	}
+	html := ProjectHTML(findings, nil)
+	for _, want := range []string{"<pre><code>", "GET /u/2 HTTP/1.1", "HTTP/1.1 200 OK", "{&quot;id&quot;:2}"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in html:\n%s", want, html)
+		}
+	}
+}

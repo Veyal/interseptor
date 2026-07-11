@@ -91,6 +91,8 @@ func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 // findingsReport renders the curated findings (with PoC flows) as a downloadable
 // engagement report. Passive-scan issues are omitted by default; pass ?issues=1 to
 // append the passive-scan appendix. ?format=html returns a standalone HTML document.
+// Full reconstructed request/response bodies for PoC flows are included by default
+// (?includeBodies=0 to omit — useful for huge projects).
 func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	fs, err := h.st.ListFindings("", "")
 	if err != nil {
@@ -103,6 +105,13 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 			issues = iss
 		}
 	}
+	includeBodies := true
+	if v := r.URL.Query().Get("includeBodies"); v == "0" || strings.EqualFold(v, "false") {
+		includeBodies = false
+	}
+	if includeBodies {
+		h.enrichFindingReportBodies(fs)
+	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	switch format {
 	case "html":
@@ -114,6 +123,47 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
 		w.Write([]byte(report.Project(fs, issues)))
 	}
+}
+
+// reportBodyCap bounds each reconstructed req/res in the export so huge downloads
+// cannot blow up the report. Truncation is marked explicitly.
+const reportBodyCap = 64 << 10 // 64 KiB
+
+// enrichFindingReportBodies attaches reconstructed HTTP req/res to each PoC flow
+// block (and legacy Flows list) for offline report handoff.
+func (h *findingsAPI) enrichFindingReportBodies(fs []store.Finding) {
+	for i := range fs {
+		for j := range fs[i].Blocks {
+			bl := &fs[i].Blocks[j]
+			if bl.Type != "flow" || bl.Missing || bl.FlowID == 0 {
+				continue
+			}
+			bl.ReqRaw, bl.ResRaw = h.flowRawForReport(bl.FlowID)
+		}
+		for j := range fs[i].Flows {
+			fl := &fs[i].Flows[j]
+			if fl.Missing || fl.FlowID == 0 {
+				continue
+			}
+			fl.ReqRaw, fl.ResRaw = h.flowRawForReport(fl.FlowID)
+		}
+	}
+}
+
+func (h *findingsAPI) flowRawForReport(id int64) (req, res string) {
+	f, err := h.st.GetFlow(id)
+	if err != nil || f == nil {
+		return "", ""
+	}
+	return truncateReportRaw(string(h.rawRequest(f)), reportBodyCap),
+		truncateReportRaw(string(h.rawResponse(f)), reportBodyCap)
+}
+
+func truncateReportRaw(s string, cap int) string {
+	if cap <= 0 || len(s) <= cap {
+		return s
+	}
+	return s[:cap] + "\n\n… [truncated]"
 }
 
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {

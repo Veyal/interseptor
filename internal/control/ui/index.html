@@ -375,6 +375,7 @@ Content-Type: application/json
     <div class="toolbar">
       <div id="scanFindingsBar" class="row find-toolbar-row">
         <button class="btn btn-primary" id="findNew">＋ New finding</button>
+        <button class="btn accent" id="findAskAiFindings" data-ai-ui title="Ask AI to triage history and file evidence-backed findings">✨ Ask AI for findings</button>
         <select id="findExportFmt" class="btn btn-field" title="Report download format" aria-label="Report format">
           <option value="md">Markdown</option>
           <option value="html">HTML</option>
@@ -985,6 +986,7 @@ Content-Type: application/json
       <div id="fmTitle" style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
       <div class="seg" id="fmSeg"><button data-v="raw">Raw</button><button class="on" data-v="pretty">Pretty</button></div>
       <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
+      <button class="btn" id="fmCopyLink" title="Copy deep link to this flow">⧉ Copy link</button>
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>
       <button class="btn" id="fmClose" aria-label="Close">✕</button>
     </div>
@@ -1260,6 +1262,27 @@ Content-Type: application/json
     </div>
     <div class="modal-shell-foot">
       <button class="btn btn-primary" id="fcSave">Create finding</button>
+    </div>
+  </div>
+</div>
+<div id="findTriageModal" class="modal-overlay" style="display:none">
+  <div role="dialog" aria-modal="true" aria-labelledby="ftTitle" class="modal-shell" style="max-width:640px;max-height:80vh;width:90%">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:8px">
+      <span id="ftTitle" style="font-weight:700;color:var(--accent)">✨ Ask AI for findings</span>
+      <div class="spacer"></div>
+      <button class="btn" id="ftClose" aria-label="Close">✕</button>
+    </div>
+    <div style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <p class="hint" style="margin:0 0 8px">Triages in-scope history and files evidence-backed findings (no active attacks). Optional steer focuses the review.</p>
+      <input id="ftSteer" class="btn btn-field" style="width:100%" placeholder="Optional steer — e.g. IDOR on /api/v3/*, authz only, unauth only" aria-label="Triage steer" spellcheck="false">
+    </div>
+    <div id="ftBody" style="flex:1;overflow:auto;padding:16px;min-height:120px;max-height:50vh">
+      <div id="ftOut" class="md hint">Ready — click Run triage.</div>
+    </div>
+    <div class="row" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap">
+      <span id="ftStatus" class="hint" style="margin-right:auto"></span>
+      <button class="btn" id="ftStop" style="display:none">■ Stop</button>
+      <button class="btn btn-primary" id="ftRun">Run triage ▸</button>
     </div>
   </div>
 </div>

@@ -9,16 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-11
+
 ### Added
+- **Flow deep links (`/#flow-<id>`).** Visiting `/#flow-6010` (or `/#flow/6010`) opens that flow in the inspect modal; `/#finding-15/flow-6010` opens the finding and the PoC. PoC callouts update the hash for shareability. Flow modal gains **Copy link**; MCP `send_request` / `get_flow` append `UI: …/#flow-N`. Fixes [#13](https://github.com/Veyal/interseptor/issues/13). (`internal/control/ui/js/findings.js`, `internal/control/ui/js/flowmodal.js`, `internal/mcp/mcp.go`.)
+- **Markdown auto-links flow IDs.** Findings/Notes `renderMD` turns `flow 6010`, `flow #6010`, `` `flow:6010` ``, `[label](flow:6010)` / `[label](#flow-6010)`, and bare numeric cells in a “flow” table column into clickable `.md-flow-link`s that open the flow modal. Fixes [#12](https://github.com/Veyal/interseptor/issues/12). (`internal/control/ui/js/core.js`, `internal/control/ui/js/flowmodal.js`.)
+- **Ask AI for findings.** Findings toolbar gains **✨ Ask AI for findings**: optional steer text, then a budgeted in-app agent triages in-scope history / passive issues and files evidence-backed findings via `create_finding` + `add_finding_poc` (no active attacks). MCP `initialize` instructions add an **ASK FOR FINDINGS** workflow for Cursor agents. Fixes [#9](https://github.com/Veyal/interseptor/issues/9). (`internal/control/ai_findings_triage.go`, `internal/control/ui/js/findings.js`, `internal/mcp/mcp.go`.)
+- **Report export includes full PoC request/response.** Curated Markdown/HTML findings reports now embed reconstructed HTTP for each attached PoC flow (same shape as `/api/flows/{id}/raw`), capped at 64 KiB with an explicit truncation marker. Pass `?includeBodies=0` to omit. Missing/purged flows still show the existing evidence-gone note. Fixes [#8](https://github.com/Veyal/interseptor/issues/8). (`internal/report/report.go`, `internal/report/html.go`, `internal/control/findings.go`.)
 - **MCP finding format enforcement (impact-first sections).** `initialize` instructions and `create_finding` / `update_finding` now prescribe a required template (`## Summary` impact-first, `## Evidence`, `## Impact`, PoC flows, explicit "NOT confirmed", `## Needs Verification`). Walls of text without markdown headings are rejected; softer gaps (missing Impact, Critical/High without a flow, unhighlighted credentials, `needs_verification` without instructions) return `FORMAT WARNING` hints so the agent can self-correct. Fixes [#6](https://github.com/Veyal/interseptor/issues/6). (`internal/mcp/finding_format.go`, `internal/mcp/mcp.go`.)
 - **Show session access key in Settings → API Keys.** Remote (cookie) sessions get a **Show session key** button that returns the current login token via `GET /api/session/access-key` (cookie-authed only — bearer alone is refused). Lets you copy the key again without digging through chat history. (`internal/control/auth.go`, `internal/control/ui/js/apipanel.js`.)
 
 ### Fixed
+- **Findings markdown: long inline code and wide tables no longer blow out the detail pane.** Inline `` `code` `` wraps (`overflow-wrap` / `word-break`); tables sit in a scrollable `.md-table-wrap`; flex children get `min-width: 0`. Fixes [#10](https://github.com/Veyal/interseptor/issues/10) and [#11](https://github.com/Veyal/interseptor/issues/11). (`internal/control/ui/app.css`, `internal/control/ui/js/core.js`.)
 - **API keys survive project switches.** Keys lived in each project's SQLite DB, so a Tailscale/remote login key minted on `default` stopped working after switching to another project (empty `api_keys` table → login rejected). Keys now live in a global `~/.interseptor/keys.db` (like the CA); existing project-local keys are migrated on first open. (`internal/store/keys_global.go`, `cmd/interseptor/main.go`.)
 - **Remote UI mutations 403'd after the Interseptor rename.** Cookie-authed POSTs (project switch, settings, etc.) sent `X-Interceptor-CSRF` while the guard required `X-Interseptor-CSRF`. UI now sends the new name; the guard accepts both spellings. (`internal/control/ui/js/core.js`, `internal/control/guard.go`.)
 
-
 ### Changed
+- **`request_human_input` scoped to Interseptor engagement decisions.** MCP instructions and the tool description now forbid using it for local OS/admin, coding/git, or non-Interseptor tooling — only scope, destructive target actions, auth choices, and engagement authority gates. Fixes [#7](https://github.com/Veyal/interseptor/issues/7). (`internal/mcp/mcp.go`.)
 - **Dev-build fallback version advanced to the published `1.2.0`.** Now that v1.2.0 is released, `internal/version/version.go`'s fallback `Version` constant (which dev builds report when no git tag is baked in) moved from `1.1.0` to `1.2.0`. Follows the documented post-release step in CONTRIBUTING.md §"Cutting a release".
 
 ## [1.2.0] - 2026-07-10

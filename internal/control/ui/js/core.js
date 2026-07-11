@@ -974,12 +974,18 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
 // Minimal, safe markdown → HTML: escape first, then format a useful subset.
 export function renderMD(src){
   if(!src||!src.trim())return '<p class="hint">Empty — switch to Edit and jot down creds, findings, scope…</p>';
-  let s=esc(src),blocks=[];
+  let s=esc(src),blocks=[],flowRefs=[];
+  const pushFlow=(id,label,code)=>{const i=flowRefs.length;flowRefs.push({id:String(id),label,code:!!code});return '\x02'+i+'\x02';};
   s=s.replace(/```(\w*)\r?\n?([\s\S]*?)```/g,(m,lang,code)=>{
     const i=blocks.length;
     blocks.push({code:code.replace(/^\n|\n$/g,''),lang:(lang||'').trim().toLowerCase()});
     return '\x00'+i+'\x00';
   });
+  // Protect flow refs early (opaque placeholders) so later HTML passes don't double-link.
+  s=s.replace(/`(flow\s*:?\s*#?\s*\d+)`/gi,(m,inner)=>{
+    const id=(inner.match(/(\d+)/)||[])[1]; return id?pushFlow(id,inner,true):m;
+  });
+  s=s.replace(/\b(flow\s*#?\s*)(\d+)\b/gi,(m,label,id)=>pushFlow(id,label+id,false));
   s=s.replace(/^---+\s*$/gm,'<hr class="md-hr">');
   s=s.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>').replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>').replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>');
   s=s.replace(/<(think|thought|reasoning)>\r?\n?([\s\S]*?)<\/\1>/gi,(m,tag,inner)=>{
@@ -991,10 +997,16 @@ export function renderMD(src){
     if(lines.length<2||!/^\|[\s:|-]+\|$/.test(lines[1]))return m;
     const split=row=>row.split('|').slice(1,-1).map(c=>c.trim());
     const hdr=split(lines[0]);
+    const flowCols=hdr.map(h=>/\bflow\b/i.test(h));
     const body=lines.slice(2).map(split);
-    let html='<table class="md-table"><thead><tr>'+hdr.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>';
-    body.forEach(r=>{html+='<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>';});
-    return html+'</tbody></table>';
+    let html='<div class="md-table-wrap"><table class="md-table"><thead><tr>'+hdr.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>';
+    body.forEach(r=>{
+      html+='<tr>'+r.map((c,ci)=>{
+        if(flowCols[ci]&&/^\d+$/.test(c)) return '<td>'+pushFlow(c,c,false)+'</td>';
+        return '<td>'+c+'</td>';
+      }).join('')+'</tr>';
+    });
+    return html+'</tbody></table></div>';
   });
   s=s.replace(/(?:^|\n)((?:>\s?.*(?:\r?\n|$))+)/g,(m,block)=>{
     const inner=block.trim().split(/\r?\n/).map(l=>l.replace(/^>\s?/,'')).join('\n');
@@ -1013,6 +1025,8 @@ export function renderMD(src){
   s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
+  // Explicit in-app flow links: [label](flow:123) or [label](#flow-123)
+  s=s.replace(/\[([^\]]+)\]\((?:flow:|#flow-)(\d+)\)/g,(m,txt,id)=>'<a class="md-flow-link" data-flow="'+id+'" href="#flow-'+id+'">'+txt+'</a>');
   s=s.replace(/`([^`\n]+)`/g,'<code>$1</code>');
   s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,(m,txt,href)=>'<a href="'+href.replace(/"/g,'&quot;')+'" target="_blank" rel="noopener">'+txt+'</a>');
   s='<p>'+s.replace(/\n{2,}/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
@@ -1021,7 +1035,12 @@ export function renderMD(src){
     const lang=b.lang?(' data-lang="'+escAttr(b.lang)+'"'):'';
     return '<pre class="md-code"'+lang+'>'+b.code+'</pre>';
   });
-  return s.replace(/<p>\s*<\/p>/g,'').replace(/<p>(<(?:h\d|ul|ol|table|pre|blockquote|hr))/g,'$1').replace(/(<\/(?:h\d|ul|ol|table|pre|blockquote)>)<\/p>/g,'$1');
+  s=s.replace(/\x02(\d+)\x02/g,(m,i)=>{
+    const r=flowRefs[Number(i)]; if(!r) return m;
+    const body=r.code?'<code>flow:'+r.id+'</code>':r.label;
+    return '<a class="md-flow-link" data-flow="'+r.id+'" href="#flow-'+r.id+'">'+body+'</a>';
+  });
+  return s.replace(/<p>\s*<\/p>/g,'').replace(/<p>(<(?:h\d|ul|ol|table|pre|blockquote|hr|div))/g,'$1').replace(/(<\/(?:h\d|ul|ol|table|pre|blockquote|div)>)<\/p>/g,'$1');
 }
 // ---- binary-body detection (inspector shows headers only for non-text bodies) ----
 

@@ -169,6 +169,7 @@ func (h *Hub) registerAIRoutes(ai *aiAPI) {
 	h.mux.HandleFunc("POST /api/ai/checks/generate", ai.aiChecksGenerate)
 	h.mux.HandleFunc("POST /api/ai/assist", ai.aiAssist)
 	h.mux.HandleFunc("POST /api/ai/assist/stream", ai.aiAssistStream)
+	h.mux.HandleFunc("POST /api/ai/findings/triage", ai.aiFindingsTriage)
 	h.mux.HandleFunc("POST /api/ai/actions", ai.aiActions)
 	h.mux.HandleFunc("GET /api/ai/openrouter/models", ai.aiOpenRouterModels)
 	// Saved AI provider profiles (switch the active provider with one click).

@@ -272,7 +272,7 @@ function renderBodyEditor(container, fid) {
     el.onclick = ev => {
       if (ev.target.closest('[data-del],[data-mv],.block-note,.find-poc-note-input')) return;
       const block = el.closest('.find-doc-flow');
-      if (block) flowPopup(Number(block.dataset.flow));
+      if (block) openFindingFlow(Number(block.dataset.flow));
     };
   });
 }
@@ -355,7 +355,7 @@ function renderFindingChain(wrap, blocks, impact) {
   wrap.querySelectorAll('.fc-step[data-kind="flow"]').forEach(el => {
     el.onclick = () => {
       const fid = el.dataset.flow;
-      if (fid) flowPopup(Number(fid));
+      if (fid) openFindingFlow(Number(fid));
     };
   });
   wrap.querySelectorAll('.fc-step[data-kind="text"]').forEach(el => {
@@ -696,6 +696,105 @@ async function openFlowPickForFinding(findingId) {
 /* ---- create finding ---- */
 $('#findNew') && ($('#findNew').onclick = () => { $('#fcTitle').value = ''; $('#fcSeverity').value = 'Medium'; $('#fcDetail').value = ''; openModal($('#findCreateModal')); $('#fcTitle').focus(); });
 $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
+
+/* ---- Ask AI for findings (triage) ---- */
+let triageAbort = null;
+let triageSeq = 0;
+function setTriageStatus(s) { const el = $('#ftStatus'); if (el) el.textContent = s || ''; }
+$('#findAskAiFindings') && ($('#findAskAiFindings').onclick = () => {
+  if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
+  const out = $('#ftOut'); if (out) out.innerHTML = '<div class="hint">Ready — click Run triage.</div>';
+  setTriageStatus('');
+  const stop = $('#ftStop'); if (stop) stop.style.display = 'none';
+  openModal($('#findTriageModal'));
+  setTimeout(() => { const s = $('#ftSteer'); if (s) s.focus(); }, 30);
+});
+$('#ftClose') && ($('#ftClose').onclick = () => { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); });
+$('#ftStop') && ($('#ftStop').onclick = () => { if (triageAbort) triageAbort.abort(); });
+$('#ftRun') && ($('#ftRun').onclick = async () => {
+  const seq = ++triageSeq;
+  if (triageAbort) triageAbort.abort();
+  const ctrl = new AbortController();
+  triageAbort = ctrl;
+  const out = $('#ftOut');
+  const stop = $('#ftStop');
+  if (out) out.innerHTML = '<div class="hint">Starting…</div>';
+  if (stop) stop.style.display = '';
+  setTriageStatus('Building context…');
+  let log = '';
+  const render = () => { if (seq === triageSeq && out) out.innerHTML = renderMD(log || '…'); };
+  try {
+    const r = await fetch('/api/ai/findings/triage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Interseptor-CSRF': '1' },
+      body: JSON.stringify({ steer: ($('#ftSteer') || {}).value || '' }),
+      signal: ctrl.signal,
+    });
+    if (r.status === 401) {
+      if (location.pathname !== '/login') location.href = '/login';
+      throw new Error('unauthorized');
+    }
+    if (!r.ok || !r.body) {
+      const t = await r.text().catch(() => '');
+      let msg = t;
+      try { msg = (JSON.parse(t).error) || t; } catch { /* keep */ }
+      throw new Error(msg || ('HTTP ' + r.status));
+    }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = '', event = 'message';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (seq !== triageSeq) return;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        let data = '';
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          else if (line.startsWith('data:')) data += line.slice(5).trim();
+        }
+        if (!data) continue;
+        let payload = {};
+        try { payload = JSON.parse(data); } catch { continue; }
+        if (event === 'status') {
+          setTriageStatus(payload.message || '');
+          log += (log ? '\n' : '') + '_'+ (payload.message || '') + '_';
+          render();
+        } else if (event === 'tool') {
+          log += '\n- tool `' + (payload.name || '?') + '`';
+          render();
+        } else if (event === 'text') {
+          log += '\n\n' + (payload.text || '');
+          render();
+        } else if (event === 'error') {
+          throw new Error(payload.message || 'triage failed');
+        } else if (event === 'done') {
+          setTriageStatus('Done · ' + (payload.toolCalls || 0) + ' tools · ' + (payload.steps || 0) + ' steps');
+        }
+        event = 'message';
+      }
+    }
+    if (seq !== triageSeq) return;
+    await loadFindings();
+    toast('Triage finished — findings refreshed');
+  } catch (e) {
+    if (seq !== triageSeq) return;
+    if (ctrl.signal.aborted) setTriageStatus('stopped');
+    else {
+      setTriageStatus('');
+      if (out) out.innerHTML = '<div class="hint" style="color:var(--red)">Error: ' + esc(e.message) + '</div>';
+      toast('triage: ' + e.message);
+    }
+  } finally {
+    if (seq === triageSeq) {
+      if (triageAbort === ctrl) triageAbort = null;
+      if (stop) stop.style.display = 'none';
+    }
+  }
+});
+
 $('#findExport') && ($('#findExport').onclick = async () => {
   const fmt = ($('#findExportFmt') || {}).value || 'md';
   try {
@@ -736,20 +835,39 @@ export function openFinding(id) {
   loadFindings();
 }
 
-// Deep-link: if the URL hash is #finding-<id>, activate the Findings tab and
-// select that finding. Handles both initial page load and hashchange events.
-function handleFindingHash() {
-  const m = location.hash.match(/^#finding-(\d+)$/);
-  if (!m) return;
-  const id = Number(m[1]);
-  if (!id) return;
-  selFinding = id;
-  document.querySelector('.tab[data-tab="findings"]')?.click();
-  loadFindings();
+// Open a PoC flow from the current finding and keep a shareable compound hash.
+function openFindingFlow(flowId) {
+  if (!flowId) return;
+  if (selFinding) {
+    try { history.replaceState(null, '', `#finding-${selFinding}/flow-${flowId}`); } catch { /* ignore */ }
+  } else {
+    try { history.replaceState(null, '', `#flow-${flowId}`); } catch { /* ignore */ }
+  }
+  flowPopup(flowId);
 }
-window.addEventListener('hashchange', handleFindingHash);
-// Run on module load so a direct URL like /#finding-3 opens the right finding.
-handleFindingHash();
+
+// Deep-link: #finding-<id>, #finding-<id>/flow-<id>, #flow-<id>, #flow/<id>
+function handleAppHash() {
+  const h = location.hash || '';
+  let m = h.match(/^#finding-(\d+)(?:\/flow-(\d+))?$/i);
+  if (m) {
+    const fid = Number(m[1]);
+    const flowId = m[2] ? Number(m[2]) : 0;
+    if (!fid) return;
+    selFinding = fid;
+    document.querySelector('.tab[data-tab="findings"]')?.click();
+    loadFindings().then(() => { if (flowId) flowPopup(flowId); });
+    return;
+  }
+  m = h.match(/^#flow-(\d+)$/i) || h.match(/^#flow\/(\d+)$/i);
+  if (m) {
+    const id = Number(m[1]);
+    if (id) flowPopup(id);
+  }
+}
+window.addEventListener('hashchange', handleAppHash);
+// Run on module load so a direct URL like /#finding-3 or /#flow-6010 opens.
+handleAppHash();
 export function addFlowToFinding(flowId) {
   if (flowId) pickFindingForFlows([flowId]);
 }

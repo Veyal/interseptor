@@ -105,6 +105,22 @@ func TestFindingsEndpoints(t *testing.T) {
 			t.Fatalf("report missing %q:\n%s", want, md)
 		}
 	}
+	// Full reconstructed HTTP for PoC flows (default includeBodies).
+	for _, want := range []string{"**Request**", "```http", "GET /user/2 HTTP/1.1", "Host: t.com", "**Response**", "HTTP/1.1 200"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("report missing PoC body %q:\n%s", want, md)
+		}
+	}
+	// Opt-out omits bodies.
+	rrOff, err := http.Get(ts.URL + "/api/findings/report?includeBodies=0")
+	if err != nil {
+		t.Fatalf("report opt-out: %v", err)
+	}
+	offBody, _ := io.ReadAll(rrOff.Body)
+	rrOff.Body.Close()
+	if strings.Contains(string(offBody), "```http") {
+		t.Fatalf("includeBodies=0 should omit http fences:\n%s", offBody)
+	}
 
 	// Delete the finding.
 	req4, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/findings/"+id(created.ID, 10), nil)

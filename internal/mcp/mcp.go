@@ -177,8 +177,10 @@ func mcpInstructions() string {
 		"SCAN: run_scanner (passive) → active_scan arm:true inScope:true csrfAware:true → cross_host_token_replay mode:auto for SSO/JWT apps → oob_* for blind callbacks.\n\n" +
 		"RECORD: write findings like an annotated notebook, not a wall of text — alternate short markdown text blocks with attached flows (and screenshots when useful): text → flow → text → image → flow. create_finding for the opening text → add_finding_poc (position:N to interleave) → add_finding_image for screenshots (base64; never put data/path inside body JSON) → more text blocks via update_finding body. Prefer attaching the actual flow/image over pasting raw HTTP into evidence/detail.\n\n" +
 		findingFormatGuide + "\n\n" +
-		"Everything you do is tagged AI. Pass optional `intent` on consequential tools. Use request_human_input before destructive or ambiguous steps.\n\n" +
-		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there."
+		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
+		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, active scan arm, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
+		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings (without a full autopwn), read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text). Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
+		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, do not route it through request_human_input — use the normal chat channel."
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -733,6 +735,15 @@ func (s *Server) ToolNames() []string {
 	return append([]string(nil), s.order...)
 }
 
+// ToolMeta returns the description and JSON Schema for a registered tool.
+func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok bool) {
+	t, ok := s.tools[name]
+	if !ok {
+		return "", nil, false
+	}
+	return t.description, t.schema, true
+}
+
 // registerTools wires every tool to a control-API endpoint.
 func (s *Server) registerTools() {
 	s.add("list_flows",
@@ -793,10 +804,13 @@ func (s *Server) registerTools() {
 				}
 				return truncate(raw, max)
 			}
+			var out string
 			if side == "both" {
-				return "=== REQUEST ===\n" + get("req") + "\n\n=== RESPONSE ===\n" + get("res"), nil
+				out = "=== REQUEST ===\n" + get("req") + "\n\n=== RESPONSE ===\n" + get("res")
+			} else {
+				out = get(side)
 			}
-			return get(side), nil
+			return out + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
 		})
 
 	s.add("analyze_flow",
@@ -1277,7 +1291,15 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return "", err
 			}
-			return out + "\n(call get_flow with this id for the full response)", nil
+			var pr struct {
+				ID int64 `json:"id"`
+			}
+			_ = json.Unmarshal([]byte(out), &pr)
+			msg := out + "\n(call get_flow with this id for the full response)"
+			if pr.ID != 0 {
+				msg += fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, pr.ID)
+			}
+			return msg, nil
 		})
 
 	s.add("start_intruder",
@@ -1773,9 +1795,9 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("request_human_input",
-		"Pause and ASK THE HUMAN before a high-impact or ambiguous action (e.g. \"found IDOR on /api/user/{id} — fuzz ids 1-100?\", or to confirm scope). The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Use this instead of guessing or exceeding the human's authority.",
+		"Pause and ASK THE HUMAN about an Interseptor / target-engagement decision only (e.g. \"found IDOR on /api/user/{id} — fuzz ids 1-100?\", confirm scope, arm active scan, auth identity choice). The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Do NOT use for local OS/admin (sudo, SSH, package installs), coding/git, or non-Interseptor tooling — ask in chat or tell the human what to run locally.",
 		obj(map[string]any{
-			"message": p("string", "the question, or what you want to do and why"),
+			"message": p("string", "the engagement question, or what target action you want to take and why"),
 			"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional suggested answers, e.g. [\"yes\",\"no\"]"},
 		}, "message"),
 		func(a map[string]any) (string, error) {

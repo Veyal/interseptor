@@ -276,6 +276,7 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 					line += " — " + sanitizeBody(bl.Note)
 				}
 				b.WriteString(line + "\n>\n")
+				renderFlowRaw(b, bl.ReqRaw, bl.ResRaw)
 			} else if bl.Type == "image" {
 				cap := bl.Caption
 				if cap == "" {
@@ -322,8 +323,38 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 				line += " — " + code(fl.Note)
 			}
 			b.WriteString(line + "\n")
+			renderFlowRaw(b, fl.ReqRaw, fl.ResRaw)
 		}
 	}
+}
+
+// renderFlowRaw appends fenced HTTP request/response blocks when raw messages
+// were enriched for export. Empty strings are skipped (no empty fences).
+func renderFlowRaw(b *strings.Builder, reqRaw, resRaw string) {
+	if reqRaw != "" {
+		b.WriteString("\n**Request**\n\n```http\n")
+		b.WriteString(normalizeHTTPRaw(reqRaw))
+		b.WriteString("```\n")
+	}
+	if resRaw != "" {
+		b.WriteString("\n**Response**\n\n```http\n")
+		b.WriteString(normalizeHTTPRaw(resRaw))
+		b.WriteString("```\n")
+	}
+	if reqRaw != "" || resRaw != "" {
+		b.WriteString("\n")
+	}
+}
+
+// normalizeHTTPRaw converts wire CRLF to LF for Markdown fences and ensures a
+// trailing newline before the closing fence.
+func normalizeHTTPRaw(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return s
 }
 
 // stripTitle drops the leading "# …" heading line from a Findings() report so it

@@ -121,6 +121,35 @@ func TestMCPInstructionsRequireFindingFormat(t *testing.T) {
 	}
 }
 
+func TestMCPInstructionsScopeHumanInputToEngagement(t *testing.T) {
+	instr := mcpInstructions()
+	for _, want := range []string{
+		"HUMAN INPUT (Interseptor / target engagement only)",
+		"Do NOT use it for local machine/OS admin",
+		"ASK FOR FINDINGS",
+		"do not route it through request_human_input",
+	} {
+		if !strings.Contains(instr, want) {
+			t.Fatalf("mcpInstructions missing %q:\n%s", want, instr)
+		}
+	}
+	desc := ""
+	for _, tdef := range New("http://127.0.0.1:1").toolList() {
+		if name, _ := tdef["name"].(string); name == "request_human_input" {
+			desc, _ = tdef["description"].(string)
+			break
+		}
+	}
+	if desc == "" {
+		t.Fatal("request_human_input tool not registered")
+	}
+	for _, want := range []string{"Interseptor / target-engagement", "Do NOT use for local OS/admin"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("request_human_input description missing %q:\n%s", want, desc)
+		}
+	}
+}
+
 func TestCreateFindingRejectsWallOfText(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("API must not be called when format validation rejects")

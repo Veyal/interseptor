@@ -34,6 +34,8 @@ p{margin:8px 0}
 ul,ol{margin:8px 0 8px 4px;padding-left:20px}
 li{margin:4px 0}
 code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px}
+pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:6px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
+pre code{background:none;border:none;padding:0;font-size:inherit}
 table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
 th,td{border:1px solid #ddd;padding:7px 10px;text-align:left;vertical-align:top}
 th{background:#f5f5f5;font-weight:700}
@@ -54,9 +56,19 @@ func markdownToHTML(md string) string {
 	var out []string
 	inUL := false
 	inQuote := false
+	inFence := false
+	var fence []string
 	var quote []string
 	var tableRows [][]string
 
+	flushFence := func() {
+		if !inFence {
+			return
+		}
+		out = append(out, "<pre><code>"+htmlEsc(strings.Join(fence, "\n"))+"</code></pre>")
+		fence = nil
+		inFence = false
+	}
 	flushQuote := func() {
 		if !inQuote {
 			return
@@ -95,6 +107,21 @@ func markdownToHTML(md string) string {
 
 	for _, line := range lines {
 		trim := strings.TrimSpace(line)
+		if inFence {
+			if strings.HasPrefix(trim, "```") {
+				flushFence()
+				continue
+			}
+			fence = append(fence, line)
+			continue
+		}
+		if strings.HasPrefix(trim, "```") {
+			flushQuote()
+			closeList()
+			flushTable()
+			inFence = true
+			continue
+		}
 		if strings.HasPrefix(trim, "|") {
 			flushQuote()
 			closeList()
@@ -150,6 +177,7 @@ func markdownToHTML(md string) string {
 			}
 		}
 	}
+	flushFence()
 	flushQuote()
 	closeList()
 	flushTable()

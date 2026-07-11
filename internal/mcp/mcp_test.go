@@ -114,6 +114,40 @@ func TestCreateUpdateFindingUIURL(t *testing.T) {
 	}
 }
 
+// TestSendRequestGetFlowUIURL verifies send_request and get_flow append /#flow-<id>.
+func TestSendRequestGetFlowUIURL(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/repeater/send":
+			io.WriteString(w, `{"id":6010,"status":200,"method":"GET"}`)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/flows/6010/raw"):
+			io.WriteString(w, "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	sendOut, err := s.Call("send_request", map[string]any{"url": "https://example.com/"})
+	if err != nil {
+		t.Fatalf("send_request: %v", err)
+	}
+	if !strings.Contains(sendOut, "/#flow-6010") {
+		t.Fatalf("send_request missing flow UI URL:\n%s", sendOut)
+	}
+
+	getOut, err := s.Call("get_flow", map[string]any{"id": float64(6010), "side": "req"})
+	if err != nil {
+		t.Fatalf("get_flow: %v", err)
+	}
+	if !strings.Contains(getOut, "/#flow-6010") {
+		t.Fatalf("get_flow missing flow UI URL:\n%s", getOut)
+	}
+}
+
 // TestUpdateFindingBodyParam verifies that create_finding and update_finding
 // forward the "body" argument to the REST API, and that update_finding also
 // forwards "cvss".
