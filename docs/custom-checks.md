@@ -45,6 +45,7 @@ Methods:
 | Call | Returns |
 |---|---|
 | `flow.req_header(name)` / `flow.res_header(name)` | header value (**case-insensitive**), or `""` if absent |
+| `flow.req_header_all(name)` / `flow.res_header_all(name)` | **all** values for a header as a list (use for multi-`Set-Cookie`, etc.); `[]` if absent |
 | `flow.query_param(name)` | query-string value, or `""` |
 
 ## Builtins
@@ -53,6 +54,12 @@ Methods:
 |---|---|
 | `finding(severity, title, detail="", evidence="", fix="")` | construct one finding. `severity` ∈ `high` / `medium` / `low` / `info` (`critical` → high; anything else → info). |
 | `re_search(pattern, text)` | first regex match (RE2 syntax) as a string, or `None`. |
+| `json_decode(text)` | parse JSON into dicts/lists/strings/ints/floats/bools/`None`. |
+| `json_encode(value)` | serialize a Starlark value to a compact JSON string. |
+| `b64decode(text)` / `b64encode(text)` | base64 decode/encode. |
+| `url_decode(text)` / `url_encode(text)` | percent-encoding decode/encode (query escaping). |
+| `hash(algo, text)` | hex digest; `algo` ∈ `sha256`, `sha1`, `sha512`, `md5`. |
+| `hmac(algo, key, message)` | lowercase-hex HMAC digest; same algorithms as `hash`. |
 
 ## Example
 

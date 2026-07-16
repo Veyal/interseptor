@@ -63,7 +63,7 @@ func (h *toolsAPI) repeaterHistory(w http.ResponseWriter, r *http.Request) {
 		Limit:        atoiOr(r.URL.Query().Get("limit"), 100),
 	})
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	out := make([]flowJSON, 0, len(flows))

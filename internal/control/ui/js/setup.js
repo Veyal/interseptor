@@ -22,6 +22,13 @@ const TRUST_STEPS = {
   linux: `<li><b>Debian/Ubuntu:</b> copy to <code>/usr/local/share/ca-certificates/interseptor.crt</code> → <code>sudo update-ca-certificates</code>.</li><li>Or one-off: <code>curl --cacert ~/.interseptor/ca/ca.crt -x http://127.0.0.1:8080 https://…</code></li>`,
 };
 
+// One-line terminal trust commands (CA download assumed to land in ~/Downloads).
+const TRUST_COMMANDS = {
+  mac: `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/Downloads/interseptor-ca.crt`,
+  win: `Import-Certificate -FilePath "$env:USERPROFILE\Downloads\interseptor-ca.crt" -CertStoreLocation Cert:\LocalMachine\Root`,
+  linux: `sudo cp ~/Downloads/interseptor-ca.crt /usr/local/share/ca-certificates/interseptor.crt && sudo update-ca-certificates`,
+};
+
 function renderStep() {
   $('#setupStep').textContent = (step + 1) + ' / ' + (LAST + 1);
   $('#setupBack').style.display = step > 0 ? '' : 'none';
@@ -34,19 +41,32 @@ function renderStep() {
         <code class="evidence" style="flex:1;margin:0;font-size:13px">${addr}</code>
         <button class="btn" id="setupCopyAddr">⧉ Copy</button>
       </div>
+      <button class="btn" id="setupSysProxy" style="margin-bottom:10px">Set as macOS system proxy</button>
       <p class="hint" style="margin:0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>`;
     $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
+    $('#setupSysProxy').onclick = async () => {
+      try {
+        const st = await api('/api/sysproxy');
+        if (!st.supported) { toast('automatic system-proxy is macOS-only — set it manually on Windows/Linux'); return; }
+        await api('/api/sysproxy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
+        toast('system proxy on — point your browser at the proxy now');
+      } catch (e) { toast(e.message); }
+    };
   } else if (step === 1) {
     const os = osHint();
     const trust = TRUST_STEPS[os] || `<li>Install the CA into your OS/browser root trust store.</li>`;
+    const cmd = TRUST_COMMANDS[os];
+    const cmdBox = cmd ? `<div class="row" style="gap:8px;margin:10px 0 0"><code class="evidence" style="flex:1;margin:0;font-size:11px;white-space:pre-wrap;word-break:break-all">${esc(cmd)}</code><button class="btn" id="setupCopyCmd">⧉</button></div><p class="hint" style="margin:4px 0 0">…or paste this one-liner into a terminal after downloading.</p>` : '';
     b.innerHTML = `<p style="margin:0 0 10px">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
       <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block;margin-bottom:14px">⤓ Download CA certificate</a>
       <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol style="margin:8px 0 4px;padding-left:22px;color:var(--fg2)">${trust}</ol></details>
+      ${cmdBox}
       <label class="icpt-chk" style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;color:var(--fg2)"><input type="checkbox" id="setupTrusted"> I've installed &amp; trusted the CA</label>
       <p class="hint" style="margin:8px 0 0">This is a one-time manual step — Interseptor never modifies your OS trust store itself.</p>
       <p class="hint" style="margin:10px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg2)"><b>Mobile apps:</b> installing the CA is not enough for most Android/iOS apps. SSL <b>pinning</b> must be bypassed on the device (Frida, patched APK) — Interseptor only detects when pinning blocks traffic (red <b>PIN</b> rows).</p>`;
     $('#setupNext').disabled = true;
     $('#setupTrusted').onchange = e => { $('#setupNext').disabled = !e.target.checked; };
+    if (cmd) $('#setupCopyCmd').onclick = () => copyText(cmd, 'trust command copied');
   } else if (step === 2) {
     b.innerHTML = `<p style="margin:0 0 6px">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
       <p class="hint" style="margin:0 0 12px">e.g. <code>*.acme.com</code>, <code>api.target.com</code>, or regex <code>.*ohsome.*</code>. You can skip this and add it later from Settings → Target scope.</p>

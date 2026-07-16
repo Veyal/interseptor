@@ -180,9 +180,9 @@ func mcpInstructions() string {
 		"RECORD: write findings point-first — create_finding with title (+ impact/why/target when known) → add_finding_poc for Before/Action/After flows → render_flow_preview for HTTP PNG evidence → add_finding_image only for real browser/device screenshots. Keep body as a short PoC timeline (text → flow → text → image), never a wall of prose. Prefer attaching flows/images over pasting raw HTTP into detail/evidence.\n\n" +
 		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
-		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, active scan arm, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
+		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, active scan arm, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
 		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings (without a full autopwn), read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text) and render_flow_preview to attach HTTP PNG screenshots for report-ready evidence. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
-		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, do not route it through request_human_input — use the normal chat channel."
+		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
 }
 
 func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError) {
@@ -1409,6 +1409,19 @@ func (s *Server) registerTools() {
 			})
 		})
 
+	s.add("suggest_intruder_payloads",
+		"BYO-key AI: propose Intruder-ready payload lists from a captured flow (full request + response context). Does not start an attack — review and call start_intruder yourself. Optional hint narrows the class/parameter (e.g. \"SQLi on query:id\").",
+		obj(map[string]any{
+			"flowId": p("integer", "captured flow id"),
+			"hint":   p("string", "optional focus (parameter or attack class)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/ai/intruder-payloads", map[string]any{
+				"flowId": argInt(a, "flowId", 0),
+				"hint":   argStr(a, "hint"),
+			})
+		})
+
 	s.add("intruder_state",
 		"Intruder progress + results (status/length/time per payload; anomalies flagged).",
 		obj(map[string]any{}),
@@ -1459,6 +1472,52 @@ func (s *Server) registerTools() {
 		obj(map[string]any{"id": pt("string")}, "id"),
 		func(a map[string]any) (string, error) {
 			return s.api(http.MethodDelete, "/api/checks/"+url.PathEscape(argStr(a, "id")), nil)
+		})
+
+	// Active twin of the passive check tools: these confirm a vuln with real probes.
+	s.add("list_active_checks",
+		"List custom ACTIVE Starlark checks (id, source, disabled). They fire only when you arm & run an active scan.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/active-checks") })
+
+	s.add("test_active_check",
+		"Compile+run an ACTIVE Starlark check against one injection point of a flow WITHOUT saving — sends a few real, scope-enforced probes. Returns a finding or a note. Omit flowId for the latest in-scope flow. Shape: def check(point, baseline, probe): ... r = probe(payload); return [finding(...)] if ... else []. point has kind/name/value; r has status/body/headers/header(n); baseline is the un-mutated response. Builtins: probe, finding, re_search, json_decode/encode, b64decode/encode, url_decode/encode, hash, hmac.",
+		obj(map[string]any{
+			"source": p("string", "Starlark source"),
+			"flowId": p("integer", "default latest in-scope"),
+		}, "source"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPost, "/api/active-checks/test", map[string]any{"source": argStr(a, "source"), "flowId": argInt(a, "flowId", 0)})
+		})
+
+	s.add("save_active_check",
+		"Save an ACTIVE Starlark check by id (letters/digits/-/_); must compile. Fires on armed active scans. test_active_check first.",
+		obj(map[string]any{
+			"id":     pt("string"),
+			"source": p("string", "Starlark source"),
+		}, "id", "source"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodPut, "/api/active-checks/"+url.PathEscape(argStr(a, "id")), map[string]any{"source": argStr(a, "source")})
+		})
+
+	s.add("delete_active_check", "Delete a custom ACTIVE check by id.",
+		obj(map[string]any{"id": pt("string")}, "id"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/active-checks/"+url.PathEscape(argStr(a, "id")), nil)
+		})
+
+	// Rule packs are read-only for the agent: installing checks runs code on every
+	// scan, so install/remove stay human-gated (CLI or full-scope REST).
+	s.add("list_packs",
+		"List installed rule packs (bundles of Starlark checks). Each has name, version, and the check ids it owns.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/packs") })
+
+	s.add("pack_info",
+		"Show one installed rule pack's record (name, version, source, owned check ids).",
+		obj(map[string]any{"name": pt("string")}, "name"),
+		func(a map[string]any) (string, error) {
+			return s.apiGet("/api/packs/" + url.PathEscape(argStr(a, "name")))
 		})
 
 	s.add("get_intercept", "Intercept state + current hold queue.", obj(map[string]any{}),
@@ -1885,7 +1944,9 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("request_human_input",
-		"Pause and ASK THE HUMAN about an Interseptor / target-engagement decision only (e.g. \"found IDOR on /api/user/{id} — fuzz ids 1-100?\", confirm scope, arm active scan, auth identity choice). The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Do NOT use for local OS/admin (sudo, SSH, package installs), coding/git, or non-Interseptor tooling — ask in chat or tell the human what to run locally.",
+		"Pause and ASK THE OPERATOR before a high-impact or ambiguous INTERCEPTOR/TARGET-ENGAGEMENT action. The question appears in the operator's UI. Returns their answer if they reply within ~40s; otherwise returns a pending id — call get_human_response(id) to retrieve it. Use this instead of guessing or exceeding the operator's engagement authority.\n\n"+
+			"Use for (Interseptor/target engagement ONLY): (1) scope ambiguity — e.g. \"is a new host in scope?\"; (2) destructive or high-blast-radius target actions — e.g. \"I found IDOR on /api/user/{id} — fuzz ids 1-100?\" or dropping/modifying target data; (3) auth/identity choices — e.g. which authz identity to escalate with, whether to use a real credential; (4) anything that exceeds the operator's declared engagement authority.\n\n"+
+			"Do not use for (this is host/OS/dev work, not Interseptor): local machine/OS admin (sudo, enabling Remote Login, package installs like brew/apt, SSH/Tailscale HOST setup); general coding, git, or Cursor session questions; non-Interseptor tooling prompts or how-to-run-it questions. For anything in this Do-not-use-for list, do not call this tool — use normal chat, or stop and tell the operator exactly which local command to run.",
 		obj(map[string]any{
 			"message": p("string", "the engagement question, or what target action you want to take and why"),
 			"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "optional suggested answers, e.g. [\"yes\",\"no\"]"},

@@ -26,6 +26,14 @@ func normalizeCLIArgs(args []string) []string {
 			a = "--control-addr=" + strings.TrimPrefix(a, "--control_addr=")
 		case a == "--control_addr":
 			a = "--control-addr"
+		case strings.HasPrefix(a, "--proxy_port="):
+			a = "--proxy-port=" + strings.TrimPrefix(a, "--proxy_port=")
+		case a == "--proxy_port":
+			a = "--proxy-port"
+		case strings.HasPrefix(a, "--data_dir="):
+			a = "--data-dir=" + strings.TrimPrefix(a, "--data_dir=")
+		case a == "--data_dir":
+			a = "--data-dir"
 		}
 		out[i] = a
 	}
@@ -44,6 +52,14 @@ func controlAddrFromPort(port int) (string, error) {
 		return "", fmt.Errorf("invalid control port %d (want 1–65535)", port)
 	}
 	return net.JoinHostPort(defaultControlHost(), strconv.Itoa(port)), nil
+}
+
+// proxyAddrFromPort builds a loopback proxy listen address for --proxy-port.
+func proxyAddrFromPort(port int) (string, error) {
+	if port < 1 || port > 65535 {
+		return "", fmt.Errorf("invalid proxy port %d (want 1–65535)", port)
+	}
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), nil
 }
 
 // resolveControlAddr picks the control-plane listen address: CLI override (wins),

@@ -29,6 +29,7 @@
   <div class="row" style="gap:6px" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button><span class="kv kv-dim" id="capStat"></span><span class="kv state-active" id="icptStat" aria-live="polite" style="display:none"></span></div>
   <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
   <button type="button" id="askAiBtn" class="btn" data-ai-ui title="Ask AI about the current project" aria-label="Ask AI about the current project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg><span>Ask AI</span></button>
+  <span class="sse-status" id="sseStatus" title="Live updates: connected"><span class="sse-dot" id="sseDot"></span><span id="sseLabel" class="kv kv-dim">live</span></span>
   <button id="cmdkBtn" class="btn" title="Ctrl+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme">☾</button>
 </div>
@@ -322,7 +323,7 @@ Host: example.com
 Content-Type: application/json
 
 {"user":"§admin§","pass":"§password§"}</textarea>
-        <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span></div>
+        <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span><div class="spacer"></div><button type="button" class="btn" id="intrAiGen" data-ai-ui title="Generate Intruder payload lists from the loaded request with AI">✨ Generate</button></div>
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
       <section class="pane intr-results">
@@ -1040,6 +1041,7 @@ Content-Type: application/json
     <div class="row" id="aiActions" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap">
       <span id="aiStatus" class="hint" style="margin-right:auto"></span>
       <button class="btn" id="aiStop" style="display:none">■ Stop</button>
+      <button class="btn" id="aiPayloadsIntruder" data-ai-ui title="AI: generate Intruder payload lists from this exchange">✨ Payloads → Intruder</button>
       <button class="btn" id="aiToRepeater" title="Load this request into Repeater">→ Repeater</button>
       <button class="btn" id="aiToIntruder" title="Load this request into Intruder">→ Intruder</button>
       <button class="btn" id="aiCopy" title="Copy the conversation">⧉ Copy</button>

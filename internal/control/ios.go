@@ -60,7 +60,7 @@ func (h *iosAPI) getIOSProfile(w http.ResponseWriter, r *http.Request) {
 		ProxyPort:   port,
 	})
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-apple-aspen-config")

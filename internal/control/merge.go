@@ -47,7 +47,7 @@ func (h *Hub) mergeFile(w http.ResponseWriter, r *http.Request) {
 	label := strings.TrimSpace(r.URL.Query().Get("label"))
 	tmp, err := os.CreateTemp("", "interseptor-merge-up-*.zip")
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	tmpPath := tmp.Name()
@@ -125,20 +125,20 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 	// Build a snapshot archive to a temp file.
 	snap, err := h.snapshotDB()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "snapshot: "+err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	defer os.Remove(snap)
 	arc, err := os.CreateTemp("", "interseptor-push-*.zip")
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	arcPath := arc.Name()
 	defer os.Remove(arcPath)
 	if err := buildFullArchive(arc, snap, h.st.BodiesDir()); err != nil {
 		arc.Close()
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	arc.Close()

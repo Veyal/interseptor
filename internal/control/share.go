@@ -30,7 +30,7 @@ func (h *Hub) shareStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) shareStart(w http.ResponseWriter, r *http.Request) {
 	hasKeys, err := h.st.HasAPIKeys()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if !hasKeys {

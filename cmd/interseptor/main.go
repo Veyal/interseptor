@@ -84,6 +84,18 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "check":
+			if err := runCheck(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "check failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "rules":
+			if err := runRules(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "rules failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		case "help", "-h", "--help":
 			printUsage()
 			return
@@ -112,20 +124,32 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := migrateDataDir(home); err != nil {
-		return fmt.Errorf("migrate data dir: %w", err)
-	}
-	globalDir := filepath.Join(home, newDataDirName)
-
 	// --project <name|path> (or INTERSEPTOR_PROJECT) skips the startup prompt.
 	fs := flag.NewFlagSet("interseptor", flag.ContinueOnError)
 	projectFlag := fs.String("project", "", "project name or directory (skips the startup picker)")
 	openFlag := fs.Bool("open", false, "open the UI in your browser on start (default: don't)")
 	controlPortFlag := fs.Int("control-port", 0, "control UI/API TCP port on loopback (default 9966)")
 	controlAddrFlag := fs.String("control-addr", "", "control UI/API listen address host:port (overrides --control-port)")
+	dataDirFlag := fs.String("data-dir", "", "global data directory (default ~/.interseptor; also INTERSEPTOR_DATA_DIR)")
+	proxyPortFlag := fs.Int("proxy-port", 0, "proxy listen TCP port on loopback (default 8080)")
 	if err := fs.Parse(normalizeCLIArgs(os.Args[1:])); err != nil {
 		return err
 	}
+
+	// --data-dir / INTERSEPTOR_DATA_DIR overrides the home-relative default; the
+	// legacy ~/.interceptor → ~/.interseptor typo migration only applies to the
+	// default location, so it's skipped for a custom data dir.
+	globalDir := strings.TrimSpace(*dataDirFlag)
+	if globalDir == "" {
+		globalDir = strings.TrimSpace(os.Getenv("INTERSEPTOR_DATA_DIR"))
+	}
+	if globalDir == "" {
+		if err := migrateDataDir(home); err != nil {
+			return fmt.Errorf("migrate data dir: %w", err)
+		}
+		globalDir = filepath.Join(home, newDataDirName)
+	}
+
 	projectArg := *projectFlag
 	if projectArg == "" {
 		projectArg = os.Getenv("INTERSEPTOR_PROJECT")
@@ -262,9 +286,20 @@ func run() error {
 		hub.SetSelfAddr(cm.Addr())
 	}
 
+	// Background retention ticker; off by default (no policy set).
+	retentionStop := make(chan struct{})
+	hub.StartRetentionLoop(retentionStop)
+
 	proxyAddrs := control.LoadProxyAddrs(st)
 	if v := os.Getenv("INTERSEPTOR_PROXY_ADDR"); v != "" {
 		proxyAddrs = []string{v} // env wins (lets you run a second instance / custom port without the UI)
+	}
+	if *proxyPortFlag != 0 { // explicit CLI flag wins over env + persisted setting
+		addr, err := proxyAddrFromPort(*proxyPortFlag)
+		if err != nil {
+			return err
+		}
+		proxyAddrs = []string{addr}
 	}
 	// Never record traffic aimed at our own listeners, so proxying localhost
 	// doesn't fill history with — or feedback-loop on — our own UI/API.
@@ -309,6 +344,7 @@ func run() error {
 	<-stop
 
 	log.Println("shutting down…")
+	close(retentionStop)
 	hub.StopTunnel() // tear down any Cloudflare quick tunnel child process
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -292,7 +293,11 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 		ReqHeaders:  reqHeaders(req),
 		Flags:       r.Flags,
 	}
-	flow.ReqBodyHash, flow.ReqLen = s.storeBody(r.Body)
+	reqHash, reqLen, reqErr := s.storeBody(r.Body)
+	flow.ReqBodyHash, flow.ReqLen = reqHash, reqLen
+	if reqErr != nil {
+		flow.Flags |= store.FlagCaptureError
+	}
 
 	resp, err := s.cl.Do(req)
 	if err != nil {
@@ -305,8 +310,15 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	defer resp.Body.Close()
 
 	if tee, finalize, terr := s.cap.TeeBody(resp.Body); terr == nil && tee != nil {
-		io.Copy(io.Discard, tee)
-		flow.ResBodyHash, flow.ResLen, _ = finalize()
+		if _, copyErr := io.Copy(io.Discard, tee); copyErr != nil {
+			flow.Flags |= store.FlagCaptureError
+		} else {
+			h, n, ferr := finalize()
+			if ferr != nil {
+				flow.Flags |= store.FlagCaptureError
+			}
+			flow.ResBodyHash, flow.ResLen = h, n
+		}
 	} else if terr != nil {
 		flow.Flags |= store.FlagCaptureError
 	}
@@ -339,6 +351,7 @@ func (s *Sender) SetOnPersist(fn func(*store.Flow)) {
 
 func (s *Sender) persist(flow *store.Flow) {
 	if _, err := s.st.InsertFlow(flow); err != nil {
+		log.Printf("sender: persist flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
 	// Best-effort: tag flows whose path looks like an auth endpoint so the
@@ -352,17 +365,22 @@ func (s *Sender) persist(flow *store.Flow) {
 	}
 }
 
-func (s *Sender) storeBody(b []byte) (string, int64) {
+func (s *Sender) storeBody(b []byte) (string, int64, error) {
 	if len(b) == 0 {
-		return "", 0
+		return "", 0, nil
 	}
 	tee, finalize, err := s.cap.TeeBody(bytes.NewReader(b))
 	if err != nil || tee == nil {
-		return "", 0
+		return "", 0, err
 	}
-	io.Copy(io.Discard, tee)
-	h, n, _ := finalize()
-	return h, n
+	if _, copyErr := io.Copy(io.Discard, tee); copyErr != nil {
+		return "", 0, copyErr
+	}
+	h, n, ferr := finalize()
+	if ferr != nil {
+		return "", 0, ferr
+	}
+	return h, n, nil
 }
 
 func reqHeaders(req *http.Request) map[string][]string {

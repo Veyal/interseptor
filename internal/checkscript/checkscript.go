@@ -16,13 +16,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"go.starlark.net/starlark"
 
+	"github.com/Veyal/interseptor/internal/starx"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -51,12 +50,11 @@ type Check struct {
 	fn starlark.Value
 }
 
-// predeclared returns the builtins every check can use.
+// predeclared returns the builtins every check can use. The shared standard
+// library (finding, re_search, json_*, b64*, url_*, hash, hmac) lives in
+// internal/starx so passive and active checks expose the same surface.
 func predeclared() starlark.StringDict {
-	return starlark.StringDict{
-		"finding":   starlark.NewBuiltin("finding", findingBuiltin),
-		"re_search": starlark.NewBuiltin("re_search", reSearchBuiltin),
-	}
+	return starx.Predeclared()
 }
 
 // Compile parses and compiles a check's source, validating that it defines a
@@ -70,7 +68,7 @@ func Compile(id, src string) (*Check, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
 	if err != nil {
-		return nil, fmt.Errorf("check %q: %w", id, err)
+		return nil, starx.ScriptError(fmt.Sprintf("check %q", id), err)
 	}
 	fn, ok := globals["check"]
 	if !ok {
@@ -132,11 +130,11 @@ func (c *Check) Run(f Flow) (issues []store.Issue, err error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	res, err := starlark.Call(thread, c.fn, starlark.Tuple{&flowValue{f}}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("check %q: %w", c.ID, err)
+		return nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
 	}
 	out, err := collect(res)
 	if err != nil {
-		return nil, fmt.Errorf("check %q: %w", c.ID, err)
+		return nil, starx.ScriptError(fmt.Sprintf("check %q", c.ID), err)
 	}
 	target := f.Method + " " + f.Host + f.Path
 	for i := range out {
@@ -201,67 +199,6 @@ func normSeverity(s string) string {
 	}
 }
 
-// ---- builtins ----
-
-// finding(severity, title, detail="", evidence="", fix="") → dict
-func findingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var severity, title, detail, evidence, fix string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
-		"severity", &severity, "title", &title, "detail?", &detail, "evidence?", &evidence, "fix?", &fix); err != nil {
-		return nil, err
-	}
-	d := starlark.NewDict(5)
-	d.SetKey(starlark.String("severity"), starlark.String(severity))
-	d.SetKey(starlark.String("title"), starlark.String(title))
-	d.SetKey(starlark.String("detail"), starlark.String(detail))
-	d.SetKey(starlark.String("evidence"), starlark.String(evidence))
-	d.SetKey(starlark.String("fix"), starlark.String(fix))
-	return d, nil
-}
-
-// reCache memoizes compiled patterns so re_search doesn't recompile on every call
-// (a check may call it in a loop). reMaxText caps the input a single call scans —
-// the Starlark step limit doesn't tick during a Go regexp call, so an unbounded
-// text × a wide pattern could otherwise burn CPU.
-var reCache sync.Map // pattern string → *regexp.Regexp | error
-
-const reMaxText = 256 << 10
-
-func cachedRegexp(pattern string) (*regexp.Regexp, error) {
-	if v, ok := reCache.Load(pattern); ok {
-		if e, isErr := v.(error); isErr {
-			return nil, e
-		}
-		return v.(*regexp.Regexp), nil
-	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		reCache.Store(pattern, err)
-		return nil, err
-	}
-	reCache.Store(pattern, re)
-	return re, nil
-}
-
-// re_search(pattern, text) → matched string, or None
-func reSearchBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var pattern, text string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "pattern", &pattern, "text", &text); err != nil {
-		return nil, err
-	}
-	re, err := cachedRegexp(pattern)
-	if err != nil {
-		return nil, fmt.Errorf("re_search: bad pattern: %w", err)
-	}
-	if len(text) > reMaxText {
-		text = text[:reMaxText]
-	}
-	if m := re.FindString(text); m != "" {
-		return starlark.String(m), nil
-	}
-	return starlark.None, nil
-}
-
 // ---- flow value exposed to scripts ----
 
 type flowValue struct{ f Flow }
@@ -278,7 +215,7 @@ func (v *flowValue) AttrNames() []string {
 	return []string{
 		"method", "scheme", "host", "port", "path", "status", "mime",
 		"req_body", "res_body", "req_headers", "res_headers",
-		"req_header", "res_header", "query_param",
+		"req_header", "res_header", "req_header_all", "res_header_all", "query_param",
 	}
 }
 
@@ -310,6 +247,10 @@ func (v *flowValue) Attr(name string) (starlark.Value, error) {
 		return headerGetter("req_header", v.f.ReqHeaders), nil
 	case "res_header":
 		return headerGetter("res_header", v.f.ResHeaders), nil
+	case "req_header_all":
+		return headerAllGetter("req_header_all", v.f.ReqHeaders), nil
+	case "res_header_all":
+		return headerAllGetter("res_header_all", v.f.ResHeaders), nil
 	case "query_param":
 		return queryParamGetter(v.f.Path), nil
 	}
@@ -341,6 +282,25 @@ func headerGetter(name string, h map[string][]string) *starlark.Builtin {
 			}
 		}
 		return starlark.String(""), nil
+	})
+}
+
+func headerAllGetter(name string, h map[string][]string) *starlark.Builtin {
+	return starlark.NewBuiltin(name, func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		var key string
+		if err := starlark.UnpackArgs(b.Name(), args, kwargs, "name", &key); err != nil {
+			return nil, err
+		}
+		for k, vals := range h {
+			if strings.EqualFold(k, key) {
+				out := make([]starlark.Value, len(vals))
+				for i, v := range vals {
+					out[i] = starlark.String(v)
+				}
+				return starlark.NewList(out), nil
+			}
+		}
+		return starlark.NewList(nil), nil
 	})
 }
 

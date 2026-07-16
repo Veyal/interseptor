@@ -58,7 +58,7 @@ func (s *Store) AttachGlobalKeys(globalDir string) error {
 	// in when the global keys DB is still empty.
 	projectRoot := filepath.Clean(filepath.Join(s.bodiesDir, ".."))
 	if filepath.Clean(globalDir) != projectRoot {
-		defaultDB := filepath.Join(globalDir, "interceptor.db")
+		defaultDB := resolveProjectDB(globalDir)
 		if _, err := os.Stat(defaultDB); err == nil {
 			src, err := sql.Open("sqlite", "file:"+defaultDB+"?mode=ro&_pragma=busy_timeout(5000)")
 			if err == nil {

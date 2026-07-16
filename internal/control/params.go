@@ -58,7 +58,7 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 

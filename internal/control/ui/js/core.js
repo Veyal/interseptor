@@ -19,7 +19,18 @@ export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,que
   rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
   filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
-export function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),2200);}
+// toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
+export function toast(m, sev){
+  const c = $('#toast');
+  if (!c) return;
+  const t = document.createElement('div');
+  t.className = 'toast-item ' + (sev || 'info');
+  t.textContent = m;
+  c.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  const ms = sev === 'error' ? 4500 : 2600;
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); }, ms);
+}
 
 // wireRowKey makes a clickable <div> row keyboard-operable: it becomes a focusable
 // button to assistive tech and Enter/Space activate it. `onActivate` defaults to a
@@ -51,13 +62,39 @@ export function setSeg(btn,on){
   btn.setAttribute('aria-pressed',on?'true':'false');
 }
 
+// Project-scoped localStorage (#17/#18): Repeater/Intruder tabs (and Intruder
+// presets) must not leak across project switches. Keys look like `rep.tabs.default`.
+// On first use of a scoped key, an unscoped legacy value is migrated once.
+let storageProject='default';
+const migratedStorageBases=new Set();
+export function setStorageProject(name){
+  storageProject=(name&&String(name).trim())||'default';
+}
+export function projectStorageKey(base){
+  const safe=String(storageProject).replace(/[^A-Za-z0-9._-]+/g,'_')||'default';
+  const scoped=base+'.'+safe;
+  // One-shot migrate: copy legacy unscoped key into *this* project, then remove
+  // it so a later project switch cannot inherit the same drafts (#17/#18).
+  if(!migratedStorageBases.has(base)){
+    migratedStorageBases.add(base);
+    try{
+      const old=localStorage.getItem(base);
+      if(old!=null){
+        if(localStorage.getItem(scoped)==null) localStorage.setItem(scoped,old);
+        localStorage.removeItem(base);
+      }
+    }catch(e){}
+  }
+  return scoped;
+}
+
 // createTabManager — generic "tabs with localStorage persistence" pattern,
 // extracted from Repeater's and Intruder's independently-reimplemented copies
 // (docs/UI-REDESIGN-ROADMAP.md §4 consolidation targets). Each panel keeps its
 // own tab shape (fields differ between Repeater/Intruder) and its own editor
 // wiring — the manager only owns the array/active-id/seq bookkeeping, the
 // localStorage round-trip, and the `.rep-tab` bar markup, via hooks:
-//   storageKey  — localStorage key (unchanged from before: 'rep.tabs'/'intr.tabs')
+//   storageKey  — localStorage key string, or () => key (project-scoped)
 //   blank(seq)  — create a new tab object (receives the next tid)
 //   title(tab)  — label text for the tab bar / tooltip
 //   onSave()    — snapshot the live editor DOM into the (about to be inactive
@@ -75,11 +112,12 @@ export function setSeg(btn,on){
 //                 omit to leave the span unstyled)
 // Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
 export function createTabManager(opts){
-  const {storageKey,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle}=opts;
+  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle}=opts;
+  const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
   const mgr={tabs:[],active:null,seq:1,persistT:null};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
   mgr.persist=function(){
-    try{localStorage.setItem(storageKey,JSON.stringify({seq:mgr.seq,active:mgr.active,tabs:mgr.tabs.map(serialize)}));}catch(e){}
+    try{localStorage.setItem(storageKey(),JSON.stringify({seq:mgr.seq,active:mgr.active,tabs:mgr.tabs.map(serialize)}));}catch(e){}
   };
   mgr.persistDebounced=function(){clearTimeout(mgr.persistT);mgr.persistT=setTimeout(mgr.persist,400);};
   mgr.render=function(barSel){
@@ -117,7 +155,7 @@ export function createTabManager(opts){
     mgr._rerender=()=>mgr.render(barSel);
     let ok=false;
     try{
-      const d=JSON.parse(localStorage.getItem(storageKey)||'null');
+      const d=JSON.parse(localStorage.getItem(storageKey())||'null');
       if(d&&d.tabs&&d.tabs.length){
         mgr.tabs=d.tabs.map(normalize);
         mgr.active=(d.active&&mgr.tabs.find(x=>x.tid===d.active))?d.active:mgr.tabs[0].tid;

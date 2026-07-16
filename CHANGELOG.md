@@ -9,8 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-16
+
+### Added
+- **Intruder result rows open the full request/response (#14).** Click or Enter/Space on a result opens the flow viewer for that attempt's `flowId`. Missing/purged flows and send failures show a clear toast instead of a dead click. Works for live runs and session History re-opens; state API still omits bodies.
+- **Intruder Numbers payload type (#15).** Each payload slot can switch **List | Numbers** with start/end/step, sequence or random (optional count/pad/unique). Live count preview; Start refuses combinations over `maxRequests` (2000). Config persists with tabs and presets. Go helper `intruder.ExpandNumbers` covered by unit tests; UI expands client-side before `POST /api/intruder/start`.
+- **AI Intruder payload lists from full exchange context (#16).** New `POST /api/ai/intruder-payloads` (and MCP `suggest_intruder_payloads`) builds a sectioned prompt from method/URL, notable headers, body field names, clipped request+response, query params, and passive hits — optional `hint`. Returns structured `{attackType, template?, positions:[{point,payloads,why}]}`. UI: Ask AI **✨ Payloads → Intruder** and Intruder **✨ Generate** load lists without auto-Start.
+- **Scripting standard library.** Checks (passive and active) now share a real stdlib in `internal/starx`: `json_decode`/`json_encode`, `b64decode`/`b64encode`, `url_decode`/`url_encode`, `hash` (sha256/sha1/sha512/md5), `hmac`. Multi-value header access via `flow.req_header_all(n)` / `res_header_all(n)` / `response.header_all(n)`. (`internal/starx`, `internal/checkscript`, `internal/activescript`, `docs/custom-checks.md`.)
+- **Starlark errors now name the line.** Compile/runtime errors surface the interpreter backtrace (`<file>:<line>:<col>`) instead of a lineless Go message. (`internal/starx`.)
+- **Active checks are first-class for the AI.** New MCP tools `list_active_checks`, `test_active_check`, `save_active_check`, `delete_active_check`. MCP tool count is now **92** (includes active-check tools + `suggest_intruder_payloads`).
+- **`interseptor check` CLI — author/validate/test checks with no server.** `check new` / `validate` (alias `lint`) / `test`. (`cmd/interseptor/check_cli.go`.)
+- **Rule packs — share, install, and manage bundles of checks.** `.tar.gz` + `manifest.json` with per-file sha256 verification. CLI `interseptor rules …`; REST `/api/packs`; MCP `list_packs` / `pack_info`. (`internal/rules`, `docs/rule-packs.md`.)
+- **Check metadata front-matter.** Leading `# key: value` block parsed and surfaced in check listings. (`internal/starx/metadata.go`.)
+- **Automatic retention policy.** `PUT /api/flows/retention {maxAgeHours, maxFlows}` plus `POST …/run`; background ticker reclaims orphaned bodies. (`internal/control/retention_policy.go`, `internal/store/retention.go`.)
+- **OpenAPI 3.1 spec at `GET /openapi.json`.** Generated from the REST route catalog. (`internal/control/openapi.go`.)
+- **First-run setup wizard: copy-paste CA trust + macOS system-proxy toggle.** (`internal/control/ui/js/setup.js`.)
+- **CLI flags `--proxy-port` and `--data-dir`** (also `INTERSEPTOR_DATA_DIR`); `interseptor help` writes to stdout.
+- **`Makefile`** with `test`/`race`/`vet`/`check`/`build`/`run` targets.
+- **Five example passive checks** exercising the new stdlib (`examples/checks/`).
+- **Packaging templates.** Homebrew formula and Scoop manifest under `packaging/` (commented goreleaser blocks).
+
+### Fixed
+- **Repeater / Intruder tabs no longer leak across projects (#17, #18).** Project-scoped `localStorage` keys (`rep.tabs.<project>`, `intr.tabs.<project>`, `intruder.presets.<project>`); legacy unscoped keys migrate once then are removed.
+- **API keys survive project switches.** Keys live in global `~/.interseptor/keys.db`; project-local keys migrate on first open.
+- **Remote UI mutations 403'd after the Interseptor rename.** CSRF header accepts both `X-Interceptor-CSRF` and `X-Interseptor-CSRF`.
+- **Sender/active-scan capture errors were silently swallowed.** Now set `FlagCaptureError` like the proxy path.
+- **Database file renamed `interceptor.db` → `interseptor.db`** with one-time WAL/SHM migration; zip archive format unchanged.
+
 ### Changed
-- **Dev-build fallback version advanced to the published `1.4.0`.** Now that v1.4.0 is released, `internal/version/version.go`'s fallback `Version` constant moved from `1.3.1` to `1.4.0`.
+- **5xx REST errors no longer leak Go/SQLite internals.** Unexpected 500s go through `httpInternalErr` (generic client message; real error logged server-side).
+- **Toasts are a stackable, severity-coded queue.** Live-updates SSE status dot in the top bar.
+- **`request_human_input` tool description expanded** with explicit Use-for / Do-not-use-for boundary (complements the v1.3.0 engagement-scope fix for [#7](https://github.com/Veyal/interseptor/issues/7)).
 
 ## [1.4.0] - 2026-07-11
 

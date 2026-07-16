@@ -2,10 +2,10 @@
 // own DOM handlers on load), then owns the cross-cutting pieces: tab switching,
 // the command palette, global keyboard shortcuts, the live SSE event stream,
 // theme, the version badge, and the boot sequence that kicks everything off.
-import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal } from './core.js';
+import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject } from './core.js';
 import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
-import { repInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel } from './scanner.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyAiDisabledUI, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes, organizeNotes } from './notes.js';
@@ -260,6 +260,7 @@ function connectEvents(){
   // thing we saw (a message, or the previous connection) as "may have missed
   // broadcasts" and resync.
   es.addEventListener('hello',()=>{
+    setSseStatus('ok');
     const now=Date.now();
     const gap=lastSSEMsgAt?now-lastSSEMsgAt:Infinity;
     if(sseConnectedOnce&&gap>STALE_GAP_MS)resyncAfterStaleReconnect();
@@ -286,7 +287,15 @@ function connectEvents(){
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };
-  es.onerror=()=>{/* browser auto-reconnects */};
+  es.onerror=()=>{ setSseStatus('reconnecting'); /* browser auto-reconnects */ };
+}
+
+function setSseStatus(s){
+  const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus');
+  if(!dot) return;
+  dot.className='sse-dot '+s;
+  if(s==='ok'){ label.textContent='live'; if(wrap) wrap.title='Live updates: connected'; }
+  else { label.textContent='reconnecting'; if(wrap) wrap.title='Live updates: reconnecting…'; }
 }
 
 /* ---- command palette (Ctrl/Cmd+K) ---- */
@@ -471,7 +480,17 @@ if(tlsBanner){
 
 /* ---- boot ---- */
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadFlows();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());repInit();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
+// Resolve the active project before Repeater/Intruder tab init so localStorage
+// keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
+async function bootProjectScopedUI(){
+  try{
+    const d=await api('/api/version');
+    setStorageProject(d.project||'default');
+  }catch(e){ setStorageProject('default'); }
+  repInit();
+  intrInit();
+}
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadFlows();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootProjectScopedUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
 // First-run setup wizard: shown once after the initial flow load, unless the
 // user already completed/skipped it or already has captured traffic.
 setTimeout(()=>{ if(state.flows && !state.flows.length) maybeShowSetup(); }, 600);

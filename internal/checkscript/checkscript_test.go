@@ -160,6 +160,39 @@ def check(flow):
 	}
 }
 
+func TestStdlibBuiltinsAvailable(t *testing.T) {
+	const src = `
+def check(flow):
+    data = json_decode(flow.res_body)
+    leaked = data.get("internal_debug")
+    if leaked != None:
+        fp = hash("sha256", leaked)
+        return [finding("high", "internal field leaked", evidence=fp)]
+    return []
+`
+	c, err := Compile("leaky", src)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	f := httpsFlow()
+	f.ResBody = `{"internal_debug":"secret","public":"ok"}`
+	issues, err := c.Run(f)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(issues))
+	}
+	if issues[0].Severity != "High" {
+		t.Fatalf("severity = %s want High", issues[0].Severity)
+	}
+	// evidence is the sha256 of "secret"
+	want := "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
+	if issues[0].Evidence != want {
+		t.Fatalf("evidence = %q want %q", issues[0].Evidence, want)
+	}
+}
+
 // A runaway comprehension at MODULE TOP LEVEL (outside any function) must also
 // be bounded. Starlark disallows for/while loops at module scope, but list/dict
 // comprehensions are legal there — so Compile itself (which executes the module
@@ -184,5 +217,42 @@ def check(flow):
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Compile did not return within 5s — module-level execution is not step-bounded")
+	}
+}
+
+func TestRuntimeErrorIncludesLine(t *testing.T) {
+	c, err := Compile("demo", "def check(flow):\n    x = flow.req_header(123)\n    return []\n")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	_, runErr := c.Run(httpsFlow())
+	if runErr == nil {
+		t.Fatal("expected a runtime error")
+	}
+	if !strings.Contains(runErr.Error(), ":2:") {
+		t.Fatalf("runtime error should name the offending line, got: %v", runErr)
+	}
+}
+
+func TestMultiValueHeaderAccess(t *testing.T) {
+	src := `
+def check(flow):
+    cookies = flow.res_header_all("Set-Cookie")
+    if len(cookies) >= 2:
+        return [finding("info", "multiple cookies", evidence=cookies[1])]
+    return []
+`
+	c, err := Compile("multi", src)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	f := httpsFlow()
+	f.ResHeaders = map[string][]string{"Set-Cookie": {"a=1", "b=2", "c=3"}}
+	issues, err := c.Run(f)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(issues) != 1 || issues[0].Evidence != "b=2" {
+		t.Fatalf("expected 1 finding with evidence 'b=2', got %+v", issues)
 	}
 }

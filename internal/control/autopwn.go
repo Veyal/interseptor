@@ -185,7 +185,7 @@ func (h *Hub) autopwnStateHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) autopwnRuns(w http.ResponseWriter, r *http.Request) {
 	runs, err := h.autopwn().ListRuns()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if runs == nil {

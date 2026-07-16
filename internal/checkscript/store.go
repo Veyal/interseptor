@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Veyal/interseptor/internal/starx"
 )
 
 // validID constrains a check id (its file stem) to a safe slug — no path
@@ -16,15 +18,18 @@ var validID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 // ValidID reports whether id is a safe check identifier.
 func ValidID(id string) bool { return validID.MatchString(id) }
 
-// Source is a stored check: its id, raw source, and compile error (if any).
+// Source is a stored check: its id, raw source, parsed metadata, and compile
+// error (if any).
 type Source struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Error  string `json:"error,omitempty"`
+	ID     string           `json:"id"`
+	Source string           `json:"source"`
+	Meta   starx.Metadata   `json:"meta,omitempty"`
+	Error  string           `json:"error,omitempty"`
 }
 
-// List returns every `*.star` check in dir (sorted), each with its source and a
-// compile error if it currently fails to compile. A missing dir yields nil.
+// List returns every `*.star` check in dir (sorted), each with its source,
+// parsed metadata, and a compile error if it currently fails to compile. A
+// missing dir yields nil.
 func List(dir string) []Source {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -41,7 +46,7 @@ func List(dir string) []Source {
 	for _, name := range names {
 		id := strings.TrimSuffix(name, ".star")
 		src, rerr := os.ReadFile(filepath.Join(dir, name))
-		s := Source{ID: id, Source: string(src)}
+		s := Source{ID: id, Source: string(src), Meta: starx.ParseMetadata(string(src))}
 		if rerr != nil {
 			s.Error = rerr.Error()
 		} else if _, cerr := Compile(id, string(src)); cerr != nil {

@@ -245,6 +245,9 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
+	if err := migrateDBFilename(dir); err != nil {
+		return nil, err
+	}
 	bodiesDir := filepath.Join(dir, "bodies")
 	if err := os.MkdirAll(bodiesDir, 0o755); err != nil {
 		return nil, err
@@ -255,7 +258,7 @@ func Open(dir string) (*Store, error) {
 	// with SQLITE_BUSY ("database is locked") under write contention. WAL lets readers
 	// run concurrently with the single writer; the busy timeout makes contending writers
 	// wait their turn instead of erroring.
-	dsn := "file:" + filepath.Join(dir, "interceptor.db") +
+	dsn := "file:" + filepath.Join(dir, currentDBName) +
 		"?_pragma=busy_timeout(10000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +

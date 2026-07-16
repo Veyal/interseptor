@@ -649,8 +649,11 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	resp, rtErr := s.tr.RoundTrip(out)
 
 	if reqFinalize != nil {
-		h, n, _ := reqFinalize()
+		h, n, ferr := reqFinalize()
 		flow.ReqBodyHash, flow.ReqLen = h, n
+		if ferr != nil {
+			flow.Flags |= store.FlagCaptureError
+		}
 	}
 
 	if rtErr != nil {

@@ -80,7 +80,7 @@ func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	fs, err := h.st.ListFindings(q.Get("severity"), q.Get("status"))
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if fs == nil {
@@ -97,7 +97,7 @@ func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	fs, err := h.st.ListFindings("", "")
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	var issues []store.Issue
@@ -238,7 +238,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.st.CreateFinding(f)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	// Attach any PoC flows passed at create time. A bad flowId (e.g. a typo, or
@@ -255,7 +255,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(id)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	// AttachFlow rejects unknown flowIds; any Missing rows here mean a PoC was
@@ -336,7 +336,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -351,7 +351,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err := h.st.DeleteFinding(id); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -385,13 +385,13 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 			httpErr(w, http.StatusNotFound, err.Error())
 			return
 		}
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(id)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -401,7 +401,7 @@ func (h *findingsAPI) detachFindingFlow(w http.ResponseWriter, r *http.Request) 
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	flowID, _ := strconv.ParseInt(r.PathValue("flowId"), 10, 64)
 	if err := h.st.DetachFlow(id, flowID); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -438,7 +438,7 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 		pos = *in.Position
 	}
 	if err := h.st.AttachImage(id, hash, mime, in.Caption, pos); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})

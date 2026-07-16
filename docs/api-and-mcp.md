@@ -21,7 +21,7 @@ the same capabilities as the UI. Run the app, then connect your MCP client one o
 **Streamable-HTTP** (hosted/remote agents) — `POST` JSON-RPC to `http://127.0.0.1:9966/mcp`
 (stateless; no subprocess needed).
 
-Both expose the same **83 tools** — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
+Both expose the same **92 tools** — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
 `flow_as_curl`), replaying/fuzzing (`send_request`, `start_intruder`, `ws_send`), scanning
 (`run_scanner`, `scan_report`), intercept/rules/scope control, and `set_session` — with bounded
 results so large bodies don't blow the agent's context. Each tool's JSON Schema documents its

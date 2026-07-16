@@ -15,7 +15,7 @@ import (
 func (h *projectAPI) getNotes(w http.ResponseWriter, r *http.Request) {
 	notes, err := h.st.LoadNotes()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notes": notes})

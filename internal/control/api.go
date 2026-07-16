@@ -16,7 +16,7 @@ import (
 func (h *metaAPI) listKeys(w http.ResponseWriter, r *http.Request) {
 	keys, err := h.st.ListAPIKeys()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if keys == nil {
@@ -44,7 +44,7 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	}
 	token, key, err := h.st.CreateAPIKey(in.Label, store.NormalizeScope(in.Scope), expires)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	// The token is returned exactly once.
@@ -58,7 +58,7 @@ func (h *metaAPI) deleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.DeleteAPIKey(id); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -121,6 +121,10 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/active-checks/{id}", "Save/upsert an active check's Starlark source"},
 	{"DELETE", "/api/active-checks/{id}", "Delete a saved active check"},
 	{"POST", "/api/active-checks/test", "Compile + dry-run an active check against a flow's injection points (sends real, bounded probes). Response: {finding} or {note}"},
+	{"GET", "/api/packs", "List installed rule packs (name, version, check ids)"},
+	{"GET", "/api/packs/{name}", "Show one installed pack's record"},
+	{"POST", "/api/packs/install", "Install a rule-pack .tar.gz (verified against its manifest's sha256s); full-scope only"},
+	{"DELETE", "/api/packs/{name}", "Uninstall a rule pack and delete its check files; full-scope only"},
 	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=)"},
 	{"GET", "/api/findings/report", "Curated findings as a Markdown/HTML report (?format=html; ?issues=1; ?includeBodies=0 to omit full PoC req/res)"},
 	{"POST", "/api/findings", "Create a curated finding. Body: {title, severity?, status?, target?, impact?, why?, cwe?, environment?, fix?, cvss?, verificationInstructions?, body?, flowIds?, detail?, evidence?} — title required (stub OK); impact/why/target/PoC blank until report-ready; body is PoC timeline blocks; flowIds optionally attaches PoCs on create"},
@@ -210,6 +214,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/ai/assist/stream", "Streaming variant of ai/assist (SSE, token-by-token). Body: same shape as POST /api/ai/assist"},
 	{"POST", "/api/ai/findings/triage", "Ask AI to triage in-scope history and file evidence-backed findings (no active attacks). Body: {steer?}. SSE: status/tool/text/done/error"},
 	{"POST", "/api/ai/actions", "BYO-key AI: suggested test payloads for a flow, formatted for one-click Repeater/Intruder loading"},
+	{"POST", "/api/ai/intruder-payloads", "BYO-key AI: Intruder-ready payload lists from full request/response context. Body: {flowId, hint?}. Response: {attackType, template?, positions:[{point,payloads,why}]}"},
 	{"GET", "/api/ai/openrouter/models", "OpenRouter model catalog (+ optional ?key= validation)"},
 	{"GET", "/api/ai/providers", "List saved AI provider profiles (keys redacted) + the active profile id"},
 	{"POST", "/api/ai/providers", "Create/update a saved AI provider profile ({id?,name,provider,apiKey?,model,endpoint})"},
@@ -227,6 +232,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/merge/pull", "Download a peer's project archive over their share tunnel and merge it in ({peerUrl,key,label})"},
 	{"POST", "/api/merge/push", "Build the active project's archive and push it to a peer's /api/merge/file ({peerUrl,key,label})"},
 	{"GET", "/api/ca.crt", "Download the local CA certificate"},
+	{"GET", "/openapi.json", "OpenAPI 3.1 spec for the REST API (generate clients / Postman from this)"},
 	{"GET", "/api/keys", "List API keys"},
 	{"POST", "/api/keys", "Create an API key. Body: {label?, scope?, expiresIn?} — scope full (default)|read; expiresIn is seconds from now, 0/omitted = never. Response: {token, key} — the token is returned exactly once"},
 	{"DELETE", "/api/keys/{id}", "Revoke an API key"},
@@ -241,6 +247,9 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/flows/delete", "Delete flows by id. Body: {ids: []}; content-addressed bodies are untouched (GC separately)"},
 	{"POST", "/api/flows/purge", "Purge flows by host pattern; reclaims orphaned bodies in the background afterward (not reflected in this response). Body: {hosts: [], mode} — mode delete|keepOnly. Response: {deleted}"},
 	{"POST", "/api/flows/gc", "Reclaim orphaned body files (no flows deleted, no body). Response: {removedFiles,freedBytes}"},
+	{"GET", "/api/flows/retention", "Automatic retention policy (maxAgeHours, maxFlows; 0 = off)"},
+	{"PUT", "/api/flows/retention", "Set the retention policy; body {maxAgeHours, maxFlows}"},
+	{"POST", "/api/flows/retention/run", "Apply the retention policy now and return {deleted}"},
 	{"GET", "/api/hosts/stats", "Per-host flow counts and byte totals, sorted desc by bytes. Response: {hosts:[{host,flows,bytes}],totalFlows,totalBytes}"},
 	{"POST", "/api/human-input", "Register a human-input prompt and block up to 40s for the operator's answer ({message,options?})"},
 	{"GET", "/api/human-input", "List pending human-input prompts raised by the AI"},
@@ -303,6 +312,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "import_full_project", "desc": "Restore a full-project .zip archive into a new named project under ~/.interseptor/projects"},
 		{"name": "send_request", "desc": "Replay/mutate a request (Repeater)"},
 		{"name": "start_intruder", "desc": "Run Sniper/Battering/Pitchfork/Cluster payload attack"},
+		{"name": "suggest_intruder_payloads", "desc": "BYO-key AI: Intruder-ready payload lists from a flow (full req/res context)"},
 		{"name": "intruder_state", "desc": "Attack progress + results"},
 		{"name": "run_scanner", "desc": "Passive scan of captured flows"},
 		{"name": "list_issues", "desc": "Scanner findings"},
@@ -317,6 +327,12 @@ var mcpDescriptor = map[string]any{
 		{"name": "test_check", "desc": "Compile + run a check against a flow (no save)"},
 		{"name": "save_check", "desc": "Create/update a validated custom scanner check"},
 		{"name": "delete_check", "desc": "Delete a custom scanner check"},
+		{"name": "list_active_checks", "desc": "List custom ACTIVE Starlark checks"},
+		{"name": "test_active_check", "desc": "Compile + run an ACTIVE check against an injection point (real probes, no save)"},
+		{"name": "save_active_check", "desc": "Create/update a validated custom ACTIVE check"},
+		{"name": "delete_active_check", "desc": "Delete a custom ACTIVE check"},
+		{"name": "list_packs", "desc": "List installed rule packs"},
+		{"name": "pack_info", "desc": "Show one installed rule pack's record"},
 		{"name": "get_intercept", "desc": "Intercept state + hold queue"},
 		{"name": "set_intercept", "desc": "Toggle request interception"},
 		{"name": "set_response_intercept", "desc": "Toggle response interception"},

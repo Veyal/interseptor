@@ -128,6 +128,61 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 	return n, nil
 }
 
+// DeleteFlowsOlderThan removes every flow whose timestamp (unix milliseconds,
+// the unit the flows.ts column stores) is before cutoffMillis, with its FTS
+// index and tags. Returns the count deleted.
+func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: begin: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE ts < ?)`, cutoffMillis); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: unindex: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ?)`, cutoffMillis); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: untag: %w", err)
+	}
+	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ?`, cutoffMillis)
+	if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: delete: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: commit: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// DeleteFlowsKeepNewest keeps only the most-recent n flows (by id, descending)
+// and deletes the rest. n<=0 deletes nothing.
+func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
+	if n <= 0 {
+		return 0, nil
+	}
+	const keepSub = `SELECT id FROM flows ORDER BY id DESC LIMIT ?`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: begin: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`))`, n); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: unindex: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`))`, n); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: untag: %w", err)
+	}
+	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`)`, n)
+	if err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: delete: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: commit: %w", err)
+	}
+	k, _ := res.RowsAffected()
+	return k, nil
+}
+
 // GCBodies reclaims body files that are no longer referenced by any flow or
 // finding image block. It walks bodiesDir, collects every file whose name looks
 // like a content hash (a 64-hex-char sha256 stored under a two-level prefix

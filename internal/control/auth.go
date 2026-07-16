@@ -71,7 +71,7 @@ func (h *Hub) sessionLogin(w http.ResponseWriter, r *http.Request) {
 	in.Token = strings.TrimSpace(in.Token)
 	ok, scope, err := h.st.VerifyAPIKeyScope(in.Token)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if !ok {
@@ -119,7 +119,7 @@ func (h *Hub) sessionAccessKey(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, scope, err := h.st.VerifyAPIKeyScope(c.Value)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if !ok {

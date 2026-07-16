@@ -101,7 +101,7 @@ func (h *checksAPI) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	}
 	b, _ := json.Marshal(in.Disabled)
 	if err := h.st.SetSetting("checks.disabled", string(b)); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "checks.update"})

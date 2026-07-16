@@ -47,5 +47,5 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **BYO-key AI assist** — explain a request, suggest payloads, or summarize findings via your own
   **Anthropic** or **OpenRouter** key (off until you set one; the exchange is sent only on request).
 - **API & MCP** — a REST control API + SSE event stream and a full **Model Context Protocol** server
-  (83 tools, stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
+  (92 tools, stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
   [API & MCP](api-and-mcp.md).

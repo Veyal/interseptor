@@ -130,7 +130,7 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 	}
 	b, _ := json.Marshal(in.Identities)
 	if err := h.st.SetSetting("authz.identities", string(b)); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"identities": in.Identities})

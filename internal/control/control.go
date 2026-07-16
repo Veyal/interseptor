@@ -346,7 +346,7 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.SetFlowNote(id, in.Note); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if f, err := h.st.GetFlow(id); err == nil {
@@ -384,7 +384,7 @@ func (h *flowAPI) setFlowTags(w http.ResponseWriter, r *http.Request) {
 	}
 	tags, err := h.st.SetFlowTags(id, in.Tags)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcastFlowTags(id)
@@ -419,13 +419,13 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 	for _, id := range in.FlowIDs {
 		if len(in.Add) > 0 {
 			if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
-				httpErr(w, http.StatusInternalServerError, err.Error())
+				httpInternalErr(w, err)
 				return
 			}
 		}
 		for _, t := range store.NormalizeTags(in.Remove) {
 			if err := h.st.RemoveFlowTag(id, t); err != nil {
-				httpErr(w, http.StatusInternalServerError, err.Error())
+				httpInternalErr(w, err)
 				return
 			}
 		}
@@ -439,7 +439,7 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 func (h *flowAPI) listTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.st.DistinctTags()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
@@ -460,7 +460,7 @@ func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.SetTagColor(tag, in.Color); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "tags.update"})
@@ -488,7 +488,7 @@ func (h *flowAPI) deleteFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := h.st.DeleteFlows(in.IDs)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if n > 0 {
@@ -529,7 +529,7 @@ func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 	}
 	eps, note, err := h.st.Endpoints(f)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if eps == nil {
@@ -641,7 +641,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	if searchScope == "body" && strings.TrimSpace(f.Search) != "" {
 		ids, note, err := h.st.FlowIDsBodySearch(f, 8000)
 		if err != nil {
-			httpErr(w, http.StatusInternalServerError, err.Error())
+			httpInternalErr(w, err)
 			return
 		}
 		searchNote = note
@@ -668,7 +668,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		want := limit + 1
 		matched, more, qerr := h.queryInScopeFlows(f, want)
 		if qerr != nil {
-			httpErr(w, http.StatusInternalServerError, qerr.Error())
+			httpInternalErr(w, qerr)
 			return
 		}
 		truncated := more || len(matched) > limit
@@ -689,7 +689,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	flows, err := h.st.QueryFlowsListFilter(f)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	truncated := len(flows) > limit
@@ -840,7 +840,7 @@ func (h *flowAPI) flowWS(w http.ResponseWriter, r *http.Request) {
 	}
 	frames, err := h.st.QueryWSFrames(id, 2000)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if frames == nil {
@@ -867,7 +867,7 @@ func (h *Hub) bodyBytes(hash string) []byte {
 func (h *flowAPI) listRules(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.st.ListRules()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	out := make([]ruleJSON, 0, len(rules))
@@ -889,7 +889,7 @@ func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	rule := store.Rule{Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}
 	id, err := h.st.CreateRule(&rule)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	in.ID = id
@@ -913,7 +913,7 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.refreshRules()
@@ -927,7 +927,7 @@ func (h *flowAPI) deleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.DeleteRule(id); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.refreshRules()
@@ -1327,7 +1327,7 @@ func (h *Hub) NotifyBypassAdded(hosts []string) {
 
 func (h *Hub) persistSetting(w http.ResponseWriter, key, val string) bool {
 	if err := h.st.SetSetting(key, val); err != nil {
-		httpErr(w, http.StatusInternalServerError, "failed to save setting: "+err.Error())
+		httpInternalErr(w, err)
 		return false
 	}
 	return true
@@ -1640,6 +1640,14 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func httpErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+// httpInternalErr logs the real error server-side and returns a scrubbed 500 so
+// Go/SQLite internals (e.g. "database is locked") aren't leaked to clients. Use
+// for unexpected 5xx; keep httpErr for caller-authored, client-safe messages.
+func httpInternalErr(w http.ResponseWriter, err error) {
+	log.Printf("control: 500: %v", err)
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 }
 
 func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {

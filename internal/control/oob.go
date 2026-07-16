@@ -68,7 +68,7 @@ func (h *oobAPI) oobSetBase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.SetSetting("oob.baseUrl", strings.TrimSpace(in.BaseURL)); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"baseUrl": h.oobBase(r)})

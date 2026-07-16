@@ -18,7 +18,7 @@ func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 		ExcludeFlags: store.FlagIntruder, // attack traffic is noise in an export
 	})
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if q.Get("inScope") == "1" {

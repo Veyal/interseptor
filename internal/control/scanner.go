@@ -20,7 +20,7 @@ func (h *scannerAPI) scannerRun(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 5000, Host: host, Search: search, ExcludeFlags: store.FlagIntruder | store.FlagActiveScan})
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 
@@ -70,7 +70,7 @@ func (h *scannerAPI) scannerRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.st.SaveIssues(all); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "scanner.update"})
@@ -80,7 +80,7 @@ func (h *scannerAPI) scannerRun(w http.ResponseWriter, r *http.Request) {
 func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if issues == nil {
@@ -93,7 +93,7 @@ func (h *scannerAPI) scannerIssues(w http.ResponseWriter, r *http.Request) {
 func (h *scannerAPI) scannerReport(w http.ResponseWriter, r *http.Request) {
 	issues, err := h.st.ListIssues()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")

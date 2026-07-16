@@ -110,7 +110,7 @@ func (h *Hub) saveAiProvider(w http.ResponseWriter, r *http.Request) {
 		ps = append(ps, in)
 	}
 	if err := h.saveAiProfiles(ps); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": in.ID})
@@ -127,7 +127,7 @@ func (h *Hub) deleteAiProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.saveAiProfiles(out); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if active, _, _ := h.st.GetSetting("ai.activeProfile"); active == id {
@@ -164,7 +164,7 @@ func (h *Hub) activateAiProvider(w http.ResponseWriter, r *http.Request) {
 		"ai.endpoint": chosen.Endpoint,
 	} {
 		if err := h.st.SetSetting(k, v); err != nil {
-			httpErr(w, http.StatusInternalServerError, err.Error())
+			httpInternalErr(w, err)
 			return
 		}
 	}

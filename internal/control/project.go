@@ -30,7 +30,7 @@ type projectBundle struct {
 func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	rules, _ := h.st.ListRules()

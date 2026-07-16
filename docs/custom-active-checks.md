@@ -67,14 +67,21 @@ Method:
 | Call | Returns |
 |---|---|
 | `r.header(name)` | header value (**case-insensitive**), or `""` if absent. |
+| `r.header_all(name)` | **all** values for a header as a list (e.g. multiple `Set-Cookie`); `[]` if absent. |
 
 ## Builtins
+
+Active checks get the **same standard library** as passive checks (it's shared), plus `probe`:
 
 | Builtin | Description |
 |---|---|
 | `probe(payload)` | Send one mutated request at `point`. **Real traffic** — recorded in History, session-auth applied, counts against the run's request budget. |
 | `finding(severity, title, detail="", evidence="", fix="")` | construct one finding. `severity` ∈ `high` / `medium` / `low` / `info` (`critical` → high; anything else → info). |
 | `re_search(pattern, text)` | first regex match (RE2 syntax) as a string, or `None`. |
+| `json_decode(text)` / `json_encode(value)` | JSON parse / serialize. |
+| `b64decode(text)` / `b64encode(text)` | base64 decode/encode. |
+| `url_decode(text)` / `url_encode(text)` | percent-encoding decode/encode. |
+| `hash(algo, text)` / `hmac(algo, key, message)` | hex digest / HMAC; `algo` ∈ `sha256`, `sha1`, `sha512`, `md5`. |
 
 ## Example
 

@@ -190,7 +190,7 @@ func archiveFilename(project string) string {
 func (h *projectAPI) exportFull(w http.ResponseWriter, r *http.Request) {
 	snap, err := h.snapshotDB()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "snapshot: "+err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	defer os.Remove(snap)
@@ -218,7 +218,7 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 	// archive/zip needs random access, so spool the upload to a temp file first.
 	tmp, err := os.CreateTemp("", "interseptor-import-*.zip")
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	tmpPath := tmp.Name()
@@ -256,7 +256,7 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	}
 	snap, err := h.snapshotDB()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, "snapshot: "+err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	defer os.Remove(snap)
@@ -267,11 +267,11 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := buildFullArchive(out, snap, h.st.BodiesDir()); err != nil {
 		out.Close()
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if err := out.Close(); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	fi, _ := os.Stat(dest)

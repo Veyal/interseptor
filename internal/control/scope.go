@@ -21,7 +21,7 @@ func (h *Hub) refreshScope() {
 func (h *scopeAPI) listScope(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.st.ListScopeRules()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if rules == nil {
@@ -56,7 +56,7 @@ func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.st.CreateScopeRule(&in); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.refreshScope()
@@ -79,7 +79,7 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateScopeRule(&in); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.refreshScope()
@@ -93,7 +93,7 @@ func (h *scopeAPI) deleteScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.DeleteScopeRule(id); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.refreshScope()

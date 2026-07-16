@@ -54,7 +54,7 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	if err := peer.AttachFlow(fid, f1, "poc", -1); err != nil {
 		t.Fatalf("AttachFlow: %v", err)
 	}
-	peerDBPath := filepath.Join(peerDir, "interceptor.db")
+	peerDBPath := filepath.Join(peerDir, currentDBName)
 	peerBodies := peerBodiesDir(peer)
 	peer.Close()
 

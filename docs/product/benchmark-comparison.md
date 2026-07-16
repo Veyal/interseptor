@@ -10,7 +10,7 @@ Numbers are directional — your host OS and JVM settings will shift absolute va
 | Cold start to usable UI | **~1 s** | ~15–30 s | ~10–20 s |
 | Binary + runtime deps | **single static Go binary** | JVM + installer | JVM + installer |
 | Content discovery | built-in (scope-aware) | Pro (built-in) | fuzz add-ons |
-| AI agent surface | **83 MCP tools + REST/SSE** | limited / bolt-on | API, no MCP |
+| AI agent surface | **92 MCP tools + REST/SSE** | limited / bolt-on | API, no MCP |
 
 ## How we measure
 

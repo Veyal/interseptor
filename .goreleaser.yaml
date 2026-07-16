@@ -65,3 +65,28 @@ release:
     name: interseptor
   draft: false
   prerelease: false
+
+# Package-manager publishing — uncomment and point at a tap/bucket repo to enable
+# `brew install Veyal/tap/interseptor` and `scoop install interseptor`. See
+# packaging/README.md. Disabled by default so a release never fails on a missing
+# tap repo.
+#
+# brews:
+#   - repository:
+#       owner: Veyal
+#       name: homebrew-tap
+#     homepage: https://github.com/Veyal/interseptor
+#     description: Intercepting HTTP/HTTPS proxy + security toolkit
+#     license: MIT
+#     test: |
+#       assert_match "interseptor v", shell_output("#{bin}/interseptor version")
+#     install: |-
+#       bin.install "interseptor"
+#
+# scoops:
+#   - repository:
+#       owner: Veyal
+#       name: scoop-bucket
+#     homepage: https://github.com/Veyal/interseptor
+#     description: Intercepting HTTP/HTTPS proxy + security toolkit
+#     license: MIT

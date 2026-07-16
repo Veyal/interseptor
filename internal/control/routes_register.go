@@ -33,6 +33,7 @@ func (h *Hub) routes() {
 	h.registerAuthzRoutes(az)
 	h.registerMetaRoutes(meta)
 	h.registerAutopwnRoutes()
+	h.registerPacksRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
 }
@@ -57,6 +58,9 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("POST /api/flows/delete", f.deleteFlows)
 	h.mux.HandleFunc("POST /api/flows/purge", f.purgeFlows)
 	h.mux.HandleFunc("POST /api/flows/gc", f.gcBodies)
+	h.mux.HandleFunc("GET /api/flows/retention", f.getRetention)
+	h.mux.HandleFunc("PUT /api/flows/retention", f.putRetention)
+	h.mux.HandleFunc("POST /api/flows/retention/run", f.runRetention)
 	h.mux.HandleFunc("GET /api/hosts/stats", f.hostStats)
 	h.mux.HandleFunc("GET /api/endpoints", f.listEndpoints)
 	h.mux.HandleFunc("GET /api/rules", f.listRules)
@@ -86,6 +90,7 @@ func (h *Hub) registerSettingsRoutes(set *settingsAPI, and *androidAPI, ios *ios
 	h.mux.HandleFunc("GET /api/sysproxy", set.getSysProxy)
 	h.mux.HandleFunc("POST /api/sysproxy", set.setSysProxy)
 	h.mux.HandleFunc("GET /api/ca.crt", set.getCA)
+	h.mux.HandleFunc("GET /openapi.json", (&metaAPI{h}).openapi)
 	h.mux.HandleFunc("GET /api/android/status", and.getAndroidStatus)
 	h.mux.HandleFunc("POST /api/android/proxy", and.postAndroidProxy)
 	h.mux.HandleFunc("POST /api/android/unproxy", and.postAndroidUnproxy)
@@ -165,6 +170,13 @@ func (h *Hub) registerChecksRoutes(chk *checksAPI, as *activescanAPI) {
 	h.mux.HandleFunc("POST /api/activescan/stop", as.asStop)
 }
 
+func (h *Hub) registerPacksRoutes() {
+	h.mux.HandleFunc("GET /api/packs", h.listPacks)
+	h.mux.HandleFunc("POST /api/packs/install", h.installPack)
+	h.mux.HandleFunc("GET /api/packs/{name}", h.getPack)
+	h.mux.HandleFunc("DELETE /api/packs/{name}", h.removePack)
+}
+
 func (h *Hub) registerAIRoutes(ai *aiAPI) {
 	h.mux.HandleFunc("POST /api/ai/notes/organize", ai.aiNotesOrganize)
 	h.mux.HandleFunc("POST /api/ai/notes/organize/stream", ai.aiNotesOrganizeStream)
@@ -173,6 +185,7 @@ func (h *Hub) registerAIRoutes(ai *aiAPI) {
 	h.mux.HandleFunc("POST /api/ai/assist/stream", ai.aiAssistStream)
 	h.mux.HandleFunc("POST /api/ai/findings/triage", ai.aiFindingsTriage)
 	h.mux.HandleFunc("POST /api/ai/actions", ai.aiActions)
+	h.mux.HandleFunc("POST /api/ai/intruder-payloads", ai.aiIntruderPayloads)
 	h.mux.HandleFunc("GET /api/ai/openrouter/models", ai.aiOpenRouterModels)
 	// Saved AI provider profiles (switch the active provider with one click).
 	h.mux.HandleFunc("GET /api/ai/providers", h.listAiProviders)

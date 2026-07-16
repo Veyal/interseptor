@@ -714,3 +714,69 @@ func TestRenderFlowPreviewAttachForwardsToREST(t *testing.T) {
 		t.Fatalf("options not forwarded: %+v", gotBody)
 	}
 }
+
+// TestHumanInputScopeBoundary verifies the narrowing required by issue #7:
+// request_human_input is for Interseptor/target-engagement decisions only,
+// NOT for host/OS/dev work (sudo, package installs, SSH/Tailscale setup,
+// coding/git questions, etc.). Both the connect instructions and the tool
+// description must make this boundary explicit.
+func TestHumanInputScopeBoundary(t *testing.T) {
+	srv := New("http://127.0.0.1:0")
+
+	instr := mcpInstructions()
+	for _, want := range []string{"request_human_input", "engagement", "operator"} {
+		if !strings.Contains(instr, want) {
+			t.Fatalf("instructions missing %q (got: ...%s...)", want, excerpt(instr, want))
+		}
+	}
+	for _, want := range []string{"sudo", "Tailscale", "Cursor", "Remote Login"} {
+		if !strings.Contains(instr, want) {
+			t.Fatalf("instructions missing off-limits example %q (got: ...%s...)", want, excerpt(instr, want))
+		}
+	}
+	if !strings.Contains(instr, "Do NOT route") && !strings.Contains(instr, "do not route") {
+		t.Fatalf("instructions missing the do-not-route-through-request_human_input note")
+	}
+
+	desc := srv.tools["request_human_input"].description
+	if desc == "" {
+		t.Fatal("request_human_input tool not registered")
+	}
+	if !strings.Contains(desc, "Use for") || !strings.Contains(desc, "Do not use for") {
+		t.Fatalf("request_human_input description missing Use-for/Do-not-use-for sections: %q", desc)
+	}
+	for _, want := range []string{"scope", "destructive", "auth", "authority"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("request_human_input description missing Use-for item %q: %q", want, desc)
+		}
+	}
+	for _, want := range []string{"sudo", "Tailscale", "Cursor", "package install"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("request_human_input description missing Do-not-use-for item %q: %q", want, desc)
+		}
+	}
+	if _, ok := srv.tools["get_human_response"]; !ok {
+		t.Fatal("get_human_response tool was removed")
+	}
+}
+
+// excerpt returns a short window of s around the first occurrence of needle,
+// or the tail of s if needle is absent — for readable failure messages.
+func excerpt(s, needle string) string {
+	i := strings.Index(s, needle)
+	if i < 0 {
+		if len(s) > 200 {
+			return s[len(s)-200:]
+		}
+		return s
+	}
+	start := i - 60
+	if start < 0 {
+		start = 0
+	}
+	end := i + len(needle) + 60
+	if end > len(s) {
+		end = len(s)
+	}
+	return s[start:end]
+}

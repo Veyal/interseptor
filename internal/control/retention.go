@@ -61,7 +61,7 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 func (h *flowAPI) gcBodies(w http.ResponseWriter, r *http.Request) {
 	removedFiles, freedBytes, err := h.st.GCBodies()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -78,7 +78,7 @@ func (h *flowAPI) gcBodies(w http.ResponseWriter, r *http.Request) {
 func (h *flowAPI) hostStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.st.HostStats()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 

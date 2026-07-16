@@ -17,14 +17,13 @@ package activescript
 import (
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"go.starlark.net/starlark"
 
 	"github.com/Veyal/interseptor/internal/activescan"
+	"github.com/Veyal/interseptor/internal/starx"
 )
 
 // maxSteps bounds a single check run so a pathological script can't hang a scan.
@@ -38,10 +37,7 @@ type Check struct {
 }
 
 func predeclared() starlark.StringDict {
-	return starlark.StringDict{
-		"finding":   starlark.NewBuiltin("finding", findingBuiltin),
-		"re_search": starlark.NewBuiltin("re_search", reSearchBuiltin),
-	}
+	return starx.Predeclared()
 }
 
 // Compile parses and compiles an active check, requiring a callable
@@ -54,7 +50,7 @@ func Compile(id, src string) (*Check, error) {
 	thread.SetMaxExecutionSteps(maxSteps)
 	globals, err := starlark.ExecFile(thread, id+".star", src, predeclared())
 	if err != nil {
-		return nil, fmt.Errorf("active check %q: %w", id, err)
+		return nil, starx.ScriptError(fmt.Sprintf("active check %q", id), err)
 	}
 	fn, ok := globals["check"]
 	if !ok {
@@ -182,60 +178,6 @@ func normSeverity(s string) string {
 	}
 }
 
-// ---- builtins ----
-
-func findingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var severity, title, detail, evidence, fix string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
-		"severity", &severity, "title", &title, "detail?", &detail, "evidence?", &evidence, "fix?", &fix); err != nil {
-		return nil, err
-	}
-	d := starlark.NewDict(5)
-	d.SetKey(starlark.String("severity"), starlark.String(severity))
-	d.SetKey(starlark.String("title"), starlark.String(title))
-	d.SetKey(starlark.String("detail"), starlark.String(detail))
-	d.SetKey(starlark.String("evidence"), starlark.String(evidence))
-	d.SetKey(starlark.String("fix"), starlark.String(fix))
-	return d, nil
-}
-
-var reCache sync.Map // pattern → *regexp.Regexp | error
-const reMaxText = 256 << 10
-
-func cachedRegexp(pattern string) (*regexp.Regexp, error) {
-	if v, ok := reCache.Load(pattern); ok {
-		if e, isErr := v.(error); isErr {
-			return nil, e
-		}
-		return v.(*regexp.Regexp), nil
-	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		reCache.Store(pattern, err)
-		return nil, err
-	}
-	reCache.Store(pattern, re)
-	return re, nil
-}
-
-func reSearchBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var pattern, text string
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "pattern", &pattern, "text", &text); err != nil {
-		return nil, err
-	}
-	re, err := cachedRegexp(pattern)
-	if err != nil {
-		return nil, fmt.Errorf("re_search: bad pattern: %w", err)
-	}
-	if len(text) > reMaxText {
-		text = text[:reMaxText]
-	}
-	if m := re.FindString(text); m != "" {
-		return starlark.String(m), nil
-	}
-	return starlark.None, nil
-}
-
 // ---- values exposed to scripts ----
 
 type pointValue struct{ p activescan.Point }
@@ -271,7 +213,7 @@ func (v *responseValue) Hash() (uint32, error) {
 	return 0, fmt.Errorf("response is unhashable")
 }
 func (v *responseValue) AttrNames() []string {
-	return []string{"status", "body", "headers", "duration_ms", "flow_id", "header"}
+	return []string{"status", "body", "headers", "duration_ms", "flow_id", "header", "header_all"}
 }
 func (v *responseValue) Attr(name string) (starlark.Value, error) {
 	switch name {
@@ -287,6 +229,8 @@ func (v *responseValue) Attr(name string) (starlark.Value, error) {
 		return starlark.MakeInt(int(v.r.FlowID)), nil
 	case "header":
 		return headerGetter("header", v.r.Headers), nil
+	case "header_all":
+		return headerAllGetter("header_all", v.r.Headers), nil
 	}
 	return nil, nil
 }
@@ -316,6 +260,25 @@ func headerGetter(name string, h http.Header) *starlark.Builtin {
 			}
 		}
 		return starlark.String(""), nil
+	})
+}
+
+func headerAllGetter(name string, h http.Header) *starlark.Builtin {
+	return starlark.NewBuiltin(name, func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		var key string
+		if err := starlark.UnpackArgs(b.Name(), args, kwargs, "name", &key); err != nil {
+			return nil, err
+		}
+		for k, vals := range h {
+			if strings.EqualFold(k, key) {
+				out := make([]starlark.Value, len(vals))
+				for i, v := range vals {
+					out[i] = starlark.String(v)
+				}
+				return starlark.NewList(out), nil
+			}
+		}
+		return starlark.NewList(nil), nil
 	})
 }
 

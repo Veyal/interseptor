@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -58,11 +58,12 @@ function repSyncReqSeg(view){
   seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.view===view;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
 }
 
-// repTabs — shared tab-manager instance (docs/UI-REDESIGN-ROADMAP.md §4). The
-// localStorage key ('rep.tabs') and persisted shape are unchanged from before
-// the extraction so existing users' saved tabs keep loading.
+// repTabs — shared tab-manager instance (docs/UI-REDESIGN-ROADMAP.md §4).
+// Storage is project-scoped (`rep.tabs.<project>`) so switching projects does
+// not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
+// migrated once into the current project via projectStorageKey.
 export const repTabs=createTabManager({
-  storageKey:'rep.tabs',
+  storageKey:()=>projectStorageKey('rep.tabs'),
   blank:repBlank,
   title:repTitle,
   onSave:()=>repSaveEditor(),
@@ -239,9 +240,86 @@ const INTR_POS=["admin\nadministrator\nroot","password\n123456\nchangeme"];
 const INTR_RESULTS_EMPTY='<div class="state-empty"><div class="state-empty-icon">🎯</div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div>';
 // Live editing mirror of the active tab's mode + payload lists (the other fields —
 // target/template/threads/delay/repeat — live in the DOM and are snapshotted to tabs).
-export const intrState={type:'sniper',sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[]};
+const INTR_NUM_DEFAULT=()=>({start:1,end:100,step:1,mode:'sequence',count:100,pad:0,unique:false});
+export const intrState={type:'sniper',sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],sniperSource:'list',sniperNums:INTR_NUM_DEFAULT(),posSources:[],posNums:[]};
+let intrLastFlowId=null; // last flow loaded into Intruder (for ✨ Generate)
 export function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
+
+// expandNumbers — client-side Numbers payload source (#15). Mirrors
+// internal/intruder.ExpandNumbers (sequence + random, optional pad/unique).
+export function expandNumbers(cfg, maxN=2000){
+  const c=cfg||{};
+  const start=Number(c.start), end=Number(c.end);
+  let step=Number(c.step);
+  const mode=(c.mode||'sequence')==='random'?'random':'sequence';
+  const pad=Math.max(0,parseInt(c.pad,10)||0);
+  const fmt=n=>{
+    let s=String(n);
+    if(pad>0){
+      const neg=n<0; if(neg) s=String(-n);
+      while(s.length<pad) s='0'+s;
+      if(neg) s='-'+s;
+    }
+    return s;
+  };
+  if(mode==='sequence'){
+    if(!Number.isFinite(start)||!Number.isFinite(end)) return [];
+    if(!step) step=start>end?-1:1;
+    if(step===0) return [];
+    if((step>0&&start>end)||(step<0&&start<end)) return [];
+    const out=[];
+    for(let n=start;;){
+      out.push(fmt(n));
+      if(out.length>=maxN) break;
+      const next=n+step;
+      if(step>0?next>end:next<end) break;
+      n=next;
+    }
+    return out;
+  }
+  let count=Math.max(0,parseInt(c.count,10)||0);
+  if(!count||!Number.isFinite(start)||!Number.isFinite(end)) return [];
+  if(count>maxN) count=maxN;
+  let lo=start,hi=end; if(lo>hi){const t=lo;lo=hi;hi=t;}
+  let lattice=null;
+  if(step){
+    const abs=Math.abs(step); lattice=[];
+    for(let n=lo;n<=hi;n+=abs){lattice.push(n);if(lattice.length>=maxN)break;}
+  }
+  const out=[];
+  if(c.unique){
+    if(!lattice){
+      const span=Math.min(hi-lo+1,maxN);
+      lattice=Array.from({length:span},(_,i)=>lo+i);
+    }
+    const pool=lattice.slice();
+    const n=Math.min(count,pool.length);
+    for(let i=0;i<n;i++){
+      const j=i+Math.floor(Math.random()*(pool.length-i));
+      const t=pool[i];pool[i]=pool[j];pool[j]=t;
+      out.push(fmt(pool[i]));
+    }
+    return out;
+  }
+  for(let i=0;i<count;i++){
+    let v;
+    if(lattice&&lattice.length) v=lattice[Math.floor(Math.random()*lattice.length)];
+    else v=lo+Math.floor(Math.random()*((hi-lo)+1));
+    out.push(fmt(v));
+  }
+  return out;
+}
+function intrNumsFor(slot){
+  if(slot==='s') return intrState.sniperNums||INTR_NUM_DEFAULT();
+  const i=Number(slot);
+  return (intrState.posNums&&intrState.posNums[i])||INTR_NUM_DEFAULT();
+}
+function intrSourceFor(slot){
+  if(slot==='s') return intrState.sniperSource||'list';
+  return (intrState.posSources&&intrState.posSources[Number(slot)])||'list';
+}
 function intrGetPayloadLines(slot){
+  if(intrSourceFor(slot)==='numbers') return expandNumbers(intrNumsFor(slot));
   if(slot==='s') return intrState.sniperLines||lines(intrState.sniper||'');
   const i=Number(slot);
   if(intrState.posLines?.[i]) return intrState.posLines[i];
@@ -282,14 +360,16 @@ function intrClearPayloadLines(slot){
 function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]*§/g)||[]).map(s=>s.slice(1,-1));}
 
 /* ---- intruder tabs: each is a full saved attack config (mirrors Repeater) ---- */
-function intrBlank(seq){return {tid:seq,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],grep:'',extract:'',proc:''};}
+function intrBlank(seq){return {tid:seq,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],sniperSource:'list',sniperNums:INTR_NUM_DEFAULT(),posSources:[],posNums:[],grep:'',extract:'',proc:''};}
 function intrTypeLabel(t){return t==='repeat'?'repeat':(t||'sniper');}
 function intrTitle(t){if(!t)return 'new attack';let h='';try{h=new URL(t.target).host;}catch(e){h=(t.target||'').replace(/^https?:\/\//,'');}return intrTypeLabel(t.type)+(h?' · '+h:' attack');}
 function intrReadEditor(){return {target:$('#intrTarget').value,template:$('#intrTemplate').value,
   threads:parseInt($('#intrThreads').value,10)||1,delay:parseInt($('#intrDelay').value,10)||0,repeat:parseInt($('#intrRepeat').value,10)||20,
   grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value,
   type:intrState.type,sniper:intrState.sniper,pos:intrState.pos.slice(),
-  sniperLines:intrState.sniperLines,posLines:intrState.posLines?.slice()||[],sniperFile:intrState.sniperFile,posFiles:intrState.posFiles?.slice()||[]};}
+  sniperLines:intrState.sniperLines,posLines:intrState.posLines?.slice()||[],sniperFile:intrState.sniperFile,posFiles:intrState.posFiles?.slice()||[],
+  sniperSource:intrState.sniperSource||'list',sniperNums:{...(intrState.sniperNums||INTR_NUM_DEFAULT())},
+  posSources:(intrState.posSources||[]).slice(),posNums:(intrState.posNums||[]).map(n=>({...(n||INTR_NUM_DEFAULT())}))};}
 function intrSaveCur(){const t=intrTabs.cur();if(t)Object.assign(t,intrReadEditor());}
 function intrApply(t){if(!t)return;
   $('#intrTarget').value=t.target||'';$('#intrTemplate').value=t.template||'';
@@ -298,6 +378,9 @@ function intrApply(t){if(!t)return;
   intrState.type=t.type||'sniper';intrState.sniper=t.sniper||'';intrState.pos=Array.isArray(t.pos)?t.pos.slice():[];
   intrState.sniperLines=t.sniperLines||null;intrState.posLines=Array.isArray(t.posLines)?t.posLines.slice():[];
   intrState.sniperFile=t.sniperFile||null;intrState.posFiles=Array.isArray(t.posFiles)?t.posFiles.slice():[];
+  intrState.sniperSource=t.sniperSource||'list';intrState.sniperNums={...(t.sniperNums||INTR_NUM_DEFAULT())};
+  intrState.posSources=Array.isArray(t.posSources)?t.posSources.slice():[];
+  intrState.posNums=Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[];
   updateIntrMode();}
 function intrTabForStorage(t){
   const o={...t};
@@ -308,28 +391,28 @@ function intrTabForStorage(t){
   }
   return o;
 }
-// intrTabs — shared tab-manager instance (docs/UI-REDESIGN-ROADMAP.md §4). The
-// localStorage key ('intr.tabs') and persisted shape (including the
-// sniperLarge/sniperCount/posCounts truncation fields) are unchanged from
-// before the extraction so existing users' saved attacks keep loading.
+// intrTabs — project-scoped (`intr.tabs.<project>`) so attack configs do not
+// leak across projects (#18). Legacy unscoped key migrates once.
 const intrTabs=createTabManager({
-  storageKey:'intr.tabs',
+  storageKey:()=>projectStorageKey('intr.tabs'),
   blank:intrBlank,
   title:intrTitle,
   onSave:()=>intrSaveCur(),
   onLoad:t=>intrApply(t),
-  normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
+  normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
 function renderIntrTabs(){intrTabs.render('#intrTabs');}
 export function intrInit(){
+  if(intrInit._done)return; intrInit._done=true;
   intrTabs.init('#intrTabs');
   renderIntrHistory();loadIntrPresets();
   $('#intrTarget')&&$('#intrTarget').addEventListener('input',intrTouch);
   $('#intrTemplate')&&$('#intrTemplate').addEventListener('input',()=>{intrTemplateChanged();intrTouch();});
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
+  const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
 }
 
 /* ---- intruder run history (this session) ---- */
@@ -391,6 +474,74 @@ function wireIntrPayloadFileButtons(wrap){
     if(ta) intrLoadPayloadFile(ta, btn.dataset.mode==='append');
   });
 }
+function intrSourceToggleHTML(slot){
+  const src=intrSourceFor(slot);
+  return `<span class="intr-src-seg" data-slot="${escAttr(String(slot))}"><button type="button" class="btn${src==='list'?' on':''}" data-src="list" title="Line list / file">List</button><button type="button" class="btn${src==='numbers'?' on':''}" data-src="numbers" title="Numeric range">Numbers</button></span>`;
+}
+function intrNumbersHTML(slot){
+  const n=intrNumsFor(slot);
+  const rand=n.mode==='random';
+  return `<div class="intr-nums" data-pos="${escAttr(String(slot))}">
+    <label>Start <input type="number" data-k="start" value="${escAttr(String(n.start))}"></label>
+    <label>End <input type="number" data-k="end" value="${escAttr(String(n.end))}"></label>
+    <label>Step <input type="number" data-k="step" value="${escAttr(String(n.step))}" ${rand?'disabled':''}></label>
+    <label>Mode <select data-k="mode"><option value="sequence"${!rand?' selected':''}>sequence</option><option value="random"${rand?' selected':''}>random</option></select></label>
+    <label class="intr-num-count"${rand?'':' style="display:none"'}>How many <input type="number" data-k="count" min="1" value="${escAttr(String(n.count||100))}"></label>
+    <label>Pad <input type="number" data-k="pad" min="0" value="${escAttr(String(n.pad||0))}" title="Zero-pad width (0 = none)"></label>
+    <label class="intr-num-unique"${rand?'':' style="display:none"'}><input type="checkbox" data-k="unique"${n.unique?' checked':''}> unique</label>
+    <span class="hint intr-num-preview"></span>
+  </div>`;
+}
+function setIntrSource(slot, src){
+  if(slot==='s'){intrState.sniperSource=src;return;}
+  const i=Number(slot);
+  if(!intrState.posSources) intrState.posSources=[];
+  while(intrState.posSources.length<=i) intrState.posSources.push('list');
+  intrState.posSources[i]=src;
+}
+function setIntrNums(slot, patch){
+  if(slot==='s'){intrState.sniperNums={...(intrState.sniperNums||INTR_NUM_DEFAULT()),...patch};return;}
+  const i=Number(slot);
+  if(!intrState.posNums) intrState.posNums=[];
+  while(intrState.posNums.length<=i) intrState.posNums.push(INTR_NUM_DEFAULT());
+  intrState.posNums[i]={...(intrState.posNums[i]||INTR_NUM_DEFAULT()),...patch};
+}
+function wireIntrNumbers(wrap){
+  wrap.querySelectorAll('.intr-nums').forEach(box=>{
+    const slot=box.dataset.pos;
+    const refresh=()=>{
+      const prev=box.querySelector('.intr-num-preview');
+      const arr=expandNumbers(intrNumsFor(slot));
+      if(prev) prev.textContent=arr.length?`will send ${arr.length.toLocaleString()} payload${arr.length===1?'':'s'}`:'no values';
+      const rand=intrNumsFor(slot).mode==='random';
+      const countEl=box.querySelector('.intr-num-count');
+      const uniqEl=box.querySelector('.intr-num-unique');
+      const stepEl=box.querySelector('input[data-k="step"]');
+      if(countEl) countEl.style.display=rand?'':'none';
+      if(uniqEl) uniqEl.style.display=rand?'':'none';
+      if(stepEl) stepEl.disabled=rand&&!intrNumsFor(slot).step;
+      updateIntrCount();
+    };
+    box.querySelectorAll('input,select').forEach(el=>{
+      el.addEventListener('input',()=>{
+        const k=el.dataset.k; if(!k) return;
+        if(k==='unique') setIntrNums(slot,{unique:!!el.checked});
+        else if(k==='mode') setIntrNums(slot,{mode:el.value});
+        else setIntrNums(slot,{[k]:el.type==='number'?Number(el.value):el.value});
+        refresh();intrTouch();
+      });
+      el.addEventListener('change',()=>{ /* same as input for select */ });
+    });
+    refresh();
+  });
+  wrap.querySelectorAll('.intr-src-seg').forEach(seg=>{
+    const slot=seg.dataset.slot;
+    seg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+      setIntrSource(slot, btn.dataset.src);
+      renderPayloadInputs();intrTouch();
+    });
+  });
+}
 // Build the payload inputs: one shared list for Sniper, one colour-coded list per
 // marker for Pitchfork. Values persist in intrState across re-renders.
 function renderPayloadInputs(){
@@ -400,15 +551,16 @@ function renderPayloadInputs(){
     updateIntrCount();return;
   }
   if(intrState.type!=='pitchfork'&&intrState.type!=='cluster'){
-    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${INTR_FILE_BTNS}</div><div class="intr-pl-note hint"></div><textarea class="rep-edit" data-pos="s" spellcheck="false" placeholder="one payload per line"></textarea></div>`;
+    const src=intrSourceFor('s');
+    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${intrSourceToggleHTML('s')}${src==='list'?INTR_FILE_BTNS:''}</div><div class="intr-pl-note hint"></div>${src==='numbers'?intrNumbersHTML('s'):'<textarea class="rep-edit" data-pos="s" spellcheck="false" placeholder="one payload per line"></textarea>'}</div>`;
   }else{
     const mk=intrMarkers();
     if(!mk.length){wrap.innerHTML='<div class="hint">Mark injection points with <b>§…§</b> in the template (select text → <b>§ Mark</b>). Each marker gets its own colour-matched payload list here.</div>';updateIntrCount();return;}
-    wrap.innerHTML=mk.map((content,i)=>{const c=POS_COLORS[i%POS_COLORS.length];
+    wrap.innerHTML=mk.map((content,i)=>{const c=POS_COLORS[i%POS_COLORS.length];const src=intrSourceFor(i);
       return `<div class="intr-pl">
-        <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+escAttr(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${INTR_FILE_BTNS}</div>
+        <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+escAttr(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${intrSourceToggleHTML(i)}${src==='list'?INTR_FILE_BTNS:''}</div>
         <div class="intr-pl-note hint"></div>
-        <textarea class="rep-edit" data-pos="${i}" spellcheck="false" placeholder="payloads for §${i+1}"></textarea></div>`;}).join('');
+        ${src==='numbers'?intrNumbersHTML(i):`<textarea class="rep-edit" data-pos="${i}" spellcheck="false" placeholder="payloads for §${i+1}"></textarea>`}</div>`;}).join('');
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
     const p=ta.dataset.pos;
@@ -441,6 +593,7 @@ function renderPayloadInputs(){
     });
   });
   wireIntrPayloadFileButtons(wrap);
+  wireIntrNumbers(wrap);
   updateIntrCount();
 }
 async function intrLoadTemplateFile(){
@@ -514,6 +667,7 @@ $('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStar
 function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
+const INTR_MAX_REQUESTS=2000;
 export async function intrStart(){
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
@@ -534,6 +688,12 @@ export async function intrStart(){
       body.payloads=[intrGetPayloadLines('s')];
       if(!body.payloads[0].length){toast('add at least one payload');return;}
     }
+    // Refuse oversize Numbers/list combinations before the server caps them.
+    let reqs=0;
+    if(intrState.type==='pitchfork') reqs=Math.min(...body.payloads.map(l=>l.length));
+    else if(intrState.type==='cluster') reqs=body.payloads.reduce((a,l)=>a*l.length,1);
+    else reqs=body.payloads[0].length*Math.max(mk.length,1);
+    if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
   }
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg=intrReadEditor();       // snapshot for the history entry
@@ -542,15 +702,18 @@ export async function intrStart(){
   catch(e){intrCapturePending=false;toast('attack: '+e.message);}
 }
 $('#intrStart').onclick=intrStart;
-const INTR_PRESETS_KEY='intruder.presets';
+function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 function loadIntrPresets(){
   const sel=$('#intrPreset');if(!sel)return;
-  let list=[];try{list=JSON.parse(localStorage.getItem(INTR_PRESETS_KEY)||'[]');}catch(e){}
+  let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
   sel.innerHTML='<option value="">presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
   sel.onchange=()=>{
     const i=parseInt(sel.value,10);if(isNaN(i)||!list[i])return;
     const p=list[i];
     intrState.type=p.type||'sniper';intrState.sniper=p.sniper||'';intrState.pos=(p.pos||[]).slice();
+    intrState.sniperSource=p.sniperSource||'list';intrState.sniperNums={...(p.sniperNums||INTR_NUM_DEFAULT())};
+    intrState.posSources=Array.isArray(p.posSources)?p.posSources.slice():[];
+    intrState.posNums=Array.isArray(p.posNums)?p.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[];
     $('#intrTarget').value=p.target||'';$('#intrTemplate').value=p.template||'';
     $('#intrThreads').value=p.threads||1;$('#intrDelay').value=p.delay||0;$('#intrRepeat').value=p.repeat||20;
     $('#intrGrep').value=p.grep||'';$('#intrExtract').value=p.extract||'';$('#intrProc').value=p.proc||'';
@@ -559,12 +722,14 @@ function loadIntrPresets(){
 }
 if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
-  let list=[];try{list=JSON.parse(localStorage.getItem(INTR_PRESETS_KEY)||'[]');}catch(e){}
+  let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
   list.unshift({name,target:$('#intrTarget').value,template:$('#intrTemplate').value,type:intrState.type,
-    sniper:intrState.sniper,pos:intrState.pos.slice(),threads:$('#intrThreads').value,delay:$('#intrDelay').value,
+    sniper:intrState.sniper,pos:intrState.pos.slice(),sniperSource:intrState.sniperSource,sniperNums:intrState.sniperNums,
+    posSources:(intrState.posSources||[]).slice(),posNums:(intrState.posNums||[]).map(n=>({...n})),
+    threads:$('#intrThreads').value,delay:$('#intrDelay').value,
     repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
   if(list.length>20)list.length=20;
-  try{localStorage.setItem(INTR_PRESETS_KEY,JSON.stringify(list));}catch(e){}
+  try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
   loadIntrPresets();toast('preset saved');
 };
 export let intrTimer=null;
@@ -594,19 +759,40 @@ export function renderIntr(st){
     return;
   }
   if(res.length>=INTR_VIRT_MIN) renderIntrVirtual(box,res);
-  else box.innerHTML=res.map(intrRowHTML).join('');
+  else{box.innerHTML=res.map(intrRowHTML).join('');wireIntrResultRows(box);}
 }
 // Virtualized Intruder results: rendering thousands of result rows on every poll
 // (every 120ms while running) rebuilds the whole DOM and janks the tab. Render only
 // the visible window, repaint on scroll — same pattern as the Map table / Proxy rows.
 const INTR_ROW_H=25, INTR_VIRT_MIN=200;
 function intrRowHTML(r){
-  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}">
+  const fid=r.flowId||r.flowID||0;
+  const title=r.error?(r.error):(fid?('open attempt #'+r.id+' · flow #'+fid):('attempt #'+r.id+(r.error?' · '+r.error:'')));
+  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}" data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
     <div style="color:var(--fg3)">${r.id}</div>
     <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
     <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
     <div style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
     <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
+}
+async function openIntrResult(el){
+  const fid=Number(el.dataset.flow||0);
+  const err=el.dataset.err||'';
+  if(fid>0){
+    try{
+      const {flowPopup}=await import('./flowmodal.js');
+      await flowPopup(fid);
+    }catch(e){toast(e.message||'evidence no longer in history','warn');}
+    return;
+  }
+  toast(err||'no captured flow for this attempt (send failed or evidence purged)','warn');
+}
+function wireIntrResultRows(root){
+  if(!root)return;
+  root.querySelectorAll('.intr-row').forEach(el=>{
+    el.onclick=()=>openIntrResult(el);
+    wireRowKey(el,()=>openIntrResult(el));
+  });
 }
 function paintIntrWindow(box){
   const res=box._res||[];const st=box.scrollTop,vh=box.clientHeight||360;
@@ -615,6 +801,7 @@ function paintIntrWindow(box){
   const body=box.querySelector('.intr-virt-body');if(!body)return;
   body.style.transform=`translateY(${start*INTR_ROW_H}px)`;
   body.innerHTML=res.slice(start,end).map(intrRowHTML).join('');
+  wireIntrResultRows(body);
 }
 function renderIntrVirtual(box,res){
   box._res=res;
@@ -631,7 +818,62 @@ function renderIntrVirtual(box,res){
   sp.style.height=(res.length*INTR_ROW_H)+'px';
   paintIntrWindow(box);
 }
-intrInit(); // load saved tabs + history, wire editor inputs (seeds the editor too)
+// Apply structured AI Intruder suggestion (#16). Does not Start the attack.
+export function applyIntruderPayloadSuggestion(data, opts){
+  if(!data||!Array.isArray(data.positions)||!data.positions.length){toast('no payload positions in AI reply','warn');return;}
+  document.querySelector('.tab[data-tab="intruder"]')?.click();
+  const at=(data.attackType||'sniper').toLowerCase();
+  if(['sniper','battering','pitchfork','cluster'].includes(at)) intrState.type=at;
+  else intrState.type='sniper';
+  if(data.template){ $('#intrTemplate').value=String(data.template).replace(/\r\n/g,'\n'); }
+  const pos=data.positions;
+  if(intrState.type==='pitchfork'||intrState.type==='cluster'){
+    intrState.posSources=pos.map(()=>'list');
+    pos.forEach((p,i)=>{
+      const list=Array.isArray(p.payloads)?p.payloads.map(String):[];
+      intrSetPayloadLines(i, list, null);
+    });
+  }else{
+    intrState.sniperSource='list';
+    const merged=[];
+    pos.forEach(p=>{(p.payloads||[]).forEach(v=>merged.push(String(v)));});
+    // Prefer first position's list for sniper (dedupe while preserving order).
+    const first=pos[0].payloads||[];
+    const seen=new Set(); const list=[];
+    (first.length?first:merged).forEach(v=>{const s=String(v);if(!seen.has(s)){seen.add(s);list.push(s);}});
+    intrSetPayloadLines('s', list, null);
+    if(!data.template&&pos[0].point&&pos[0].marker!=null){
+      // Best-effort: wrap the first occurrence of the marker value in §…§.
+      const ta=$('#intrTemplate'); const raw=ta.value||'';
+      const m=String(pos[0].marker);
+      if(m&&raw.includes(m)&&!raw.includes('§')){
+        ta.value=raw.replace(m,'§'+m+'§');
+      }
+    }
+  }
+  if(Array.isArray(pos[0]?.processRules)&&pos[0].processRules.length){
+    $('#intrProc').value=pos[0].processRules.join(', ');
+  }
+  updateIntrMode();intrTouch();
+  const n=pos.reduce((a,p)=>a+(p.payloads||[]).length,0);
+  toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
+}
+export async function intrGeneratePayloads(hint){
+  let flowId=intrLastFlowId;
+  if(!flowId){
+    // Fall back to selected History flow if the operator never used Send→Intruder.
+    try{const {state}=await import('./core.js');if(state.selId)flowId=state.selId;}catch(e){}
+  }
+  if(!flowId){toast('load a request into Intruder (or select a History flow) first','warn');return;}
+  const btn=$('#intrAiGen');if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    const body={flowId};
+    if(hint) body.hint=hint;
+    const data=await api('/api/ai/intruder-payloads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    applyIntruderPayloadSuggestion(data);
+  }catch(e){toast(e.message||'AI generate failed','error');}
+  finally{if(btn){btn.disabled=false;btn.textContent='✨ Generate';}}
+}
 export async function sendToIntruder(f){
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
   // and capture the active attack tab before any await so a sub-tab switch during
@@ -641,6 +883,7 @@ export async function sendToIntruder(f){
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
     if(intrTabs.cur()!==target)return;
+    intrLastFlowId=f.id;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;
     $('#intrTemplate').value=raw.replace(/\r\n/g,'\n');

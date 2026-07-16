@@ -30,12 +30,14 @@ func runUpdate(args []string) error {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Interseptor — intercepting HTTP/HTTPS proxy
+	fmt.Fprintf(os.Stdout, `Interseptor — intercepting HTTP/HTTPS proxy
 
 Usage:
   interseptor              start the proxy and control UI
   interseptor launcher     dashboard to run multiple projects at once, each its own instance
   interseptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
+  interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
+  interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
   interseptor update       install the latest release
   interseptor stop         stop all running instances
   interseptor version      print the running version
@@ -45,6 +47,8 @@ Common flags / env:
   --open                   open the UI in your browser on start (or INTERSEPTOR_OPEN_BROWSER)
   --control-port <port>    control UI/API port on 127.0.0.1 (e.g. 9967 for a second instance)
   --control-addr host:port full control listen address (overrides --control-port; also --control_port)
+  --proxy-port <port>      proxy port on 127.0.0.1 (default 8080; overrides INTERSEPTOR_PROXY_ADDR)
+  --data-dir <path>        global data directory (default ~/.interseptor; or INTERSEPTOR_DATA_DIR)
   INTERSEPTOR_CONTROL_ADDR same as --control-addr when the flag is not set
   INTERSEPTOR_PROXY_ADDR   proxy listen address override (lets a second instance pick its own port)
 
@@ -59,6 +63,13 @@ Update flags:
 Stop flags:
   --force, -f              skip graceful shutdown and force-kill immediately
   --timeout 6s             grace period before force-kill (default 6s)
+
+Check flags (interseptor check <action>):
+  new <id> [--active]      scaffold a check template into ~/.interseptor/checks
+  validate [files...]      compile every check; exit 1 on any error (CI gate)
+  lint     [files...]      alias of validate
+  test <file> --flow-json f compile + run a passive check against a flow JSON
+  --active                 target the active-checks folder / engine
 
 Examples:
   interseptor update

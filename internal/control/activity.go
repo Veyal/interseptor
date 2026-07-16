@@ -48,7 +48,7 @@ func (h *metaAPI) listActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.st.ListActivity(atoiOr(r.URL.Query().Get("limit"), 300))
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if items == nil {
@@ -62,7 +62,7 @@ func (h *metaAPI) listActivity(w http.ResponseWriter, r *http.Request) {
 // this deletes the rows and tells live clients to drop their copy.
 func (h *metaAPI) clearActivity(w http.ResponseWriter, r *http.Request) {
 	if err := h.st.DeleteActivity(); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "activity.clear"})

@@ -3,7 +3,7 @@
 // questions keep the thread (prior Q&A is sent as history). A footer action bar loads
 // the analysed flow into Repeater / Intruder in one click.
 import { $, api, openModal, closeModal, state, toast, renderMD, esc, copyText } from './core.js';
-import { sendToRepeater, sendToIntruder } from './tools.js';
+import { sendToRepeater, sendToIntruder, applyIntruderPayloadSuggestion } from './tools.js';
 
 let aiKind = 'ask';         // only mode now: a free-text question
 let aiLastText = '';        // last streamed/markdown text (for Copy)
@@ -272,6 +272,8 @@ function updateActionBar() {
   const single = !aiProject && state.aiIds.length === 1;
   $('#aiToRepeater').style.display = single ? '' : 'none';
   $('#aiToIntruder').style.display = single ? '' : 'none';
+  const pay = $('#aiPayloadsIntruder');
+  if (pay) pay.style.display = single ? '' : 'none';
 }
 
 function showError(msg) {
@@ -318,4 +320,25 @@ $('#aiClose').onclick = () => { abortAi(); closeModal($('#aiModal')); };
 $('#aiStop').onclick = abortAi;
 $('#aiToRepeater').onclick = () => { const id = state.aiIds[0]; if (id) { sendToRepeater({ id }); closeModal($('#aiModal')); } };
 $('#aiToIntruder').onclick = () => { const id = state.aiIds[0]; if (id) { sendToIntruder({ id }); closeModal($('#aiModal')); } };
+$('#aiPayloadsIntruder') && ($('#aiPayloadsIntruder').onclick = async () => {
+  const id = state.aiIds[0];
+  if (!id) { toast('select a single flow first'); return; }
+  const btn = $('#aiPayloadsIntruder');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  setStatus('generating Intruder payloads…');
+  try {
+    const data = await api('/api/ai/intruder-payloads', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ flowId: id }),
+    });
+    await sendToIntruder({ id });
+    applyIntruderPayloadSuggestion(data, { toast: 'AI payloads loaded into Intruder — review & Start' });
+    closeModal($('#aiModal'));
+  } catch (e) {
+    showError(e.message || 'generate failed');
+  } finally {
+    setStatus('');
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Payloads → Intruder'; }
+  }
+});
 $('#aiCopy').onclick = () => copyAiThread();

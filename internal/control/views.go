@@ -11,7 +11,7 @@ import (
 func (h *projectAPI) listViews(w http.ResponseWriter, r *http.Request) {
 	views, err := h.st.ListViews()
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	if views == nil {
@@ -39,7 +39,7 @@ func (h *projectAPI) createView(w http.ResponseWriter, r *http.Request) {
 	}
 	v := store.SavedView{Name: in.Name, Data: data}
 	if _, err := h.st.CreateView(&v); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "views.update"})
@@ -53,7 +53,7 @@ func (h *projectAPI) deleteView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.DeleteView(id); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "views.update"})
