@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - **Autopilot confidence on Findings (#20).** Machine proof-records (`finding_verification`) load with findings; Findings detail shows confidence %, vuln class, per-gate pass/fail (differential / agent / OOB / human), and PoC flow ids. Report export includes Autopilot confidence. Rejected candidates remain in Autopilot Trust ledger during/after a run.
 - **Merge preview + last-sync presence (#21).** `POST /api/merge/pull|push` accepts `dryRun:true` (pull returns add/skip counts without writing; push previews local inventory). UI previews before confirm. `GET /api/merge/status` + Settings panel show last peer sync.
-- **Homebrew / Scoop packaging path (#23).** Created `Veyal/homebrew-tap` and `Veyal/scoop-bucket` (seeded for v1.5.1). Optional workflow `.github/workflows/publish-packages.yml` updates formula/manifest on release when `HOMEBREW_TAP_TOKEN` / `SCOOP_BUCKET_TOKEN` are set. README documents `brew install Veyal/tap/interseptor` and Scoop.
+- **Homebrew / Scoop packaging path (#23).** Created `Veyal/homebrew-tap` and `Veyal/scoop-bucket` (seeded for v1.5.1). Maintainer script `packaging/scripts/publish-packages.sh` updates formula/manifest when `HOMEBREW_TAP_TOKEN` / `SCOOP_BUCKET_TOKEN` are set. README documents `brew install Veyal/tap/interseptor` and Scoop.
 
 ## [1.5.1] - 2026-07-16
 

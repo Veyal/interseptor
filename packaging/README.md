@@ -31,8 +31,8 @@ Until the tap/bucket have a formula for the latest tag, use the
    - `SCOOP_BUCKET_TOKEN` — PAT with `contents:write` on `scoop-bucket`
      (or one PAT for both)
 3. On each GitHub Release, workflow
-   [`.github/workflows/publish-packages.yml`](../.github/workflows/publish-packages.yml)
-   regenerates the formula/manifest from `checksums.txt`.
+   [`packaging/scripts/publish-packages.sh`](scripts/publish-packages.sh)
+   (run after a release, or from CI with a `workflow`-scoped token).
 
 If those secrets are unset, the workflow exits 0 and skips — releases stay green.
 
