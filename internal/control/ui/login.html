@@ -16,9 +16,10 @@
   label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
   input{ width:100%; padding:11px 12px; background:var(--bg); border:1px solid var(--line); border-radius:8px;
          color:var(--fg); font:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-  input:focus{ outline:none; border-color:var(--accent); }
+  input:focus{ border-color:var(--accent); }
   button{ width:100%; margin-top:16px; padding:11px; background:var(--accent); color:#fff; border:0;
            border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
+  input:focus-visible,button:focus-visible{ outline:3px solid #facc15; outline-offset:3px; }
   button:disabled{ opacity:.6; cursor:default; }
   .err{ margin-top:14px; color:var(--danger); font-size:13px; min-height:18px; }
   .foot{ margin-top:18px; color:var(--muted); font-size:12px; }

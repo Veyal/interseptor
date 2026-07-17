@@ -105,13 +105,13 @@ document.addEventListener('keydown',e=>{
   const p=document.querySelector('.panel[data-panel="proxy"]');
   if(p&&p.classList.contains('active')&&mod&&e.shiftKey&&e.key.toLowerCase()==='a'){
     const t=e.target;
-    if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
+    if(isTypingTarget(t))return;
     e.preventDefault();toggleSelectAllShown();return;
   }
   if(e.key!=='ArrowDown'&&e.key!=='ArrowUp'&&e.key!=='j'&&e.key!=='k')return;
   if(!p||!p.classList.contains('active'))return;
   const t=e.target;
-  if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
+  if(isTypingTarget(t))return;
   if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
   if(typeof cmdk!=='undefined'&&cmdk.open)return;
   const down=e.key==='ArrowDown'||e.key==='j';
@@ -305,19 +305,21 @@ const cmdk={el:null,input:null,list:null,items:[],sel:0,open:false};
 function cmdkBuild(){
   const o=document.createElement('div');o.id='cmdk';
   o.style.cssText='position:fixed;inset:0;z-index:300;display:none;align-items:flex-start;justify-content:center;background:var(--overlay)';
-  o.innerHTML='<div style="margin-top:11vh;width:min(680px,92vw);background:var(--bg2);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 70px var(--shadow);overflow:hidden">'
-    +'<input id="cmdkInput" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:15px;outline:none">'
-    +'<div id="cmdkList" style="max-height:52vh;overflow:auto;padding:6px"></div>'
+  o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell" style="margin-top:11vh;width:min(680px,92vw)">'
+    +'<div class="modal-shell-head"><span id="cmdkTitle" class="modal-shell-title">Command palette</span></div>'
+    +'<input id="cmdkInput" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:15px">'
+    +'<div id="cmdkList" role="listbox" aria-label="Command results" style="max-height:52vh;overflow:auto;padding:6px"></div>'
     +'<div style="padding:7px 14px;border-top:1px solid var(--line);color:var(--fg3);font-size:10px;display:flex;gap:16px"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
   document.body.appendChild(o);
   cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');
-  o.onclick=e=>{if(e.target===o)cmdkClose();};
   cmdk.input.oninput=cmdkRender;
   cmdk.input.onkeydown=e=>{
     if(e.key==='ArrowDown'){e.preventDefault();cmdk.sel=Math.min(cmdk.items.length-1,cmdk.sel+1);cmdkPaint();}
     else if(e.key==='ArrowUp'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.sel-1);cmdkPaint();}
+    else if(e.key==='Home'){e.preventDefault();cmdk.sel=0;cmdkPaint();}
+    else if(e.key==='End'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.items.length-1);cmdkPaint();}
     else if(e.key==='Enter'){e.preventDefault();cmdkRun(cmdk.sel);}
-    else if(e.key==='Escape'){e.preventDefault();cmdkClose();}
+    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cmdkClose();}
   };
 }
 // The palette NAVIGATES — it jumps to a tab, a Settings subsection, or a tool
@@ -385,10 +387,12 @@ function cmdkRender(){
 }
 function cmdkPaint(){
   cmdk.list.innerHTML=cmdk.items.map((it,i)=>
-    '<div class="cmdk-row" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accent);color:var(--onAccent)':'')+'">'
+    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accent);color:var(--onAccent)':'')+'">'
     +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'
     +'<span style="opacity:.55;font-size:11px;flex:none">'+esc(it.sub||it.kind)+'</span></div>'
   ).join('')||'<div style="padding:14px;color:var(--fg3)">No matches</div>';
+  if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
+  else cmdk.input.removeAttribute('aria-activedescendant');
   cmdk.list.querySelectorAll('.cmdk-row').forEach(r=>{
     r.onclick=()=>cmdkRun(Number(r.dataset.i));
     r.onmousemove=()=>{const n=Number(r.dataset.i);if(n!==cmdk.sel){cmdk.sel=n;cmdkPaint();}};
@@ -396,48 +400,59 @@ function cmdkPaint(){
   const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
 }
 function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
-function cmdkOpen(){if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.el.style.display='flex';cmdk.input.value='';cmdkRender();cmdk.input.focus();}
-function cmdkClose(){cmdk.open=false;if(cmdk.el)cmdk.el.style.display='none';}
+function cmdkOpen(){if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
+function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
 
 /* ---- global keyboard shortcuts ---- */
 function selectedFlow(){return state.selId?state.flows.find(x=>x.id===state.selId):null;}
 function activePanel(){const p=document.querySelector('.panel.active');return p?p.dataset.panel:'';}
+function hasAnyModifier(e){return !!(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey);}
+function exactModifiers(e,{mod=false,shift=false,alt=false}={}){
+  return !!(e.ctrlKey||e.metaKey)===mod&&!!e.shiftKey===shift&&!!e.altKey===alt;
+}
+function isModShortcut(e,key){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{mod:true});}
+function isPlainShortcut(e,key,{shift=false}={}){return e.key.toLowerCase()===key.toLowerCase()&&exactModifiers(e,{shift});}
+function isHelpShortcut(e){return e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey;}
+function isTypingTarget(t){
+  const tag=(t?.tagName||'').toLowerCase();
+  return tag==='input'||tag==='textarea'||tag==='select'||!!t?.isContentEditable
+    ||!!t?.closest?.('[role="combobox"],[role="listbox"]');
+}
+function workflowShortcutBlocked(){return MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';});}
 // Flow send shortcuts apply only where History selection is the focus — not Settings, Repeater, etc.
 function flowSendShortcutAllowed(){return activePanel()==='proxy';}
+const GO_MNEMONICS={o:'autopwn',p:'proxy',i:'intercept',r:'repeater',u:'intruder',s:'scanner',m:'map',f:'findings',n:'notes',a:'activity',t:'settings'};
+let gotoPending=false,gotoTimer=null;
+function resetGoto(){gotoPending=false;clearTimeout(gotoTimer);}
 document.addEventListener('keydown',e=>{
-  const mod=e.ctrlKey||e.metaKey;
-  const tag=(e.target.tagName||'').toLowerCase();
-  const typing=tag==='input'||tag==='textarea'||tag==='select'||e.target.isContentEditable;
-  if(mod&&e.key.toLowerCase()==='b'){
-    e.preventDefault();goToNotes();return;
-  }
-  if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
+  const typing=isTypingTarget(e.target);
+  if(gotoPending&&(typing||hasAnyModifier(e)))resetGoto();
+  if(isModShortcut(e,'k')){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
   if(cmdk.open)return; // the palette handles its own keys
-  if(mod&&(e.key===' '||e.code==='Space')){
-    const rep=document.querySelector('.panel[data-panel="repeater"]');
-    if(!rep||!rep.classList.contains('active'))return;
-    e.preventDefault();repSend();return;
+  if(e.key==='Escape'){resetGoto();return;}
+  if(typing)return;
+  if(isHelpShortcut(e)){e.preventDefault();openModal($('#shortcutsModal'));return;} // ?: keyboard cheatsheet
+  if(workflowShortcutBlocked())return;
+  if(gotoPending){
+    const panel=isPlainShortcut(e,e.key)?GO_MNEMONICS[e.key.toLowerCase()]:null;
+    resetGoto();
+    if(panel){e.preventDefault();document.querySelector('.tab[data-tab="'+panel+'"]')?.click();}
+    return;
   }
-  if(mod&&e.key.toLowerCase()==='r'){
-    if(typing||!flowSendShortcutAllowed())return;
-    const f=selectedFlow();if(f){e.preventDefault();sendToRepeater(f);}return;
+  if(isPlainShortcut(e,'g')){
+    e.preventDefault();gotoPending=true;gotoTimer=setTimeout(resetGoto,1200);return;
   }
-  if(!mod&&!typing&&e.key==='r'){
-    if(!flowSendShortcutAllowed())return;
-    const f=selectedFlow();if(f){e.preventDefault();sendToRepeater(f);}return;
+  if(activePanel()==='repeater'&&isModShortcut(e,'Enter')){e.preventDefault();repSend();return;}
+  if(flowSendShortcutAllowed()&&(isPlainShortcut(e,'r')||isPlainShortcut(e,'i'))){
+    const f=selectedFlow();
+    if(f){e.preventDefault();(e.key==='r'?sendToRepeater:sendToIntruder)(f);}
+    return;
   }
-  if(mod&&e.key.toLowerCase()==='i'){
-    if(typing||!flowSendShortcutAllowed())return;
-    const f=selectedFlow();if(f){e.preventDefault();sendToIntruder(f);}return;
+  if(activePanel()==='intercept'&&(isPlainShortcut(e,'f')||isPlainShortcut(e,'d'))){
+    if(state.heldSel){e.preventDefault();$(e.key==='d'?'#dropBtn':'#forwardBtn').click();}
+    return;
   }
-  // Ctrl+Shift+F forward / Ctrl+D drop the selected held item — Intercept tab only
-  if(document.querySelector('.tab[data-tab="intercept"]').classList.contains('active')){
-    const drop=mod&&!typing&&e.key.toLowerCase()==='d';
-    const fwd=mod&&e.shiftKey&&e.key.toLowerCase()==='f';
-    if((drop||fwd)&&state.heldSel){e.preventDefault();$(drop?'#dropBtn':'#forwardBtn').click();return;}
-  }
-  if(e.key==='/'&&!typing&&!mod){const s=$('#fSearch');if(s){e.preventDefault();document.querySelector('.tab[data-tab="proxy"]').click();s.focus();}return;} // /: focus search
-  if(e.key==='?'&&!typing&&!mod){e.preventDefault();openModal($('#shortcutsModal'));return;} // ?: keyboard cheatsheet
+  if(activePanel()==='proxy'&&isPlainShortcut(e,'/')){const s=$('#fSearch');if(s){e.preventDefault();s.focus();}return;} // /: focus search
 });
 $('#scClose').onclick=()=>closeModal($('#shortcutsModal'));
 

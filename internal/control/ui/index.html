@@ -30,7 +30,7 @@
   <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
   <button type="button" id="askAiBtn" class="btn" data-ai-ui title="Ask AI about the current project" aria-label="Ask AI about the current project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg><span>Ask AI</span></button>
   <span class="sse-status" id="sseStatus" title="Live updates: connected"><span class="sse-dot" id="sseDot"></span><span id="sseLabel" class="kv kv-dim">live</span></span>
-  <button id="cmdkBtn" class="btn" title="Ctrl+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
+  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme">☾</button>
 </div>
 
@@ -149,7 +149,7 @@
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
+    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
@@ -218,8 +218,8 @@
           <div class="icpt-edtitle" id="heldTitle"></div>
           <div class="spacer"></div>
           <button class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body">Decoded</button>
-          <button class="btn btn-primary" id="forwardBtn" title="Forward (Ctrl+Shift+F)">▶ Forward</button>
-          <button class="btn btn-danger" id="dropBtn" title="Drop (Ctrl+D)">✕ Drop</button>
+          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
+          <button class="btn btn-danger" id="dropBtn" title="Drop (D)">✕ Drop</button>
         </div>
         <pre id="heldDecoded" class="icpt-raw" style="display:none;margin:0;white-space:pre-wrap" hidden></pre>
         <textarea class="icpt-raw" id="heldRaw" spellcheck="false" style="display:none" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
@@ -256,7 +256,7 @@
       <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
       <input id="repUrl" class="repurl" aria-label="Request URL" placeholder="https://api.example.com/v1/resource" spellcheck="false">
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
-      <button class="btn btn-primary" id="repSend">Send ▸<span class="kbd">Ctrl+Space</span></button>
+      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Enter)">Send ▸<span class="kbd">Ctrl/⌘+Enter</span></button>
     </div>
     <div class="rep-work">
       <aside id="repHistory" class="rep-hist" style="display:none"></aside>
@@ -371,7 +371,7 @@ Content-Type: application/json
           <div class="state-empty-icon">🛡️</div>
           <div class="state-empty-title">No issues yet</div>
           <p class="state-empty-hint">Run a scan to find issues.</p>
-          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
+          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
         </div>
       </div>
       <div id="scanDetail" class="pane scan-detail-pane">
@@ -514,7 +514,7 @@ Content-Type: application/json
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
+        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -1075,9 +1075,10 @@ Content-Type: application/json
     <div class="sc-body">
       <div class="sc-grid">
         <h3 class="sc-section">Navigation</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>B</kbd></div><p class="sc-desc">Jump to Project Notes</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus the History search</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>p</kbd></div><p class="sc-desc">Go to a panel — p Proxy, i Intercept, r Repeater, u Intruder</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings, o Autopilot</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus History search (Proxy)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>?</kbd></div><p class="sc-desc">This shortcuts panel</p></div>
         <h3 class="sc-section">History</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>j</kbd><kbd>k</kbd></div><p class="sc-desc">Walk rows — or use <kbd>↑</kbd> <kbd>↓</kbd></p></div>
@@ -1085,20 +1086,18 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><span class="sc-plus">+</span>click</div><p class="sc-desc">Add/remove a single flow in the selection</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd></div><p class="sc-desc">Select or clear all shown flows</p></div>
         <h3 class="sc-section">Send &amp; replay</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>r</kbd></div><p class="sc-desc">Send selected flow → Repeater (Proxy History tab)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>R</kbd></div><p class="sc-desc">Send selected flow → Repeater (Proxy History tab only)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>I</kbd></div><p class="sc-desc">Send selected flow → Intruder (Proxy History tab only)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Space</kbd></div><p class="sc-desc">Send the request in Repeater</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>r</kbd><kbd>i</kbd></div><p class="sc-desc">Send selected Proxy flow → Repeater / Intruder</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>Enter</kbd></div><p class="sc-desc">Send the current Repeater request</p></div>
         <h3 class="sc-section">Tools</h3>
         <div class="sc-card"><div class="sc-keys">📂</div><p class="sc-desc">Intruder and Decoder support <b>Load file</b> for payloads, templates, and blobs</p></div>
         <div class="sc-card"><div class="sc-keys">Map ▾</div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
         <h3 class="sc-section">Intercept</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd></div><p class="sc-desc">Forward the held request</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>D</kbd></div><p class="sc-desc">Drop the held request</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>f</kbd></div><p class="sc-desc">Forward the selected held request</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>d</kbd></div><p class="sc-desc">Drop the selected held request</p></div>
         <h3 class="sc-section">General</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Esc</kbd></div><p class="sc-desc">Close a dialog or menu</p></div>
       </div>
-      <div class="hint sc-foot">On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>.</div>
+      <div class="hint sc-foot">Workflow shortcuts are disabled while typing in fields or editors.</div>
     </div>
   </div>
 </div>

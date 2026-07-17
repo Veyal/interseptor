@@ -89,7 +89,7 @@ function renderStep() {
       <ul style="margin:0 0 14px;padding-left:20px;color:var(--fg2);line-height:1.7">
         <li><b>Repeater</b> / <b>Intruder</b> to replay & fuzz requests</li>
         <li><b>Scanner</b> for passive checks, <b>Findings</b> to curate vulns</li>
-        <li><b>Ctrl+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
+        <li><b>Ctrl/⌘+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
       </ul>
       <p class="hint" style="margin:0">Optional: add an AI key in <b>Settings → AI assist</b> to explain requests, suggest payloads, or summarize findings. The MCP server lets an AI agent drive the same engine.</p>`;
   }

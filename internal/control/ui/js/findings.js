@@ -726,15 +726,16 @@ $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')
 let triageAbort = null;
 let triageSeq = 0;
 function setTriageStatus(s) { const el = $('#ftStatus'); if (el) el.textContent = s || ''; }
+function closeTriage() { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); }
 $('#findAskAiFindings') && ($('#findAskAiFindings').onclick = () => {
   if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
   const out = $('#ftOut'); if (out) out.innerHTML = '<div class="hint">Ready — click Run triage.</div>';
   setTriageStatus('');
   const stop = $('#ftStop'); if (stop) stop.style.display = 'none';
-  openModal($('#findTriageModal'));
+  openModal($('#findTriageModal'), { onEscape: closeTriage, onDismiss: closeTriage });
   setTimeout(() => { const s = $('#ftSteer'); if (s) s.focus(); }, 30);
 });
-$('#ftClose') && ($('#ftClose').onclick = () => { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); });
+$('#ftClose') && ($('#ftClose').onclick = closeTriage);
 $('#ftStop') && ($('#ftStop').onclick = () => { if (triageAbort) triageAbort.abort(); });
 $('#ftRun') && ($('#ftRun').onclick = async () => {
   const seq = ++triageSeq;
