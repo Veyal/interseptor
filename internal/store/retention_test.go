@@ -339,6 +339,162 @@ func TestGCBodies_PreservesReferencedBody(t *testing.T) {
 	}
 }
 
+func TestGCBodies_PreservesFinalizedBodyUntilFlowPublishesHash(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	flow := &Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"}
+	if _, err := s.InsertFlow(flow); err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	if _, err := io.WriteString(w, "published after finalize"); err != nil {
+		t.Fatalf("write body: %v", err)
+	}
+	hash, _, err := w.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	removed, _, err := s.GCBodies()
+	if err != nil {
+		t.Fatalf("GCBodies: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("GC removed %d body before UpdateFlow published its hash", removed)
+	}
+	flow.ResBodyHash = hash
+	flow.ResLen = int64(len("published after finalize"))
+	if err := s.UpdateFlow(flow); err != nil {
+		t.Fatalf("UpdateFlow: %v", err)
+	}
+	rc, err := s.OpenBody(hash)
+	if err != nil {
+		t.Fatalf("OpenBody after publication: %v", err)
+	}
+	rc.Close()
+}
+
+func TestGCBodies_PendingOwnershipIsReferenceCounted(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	finalize := func() (*BodyWriter, string) {
+		t.Helper()
+		w, err := s.NewFlowBodyWriter()
+		if err != nil {
+			t.Fatalf("NewFlowBodyWriter: %v", err)
+		}
+		if _, err := io.WriteString(w, "same pending body"); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		hash, _, err := w.Finalize()
+		if err != nil {
+			t.Fatalf("Finalize: %v", err)
+		}
+		return w, hash
+	}
+	_, hash := finalize()
+	_, secondHash := finalize()
+	if secondHash != hash {
+		t.Fatalf("hashes differ: %s != %s", hash, secondHash)
+	}
+	flowID := mustInsertFlow(t, s, "example.com", "", hash, 0, int64(len("same pending body")))
+	if _, err := s.DeleteFlows([]int64{flowID}); err != nil {
+		t.Fatalf("DeleteFlows: %v", err)
+	}
+
+	removed, _, err := s.GCBodies()
+	if err != nil {
+		t.Fatalf("GCBodies: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("GC removed body still owned by second writer")
+	}
+}
+
+func TestGCBodies_ReclaimsFinalizedBodyAfterExplicitAbort(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	io.WriteString(w, "abandoned finalized body")
+	hash, _, err := w.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	w.Abort()
+
+	removed, _, err := s.GCBodies()
+	if err != nil {
+		t.Fatalf("GCBodies: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed=%d, want abandoned body reclaimed", removed)
+	}
+	if _, err := s.OpenBody(hash); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenBody after GC = %v, want not exist", err)
+	}
+}
+
+func TestGCBodies_ConcurrentGCWaitsForDelayedPublication(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	flow := &Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"}
+	if _, err := s.InsertFlow(flow); err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	io.WriteString(w, "delayed publication")
+	hash, size, err := w.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	gcDone := make(chan error, 1)
+	go func() {
+		for range 20 {
+			if _, _, err := s.GCBodies(); err != nil {
+				gcDone <- err
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		gcDone <- nil
+	}()
+	time.Sleep(10 * time.Millisecond)
+	flow.ResBodyHash, flow.ResLen = hash, size
+	if err := s.UpdateFlow(flow); err != nil {
+		t.Fatalf("UpdateFlow: %v", err)
+	}
+	if err := <-gcDone; err != nil {
+		t.Fatalf("concurrent GCBodies: %v", err)
+	}
+	rc, err := s.OpenBody(hash)
+	if err != nil {
+		t.Fatalf("OpenBody after delayed publication: %v", err)
+	}
+	rc.Close()
+}
+
 func TestGCBodies_ReferencedByResHash(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

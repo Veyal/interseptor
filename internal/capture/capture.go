@@ -21,12 +21,19 @@ func New(st *store.Store) *Capturer { return &Capturer{st: st} }
 // commit the body and obtain its hash and length. If src is nil, the returned
 // reader is empty and finalize reports an empty body.
 func (c *Capturer) TeeBody(src io.Reader) (r io.Reader, finalize func() (string, int64, error), err error) {
+	r, finalize, _, err = c.TeeBodyWithAbort(src)
+	return r, finalize, err
+}
+
+// TeeBodyWithAbort is TeeBody with an explicit cleanup callback for callers
+// that stop consuming src after a read error.
+func (c *Capturer) TeeBodyWithAbort(src io.Reader) (r io.Reader, finalize func() (string, int64, error), abort func(), err error) {
 	if src == nil {
-		return nil, func() (string, int64, error) { return "", 0, nil }, nil
+		return nil, func() (string, int64, error) { return "", 0, nil }, func() {}, nil
 	}
-	w, err := c.st.NewBodyWriter()
+	w, err := c.st.NewFlowBodyWriter()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return io.TeeReader(src, w), w.Finalize, nil
+	return io.TeeReader(src, w), w.Finalize, w.Abort, nil
 }

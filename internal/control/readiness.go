@@ -56,8 +56,15 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	if includes > 0 {
 		add("scope", true, itoa64(int64(includes))+" include rule(s)", "")
 	} else {
-		add("scope", false, "no include rules — everything in scope", "scope_from_url to focus on the target")
+		add("scope", false, "no enabled include rules", "scope_from_url to focus on the target")
 	}
+
+	provider, _, _, aiOK := h.aiCreds()
+	aiDetail := "not configured"
+	if aiOK {
+		aiDetail = provider + " configured"
+	}
+	add("ai_provider", aiOK, aiDetail, "configure an AI provider and API key in Settings")
 
 	flowN, _ := h.st.FlowCount()
 	trafficOK := flowN > 0

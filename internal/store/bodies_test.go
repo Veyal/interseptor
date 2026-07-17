@@ -1,11 +1,42 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
+
+func TestFlowBodyWriterReleasesOwnershipWhenFinalizeFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	const content = "cannot finalize"
+	sum := sha256.Sum256([]byte(content))
+	hash := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(filepath.Join(s.BodiesDir(), hash[:2]), []byte("blocks directory"), 0o644); err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+	w, err := s.NewFlowBodyWriter()
+	if err != nil {
+		t.Fatalf("NewFlowBodyWriter: %v", err)
+	}
+	io.WriteString(w, content)
+	if _, _, err := w.Finalize(); err == nil {
+		t.Fatal("Finalize succeeded despite blocked destination directory")
+	}
+	s.bodyMu.Lock()
+	pending := len(s.pendingBodies)
+	s.bodyMu.Unlock()
+	if pending != 0 {
+		t.Fatalf("failed finalize leaked %d pending ownership record(s)", pending)
+	}
+}
 
 func TestBodyWriterStoreDedupAndRead(t *testing.T) {
 	s, err := Open(t.TempDir())

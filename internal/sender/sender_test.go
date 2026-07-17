@@ -1,15 +1,69 @@
 package sender
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type erroringBody struct {
+	read bool
+}
+
+func (b *erroringBody) Read(p []byte) (int, error) {
+	if b.read {
+		return 0, errors.New("response body failed")
+	}
+	b.read = true
+	return copy(p, "partial"), errors.New("response body failed")
+}
+
+func (b *erroringBody) Close() error { return nil }
+
+func TestSendAbortsResponseCaptureOnReadError(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.cl.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       &erroringBody{},
+		}, nil
+	})
+
+	flow, err := snd.Send(Request{URL: "https://example.com/"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if flow.Flags&store.FlagCaptureError == 0 {
+		t.Fatalf("expected capture error flag, got %d", flow.Flags)
+	}
+	err = filepath.WalkDir(s.BodiesDir(), func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasPrefix(d.Name(), ".tmp-") {
+			t.Errorf("temporary body file leaked: %s", d.Name())
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("WalkDir: %v", err)
+	}
+}
 
 func TestSendCapturesAsFlow(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

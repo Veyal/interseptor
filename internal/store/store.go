@@ -26,6 +26,14 @@ type Store struct {
 	// (two AI agents, or an agent + a human editing in the UI) can't race between
 	// reading the current notes and writing the appended result — see AppendNote.
 	notesMu sync.Mutex
+
+	// bodyMu coordinates finalized flow bodies with GCBodies until their hashes
+	// are published in a flow row. pendingBodies is reference-counted and bounded;
+	// writers explicitly release ownership on abort, and flow persistence releases
+	// it on both success and terminal failure.
+	bodyMu        sync.Mutex
+	pendingBodies map[string]int
+	mergeBodies   map[string]int
 }
 
 // Flow is one captured request/response exchange. Bodies are referenced by
@@ -327,6 +335,7 @@ func (s *Store) Close() error {
 
 // InsertFlow stores a new flow and sets f.ID to the assigned row id.
 func (s *Store) InsertFlow(f *Flow) (int64, error) {
+	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
 	// The flow row and its FTS index entry go in one transaction so a crash
@@ -368,6 +377,7 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // that was first inserted at request time, keyed by f.ID. The immutable request
 // identity (ts, scheme, host, port, version, client) is left untouched.
 func (s *Store) UpdateFlow(f *Flow) error {
+	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
 	// One transaction; no pre-SELECT round-trip. host is immutable and the note is
@@ -392,7 +402,10 @@ func (s *Store) UpdateFlow(f *Flow) error {
 	if _, err := tx.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.

@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Dev-build fallback version advanced to the published `1.5.4`.**
 
+### Fixed
+- **Backend reliability preflight and persistence.** Autopilot now requires an enabled include scope rule, readiness reports AI-provider and scope prerequisites, body GC coordinates with in-flight flow publication, sender capture errors clean up temporary files, and full-project imports/merges verify body hashes and use rollback-safe staged overwrite.
+
 ## [1.5.4] - 2026-07-17
 
 ### Fixed
