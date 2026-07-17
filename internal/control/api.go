@@ -73,14 +73,14 @@ type apiRoute struct {
 }
 
 var apiRoutes = []apiRoute{
-	{"GET", "/api/flows", "List captured proxy flows (filters: method, host, search, searchScope=body, hasNote=1, scheme, status, before, limit, includeTools=1). By default excludes Repeater/Intruder/ActiveScan (History-shaped); includeTools=1 returns all sources"},
+	{"GET", "/api/flows", "List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host, search, searchScope=body, hasNote=1, scheme, status, before, limit, inScope=1, includeTools=1. By default excludes Repeater/Intruder/ActiveScan (History-shaped); includeTools=1 returns all sources"},
 	{"GET", "/api/flows/{id}", "Flow detail (headers, body hashes, flags)"},
 	{"GET", "/api/flows/{id}/raw", "Reconstructed raw request/response (?side=req|res)"},
 	{"GET", "/api/flows/{id}/decoded", "App-layer message codec decode (?side=req|res). Response: {matched, codecId, plaintext, fields?, applyOnSend?, error?} — display-only; never mutates the stored flow"},
 	{"GET", "/api/flows/{id}/preview.png", "Interseptor-styled PNG preview of request/response (?side=both|req|res, pretty=0|1 default 1, layout=horizontal|vertical default horizontal with request left / response right, theme=light|dark default light)"},
 	{"GET", "/api/flows/{id}/body", "Body bytes only (?side=req|res) — for download with MIME extension"},
 	{"GET", "/api/flows/{id}/ws", "Captured WebSocket frames for a flow"},
-	{"GET", "/api/flows/inscope", "Whether any in-scope traffic exists (paginated; for readiness checks)"},
+	{"GET", "/api/flows/inscope", "Boolean readiness probe: {inScope}; use GET /api/flows?inScope=1 for compact flow rows"},
 	{"GET", "/api/params", "Aggregate query/form/JSON parameter names from captured traffic (?host=, ?inScope=1)"},
 	{"POST", "/api/ws/send", "WebSocket Repeater: open a socket, send a message, return reply frames. Body: {url, message, binary?, headers?} — headers is \"Key: Value\" lines. Response: wsrepeater result (frames received)"},
 	{"POST", "/api/decode", "Decode/encode a string (base64, url, hex, html, jwt, smart). Body: {op, input} — op one of base64encode/base64decode/urlencode/urldecode/hexencode/hexdecode/htmlencode/htmldecode/jwtdecode/smart. Response: {output} or {error} (200 either way)"},
@@ -103,7 +103,9 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/intruder/start", "Start a Sniper/Battering/Pitchfork/Cluster attack. Body: {target, template, attackType, payloads, repeat?, threads?, delayMs?, grepMatch?, grepExtract?, processRules?} — template marks fuzz points with §…§, payloads is a list of payload lists. Response: attack state"},
 	{"GET", "/api/intruder/state", "Current attack progress + results"},
 	{"POST", "/api/scanner/run", "Run passive checks over captured flows (no body)"},
+	{"GET", "/api/scanner/targets", "List every distinct in-scope scanner host as {hosts:[{host,count}],truncated:false}; exhaustively paginates captured flows"},
 	{"GET", "/api/scanner/issues", "List scanner findings"},
+	{"DELETE", "/api/scanner/issues", "Clear passive scanner issues only; curated Findings are unchanged"},
 	{"GET", "/api/scanner/report", "Download scanner findings as a Markdown report"},
 	{"GET", "/api/activescan", "Active-scan state (armed/running/findings/probe log)"},
 	{"GET", "/api/activescan/history", "Active-scan probe history (all FlagActiveScan flows)"},

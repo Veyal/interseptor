@@ -150,7 +150,9 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 
 func (h *Hub) registerScannerRoutes(scan *scannerAPI) {
 	h.mux.HandleFunc("POST /api/scanner/run", scan.scannerRun)
+	h.mux.HandleFunc("GET /api/scanner/targets", scan.scannerTargets)
 	h.mux.HandleFunc("GET /api/scanner/issues", scan.scannerIssues)
+	h.mux.HandleFunc("DELETE /api/scanner/issues", scan.clearScannerIssues)
 	h.mux.HandleFunc("GET /api/scanner/report", scan.scannerReport)
 }
 

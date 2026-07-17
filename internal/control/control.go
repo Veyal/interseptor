@@ -1065,9 +1065,6 @@ func (h *interceptAPI) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.eng.SetEnabled(in.Enabled)
-	if !h.persistSetting(w, "intercept.enabled", boolToFlag(in.Enabled)) {
-		return
-	}
 	writeJSON(w, http.StatusOK, h.interceptState())
 }
 

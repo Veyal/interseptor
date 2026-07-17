@@ -541,7 +541,7 @@ func TestRejectBadRuleRegex(t *testing.T) {
 }
 
 func TestInterceptToggle(t *testing.T) {
-	h, _, eng := newHub(t)
+	h, st, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -552,6 +552,11 @@ func TestInterceptToggle(t *testing.T) {
 	resp.Body.Close()
 	if !eng.Enabled() {
 		t.Fatal("expected intercept enabled after toggle")
+	}
+	if _, ok, err := st.GetSetting("intercept.enabled"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("intercept enabled state must be session-only")
 	}
 }
 

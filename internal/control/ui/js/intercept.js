@@ -17,6 +17,15 @@ export function renderIntercept(){
   // unified queue: requests then responses, each tagged with its side
   const items=[...rq.map(h=>({...h,side:'req'})),...rrq.map(h=>({...h,side:'resp'}))];
   const total=items.length;
+  const danger=$('#interceptWarning');
+  const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
+  document.documentElement.classList.toggle('intercept-danger',interceptDanger);
+  if(danger){
+    danger.style.display=interceptDanger?'block':'none';
+    danger.textContent=total
+      ?`INTERCEPT ACTIVE — ${total} request/response item${total===1?' is':'s are'} held until you explicitly Forward or Drop.`
+      :'INTERCEPT ACTIVE — matching traffic will be held until you explicitly Forward or Drop.';
+  }
   const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
   const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
   const list=$('#heldList');

@@ -108,7 +108,9 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	add("active_scan_armed", armed, armedStatus(armed), "active_scan with arm:true once authorized")
 
 	tlsDiag := h.buildTLSDiagnosis("")
-	tlsOK := tlsDiag.Verdict == "ok" || tlsDiag.Verdict == "no_https"
+	// Only an intercepted HTTPS flow proves the CA/MITM path. HTTP-only traffic
+	// is useful evidence that the proxy is reachable, but TLS remains unverified.
+	tlsOK := tlsDiag.Verdict == "ok"
 	tlsDetail := tlsDiag.Detail
 	tlsFix := tlsDiag.Fix
 	if tlsDiag.Verdict == "tls_blocked" {

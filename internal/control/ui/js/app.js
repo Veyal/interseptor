@@ -500,17 +500,29 @@ if(tlsBanner){
 async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
 // Resolve the active project before Repeater/Intruder tab init so localStorage
 // keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
-async function bootProjectScopedUI(){
+async function activeProjectIdentity(){
   try{
-    const d=await api('/api/version');
-    setStorageProject(d.project||'default');
-  }catch(e){ setStorageProject('default'); }
+    const project=await api('/api/project');
+    if(project&&project.current)return project.current;
+  }catch(e){}
+  try{
+    const version=await api('/api/version');
+    if(version&&version.project)return version.project;
+  }catch(e){}
+  return 'default';
+}
+async function bootProjectScopedUI(){
+  setStorageProject(await activeProjectIdentity());
   repInit();
   intrInit();
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadFlows();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootProjectScopedUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
-// First-run setup wizard: shown once after the initial flow load, unless the
-// user already completed/skipped it or already has captured traffic.
-setTimeout(()=>{ if(state.flows && !state.flows.length) maybeShowSetup(); }, 600);
+async function bootFirstRunUI(){
+  try{
+    await bootProjectScopedUI();
+    await loadFlows();
+    maybeShowSetup();
+  }catch(e){toast('Could not initialize project-scoped UI: '+e.message);}
+}
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
 {const ab=$('#askAiBtn');if(ab)ab.onclick=()=>openAi({project:true});}

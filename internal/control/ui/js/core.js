@@ -88,6 +88,15 @@ export function projectStorageKey(base){
   return scoped;
 }
 
+export function renderLoadError(el, label, err, retry, stale=false){
+  if(!el)return;
+  const message=err&&err.message?err.message:String(err||'unknown error');
+  el.style.display='block';
+  el.innerHTML=`<span class="state-error-msg">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
+  const btn=el.querySelector('[data-load-retry]');
+  if(btn)btn.onclick=retry;
+}
+
 // createTabManager — generic "tabs with localStorage persistence" pattern,
 // extracted from Repeater's and Intruder's independently-reimplemented copies
 // (docs/UI-REDESIGN-ROADMAP.md §4 consolidation targets). Each panel keeps its

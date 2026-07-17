@@ -156,6 +156,9 @@
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button></div>
           <div class="spacer"></div>
+          <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
+          <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
+          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
           <button class="btn btn-compact" id="aiExplainBtn" data-ai-ui title="Ask AI about this flow" aria-label="Ask AI about this flow">✨</button>
         </div>
         <div class="sel-decode" id="reqDecode" hidden>
@@ -196,6 +199,7 @@
 
   <!-- INTERCEPT -->
   <div class="panel" id="panel-intercept" role="tabpanel" aria-labelledby="tab-intercept" data-panel="intercept">
+    <div id="interceptWarning" class="tls-diag-banner intercept-danger" style="display:none" role="alert"></div>
     <!-- control strip: the on/off switches + conditional filter -->
     <div class="icpt-bar">
       <button class="uisw" id="interceptToggle" aria-pressed="false" title="Hold matching requests before they leave"><span class="uisw-led"></span>Requests <b id="icptReqState">Off</b></button>
@@ -265,7 +269,7 @@
         <div class="rep-sub">HEADERS</div>
         <div class="rep-field rep-field-headers">
           <pre class="rep-hl" id="repHeadersHL" aria-hidden="true"></pre>
-          <textarea id="repHeaders" class="rep-edit" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
+          <textarea id="repHeaders" class="rep-edit" aria-label="Repeater request headers" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
         </div>
         <div class="rep-sub row"><span>BODY</span><div class="spacer"></div>
           <div class="seg rep-req-seg" id="repReqSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Edit codec plaintext (re-encode on send if apply_on_send)">Decoded</button></div>
@@ -273,7 +277,7 @@
         </div>
         <div class="rep-field rep-field-body">
           <pre class="rep-hl" id="repBodyHL" aria-hidden="true"></pre>
-          <textarea id="repBody" class="rep-edit" spellcheck="false" placeholder="Request body…"></textarea>
+          <textarea id="repBody" class="rep-edit" aria-label="Repeater request body" spellcheck="false" placeholder="Request body…"></textarea>
         </div>
       </section>
       <section class="pane rep-res">
@@ -322,7 +326,7 @@
       <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
       <section class="pane intr-config">
         <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">use <b>§…§</b> for injection points</span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap selection in § … §">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load from file">📂 Load</button></div>
-        <textarea id="intrTemplate" class="rep-edit" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
+        <textarea id="intrTemplate" class="rep-edit" aria-label="Intruder request template" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
 
@@ -353,6 +357,8 @@ Content-Type: application/json
       <select id="scanTarget" class="btn btn-field scan-target" title="Scan target"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
       <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
+      <button class="btn" id="scanClear">Clear results</button>
+      <span id="scanRescanState" class="hint" role="status"></span>
       <button class="btn" id="checksBtn" aria-label="Custom checks">✎ Checks</button>
       <button class="btn" id="codecsBtn" aria-label="Message codecs">🔐 Codecs</button>
       <span id="scanCount" class="count"></span>
@@ -396,6 +402,7 @@ Content-Type: application/json
           <option value="json">JSON</option>
           <option value="pdf">PDF</option>
         </select>
+        <select id="findExportStatuses" class="btn" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
         <button class="btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export report</button>
         <label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label>
         <span id="findCount" class="count"></span>
@@ -467,7 +474,7 @@ Content-Type: application/json
       <button class="btn btn-primary" id="notesOrganizeBtn" data-ai-ui title="Organize with AI">✨ Organize</button>
       <div class="spacer"></div>
     </div>
-    <textarea id="notesEdit" class="notes-edit" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
+    <textarea id="notesEdit" class="notes-edit" aria-label="Engagement notes editor" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
     <div id="notesPreview" class="md" style="flex:1;overflow:auto;padding:16px 22px;display:none"></div>
   </div>
 
@@ -871,6 +878,7 @@ Content-Type: application/json
               <h3>SHARE THIS SESSION</h3>
               <p class="hint" style="margin-bottom:12px">Expose Interseptor over a Cloudflare tunnel so a teammate — or an AI agent on your VPS — can reach it with an access key. No public IP needed. <b style="color:var(--amber)">This publishes your captured traffic;</b> share read-only keys with reviewers and stop when done.</p>
               <div id="shareStatus" class="evidence" style="margin-bottom:12px">Loading…</div>
+              <div id="sharePrereq" class="hint" style="margin-bottom:10px"></div>
               <div class="row" style="gap:8px;margin-bottom:20px">
                 <button class="btn btn-primary" id="shareStart">Start sharing</button>
                 <button class="btn btn-danger" id="shareStop" style="display:none">Stop sharing</button>
@@ -1394,10 +1402,10 @@ Content-Type: application/json
         <button class="btn" id="decLoad" type="button" title="Load text from a file">📂 Load file</button>
         <span class="hint">Paste or load tokens, JWTs, base64 blobs…</span>
       </div>
-      <textarea id="decIn" class="rep-edit" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
+      <textarea id="decIn" class="rep-edit" aria-label="Decoder input" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
       <div class="row" id="decOps" style="gap:6px;flex-wrap:wrap"></div>
       <div class="row" style="gap:8px"><span class="hint" id="decErr"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
-      <textarea id="decOut" class="rep-edit" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
+      <textarea id="decOut" class="rep-edit" aria-label="Decoder output" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
     </div>
   </div>
 </div>

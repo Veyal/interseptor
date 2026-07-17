@@ -198,9 +198,6 @@ func run() error {
 	}
 
 	eng := intercept.New()
-	if v, ok, _ := st.GetSetting("intercept.enabled"); ok && v == "1" {
-		eng.SetEnabled(true)
-	}
 	if v, ok, _ := st.GetSetting("intercept.filter.enabled"); ok && v == "1" {
 		target, _, _ := st.GetSetting("intercept.filter.target")
 		pattern, _, _ := st.GetSetting("intercept.filter.pattern")

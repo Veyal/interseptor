@@ -355,6 +355,14 @@ function wireFlowRow(r){
     const cell=e.target.closest('[data-field]');
     showCtx(e.clientX,e.clientY,f,cell?cell.dataset.field:'');
   };
+  r.addEventListener('keydown',e=>{
+    if(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10')){
+      e.preventDefault();
+      const f=flowStore.byId.get(id),cell=e.target.closest('[data-field]');
+      const box=r.getBoundingClientRect();
+      showCtx(box.left+24,box.top+Math.min(24,box.height),f,cell?cell.dataset.field:'');
+    }
+  });
 }
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
@@ -1302,6 +1310,17 @@ export function showInspectorCtx(x,y,side){
   if(sendAsIds2.length)sections.push({head:'SEND AS',items:sendAsIds2.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
   openMenu(x,y,sections);
 }
+function selectedInspectorFlow(){return flowStore.byId.get(state.selId)||state.detail;}
+const inspectSendRepeater=$('#inspectSendRepeater');
+if(inspectSendRepeater)inspectSendRepeater.onclick=()=>{const f=selectedInspectorFlow();if(f)sendToRepeater(f);};
+const inspectSendIntruder=$('#inspectSendIntruder');
+if(inspectSendIntruder)inspectSendIntruder.onclick=()=>{const f=selectedInspectorFlow();if(f)sendToIntruder(f);};
+const inspectMoreActions=$('#inspectMoreActions');
+if(inspectMoreActions)inspectMoreActions.onclick=()=>{
+  const f=selectedInspectorFlow();if(!f)return;
+  const r=inspectMoreActions.getBoundingClientRect();
+  showCtx(r.left,r.bottom+2,f,'');
+};
 document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx();return;}closeInspector();}});
 // Suppress the browser's native context menu app-wide, but keep it where it's

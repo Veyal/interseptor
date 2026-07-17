@@ -20,6 +20,22 @@ func TestBuildOpenAPI(t *testing.T) {
 			t.Errorf("expected %s on /api/checks/{id}, missing", m)
 		}
 	}
+	scannerIssues, ok := paths["/api/scanner/issues"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/scanner/issues in OpenAPI paths")
+	}
+	for _, m := range []string{"get", "delete"} {
+		if _, ok := scannerIssues[m].(map[string]any); !ok {
+			t.Errorf("expected %s on /api/scanner/issues, missing", m)
+		}
+	}
+	scannerTargets, ok := paths["/api/scanner/targets"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/scanner/targets in OpenAPI paths")
+	}
+	if _, ok := scannerTargets["get"].(map[string]any); !ok {
+		t.Error("expected GET on /api/scanner/targets")
+	}
 	if _, ok := paths["/"]; ok {
 		t.Fatal("the SPA catch-all / leaked into openapi paths")
 	}

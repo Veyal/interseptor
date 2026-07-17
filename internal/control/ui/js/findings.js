@@ -823,6 +823,8 @@ $('#ftRun') && ($('#ftRun').onclick = async () => {
 
 function findReportQuery(extra) {
   const q = new URLSearchParams(extra || {});
+  const statuses=($('#findExportStatuses')||{}).value||'open,verified,fixed';
+  q.set('statuses',statuses);
   if (findTagFilter) q.set('tag', findTagFilter);
   if ($('#findExportGroupByTag')?.checked) {
     q.set('groupBy', 'tag');
