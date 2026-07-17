@@ -131,7 +131,7 @@ async function repEnterDecoded(t){
     if(flowId){
       d=await api('/api/flows/'+flowId+'/decoded?side=req');
     }else{
-      d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:'req',rawBody:wire,host:(()=>{try{return new URL(t.url).host;}catch(e){return'';})()})});
+      d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:'req',rawBody:wire,host:(()=>{try{return new URL(t.url).host;}catch(e){return'';}})()})});
     }
     if(!d.matched){toast('no message codec matched');t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
     if(d.error){toast(d.error);t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
