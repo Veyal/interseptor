@@ -1427,6 +1427,76 @@ func (s *Server) registerTools() {
 			})
 		})
 
+	s.add("vault_list",
+		"List projects stored on the configured project vault (always-on archive store, e.g. Tailscale Serve). Requires vault URL+token in Settings → API → Share → Project Vault.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodGet, "/api/vault/remote", nil)
+		})
+
+	s.add("vault_backup",
+		"Snapshot the active project and upload it to the configured vault as a new revision. id defaults to the current project name.",
+		obj(map[string]any{
+			"id":    p("string", "vault project id (slug); default = current project name"),
+			"label": p("string", "optional revision label"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			if id := strings.TrimSpace(argStr(a, "id")); id != "" {
+				body["id"] = id
+			}
+			if label := strings.TrimSpace(argStr(a, "label")); label != "" {
+				body["label"] = label
+			}
+			return s.api(http.MethodPost, "/api/vault/backup", body)
+		})
+
+	s.add("vault_import",
+		"Download a vault project revision into a NEW named local project under ~/.interseptor/projects/<name>.",
+		obj(map[string]any{
+			"id":        p("string", "vault project id"),
+			"name":      p("string", "new local project name (default = id)"),
+			"rev":       p("integer", "revision number; omit = latest"),
+			"overwrite": p("boolean", "replace an existing local project of that name"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id := strings.TrimSpace(argStr(a, "id"))
+			if id == "" {
+				return "", fmt.Errorf("id is required")
+			}
+			body := map[string]any{"id": id, "overwrite": argBool(a, "overwrite", false)}
+			if name := strings.TrimSpace(argStr(a, "name")); name != "" {
+				body["name"] = name
+			}
+			if rev := argInt(a, "rev", 0); rev > 0 {
+				body["rev"] = rev
+			}
+			return s.api(http.MethodPost, "/api/vault/import", body)
+		})
+
+	s.add("vault_merge",
+		"Download a vault project revision and merge (additive union) into the active project. Use dryRun=true to preview add/skip counts first.",
+		obj(map[string]any{
+			"id":     p("string", "vault project id"),
+			"rev":    p("integer", "revision number; omit = latest"),
+			"label":  p("string", "provenance label for merged flows"),
+			"dryRun": p("boolean", "preview counts without writing"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id := strings.TrimSpace(argStr(a, "id"))
+			if id == "" {
+				return "", fmt.Errorf("id is required")
+			}
+			body := map[string]any{"id": id, "dryRun": argBool(a, "dryRun", false)}
+			if rev := argInt(a, "rev", 0); rev > 0 {
+				body["rev"] = rev
+			}
+			if label := strings.TrimSpace(argStr(a, "label")); label != "" {
+				body["label"] = label
+			}
+			return s.api(http.MethodPost, "/api/vault/merge", body)
+		})
+
 	s.add("send_request",
 		"Send an HTTP request (Repeater) and record it. Returns the flow id+status; get_flow that id for the body. Optional bodyMode=decoded + codecId re-encodes plaintext via a message codec before send (pass rawBody for encode context when needed).",
 		obj(map[string]any{

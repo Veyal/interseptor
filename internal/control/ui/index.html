@@ -909,6 +909,22 @@ Content-Type: application/json
               <div class="row" style="gap:8px"><button class="btn btn-primary" id="peerPull">Pull ↓</button><button class="btn" id="peerPush">Push ↑</button></div>
               <div id="mergePresence" class="hint" style="margin-top:8px"></div>
               <div id="mergeResult" class="hint" style="margin-top:6px"></div>
+              <h3 style="margin-top:28px">PROJECT VAULT</h3>
+              <p class="hint" style="margin-bottom:12px">Always-on backup store (e.g. <code>interseptor vault</code> behind Tailscale Serve). Backup the active project, list remote revisions, import as a new project, or merge into the current one. See <code>docs/vault.md</code>.</p>
+              <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                <input id="vaultUrl" class="repurl" style="min-width:280px;flex:1" aria-label="Vault URL" placeholder="https://mac-mini.tailXXXX.ts.net:9977">
+                <input id="vaultKey" class="repurl" type="password" style="max-width:220px" aria-label="Vault token" placeholder="vault token (iv_…)">
+                <button class="btn" id="vaultSaveCfg">Save</button>
+              </div>
+              <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                <input id="vaultBackupId" class="repurl" style="max-width:160px" aria-label="Vault project id" placeholder="project id">
+                <input id="vaultBackupLabel" class="repurl" style="max-width:140px" aria-label="Backup label" placeholder="label (optional)">
+                <button class="btn btn-primary" id="vaultBackup">Backup ↑</button>
+                <button class="btn" id="vaultRefresh">Refresh list</button>
+              </div>
+              <div id="vaultCfgHint" class="hint" style="margin-bottom:8px"></div>
+              <table class="rules-tbl"><thead><tr><th>Id</th><th>Latest</th><th>Size</th><th style="width:220px"></th></tr></thead><tbody id="vaultList"></tbody></table>
+              <div id="vaultResult" class="hint" style="margin-top:8px"></div>
             </div>
             <div id="apiRest" class="api-pane" style="display:none">
               <h3>REST API REFERENCE</h3>

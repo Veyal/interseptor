@@ -302,4 +302,12 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("POST /api/merge/file", h.mergeFile)
 	h.mux.HandleFunc("POST /api/merge/pull", h.mergePull)
 	h.mux.HandleFunc("POST /api/merge/push", h.mergePush)
+
+	// Project vault client (always-on remote archive store, e.g. Tailscale Serve).
+	h.mux.HandleFunc("GET /api/vault/config", h.getVaultConfig)
+	h.mux.HandleFunc("PUT /api/vault/config", h.putVaultConfig)
+	h.mux.HandleFunc("GET /api/vault/remote", h.vaultList)
+	h.mux.HandleFunc("POST /api/vault/backup", h.vaultBackup)
+	h.mux.HandleFunc("POST /api/vault/import", h.vaultImport)
+	h.mux.HandleFunc("POST /api/vault/merge", h.vaultMerge)
 }

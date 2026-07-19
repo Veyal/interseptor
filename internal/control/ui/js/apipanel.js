@@ -1,10 +1,10 @@
-import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm } from './core.js';
+import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, fmtBytes } from './core.js';
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#apiSub').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   ['Keys','Share','Rest','Mcp'].forEach(s=>{const el=$('#api'+s);if(el)el.style.display=(s.toLowerCase()===b.dataset.s)?'block':'none';});
-  if(b.dataset.s==='share'){loadShare();loadMergeStatus();}
+  if(b.dataset.s==='share'){loadShare();loadMergeStatus();loadVaultPanel();}
 });
 export async function loadApiKeys(){
   try{const d=await api('/api/keys');const keys=d.keys||[];
@@ -131,6 +131,111 @@ const ss=$('#shareStart');if(ss)ss.onclick=startShare;
 const sp=$('#shareStop');if(sp)sp.onclick=stopShare;
 const pp=$('#peerPull');if(pp)pp.onclick=()=>peerMerge('pull');
 const pu=$('#peerPush');if(pu)pu.onclick=()=>peerMerge('push');
+
+/* ---- Project vault (always-on remote archive store) ---- */
+async function loadVaultPanel(){
+  const hint=$('#vaultCfgHint');
+  try{
+    const c=await api('/api/vault/config');
+    const urlEl=$('#vaultUrl'); if(urlEl&&!urlEl.value) urlEl.value=c.url||'';
+    if(hint) hint.textContent=c.hasKey?(c.url?'Configured → '+c.url:'Key saved — set URL'):'Save vault URL + token (iv_…) first.';
+    const idEl=$('#vaultBackupId');
+    if(idEl&&!idEl.value){
+      try{const p=await api('/api/project');idEl.placeholder=p.current||'project id';}catch{}
+    }
+    await refreshVaultList();
+  }catch(e){if(hint)hint.textContent=e.message||'';}
+}
+async function saveVaultCfg(){
+  const url=$('#vaultUrl').value.trim();
+  const key=$('#vaultKey').value.trim();
+  const body={}; if(url) body.url=url; if(key) body.key=key;
+  if(!url&&!key){toast('enter URL and/or key');return;}
+  try{
+    await api('/api/vault/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    if(key) $('#vaultKey').value='';
+    toast('vault config saved');
+    loadVaultPanel();
+  }catch(e){toast(e.message);}
+}
+async function refreshVaultList(){
+  const tb=$('#vaultList'); if(!tb) return;
+  tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px">Loading…</td></tr>';
+  try{
+    const d=await api('/api/vault/remote');
+    const projects=d.projects||[];
+    tb.innerHTML=projects.length?projects.map(p=>{
+      const id=esc(p.id||'');
+      const rev=p.latestRev!=null?('#'+p.latestRev):'—';
+      const size=p.latestSize!=null?fmtBytes(p.latestSize):'—';
+      const label=p.latestLabel?esc(p.latestLabel):'';
+      const when=p.latestAt?esc(new Date(p.latestAt).toLocaleString()):'';
+      return `<tr>
+        <td style="font-family:var(--mono)">${id}${label?' <span class="hint">'+label+'</span>':''}</td>
+        <td>${esc(String(rev))}${when?('<div class="hint">'+when+'</div>'):''}</td>
+        <td class="hint">${esc(String(size))}</td>
+        <td><button class="btn" data-vimp="${escAttr(p.id||'')}" style="padding:2px 8px">Import</button>
+            <button class="btn" data-vmerge="${escAttr(p.id||'')}" style="padding:2px 8px">Merge</button></td></tr>`;
+    }).join(''):'<tr><td colspan="4" class="hint" style="padding:10px">No projects in vault yet.</td></tr>';
+    tb.querySelectorAll('[data-vimp]').forEach(b=>b.onclick=()=>vaultImport(b.dataset.vimp));
+    tb.querySelectorAll('[data-vmerge]').forEach(b=>b.onclick=()=>vaultMerge(b.dataset.vmerge));
+  }catch(e){
+    tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px;color:var(--amber)">'+esc(e.message||'failed')+'</td></tr>';
+  }
+}
+async function vaultBackup(){
+  const id=$('#vaultBackupId').value.trim();
+  const label=$('#vaultBackupLabel').value.trim();
+  const res=$('#vaultResult');
+  if(res) res.textContent='Backing up…';
+  try{
+    const r=await api('/api/vault/backup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:id||undefined,label:label||undefined})});
+    if(res) res.innerHTML='<span style="color:var(--accent)">Backed up</span> '+(id||'')+(r.rev!=null?' rev #'+r.rev:'')+(r.size!=null?' · '+fmtBytes(r.size):'');
+    toast('vault backup complete');
+    refreshVaultList();
+  }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast(e.message);}
+}
+async function vaultImport(id){
+  const name=prompt('Import as new project name:', id);
+  if(!name) return;
+  const res=$('#vaultResult');
+  if(res) res.textContent='Importing…';
+  try{
+    const r=await api('/api/vault/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name})});
+    if(res) res.innerHTML='<span style="color:var(--accent)">Imported</span> as <b>'+esc(r.name||name)+'</b> — switch to it from Projects.';
+    toast('imported '+ (r.name||name));
+  }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast(e.message);}
+}
+async function vaultMerge(id){
+  const res=$('#vaultResult');
+  if(res) res.textContent='Previewing…';
+  let previewMsg='';
+  try{
+    const prev=await api('/api/vault/merge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,dryRun:true})});
+    previewMsg=`Would add <b>${prev.flowsAdded||0}</b> flows + <b>${prev.findingsAdded||0}</b> findings`
+      +` (skip ${prev.flowsSkipped||0}/${prev.findingsSkipped||0} already present`
+      +(prev.bodiesAdded?`; ${prev.bodiesAdded} new bodies`:'')+`).`;
+    if(res) res.innerHTML=previewMsg;
+  }catch(e){
+    if(res) res.innerHTML='<span style="color:var(--red)">preview: '+esc(e.message)+'</span>';
+    return;
+  }
+  if(!await uiConfirm('Merge from vault',previewMsg+'<br><br>Merge <b>'+esc(id)+'</b> into the active project?','Merge','btn accent','var(--accent)')){
+    if(res) res.textContent='Cancelled.';
+    return;
+  }
+  if(res) res.textContent='Merging…';
+  try{
+    const r=await api('/api/vault/merge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
+    if(res) res.innerHTML='<span style="color:var(--accent)">Done.</span> '+r.flowsAdded+' flows + '+r.findingsAdded+' findings added ('+r.flowsSkipped+'/'+r.findingsSkipped+' already present).';
+    toast('vault merge complete');
+    loadMergeStatus();
+  }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+}
+{const vs=$('#vaultSaveCfg'); if(vs)vs.onclick=saveVaultCfg;}
+{const vb=$('#vaultBackup'); if(vb)vb.onclick=vaultBackup;}
+{const vr=$('#vaultRefresh'); if(vr)vr.onclick=refreshVaultList;}
+
 export async function revokeKey(id,prefix,label){
   const who=(prefix?esc(prefix)+'…':'')+(label?' <b>'+esc(label)+'</b>':'');
   if(!await uiConfirm('Revoke API key',`Revoke key ${who||'#'+id}? Any client using it stops working immediately, and this can't be undone.`,'Revoke','btn danger','var(--red)'))return;

@@ -85,6 +85,7 @@ several projects at once are all in **[Getting started](docs/getting-started.md)
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
 | **[Custom checks](docs/custom-checks.md)** · [active checks](docs/custom-active-checks.md) | Author your own Starlark checks |
 | **[Rule packs](docs/rule-packs.md)** | Share, install, and manage bundles of checks |
+| **[Project vault](docs/vault.md)** | Always-on backup / import / merge (Tailscale Serve) |
 | **[Engagement close-out](docs/engagement-closeout.md)** | Checklist to leave a report-ready project |
 | **[MCP cookbook](docs/product/mcp-cookbook.md)** | Copy-paste agent recipes |
 | **[Contributing](CONTRIBUTING.md)** | Code standards, TDD, commit style, cutting a release |

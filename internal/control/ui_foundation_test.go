@@ -207,10 +207,20 @@ func TestUIFoundationShortcutContract(t *testing.T) {
 		`title="Drop (D)"`,
 		`id="retMaxAge"`,
 		`id="retPolicySave"`,
+		`id="vaultUrl"`,
+		`id="vaultBackup"`,
+		`PROJECT VAULT`,
 	)
 	if strings.Contains(index, "github.com/Veyal/interceptor/releases") {
 		t.Error("version badge still points at old interceptor releases URL")
 	}
+	apipanel := executableJS(readUIAsset(t, "js/apipanel.js"))
+	requireUIContains(t, apipanel,
+		"loadVaultPanel",
+		"/api/vault/backup",
+		"/api/vault/merge",
+		"dryRun:true",
+	)
 	css := readUIAsset(t, "app.css")
 	requireUIContains(t, css,
 		".rep-edit:focus-visible,.notes-edit:focus-visible",

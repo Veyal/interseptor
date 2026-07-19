@@ -35,6 +35,7 @@ func printUsage() {
 Usage:
   interseptor              start the proxy and control UI
   interseptor launcher     dashboard to run multiple projects at once, each its own instance
+  interseptor vault        always-on project archive vault (Tailscale Serve friendly)
   interseptor mcp          run the MCP server on stdio (see GET /api/mcp for HTTP /mcp)
   interseptor check        author/validate/test Starlark checks (no server needed; CI-friendly)
   interseptor rules        build/install/list/remove Starlark rule packs (the ecosystem layer)
@@ -54,6 +55,11 @@ Common flags / env:
 
 Launcher flags:
   --addr host:port         dashboard listen address (default 127.0.0.1:9965)
+
+Vault flags:
+  --dir <path>             vault data directory (default ~/.interseptor/vault; INTERSEPTOR_VAULT_DIR)
+  --addr host:port         vault listen address (default 127.0.0.1:9977)
+  --keep N                 revisions kept per project (default 10)
 
 Update flags:
   --check                  report whether an update is available
