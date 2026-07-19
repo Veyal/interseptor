@@ -454,10 +454,22 @@ Content-Type: application/json
       <select id="mapTag" class="btn btn-field map-tag" title="Show only endpoints with flows carrying this tag"><option value="">all tags</option></select>
       <button type="button" class="uisw on" id="mapHideNoise" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hiding 403/404-only</button>
       <button type="button" class="uisw on" id="mapCollapseIdentical" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapsing identical</button>
+      <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy">Discovery ▸</button>
       <div class="spacer"></div>
       <button class="btn" id="mapExpand">Expand all</button>
       <button class="btn" id="mapFit" title="Fit graph to view (pinch or Ctrl+scroll to zoom; scroll to pan)" style="display:none" aria-label="Fit graph to view">⤢ Fit</button>
       <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
+    </div>
+    <div id="mapDiscoveryPanel" class="map-discovery" style="display:none" hidden>
+      <p class="hint" style="margin:0 0 8px">No built-in forced-browse — run a real tool <b>through this proxy</b> so hits land in History. Map hides 403/404-only noise and clusters soft-404s. See <code>docs/content-discovery.md</code>.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <code id="mapDscFerox" class="evidence" style="flex:1;margin:0;font-size:11px;white-space:pre-wrap"></code>
+        <button class="btn" id="mapDscCopyFerox" style="padding:2px 10px">Copy ferox</button>
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <code id="mapDscFfuf" class="evidence" style="flex:1;margin:0;font-size:11px;white-space:pre-wrap"></code>
+        <button class="btn" id="mapDscCopyFfuf" style="padding:2px 10px">Copy ffuf</button>
+      </div>
     </div>
     <div id="mapCrumb" class="map-crumb" style="display:none"></div>
     <div id="mapWarn" class="map-warn" style="display:none"></div>
@@ -1139,6 +1151,7 @@ Content-Type: application/json
           <details class="checks-packs" id="checksPacks">
             <summary class="hint" style="cursor:pointer;font-weight:700">Rule packs</summary>
             <div id="checksPackList" class="checks-pack-list hint" style="padding:6px 0">Loading packs…</div>
+            <label class="chk-row hint" style="margin:6px 0;cursor:pointer"><input type="checkbox" id="checksPackAllowUnsigned"> Allow unsigned packs</label>
             <label class="btn" style="display:block;text-align:center;margin-top:4px;cursor:pointer">📂 Install .tar.gz<input type="file" id="checksPackFile" accept=".tar.gz,application/gzip" hidden></label>
           </details>
         </div>

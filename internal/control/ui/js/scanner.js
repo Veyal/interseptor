@@ -328,10 +328,13 @@ async function loadPacksPanel(){
     }
     if(installed.length){
       html+='<div class="hint" style="margin:8px 0 4px;font-weight:700">Installed</div>';
-      html+=installed.map(p=>`<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version||'')}</span></div>
-        <button type="button" class="btn" data-remove="${escAttr(p.name)}" title="Uninstall pack">Remove</button></div>`).join('');
+      html+=installed.map(p=>{
+        const sig=p.signed==='builtin'?'builtin ✓':(p.signed?('signed ✓ '+p.signed):'unsigned');
+        return `<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version||'')} · ${esc(sig)}</span></div>
+        <button type="button" class="btn" data-remove="${escAttr(p.name)}" title="Uninstall pack">Remove</button></div>`;
+      }).join('');
     }
-    if(!html) html='<span class="hint">No packs yet — install an official pack or upload a .tar.gz.</span>';
+    if(!html) html='<span class="hint">No packs yet — install an official pack or upload a signed .tar.gz.</span>';
     box.innerHTML=html;
     box.querySelectorAll('[data-pack]').forEach(b=>b.onclick=async()=>{
       b.disabled=true; b.textContent='…';
@@ -353,7 +356,9 @@ async function installPackFile(file){
   if(!file) return;
   try{
     const buf=await file.arrayBuffer();
-    await api('/api/packs/install',{method:'POST',headers:{'content-type':'application/gzip'},body:buf});
+    const allow=$('#checksPackAllowUnsigned')&&$('#checksPackAllowUnsigned').checked;
+    const q=allow?'?allowUnsigned=1':'';
+    await api('/api/packs/install'+q,{method:'POST',headers:{'content-type':'application/gzip'},body:buf});
     toast('pack installed from '+file.name); loadChecksList(); loadPacksPanel();
   }catch(e){toast(e.message||'install failed','error');}
 }

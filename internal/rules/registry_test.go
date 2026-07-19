@@ -20,7 +20,7 @@ func TestRegistryInstallListRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := NewRegistry(root)
-	m, n, err := reg.InstallStream(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test")
+	m, n, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test", InstallOpts{AllowUnsigned: true})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestRegistryUpgradeReplacesEntry(t *testing.T) {
 		if _, err := BuildPack(src, Manifest{Name: "p", Version: v}, &buf); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := reg.InstallStream(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test"); err != nil {
+		if _, _, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test", InstallOpts{AllowUnsigned: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

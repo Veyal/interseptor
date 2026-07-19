@@ -82,6 +82,13 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
+		// Prefer HTTP/2 to the origin when ALPN negotiates it. The MITM leg to
+		// the client stays HTTP/1.1 (see writeResponseConn ProtoMajor downgrade)
+		// so forwarding never hangs; History records the upstream proto.
+		ForceAttemptHTTP2: true,
+		TLSClientConfig: &tls.Config{
+			NextProtos: []string{"h2", "http/1.1"},
+		},
 	}
 	return s
 }
@@ -800,12 +807,18 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *sto
 
 	removeHopHeaders(resp.Header)
 
+	// Record the origin protocol before any framing rewrite so History shows
+	// whether upstream spoke HTTP/2 even though we speak HTTP/1.1 to the client.
+	if resp.Proto != "" {
+		flow.HTTPVersion = resp.Proto
+	}
+
 	// Go's http.Transport may produce an HTTP/2 response. When written
 	// back over an HTTP/1.1 MITM connection, resp.Write sends
 	// "HTTP/2.0 ..." as the status line, ContentLength=-1, and empty
 	// TransferEncoding — so the client gets no framing at all and
 	// hangs until timeout.  Fix: downgrade to HTTP/1.1 with chunked
-	// framing when necessary.
+	// framing when necessary. Full client↔proxy h2 MITM is tracked in #19.
 	if resp.ProtoMajor >= 2 {
 		resp.ProtoMajor, resp.ProtoMinor = 1, 1
 		resp.Proto = "HTTP/1.1"

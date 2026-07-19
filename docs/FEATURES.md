@@ -41,6 +41,11 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Message codecs** — project-scoped Starlark encrypt/decrypt for app payloads (AES-ECB helpers,
   Decoded view in History/Repeater/Intercept, opt-in re-encode on send). See
   [message codecs](message-codecs.md) and [`examples/codecs/`](../examples/codecs/).
+- **Signed rule packs** — ed25519 publisher signatures on pack install (plus manifest sha256). See
+  [rule packs](rule-packs.md).
+- **Guided content discovery** — ferox/ffuf through the proxy (Map → Discovery); soft-404 clustering
+  on Map. See [content discovery](content-discovery.md).
+- **HTTP/2 upstream** — prefer h2 to origins; MITM client leg remains HTTP/1.1. See [HTTP/2](http2.md).
 - **Target scope** — include/exclude rules that focus history, the intercept gate, and the scanner.
 - **WebSocket** capture (`ws://`/`wss://` per-frame) **and replay** (a WebSocket Repeater).
 - **Session / auth injection** — auto-apply an `Authorization`/`Cookie` to every Repeater & Intruder

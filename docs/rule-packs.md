@@ -16,15 +16,24 @@ A pack is a `.tar.gz` containing:
 
 ```
 manifest.json              name, version, author, entries[] (each: kind, id, sha256)
+signature.json             optional ed25519 publisher signature
 checks/<id>.star           passive checks
 active-checks/<id>.star    active checks
 ```
 
 Every check file's **sha256** is recorded in the manifest at build time and
 **verified on install**, so a corrupted or tampered pack is rejected before any
-check reaches disk. (Detached minisign/ed25519 signing is the next layer; the
-manifest+sha256 gate is the foundation it rides on — see
-[PRD-0003](product/prd-0003-rule-packs.md).)
+check reaches disk. An optional **ed25519 publisher signature** (`signature.json`)
+covers the manifest digest (name, version, per-file hashes) so install can verify
+*who* published the pack — see [PRD-0003](product/prd-0003-rule-packs.md).
+
+### Trust model
+
+| Source | Policy |
+|--------|--------|
+| Official catalog (bundled) | Trusted as **builtin** (same trust as app code) |
+| Signed install | Verified against `interseptor-1` + `~/.interseptor/trusted-pack-keys/<id>.pub` |
+| Unsigned | Refused unless `--allow-unsigned` / UI checkbox / `?allowUnsigned=1` |
 
 ## CLI
 
@@ -32,8 +41,12 @@ manifest+sha256 gate is the foundation it rides on — see
 # Build a pack from a folder that has checks/ and/or active-checks/ subdirs.
 interseptor rules create --name owasp-top --version 1.0.0 --author Priya ./mychecks --out owasp.tar.gz
 
-# Install (verifies integrity, writes checks into ~/.interseptor/checks & active-checks).
+# Sign while building (32-byte hex seed file or literal):
+interseptor rules create --name owasp-top --sign ./my.seed --key-id priya ./mychecks --out owasp.tar.gz
+
+# Install (verifies integrity + signature).
 interseptor rules install owasp.tar.gz
+interseptor rules install --allow-unsigned legacy.tar.gz
 
 # See what's installed.
 interseptor rules list
@@ -57,10 +70,11 @@ immediately alongside your other checks and custom-built-ins — no restart.
 | `GET` | `/api/packs/{name}` | one pack's record |
 | `GET` | `/api/packs/catalog` | official packs bundled in the binary |
 | `POST` | `/api/packs/catalog/{name}/install` | one-click install of an official pack |
-| `POST` | `/api/packs/install` | upload a `.tar.gz` (full-scope key) |
+| `POST` | `/api/packs/install` | upload a `.tar.gz` (full-scope; `?allowUnsigned=1` optional) |
 | `DELETE` | `/api/packs/{name}` | uninstall (full-scope key) |
 
-UI: **Scanner → Checks** has an Official packs list plus a `.tar.gz` upload.
+UI: **Scanner → Checks** has an Official packs list plus a `.tar.gz` upload
+(with **Allow unsigned packs**).
 
 MCP tools: `list_packs`, `pack_info` (read-only — see the note above).
 

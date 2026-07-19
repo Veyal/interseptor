@@ -40,17 +40,20 @@ func (h *Hub) getPack(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) installPack(w http.ResponseWriter, r *http.Request) {
-	m, n, err := h.packsRegistry().InstallStream(
+	allowUnsigned := r.URL.Query().Get("allowUnsigned") == "1" || r.URL.Query().Get("allowUnsigned") == "true"
+	m, n, err := h.packsRegistry().InstallStreamOpts(
 		io.LimitReader(r.Body, maxArchiveBytes),
 		h.ChecksDir, h.ActiveChecksDir, "upload",
+		rules.InstallOpts{AllowUnsigned: allowUnsigned},
 	)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "install failed: "+err.Error())
 		return
 	}
+	rec, _, _ := h.packsRegistry().Get(m.Name)
 	h.broadcast(map[string]any{"type": "checks.update"})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name": m.Name, "version": m.Version, "installed": n,
+		"name": m.Name, "version": m.Version, "installed": n, "signed": rec.Signed,
 	})
 }
 
@@ -100,13 +103,14 @@ func (h *Hub) installCatalogPack(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, err.Error())
 		return
 	}
-	got, n, err := h.packsRegistry().InstallStream(bytes.NewReader(buf.Bytes()), h.ChecksDir, h.ActiveChecksDir, "catalog")
+	got, n, err := h.packsRegistry().InstallStreamOpts(bytes.NewReader(buf.Bytes()), h.ChecksDir, h.ActiveChecksDir, "catalog",
+		rules.InstallOpts{TrustBuiltin: true})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "install failed: "+err.Error())
 		return
 	}
 	h.broadcast(map[string]any{"type": "checks.update"})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name": got.Name, "version": got.Version, "installed": n, "catalog": m.Name,
+		"name": got.Name, "version": got.Version, "installed": n, "catalog": m.Name, "signed": "builtin",
 	})
 }

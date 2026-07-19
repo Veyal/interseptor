@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
 import { sendToRepeater } from './tools.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
@@ -699,6 +699,29 @@ $('#mapHideNoise')&&($('#mapHideNoise').onclick=()=>{
   syncMapHideNoise();
   loadEndpoints();
 });
+function mapDiscoveryCmds(){
+  const proxy=state.proxyAddr||'127.0.0.1:8080';
+  const host=(mapState.domain&&String(mapState.domain).trim())||'https://app.example.com';
+  const base=host.includes('://')?host:('https://'+host);
+  return {
+    ferox:`feroxbuster -u ${base} -p http://${proxy} --dont-extract-links -t 20`,
+    ffuf:`ffuf -u ${base}/FUZZ -w wordlist.txt -x http://${proxy} -mc all -fc 404`,
+  };
+}
+function refreshMapDiscoveryPanel(){
+  const cmds=mapDiscoveryCmds();
+  const f=$('#mapDscFerox'), u=$('#mapDscFfuf');
+  if(f) f.textContent=cmds.ferox;
+  if(u) u.textContent=cmds.ffuf;
+}
+$('#mapDiscoveryHelp')&&($('#mapDiscoveryHelp').onclick=()=>{
+  const p=$('#mapDiscoveryPanel'); if(!p) return;
+  const show=p.hasAttribute('hidden')||p.style.display==='none';
+  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); $('#mapDiscoveryHelp').textContent='Discovery ▾'; }
+  else { p.hidden=true; p.style.display='none'; $('#mapDiscoveryHelp').textContent='Discovery ▸'; }
+});
+$('#mapDscCopyFerox')&&($('#mapDscCopyFerox').onclick=()=>copyText(mapDiscoveryCmds().ferox,'ferox command copied'));
+$('#mapDscCopyFfuf')&&($('#mapDscCopyFfuf').onclick=()=>copyText(mapDiscoveryCmds().ffuf,'ffuf command copied'));
 $('#mapCollapseIdentical')&&($('#mapCollapseIdentical').onclick=()=>{
   mapState.collapseIdentical=!mapState.collapseIdentical;
   mapState.expandedClusters.clear();

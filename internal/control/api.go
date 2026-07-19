@@ -134,7 +134,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/ai/codecs/generate", "BYO-key AI: plain-text description → Starlark message codec. Body: {description, source?, flowId?} — source is an existing draft to refine. Response: {source, suggestedId} or {error, source, suggestedId}"},
 	{"GET", "/api/packs", "List installed rule packs (name, version, check ids)"},
 	{"GET", "/api/packs/{name}", "Show one installed pack's record"},
-	{"POST", "/api/packs/install", "Install a rule-pack .tar.gz (verified against its manifest's sha256s); full-scope only"},
+	{"POST", "/api/packs/install", "Install a rule-pack .tar.gz (sha256 + ed25519 signature; ?allowUnsigned=1 to skip sig); full-scope only"},
 	{"DELETE", "/api/packs/{name}", "Uninstall a rule pack and delete its check files; full-scope only"},
 	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=&tag=)"},
 	{"GET", "/api/findings/tags", "List tags in use on findings with counts (and optional colors from tag_meta)"},

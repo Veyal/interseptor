@@ -47,6 +47,8 @@ func rulesCreate(args []string) error {
 	desc := fs.String("description", "", "short description")
 	author := fs.String("author", "", "author")
 	out := fs.String("out", "", "output file (default stdout)")
+	sign := fs.String("sign", "", "ed25519 seed/private key (hex file or literal) — writes signature.json")
+	keyID := fs.String("key-id", "", "signature key id (default interseptor-1)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -63,18 +65,35 @@ func rulesCreate(args []string) error {
 		defer f.Close()
 		w = f
 	}
-	m, err := rules.BuildPack(srcDir, rules.Manifest{
+	opts := rules.BuildOpts{KeyID: *keyID}
+	if *sign != "" {
+		priv, err := rules.ParsePrivateSeed(*sign)
+		if err != nil {
+			return err
+		}
+		opts.PrivateKey = priv
+	}
+	m, err := rules.BuildPackOpts(srcDir, rules.Manifest{
 		Name: *name, Version: *version, Description: *desc, Author: *author,
-	}, w)
+	}, w, opts)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "built pack %q v%s with %d check(s)\n", m.Name, m.Version, len(m.Entries))
+	sigNote := "unsigned"
+	if m.Signature != nil {
+		sigNote = "signed keyId=" + m.Signature.KeyID
+	}
+	fmt.Fprintf(os.Stderr, "built pack %q v%s with %d check(s) (%s)\n", m.Name, m.Version, len(m.Entries), sigNote)
 	return nil
 }
 
 func rulesInstall(args []string) error {
-	if len(args) != 1 {
+	fs := flag.NewFlagSet("rules install", flag.ContinueOnError)
+	allowUnsigned := fs.Bool("allow-unsigned", false, "install packs that lack signature.json")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
 		return errors.New("rules install: expected <file.tar.gz>")
 	}
 	root, err := dataRoot()
@@ -82,11 +101,14 @@ func rulesInstall(args []string) error {
 		return err
 	}
 	reg := rules.NewRegistry(root)
-	m, n, err := reg.InstallFile(args[0], filepath.Join(root, "checks"), filepath.Join(root, "active-checks"))
+	m, n, err := reg.InstallFileOpts(fs.Arg(0), filepath.Join(root, "checks"), filepath.Join(root, "active-checks"), rules.InstallOpts{
+		AllowUnsigned: *allowUnsigned,
+	})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("installed pack %q v%s — %d check(s)\n", m.Name, m.Version, n)
+	rec, _, _ := reg.Get(m.Name)
+	fmt.Printf("installed pack %q v%s — %d check(s) [%s]\n", m.Name, m.Version, n, rules.SignedLabel(rec))
 	return nil
 }
 
@@ -104,7 +126,7 @@ func rulesList(args []string) error {
 		return nil
 	}
 	for _, p := range packs {
-		fmt.Printf("%-20s v%-10s  %d check(s)\n", p.Name, p.Version, len(p.IDs))
+		fmt.Printf("%-20s v%-10s  %d check(s)  %s\n", p.Name, p.Version, len(p.IDs), rules.SignedLabel(p))
 	}
 	return nil
 }

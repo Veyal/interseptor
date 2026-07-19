@@ -11,13 +11,14 @@
 //
 // Integrity: every file's sha256 is recorded in the manifest at build time and
 // verified on read, so a corrupted or tampered pack is rejected before any
-// check is written to disk. (Detached minisign/ed25519 signing is the next
-// layer; the manifest+sha256 gate is the foundation it rides on.)
+// check is written to disk. Optional ed25519 publisher signatures (signature.json)
+// prove who built the pack — see sign.go and docs/rule-packs.md.
 package rules
 
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -44,14 +45,15 @@ type Entry struct {
 
 // Manifest is the pack's front matter plus its file index.
 type Manifest struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Description string `json:"description,omitempty"`
-	Author      string `json:"author,omitempty"`
-	Homepage    string `json:"homepage,omitempty"`
-	License     string `json:"license,omitempty"`
-	Created     string `json:"created,omitempty"`
-	Entries     []Entry `json:"entries"`
+	Name        string     `json:"name"`
+	Version     string     `json:"version"`
+	Description string     `json:"description,omitempty"`
+	Author      string     `json:"author,omitempty"`
+	Homepage    string     `json:"homepage,omitempty"`
+	License     string     `json:"license,omitempty"`
+	Created     string     `json:"created,omitempty"`
+	Entries     []Entry    `json:"entries"`
+	Signature   *Signature `json:"signature,omitempty"` // also mirrored as signature.json
 }
 
 const manifestName = "manifest.json"
@@ -61,12 +63,23 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// BuildOpts controls optional publisher signing when building a pack.
+type BuildOpts struct {
+	PrivateKey ed25519.PrivateKey
+	KeyID      string
+}
+
 // BuildPack writes a pack tarball to w from the checks found under srcDir
 // (expected layout: srcDir/checks/*.star and srcDir/active-checks/*.star). The
 // supplied meta fills the manifest's descriptive fields; entries + hashes are
 // computed from the files. Files are written in a stable (sorted) order so two
 // builds of the same source are byte-identical.
 func BuildPack(srcDir string, meta Manifest, w io.Writer) (Manifest, error) {
+	return BuildPackOpts(srcDir, meta, w, BuildOpts{})
+}
+
+// BuildPackOpts is BuildPack with optional ed25519 signing.
+func BuildPackOpts(srcDir string, meta Manifest, w io.Writer, opts BuildOpts) (Manifest, error) {
 	if strings.TrimSpace(meta.Name) == "" {
 		return Manifest{}, fmt.Errorf("rules: pack name is required")
 	}
@@ -90,10 +103,22 @@ func BuildPack(srcDir string, meta Manifest, w io.Writer) (Manifest, error) {
 	for _, c := range collected {
 		manifest.Entries = append(manifest.Entries, Entry{Kind: c.Kind, ID: c.ID, SHA256: sha256Hex(c.Data)})
 	}
+	manifest.Signature = nil
+	if len(opts.PrivateKey) == ed25519.PrivateKeySize {
+		manifest, err = SignManifest(manifest, opts.PrivateKey, opts.KeyID)
+		if err != nil {
+			return Manifest{}, err
+		}
+	}
 
 	gz, _ := gzip.NewWriterLevel(w, gzip.BestCompression)
 	tw := tar.NewWriter(gz)
+	// Persist signature only in signature.json (not duplicated inside manifest)
+	// so the digest covers name/version/entries alone.
+	sig := manifest.Signature
+	manifest.Signature = nil
 	manifestBytes, _ := json.MarshalIndent(manifest, "", "  ")
+	manifest.Signature = sig
 	if err := writeTar(tw, manifestName, manifestBytes); err != nil {
 		tw.Close()
 		gz.Close()
@@ -101,6 +126,19 @@ func BuildPack(srcDir string, meta Manifest, w io.Writer) (Manifest, error) {
 	}
 	for _, c := range collected {
 		if err := writeTar(tw, c.archivePath(), c.Data); err != nil {
+			tw.Close()
+			gz.Close()
+			return Manifest{}, err
+		}
+	}
+	if sig != nil {
+		sb, err := encodeSignature(sig)
+		if err != nil {
+			tw.Close()
+			gz.Close()
+			return Manifest{}, err
+		}
+		if err := writeTar(tw, signatureName, sb); err != nil {
 			tw.Close()
 			gz.Close()
 			return Manifest{}, err
@@ -170,6 +208,7 @@ func ReadPack(r io.Reader) (Manifest, []File, error) {
 	tr := tar.NewReader(gz)
 	files := map[string][]byte{}
 	var manifest *Manifest
+	var sigBlock *Signature
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -185,18 +224,29 @@ func ReadPack(r io.Reader) (Manifest, []File, error) {
 		if err != nil {
 			return Manifest{}, nil, fmt.Errorf("rules: read %s: %w", hdr.Name, err)
 		}
-		if hdr.Name == manifestName {
+		switch hdr.Name {
+		case manifestName:
 			var m Manifest
 			if err := json.Unmarshal(data, &m); err != nil {
 				return Manifest{}, nil, fmt.Errorf("rules: parse manifest: %w", err)
 			}
 			manifest = &m
 			continue
+		case signatureName:
+			var s Signature
+			if err := json.Unmarshal(data, &s); err != nil {
+				return Manifest{}, nil, fmt.Errorf("rules: parse signature: %w", err)
+			}
+			sigBlock = &s
+			continue
 		}
 		files[hdr.Name] = data
 	}
 	if manifest == nil {
 		return Manifest{}, nil, fmt.Errorf("rules: pack has no manifest.json")
+	}
+	if sigBlock != nil {
+		manifest.Signature = sigBlock
 	}
 	out := make([]File, 0, len(manifest.Entries))
 	for _, e := range manifest.Entries {

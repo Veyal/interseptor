@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Signed rule packs (ed25519).** `rules create --sign` writes `signature.json`; install verifies against the embedded `interseptor-1` public key and `~/.interseptor/trusted-pack-keys/*.pub`. Unsigned uploads refused unless `--allow-unsigned` / UI checkbox / `?allowUnsigned=1`. Catalog packs remain builtin-trusted. Docs: [`docs/rule-packs.md`](docs/rule-packs.md).
+- **Guided content discovery.** Map → **Discovery ▸** copy-paste feroxbuster/ffuf commands through the proxy; [`docs/content-discovery.md`](docs/content-discovery.md) (soft-404 / History policy). No built-in forced-browse engine.
+- **HTTP/2 upstream capture.** Proxy prefers h2 to the origin (`ForceAttemptHTTP2` + ALPN); History records upstream `HTTPVersion`; MITM client leg stays HTTP/1.1 with safe framing downgrade. Docs: [`docs/http2.md`](docs/http2.md). Full client↔proxy h2 MITM still open (#19).
+- **Extension PRD + hook stub.** [`docs/product/prd-0005-extensions.md`](docs/product/prd-0005-extensions.md) and `internal/plugin` `OnFlowCaptured` registry (Phase 1).
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.5.4`.**
 - **Keyboard-first UI foundation.** Added a shared high-contrast focus ring and reduced-motion behavior, stack-correct dialog focus management, accessible command-palette and custom-select keyboard semantics, and panel-scoped shortcuts that do not override editing keystrokes.

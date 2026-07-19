@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 )
 
 // InstallRecord is one pack the operator has installed: its manifest identity
@@ -15,7 +17,15 @@ type InstallRecord struct {
 	Version   string   `json:"version"`
 	Installed string   `json:"installed"`
 	Source    string   `json:"source,omitempty"`
+	Signed    string   `json:"signed,omitempty"` // key id, "builtin", or ""
 	IDs       []string `json:"ids"`
+}
+
+// InstallOpts controls publisher-signature policy on install.
+type InstallOpts struct {
+	AllowUnsigned bool    // permit packs with no signature.json
+	Keys          Keyring // nil → DefaultKeyring(registry root's parent global dir)
+	TrustBuiltin  bool    // catalog/embedded packs (same trust as the binary)
 }
 
 // Registry tracks installed packs in <root>/packs/registry.json. It is the
@@ -125,7 +135,7 @@ func (r *Registry) Remove(name, checksDir, activeChecksDir string) (int, error) 
 
 // record installs (or upgrades) a pack's files on disk and records it. Existing
 // files with the same id are overwritten (an upgrade). Returns the count written.
-func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, source string) (int, error) {
+func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, source, signed string) (int, error) {
 	if err := os.MkdirAll(checksDir, 0o755); err != nil {
 		return 0, err
 	}
@@ -149,7 +159,10 @@ func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, 
 	if err != nil {
 		return written, err
 	}
-	rec := InstallRecord{Name: m.Name, Version: m.Version, IDs: ids, Source: source}
+	rec := InstallRecord{
+		Name: m.Name, Version: m.Version, IDs: ids, Source: source, Signed: signed,
+		Installed: time.Now().UTC().Format(time.RFC3339),
+	}
 	// replace an existing entry for the same pack (upgrade), else append.
 	out := rf.Packs[:0]
 	replaced := false
@@ -172,24 +185,69 @@ func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, 
 
 // InstallStream reads a pack from r, verifies it, writes its checks to disk, and
 // records it in the registry. source is stored for provenance (e.g. a URL).
+// Unsigned community packs are refused unless opts.AllowUnsigned or opts.TrustBuiltin.
 func (r *Registry) InstallStream(rdr readSeekFree, checksDir, activeChecksDir, source string) (Manifest, int, error) {
+	return r.InstallStreamOpts(rdr, checksDir, activeChecksDir, source, InstallOpts{})
+}
+
+// InstallStreamOpts is InstallStream with signature policy.
+func (r *Registry) InstallStreamOpts(rdr readSeekFree, checksDir, activeChecksDir, source string, opts InstallOpts) (Manifest, int, error) {
 	m, files, err := ReadPack(rdr)
 	if err != nil {
 		return m, 0, err
 	}
-	n, err := r.record(m, files, checksDir, activeChecksDir, source)
+	signed := ""
+	switch {
+	case opts.TrustBuiltin || source == "catalog":
+		signed = "builtin"
+	case m.Signature != nil:
+		keys := opts.Keys
+		if keys == nil {
+			keys = DefaultKeyring(r.globalDir())
+		}
+		if err := VerifyManifestSignature(m, keys); err != nil {
+			return m, 0, err
+		}
+		signed = m.Signature.KeyID
+	case opts.AllowUnsigned:
+		signed = ""
+	default:
+		return m, 0, fmt.Errorf("rules: unsigned pack (sign with `interseptor rules create --sign <seed>` or pass --allow-unsigned)")
+	}
+	n, err := r.record(m, files, checksDir, activeChecksDir, source, signed)
 	return m, n, err
+}
+
+func (r *Registry) globalDir() string {
+	// path is <root>/packs/registry.json
+	return filepath.Dir(filepath.Dir(r.path))
 }
 
 // InstallFile installs a pack from a local .tar.gz path.
 func (r *Registry) InstallFile(path, checksDir, activeChecksDir string) (Manifest, int, error) {
+	return r.InstallFileOpts(path, checksDir, activeChecksDir, InstallOpts{})
+}
+
+// InstallFileOpts is InstallFile with signature policy.
+func (r *Registry) InstallFileOpts(path, checksDir, activeChecksDir string, opts InstallOpts) (Manifest, int, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Manifest{}, 0, err
 	}
 	defer f.Close()
-	m, n, err := r.InstallStream(f, checksDir, activeChecksDir, path)
-	return m, n, err
+	return r.InstallStreamOpts(f, checksDir, activeChecksDir, path, opts)
+}
+
+// SignedLabel returns a short UI/CLI label for an install record.
+func SignedLabel(rec InstallRecord) string {
+	s := strings.TrimSpace(rec.Signed)
+	if s == "" {
+		return "unsigned"
+	}
+	if s == "builtin" {
+		return "builtin ✓"
+	}
+	return "signed ✓ (" + s + ")"
 }
 
 // readSeekFree is io.Reader, named to document that ReadPack only needs reading.
