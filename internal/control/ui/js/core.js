@@ -88,6 +88,15 @@ export function projectStorageKey(base){
   return scoped;
 }
 
+export function renderLoadError(el, label, err, retry, stale=false){
+  if(!el)return;
+  const message=err&&err.message?err.message:String(err||'unknown error');
+  el.style.display='block';
+  el.innerHTML=`<span class="state-error-msg">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
+  const btn=el.querySelector('[data-load-retry]');
+  if(btn)btn.onclick=retry;
+}
+
 // createTabManager — generic "tabs with localStorage persistence" pattern,
 // extracted from Repeater's and Intruder's independently-reimplemented copies
 // (docs/UI-REDESIGN-ROADMAP.md §4 consolidation targets). Each panel keeps its
@@ -178,15 +187,22 @@ export function createTabManager(opts){
 // <select> stays in the DOM (hidden) so existing .value / .onchange / innerHTML
 // code keeps working; we mirror options into a custom menu and dispatch change.
 let uiSelectOpen=null;
+let uiSelectSeq=0;
 
 function closeUiSelectMenu(inst){
   if(!inst)return;
   inst.menu.hidden=true;
   inst.menu.classList.remove('ui-select-menu-fixed');
   inst.menu.style.cssText='';
+  if(inst.menuZIndexSaved){
+    if(inst.menuPreviousZIndex)inst.menu.style.setProperty('z-index',inst.menuPreviousZIndex,inst.menuPreviousZIndexPriority);
+    else inst.menu.style.removeProperty('z-index');
+    inst.menuPreviousZIndex='';inst.menuPreviousZIndexPriority='';inst.menuZIndexSaved=false;
+  }
   // Return the portaled menu (see openUiSelectMenu) to its wrap.
   if(inst.wrap&&inst.menu.parentNode!==inst.wrap)inst.wrap.appendChild(inst.menu);
   inst.trigger.setAttribute('aria-expanded','false');
+  inst.trigger.removeAttribute('aria-activedescendant');
   if(uiSelectOpen&&uiSelectOpen.menu===inst.menu)uiSelectOpen=null;
 }
 
@@ -195,7 +211,7 @@ export function closeAllUiSelects(){
 }
 
 function scrollUiSelectMenuToSelected(menu){
-  const opt=menu.querySelector('.ui-select-opt.sel');
+  const opt=menu.querySelector('.ui-select-opt.active,.ui-select-opt.sel');
   if(!opt)return;
   const top=opt.offsetTop,bottom=top+opt.offsetHeight;
   if(top<menu.scrollTop)menu.scrollTop=top;
@@ -206,6 +222,9 @@ function openUiSelectMenu(inst){
   closeAllUiSelects();
   hideCtxMenu(); // dismiss any open ctx/Views menu — same mutually-exclusive group
   const r=inst.trigger.getBoundingClientRect();
+  inst.menuPreviousZIndex=inst.menu.style.getPropertyValue('z-index');
+  inst.menuPreviousZIndexPriority=inst.menu.style.getPropertyPriority('z-index');
+  inst.menuZIndexSaved=true;
   // Portal the menu to <body> before showing it. Its .ui-select wrap lives inside
   // the Proxy .toolbar, whose backdrop-filter creates BOTH a stacking context and a
   // containing block for position:fixed descendants. Left in place, the menu (a)
@@ -218,6 +237,7 @@ function openUiSelectMenu(inst){
   inst.menu.style.left=r.left+'px';
   inst.menu.style.top=(r.bottom+4)+'px';
   inst.menu.style.width=Math.max(r.width,120)+'px';
+  inst.menu.style.setProperty('z-index',String(uiSelectMenuZIndex(inst)));
   inst.menu.hidden=false;
   // Defensive: should <body> itself ever sit under a transformed/filtered ancestor
   // (which would re-establish a fixed containing block), nudge the menu back onto
@@ -230,6 +250,8 @@ function openUiSelectMenu(inst){
   }
   inst.trigger.setAttribute('aria-expanded','true');
   uiSelectOpen=inst;
+  const selected=[...inst.sel.options].findIndex(o=>o.selected&&!o.disabled);
+  inst.setActive(selected>=0?selected:inst.firstEnabled());
   scrollUiSelectMenuToSelected(inst.menu);
 }
 
@@ -237,6 +259,7 @@ export function syncUiSelectStyles(sel){
   const inst=sel&&sel._uiSelect;
   if(!inst)return;
   const w=inst.wrap,s=sel;
+  w.hidden=s.hidden;
   w.style.display=s.style.display;
   w.style.maxWidth=s.style.maxWidth;
   w.style.width=s.style.width;
@@ -247,6 +270,46 @@ export function syncUiSelectStyles(sel){
 export function refreshUiSelect(sel){
   const inst=sel&&sel._uiSelect;
   if(inst)inst.render();
+}
+
+function uiSelectAccessibleName(sel){
+  const explicit=(sel.getAttribute('aria-label')||'').trim();
+  if(explicit)return explicit;
+  const label=sel.labels&&sel.labels[0];
+  const labelText=(label?.textContent||'').trim();
+  if(labelText)return labelText;
+  const title=(sel.getAttribute('title')||'').trim();
+  if(title)return title;
+  const id=(sel.id||'select').replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[-_]+/g,' ').trim();
+  return id||'Select option';
+}
+function uiSelectHandlesKey(e,open){
+  return e.key==='Escape'?open
+    :['ArrowDown','ArrowUp','Home','End','Enter',' '].includes(e.key)
+    ||(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.length===1&&/\S/.test(e.key));
+}
+function uiSelectMenuZIndex(inst){
+  let ownerZ=219;
+  for(const entry of modalStack){
+    if(entry.dialog.contains(inst.trigger))ownerZ=Math.max(ownerZ,Number.parseInt(getComputedStyle(entry.el).zIndex,10)||0);
+  }
+  const triggerZ=Number.parseInt(getComputedStyle(inst.trigger).zIndex,10)||0;
+  return Math.max(ownerZ,triggerZ)+1;
+}
+function wireUiSelectLabels(sel,trigger){
+  const labels=[...(sel.labels||[])];
+  labels.forEach((label,i)=>{
+    if(!label.id)label.id=(sel.id||trigger.id||'uiSelect')+'Label'+i;
+    label.addEventListener('click',e=>{
+      const fromTrigger=e.target===trigger||trigger.contains(e.target);
+      if(fromTrigger){e.preventDefault();return;}
+      if(e.target.closest?.('a,button,input,textarea,select'))return;
+      e.preventDefault();
+      trigger.focus();
+      trigger.click();
+    });
+  });
+  return labels;
 }
 
 export function enhanceSelect(sel){
@@ -265,10 +328,12 @@ export function enhanceSelect(sel){
   wrap.appendChild(sel);
   sel.classList.add('ui-select-native');
   sel.tabIndex=-1;
+  sel.setAttribute('aria-hidden','true');
 
   const trigger=document.createElement('button');
   trigger.type='button';
   trigger.className='ui-select-trigger';
+  trigger.setAttribute('role','combobox');
   trigger.setAttribute('aria-haspopup','listbox');
   trigger.setAttribute('aria-expanded','false');
   const valueEl=document.createElement('span');
@@ -282,38 +347,69 @@ export function enhanceSelect(sel){
   const menu=document.createElement('div');
   menu.className='ui-select-menu';
   menu.setAttribute('role','listbox');
+  menu.id='uiSelectList'+(++uiSelectSeq);
+  trigger.setAttribute('aria-controls',menu.id);
   menu.hidden=true;
 
   wrap.insertBefore(trigger,sel);
   wrap.appendChild(menu);
 
-  const al=sel.getAttribute('aria-label');
-  if(al)trigger.setAttribute('aria-label',al);
+  trigger.setAttribute('aria-label',uiSelectAccessibleName(sel));
   const sid=sel.id;
-  if(sid){
-    trigger.id=sid+'Ui';
-    const lbl=document.querySelector(`label[for="${sid}"]`);
-    if(lbl&&!lbl.id)lbl.id=sid+'Lbl';
-    if(lbl)trigger.setAttribute('aria-labelledby',lbl.id);
-  }
+  trigger.id=sid?sid+'Ui':menu.id+'Trigger';
+  const labels=wireUiSelectLabels(sel,trigger);
+  if(labels.length)trigger.setAttribute('aria-labelledby',labels.map(label=>label.id).join(' '));
 
-  const inst={sel,wrap,trigger,menu,valueEl,
+  const inst={sel,wrap,trigger,menu,valueEl,active:-1,typeahead:'',typeaheadTimer:null,
+    menuPreviousZIndex:'',menuPreviousZIndexPriority:'',menuZIndexSaved:false,
     syncStyles(){syncUiSelectStyles(sel);},
+    firstEnabled(){return [...sel.options].findIndex(o=>!o.disabled&&!o.hidden);},
+    setActive(i){
+      const opts=[...sel.options];
+      if(i<0||i>=opts.length||opts[i].disabled||opts[i].hidden)return;
+      inst.active=i;
+      menu.querySelectorAll('.ui-select-opt').forEach((el,n)=>el.classList.toggle('active',n===i));
+      const active=menu.querySelector('.ui-select-opt[data-index="'+i+'"]');
+      if(active){
+        trigger.setAttribute('aria-activedescendant',active.id);
+        active.scrollIntoView({block:'nearest'});
+      }
+    },
+    moveActive(delta){
+      const enabled=[...sel.options].map((o,i)=>!o.disabled&&!o.hidden?i:-1).filter(i=>i>=0);
+      if(!enabled.length)return;
+      let pos=enabled.indexOf(inst.active);
+      if(pos<0)pos=delta>0?-1:enabled.length;
+      inst.setActive(enabled[Math.max(0,Math.min(enabled.length-1,pos+delta))]);
+    },
+    chooseActive(){
+      const opt=sel.options[inst.active];if(!opt||opt.disabled)return;
+      if(sel.value!==opt.value){
+        sel.value=opt.value;
+        sel.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      inst.render();inst.close();trigger.focus();
+    },
     render(){
       syncUiSelectStyles(sel);
       const cur=sel.value;
       const opts=[...sel.options];
-      menu.innerHTML=opts.map(o=>{
+      if(inst.active>=opts.length||opts[inst.active]?.disabled||opts[inst.active]?.hidden)inst.active=-1;
+      menu.innerHTML=opts.map((o,i)=>{
         const v=o.value;
         const selOn=v===cur;
         const dis=o.disabled;
-        return `<button type="button" role="option" class="ui-select-opt${selOn?' sel':''}" data-value="${escAttr(v)}"${dis?' disabled':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span></button>`;
+        return `<button type="button" role="option" tabindex="-1" id="${menu.id}Opt${i}" class="ui-select-opt${selOn?' sel':''}${i===inst.active?' active':''}" data-index="${i}" data-value="${escAttr(v)}"${dis?' disabled aria-disabled="true"':''}${o.hidden?' hidden':''} aria-selected="${selOn?'true':'false'}"><span class="ui-select-opt-title">${esc(o.textContent)}</span></button>`;
       }).join('');
       const picked=opts.find(o=>o.value===cur)||opts[0];
       valueEl.textContent=picked?picked.textContent:(sel.getAttribute('placeholder')||'…');
       trigger.disabled=!!sel.disabled;
       if(sel.classList.contains('rep-method'))valueEl.style.color=methodColor(sel.value);
       else valueEl.style.color='';
+      if(!menu.hidden){
+        const selected=opts.findIndex(o=>o.selected&&!o.disabled&&!o.hidden);
+        inst.setActive(inst.active>=0?inst.active:(selected>=0?selected:inst.firstEnabled()));
+      }
     },
     close(){closeUiSelectMenu(inst);}
   };
@@ -324,24 +420,57 @@ export function enhanceSelect(sel){
     if(!menu.hidden){inst.close();return;}
     openUiSelectMenu(inst);
   });
+  trigger.addEventListener('keydown',e=>{
+    const open=!menu.hidden;
+    if(uiSelectHandlesKey(e,open))e.stopPropagation();
+    switch(e.key){
+    case 'ArrowDown':
+      e.preventDefault();if(!open)openUiSelectMenu(inst);else inst.moveActive(1);break;
+    case 'ArrowUp':
+      e.preventDefault();if(!open)openUiSelectMenu(inst);else inst.moveActive(-1);break;
+    case 'Home':
+      e.preventDefault();if(!open)openUiSelectMenu(inst);inst.setActive(inst.firstEnabled());break;
+    case 'End': {
+      e.preventDefault();if(!open)openUiSelectMenu(inst);
+      const opts=[...sel.options];for(let i=opts.length-1;i>=0;i--)if(!opts[i].disabled&&!opts[i].hidden){inst.setActive(i);break;}
+      break;
+    }
+    case 'Enter':
+    case ' ':
+      e.preventDefault();if(open)inst.chooseActive();else openUiSelectMenu(inst);break;
+    case 'Escape':
+      if(open){e.preventDefault();e.stopPropagation();inst.close();trigger.focus();}break;
+    case 'Tab':
+      if(open)inst.close();break;
+    default:
+      if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.length===1&&/\S/.test(e.key)){
+        e.preventDefault();
+        clearTimeout(inst.typeaheadTimer);
+        inst.typeahead=(inst.typeahead+e.key).toLocaleLowerCase();
+        inst.typeaheadTimer=setTimeout(()=>{inst.typeahead='';},600);
+        if(!open)openUiSelectMenu(inst);
+        const opts=[...sel.options],start=Math.max(0,inst.active+1);
+        const query=[...inst.typeahead].every(c=>c===inst.typeahead[0])?inst.typeahead[0]:inst.typeahead;
+        for(let n=0;n<opts.length;n++){
+          const i=(start+n)%opts.length,o=opts[i];
+          if(!o.disabled&&!o.hidden&&o.textContent.trim().toLocaleLowerCase().startsWith(query)){inst.setActive(i);break;}
+        }
+      }
+    }
+  });
 
   menu.addEventListener('click',e=>{
     e.stopPropagation();
     const opt=e.target.closest('.ui-select-opt');
     if(!opt||opt.disabled)return;
-    const v=opt.dataset.value;
-    if(sel.value!==v){
-      sel.value=v;
-      sel.dispatchEvent(new Event('change',{bubbles:true}));
-    }
-    inst.render();
-    inst.close();
+    inst.setActive(Number(opt.dataset.index));
+    inst.chooseActive();
   });
 
   sel.addEventListener('change',()=>inst.render());
 
   const mo=new MutationObserver(()=>inst.render());
-  mo.observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','hidden','class']});
+  mo.observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','hidden','class','style']});
 
   // App code frequently does `select.value = x` when populating a form from loaded
   // data (settings, filters, …) — that never fires a native 'change' event, so the
@@ -932,41 +1061,135 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder}={}){
   return hide;
 }
 
-/* ---- modal focus-trap helper ---- */
-// Tracks which element had focus before a modal opened so we can restore it.
-const _modalFocusStack=[];
-export const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-export function openModal(modalEl){
-  _modalFocusStack.push(document.activeElement);
+/* ---- authoritative modal registry + focus stack ---- */
+export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
+export const MODAL_IDS=['notesAiModal','flowModal','aiModal','shortcutsModal','checksModal','codecsModal','activeModal','oobModal','projModal','authzModal','findCreateModal','findTriageModal','findPickModal','findFlowPickModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+const MODAL_Z_BASE=400;
+const modalRegistry=new Map();
+const modalStack=[];
+
+function visibleFocusable(el){
+  if(!el||el.disabled||el.hidden||el.getAttribute('aria-hidden')==='true'||el.getAttribute('aria-disabled')==='true')return false;
+  if(el.closest('[hidden],[aria-hidden="true"]'))return false;
+  const style=getComputedStyle(el);
+  return style.display!=='none'&&style.visibility!=='hidden'&&style.visibility!=='collapse'&&el.getClientRects().length>0;
+}
+function topModal(){return modalStack[modalStack.length-1]||null;}
+export function hasOpenModal(){return !!topModal();}
+function modalZIndex(position){return MODAL_Z_BASE+position;}
+function syncModalZOrder(){
+  modalStack.forEach((entry,position)=>entry.el.style.setProperty('z-index',String(modalZIndex(position))));
+}
+function restoreModalZIndex(entry){
+  if(!entry.zIndexSaved)return;
+  if(entry.previousInlineZIndex)entry.el.style.setProperty('z-index',entry.previousInlineZIndex,entry.previousZIndexPriority);
+  else entry.el.style.removeProperty('z-index');
+  entry.previousInlineZIndex='';entry.previousZIndexPriority='';entry.zIndexSaved=false;
+}
+function modalFocusables(entry){
+  return [...entry.dialog.querySelectorAll(FOCUSABLE)].filter(visibleFocusable);
+}
+function registerModal(modalEl){
+  if(!modalEl)return null;
+  let entry=modalRegistry.get(modalEl);
+  if(entry)return entry;
+  const dialog=modalEl.matches('[role="dialog"]')?modalEl:modalEl.querySelector('[role="dialog"]');
+  if(!dialog)return null;
+  entry={el:modalEl,dialog,previousFocus:null,onEscape:null,onDismiss:null,initialFocus:null,
+    previousInlineZIndex:'',previousZIndexPriority:'',zIndexSaved:false};
+  modalRegistry.set(modalEl,entry);
+  modalEl.addEventListener('mousedown',e=>{
+    if(e.target!==modalEl||topModal()!==entry)return;
+    if(entry.onDismiss)entry.onDismiss();
+    else if(entry.onEscape)entry.onEscape();
+    else closeModal(modalEl);
+  });
+  return entry;
+}
+export function openModal(modalEl,opts={}){
+  const entry=registerModal(modalEl);
+  if(!entry)return;
+  const existing=modalStack.indexOf(entry);
+  if(existing>=0)modalStack.splice(existing,1);
+  else{
+    entry.previousFocus=document.activeElement;
+    entry.previousInlineZIndex=modalEl.style.getPropertyValue('z-index');
+    entry.previousZIndexPriority=modalEl.style.getPropertyPriority('z-index');
+    entry.zIndexSaved=true;
+  }
+  entry.onEscape=opts.onEscape||null;
+  entry.onDismiss=opts.onDismiss||null;
+  entry.initialFocus=opts.initialFocus||null;
+  modalStack.push(entry);
+  syncModalZOrder();
   modalEl.style.display='flex';
-  // Move focus into the dialog — prefer its first close button, else first focusable.
-  const inner=modalEl.querySelector('[role="dialog"]');
-  if(!inner)return;
-  const first=inner.querySelector('button.btn')||inner.querySelector(FOCUSABLE);
-  if(first)setTimeout(()=>first.focus(),0);
+  setTimeout(()=>{
+    if(topModal()!==entry)return;
+    let first=typeof entry.initialFocus==='string'?entry.dialog.querySelector(entry.initialFocus):entry.initialFocus;
+    if(!visibleFocusable(first))first=modalFocusables(entry)[0]||entry.dialog;
+    if(first===entry.dialog&&!entry.dialog.hasAttribute('tabindex'))entry.dialog.tabIndex=-1;
+    first.focus();
+  },0);
 }
 export function closeModal(modalEl){
+  const entry=modalRegistry.get(modalEl);
+  if(!entry){if(modalEl)modalEl.style.display='none';return;}
+  const idx=modalStack.indexOf(entry);
+  const wasTop=idx===modalStack.length-1;
+  if(idx>=0)modalStack.splice(idx,1);
   modalEl.style.display='none';
-  const prev=_modalFocusStack.pop();
-  if(prev&&typeof prev.focus==='function')prev.focus();
+  restoreModalZIndex(entry);
+  syncModalZOrder();
+  entry.onEscape=null;entry.onDismiss=null;entry.initialFocus=null;
+  if(!wasTop){
+    const above=idx>=0?modalStack[idx]:null;
+    if(above&&entry.el.contains(above.previousFocus))above.previousFocus=entry.previousFocus;
+    entry.previousFocus=null;
+    return;
+  }
+  const prev=entry.previousFocus;
+  entry.previousFocus=null;
+  const next=topModal();
+  if(next){
+    if(prev&&prev.isConnected&&next.dialog.contains(prev)&&visibleFocusable(prev))prev.focus();
+    else if(!next.dialog.contains(document.activeElement)){
+      const first=modalFocusables(next)[0]||next.dialog;
+      first.focus();
+    }
+    return;
+  }
+  if(prev&&prev.isConnected&&visibleFocusable(prev)&&typeof prev.focus==='function')prev.focus();
 }
-// Tab / Shift+Tab cycling within the open modal (focus trap).
-document.addEventListener('keydown',e=>{
+function dismissTopModal(){
+  const entry=topModal();
+  if(!entry)return false;
+  if(entry.onEscape)entry.onEscape();else closeModal(entry.el);
+  return true;
+}
+export function closeModals(){return dismissTopModal();}
+
+// Escape and Tab always target the last-opened visible dialog, never DOM order.
+window.addEventListener('keydown',e=>{
+  const entry=topModal();
+  if(!entry)return;
+  if(e.key==='Escape'){
+    if(e.defaultPrevented)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(entry.onEscape)entry.onEscape();else closeModal(entry.el);
+    return;
+  }
   if(e.key!=='Tab')return;
-  // Find the topmost open modal with role="dialog"
-  const openDialog=$$('[role="dialog"]').find(d=>d.closest('[id]')&&d.closest('[id]').style.display==='flex');
-  if(!openDialog)return;
-  const focusable=Array.from(openDialog.querySelectorAll(FOCUSABLE)).filter(el=>!el.disabled&&el.offsetParent!==null);
-  if(!focusable.length){e.preventDefault();return;}
+  const focusable=modalFocusables(entry);
+  if(!focusable.length){e.preventDefault();entry.dialog.focus();return;}
   const first=focusable[0],last=focusable[focusable.length-1];
-  if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}
-  else{if(document.activeElement===last){e.preventDefault();first.focus();}}
+  if(!entry.dialog.contains(document.activeElement)){
+    e.preventDefault();(e.shiftKey?last:first).focus();return;
+  }
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
 });
 
-/* ---- modals: close on Escape and on backdrop click (consistent across all) ---- */
-export const MODAL_IDS=['aiModal','notesAiModal','checksModal','codecsModal','activeModal','oobModal','authzModal','decModal','flowModal','confirmModal','shortcutsModal','projModal','compareModal','findCreateModal','findPickModal','findFlowPickModal','imgLightbox'];
-export function closeModals(){let n=0;MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m&&m.style.display&&m.style.display!=='none'){closeModal(m);n++;}});return n>0;}
-MODAL_IDS.forEach(id=>{const m=$('#'+id);if(m)m.addEventListener('mousedown',e=>{if(e.target===m)closeModal(m);});});
+MODAL_IDS.forEach(id=>registerModal($('#'+id)));
 
 /* ---- image lightbox (click any .md-img / .find-doc-img to focus + zoom) ---- */
 const _imgLb={scale:1,ox:0,oy:0,fitScale:1,dragging:false,moved:false,dx:0,dy:0,px:0,py:0,wired:false};
@@ -1103,14 +1326,13 @@ export function uiPrompt(opts){
     const m=$('#promptModal'),inp=$('#promptInput');
     $('#promptTitle').textContent=opts.title||'Enter a value';
     inp.placeholder=opts.placeholder||'';inp.value=opts.value||'';
-    openModal(m);
-    setTimeout(()=>{inp.focus();inp.select();},0);
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);inp.onkeydown=null;m.onmousedown=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;closeModal(m);inp.onkeydown=null;resolve(v);};
+    openModal(m,{initialFocus:inp,onEscape:()=>finish(null),onDismiss:()=>finish(null)});
+    setTimeout(()=>inp.select(),0);
     $('#promptOk').onclick=()=>finish(inp.value.trim()||null);
     $('#promptCancel').onclick=()=>finish(null);
-    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(inp.value.trim()||null);}else if(e.key==='Escape'){e.preventDefault();finish(null);}};
-    m.onmousedown=e=>{if(e.target===m)finish(null);};
+    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish(inp.value.trim()||null);}};
   });
 }
 
@@ -1126,16 +1348,11 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
     ok.textContent=okLabel||'OK';
     ok.className=(okClass||'btn accent');
     if(okColor)ok.style.color=okColor; else ok.style.color='';
-    openModal(m);
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;m.onmousedown=null;m.onkeydown=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;resolve(v);};
+    openModal(m,{initialFocus:$('#confirmCancel'),onEscape:()=>finish(false),onDismiss:()=>finish(false)});
     ok.onclick=()=>finish(true);
     $('#confirmCancel').onclick=()=>finish(false);
-    m.onmousedown=e=>{if(e.target===m)finish(false);};
-    // Escape key resolves false (cancel) so the promise doesn't hang when the
-    // user presses Escape — the global Escape handler calls closeModal() but
-    // that alone doesn't resolve our Promise.
-    m.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();finish(false);}};
   });
 }
 

@@ -4,6 +4,7 @@
 package intruder
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"net/url"
@@ -23,6 +24,9 @@ import (
 const maxRequests = 2000
 
 var marker = regexp.MustCompile(`§[^§]*§`)
+
+// ErrClosed is returned when an attack is started after engine shutdown.
+var ErrClosed = errors.New("intruder engine is closed")
 
 // Spec describes an attack.
 type Spec struct {
@@ -78,6 +82,9 @@ type Engine struct {
 	errMsg  string
 	capped  bool
 	notify  func()
+	doneCh  chan struct{}
+	cancel  context.CancelFunc
+	closed  bool
 }
 
 // headerVal returns the first value for a case-insensitive header key.
@@ -91,7 +98,11 @@ func headerVal(h map[string][]string, key string) string {
 }
 
 // New returns an Engine backed by snd.
-func New(snd *sender.Sender) *Engine { return &Engine{snd: snd} }
+func New(snd *sender.Sender) *Engine {
+	done := make(chan struct{})
+	close(done)
+	return &Engine{snd: snd, doneCh: done}
+}
 
 // SetBodyReader wires a response-body reader so grep-match/extract can inspect
 // response contents (the engine itself has no store access).
@@ -143,6 +154,20 @@ func (e *Engine) State() State {
 	return out
 }
 
+// Close permanently stops the engine, cancels an active attack, and waits for
+// its request workers to release the sender and store.
+func (e *Engine) Close() {
+	e.mu.Lock()
+	e.closed = true
+	cancel := e.cancel
+	done := e.doneCh
+	e.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	<-done
+}
+
 type job struct {
 	label    string
 	payloads []string // one per position
@@ -161,6 +186,13 @@ func normalizeAttackType(t string) string {
 // Start validates the spec, builds the job list, and runs the attack in the
 // background. It errors if an attack is already running or the spec is invalid.
 func (e *Engine) Start(spec Spec) error {
+	e.mu.Lock()
+	closed := e.closed
+	e.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+
 	spec.AttackType = normalizeAttackType(spec.AttackType)
 	positions := marker.FindAllString(spec.Template, -1)
 	if spec.AttackType == "repeat" {
@@ -192,20 +224,27 @@ func (e *Engine) Start(spec Spec) error {
 	}
 
 	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		return ErrClosed
+	}
 	if e.running {
 		e.mu.Unlock()
 		return errors.New("an attack is already running")
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	e.running = true
 	e.results = nil
 	e.total = len(jobs)
 	e.done = 0
 	e.errMsg = ""
 	e.capped = capped
+	e.doneCh = make(chan struct{})
+	e.cancel = cancel
 	e.mu.Unlock()
 	e.fireNotify()
 
-	go e.run(spec, jobs)
+	go e.run(ctx, spec, jobs)
 	return nil
 }
 
@@ -324,7 +363,7 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 	return jobs, capped
 }
 
-func (e *Engine) run(spec Spec, jobs []job) {
+func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	base := strings.TrimRight(spec.Target, "/")
 	threads := spec.Threads
 	if threads < 1 {
@@ -391,11 +430,25 @@ func (e *Engine) run(spec Spec, jobs []job) {
 
 	sem := make(chan struct{}, threads)
 	var wg sync.WaitGroup
+dispatch:
 	for i, j := range jobs {
 		if spec.DelayMs > 0 && i > 0 { // throttle: wait between dispatching each request
-			time.Sleep(time.Duration(spec.DelayMs) * time.Millisecond)
+			timer := time.NewTimer(time.Duration(spec.DelayMs) * time.Millisecond)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				break dispatch
+			}
 		}
-		sem <- struct{}{}
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break dispatch
+		}
 		wg.Add(1)
 		go func(idx int, j job) {
 			defer wg.Done()
@@ -416,6 +469,7 @@ func (e *Engine) run(spec Spec, jobs []job) {
 				Headers: headers,
 				Body:    body,
 				Flags:   store.FlagIntruder | spec.ExtraFlags,
+				Context: ctx,
 			})
 			res.TimeMs = time.Since(start).Milliseconds()
 			if flow != nil {
@@ -435,7 +489,12 @@ func (e *Engine) run(spec Spec, jobs []job) {
 	e.flagAnomalies()
 	e.mu.Lock()
 	e.running = false
+	cancel := e.cancel
+	e.cancel = nil
+	done := e.doneCh
+	close(done)
 	e.mu.Unlock()
+	cancel()
 	e.fireNotify()
 }
 

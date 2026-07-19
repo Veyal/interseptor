@@ -2,7 +2,7 @@
 // (point at the proxy → trust the CA → set target scope → done) instead of making
 // them hunt across the Settings sections. Shown once on boot unless skipped, and
 // reopenable from Settings → Project & data.
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, projectStorageKey } from './core.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
@@ -29,6 +29,23 @@ const TRUST_COMMANDS = {
   linux: `sudo cp ~/Downloads/interseptor-ca.crt /usr/local/share/ca-certificates/interseptor.crt && sudo update-ca-certificates`,
 };
 
+function setupDoneKey(){return projectStorageKey(SETUP_KEY);}
+async function setupReadiness(){
+  const box=$('#setupReadiness');if(!box)return null;
+  box.textContent='Checking proxy, TLS, and traffic…';
+  try{
+    const report=await api('/api/readiness');
+    const ids=['proxy','tls_intercept','traffic'];
+    const checks=ids.map(id=>(report.checks||[]).find(c=>c.id===id)).filter(Boolean);
+    box.innerHTML=checks.map(c=>`<div style="color:${c.ok?'var(--accent)':'var(--amber)'}">${c.ok?'✓':'!'} ${esc(c.detail)}${!c.ok&&c.fix?' — '+esc(c.fix):''}</div>`).join('');
+    return report;
+  }catch(e){
+    box.innerHTML=`<span style="color:var(--red)">Readiness check failed: ${esc(e.message)}</span> <button class="btn xs" id="setupRetryReadiness">Retry</button>`;
+    $('#setupRetryReadiness').onclick=setupReadiness;
+    return null;
+  }
+}
+
 function renderStep() {
   $('#setupStep').textContent = (step + 1) + ' / ' + (LAST + 1);
   $('#setupBack').style.display = step > 0 ? '' : 'none';
@@ -36,13 +53,16 @@ function renderStep() {
   const b = $('#setupBody');
   if (step === 0) {
     const addr = esc(state.proxyAddr || '127.0.0.1:8080');
-    b.innerHTML = `<p style="margin:0 0 10px">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
+    b.innerHTML = `<p style="margin:0 0 10px">Choose the correct project before capture so engagement data stays separated. <button class="btn xs" id="setupChooseProject">Choose project…</button></p>
+      <p style="margin:0 0 10px">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
       <div class="row" style="gap:8px;margin-bottom:14px">
         <code class="evidence" style="flex:1;margin:0;font-size:13px">${addr}</code>
         <button class="btn" id="setupCopyAddr">⧉ Copy</button>
       </div>
       <button class="btn" id="setupSysProxy" style="margin-bottom:10px">Set as macOS system proxy</button>
-      <p class="hint" style="margin:0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>`;
+      <p class="hint" style="margin:0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
+      <div id="setupReadiness" class="evidence" style="margin-top:10px"></div>`;
+    $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
     $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
     $('#setupSysProxy').onclick = async () => {
       try {
@@ -52,6 +72,7 @@ function renderStep() {
         toast('system proxy on — point your browser at the proxy now');
       } catch (e) { toast(e.message); }
     };
+    setupReadiness();
   } else if (step === 1) {
     const os = osHint();
     const trust = TRUST_STEPS[os] || `<li>Install the CA into your OS/browser root trust store.</li>`;
@@ -85,13 +106,15 @@ function renderStep() {
       } catch (e) { toast(e.message); }
     };
   } else {
-    b.innerHTML = `<p style="margin:0 0 10px">You're set up. Send some traffic through the proxy and it'll appear in <b>Proxy History</b>.</p>
+    b.innerHTML = `<p style="margin:0 0 10px">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
       <ul style="margin:0 0 14px;padding-left:20px;color:var(--fg2);line-height:1.7">
         <li><b>Repeater</b> / <b>Intruder</b> to replay & fuzz requests</li>
         <li><b>Scanner</b> for passive checks, <b>Findings</b> to curate vulns</li>
-        <li><b>Ctrl+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
+        <li><b>Ctrl/⌘+K</b> opens the command palette; <b>?</b> shows shortcuts</li>
       </ul>
-      <p class="hint" style="margin:0">Optional: add an AI key in <b>Settings → AI assist</b> to explain requests, suggest payloads, or summarize findings. The MCP server lets an AI agent drive the same engine.</p>`;
+      <p class="hint" style="margin:0">Optional: add an AI key in <b>Settings → AI assist</b> to explain requests, suggest payloads, or summarize findings. The MCP server lets an AI agent drive the same engine.</p>
+      <div id="setupReadiness" class="evidence" style="margin-top:10px"></div>`;
+    setupReadiness();
   }
 }
 
@@ -102,9 +125,9 @@ export function openSetup() {
 }
 
 function finish() {
-  try { localStorage.setItem(SETUP_KEY, '1'); } catch (e) {}
+  try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {}
   closeModal($('#setupModal'));
-  toast('setup complete — happy testing');
+  toast('setup choices saved — verify readiness before testing');
 }
 
 $('#setupNext').onclick = () => {
@@ -112,7 +135,7 @@ $('#setupNext').onclick = () => {
   else finish();
 };
 $('#setupBack').onclick = () => { if (step > 0) { step--; renderStep(); } };
-$('#setupSkip').onclick = () => { try { localStorage.setItem(SETUP_KEY, '1'); } catch (e) {} closeModal($('#setupModal')); };
+$('#setupSkip').onclick = () => { try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {} closeModal($('#setupModal')); };
 $('#setupBody').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT' && step !== 1) {
     // Enter in a text input advances (except on the CA-checkbox step).
@@ -122,8 +145,8 @@ $('#setupBody').addEventListener('keydown', e => {
 
 // Show on first boot (unless the user already completed/skipped or has traffic).
 export function maybeShowSetup() {
-  try { if (localStorage.getItem(SETUP_KEY)) return; } catch (e) {}
+  try { if (localStorage.getItem(setupDoneKey())) return; } catch (e) {}
   // Don't pester returning users who already have captured flows.
-  if (state.flows && state.flows.length) { try { localStorage.setItem(SETUP_KEY, '1'); } catch (e) {} return; }
+  if (state.flows && state.flows.length) { try { localStorage.setItem(setupDoneKey(), '1'); } catch (e) {} return; }
   openSetup();
 }

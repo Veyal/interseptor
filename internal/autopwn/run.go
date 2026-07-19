@@ -12,19 +12,26 @@ import (
 
 // Start launches an autonomous run in a background goroutine and returns the new
 // pentest_run id. It refuses (without spawning) when a run is already active or
-// when no scope rules exist. The whole run shares one cancellable ctx derived
+// when no enabled include scope rule exists. The whole run shares one cancellable ctx derived
 // from the caller's ctx = the kill switch (Stop cancels it).
 func (e *Engine) Start(ctx context.Context, opts StartOpts) (int64, error) {
 	if e.d.Store == nil {
 		return 0, fmt.Errorf("autopwn: no store configured")
 	}
 
-	// Scope gate: refuse without scope rules (snapshot them for the run row).
+	// Scope gate: refuse without an enabled include rule (snapshot rules for the run row).
 	rules, err := e.d.Store.ListScopeRules()
 	if err != nil {
 		return 0, fmt.Errorf("autopwn: load scope: %w", err)
 	}
-	if len(rules) == 0 {
+	hasEnabledInclude := false
+	for _, rule := range rules {
+		if rule.Enabled && rule.Action == "include" {
+			hasEnabledInclude = true
+			break
+		}
+	}
+	if !hasEnabledInclude {
 		return 0, ErrNoScope
 	}
 	scopeJSON, _ := json.Marshal(rules)

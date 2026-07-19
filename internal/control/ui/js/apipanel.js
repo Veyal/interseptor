@@ -62,7 +62,16 @@ export async function loadShare(){
     }
     if(s.err)html+='<div class="hint" style="color:var(--red);margin-top:6px">'+esc(s.err)+'</div>';
     $('#shareStatus').innerHTML=html;
-    $('#shareStart').style.display=s.running?'none':'inline-flex';
+    const start=$('#shareStart');
+    start.style.display=s.running?'none':'inline-flex';
+    start.disabled=!s.running&&(!s.installed||!s.hasKeys);
+    const prereq=$('#sharePrereq');
+    if(prereq){
+      if(!s.hasKeys)prereq.innerHTML='Create an access key before sharing. <button class="btn xs" id="shareGoKeys">Go to Keys</button>';
+      else if(!s.installed)prereq.innerHTML='Install cloudflared first. <a class="btn xs" href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noopener">Install guidance</a>';
+      else prereq.textContent='';
+      const go=$('#shareGoKeys');if(go)go.onclick=()=>$('#apiSub button[data-s="keys"]')?.click();
+    }
     $('#shareStop').style.display=s.running?'inline-flex':'none';
     const cp=$('#shareCopy');if(cp)cp.onclick=()=>copyText(s.url,'Tunnel URL copied');
   }catch(e){$('#shareStatus').textContent='Failed to load share status';}

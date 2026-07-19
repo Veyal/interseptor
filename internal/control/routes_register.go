@@ -150,7 +150,9 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 
 func (h *Hub) registerScannerRoutes(scan *scannerAPI) {
 	h.mux.HandleFunc("POST /api/scanner/run", scan.scannerRun)
+	h.mux.HandleFunc("GET /api/scanner/targets", scan.scannerTargets)
 	h.mux.HandleFunc("GET /api/scanner/issues", scan.scannerIssues)
+	h.mux.HandleFunc("DELETE /api/scanner/issues", scan.clearScannerIssues)
 	h.mux.HandleFunc("GET /api/scanner/report", scan.scannerReport)
 }
 
@@ -168,6 +170,7 @@ func (h *Hub) registerChecksRoutes(chk *checksAPI, as *activescanAPI) {
 	h.mux.HandleFunc("PUT /api/active-checks/{id}", chk.saveActiveCheck)
 	h.mux.HandleFunc("DELETE /api/active-checks/{id}", chk.deleteActiveCheck)
 	h.mux.HandleFunc("GET /api/codecs", chk.listCodecs)
+	h.mux.HandleFunc("GET /api/codecs/reference", chk.codecsReference)
 	h.mux.HandleFunc("POST /api/codecs/test", chk.testCodec)
 	h.mux.HandleFunc("POST /api/codecs/encode", chk.encodeCodec)
 	h.mux.HandleFunc("GET /api/codecs/{id}", chk.getCodec)
@@ -193,6 +196,7 @@ func (h *Hub) registerAIRoutes(ai *aiAPI) {
 	h.mux.HandleFunc("POST /api/ai/notes/organize", ai.aiNotesOrganize)
 	h.mux.HandleFunc("POST /api/ai/notes/organize/stream", ai.aiNotesOrganizeStream)
 	h.mux.HandleFunc("POST /api/ai/checks/generate", ai.aiChecksGenerate)
+	h.mux.HandleFunc("POST /api/ai/codecs/generate", ai.aiCodecsGenerate)
 	h.mux.HandleFunc("POST /api/ai/assist", ai.aiAssist)
 	h.mux.HandleFunc("POST /api/ai/assist/stream", ai.aiAssistStream)
 	h.mux.HandleFunc("POST /api/ai/findings/triage", ai.aiFindingsTriage)

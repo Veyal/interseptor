@@ -1,4 +1,4 @@
-import { $, esc, api, state, toast } from './core.js';
+import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError } from './core.js';
 import { selectFlow } from './proxy.js';
 
 /* ---- AI activity feed (glass box: watch what the AI is doing, live) ---- */
@@ -39,7 +39,7 @@ export function renderActivity(){
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
     const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows
-    return `<div class="act-row${fid?' act-jump':''}${grp}" data-flow="${fid||''}" data-i="${i}" title="${fid?'Open flow #'+fid+' in History':''}">
+    return `<div class="act-row${fid?' act-jump':''}${grp}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr((it.tool||'activity')+': '+(it.summary||it.result||''))}" title="${fid?'Open flow #'+fid+' in History':''}">
     <span class="ok" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${it.ok?'ok':'error'}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
@@ -48,12 +48,12 @@ export function renderActivity(){
     ${it.intent?`<span class="act-intent" title="the AI's stated reason">💭 ${esc(it.intent)}</span>`:''}
   </div>`;
   }).join('');
-  box.querySelectorAll('.act-row.act-jump').forEach(row=>row.onclick=()=>{
+  box.querySelectorAll('.act-row').forEach(row=>{const open=()=>{
     const id=Number(row.dataset.flow);
     if(!id)return;
     document.querySelector('.tab[data-tab="proxy"]').click();
     selectFlow(id);
-  });
+  };if(row.classList.contains('act-jump')){row.onclick=open;wireRowKey(row,open);}});
 }
 export function onActivity(it){
   if(!it||state.aiDisabled)return;
@@ -63,7 +63,12 @@ export function onActivity(it){
   if(onTab)renderActivity();
   else{state.actUnseen++;const b=$('#actBadge');if(b){b.style.display='inline-block';b.textContent=state.actUnseen;}}
 }
-export async function loadActivity(){try{const d=await api('/api/activity');state.activity=d.activity||[];renderActivity();}catch(e){}}
+export async function loadActivity(){
+  const box=$('#actFeed');if(box)box.dataset.loading='1';
+  try{const d=await api('/api/activity');state.activity=d.activity||[];renderActivity();}
+  catch(e){renderLoadError(box,'Activity',e,loadActivity,state.activity.length>0);}
+  finally{if(box)delete box.dataset.loading;}
+}
 export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.style.display='none';}
 $('#actClear').onclick=async()=>{try{await api('/api/activity',{method:'DELETE'});}catch(e){}state.activity=[];renderActivity();clearActSeen();};
 // Free-text intent filter (substring, case-insensitive).

@@ -12,6 +12,7 @@ package tunnel
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"os/exec"
 	"regexp"
@@ -22,6 +23,9 @@ import (
 // quickTunnelURL matches the assigned trycloudflare URL in cloudflared's stderr.
 var quickTunnelURL = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
 
+// ErrClosed is returned when Start is called after Manager.Close.
+var ErrClosed = errors.New("tunnel manager is closed")
+
 // Status is a snapshot of the tunnel manager's state.
 type Status struct {
 	Installed bool   `json:"installed"` // cloudflared is on PATH
@@ -31,31 +35,53 @@ type Status struct {
 	StartedAt int64  `json:"startedAt"` // unix millis
 }
 
+type notification struct {
+	generation uint64
+	url        string
+	cb         func(string)
+}
+
 // Manager owns at most one cloudflared process at a time.
 type Manager struct {
 	controlPort func() string // returns the loopback control port to expose
 
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	cancel    context.CancelFunc
-	running   bool
-	url       string
-	lastErr   string
-	startedAt int64
-	onURL     func(string) // notified once the URL is known (and on stop, with "")
+	mu                sync.Mutex
+	cmd               *exec.Cmd
+	cancel            context.CancelFunc
+	generation        uint64
+	running           bool
+	url               string
+	lastErr           string
+	startedAt         int64
+	onURL             func(string) // notified once the URL is known (and on stop, with "")
+	notifications     []notification
+	dispatcherWake    chan struct{}
+	dispatcherStop    chan struct{}
+	dispatcherDone    chan struct{}
+	dispatcherStarted bool
+	dispatcherClosed  bool
+	closed            bool
+	closeStarted      bool
+	closeDone         chan struct{}
+	processWG         sync.WaitGroup
+
+	beforeDeliver func(string) // test hook: runs before final generation validation
 
 	// lookPath / now are injected so tests can stub the binary and clock.
-	lookPath func(string) (string, error)
-	nowMs    func() int64
+	lookPath       func(string) (string, error)
+	commandContext func(context.Context, string, ...string) *exec.Cmd
+	nowMs          func() int64
 }
 
 // New builds a Manager. controlPort returns the loopback port string (e.g. "9966")
 // the tunnel should forward to.
 func New(controlPort func() string) *Manager {
 	return &Manager{
-		controlPort: controlPort,
-		lookPath:    exec.LookPath,
-		nowMs:       func() int64 { return time.Now().UnixMilli() },
+		controlPort:    controlPort,
+		lookPath:       exec.LookPath,
+		commandContext: exec.CommandContext,
+		nowMs:          func() int64 { return time.Now().UnixMilli() },
+		closeDone:      make(chan struct{}),
 	}
 }
 
@@ -93,6 +119,12 @@ func (m *Manager) Status() Status {
 // which refuses to start a tunnel with no API keys).
 func (m *Manager) Start(ctx context.Context) (Status, error) {
 	m.mu.Lock()
+	if m.closed {
+		m.lastErr = ErrClosed.Error()
+		st := m.statusLocked()
+		m.mu.Unlock()
+		return st, ErrClosed
+	}
 	if m.running {
 		st := m.statusLocked()
 		m.mu.Unlock()
@@ -107,7 +139,7 @@ func (m *Manager) Start(ctx context.Context) (Status, error) {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	target := "http://127.0.0.1:" + m.controlPort()
-	cmd := exec.CommandContext(runCtx, bin, "tunnel", "--url", target, "--no-autoupdate")
+	cmd := m.commandContext(runCtx, bin, "tunnel", "--url", target, "--no-autoupdate")
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
@@ -125,34 +157,28 @@ func (m *Manager) Start(ctx context.Context) (Status, error) {
 	}
 	m.cmd = cmd
 	m.cancel = cancel
+	m.generation++
+	generation := m.generation
 	m.running = true
 	m.url = ""
 	m.lastErr = ""
 	m.startedAt = m.nowMs()
+	m.processWG.Add(1)
 	m.mu.Unlock()
 
-	go m.scanForURL(stderr)
-	go m.waitExit(cmd)
+	go m.scanForURL(cmd, generation, stderr)
+	go m.waitExit(cmd, generation)
 
 	return m.Status(), nil
 }
 
 // scanForURL reads cloudflared's stderr, extracting the first trycloudflare URL.
-func (m *Manager) scanForURL(r io.Reader) {
+func (m *Manager) scanForURL(cmd *exec.Cmd, generation uint64, r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		if u := quickTunnelURL.FindString(sc.Text()); u != "" {
-			m.mu.Lock()
-			if m.url == "" {
-				m.url = u
-			}
-			cb := m.onURL
-			url := m.url
-			m.mu.Unlock()
-			if cb != nil {
-				cb(url)
-			}
+			m.publishURL(cmd, generation, u)
 			return
 		}
 	}
@@ -160,41 +186,168 @@ func (m *Manager) scanForURL(r io.Reader) {
 	_, _ = io.Copy(io.Discard, r)
 }
 
+func (m *Manager) publishURL(cmd *exec.Cmd, generation uint64, url string) {
+	m.mu.Lock()
+	if m.cmd != cmd || m.generation != generation || !m.running || m.url != "" {
+		m.mu.Unlock()
+		return
+	}
+	m.url = url
+	m.enqueueNotificationLocked(notification{
+		generation: generation,
+		url:        url,
+		cb:         m.onURL,
+	})
+	m.mu.Unlock()
+}
+
 // waitExit reaps the process and flips state back to stopped when it exits.
-func (m *Manager) waitExit(cmd *exec.Cmd) {
+func (m *Manager) waitExit(cmd *exec.Cmd, generation uint64) {
+	defer m.processWG.Done()
 	err := cmd.Wait()
 	m.mu.Lock()
-	// Only react if this is still the current process (not a stale one after a
-	// restart).
-	if m.cmd != cmd {
+	if m.cmd != cmd || m.generation != generation {
 		m.mu.Unlock()
 		return
 	}
 	m.running = false
 	m.url = ""
+	m.generation++
 	if err != nil && m.lastErr == "" {
 		m.lastErr = "cloudflared exited: " + err.Error()
 	}
-	cb := m.onURL
 	m.cmd = nil
+	m.cancel = nil
+	m.enqueueNotificationLocked(notification{
+		generation: m.generation,
+		cb:         m.onURL,
+	})
 	m.mu.Unlock()
-	if cb != nil {
-		cb("")
-	}
 }
 
 // Stop terminates the tunnel process. It is a no-op when not running.
 func (m *Manager) Stop() error {
 	m.mu.Lock()
+	if !m.running {
+		m.mu.Unlock()
+		return nil
+	}
 	cancel := m.cancel
 	m.cancel = nil
+	m.cmd = nil
+	m.generation++
 	m.running = false
 	m.url = ""
+	m.enqueueNotificationLocked(notification{
+		generation: m.generation,
+		cb:         m.onURL,
+	})
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	return nil
+}
+
+func (m *Manager) enqueueNotificationLocked(event notification) {
+	if m.dispatcherClosed {
+		return
+	}
+	m.notifications = append(m.notifications, event)
+	if !m.dispatcherStarted {
+		m.dispatcherWake = make(chan struct{}, 1)
+		m.dispatcherStop = make(chan struct{})
+		m.dispatcherDone = make(chan struct{})
+		m.dispatcherStarted = true
+		go m.runDispatcher()
+	}
+	select {
+	case m.dispatcherWake <- struct{}{}:
+	default:
+	}
+}
+
+func (m *Manager) runDispatcher() {
+	defer close(m.dispatcherDone)
+	for {
+		select {
+		case <-m.dispatcherWake:
+			m.deliverQueuedNotifications()
+		case <-m.dispatcherStop:
+			return
+		}
+	}
+}
+
+func (m *Manager) deliverQueuedNotifications() {
+	for {
+		m.mu.Lock()
+		if len(m.notifications) == 0 {
+			m.mu.Unlock()
+			return
+		}
+		event := m.notifications[0]
+		m.notifications = m.notifications[1:]
+		m.mu.Unlock()
+		if m.beforeDeliver != nil {
+			m.beforeDeliver(event.url)
+		}
+
+		m.mu.Lock()
+		deliver := event.url == "" ||
+			(event.generation == m.generation && m.running && m.url == event.url)
+		m.mu.Unlock()
+		if deliver && event.cb != nil {
+			event.cb(event.url)
+		}
+	}
+}
+
+// Close stops the child process, waits for every child to be reaped, then stops
+// the callback dispatcher. It is safe to call repeatedly.
+func (m *Manager) Close() {
+	m.mu.Lock()
+	if m.closeStarted {
+		done := m.closeDone
+		m.mu.Unlock()
+		<-done
+		return
+	}
+	m.closeStarted = true
+	m.closed = true
+	cancel := m.cancel
+	if m.running {
+		m.cancel = nil
+		m.cmd = nil
+		m.generation++
+		m.running = false
+		m.url = ""
+		m.enqueueNotificationLocked(notification{
+			generation: m.generation,
+			cb:         m.onURL,
+		})
+	}
+	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+
+	m.processWG.Wait()
+
+	m.mu.Lock()
+	var dispatcherDone chan struct{}
+	if m.dispatcherStarted && !m.dispatcherClosed {
+		m.dispatcherClosed = true
+		close(m.dispatcherStop)
+		dispatcherDone = m.dispatcherDone
+	} else {
+		m.dispatcherClosed = true
+	}
+	m.mu.Unlock()
+	if dispatcherDone != nil {
+		<-dispatcherDone
+	}
+	close(m.closeDone)
 }
 
 func (m *Manager) statusLocked() Status {

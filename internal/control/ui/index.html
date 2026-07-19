@@ -30,7 +30,7 @@
   <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
   <button type="button" id="askAiBtn" class="btn" data-ai-ui title="Ask AI about the current project" aria-label="Ask AI about the current project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg><span>Ask AI</span></button>
   <span class="sse-status" id="sseStatus" title="Live updates: connected"><span class="sse-dot" id="sseDot"></span><span id="sseLabel" class="kv kv-dim">live</span></span>
-  <button id="cmdkBtn" class="btn" title="Ctrl+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
+  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label">🔎 Jump to…</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme">☾</button>
 </div>
 
@@ -149,13 +149,16 @@
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
+    <div id="rows"><div class="state-empty"><div class="state-empty-icon">📡</div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
       <div class="pane">
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button></div>
           <div class="spacer"></div>
+          <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
+          <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
+          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
           <button class="btn btn-compact" id="aiExplainBtn" data-ai-ui title="Ask AI about this flow" aria-label="Ask AI about this flow">✨</button>
         </div>
         <div class="sel-decode" id="reqDecode" hidden>
@@ -196,6 +199,7 @@
 
   <!-- INTERCEPT -->
   <div class="panel" id="panel-intercept" role="tabpanel" aria-labelledby="tab-intercept" data-panel="intercept">
+    <div id="interceptWarning" class="tls-diag-banner intercept-danger" style="display:none" role="alert"></div>
     <!-- control strip: the on/off switches + conditional filter -->
     <div class="icpt-bar">
       <button class="uisw" id="interceptToggle" aria-pressed="false" title="Hold matching requests before they leave"><span class="uisw-led"></span>Requests <b id="icptReqState">Off</b></button>
@@ -218,8 +222,8 @@
           <div class="icpt-edtitle" id="heldTitle"></div>
           <div class="spacer"></div>
           <button class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body">Decoded</button>
-          <button class="btn btn-primary" id="forwardBtn" title="Forward (Ctrl+Shift+F)">▶ Forward</button>
-          <button class="btn btn-danger" id="dropBtn" title="Drop (Ctrl+D)">✕ Drop</button>
+          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
+          <button class="btn btn-danger" id="dropBtn" title="Drop (D)">✕ Drop</button>
         </div>
         <pre id="heldDecoded" class="icpt-raw" style="display:none;margin:0;white-space:pre-wrap" hidden></pre>
         <textarea class="icpt-raw" id="heldRaw" spellcheck="false" style="display:none" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
@@ -256,7 +260,7 @@
       <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
       <input id="repUrl" class="repurl" aria-label="Request URL" placeholder="https://api.example.com/v1/resource" spellcheck="false">
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
-      <button class="btn btn-primary" id="repSend">Send ▸<span class="kbd">Ctrl+Space</span></button>
+      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)">Send ▸<span class="kbd">Ctrl/⌘+Space</span></button>
     </div>
     <div class="rep-work">
       <aside id="repHistory" class="rep-hist" style="display:none"></aside>
@@ -265,7 +269,7 @@
         <div class="rep-sub">HEADERS</div>
         <div class="rep-field rep-field-headers">
           <pre class="rep-hl" id="repHeadersHL" aria-hidden="true"></pre>
-          <textarea id="repHeaders" class="rep-edit" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
+          <textarea id="repHeaders" class="rep-edit" aria-label="Repeater request headers" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
         </div>
         <div class="rep-sub row"><span>BODY</span><div class="spacer"></div>
           <div class="seg rep-req-seg" id="repReqSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Edit codec plaintext (re-encode on send if apply_on_send)">Decoded</button></div>
@@ -273,7 +277,7 @@
         </div>
         <div class="rep-field rep-field-body">
           <pre class="rep-hl" id="repBodyHL" aria-hidden="true"></pre>
-          <textarea id="repBody" class="rep-edit" spellcheck="false" placeholder="Request body…"></textarea>
+          <textarea id="repBody" class="rep-edit" aria-label="Repeater request body" spellcheck="false" placeholder="Request body…"></textarea>
         </div>
       </section>
       <section class="pane rep-res">
@@ -293,12 +297,12 @@
     <div class="intr-bar">
       <input id="intrTarget" class="repurl" style="flex:1 1 240px;min-width:200px;max-width:420px" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
       <span class="intr-sep" aria-hidden="true"></span>
-      <div class="seg" id="intrType"><button class="on" data-t="sniper" aria-pressed="true">Sniper</button><button data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button data-t="repeat" aria-pressed="false" title="Resend the same request N times (no payloads)">Repeat</button></div>
+      <div class="seg" id="intrType"><button class="on" data-t="sniper" aria-pressed="true">Sniper</button><button data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
       <select id="intrListMode" class="btn btn-field" style="display:none" title="How the per-marker lists combine"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
       <span class="intr-sep" aria-hidden="true"></span>
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
       <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span>⏱</span><input id="intrDelay" type="number" min="0" step="50" value="0">ms</label>
-      <label class="intr-num" id="intrRepeatWrap" style="display:none" title="How many times to send the same request (Repeat mode — no payloads)"><span>×</span><input id="intrRepeat" type="number" min="1" max="2000" value="20">sends</label>
+      <label class="intr-num" id="intrRepeatWrap" style="display:none" title="How many times to send the same request (Race / repeat — no payloads)"><span>×</span><input id="intrRepeat" type="number" min="1" max="2000" value="20">sends</label>
       <div class="spacer"></div>
       <span id="intrCount" class="hint"></span>
       <button class="btn btn-primary" id="intrStart">Start ▸</button>
@@ -322,7 +326,7 @@
       <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
       <section class="pane intr-config">
         <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">use <b>§…§</b> for injection points</span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap selection in § … §">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load from file">📂 Load</button></div>
-        <textarea id="intrTemplate" class="rep-edit" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
+        <textarea id="intrTemplate" class="rep-edit" aria-label="Intruder request template" style="flex:1;border-top:none" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
 
@@ -353,6 +357,8 @@ Content-Type: application/json
       <select id="scanTarget" class="btn btn-field scan-target" title="Scan target"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
       <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
+      <button class="btn" id="scanClear">Clear results</button>
+      <span id="scanRescanState" class="hint" role="status"></span>
       <button class="btn" id="checksBtn" aria-label="Custom checks">✎ Checks</button>
       <button class="btn" id="codecsBtn" aria-label="Message codecs">🔐 Codecs</button>
       <span id="scanCount" class="count"></span>
@@ -371,7 +377,7 @@ Content-Type: application/json
           <div class="state-empty-icon">🛡️</div>
           <div class="state-empty-title">No issues yet</div>
           <p class="state-empty-hint">Run a scan to find issues.</p>
-          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
+          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
         </div>
       </div>
       <div id="scanDetail" class="pane scan-detail-pane">
@@ -396,6 +402,7 @@ Content-Type: application/json
           <option value="json">JSON</option>
           <option value="pdf">PDF</option>
         </select>
+        <select id="findExportStatuses" class="btn" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
         <button class="btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export report</button>
         <label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label>
         <span id="findCount" class="count"></span>
@@ -403,13 +410,17 @@ Content-Type: application/json
       </div>
       <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
     </div>
-    <div id="scanFindingsView" class="find-view">
+    <div id="scanFindingsView" class="find-view is-empty">
       <div id="findList" class="scan-list">
-        <div class="state-empty">
+        <div class="state-empty find-empty">
           <div class="state-empty-icon">🔎</div>
           <div class="state-empty-title">No findings yet</div>
-          <p class="state-empty-hint">Create one, or the AI records them as it tests.</p>
-          <p class="state-empty-hint state-empty-cmdk">Wrapping up? File PoCs here, then <b>Export report</b> — checklist: <code>docs/engagement-closeout.md</code></p>
+          <p class="state-empty-hint">File a vulnerability with PoC evidence — manually, from Autopilot, or by asking AI to triage history.</p>
+          <div class="find-empty-actions">
+            <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
+            <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui>✨ Ask AI for findings</button>
+          </div>
+          <p class="state-empty-hint state-empty-cmdk">Later: <b>Export report</b> · <a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">engagement close-out checklist</a></p>
         </div>
       </div>
       <div id="findDetail" class="find-detail">
@@ -467,7 +478,7 @@ Content-Type: application/json
       <button class="btn btn-primary" id="notesOrganizeBtn" data-ai-ui title="Organize with AI">✨ Organize</button>
       <div class="spacer"></div>
     </div>
-    <textarea id="notesEdit" class="notes-edit" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
+    <textarea id="notesEdit" class="notes-edit" aria-label="Engagement notes editor" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
     <div id="notesPreview" class="md" style="flex:1;overflow:auto;padding:16px 22px;display:none"></div>
   </div>
 
@@ -514,7 +525,7 @@ Content-Type: application/json
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
+        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -871,6 +882,7 @@ Content-Type: application/json
               <h3>SHARE THIS SESSION</h3>
               <p class="hint" style="margin-bottom:12px">Expose Interseptor over a Cloudflare tunnel so a teammate — or an AI agent on your VPS — can reach it with an access key. No public IP needed. <b style="color:var(--amber)">This publishes your captured traffic;</b> share read-only keys with reviewers and stop when done.</p>
               <div id="shareStatus" class="evidence" style="margin-bottom:12px">Loading…</div>
+              <div id="sharePrereq" class="hint" style="margin-bottom:10px"></div>
               <div class="row" style="gap:8px;margin-bottom:20px">
                 <button class="btn btn-primary" id="shareStart">Start sharing</button>
                 <button class="btn btn-danger" id="shareStop" style="display:none">Stop sharing</button>
@@ -968,6 +980,12 @@ Content-Type: application/json
               <a class="btn btn-primary" id="exportProject" href="/api/export/project" download style="text-decoration:none">Export project</a>
               <button class="btn" id="importProjectBtn">Import project</button>
               <input type="file" id="importProjectFile" accept=".json,application/json" style="display:none">
+            </div>
+            <p class="hint" style="margin:16px 0 10px">HTTP Archive (HAR) — export captured browser-compatible traffic, or merge entries from another tool into this project's History.</p>
+            <div class="row" style="gap:8px">
+              <a class="btn btn-primary" id="exportHAR" href="/api/export/har" download="interseptor.har" aria-label="Export captured traffic as HAR" style="text-decoration:none">Export HAR</a>
+              <button class="btn" id="importHARBtn" type="button">Import HAR</button>
+              <input type="file" id="importHARFile" accept=".har,application/json" aria-label="Import HAR file" style="display:none">
             </div>
             <p class="hint" style="margin:16px 0 10px">Full project archive (.zip) — a <b>lossless</b> copy of the whole project (database + captured bodies) to move an engagement to another machine intact. Import creates a <b>new</b> project you can switch to. The global CA &amp; custom checks aren't included.</p>
             <div class="row" style="gap:8px">
@@ -1075,9 +1093,10 @@ Content-Type: application/json
     <div class="sc-body">
       <div class="sc-grid">
         <h3 class="sc-section">Navigation</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>B</kbd></div><p class="sc-desc">Jump to Project Notes</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus the History search</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>p</kbd></div><p class="sc-desc">Go to a panel — p Proxy, i Intercept, r Repeater, u Intruder</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings, o Autopilot</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus History search (Proxy)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>?</kbd></div><p class="sc-desc">This shortcuts panel</p></div>
         <h3 class="sc-section">History</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>j</kbd><kbd>k</kbd></div><p class="sc-desc">Walk rows — or use <kbd>↑</kbd> <kbd>↓</kbd></p></div>
@@ -1085,20 +1104,20 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><span class="sc-plus">+</span>click</div><p class="sc-desc">Add/remove a single flow in the selection</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>A</kbd></div><p class="sc-desc">Select or clear all shown flows</p></div>
         <h3 class="sc-section">Send &amp; replay</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>r</kbd></div><p class="sc-desc">Send selected flow → Repeater (Proxy History tab)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>R</kbd></div><p class="sc-desc">Send selected flow → Repeater (Proxy History tab only)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>I</kbd></div><p class="sc-desc">Send selected flow → Intruder (Proxy History tab only)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Space</kbd></div><p class="sc-desc">Send the request in Repeater</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>r</kbd><kbd>i</kbd></div><p class="sc-desc">Send selected Proxy flow → Repeater / Intruder</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>R</kbd></div><p class="sc-desc">Send selected Proxy flow → Repeater</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>I</kbd></div><p class="sc-desc">Send selected Proxy flow → Intruder</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>Space</kbd></div><p class="sc-desc">Send the current Repeater request (also Ctrl/⌘+Enter)</p></div>
         <h3 class="sc-section">Tools</h3>
         <div class="sc-card"><div class="sc-keys">📂</div><p class="sc-desc">Intruder and Decoder support <b>Load file</b> for payloads, templates, and blobs</p></div>
         <div class="sc-card"><div class="sc-keys">Map ▾</div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
         <h3 class="sc-section">Intercept</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>F</kbd></div><p class="sc-desc">Forward the held request</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl</kbd><kbd>D</kbd></div><p class="sc-desc">Drop the held request</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>f</kbd></div><p class="sc-desc">Forward the selected held request</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>d</kbd></div><p class="sc-desc">Drop the selected held request</p></div>
         <h3 class="sc-section">General</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Esc</kbd></div><p class="sc-desc">Close a dialog or menu</p></div>
       </div>
-      <div class="hint sc-foot">On macOS, use <kbd>⌘</kbd> in place of <kbd>Ctrl</kbd>.</div>
+      <div class="hint sc-foot">Workflow shortcuts are disabled while typing in fields or editors.</div>
     </div>
   </div>
 </div>
@@ -1171,23 +1190,48 @@ Content-Type: application/json
     </div>
     <div class="checks-work">
       <div class="checks-sidebar">
-        <div id="codecsList" style="flex:1;overflow:auto"></div>
+        <div class="checks-search-wrap">
+          <input id="codecsSearch" class="btn checks-search" placeholder="🔎 filter codecs…" aria-label="Filter codecs" spellcheck="false">
+        </div>
+        <div id="codecsList" class="codecs-list" style="flex:1;overflow:auto" role="listbox" aria-label="Message codecs"></div>
         <div style="padding:8px;border-top:1px solid var(--line)">
           <button class="btn btn-primary" id="codecNew" style="width:100%">+ New codec</button>
-          <div class="hint" id="codecsDirHint" style="margin-top:8px"></div>
+          <div class="hint codecs-dir-hint" id="codecsDirHint" style="margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
         </div>
       </div>
       <div class="checks-editor">
         <div class="row" style="padding:8px 12px;gap:8px;border-bottom:1px solid var(--line);flex:none">
-          <input id="codecId" class="btn btn-field" style="width:210px" aria-label="Codec ID" placeholder="codec-id">
+          <input id="codecId" class="btn btn-field" style="width:210px" aria-label="Codec ID" placeholder="codec-id (letters, - or _)">
           <button class="btn" id="codecTest">Test ▸</button>
           <button class="btn btn-primary" id="codecSave">Save</button>
           <div class="spacer"></div>
           <button class="btn" id="codecDelete" style="color:var(--red)">🗑 Delete</button>
         </div>
-        <p class="hint" style="padding:8px 12px;margin:0;border-bottom:1px solid var(--line)">Project-scoped Starlark encrypt/decrypt for app payloads. Display-only unless <code>apply_on_send</code>. Never runs on the proxy hot path.</p>
-        <textarea id="codecSrc" class="rep-edit" spellcheck="false" style="border-top:none;flex:1;min-height:280px"></textarea>
-        <pre id="codecTestOut" style="margin:0;padding:10px 12px;border-top:1px solid var(--line);max-height:160px;overflow:auto;white-space:pre-wrap" class="hint">Test against the selected History flow (or latest).</pre>
+        <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
+          <div class="seg" id="codecModeSeg" role="tablist" aria-label="Codec editor mode">
+            <button type="button" class="on" data-mode="code" role="tab" aria-selected="true">Code</button>
+            <button type="button" data-mode="describe" data-ai-ui role="tab" aria-selected="false">✨ Describe</button>
+            <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
+          </div>
+          <span class="hint" id="codecFlowHint">Test uses selected flow or latest capture</span>
+        </div>
+        <div id="codecPaneCode" class="check-pane">
+          <textarea id="codecSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="meta = {&#10;    &quot;id&quot;: &quot;aes-content-field&quot;,&#10;    &quot;title&quot;: &quot;JSON content&quot;,&#10;    &quot;apply_on_send&quot;: False,&#10;}&#10;&#10;def match(flow, side):&#10;    return True&#10;&#10;def decode(flow, side, raw):&#10;    return raw"></textarea>
+        </div>
+        <div id="codecPaneDescribe" class="check-pane" data-ai-ui style="display:none">
+          <div class="check-describe-wrap">
+            <p class="hint" style="margin:0 0 8px;line-height:1.5">Describe the wire format / crypto in plain English. AI writes a Starlark message codec, then runs <b>Test</b> against your selected flow.</p>
+            <textarea id="codecDescribe" class="rep-edit" spellcheck="true" placeholder="Example: JSON bodies have a content field = 32-char prefix + Base64(AES-ECB(plaintext)). Decrypt with key = SHA-512(prefix + SECRET)[:32]. Display-only."></textarea>
+            <div class="row" style="margin-top:8px;gap:8px">
+              <button class="btn btn-primary" id="codecAiGen">✨ Generate &amp; test</button>
+              <span class="hint" id="codecAiStatus"></span>
+            </div>
+          </div>
+        </div>
+        <div id="codecPaneDocs" class="check-pane" style="display:none">
+          <div id="codecDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
+        </div>
+        <div id="codecOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the codec under this project.</span></div>
       </div>
     </div>
   </div>
@@ -1395,10 +1439,10 @@ Content-Type: application/json
         <button class="btn" id="decLoad" type="button" title="Load text from a file">📂 Load file</button>
         <span class="hint">Paste or load tokens, JWTs, base64 blobs…</span>
       </div>
-      <textarea id="decIn" class="rep-edit" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
+      <textarea id="decIn" class="rep-edit" aria-label="Decoder input" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
       <div class="row" id="decOps" style="gap:6px;flex-wrap:wrap"></div>
       <div class="row" style="gap:8px"><span class="hint" id="decErr"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
-      <textarea id="decOut" class="rep-edit" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
+      <textarea id="decOut" class="rep-edit" aria-label="Decoder output" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
     </div>
   </div>
 </div>

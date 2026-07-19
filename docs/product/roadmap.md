@@ -16,7 +16,7 @@ proxy depth**, then **(D) reach / packaging**. See [improvements.md](improvement
 
 ## ✅ Shipped (through v1.5.0)
 
-MCP (99 tools), scope, Repeater/Intruder, scanner + active scan + Autopilot, findings
+MCP (tool registry), scope, Repeater/Intruder, scanner + active scan + Autopilot, findings
 redesign, rule packs + check CLI + Starlark stdlib, project-scoped + project-DB UI tabs,
 Intruder Numbers / AI payloads / result viewer, retention, OpenAPI, mobile helpers,
 remote/tunnel pieces, HAR + full project export.

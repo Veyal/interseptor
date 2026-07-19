@@ -7,12 +7,11 @@ import (
 	"github.com/Veyal/interseptor/internal/version"
 )
 
-// buildOpenAPI produces an OpenAPI 3.1 document from the hand-maintained apiRoutes
-// catalog. It's a structural map of every REST endpoint (method + path + summary)
-// so tooling can generate clients, Postman collections, or typed SDKs without
-// reading handler source. Request/response bodies aren't schema'd here — the
-// catalog is prose-described; this is the route surface, not a full contract.
-func buildOpenAPI(baseURL string) map[string]any {
+// buildRouteIndex produces a machine-readable discovery index from apiRoutes.
+// It deliberately does not claim to be OpenAPI: request/response schemas and
+// parameter declarations live in the prose descriptions, so client generation
+// would be unsafe. The legacy /openapi.json URL is retained for compatibility.
+func buildRouteIndex(baseURL string) map[string]any {
 	paths := map[string]any{}
 	for _, r := range apiRoutes {
 		path := openapiPath(r.Path)
@@ -25,14 +24,12 @@ func buildOpenAPI(baseURL string) map[string]any {
 		entry[strings.ToLower(r.Method)] = op
 	}
 	return map[string]any{
-		"openapi": "3.1.0",
-		"info": map[string]any{
-			"title":       "Interseptor",
-			"version":     version.String(),
-			"description": "Intercepting HTTP/HTTPS proxy + security toolkit. Same engine the UI and the MCP server drive.",
-		},
-		"servers": []map[string]any{{"url": baseURL}},
-		"paths":   paths,
+		"kind":        "interseptor-route-index",
+		"version":     version.String(),
+		"description": "REST route discovery index (method, path, summary); not an OpenAPI contract or client-generation schema.",
+		"baseURL":     baseURL,
+		"routes":      apiRoutes,
+		"paths":       paths,
 	}
 }
 
@@ -46,5 +43,5 @@ func opID(method, path string) string {
 }
 
 func (h *metaAPI) openapi(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, buildOpenAPI("http://"+r.Host))
+	writeJSON(w, http.StatusOK, buildRouteIndex("http://"+r.Host))
 }

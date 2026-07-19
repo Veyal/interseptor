@@ -3,7 +3,18 @@ package control
 import (
 	"context"
 	"net/http"
+
+	"github.com/Veyal/interseptor/internal/tunnel"
 )
+
+type tunnelManager interface {
+	Status() tunnel.Status
+	Installed() bool
+	SetOnURL(func(string))
+	Start(context.Context) (tunnel.Status, error)
+	Stop() error
+	Close()
+}
 
 // Share = remote access via a Cloudflare quick tunnel. The panel starts/stops the
 // tunnel and shows the public URL a collaborator (or a VPS-hosted AI agent) uses
@@ -63,4 +74,17 @@ func (h *Hub) StopTunnel() {
 	if h.tun != nil {
 		_ = h.tun.Stop()
 	}
+}
+
+// Close releases Hub-owned background resources. It is safe to call repeatedly.
+func (h *Hub) Close() {
+	h.tunnelCloseOnce.Do(func() {
+		h.StopTunnel()
+		if h.intr != nil {
+			h.intr.Close()
+		}
+		if h.tun != nil {
+			h.tun.Close()
+		}
+	})
 }

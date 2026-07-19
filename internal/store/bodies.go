@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 	"os"
@@ -14,19 +15,31 @@ import (
 // the file to a content-addressed path on Finalize. Safe for bounded memory:
 // bytes are never buffered whole.
 type BodyWriter struct {
-	s   *Store
-	tmp *os.File
-	h   hash.Hash
-	n   int64
+	s                  *Store
+	tmp                *os.File
+	h                  hash.Hash
+	n                  int64
+	pendingPublication bool
+	pendingHash        string
 }
 
 // NewBodyWriter starts a new body capture.
 func (s *Store) NewBodyWriter() (*BodyWriter, error) {
+	return s.newBodyWriter(false)
+}
+
+// NewFlowBodyWriter starts a capture whose finalized blob is protected from
+// body GC until InsertFlow or UpdateFlow publishes the returned hash.
+func (s *Store) NewFlowBodyWriter() (*BodyWriter, error) {
+	return s.newBodyWriter(true)
+}
+
+func (s *Store) newBodyWriter(pendingPublication bool) (*BodyWriter, error) {
 	tmp, err := os.CreateTemp(s.bodiesDir, ".tmp-*")
 	if err != nil {
 		return nil, err
 	}
-	return &BodyWriter{s: s, tmp: tmp, h: sha256.New()}, nil
+	return &BodyWriter{s: s, tmp: tmp, h: sha256.New(), pendingPublication: pendingPublication}, nil
 }
 
 // Write implements io.Writer.
@@ -40,6 +53,10 @@ func (w *BodyWriter) Write(p []byte) (int, error) {
 // Finalize commits the body and returns its sha256 hex hash and byte length.
 // If a body with the same hash already exists it is deduplicated.
 func (w *BodyWriter) Finalize() (string, int64, error) {
+	if w.pendingPublication {
+		w.s.bodyMu.Lock()
+		defer w.s.bodyMu.Unlock()
+	}
 	tmpName := w.tmp.Name()
 	if err := w.tmp.Close(); err != nil {
 		os.Remove(tmpName)
@@ -51,8 +68,19 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 	defer os.Remove(tmpName)
 
 	sum := hex.EncodeToString(w.h.Sum(nil))
+	if err := w.protectPending(sum); err != nil {
+		return "", 0, err
+	}
+	finalized := false
+	defer func() {
+		if w.pendingPublication && !finalized {
+			w.s.releasePendingBody(w.pendingHash)
+			w.pendingHash = ""
+		}
+	}()
 	dst := w.s.bodyPath(sum)
 	if _, err := os.Stat(dst); err == nil {
+		finalized = true
 		return sum, w.n, nil // identical body already stored; temp removed by defer
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -64,17 +92,83 @@ func (w *BodyWriter) Finalize() (string, int64, error) {
 		// existing file fails; treat an already-present dst as a successful
 		// dedup rather than a spurious capture error.
 		if _, statErr := os.Stat(dst); statErr == nil {
+			finalized = true
 			return sum, w.n, nil
 		}
 		return "", 0, err
 	}
+	finalized = true
 	return sum, w.n, nil
+}
+
+const maxPendingBodies = 4096
+
+func (w *BodyWriter) protectPending(sum string) error {
+	if !w.pendingPublication {
+		return nil
+	}
+	if w.s.pendingBodies == nil {
+		w.s.pendingBodies = make(map[string]int)
+	}
+	if w.s.pendingBodies[sum] == 0 && len(w.s.pendingBodies) >= maxPendingBodies {
+		return fmt.Errorf("store: too many bodies awaiting flow publication")
+	}
+	w.s.pendingBodies[sum]++
+	w.pendingHash = sum
+	return nil
+}
+
+func (s *Store) releasePendingBody(sum string) {
+	if sum == "" {
+		return
+	}
+	if s.pendingBodies[sum] <= 1 {
+		delete(s.pendingBodies, sum)
+		return
+	}
+	s.pendingBodies[sum]--
+}
+
+func (s *Store) publishBodies(hashes ...string) {
+	s.bodyMu.Lock()
+	for _, sum := range hashes {
+		s.releasePendingBody(sum)
+	}
+	s.bodyMu.Unlock()
+}
+
+func (s *Store) protectMergeBodies(hashes []string) func() {
+	s.bodyMu.Lock()
+	if s.mergeBodies == nil {
+		s.mergeBodies = make(map[string]int)
+	}
+	for _, sum := range hashes {
+		s.mergeBodies[sum]++
+	}
+	s.bodyMu.Unlock()
+	return func() {
+		s.bodyMu.Lock()
+		for _, sum := range hashes {
+			if s.mergeBodies[sum] <= 1 {
+				delete(s.mergeBodies, sum)
+			} else {
+				s.mergeBodies[sum]--
+			}
+		}
+		s.bodyMu.Unlock()
+	}
 }
 
 // Abort discards an in-progress body (e.g. on error).
 func (w *BodyWriter) Abort() {
 	w.tmp.Close()
 	os.Remove(w.tmp.Name())
+	if w.pendingHash != "" {
+		w.s.bodyMu.Lock()
+		w.s.releasePendingBody(w.pendingHash)
+		w.s.bodyMu.Unlock()
+		w.pendingHash = ""
+	}
 }
 
 func (s *Store) bodyPath(sum string) string {

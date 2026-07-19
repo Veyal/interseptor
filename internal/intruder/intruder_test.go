@@ -35,7 +35,9 @@ func newEngine(t *testing.T) *Engine {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return New(sender.New(s, capture.New(s)))
+	e := New(sender.New(s, capture.New(s)))
+	t.Cleanup(e.Close)
+	return e
 }
 
 func TestSniperVariesEachPositionAndFlagsAnomaly(t *testing.T) {

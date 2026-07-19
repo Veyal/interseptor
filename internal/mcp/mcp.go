@@ -523,6 +523,23 @@ func argBool(a map[string]any, key string, def bool) bool {
 	return def
 }
 
+func rulePayload(a map[string]any, enabledDefault bool) map[string]any {
+	typ := strings.ToLower(strings.TrimSpace(argStr(a, "type")))
+	if typ == "header" || typ == "body" {
+		side := strings.ToLower(strings.TrimSpace(argStr(a, "side")))
+		if side == "response" || side == "res" {
+			side = "res"
+		} else {
+			side = "req"
+		}
+		typ = side + "-" + typ
+	}
+	return map[string]any{
+		"ord": argInt(a, "ord", 0), "enabled": argBool(a, "enabled", enabledDefault),
+		"type": typ, "match": argStr(a, "match"), "replace": argStr(a, "replace"),
+	}
+}
+
 // ---- argument validation (helpful errors) ----
 //
 // An AI driving these tools over MCP only ever sees the error string, so a bare
@@ -1459,19 +1476,31 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("start_intruder",
-		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §). payloads=list of lists.",
+		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §); repeat=Race / repeat the unchanged request. payloads=list of lists.",
 		obj(map[string]any{
-			"target":     p("string", "scheme://host[:port]"),
-			"template":   p("string", "raw request with §…§"),
-			"attackType": p("string", "sniper | battering | pitchfork | cluster"),
-			"payloads":   map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
-			"threads":    p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
+			"target":       p("string", "scheme://host[:port]"),
+			"template":     p("string", "raw request with §…§"),
+			"attackType":   p("string", "sniper | battering | pitchfork | cluster | repeat"),
+			"payloads":     map[string]any{"type": "array", "items": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+			"repeat":       p("integer", "Race / repeat send count"),
+			"count":        p("integer", "alias for repeat"),
+			"threads":      p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
+			"delayMs":      p("integer", "delay between requests in milliseconds"),
+			"grepMatch":    p("string", "regex that flags matching responses"),
+			"grepExtract":  p("string", "regex whose captures are included in results"),
+			"processRules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "payload processing steps"},
 		}, "target", "template"),
 		func(a map[string]any) (string, error) {
+			repeat := argInt(a, "repeat", 0)
+			if repeat == 0 {
+				repeat = argInt(a, "count", 0)
+			}
 			return s.api(http.MethodPost, "/api/intruder/start", map[string]any{
 				"target": argStr(a, "target"), "template": argStr(a, "template"),
 				"attackType": argStr(a, "attackType"), "payloads": a["payloads"],
-				"threads": argInt(a, "threads", 1),
+				"repeat": repeat, "threads": argInt(a, "threads", 1),
+				"delayMs": argInt(a, "delayMs", 0), "grepMatch": argStr(a, "grepMatch"),
+				"grepExtract": argStr(a, "grepExtract"), "processRules": a["processRules"],
 			})
 		})
 
@@ -1701,21 +1730,60 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/intercept/%d/drop", argInt(a, "id", 0)), nil)
 		})
 
+	s.add("forward_response", "Forward a held response (optionally with edited raw bytes).",
+		obj(map[string]any{"id": pt("integer"), "raw": p("string", "edited raw response (optional)")}, "id"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			if r := argStr(a, "raw"); r != "" {
+				body["raw"] = r
+			}
+			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/forward", argInt(a, "id", 0)), body)
+			return boundJSON(out, 200), err
+		})
+
+	s.add("drop_response", "Drop a held response.", obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			out, err := s.api(http.MethodPost, fmt.Sprintf("/api/intercept/response/%d/drop", argInt(a, "id", 0)), nil)
+			return boundJSON(out, 200), err
+		})
+
 	s.add("list_rules", "List match-&-replace rules.", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/rules") })
 
-	s.add("add_rule", "Add a request-side match-&-replace rule (regex).",
+	ruleProps := map[string]any{
+		"side":    p("string", "request | response (or req | res); use with type=header|body"),
+		"type":    p("string", "header | body, or legacy combined req-header | req-body | res-header | res-body"),
+		"match":   p("string", "regex"),
+		"replace": pt("string"),
+		"enabled": p("boolean", "default true"),
+		"ord":     p("integer", "rule order"),
+	}
+	s.add("add_rule", "Add a request- or response-side match-&-replace rule (regex).",
 		obj(map[string]any{
-			"type":    p("string", "req-header | req-body"),
-			"match":   p("string", "regex"),
-			"replace": pt("string"),
-			"enabled": p("boolean", "default true"),
+			"side": ruleProps["side"], "type": ruleProps["type"], "match": ruleProps["match"],
+			"replace": ruleProps["replace"], "enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
 		}, "type", "match"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/rules", map[string]any{
-				"type": argStr(a, "type"), "match": argStr(a, "match"),
-				"replace": argStr(a, "replace"), "enabled": argBool(a, "enabled", true),
-			})
+			out, err := s.api(http.MethodPost, "/api/rules", rulePayload(a, true))
+			return boundJSON(out, 200), err
+		})
+
+	s.add("update_rule", "Update a match-&-replace rule.",
+		obj(map[string]any{
+			"id": pt("integer"), "side": ruleProps["side"], "type": ruleProps["type"],
+			"match": ruleProps["match"], "replace": ruleProps["replace"],
+			"enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
+		}, "id", "type", "match"),
+		func(a map[string]any) (string, error) {
+			out, err := s.api(http.MethodPut, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), rulePayload(a, true))
+			return boundJSON(out, 200), err
+		})
+
+	s.add("delete_rule", "Delete a match-&-replace rule.",
+		obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			out, err := s.api(http.MethodDelete, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), nil)
+			return boundJSON(out, 200), err
 		})
 
 	s.add("list_ws_frames", "List a flow's WebSocket frames (dir/opcode/length/preview).",

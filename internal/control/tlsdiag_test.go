@@ -85,3 +85,42 @@ func TestReadinessIncludesTLSIntercept(t *testing.T) {
 		t.Fatal("readiness missing tls_intercept check")
 	}
 }
+
+func TestReadinessDoesNotVerifyTLSFromHTTPOnlyTraffic(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.Now(), Method: "GET", Scheme: "http", Host: "example.com", Path: "/", Status: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hub := New(st, intercept.New(), nil, nil, nil)
+	ts := httptest.NewServer(hub.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/readiness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var rep readinessReport
+	if err := json.NewDecoder(resp.Body).Decode(&rep); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rep.Checks {
+		if c.ID != "tls_intercept" {
+			continue
+		}
+		if c.OK {
+			t.Fatal("HTTP-only traffic must leave TLS interception unverified")
+		}
+		if c.Detail == "" || c.Fix == "" {
+			t.Fatalf("unverified TLS check needs detail and next action: %+v", c)
+		}
+		return
+	}
+	t.Fatal("readiness missing tls_intercept")
+}

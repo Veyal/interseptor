@@ -35,8 +35,8 @@ machine**, nothing phoned home.
   prove (differential repro → adversarial review → OOB proof → human confirm for the scary ones).
 - **Extensible** — write your own passive/active checks in sandboxed Starlark, no fork required.
 - **Mobile-ready** — Android and iOS setup for HTTPS interception on real devices.
-- **AI & API native** — a full MCP server (99 tools) and a REST/SSE API so an agent or script drives
-  the same core as the UI, plus BYO-key AI assist for explaining requests and suggesting payloads.
+- **AI & API native** — a full MCP server and a REST/SSE API so an agent or script drives
+  the same core as the UI, plus BYO-key AI assist (Anthropic, OpenRouter, GLM/Zhipu, OpenAI) for explaining requests and suggesting payloads.
 
 That's the highlight reel — the **[full feature list](docs/FEATURES.md)** covers WebSockets, HAR
 import/export, project bundles, collaboration/remote access, session & login macros, and more.

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,14 @@ type MergeStats struct {
 // peerDBPath is a peer project's interceptor.db (opened read-only); peerBodiesDir
 // is its bodies/ directory (may be absent for an empty project).
 func (s *Store) MergeFrom(peerDBPath, peerBodiesDir, label string) (MergeStats, error) {
+	return s.mergeFrom(peerDBPath, peerBodiesDir, label, mergeHooks{})
+}
+
+type mergeHooks struct {
+	afterBodiesPublished func()
+}
+
+func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHooks) (MergeStats, error) {
 	var stats MergeStats
 
 	peer, err := sql.Open("sqlite", "file:"+peerDBPath+"?mode=ro&_pragma=busy_timeout(5000)")
@@ -41,11 +50,18 @@ func (s *Store) MergeFrom(peerDBPath, peerBodiesDir, label string) (MergeStats, 
 
 	// 1. Copy peer bodies (content-addressed → dedup by filename/hash).
 	if peerBodiesDir != "" {
-		added, err := s.copyBodies(peerBodiesDir)
+		added, release, err := s.copyBodies(peerBodiesDir)
 		if err != nil {
 			return stats, err
 		}
+		defer release()
 		stats.BodiesAdded = added
+		if hooks.afterBodiesPublished != nil {
+			hooks.afterBodiesPublished()
+		}
+	}
+	if err := s.validatePeerFindingImages(peer); err != nil {
+		return stats, err
 	}
 
 	// 2. Union flows. Build my existing signature set, then insert unseen peer flows.
@@ -82,6 +98,19 @@ func (s *Store) MergeFrom(peerDBPath, peerBodiesDir, label string) (MergeStats, 
 		pending = append(pending, pflow{f: f, peer: f.ID, note: note})
 	}
 	rows.Close()
+	for _, pf := range pending {
+		for _, bodyHash := range []string{pf.f.ReqBodyHash, pf.f.ResBodyHash} {
+			if bodyHash == "" {
+				continue
+			}
+			if !isContentHash(bodyHash) {
+				return stats, fmt.Errorf("invalid body hash %q referenced by peer flow %d", bodyHash, pf.peer)
+			}
+			if info, err := os.Stat(s.bodyPath(bodyHash)); err != nil || !info.Mode().IsRegular() {
+				return stats, fmt.Errorf("missing body %s referenced by peer flow %d", bodyHash, pf.peer)
+			}
+		}
+	}
 
 	tag := "peer/" + sanitizeLabel(label)
 	for _, pf := range pending {
@@ -181,51 +210,173 @@ func (s *Store) MergeFrom(peerDBPath, peerBodiesDir, label string) (MergeStats, 
 	return stats, nil
 }
 
+func (s *Store) validatePeerFindingImages(peer *sql.DB) error {
+	rows, err := peer.Query(`SELECT id, body FROM findings WHERE body != ''`)
+	if err != nil {
+		return fmt.Errorf("read peer finding images: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var findingID int64
+		var bodyJSON string
+		if err := rows.Scan(&findingID, &bodyJSON); err != nil {
+			return err
+		}
+		var blocks []blockRecord
+		if err := json.Unmarshal([]byte(bodyJSON), &blocks); err != nil {
+			continue
+		}
+		for _, block := range blocks {
+			if block.Type != "image" {
+				continue
+			}
+			if !isContentHash(block.Hash) {
+				return fmt.Errorf("invalid image body hash %q referenced by peer finding %d", block.Hash, findingID)
+			}
+			if info, err := os.Stat(s.bodyPath(block.Hash)); err != nil || !info.Mode().IsRegular() {
+				return fmt.Errorf("missing image body %s referenced by peer finding %d", block.Hash, findingID)
+			}
+		}
+	}
+	return rows.Err()
+}
+
 // copyBodies copies content-addressed body blobs from a peer bodies dir into this
-// store's bodies dir, skipping any already present. Each blob's filename must be a
-// valid content hash (path-traversal guard); the content is trusted as-is since it
-// is content-addressed and re-verified on read via OpenBody's hash check.
-func (s *Store) copyBodies(peerBodiesDir string) (int, error) {
-	added := 0
+// store's bodies dir, skipping any already present. Each blob must use the
+// canonical <2>/<2>/<hash> layout and its streamed SHA-256 must match its name.
+func (s *Store) copyBodies(peerBodiesDir string) (int, func(), error) {
+	return s.copyBodiesWithOps(peerBodiesDir, bodyPublishOps{rename: os.Rename})
+}
+
+type bodyPublishOps struct {
+	beforeRename func(dst string)
+	rename       func(oldPath, newPath string) error
+}
+
+func (s *Store) copyBodiesWithOps(peerBodiesDir string, ops bodyPublishOps) (int, func(), error) {
+	type stagedBody struct {
+		tmp string
+		dst string
+	}
+	var staged []stagedBody
+	var verifiedHashes []string
+	cleanup := func() {
+		for _, body := range staged {
+			_ = os.Remove(body.tmp)
+		}
+	}
 	err := filepath.WalkDir(peerBodiesDir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
 			return nil
 		}
 		name := d.Name()
+		if strings.HasPrefix(name, ".tmp-") {
+			return nil
+		}
 		if !isContentHash(name) {
-			return nil // skip temp/partial or malformed entries
+			return fmt.Errorf("invalid body archive entry %q", p)
+		}
+		rel, err := filepath.Rel(peerBodiesDir, p)
+		if err != nil || filepath.Clean(rel) != filepath.Join(name[:2], name[2:4], name) {
+			return fmt.Errorf("invalid body archive layout %q", rel)
 		}
 		dst := s.bodyPath(name)
-		if _, err := os.Stat(dst); err == nil {
-			return nil // already present (dedup)
-		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
-		if err := copyFile(p, dst); err != nil {
+		tmp, actual, err := copyBodyToTemp(p, filepath.Dir(dst))
+		if err != nil {
 			return err
 		}
-		added++
+		if actual != name {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("body hash mismatch for %s: got %s", name, actual)
+		}
+		if _, err := os.Stat(dst); err == nil {
+			_ = os.Remove(tmp)
+			verifiedHashes = append(verifiedHashes, name)
+			return nil
+		}
+		staged = append(staged, stagedBody{tmp: tmp, dst: dst})
+		verifiedHashes = append(verifiedHashes, name)
 		return nil
 	})
-	return added, err
+	if err != nil {
+		cleanup()
+		return 0, func() {}, err
+	}
+	release := s.protectMergeBodies(verifiedHashes)
+	added := 0
+	for i, body := range staged {
+		if _, err := os.Stat(body.dst); err == nil {
+			_ = os.Remove(body.tmp)
+			continue
+		}
+		if ops.beforeRename != nil {
+			ops.beforeRename(body.dst)
+		}
+		if err := ops.rename(body.tmp, body.dst); err != nil {
+			expected := filepath.Base(body.dst)
+			actual, verifyErr := bodyFileDigest(body.dst)
+			if verifyErr == nil && actual == expected {
+				_ = os.Remove(body.tmp)
+				continue
+			}
+			for _, rest := range staged[i:] {
+				_ = os.Remove(rest.tmp)
+			}
+			release()
+			if verifyErr == nil {
+				return added, func() {}, fmt.Errorf("destination body hash mismatch for %s: got %s", expected, actual)
+			}
+			return added, func() {}, err
+		}
+		added++
+	}
+	return added, release, nil
 }
 
-func copyFile(src, dst string) error {
+func bodyFileDigest(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func copyBodyToTemp(src, dstDir string) (tmpPath, hash string, err error) {
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	out, err := os.CreateTemp(dstDir, ".tmp-merge-*")
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
+	tmpPath = out.Name()
+	defer func() {
+		if err != nil {
+			out.Close()
+			os.Remove(tmpPath)
+		}
+	}()
+	h := sha256.New()
+	if _, err = io.Copy(io.MultiWriter(out, h), in); err != nil {
+		return "", "", err
 	}
-	return out.Close()
+	if err = out.Close(); err != nil {
+		return "", "", err
+	}
+	return tmpPath, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // flowSignatures returns a map of content-signature → flow id for every flow in db.

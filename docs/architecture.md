@@ -60,7 +60,7 @@ independently tested.
 | `internal/wsrepeater` | WebSocket Repeater (RFC 6455 handshake + masked frames, no deps) |
 | `internal/harx` | HAR 1.2 import/export |
 | `internal/sysproxy` | Opt-in macOS system-proxy toggle |
-| `internal/aiassist` | BYO-key LLM bridge (Anthropic + OpenRouter + GLM) |
+| `internal/aiassist` | BYO-key LLM bridge (Anthropic + OpenRouter + GLM/Zhipu + OpenAI) |
 | `internal/aiagent` | Provider-agnostic, budgeted tool-calling agent loop that powers Autopilot's planning and adversarial-verifier agents |
 | `internal/autopwn` | Autonomous-pentest ("Autopilot") run engine: plans and executes active testing over Interseptor's own tools, files only findings proven by the 4-gate verifier |
 | `internal/verify` | Deterministic, LLM-free primitives (differential reproduction, OOB-callback confirmation) behind Gates 1 and 3 of Autopilot's 4-gate finding verifier |

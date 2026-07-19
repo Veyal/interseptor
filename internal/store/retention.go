@@ -194,6 +194,9 @@ func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 // is still referenced, and it never touches files outside bodiesDir or files
 // whose names do not match the content-hash scheme (e.g. ".tmp-*" partials).
 func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
+	s.bodyMu.Lock()
+	defer s.bodyMu.Unlock()
+
 	// 1. Collect every hash referenced by at least one flow.
 	referenced := make(map[string]struct{})
 	rows, err := s.db.Query(
@@ -225,6 +228,12 @@ func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
 		return 0, 0, fmt.Errorf("store.GCBodies: finding image refs: %w", err)
 	}
 	for h := range imgRefs {
+		referenced[h] = struct{}{}
+	}
+	for h := range s.pendingBodies {
+		referenced[h] = struct{}{}
+	}
+	for h := range s.mergeBodies {
 		referenced[h] = struct{}{}
 	}
 

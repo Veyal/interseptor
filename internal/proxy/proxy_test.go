@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -961,6 +962,211 @@ func TestUpstreamProxyConfig(t *testing.T) {
 	}
 	if err := srv.SetUpstreamProxy("://bad"); err == nil {
 		t.Fatal("expected error for invalid upstream URL")
+	}
+}
+
+func TestUpstreamProxyAddressDefaultsPorts(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{"http://proxy.example", "proxy.example:80"},
+		{"https://proxy.example", "proxy.example:443"},
+		{"http://proxy.example:3128", "proxy.example:3128"},
+	} {
+		up, err := url.Parse(tc.raw)
+		if err != nil {
+			t.Fatalf("url.Parse(%q): %v", tc.raw, err)
+		}
+		if got := upstreamProxyAddress(up); got != tc.want {
+			t.Errorf("upstreamProxyAddress(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestSetUpstreamProxyNormalizesSchemeCase(t *testing.T) {
+	for _, tc := range []struct {
+		raw        string
+		wantScheme string
+		wantAddr   string
+	}{
+		{"HTTP://proxy.example", "http", "proxy.example:80"},
+		{"HtTpS://proxy.example", "https", "proxy.example:443"},
+	} {
+		srv := New(nil, nil, nil, nil, nil)
+		if err := srv.SetUpstreamProxy(tc.raw); err != nil {
+			t.Fatalf("SetUpstreamProxy(%q): %v", tc.raw, err)
+		}
+		up := srv.upstream.Load()
+		if up.Scheme != tc.wantScheme {
+			t.Errorf("scheme for %q = %q, want %q", tc.raw, up.Scheme, tc.wantScheme)
+		}
+		if got := upstreamProxyAddress(up); got != tc.wantAddr {
+			t.Errorf("address for %q = %q, want %q", tc.raw, got, tc.wantAddr)
+		}
+	}
+	mixed := &url.URL{Scheme: "HtTpS", Host: "proxy.example"}
+	if got := upstreamProxyAddress(mixed); got != "proxy.example:443" {
+		t.Errorf("mixed-case HTTPS address = %q, want proxy.example:443", got)
+	}
+}
+
+func TestDialViaHTTPSUpstreamUsesTLSAndSNI(t *testing.T) {
+	proxyCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	leaf, err := proxyCA.LeafForHost("localhost")
+	if err != nil {
+		t.Fatalf("proxy leaf: %v", err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	gotSNI := make(chan string, 1)
+	gotAuth := make(chan string, 1)
+	go func() {
+		raw, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer raw.Close()
+		tc := tls.Server(raw, &tls.Config{
+			Certificates: []tls.Certificate{*leaf},
+			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+				gotSNI <- hello.ServerName
+				return nil, nil
+			},
+		})
+		req, err := http.ReadRequest(bufio.NewReader(tc))
+		if err != nil {
+			return
+		}
+		gotAuth <- req.Header.Get("Proxy-Authorization")
+		io.WriteString(tc, "HTTP/1.1 200 Connection Established\r\n\r\n")
+	}()
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxy("HtTpS://alice:secret@localhost:" + port); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	up := srv.upstream.Load()
+	up.Scheme = "HtTpS" // custom callers may supply a URL without net/url normalization
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(proxyCA.CertPEM())
+	d := &net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialViaUpstream(d, up, "origin.example:443", &tls.Config{RootCAs: roots})
+	if err != nil {
+		t.Fatalf("dialViaUpstream: %v", err)
+	}
+	conn.Close()
+
+	if got := <-gotSNI; got != "localhost" {
+		t.Fatalf("proxy TLS SNI = %q, want localhost", got)
+	}
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+	if got := <-gotAuth; got != wantAuth {
+		t.Fatalf("Proxy-Authorization = %q, want %q", got, wantAuth)
+	}
+}
+
+func TestDialViaUpstreamTimesOutSilentCONNECTAndClosesConnection(t *testing.T) {
+	proxyCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	leaf, err := proxyCA.LeafForHost("localhost")
+	if err != nil {
+		t.Fatalf("proxy leaf: %v", err)
+	}
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(proxyCA.CertPEM())
+
+	for _, scheme := range []string{"http", "https"} {
+		t.Run(scheme, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("listen: %v", err)
+			}
+			defer ln.Close()
+
+			accepted := make(chan net.Conn, 1)
+			requestRead := make(chan error, 1)
+			connectionClosed := make(chan error, 1)
+			go func() {
+				raw, err := ln.Accept()
+				if err != nil {
+					requestRead <- err
+					return
+				}
+				accepted <- raw
+				defer raw.Close()
+				conn := raw
+				if scheme == "https" {
+					tc := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*leaf}})
+					if err := tc.Handshake(); err != nil {
+						requestRead <- err
+						return
+					}
+					conn = tc
+				}
+				if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+					requestRead <- err
+					return
+				}
+				requestRead <- nil
+				_, err = conn.Read(make([]byte, 1))
+				connectionClosed <- err
+			}()
+
+			_, port, _ := net.SplitHostPort(ln.Addr().String())
+			up, _ := url.Parse(scheme + "://localhost:" + port)
+			d := &net.Dialer{Timeout: 80 * time.Millisecond}
+			result := make(chan error, 1)
+			started := time.Now()
+			go func() {
+				conn, err := dialViaUpstream(d, up, "origin.example:443", &tls.Config{RootCAs: roots})
+				if conn != nil {
+					conn.Close()
+				}
+				result <- err
+			}()
+
+			if err := <-requestRead; err != nil {
+				t.Fatalf("read CONNECT request: %v", err)
+			}
+			select {
+			case err := <-result:
+				if err == nil {
+					t.Fatal("silent upstream unexpectedly completed CONNECT")
+				}
+				netErr, ok := err.(net.Error)
+				if !ok || !netErr.Timeout() {
+					t.Fatalf("dial error = %v, want timeout", err)
+				}
+				if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+					t.Fatalf("CONNECT timeout took %v, want bounded by dialer timeout", elapsed)
+				}
+			case <-time.After(500 * time.Millisecond):
+				raw := <-accepted
+				raw.Close()
+				<-result
+				t.Fatal("silent upstream CONNECT did not time out")
+			}
+
+			select {
+			case err := <-connectionClosed:
+				if err == nil {
+					t.Fatal("silent upstream connection remained open")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("upstream did not observe client connection cleanup")
+			}
+		})
 	}
 }
 

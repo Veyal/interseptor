@@ -257,6 +257,32 @@ func TestStartRefusesWithoutScope(t *testing.T) {
 	}
 }
 
+func TestStartRefusesWithoutEnabledIncludeScope(t *testing.T) {
+	tests := []struct {
+		name string
+		rule store.ScopeRule
+	}{
+		{name: "disabled include", rule: store.ScopeRule{Enabled: false, Action: "include", Host: "victim.test"}},
+		{name: "enabled exclude only", rule: store.ScopeRule{Enabled: true, Action: "exclude", Host: "evil.test"}},
+		{name: "enabled malformed empty action", rule: store.ScopeRule{Enabled: true, Action: "", Host: "victim.test"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := openStore(t)
+			if _, err := s.CreateScopeRule(&tt.rule); err != nil {
+				t.Fatalf("CreateScopeRule: %v", err)
+			}
+			e := New(Deps{Store: s, NewToolCaller: func() (aiagent.ToolCaller, error) { return &fakeCaller{}, nil }})
+			if _, err := e.Start(context.Background(), StartOpts{}); !errors.Is(err, ErrNoScope) {
+				t.Fatalf("expected ErrNoScope, got %v", err)
+			}
+			if runs, _ := s.ListPentestRuns(); len(runs) != 0 {
+				t.Fatalf("no run row should be created; got %d", len(runs))
+			}
+		})
+	}
+}
+
 // (b) A candidate that passes every gate → exactly one verified Finding + a
 // finding_verification row + PoC flows attached.
 func TestVerifiedCandidateFilesFinding(t *testing.T) {

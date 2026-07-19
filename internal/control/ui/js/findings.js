@@ -110,6 +110,33 @@ export async function loadFindings() {
   } catch (e) { toast(e.message); }
 }
 
+function findingsEmptyHTML() {
+  return `<div class="state-empty find-empty">
+    <div class="state-empty-icon">🔎</div>
+    <div class="state-empty-title">No findings yet</div>
+    <p class="state-empty-hint">File a vulnerability with PoC evidence — manually, from Autopilot, or by asking AI to triage history.</p>
+    <div class="find-empty-actions">
+      <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
+      <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui>✨ Ask AI for findings</button>
+    </div>
+    <p class="state-empty-hint state-empty-cmdk">Later: <b>Export report</b> · <a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">engagement close-out checklist</a></p>
+  </div>`;
+}
+
+function wireFindingsEmptyActions(root) {
+  const box = root || $('#findList');
+  if (!box) return;
+  const neu = box.querySelector('#findEmptyNew');
+  const ask = box.querySelector('#findEmptyAskAi');
+  if (neu) neu.onclick = openFindCreate;
+  if (ask) ask.onclick = openFindAskAi;
+}
+
+function setFindingsViewEmpty(empty) {
+  const view = $('#scanFindingsView');
+  if (view) view.classList.toggle('is-empty', !!empty);
+}
+
 function renderFindings() {
   const box = $('#findList'); if (!box) return;
   const list = visibleFindings();
@@ -122,11 +149,19 @@ function renderFindings() {
       : '';
   }
   if (!findings.length) {
-    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🔎</div><div class="state-empty-title">No findings yet</div><p class="state-empty-hint">Create one, or the AI records them as it tests.</p><p class="state-empty-hint state-empty-cmdk">Wrapping up? File PoCs here, then <b>Export report</b> — checklist: <code>docs/engagement-closeout.md</code></p></div>';
-    selFinding = null; renderFindingDetail(); return;
+    setFindingsViewEmpty(true);
+    box.innerHTML = findingsEmptyHTML();
+    wireFindingsEmptyActions(box);
+    selFinding = null;
+    const detail = $('#findDetail');
+    if (detail) detail.innerHTML = '';
+    return;
   }
+  setFindingsViewEmpty(false);
   if (!list.length) {
-    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon">🏷️</div><div class="state-empty-title">No findings with tag “${esc(findTagFilter)}”</div><p class="state-empty-hint">Clear the tag filter or tag a finding in the detail pane.</p></div>`;
+    box.innerHTML = `<div class="state-empty find-empty"><div class="state-empty-icon">🏷️</div><div class="state-empty-title">No findings with tag “${esc(findTagFilter)}”</div><p class="state-empty-hint">Clear the tag filter or tag a finding in the detail pane.</p><div class="find-empty-actions"><button type="button" class="btn" id="findClearTagFilter">Show all findings</button></div></div>`;
+    const clr = box.querySelector('#findClearTagFilter');
+    if (clr) clr.onclick = () => { findTagFilter = ''; renderFindTagFilter(); renderFindings(); };
     selFinding = null; renderFindingDetail(); return;
   }
   if (!selFinding || !list.some(f => f.id === selFinding)) selFinding = list[0].id;
@@ -719,22 +754,32 @@ async function openFlowPickForFinding(findingId) {
 }
 
 /* ---- create finding ---- */
-$('#findNew') && ($('#findNew').onclick = () => { $('#fcTitle').value = ''; $('#fcSeverity').value = 'Medium'; openModal($('#findCreateModal')); $('#fcTitle').focus(); });
+function openFindCreate() {
+  $('#fcTitle').value = '';
+  $('#fcSeverity').value = 'Medium';
+  openModal($('#findCreateModal'));
+  $('#fcTitle').focus();
+}
+$('#findNew') && ($('#findNew').onclick = openFindCreate);
+$('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
 $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
 
 /* ---- Ask AI for findings (triage) ---- */
 let triageAbort = null;
 let triageSeq = 0;
 function setTriageStatus(s) { const el = $('#ftStatus'); if (el) el.textContent = s || ''; }
-$('#findAskAiFindings') && ($('#findAskAiFindings').onclick = () => {
+function closeTriage() { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); }
+function openFindAskAi() {
   if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
   const out = $('#ftOut'); if (out) out.innerHTML = '<div class="hint">Ready — click Run triage.</div>';
   setTriageStatus('');
   const stop = $('#ftStop'); if (stop) stop.style.display = 'none';
-  openModal($('#findTriageModal'));
+  openModal($('#findTriageModal'), { onEscape: closeTriage, onDismiss: closeTriage });
   setTimeout(() => { const s = $('#ftSteer'); if (s) s.focus(); }, 30);
-});
-$('#ftClose') && ($('#ftClose').onclick = () => { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); });
+}
+$('#findAskAiFindings') && ($('#findAskAiFindings').onclick = openFindAskAi);
+$('#findEmptyAskAi') && ($('#findEmptyAskAi').onclick = openFindAskAi);
+$('#ftClose') && ($('#ftClose').onclick = closeTriage);
 $('#ftStop') && ($('#ftStop').onclick = () => { if (triageAbort) triageAbort.abort(); });
 $('#ftRun') && ($('#ftRun').onclick = async () => {
   const seq = ++triageSeq;
@@ -822,6 +867,8 @@ $('#ftRun') && ($('#ftRun').onclick = async () => {
 
 function findReportQuery(extra) {
   const q = new URLSearchParams(extra || {});
+  const statuses=($('#findExportStatuses')||{}).value||'open,verified,fixed';
+  q.set('statuses',statuses);
   if (findTagFilter) q.set('tag', findTagFilter);
   if ($('#findExportGroupByTag')?.checked) {
     q.set('groupBy', 'tag');

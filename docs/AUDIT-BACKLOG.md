@@ -1,5 +1,8 @@
 # Interseptor — Audit Backlog (CLEARED)
 
+> **Historical snapshot** — preserved for archaeology. Counts, IA claims, and open items may be stale relative to current `main`.
+
+
 ## v0.29.0 post-release audit (2026-07-07) — CLEARED
 
 A 6-agent parallel audit (each with an isolated live instance, real end-to-end

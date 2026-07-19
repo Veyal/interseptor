@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor } from './core.js';
+import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor, renderLoadError } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 
@@ -501,7 +501,15 @@ export async function asStartScan(){
     if(state.selId==null){toast('select a flow first, or choose "all in-scope"');return;}
     body.flowId=state.selId;
   }else body.inScope=true;
-  try{await api('/api/activescan/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});loadActive();}
+  try{
+    const readiness=await api('/api/readiness');
+    const checks=readiness.checks||[];
+    const scope=checks.find(c=>c.id==='scope');
+    const traffic=checks.find(c=>c.id==='in_scope_traffic')||checks.find(c=>c.id==='traffic');
+    const blocker=body.inScope&&[scope,traffic].find(c=>c&&!c.ok);
+    if(blocker){toast('Active scan blocked: '+blocker.detail+(blocker.fix?' — '+blocker.fix:''));return;}
+    await api('/api/activescan/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});loadActive();
+  }
   catch(e){toast(e.message);}
 }
 export async function asStopScan(){try{await api('/api/activescan/stop',{method:'POST'});loadActive();toast('active scan stopped');}catch(e){toast(e.message);}}
@@ -522,25 +530,33 @@ if($('#asTargetScope'))$('#asTargetScope').onchange=renderAsScopePanel;
 
 /* ---- scanner ---- */
 export const scanState={sel:null,issues:[]};
-export async function loadIssues(){try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();}catch(e){}}
+export async function loadIssues(){
+  const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Loading scanner results…';
+  try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();if(stateEl)stateEl.textContent='';}
+  catch(e){renderLoadError(stateEl,'Scanner results',e,loadIssues,scanState.issues.length>0);}
+  finally{if(stateEl&&stateEl.textContent==='Loading scanner results…')stateEl.textContent='';}
+}
 export async function runScan(){
   $('#scanRun').textContent='Scanning…';$('#scanRun').disabled=true;
   const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
   const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
+  const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Rescanning selected in-scope traffic…';
   try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});scanState.issues=d.issues||[];renderScan();
+    if(stateEl)stateEl.textContent='Rescan complete · stale issues reconciled for this scan';
     toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
-  catch(e){toast(e.message);}
-  $('#scanRun').textContent='Run scan ▸';$('#scanRun').disabled=false;
+  catch(e){renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);}
+  finally{$('#scanRun').textContent='Run scan ▸';$('#scanRun').disabled=false;}
 }
-// Populate the scanner's target dropdown from the hosts seen in history.
+// Populate the scanner's target dropdown from in-scope history only.
 export async function loadScanTargets(){
   const sel=$('#scanTarget');if(!sel)return;
-  try{const d=await api('/api/flows?limit=2000');
-    const hosts=[...new Set((d.flows||[]).map(f=>f.host).filter(Boolean))].sort();
+  try{const d=await api('/api/scanner/targets');
+    if(d.truncated)throw new Error('server returned a truncated host list — retry before choosing a target');
+    const hosts=(d.hosts||[]).filter(h=>h&&h.host);
     const cur=sel.value;
-    sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h)}">${esc(h)}</option>`).join('');
-    if(hosts.includes(cur))sel.value=cur;
-  }catch(e){}
+    sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${Number(h.count)||0})</option>`).join('');
+    if(hosts.some(h=>h.host===cur))sel.value=cur;
+  }catch(e){renderLoadError($('#scanRescanState'),'Scanner targets',e,loadScanTargets,false);}
 }
 export function prefillScanner(host, pathSearch){
   document.querySelector('.tab[data-tab="scanner"]')?.click();
@@ -617,3 +633,16 @@ async function promoteFinding(g){
   }catch(e){toast(e.message);}
 }
 $('#scanRun').onclick=runScan;
+$('#scanClear')&&($('#scanClear').onclick=async()=>{
+  const confirmed=await uiConfirm(
+    'Clear passive scanner results?',
+    'Remove all passive scanner issues? Curated <b>Findings</b> are kept.',
+    'Clear results','btn btn-danger'
+  );
+  if(!confirmed)return;
+  try{
+    await api('/api/scanner/issues',{method:'DELETE'});
+    scanState.issues=[];scanState.sel=null;renderScan();
+    $('#scanRescanState').textContent='Scanner results cleared · curated Findings were not changed';
+  }catch(e){renderLoadError($('#scanRescanState'),'Clear scanner results',e,()=>$('#scanClear').click(),scanState.issues.length>0);}
+});

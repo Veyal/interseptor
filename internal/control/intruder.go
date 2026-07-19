@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/Veyal/interseptor/internal/intruder"
@@ -48,6 +49,10 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 		ExtraFlags:   aiSourceFlag(r),
 	})
 	if err != nil {
+		if errors.Is(err, intruder.ErrClosed) {
+			httpErr(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

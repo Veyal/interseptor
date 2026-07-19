@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal, copyText, setSeg, syncUiSelectStyles } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
 
@@ -302,7 +302,14 @@ $$('#setNav button').forEach(b=>b.onclick=()=>{
 let savedAiModel='';
 let apiLoaded=false;
 
-export async function loadSettings(){try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
+function settingsLoadState(){
+  let el=$('#settingsLoadState');if(el)return el;
+  el=document.createElement('div');el.id='settingsLoadState';el.className='tls-diag-banner';
+  const wrap=document.querySelector('#panel-settings .settings-wrap');if(wrap)wrap.prepend(el);
+  return el;
+}
+export async function loadSettings(){const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
+  try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
   await loadNetworkHosts();
   renderProxyListeners(s.proxyAddrs||[s.proxyAddr]);
   if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
@@ -337,7 +344,9 @@ export async function loadSettings(){try{const s=await api('/api/settings');stat
   aiSyncProviderUI();
   applyAiDisabledUI();
   applyOobDisabledUI();
-  state.intercept.enabled=s.interceptEnabled;}catch(e){}}
+  state.intercept.enabled=s.interceptEnabled;if(loadState)loadState.style.display='none';}
+  catch(e){renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  finally{if(loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){
   const on=!!state.oobEnabled;
@@ -796,6 +805,7 @@ $('#retSelectAll')&&($('#retSelectAll').onclick=function(){
 });
 
 $('#exportProject').onclick=()=>toast('Downloading project export…');
+const exportHAR=$('#exportHAR');if(exportHAR)exportHAR.onclick=()=>toast('Downloading HAR export…');
 const exportFull=$('#exportFull');if(exportFull)exportFull.onclick=()=>toast('Downloading full project archive…');
 const importFullBtn=$('#importFullBtn');if(importFullBtn)importFullBtn.onclick=()=>$('#importFullFile').click();
 const importFullFile=$('#importFullFile');
@@ -821,6 +831,22 @@ $('#importProjectFile').onchange=async e=>{
   try{const text=await f.text();const r=await api('/api/import/project',{method:'POST',headers:{'content-type':'application/json'},body:text});
     toast(`imported ${r.importedFlows} flows · ${r.importedRules} rules · ${r.importedScope} scope`);
     loadFlows();loadRules();loadScope();loadSettings();}catch(err){toast('import: '+err.message);}
+  e.target.value='';
+};
+const importHARBtn=$('#importHARBtn');if(importHARBtn)importHARBtn.onclick=()=>$('#importHARFile').click();
+const importHARFile=$('#importHARFile');
+if(importHARFile)importHARFile.onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const confirmed=await uiConfirm('Import HAR',
+    'Merge entries from <b style="color:var(--accent)">'+esc(f.name||'this HAR')+'</b> into this project\'s History? Existing flows are kept.','Import','btn accent','');
+  if(!confirmed){e.target.value='';return;}
+  try{
+    const text=await f.text();
+    const r=await api('/api/import/har',{method:'POST',headers:{'content-type':'application/json'},body:text});
+    const n=r.imported!=null?r.imported:(r.importedFlows!=null?r.importedFlows:0);
+    toast('HAR import: '+n+' entr'+(n===1?'y':'ies')+' merged');
+    loadFlows();
+  }catch(err){toast('HAR import: '+err.message);}
   e.target.value='';
 };
 // ---- project switching (close current, open another / a new path) ----
@@ -849,7 +875,6 @@ export async function doSwitchProject(target,path){
   // note and the top-bar Projects modal share this one switch path.
   const notes=['#projSwitchNote','#pmNote'].map(s=>$(s)).filter(Boolean);
   const setNote=t=>notes.forEach(n=>{n.style.display='block';n.textContent=t;});
-  setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
   // /api/version can't tell them apart and would reload straight back into the
@@ -859,7 +884,10 @@ export async function doSwitchProject(target,path){
   // hang forever — after that we accept any live reply, same as before.
   let prevProject=null;
   try{prevProject=(await api('/api/project?_t='+Date.now())).current;}catch(e){}
-  try{await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});}catch(e){}
+  try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
+    if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
+  }catch(e){setNote('Project switch failed: '+e.message);toast(e.message);return;}
+  setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   const graceTries=10; // ~5s worth of polls
   let tries=0;const poll=setInterval(async()=>{tries++;
     try{
@@ -1041,6 +1069,22 @@ async function androidPost(path,body){
   const payload={serial:androidSerial(),proxyMode:androidProxyMode(),...body};
   return api(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
 }
+async function mobileReadiness(hintSel){
+  const hint=$(hintSel);if(hint)hint.textContent='Checking TLS and captured traffic…';
+  try{
+    const [tls,readiness]=await Promise.all([api('/api/tls-diagnosis'),api('/api/readiness')]);
+    const traffic=(readiness.checks||[]).find(c=>c.id==='traffic');
+    const tlsCheck=(readiness.checks||[]).find(c=>c.id==='tls_intercept');
+    const observed=!traffic?.ok?'no captured traffic yet'
+      :!tlsCheck?.ok?'traffic exists, but intercepted HTTPS is not verified'
+      :'the project already contains intercepted HTTPS traffic';
+    const nextAction=!traffic?.ok?(traffic?.fix||'route traffic through the proxy')
+      :!tlsCheck?.ok?(tls.fix||tlsCheck?.fix||'trust the CA and trigger HTTPS')
+      :'open Proxy History and identify the new device request';
+    if(hint)hint.textContent='Project-wide readiness: '+observed+'; this does not verify the selected device. After setup, send a new HTTPS request from this device, then '+nextAction+'.';
+    return {tls,readiness};
+  }catch(e){renderLoadError(hint,'Mobile readiness',e,()=>mobileReadiness(hintSel),false);return null;}
+}
 
 function isLoopbackProxyBind(addr){
   if(!addr)return true;
@@ -1101,7 +1145,7 @@ export async function loadAndroid(){
 }
 
 async function androidAction(fn){
-  try{await fn();await loadAndroid();}catch(e){toast(e.message);}
+  try{await fn();await loadAndroid();await mobileReadiness('#androidAdbHint');}catch(e){toast(e.message);}
 }
 
 $('#androidProxyMode')&&$('#androidProxyMode').addEventListener('click',e=>{
@@ -1253,7 +1297,7 @@ export async function loadIOS(){
 }
 
 async function iosAction(fn){
-  try{await fn();await loadIOS();}catch(e){toast(e.message);}
+  try{await fn();await loadIOS();await mobileReadiness('#iosHint');}catch(e){toast(e.message);}
 }
 
 $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
@@ -1359,6 +1403,7 @@ async function iosSshAction(fn){
   try{
     await fn();
     await loadIOSSsh();
+    await mobileReadiness('#iosSshHint');
   }catch(e){toast(e.message);}
 }
 

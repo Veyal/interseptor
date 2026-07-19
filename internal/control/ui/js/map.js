@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, apiTry, methodColor, statusColor, statusText, fmtSize, fmtDur } from './core.js';
+import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
 import { sendToRepeater } from './tools.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
@@ -19,6 +19,7 @@ const MAP_ROW_H = 28;
 const MAP_VIEW_KEY = 'mapView';
 const MAP_HIDE_NOISE_KEY = 'mapHideNoise';
 const MAP_COLLAPSE_IDENTICAL_KEY = 'mapCollapseIdentical';
+const MAP_DOMAIN_KEY = 'mapDomain';
 
 // Static media extensions omitted from the node-link graph (images, fonts, AV).
 const MAP_MEDIA_EXT = new Set([
@@ -61,6 +62,9 @@ function restoreMapCollapseIdentical(){
   }catch(e){}
   return true;
 }
+function restoreMapDomain(){
+  try{return localStorage.getItem(MAP_DOMAIN_KEY)||'';}catch(e){return '';}
+}
 
 /* ---- endpoint map ---- */
 function restoreMapView(){
@@ -72,7 +76,7 @@ function restoreMapView(){
 }
 
 export const mapState = {
-  eps: [], total: 0, truncated: false, domain: null, method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
+  eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, hideNoise: restoreMapHideNoise(), collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
   sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0,
@@ -115,18 +119,24 @@ export async function loadEndpoints(){
     params.set('searchScope', mapState.searchScope);
   }
   const q = params.toString();
-  const d = await apiTry('/api/endpoints' + (q ? '?' + q : ''),{},{label:'Map'});
-  if(!d)return;
-  mapState.eps = d.endpoints || [];
-  mapState.total = d.total != null ? d.total : mapState.eps.length;
-  mapState.truncated = !!d.truncated;
-  mapState.searchNote = d.searchNote || '';
-  mapState._dataVersion++;
-  mapState._needFit = true;
-  fillMapDomains();
-  fillMapMethods();
-  fillMapTags();
-  renderMap();
+  if(warn){warn.style.display='block';warn.textContent='Loading Map…';}
+  try{
+    const d = await api('/api/endpoints' + (q ? '?' + q : ''));
+    mapState.eps = d.endpoints || [];
+    mapState.total = d.total != null ? d.total : mapState.eps.length;
+    mapState.truncated = !!d.truncated;
+    mapState.searchNote = d.searchNote || '';
+    mapState._dataVersion++;
+    mapState._needFit = true;
+    fillMapDomains();
+    fillMapMethods();
+    fillMapTags();
+    renderMap();
+  }catch(e){
+    renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
+  }finally{
+    if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+  }
 }
 
 let _fdKey = -1, _fdHtml = '';
@@ -138,8 +148,7 @@ export function fillMapDomains(){
     const counts = {};
     mapState.eps.forEach(e => { counts[e.host] = (counts[e.host] || 0) + 1; });
     const hosts = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-    if(mapState.domain === null) mapState.domain = hosts[0] || '';
-    else if(mapState.domain && !counts[mapState.domain]) mapState.domain = hosts[0] || '';
+    if(mapState.domain && !counts[mapState.domain]) mapState.domain = '';
     _fdHtml = `<option value="">All domains (${mapState.eps.length})</option>`
       + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
     _fdKey = mapState._dataVersion;
@@ -649,6 +658,7 @@ $('#mapSearchScope') && ($('#mapSearchScope').onchange = e => {
 });
 $('#mapDomain') && ($('#mapDomain').onchange = e => {
   mapState.domain = e.target.value;
+  try{localStorage.setItem(MAP_DOMAIN_KEY,mapState.domain);}catch(e){}
   if(mapState.domain) mapState.collapsed.clear();
   else mapCollapseHosts();
   mapState._needFit = true;
@@ -698,7 +708,7 @@ $('#mapCollapseIdentical')&&($('#mapCollapseIdentical').onclick=()=>{
   renderMap();
 });
 // Tag is a server-side filter (changes which endpoints come back) — re-fetch.
-$('#mapTag') && ($('#mapTag').onchange = e => { mapState.tag = e.target.value; mapState.domain = null; mapState._needFit = true; loadEndpoints(); });
+$('#mapTag') && ($('#mapTag').onchange = e => { mapState.tag = e.target.value; mapState._needFit = true; loadEndpoints(); });
 
 /* ---- map: node-link graph ---- */
 export function gTrunc(s, n){ return s.length > n ? s.slice(0, n - 1) + '…' : s; }

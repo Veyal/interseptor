@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,15 +150,129 @@ func TestAutoBypassOnPinFailure(t *testing.T) {
 	}
 }
 
+func TestConcurrentAutoBypassDoesNotLoseHosts(t *testing.T) {
+	srv := New(nil, nil, nil, nil, nil)
+	var addedMu sync.Mutex
+	var added [][]string
+	srv.OnBypassAdded = func(list []string) {
+		// Re-entering the update mutex proves callbacks run outside it.
+		srv.bypassMu.Lock()
+		srv.bypassMu.Unlock()
+		addedMu.Lock()
+		added = append(added, append([]string(nil), list...))
+		addedMu.Unlock()
+	}
+
+	// Hold the update mutex until both goroutines are ready, then release them
+	// together. A correct read-modify-write serializes both additions.
+	srv.bypassMu.Lock()
+	ready := make(chan struct{}, 2)
+	var wg sync.WaitGroup
+	for _, host := range []string{"one.example.com", "two.example.com"} {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			ready <- struct{}{}
+			srv.addBypassHost(host)
+		}(host)
+	}
+	<-ready
+	<-ready
+	srv.bypassMu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("concurrent additions deadlocked; notifier may have run under the lock")
+	}
+
+	got := srv.TLSBypassHosts()
+	if !contains(got, "one.example.com") || !contains(got, "two.example.com") {
+		t.Fatalf("concurrent additions lost a host: %v", got)
+	}
+	addedMu.Lock()
+	var sawComplete bool
+	for _, list := range added {
+		if contains(list, "one.example.com") && contains(list, "two.example.com") {
+			sawComplete = true
+		}
+	}
+	addedMu.Unlock()
+	if !sawComplete {
+		t.Fatal("notifier never received the complete bypass list")
+	}
+}
+
+func TestConcurrentAutoBypassCallbacksCannotPersistStaleList(t *testing.T) {
+	srv := New(nil, nil, nil, nil, nil)
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var firstStartedOnce sync.Once
+	var persistedMu sync.Mutex
+	var persisted []string
+	srv.OnBypassAdded = func(list []string) {
+		if len(list) == 1 {
+			firstStartedOnce.Do(func() { close(firstStarted) })
+			<-releaseFirst
+		}
+		persistedMu.Lock()
+		persisted = append([]string(nil), list...)
+		persistedMu.Unlock()
+	}
+
+	firstDone := make(chan struct{})
+	go func() {
+		srv.addBypassHost("one.example.com")
+		close(firstDone)
+	}()
+	<-firstStarted
+
+	secondDone := make(chan struct{})
+	go func() {
+		srv.addBypassHost("two.example.com")
+		close(secondDone)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for len(srv.TLSBypassHosts()) != 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("second bypass host was not added")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(releaseFirst)
+	for name, done := range map[string]<-chan struct{}{
+		"first addition":  firstDone,
+		"second addition": secondDone,
+	} {
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s did not finish after releasing callback", name)
+		}
+	}
+
+	persistedMu.Lock()
+	got := append([]string(nil), persisted...)
+	persistedMu.Unlock()
+	if !contains(got, "one.example.com") || !contains(got, "two.example.com") {
+		t.Fatalf("last persisted callback lost a host: %v", got)
+	}
+}
+
 func TestShouldBypassTLSPatterns(t *testing.T) {
 	srv := New(nil, nil, nil, nil, nil)
 	srv.SetTLSBypassHosts([]string{" *.Pinned.COM ", "exact.test", ""})
 	cases := map[string]bool{
-		"pinned.com":        true,
-		"api.pinned.com":    true,
-		"exact.test":        true,
-		"notexact.test":     false,
-		"other.com":         false,
+		"pinned.com":     true,
+		"api.pinned.com": true,
+		"exact.test":     true,
+		"notexact.test":  false,
+		"other.com":      false,
 	}
 	for host, want := range cases {
 		if got := srv.shouldBypassTLS(host); got != want {

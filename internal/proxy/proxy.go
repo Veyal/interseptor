@@ -58,9 +58,11 @@ type Server struct {
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
-	bypassHosts atomic.Pointer[[]string] // host patterns to pass through untouched
-	autoBypass  atomic.Bool              // add a host to bypassHosts when its MITM handshake fails (pinning)
-	bypassSeen  sync.Map                 // host → struct{}: hosts already logged as bypassed (dedupe the info flow)
+	bypassHosts   atomic.Pointer[[]string] // host patterns to pass through untouched
+	bypassVersion atomic.Uint64            // detects a newer list while a callback is running
+	bypassMu      sync.Mutex               // serializes bypass-list read-modify-write
+	autoBypass    atomic.Bool              // add a host to bypassHosts when its MITM handshake fails (pinning)
+	bypassSeen    sync.Map                 // host → struct{}: hosts already logged as bypassed (dedupe the info flow)
 	// OnBypassAdded is fired (outside locks) after autoBypass appends a host, with
 	// the full updated list, so the control plane can persist it and refresh the UI.
 	OnBypassAdded func([]string)
@@ -95,6 +97,7 @@ func (s *Server) SetUpstreamProxy(raw string) error {
 	if err != nil || u.Host == "" {
 		return fmt.Errorf("invalid upstream proxy URL %q", raw)
 	}
+	u.Scheme = strings.ToLower(u.Scheme)
 	s.upstream.Store(u)
 	return nil
 }
@@ -476,8 +479,8 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	// If a chained upstream proxy is configured, CONNECT-tunnel through it.
 	// (Plain HTTP/HTTPS requests already honor it via s.tr.Proxy; a WebSocket
 	// upgrade dials here and would otherwise bypass the upstream.)
-	if up := s.upstream.Load(); up != nil && (up.Scheme == "http" || up.Scheme == "https" || up.Scheme == "") {
-		raw, err := dialViaUpstream(d, up, addr)
+	if up := s.upstream.Load(); up != nil && isHTTPUpstream(up) {
+		raw, err := dialViaUpstream(d, up, addr, s.tr.TLSClientConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -501,10 +504,30 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 }
 
 // dialViaUpstream opens a TCP tunnel to addr through an HTTP CONNECT proxy.
-func dialViaUpstream(d *net.Dialer, up *url.URL, addr string) (net.Conn, error) {
-	conn, err := d.Dial("tcp", up.Host)
+func dialViaUpstream(d *net.Dialer, up *url.URL, addr string, tlsConfig *tls.Config) (net.Conn, error) {
+	deadline := dialerDeadline(d)
+	conn, err := d.Dial("tcp", upstreamProxyAddress(up))
 	if err != nil {
 		return nil, err
+	}
+	if !deadline.IsZero() {
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	}
+	if strings.EqualFold(up.Scheme, "https") {
+		cfg := &tls.Config{ServerName: up.Hostname()}
+		if tlsConfig != nil {
+			cfg = tlsConfig.Clone()
+			cfg.ServerName = up.Hostname()
+		}
+		tc := tls.Client(conn, cfg)
+		if err := tc.Handshake(); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		conn = tc
 	}
 	req := &http.Request{Method: http.MethodConnect, URL: &url.URL{Opaque: addr}, Host: addr, Header: make(http.Header)}
 	if up.User != nil {
@@ -526,7 +549,34 @@ func dialViaUpstream(d *net.Dialer, up *url.URL, addr string) (net.Conn, error) 
 		conn.Close()
 		return nil, fmt.Errorf("upstream CONNECT %s: %s", addr, resp.Status)
 	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	return conn, nil
+}
+
+func dialerDeadline(d *net.Dialer) time.Time {
+	deadline := d.Deadline
+	if d.Timeout > 0 {
+		timeoutDeadline := time.Now().Add(d.Timeout)
+		if deadline.IsZero() || timeoutDeadline.Before(deadline) {
+			deadline = timeoutDeadline
+		}
+	}
+	return deadline
+}
+
+func upstreamProxyAddress(up *url.URL) string {
+	port := up.Port()
+	if port == "" {
+		port = strconv.Itoa(defaultPort(strings.ToLower(up.Scheme)))
+	}
+	return net.JoinHostPort(up.Hostname(), port)
+}
+
+func isHTTPUpstream(up *url.URL) bool {
+	return up.Scheme == "" || strings.EqualFold(up.Scheme, "http") || strings.EqualFold(up.Scheme, "https")
 }
 
 // writeResponseHead writes a response's status line and headers (no body) so an

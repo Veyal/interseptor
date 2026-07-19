@@ -21,13 +21,15 @@ the same capabilities as the UI. Run the app, then connect your MCP client one o
 **Streamable-HTTP** (hosted/remote agents) — `POST` JSON-RPC to `http://127.0.0.1:9966/mcp`
 (stateless; no subprocess needed).
 
-Both expose the same **99 tools** — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
+Both expose the same tool registry as the control plane — reading flows (`list_flows`, `get_flow`, `analyze_flow`,
 `flow_as_curl`), replaying/fuzzing (`send_request`, `start_intruder`, `ws_send`), scanning
 (`run_scanner`, `scan_report`), intercept/rules/scope control, and `set_session` — with bounded
 results so large bodies don't blow the agent's context. Each tool's JSON Schema documents its
 arguments (types, required fields, accepted variants) inline, so an agent can read a tool's
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
+
+BYO-key AI assist in the UI supports **Anthropic**, **OpenRouter**, **GLM**/Zhipu, and **OpenAI** providers.
 
 For a task-oriented walkthrough (recon → auth → scan → record findings), see
 [docs/product/mcp-cookbook.md](product/mcp-cookbook.md).

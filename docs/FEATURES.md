@@ -31,7 +31,7 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   multiple project instances from one place.
 - **AI assist** — BYO-key LLM explains requests, suggests payloads (with Repeater/Intruder routing),
   and summarizes findings; streamed, rendered as Markdown.
-- **Scanner** — 12 passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
+- **Scanner** — built-in passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
   reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
   exportable as a **Markdown findings report**.
 - **Custom checks & rule packs** — extend the scanner with sandboxed **Starlark** checks
@@ -49,9 +49,9 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Import / export** — HAR in and out, plus portable **project** bundles (flows + rules + scope +
   settings).
 - **BYO-key AI assist** — explain a request, suggest payloads, or summarize findings via your own
-  **Anthropic** or **OpenRouter** key (off until you set one; the exchange is sent only on request).
+  **Anthropic**, **OpenRouter**, **GLM**/Zhipu, or **OpenAI** key (off until you set one; the exchange is sent only on request).
 - **Finding tags** — report-scope labels on curated findings (same slug model as History tags), with
   list filters and export grouping (`cms` / `website` / `app` / `api` / `out-of-scope` convention).
 - **API & MCP** — a REST control API + SSE event stream and a full **Model Context Protocol** server
-  (99 tools, stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
+  (stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
   [API & MCP](api-and-mcp.md).

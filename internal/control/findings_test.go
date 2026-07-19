@@ -131,6 +131,57 @@ func TestFindingsEndpoints(t *testing.T) {
 	}
 }
 
+func TestFindingReportStatusDefaultsAndExplicitAll(t *testing.T) {
+	h, s, _ := newHub(t)
+	for _, f := range []store.Finding{
+		{Title: "Open issue", Severity: "High", Status: "open"},
+		{Title: "Verified issue", Severity: "High", Status: "verified"},
+		{Title: "Fixed issue", Severity: "Low", Status: "fixed"},
+		{Title: "Needs review", Severity: "Medium", Status: "needs_verification"},
+		{Title: "False positive issue", Severity: "Info", Status: "false_positive"},
+		{Title: "Accepted risk issue", Severity: "Low", Status: "wont_fix"},
+	} {
+		f := f
+		if _, err := s.CreateFinding(&f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	get := func(query string) string {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/findings/report?format=json" + query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return string(body)
+	}
+	defaultBody := get("")
+	for _, want := range []string{"Open issue", "Verified issue", "Fixed issue"} {
+		if !strings.Contains(defaultBody, want) {
+			t.Errorf("default report missing %q: %s", want, defaultBody)
+		}
+	}
+	for _, excluded := range []string{"Needs review", "False positive issue", "Accepted risk issue"} {
+		if strings.Contains(defaultBody, excluded) {
+			t.Errorf("default report unexpectedly includes %q: %s", excluded, defaultBody)
+		}
+	}
+	allBody := get("&statuses=all")
+	for _, want := range []string{"Needs review", "False positive issue", "Accepted risk issue"} {
+		if !strings.Contains(allBody, want) {
+			t.Errorf("explicit all report missing %q: %s", want, allBody)
+		}
+	}
+	verifiedBody := get("&statuses=verified")
+	if !strings.Contains(verifiedBody, "Verified issue") || strings.Contains(verifiedBody, "Open issue") {
+		t.Errorf("status-filtered report is wrong: %s", verifiedBody)
+	}
+}
+
 // TestFindingBodySizeCap verifies the 1 MiB body cap and 256 KiB per-text-block
 // cap on both the create and update paths.
 func TestFindingBodySizeCap(t *testing.T) {
@@ -227,8 +278,8 @@ func TestFindingBodySizeCap(t *testing.T) {
 }
 
 // TestFindingImpactCreateAndPatch verifies that:
-//  - POST /api/findings with "impact" returns the field populated.
-//  - PATCH /api/findings/:id with "impact" updates it and returns the new value.
+//   - POST /api/findings with "impact" returns the field populated.
+//   - PATCH /api/findings/:id with "impact" updates it and returns the new value.
 func TestFindingImpactCreateAndPatch(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
@@ -404,9 +455,9 @@ func TestCreateFindingSurfacesBadFlowIDWarning(t *testing.T) {
 		t.Fatalf("create: want 200, got %d", resp.StatusCode)
 	}
 	var out struct {
-		ID       int64          `json:"id"`
+		ID       int64               `json:"id"`
 		Flows    []store.FindingFlow `json:"flows"`
-		Warnings []string       `json:"warnings"`
+		Warnings []string            `json:"warnings"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)

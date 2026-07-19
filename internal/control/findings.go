@@ -115,6 +115,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
+	fs = filterReportFindings(fs, q.Get("statuses"))
 	var issues []store.Issue
 	if q.Get("issues") == "1" {
 		if iss, err := h.st.ListIssues(); err == nil {
@@ -155,6 +156,27 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(report.Project(fs, issues)))
 		}
 	}
+}
+
+func filterReportFindings(fs []store.Finding, raw string) []store.Finding {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "all" {
+		return fs
+	}
+	if raw == "" {
+		raw = "open,verified,fixed"
+	}
+	allowed := make(map[string]bool)
+	for _, status := range splitCSV(raw) {
+		allowed[strings.ToLower(status)] = true
+	}
+	out := make([]store.Finding, 0, len(fs))
+	for _, f := range fs {
+		if allowed[strings.ToLower(f.Status)] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func splitCSV(s string) []string {

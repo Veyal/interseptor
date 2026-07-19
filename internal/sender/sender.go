@@ -25,14 +25,14 @@ import (
 
 // Request describes a request to send.
 type Request struct {
-	Method  string
-	URL     string
-	Headers map[string][]string
-	Body    []byte
-	Flags     int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
-	Context   context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
-	NoSession bool            // skip the global session headers + token macro (authz replays carry their own identity)
-	retried401 bool           // internal: prevents infinite 401 re-auth loops
+	Method     string
+	URL        string
+	Headers    map[string][]string
+	Body       []byte
+	Flags      int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
+	Context    context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
+	NoSession  bool            // skip the global session headers + token macro (authz replays carry their own identity)
+	retried401 bool            // internal: prevents infinite 401 re-auth loops
 }
 
 // Header is a single session header applied to outgoing sends.
@@ -309,8 +309,9 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	}
 	defer resp.Body.Close()
 
-	if tee, finalize, terr := s.cap.TeeBody(resp.Body); terr == nil && tee != nil {
+	if tee, finalize, abort, terr := s.cap.TeeBodyWithAbort(resp.Body); terr == nil && tee != nil {
 		if _, copyErr := io.Copy(io.Discard, tee); copyErr != nil {
+			abort()
 			flow.Flags |= store.FlagCaptureError
 		} else {
 			h, n, ferr := finalize()
@@ -369,11 +370,12 @@ func (s *Sender) storeBody(b []byte) (string, int64, error) {
 	if len(b) == 0 {
 		return "", 0, nil
 	}
-	tee, finalize, err := s.cap.TeeBody(bytes.NewReader(b))
+	tee, finalize, abort, err := s.cap.TeeBodyWithAbort(bytes.NewReader(b))
 	if err != nil || tee == nil {
 		return "", 0, err
 	}
 	if _, copyErr := io.Copy(io.Discard, tee); copyErr != nil {
+		abort()
 		return "", 0, copyErr
 	}
 	h, n, ferr := finalize()
@@ -402,4 +404,3 @@ func defaultPort(scheme string) int {
 	}
 	return 80
 }
-

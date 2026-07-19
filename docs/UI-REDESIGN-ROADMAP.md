@@ -1,5 +1,8 @@
 # Interseptor — Master UI/UX Redesign & Refactoring Roadmap
 
+> **Historical snapshot** — preserved for archaeology. Counts, IA claims, and open items may be stale relative to current `main`.
+
+
 Produced by a three-way fan-out audit (Feature Archaeologist, UI/UX Architect, Performance
 Engineer) against the current codebase on `redesign/ui-overhaul`, synthesized into one execution
 plan. Read-only audit — no source files were changed to produce this document.

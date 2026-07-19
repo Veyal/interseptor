@@ -16,7 +16,10 @@ import (
 // (no MITM). Patterns are exact or "*.wildcard" (see hostpattern). Entries are
 // trimmed, lower-cased, de-duplicated; blanks are dropped.
 func (s *Server) SetTLSBypassHosts(hosts []string) {
+	s.bypassMu.Lock()
 	s.bypassHosts.Store(normalizeHosts(hosts))
+	s.bypassVersion.Add(1)
+	s.bypassMu.Unlock()
 }
 
 // TLSBypassHosts returns the current bypass patterns (a copy).
@@ -70,14 +73,34 @@ func (s *Server) shouldBypassTLS(host string) bool {
 // A no-op if host is already covered.
 func (s *Server) addBypassHost(host string) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || s.shouldBypassTLS(host) {
+	if host == "" {
 		return
 	}
+	s.bypassMu.Lock()
 	cur := s.TLSBypassHosts()
+	for _, pat := range cur {
+		if hostpattern.MatchHost(pat, host) {
+			s.bypassMu.Unlock()
+			return
+		}
+	}
 	next := append(cur, host)
 	s.bypassHosts.Store(&next)
-	if s.OnBypassAdded != nil {
-		s.OnBypassAdded(next) // fired outside any lock; callback must be thread-safe
+	s.bypassVersion.Add(1)
+	cb := s.OnBypassAdded
+	s.bypassMu.Unlock()
+	if cb != nil {
+		s.notifyBypassAdded(cb)
+	}
+}
+
+func (s *Server) notifyBypassAdded(cb func([]string)) {
+	for {
+		version := s.bypassVersion.Load()
+		cb(s.TLSBypassHosts())
+		if s.bypassVersion.Load() == version {
+			return
+		}
 	}
 }
 
@@ -108,8 +131,8 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	if up := s.upstream.Load(); up != nil && (up.Scheme == "http" || up.Scheme == "https" || up.Scheme == "") {
-		return dialViaUpstream(d, up, addr)
+	if up := s.upstream.Load(); up != nil && isHTTPUpstream(up) {
+		return dialViaUpstream(d, up, addr, s.tr.TLSClientConfig)
 	}
 	return d.Dial("tcp", addr)
 }

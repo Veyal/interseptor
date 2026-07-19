@@ -227,6 +227,16 @@ async function start(){
   const maxWallMs = maxMin * 60 * 1000;
   const targetHint = (($('#apTargetHint')||{}).value||'').trim();
 
+  let readiness;
+  try{readiness=await api('/api/readiness');}
+  catch(e){toast('Could not check Autopilot readiness: '+e.message+' — retry before starting');return;}
+  const required=['scope','ai_provider'];
+  const blocked=(readiness.checks||[]).filter(c=>required.includes(c.id)&&!c.ok);
+  if(blocked.length){
+    toast('Autopilot blocked: '+blocked.map(c=>(c.detail+(c.fix?' — '+c.fix:''))).join(' · '));
+    return;
+  }
+
   const ok = await uiConfirm(
     '⚠ Launch autonomous pentest?',
     `Autopilot runs a <b>fully-autonomous</b> active pentest. It will:<br><br>` +
