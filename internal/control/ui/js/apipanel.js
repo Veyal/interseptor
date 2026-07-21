@@ -3,9 +3,43 @@ import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, fmtBytes
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#apiSub').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
-  ['Keys','Share','Rest','Mcp'].forEach(s=>{const el=$('#api'+s);if(el)el.style.display=(s.toLowerCase()===b.dataset.s)?'block':'none';});
+  ['Keys','Allowlist','Share','Rest','Mcp'].forEach(s=>{const el=$('#api'+s);if(el)el.style.display=(s.toLowerCase()===b.dataset.s)?'block':'none';});
   if(b.dataset.s==='share'){loadShare();loadMergeStatus();loadVaultPanel();}
+  if(b.dataset.s==='allowlist')loadAllowlist();
 });
+export async function loadAllowlist(){
+  try{
+    const d=await api('/api/allowlist');
+    const entries=d.entries||[];
+    const cip=d.clientIP||'';
+    const hint=$('#allowClientIP');
+    if(hint)hint.innerHTML=cip?('This request’s client IP: <b style="font-family:var(--mono)">'+esc(cip)+'</b>'):'';
+    const btn=$('#allowThisIP');
+    if(btn){btn.disabled=!cip;btn.onclick=()=>{if(!cip)return;$('#allowCIDR').value=cip;createAllowEntry();};}
+    $('#allowList').innerHTML=entries.length?entries.map(e=>`<tr>
+      <td style="font-family:var(--mono)">${esc(e.cidr)}</td>
+      <td>${esc(e.label||'')}</td>
+      <td style="color:var(--fg3)">${e.created?esc(new Date(e.created).toLocaleString()):'—'}</td>
+      <td><button class="btn danger" data-allow-del="${e.id}">Remove</button></td></tr>`).join('')
+      :'<tr><td colspan="4" class="hint" style="padding:10px">No allowlisted IPs — remote access still needs an API key.</td></tr>';
+    $('#allowList').querySelectorAll('[data-allow-del]').forEach(b=>b.onclick=()=>deleteAllowEntry(Number(b.dataset.allowDel)));
+  }catch(e){toast(e.message||'allowlist failed');}
+}
+async function createAllowEntry(){
+  const cidr=$('#allowCIDR').value.trim();
+  const label=$('#allowLabel').value.trim();
+  if(!cidr){toast('IP or CIDR required');return;}
+  try{
+    await api('/api/allowlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cidr,label})});
+    $('#allowCIDR').value='';$('#allowLabel').value='';
+    toast('allowlist updated');loadAllowlist();
+  }catch(e){toast(e.message);}
+}
+async function deleteAllowEntry(id){
+  if(!await uiConfirm('Remove allowlist entry','Clients from this IP will need an API key again.','Remove','btn danger','var(--red)'))return;
+  try{await api('/api/allowlist/'+id,{method:'DELETE'});toast('removed');loadAllowlist();}catch(e){toast(e.message);}
+}
+{const ab=$('#allowAdd');if(ab)ab.onclick=createAllowEntry;}
 export async function loadApiKeys(){
   try{const d=await api('/api/keys');const keys=d.keys||[];
     $('#keyList').innerHTML=keys.length?keys.map(k=>`<tr>

@@ -14,6 +14,39 @@ import (
 // row in the flows table (typo, purged, or never captured).
 var ErrFlowNotFound = errors.New("flow not found")
 
+// NormalizeFindingBody coerces common agent mistakes (type md/markdown → text)
+// and rejects unknown block types. Returns the normalized JSON body (or "" for
+// empty input). Empty/invalid JSON that is not an array is rejected when non-empty.
+func NormalizeFindingBody(body string) (string, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "", nil
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(body), &recs); err != nil {
+		return "", fmt.Errorf("body must be a JSON array of blocks: %w", err)
+	}
+	for i := range recs {
+		switch strings.ToLower(strings.TrimSpace(recs[i].Type)) {
+		case "text":
+			recs[i].Type = "text"
+		case "md", "markdown":
+			recs[i].Type = "text"
+		case "flow":
+			recs[i].Type = "flow"
+		case "image":
+			recs[i].Type = "image"
+		default:
+			return "", fmt.Errorf("body block[%d]: type must be text|flow|image, got %q", i, recs[i].Type)
+		}
+	}
+	j, err := json.Marshal(recs)
+	if err != nil {
+		return "", err
+	}
+	return string(j), nil
+}
+
 // Finding is a curated vulnerability write-up for a project. Unlike a scanner
 // Issue (auto-generated, ephemeral), a Finding is persistent and human/AI-curated:
 // it carries a status the operator manages and has a narrative body — an ordered
@@ -444,7 +477,20 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if f.Body == "" {
 		f.Body = initialBody(f.Detail, f.Evidence)
 	}
-	res, err := s.db.Exec(
+	normBody, err := NormalizeFindingBody(f.Body)
+	if err != nil {
+		return 0, err
+	}
+	f.Body = normBody
+	if f.Detail == "" && f.Body != "" {
+		f.Detail = firstTextMD(f.Body)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Target, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions)
@@ -453,6 +499,12 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	}
 	id, _ := res.LastInsertId()
 	f.ID = id
+	if err := syncFindingFlowsFromBody(tx, id, f.Body); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
 	if len(f.Tags) > 0 {
 		norm, err := s.SetFindingTags(id, f.Tags)
 		if err != nil {
@@ -480,6 +532,14 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 			newBody := updateFirstTextInBody(existBody, *detail)
 			body = &newBody
 		}
+	}
+	// Normalize / coerce body before detail sync so type=md becomes text.
+	if body != nil {
+		norm, err := NormalizeFindingBody(*body)
+		if err != nil {
+			return err
+		}
+		*body = norm
 	}
 	// If body changes, sync its first text block back to detail for MCP compat.
 	if body != nil && *body != "" && detail == nil {
@@ -547,8 +607,64 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 		args = append(args, *verificationInstructions)
 	}
 	args = append(args, id)
+
+	// Body rewrite must keep finding_flows in sync (UI enrichment joins that table).
+	if body != nil {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
+			return err
+		}
+		if err := syncFindingFlowsFromBody(tx, id, *body); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
 	_, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
 	return err
+}
+
+// syncFindingFlowsFromBody replaces finding_flows rows for a finding from the
+// ordered type=flow blocks in body JSON. Unknown flow ids are rejected.
+func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
+	if _, err := tx.Exec(`DELETE FROM finding_flows WHERE finding_id=?`, findingID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(body) == "" {
+		return nil
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(body), &recs); err != nil {
+		return fmt.Errorf("body must be a JSON array of blocks: %w", err)
+	}
+	ord := 0
+	for _, r := range recs {
+		if r.Type != "flow" {
+			continue
+		}
+		if r.FlowID <= 0 {
+			return fmt.Errorf("body flow block missing flowId")
+		}
+		var exists int
+		if err := tx.QueryRow(`SELECT COUNT(1) FROM flows WHERE id=?`, r.FlowID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("%w: %d", ErrFlowNotFound, r.FlowID)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)`,
+			findingID, r.FlowID, ord, r.Note,
+		); err != nil {
+			return err
+		}
+		ord++
+	}
+	return nil
 }
 
 // DeleteFinding removes a finding and its PoC attachments.

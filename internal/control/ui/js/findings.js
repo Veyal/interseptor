@@ -8,6 +8,8 @@ import { flowPopup } from './flowmodal.js';
 
 const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'fixed'];
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
+// Default Read/report view; Edit toggles the block editor.
+let findEditMode = false;
 
 // Body editor state for the active finding.
 let bodyBlocks = [];
@@ -166,11 +168,12 @@ function renderFindings() {
   }
   if (!selFinding || !list.some(f => f.id === selFinding)) selFinding = list[0].id;
   box.innerHTML = list.map(f => `<div class="find-row${f.id === selFinding ? ' sel' : ''}${!(f.ready) ? ' find-row-empty' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}">
+    <span class="find-id">#${f.id}</span>
     <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
     <span class="find-title">${esc(f.title)}</span>
     <span class="find-meta">${findingListMeta(f)}</span>
   </div>`).join('');
-  box.querySelectorAll('.find-row').forEach(el => { el.onclick = () => { selFinding = Number(el.dataset.id); renderFindings(); renderFindingDetail(); }; wireRowKey(el); });
+  box.querySelectorAll('.find-row').forEach(el => { el.onclick = () => { const id=Number(el.dataset.id); if(id!==selFinding)findEditMode=false; selFinding = id; renderFindings(); renderFindingDetail(); }; wireRowKey(el); });
   // Skip the detail rebuild while a text block is open for this same finding —
   // otherwise an SSE findings.update (e.g. a body save round-tripping) wipes the
   // focused textarea. An explicit row click still calls renderFindingDetail().
@@ -429,9 +432,11 @@ function renderFindingDetail() {
   const missBanner = (() => {
     const missFlow = (f.blocks || []).filter(b => b.type === 'flow' && b.missing).length;
     const missImg = (f.blocks || []).filter(b => b.type === 'image' && b.missing).length;
+    const badType = (f.blocks || []).filter(b => b.type && !['text', 'flow', 'image'].includes(b.type)).length;
     const parts = [];
     if (missFlow) parts.push(`${missFlow} PoC flow${missFlow === 1 ? '' : 's'} deleted from history`);
     if (missImg) parts.push(`${missImg} screenshot${missImg === 1 ? '' : 's'} missing`);
+    if (badType) parts.push(`${badType} unknown block type${badType === 1 ? '' : 's'} (edit & re-save to fix)`);
     return parts.length ? `<div class="find-missing-banner">⚠ ${parts.join(' · ')} — restore evidence if needed.</div>` : '';
   })();
   const gaps = f.missing || [];
@@ -469,73 +474,89 @@ function renderFindingDetail() {
     </div>`;
   })();
 
-  box.innerHTML = `<article class="find-article">
-    <header class="find-header">
+  const edit = findEditMode;
+  const impactRead = f.impact
+    ? `<div class="find-sticky-impact">${esc(f.impact)}</div>`
+    : `<div class="hint">No impact written yet.</div>`;
+  const metaStrip = `<details class="find-meta-strip"${edit ? ' open' : ''}><summary>Why / Target / CVSS / CWE / Tags</summary>
+    <div class="find-meta-strip-body">
+      ${edit
+        ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2">${esc(f.why || '')}</textarea></section>
+           <section class="find-sec" id="find-sec-target"><h3>Affected target</h3><input id="findTarget" class="btn btn-field find-target-input" type="text" value="${escAttr(f.target || '')}"></section>`
+        : `<p><b>Why</b> — ${f.why ? esc(f.why) : '<span class="hint">—</span>'}</p>
+           <p><b>Target</b> — ${f.target ? esc(f.target) : '<span class="hint">—</span>'}</p>`}
+      <p class="hint">CVSS ${esc(f.cvss || '—')} · CWE ${esc(f.cwe || '—')} · env ${esc(f.environment || '—')}</p>
+      <div class="find-tags-bar"><div class="find-tag-chips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">no tags</span>'}</div>
+        ${edit ? `<button class="btn xs" id="findEditTags">✎ Tags</button>` : ''}</div>
+    </div></details>`;
+
+  box.innerHTML = `<article class="find-article${edit ? ' find-editing' : ' find-reading'}">
+    <header class="find-header find-header-sticky">
       <div class="find-header-top">
-        <select id="findSeverity" class="btn find-sev-select" aria-label="Severity" style="color:${sevColor(f.severity)}">${sevOpts}</select>
-        <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
-        <button class="btn xs" id="findRename" title="Rename finding" aria-label="Rename finding">✎</button>
+        <span class="find-id-badge">#${f.id}</span>
+        ${edit
+          ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity" style="color:${sevColor(f.severity)}">${sevOpts}</select>
+             <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
+             <button class="btn xs" id="findRename" title="Rename finding">✎</button>`
+          : `<span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
+             <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
+             <span class="hint">${esc(statusLabel(f.status))}</span>`}
+        <div class="spacer"></div>
+        <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>
-      <div class="find-meta-bar">
+      ${edit ? `<div class="find-meta-bar">
         <select id="findStatus" class="btn" style="background:var(--bg3)" aria-label="Finding status">${statusSel}</select>
         <select id="findEnv" class="btn" style="background:var(--bg3)" aria-label="Environment">${envOpts}</select>
-        <div class="find-cvss-field">
-          <label for="findCvss">CVSS</label>
-          <input id="findCvss" class="find-cvss-inline" type="text" value="${escAttr(f.cvss || '')}" placeholder="e.g. 7.5">
-        </div>
-        <div class="find-cvss-field">
-          <label for="findCwe">CWE</label>
-          <input id="findCwe" class="find-cvss-inline" type="text" value="${escAttr(f.cwe || '')}" placeholder="CWE-639">
-        </div>
+        <div class="find-cvss-field"><label for="findCvss">CVSS</label><input id="findCvss" class="find-cvss-inline" type="text" value="${escAttr(f.cvss || '')}"></div>
+        <div class="find-cvss-field"><label for="findCwe">CWE</label><input id="findCwe" class="find-cvss-inline" type="text" value="${escAttr(f.cwe || '')}"></div>
         <div class="spacer"></div>
-        <button class="btn accent" id="findAskAi" data-ai-ui title="Ask AI about this finding">✨ Ask AI</button>
+        <button class="btn accent" id="findAskAi" data-ai-ui>✨ Ask AI</button>
         <button class="btn danger xs" id="findDelete">Delete</button>
-      </div>
-      <div class="find-tags-bar">
-        <span class="hint">Tags</span>
-        <div class="find-tag-chips" id="findTagsChips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">none — e.g. cms, api, out-of-scope</span>'}</div>
-        <button class="btn xs" id="findEditTags" title="Edit report-scope tags">✎ Tags</button>
-      </div>
+      </div>` : `<div class="find-meta-bar">
+        <button class="btn accent" id="findAskAi" data-ai-ui>✨ Ask AI</button>
+        <button class="btn danger xs" id="findDelete">Delete</button>
+      </div>`}
     </header>
     ${completeBar}
     ${missBanner}
     ${verifBanner}
     ${machineProof}
 
-    <section class="find-sec" id="find-sec-impact">
+    <section class="find-sec find-sec-impact-sticky" id="find-sec-impact">
       <h3>Impact</h3>
-      <textarea id="findImpact" class="find-field-text" rows="2" placeholder="What an attacker gains — business consequence, data exposed, privilege…">${esc(f.impact || '')}</textarea>
+      ${edit
+        ? `<textarea id="findImpact" class="find-field-text" rows="2" placeholder="What an attacker gains…">${esc(f.impact || '')}</textarea>`
+        : impactRead}
     </section>
-    <section class="find-sec" id="find-sec-why">
-      <h3>Why it's a finding</h3>
-      <textarea id="findWhy" class="find-field-text" rows="2" placeholder="Which security property breaks (authz, authn, integrity, secrets handling…)?">${esc(f.why || '')}</textarea>
-    </section>
-    <section class="find-sec" id="find-sec-target">
-      <h3>Affected target</h3>
-      <input id="findTarget" class="btn btn-field find-target-input" type="text" value="${escAttr(f.target || '')}" placeholder="Host / app / endpoint (e.g. GET api.example.com/users/{id})">
-    </section>
+    ${metaStrip}
 
     <section class="find-sec" id="find-sec-poc">
       <h3>PoC / Evidence</h3>
-      <p class="hint find-poc-hint">Ordered exploit chain — Before → Action → After. Attach flows and screenshots; step notes must say what changed and why it proves Impact.</p>
+      ${edit ? `<p class="hint find-poc-hint">Ordered exploit chain — Before → Action → After.</p>` : ''}
       <div class="find-doc" id="findBody"></div>
-      <div class="find-doc-actions" id="findDocActions">
-        <button class="btn" id="findAddText" title="Add a short step note">＋ Step note</button>
-        <button class="btn" id="findAddFlow" title="Attach request/response flows as PoC evidence">＋ PoC flow<span id="findPocReady" class="hint"></span></button>
-        <button class="btn" id="findAddImage" title="Attach a screenshot as evidence">＋ Screenshot</button>
+      <div class="find-doc-actions" id="findDocActions" ${edit ? '' : 'hidden'}>
+        <button class="btn" id="findAddText">＋ Step note</button>
+        <button class="btn" id="findAddFlow">＋ PoC flow<span id="findPocReady" class="hint"></span></button>
+        <button class="btn" id="findAddImage">＋ Screenshot</button>
         <input type="file" id="findImageFile" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif" hidden>
       </div>
     </section>
 
     <details class="find-more">
       <summary>Remediation (optional)</summary>
-      <textarea id="findFix" class="find-field-text" rows="2" placeholder="How to fix…">${esc(f.fix || '')}</textarea>
+      ${edit
+        ? `<textarea id="findFix" class="find-field-text" rows="2">${esc(f.fix || '')}</textarea>`
+        : `<div class="hint" style="padding:8px 0">${f.fix ? esc(f.fix) : '—'}</div>`}
     </details>
   </article>`;
 
   bodyFindingId = f.id;
   bodyBlocks = (f.blocks || []).map(b => ({ ...b }));
-  renderFindBody(f.id);
+  if (edit) renderFindBody(f.id);
+  else renderFindReportBody(f.id);
+
+  const te = $('#findToggleEdit');
+  if (te) te.onclick = () => { findEditMode = !findEditMode; renderFindingDetail(); };
 
   const blurPatch = (id, key, getVal) => {
     const el = $(id); if (!el) return;
@@ -549,21 +570,25 @@ function renderFindingDetail() {
       } catch (err) { toast(err.message); }
     });
   };
-  blurPatch('#findImpact', 'impact', el => el.value);
-  blurPatch('#findWhy', 'why', el => el.value);
-  blurPatch('#findTarget', 'target', el => el.value);
-  blurPatch('#findCvss', 'cvss', el => el.value);
-  blurPatch('#findCwe', 'cwe', el => el.value);
-  blurPatch('#findFix', 'fix', el => el.value);
+  if (edit) {
+    blurPatch('#findImpact', 'impact', el => el.value);
+    blurPatch('#findWhy', 'why', el => el.value);
+    blurPatch('#findTarget', 'target', el => el.value);
+    blurPatch('#findCvss', 'cvss', el => el.value);
+    blurPatch('#findCwe', 'cwe', el => el.value);
+    blurPatch('#findFix', 'fix', el => el.value);
+  }
   blurPatch('#findVerifInstr', 'verificationInstructions', el => el.value);
 
-  $('#findRename').onclick = async () => {
+  const renameBtn = $('#findRename');
+  if (renameBtn) renameBtn.onclick = async () => {
     const t = await uiPrompt({ title: 'Rename finding', value: f.title, placeholder: 'Finding title' });
     if (t == null || t === f.title) return;
     try { await patchFinding(f.id, { title: t }); f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
     catch (err) { toast(err.message); }
   };
-  $('#findStatus').onchange = async e => {
+  const stSel = $('#findStatus');
+  if (stSel) stSel.onchange = async e => {
     try {
       await patchFinding(f.id, { status: e.target.value });
       f.status = e.target.value;
@@ -571,14 +596,16 @@ function renderFindingDetail() {
       await loadFindings();
     } catch (err) { toast(err.message); }
   };
-  $('#findSeverity').onchange = async e => {
+  const sevSel = $('#findSeverity');
+  if (sevSel) sevSel.onchange = async e => {
     try {
       await patchFinding(f.id, { severity: e.target.value });
       f.severity = e.target.value;
       await loadFindings();
     } catch (err) { toast(err.message); }
   };
-  $('#findEnv').onchange = async e => {
+  const envSel = $('#findEnv');
+  if (envSel) envSel.onchange = async e => {
     try {
       await patchFinding(f.id, { environment: e.target.value });
       f.environment = e.target.value;
@@ -602,34 +629,83 @@ function renderFindingDetail() {
     } catch (err) { toast(err.message); }
   });
   $('#findAskAi') && ($('#findAskAi').onclick = () => openAi({ findingId: f.id }));
-  $('#findAddText').onclick = () => {
-    bodyBlocks.push({ type: 'text', md: '' });
-    renderFindBody(f.id);
-    const tas = document.querySelectorAll('#findBody .block-text');
-    if (tas.length) tas[tas.length - 1].focus();
-  };
-  $('#findAddFlow').onclick = () => addPoCFlowsToFinding(f.id);
-  $('#findAddImage').onclick = () => $('#findImageFile')?.click();
-  $('#findImageFile').onchange = async e => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => reject(new Error('failed to read image'));
-        r.readAsDataURL(file);
-      });
-      await api('/api/findings/' + f.id + '/images', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ data: dataUrl, mime: file.type, caption: file.name }),
-      });
-      toast('screenshot attached');
-      await loadFindings();
-    } catch (err) { toast(err.message); }
-  };
-  updateFindPocBtn();
+  if (edit) {
+    $('#findAddText').onclick = () => {
+      bodyBlocks.push({ type: 'text', md: '' });
+      renderFindBody(f.id);
+      const tas = document.querySelectorAll('#findBody .block-text');
+      if (tas.length) tas[tas.length - 1].focus();
+    };
+    $('#findAddFlow').onclick = () => addPoCFlowsToFinding(f.id);
+    $('#findAddImage').onclick = () => $('#findImageFile')?.click();
+    $('#findImageFile').onchange = async e => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error('failed to read image'));
+          r.readAsDataURL(file);
+        });
+        await api('/api/findings/' + f.id + '/images', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ data: dataUrl, mime: file.type, caption: file.name }),
+        });
+        toast('screenshot attached');
+        await loadFindings();
+      } catch (err) { toast(err.message); }
+    };
+    updateFindPocBtn();
+  }
+}
+
+function renderFindReportBody(fid) {
+  const container = $('#findBody');
+  if (!container) return;
+  if (!bodyBlocks.length) {
+    container.innerHTML = '<div class="find-doc-empty">No PoC yet — switch to Edit to add steps and flows.</div>';
+    return;
+  }
+  let step = 0;
+  container.innerHTML = bodyBlocks.map((b) => {
+    if (b.type === 'text') {
+      const md = (b.md || '').trim();
+      if (!md) return '';
+      step++;
+      return `<div class="find-report-step"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${renderMD(md)}</div></div>`;
+    }
+    if (b.type === 'image') {
+      step++;
+      if (b.missing) {
+        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div><div class="find-poc-missing">⚠ Screenshot missing</div></div>`;
+      }
+      const src = b.url || ('/api/findings/images/' + (b.hash || ''));
+      return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
+        <figure class="find-doc-figure"><img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
+        ${b.caption ? `<figcaption class="hint">${esc(b.caption)}</figcaption>` : ''}</figure></div>`;
+    }
+    if (b.type === 'flow') {
+      step++;
+      if (b.missing) {
+        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
+          <div class="find-poc-missing">⚠ PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
+      }
+      const reqLine = b.method
+        ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
+        : `flow #${esc(String(b.flowId))}`;
+      return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
+        <button type="button" class="find-report-flow" data-flow="${b.flowId}">
+          ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
+          <div class="find-poc-req">${reqLine}</div>
+        </button></div>`;
+    }
+    return '';
+  }).join('');
+  container.querySelectorAll('.find-report-flow').forEach(btn => {
+    btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
+  });
 }
 
 function pocFlowIdsReady() {

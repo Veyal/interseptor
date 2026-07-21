@@ -875,7 +875,7 @@ Content-Type: application/json
         </section>
         <section class="set-sec" data-sec="api" hidden>
           <div class="section">
-            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
+            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="allowlist">Allowlist</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
               <p class="hint" style="margin-bottom:12px">Authenticate remote access. New tokens are shown once at creation. If you're signed in remotely, <b>Show session key</b> reveals the key in your current browser session so you can copy it again. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
@@ -889,6 +889,18 @@ Content-Type: application/json
               <div id="keyNew" class="evidence" style="display:none"></div>
               <div id="keySession" class="evidence" style="display:none"></div>
               <table class="rules-tbl"><thead><tr><th style="width:130px">Prefix</th><th>Label</th><th style="width:80px">Scope</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="keyList"></tbody></table>
+            </div>
+            <div id="apiAllowlist" class="api-pane" style="display:none">
+              <h3>IP ALLOWLIST</h3>
+              <p class="hint" style="margin-bottom:12px">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b></p>
+              <div class="hint" id="allowClientIP" style="margin-bottom:10px"></div>
+              <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <input id="allowCIDR" class="repurl" style="max-width:220px" aria-label="IP or CIDR" placeholder="100.65.105.2 or 100.64.0.0/10" spellcheck="false">
+                <input id="allowLabel" class="repurl" style="max-width:160px" aria-label="Allowlist label" placeholder="label (optional)">
+                <button class="btn btn-primary" id="allowAdd">Add</button>
+                <button class="btn" id="allowThisIP" title="Add the client IP of this request">Allow this IP</button>
+              </div>
+              <table class="rules-tbl"><thead><tr><th style="width:220px">IP / CIDR</th><th>Label</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="allowList"></tbody></table>
             </div>
             <div id="apiShare" class="api-pane" style="display:none">
               <h3>SHARE THIS SESSION</h3>

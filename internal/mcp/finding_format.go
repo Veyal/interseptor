@@ -188,3 +188,47 @@ func formatWarningsBlock(warns []string) string {
 	}
 	return b.String()
 }
+
+// prependFindingsSummary adds one-line #id summaries ahead of the raw JSON list.
+func prependFindingsSummary(raw string) string {
+	var wrap struct {
+		Findings []store.Finding `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(raw), &wrap); err != nil || len(wrap.Findings) == 0 {
+		return raw
+	}
+	var b strings.Builder
+	b.WriteString("Summary:\n")
+	for _, f := range wrap.Findings {
+		poc, missing := 0, 0
+		seen := map[int64]bool{}
+		for _, fl := range f.Flows {
+			seen[fl.FlowID] = true
+			if fl.Missing {
+				missing++
+			} else {
+				poc++
+			}
+		}
+		for _, bl := range f.Blocks {
+			if bl.Type != "flow" || bl.FlowID == 0 || seen[bl.FlowID] {
+				continue
+			}
+			seen[bl.FlowID] = true
+			if bl.Missing {
+				missing++
+			} else {
+				poc++
+			}
+		}
+		tags := strings.Join(f.Tags, ",")
+		if tags == "" {
+			tags = "-"
+		}
+		b.WriteString(fmt.Sprintf("#%d · %s · %s · tags=%s · poc=%d · missingFlows=%d · %s\n",
+			f.ID, f.Severity, f.Status, tags, poc, missing, strings.TrimSpace(f.Title)))
+	}
+	b.WriteByte('\n')
+	b.WriteString(raw)
+	return b.String()
+}

@@ -9,12 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-21
+
 ### Added
 - **HTTP/2 MITM (client↔proxy leg).** The forged leaf now offers ALPN `h2`; when a client selects it, the MITM connection is served by an `http2.Server` that bridges every stream into the same intercept/forward/capture pipeline as HTTP/1.1 (`internal/proxy/http2.go`). h2-only APIs capture end-to-end; clients that stay on HTTP/1.1 are unaffected (automatic fallback). History records the client leg proto (`HTTP/2.0`). Closes #19. Docs: [`docs/http2.md`](docs/http2.md).
 - **Extension hook API + official example (#25).** `internal/plugin` gains `OnScanIssue` alongside `OnFlowCaptured`, both now emitted from the proxy/scanner. Ships the first official extension, `internal/plugin/annotator` (tags flows by host substring, opt-in via `INTERSEPTOR_EXT_ANNOTATE_HOSTS`), plus author docs [`docs/extensions.md`](docs/extensions.md) and a copy-paste starter in [`examples/extensions/hello/`](examples/extensions/hello). Closes #25.
+- **Selection decode uses project message codecs.** Highlighting ciphertext in History / flow inspect (Raw/Pretty) now previews custom Starlark codec plaintext — whole body or a JSON field value mapped via `fields` — ahead of built-in smart (base64/url/hex/jwt). New `POST /api/selection-decode`.
+- **IP allowlist for keyless remote UI.** Machine-global IPs/CIDRs in `keys.db` (Settings → API → Allowlist) may use the UI/REST without an API key. Client IP trusts `CF-Connecting-IP` / `X-Forwarded-For` only when the peer is loopback (Tailscale Serve / Cloudflare). `/mcp` still requires a full key.
+- **Findings report Read view (#34).** List/detail show monospace `#id`; default Read mode has sticky Impact, numbered PoC chain, collapsible meta; Edit toggles the block editor.
 
-### Changed
-- **Dev-build fallback version advanced to the published `1.6.0`.**
+### Fixed
+- **Finding body rewrite syncs PoC attachments (#32).** `UpdateFinding` with `body` replaces `finding_flows` from ordered flow blocks so PoCs no longer render as Missing after MCP/UI rewrites. Unknown `flowId`s are rejected.
+- **Finding block types validated (#33).** `md`/`markdown` coerce to `text`; other unknown types are hard-rejected on create/PATCH.
+- **Safer MCP finding rewrites (#35).** Tool docs prefer `add_finding_poc`; responses include `missingFlowIds`; `list_findings` prepends `#id` summaries (severity, status, tags, poc/missing counts).
 
 ## [1.6.0] - 2026-07-19
 

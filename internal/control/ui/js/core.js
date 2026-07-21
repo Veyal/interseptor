@@ -1023,8 +1023,9 @@ export function encodeKindLabel(s){
   return 'Decoded';
 }
 
-// wireSelectionDecode shows a slim decode strip when highlighted text looks encoded.
-export function wireSelectionDecode(viewEl, barEl, {onDecoder}={}){
+// wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
+// (built-in smart) or matches a project message codec (when getContext provides flowId).
+export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
   if(!viewEl||!barEl)return;
   let timer=null,lastSel='',req=0;
   const hide=()=>{barEl.hidden=true;lastSel='';};
@@ -1034,16 +1035,19 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder}={}){
     if(sel===lastSel)return;
     const id=++req;
     try{
-      const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'smart',input:sel})});
+      const ctx=typeof getContext==='function'?getContext():null;
+      const body={input:sel};
+      if(ctx&&ctx.flowId){body.flowId=ctx.flowId;if(ctx.side)body.side=ctx.side;}
+      const r=await api('/api/selection-decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
       if(id!==req)return;
-      if(r.error||!r.output||r.output===sel){hide();return;}
+      if(!r.matched||!r.output||r.output===sel){hide();return;}
       lastSel=sel;
       barEl.hidden=false;
-      barEl.querySelector('.sel-decode-kind').textContent=encodeKindLabel(sel);
+      barEl.querySelector('.sel-decode-kind').textContent=r.kind||encodeKindLabel(sel);
       const outEl=barEl.querySelector('.sel-decode-out');
       const full=r.output;
       outEl.textContent=full.length>500?full.slice(0,500)+'…':full;
-      outEl.title=full.length>500?full:'';
+      outEl.title=full.length>500?full:(r.note||'');
       barEl._full=full;barEl._input=sel;
     }catch(e){if(id===req)hide();}
   };

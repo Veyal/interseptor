@@ -80,5 +80,5 @@ $('#fmSeg') && $('#fmSeg').querySelectorAll('button').forEach(b => b.onclick = (
   fmRenderSide('req'); fmRenderSide('res');
 });
 const fmOpenDecoder=s=>import('./scanner.js').then(m=>m.openDecoder(s));
-wireSelectionDecode($('#fmReq'),$('#fmReqDecode'),{onDecoder:fmOpenDecoder});
-wireSelectionDecode($('#fmRes'),$('#fmResDecode'),{onDecoder:fmOpenDecoder});
+wireSelectionDecode($('#fmReq'),$('#fmReqDecode'),{onDecoder:fmOpenDecoder,getContext:()=>state.fm&&state.fm.id?{flowId:state.fm.id,side:'req'}:null});
+wireSelectionDecode($('#fmRes'),$('#fmResDecode'),{onDecoder:fmOpenDecoder,getContext:()=>state.fm&&state.fm.id?{flowId:state.fm.id,side:'res'}:null});

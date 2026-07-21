@@ -144,6 +144,7 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 	h.mux.HandleFunc("GET /api/intruder/state", tools.intruderState)
 	h.mux.HandleFunc("POST /api/ws/send", tools.wsSend)
 	h.mux.HandleFunc("POST /api/decode", tools.decode)
+	h.mux.HandleFunc("POST /api/selection-decode", tools.selectionDecode)
 	h.mux.HandleFunc("POST /api/flows/{id}/replay", tools.replayFlow)
 	h.mux.HandleFunc("GET /replay/{id}", tools.replayPage)
 }
@@ -274,6 +275,9 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /api/keys", meta.listKeys)
 	h.mux.HandleFunc("POST /api/keys", meta.createKey)
 	h.mux.HandleFunc("DELETE /api/keys/{id}", meta.deleteKey)
+	h.mux.HandleFunc("GET /api/allowlist", meta.listAllowlist)
+	h.mux.HandleFunc("POST /api/allowlist", meta.createAllowlist)
+	h.mux.HandleFunc("DELETE /api/allowlist/{id}", meta.deleteAllowlist)
 	h.mux.HandleFunc("GET /api/version", meta.apiVersion)
 	h.mux.HandleFunc("GET /api/activity", meta.listActivity)
 	h.mux.HandleFunc("POST /api/activity", meta.postActivity)

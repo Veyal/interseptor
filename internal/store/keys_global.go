@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
   scope TEXT NOT NULL DEFAULT 'full',
   expires INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS ip_allowlist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cidr TEXT NOT NULL UNIQUE,
+  label TEXT,
+  created INTEGER NOT NULL
+);
 `
 
 // AttachGlobalKeys points API-key CRUD/verify at a SQLite file under globalDir

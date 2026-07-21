@@ -122,6 +122,24 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 
+		case h.st != nil && h.st.AllowlistMatch(clientIP(r)):
+			// Machine-global IP/CIDR allowlist (Settings → API → Allowlist). Full
+			// UI/REST trust without a key. /mcp still requires a full API key.
+			if r.URL.Path == "/mcp" {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="interseptor"`)
+				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — IP allowlist does not cover /mcp")
+				return
+			}
+			if isMutatingMethod(r.Method) {
+				if o := r.Header.Get("Origin"); o != "" && !sameHostOrigin(o, r.Host) {
+					httpErr(w, http.StatusForbidden, "cross-origin request rejected")
+					return
+				}
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			next.ServeHTTP(w, r)
+			return
+
 		default:
 			// Non-loopback connection (or spoofed Host) without a valid key: closed.
 			// A browser navigation is redirected to the login page; anything else

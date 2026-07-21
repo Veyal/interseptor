@@ -294,6 +294,14 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "title required")
 		return
 	}
+	if in.Body != "" {
+		norm, err := store.NormalizeFindingBody(in.Body)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		in.Body = norm
+	}
 	if msg := checkFindingBodySize(in.Body, in.Detail, in.Evidence, in.Fix); msg != "" {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
@@ -307,6 +315,10 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.st.CreateFinding(f)
 	if err != nil {
+		if errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}
@@ -342,6 +354,11 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 // failed to attach). warnings is omitted entirely when empty, so existing
 // callers see byte-identical responses to before this field existed.
 func findingWithWarnings(f *store.Finding, warnings []string) map[string]any {
+	return findingAPIResponse(f, warnings)
+}
+
+// findingAPIResponse renders a finding plus optional warnings and missingFlowIds.
+func findingAPIResponse(f *store.Finding, warnings []string) map[string]any {
 	b, _ := json.Marshal(f)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)
@@ -351,7 +368,33 @@ func findingWithWarnings(f *store.Finding, warnings []string) map[string]any {
 	if len(warnings) > 0 {
 		m["warnings"] = warnings
 	}
+	if missing := missingFlowIDs(f); len(missing) > 0 {
+		m["missingFlowIds"] = missing
+	} else {
+		m["missingFlowIds"] = []int64{}
+	}
 	return m
+}
+
+func missingFlowIDs(f *store.Finding) []int64 {
+	if f == nil {
+		return nil
+	}
+	var out []int64
+	seen := map[int64]bool{}
+	for _, bl := range f.Blocks {
+		if bl.Type == "flow" && bl.Missing && bl.FlowID > 0 && !seen[bl.FlowID] {
+			seen[bl.FlowID] = true
+			out = append(out, bl.FlowID)
+		}
+	}
+	for _, fl := range f.Flows {
+		if fl.Missing && fl.FlowID > 0 && !seen[fl.FlowID] {
+			seen[fl.FlowID] = true
+			out = append(out, fl.FlowID)
+		}
+	}
+	return out
 }
 
 func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
@@ -361,7 +404,7 @@ func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, "finding not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, f)
+	writeJSON(w, http.StatusOK, findingAPIResponse(f, nil))
 }
 
 func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
@@ -401,11 +444,24 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	if in.Fix != nil {
 		fixStr = *in.Fix
 	}
+	if in.Body != nil {
+		norm, err := store.NormalizeFindingBody(*in.Body)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		*in.Body = norm
+		bodyStr = norm
+	}
 	if msg := checkFindingBodySize(bodyStr, detailStr, evidenceStr, fixStr); msg != "" {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
 	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions); err != nil {
+		if errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}
@@ -421,7 +477,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, "finding not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
 func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {

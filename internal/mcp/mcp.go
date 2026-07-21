@@ -1109,7 +1109,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("list_findings",
-		"List the project's findings (with their attached PoC flows), optionally filtered by severity, status (open|needs_verification|verified|false_positive|wont_fix|fixed), or tag (report scope: cms|website|app|api|…). Use this to track progress and avoid re-reporting.",
+		"List the project's findings (with their attached PoC flows), optionally filtered by severity, status (open|needs_verification|verified|false_positive|wont_fix|fixed), or tag (report scope: cms|website|app|api|…). Use this to track progress and avoid re-reporting. Response includes a summary line per finding: #id · severity · status · tags · pocCount · missingFlowCount.",
 		obj(map[string]any{"severity": pt("string"), "status": pt("string"), "tag": p("string", "filter to findings with this tag")}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
@@ -1126,7 +1126,11 @@ func (s *Server) registerTools() {
 			if len(q) > 0 {
 				p += "?" + q.Encode()
 			}
-			return s.apiGet(p)
+			raw, err := s.apiGet(p)
+			if err != nil {
+				return raw, err
+			}
+			return prependFindingsSummary(raw), nil
 		})
 
 	s.add("list_finding_tags",
@@ -1135,7 +1139,7 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) { return s.apiGet("/api/findings/tags") })
 
 	s.add("update_finding",
-		"Update a finding (only fields you pass change). "+findingFormatGuide+" Set impact/why/target for report-ready; body is the PoC timeline (send FULL array when rewriting); tags replaces the finding's tag set. Returns updated finding + UI URL.",
+		"Update a finding (only fields you pass change). "+findingFormatGuide+" Set impact/why/target for report-ready. Prefer add_finding_poc (with position) to insert flows instead of rewriting the whole body. When body is set: types must be text|flow|image (md/markdown coerced to text); flow blocks sync finding_flows; unknown flowIds are rejected. Returns updated finding (incl. missingFlowIds) + UI URL.",
 		obj(map[string]any{
 			"id":                       pt("integer"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
@@ -1151,7 +1155,7 @@ func (s *Server) registerTools() {
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS score or vector"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
-			"body":                     p("string", "JSON PoC timeline — send the FULL ordered array when rewriting"),
+			"body":                     p("string", "JSON PoC timeline [{type:text|flow|image,...}] — FULL array when rewriting; prefer add_finding_poc for flows"),
 			"tags":                     p("string", "replace tag set (comma/space-separated or array); pass [] to clear"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
