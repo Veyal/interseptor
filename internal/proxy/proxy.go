@@ -79,10 +79,11 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 	s := &Server{st: st, cap: cap, ca: ca, eng: eng, events: events}
 	s.tr = &http.Transport{
 		// Honor an optionally-configured chained upstream proxy (race-safe).
-		Proxy:                 func(*http.Request) (*url.URL, error) { return s.upstream.Load(), nil },
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		Proxy:           func(*http.Request) (*url.URL, error) { return s.upstream.Load(), nil },
+		MaxIdleConns:    100,
+		IdleConnTimeout: 90 * time.Second,
+		// No ResponseHeaderTimeout: slow/long-polling upstreams must not be cut
+		// off by the proxy. Dial still has its own connect bound.
 		// Prefer HTTP/2 to the origin when ALPN negotiates it. The MITM leg to
 		// the client stays HTTP/1.1 (see writeResponseConn ProtoMajor downgrade)
 		// so forwarding never hangs; History records the upstream proto.

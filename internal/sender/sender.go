@@ -212,10 +212,10 @@ func New(st *store.Store, cap *capture.Capturer) *Sender {
 		st:  st,
 		cap: cap,
 		cl: &http.Client{
-			Timeout: 30 * time.Second,
+			// No overall / response-header timeout — Repeater waits as long as
+			// the target takes (long polls, slow APIs). Dial still times out.
 			Transport: &http.Transport{
-				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // pentest tool, by design
-				ResponseHeaderTimeout: 30 * time.Second,
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // pentest tool, by design
 			},
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},

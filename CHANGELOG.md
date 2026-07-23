@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-07-23
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.7.0`.**
+- **No 30s upstream response timeout.** Proxy forwarding and Repeater/Intruder (`sender`) no longer cut off requests waiting for response headers after 30 seconds; long-polling and slow targets can complete. TCP dial still times out.
 
 ## [1.7.0] - 2026-07-21
 

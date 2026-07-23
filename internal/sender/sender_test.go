@@ -14,6 +14,25 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+func TestSenderHasNoRequestTimeout(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	if snd.cl.Timeout != 0 {
+		t.Fatalf("Client.Timeout=%v; want 0 (no limit)", snd.cl.Timeout)
+	}
+	tr, ok := snd.cl.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport type %T; want *http.Transport", snd.cl.Transport)
+	}
+	if tr.ResponseHeaderTimeout != 0 {
+		t.Fatalf("ResponseHeaderTimeout=%v; want 0 (no limit)", tr.ResponseHeaderTimeout)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

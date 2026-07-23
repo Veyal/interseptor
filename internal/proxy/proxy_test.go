@@ -26,6 +26,18 @@ import (
 	"github.com/Veyal/interseptor/internal/tlsca"
 )
 
+func TestProxyTransportHasNoResponseHeaderTimeout(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+	if srv.tr.ResponseHeaderTimeout != 0 {
+		t.Fatalf("ResponseHeaderTimeout=%v; want 0 (no limit) so slow upstreams are not cut off", srv.tr.ResponseHeaderTimeout)
+	}
+}
+
 // wsTextFrame builds an RFC 6455 text frame (payload < 126 bytes).
 func wsTextFrame(payload string, masked bool) []byte {
 	p := []byte(payload)
