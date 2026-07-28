@@ -392,24 +392,21 @@ Content-Type: application/json
 
   <!-- FINDINGS -->
   <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
-    <div class="toolbar">
-      <div id="scanFindingsBar" class="row find-toolbar-row">
+    <div class="toolbar findings-toolbar">
+      <div class="findings-toolbar-title"><span class="findings-eyebrow">REPORT</span><strong>Findings</strong><span id="findCount" class="count"></span></div>
+      <div class="findings-toolbar-actions">
         <button class="btn btn-primary" id="findNew">＋ New finding</button>
-        <button class="btn accent" id="findAskAiFindings" data-ai-ui title="Ask AI to triage history and file evidence-backed findings">✨ Ask AI for findings</button>
-        <select id="findExportFmt" class="btn btn-field" title="Report download format" aria-label="Report format">
-          <option value="md">Markdown</option>
-          <option value="html">HTML</option>
-          <option value="json">JSON</option>
-          <option value="pdf">PDF</option>
+        <button class="btn accent" id="findAskAiFindings" data-ai-ui title="Ask AI to triage history and file evidence-backed findings">✨ Ask AI</button>
+        <span class="toolbar-divider"></span>
+        <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
+          <option value="md">Markdown</option><option value="html">HTML</option><option value="json">JSON</option><option value="pdf">PDF</option>
         </select>
-        <select id="findExportStatuses" class="btn" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
-        <button class="btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export report</button>
-        <label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label>
-        <span id="findCount" class="count"></span>
-        <div class="spacer"></div>
+        <select id="findExportStatuses" class="btn find-export-statuses" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
+        <button class="btn find-export-btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export</button>
       </div>
-      <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
+      <label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label>
     </div>
+    <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
     <div id="scanFindingsView" class="find-view is-empty">
       <div id="findList" class="scan-list">
         <div class="state-empty find-empty">
@@ -420,7 +417,7 @@ Content-Type: application/json
             <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
             <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui>✨ Ask AI for findings</button>
           </div>
-          <p class="state-empty-hint state-empty-cmdk">Use <b>Export report</b> in the toolbar when ready · <a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">engagement close-out checklist</a></p>
+          <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
         </div>
       </div>
       <div id="findDetail" class="find-detail">

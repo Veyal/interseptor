@@ -22,6 +22,7 @@ let bodyEditing = false;
 
 const sevColor = s => ({ Critical: 'var(--red)', High: 'var(--red)', Medium: 'var(--amber)', Low: 'var(--blue)', Info: 'var(--fg3)' }[s] || 'var(--fg3)');
 const statusLabel = s => ({ needs_verification: 'needs verification' }[s] || (s || '').replace(/_/g, ' '));
+const statusBadgeColor = s => ({ verified: 'var(--accent)', fixed: 'var(--accent)', needs_verification: 'var(--amber)', false_positive: 'var(--fg3)', wont_fix: 'var(--fg3)' }[s] || 'var(--fg3)');
 
 function textChainLabel(md) {
   return (md || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`~\[\]()]/g, '').replace(/\s+/g, ' ').trim();
@@ -121,7 +122,7 @@ function findingsEmptyHTML() {
       <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
       <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui>✨ Ask AI for findings</button>
     </div>
-    <p class="state-empty-hint state-empty-cmdk">Use <b>Export report</b> in the toolbar when ready · <a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">engagement close-out checklist</a></p>
+    <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
   </div>`;
 }
 
@@ -500,7 +501,7 @@ function renderFindingDetail() {
              <button class="btn xs" id="findRename" title="Rename finding">✎</button>`
           : `<span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
              <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
-             <span class="hint">${esc(statusLabel(f.status))}</span>`}
+             <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
         <div class="spacer"></div>
         <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>
