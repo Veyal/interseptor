@@ -546,6 +546,114 @@ func TestProxyTunnelsWebSocketUpgrade(t *testing.T) {
 	}
 }
 
+func TestProxyRelaysDeclinedUpgradeResponseBody(t *testing.T) {
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("upstream listen: %v", err)
+	}
+	defer upLn.Close()
+	const body = "upgrade declined with details"
+	go func() {
+		c, err := upLn.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		if _, err := http.ReadRequest(bufio.NewReader(c)); err != nil {
+			return
+		}
+		fmt.Fprintf(c, "HTTP/1.1 400 Bad Request\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+	}()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("proxy listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	fmt.Fprintf(c, "GET http://%s/ws HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n", upLn.Addr(), upLn.Addr())
+	resp, err := http.ReadResponse(bufio.NewReader(c), &http.Request{Method: "GET"})
+	if err != nil {
+		t.Fatalf("read declined upgrade response: %v", err)
+	}
+	defer resp.Body.Close()
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read declined upgrade body: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest || string(got) != body {
+		t.Fatalf("declined upgrade response = %d/%q, want 400/%q", resp.StatusCode, got, body)
+	}
+}
+
+func TestDialUpstreamForcesHTTP11ALPN(t *testing.T) {
+	upCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("upstream CA: %v", err)
+	}
+	leaf, err := upCA.LeafForHost("127.0.0.1")
+	if err != nil {
+		t.Fatalf("upstream leaf: %v", err)
+	}
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{*leaf},
+		NextProtos:   []string{"h2", "http/1.1"},
+	})
+	if err != nil {
+		t.Fatalf("TLS listen: %v", err)
+	}
+	defer ln.Close()
+	negotiated := make(chan string, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		tc := c.(*tls.Conn)
+		if err := tc.Handshake(); err != nil {
+			return
+		}
+		negotiated <- tc.ConnectionState().NegotiatedProtocol
+	}()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(upCA.CertPEM())
+	srv.tr.TLSClientConfig = &tls.Config{RootCAs: pool, NextProtos: []string{"h2", "http/1.1"}}
+	conn, err := srv.dialUpstream("https", "127.0.0.1", ln.Addr().(*net.TCPAddr).Port)
+	if err != nil {
+		t.Fatalf("dialUpstream: %v", err)
+	}
+	conn.Close()
+	select {
+	case got := <-negotiated:
+		if got != "http/1.1" {
+			t.Fatalf("upstream ALPN = %q, want http/1.1", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for upstream handshake")
+	}
+}
+
 func TestProxyMITMTunnelsWebSocketUpgrade(t *testing.T) {
 	// Upstream: a raw TLS listener (signed by upCA) that completes a WS handshake then echoes.
 	upCA, err := tlsca.LoadOrCreate(t.TempDir())

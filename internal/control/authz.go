@@ -117,7 +117,13 @@ func (h *authzAPI) authzIdentities() []identity {
 }
 
 func (h *authzAPI) getAuthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"identities": h.authzIdentities()})
+	identities := h.authzIdentities()
+	if requestScope(r) == store.ScopeRead {
+		for i := range identities {
+			identities[i].Headers = ""
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"identities": identities})
 }
 
 func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -435,14 +436,18 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 	// Relay the handshake head verbatim (do NOT strip hop headers — Connection
 	// and Upgrade are the handshake) without consuming the upgraded stream.
 	if err := writeResponseHead(clientConn, resp); err != nil {
+		resp.Body.Close()
+		s.record(flow)
+		return
+	}
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		_, _ = io.Copy(clientConn, resp.Body)
+		resp.Body.Close()
 		s.record(flow)
 		return
 	}
 	s.record(flow)
-
-	if resp.StatusCode != http.StatusSwitchingProtocols {
-		return // upstream declined the upgrade; nothing to splice
-	}
 
 	// Frame-aware relay: capture each WebSocket frame while forwarding verbatim.
 	// Each relay closes its write side and signals done from a defer, so a panic
@@ -505,7 +510,7 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 			return nil, err
 		}
 		if scheme == "https" {
-			tc := tls.Client(raw, tlsCfg())
+			tc := tls.Client(raw, forceHTTP11TLSConfig(tlsCfg()))
 			_ = raw.SetDeadline(time.Now().Add(d.Timeout))
 			if err := tc.Handshake(); err != nil {
 				raw.Close()
@@ -518,9 +523,18 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	}
 	// Direct (no upstream) — unchanged.
 	if scheme == "https" {
-		return tls.DialWithDialer(d, "tcp", addr, tlsCfg())
+		return tls.DialWithDialer(d, "tcp", addr, forceHTTP11TLSConfig(tlsCfg()))
 	}
 	return d.Dial("tcp", addr)
+}
+
+func forceHTTP11TLSConfig(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return &tls.Config{NextProtos: []string{"http/1.1"}}
+	}
+	c := cfg.Clone()
+	c.NextProtos = []string{"http/1.1"}
+	return c
 }
 
 // dialViaUpstream opens a TCP tunnel to addr through an HTTP CONNECT proxy.
@@ -542,6 +556,7 @@ func dialViaUpstream(d *net.Dialer, up *url.URL, addr string, tlsConfig *tls.Con
 			cfg = tlsConfig.Clone()
 			cfg.ServerName = up.Hostname()
 		}
+		cfg = forceHTTP11TLSConfig(cfg)
 		tc := tls.Client(conn, cfg)
 		if err := tc.Handshake(); err != nil {
 			conn.Close()
@@ -640,7 +655,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			log.Printf("proxy: intercept bypassed for %s %s%s — body too large to edit (> %d bytes)",
 				out.Method, flow.Host, flow.Path, maxTransformBody)
 		} else {
-			d := s.eng.Hold(flow, out, raw)
+			d := s.eng.HoldContext(out.Context(), flow, out, raw)
 			// Only flag as intercepted when the request was actually held; the
 			// conditional filter forwards non-matching requests without holding.
 			if d.Held {
@@ -902,7 +917,11 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 	}
 	if hold {
 		flow.Flags |= store.FlagIntercepted
-		d := s.eng.HoldResponse(flow, buildRawResponse(st, h, b))
+		ctx := context.Background()
+		if resp.Request != nil {
+			ctx = resp.Request.Context()
+		}
+		d := s.eng.HoldResponseContext(ctx, flow, buildRawResponse(st, h, b))
 		if d.Drop {
 			flow.Flags |= store.FlagDropped
 			return 0, nil, nil, false, true

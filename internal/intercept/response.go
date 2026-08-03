@@ -1,6 +1,7 @@
 package intercept
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"sort"
@@ -60,6 +61,11 @@ func (e *Engine) SetResponseEnabled(on bool) {
 // HoldResponse blocks (when response interception is on) until the UI forwards
 // or drops the response. raw is the editable response snapshot.
 func (e *Engine) HoldResponse(flow *store.Flow, raw []byte) ResponseDecision {
+	return e.HoldResponseContext(context.Background(), flow, raw)
+}
+
+// HoldResponseContext releases a held response as dropped when its client is canceled.
+func (e *Engine) HoldResponseContext(ctx context.Context, flow *store.Flow, raw []byte) ResponseDecision {
 	e.mu.Lock()
 	if !e.respEnabled {
 		e.mu.Unlock()
@@ -75,7 +81,16 @@ func (e *Engine) HoldResponse(flow *store.Flow, raw []byte) ResponseDecision {
 	e.respOrder = append(e.respOrder, id)
 	e.mu.Unlock()
 	e.fireNotify()
-	return <-item.done
+	select {
+	case d := <-item.done:
+		return d
+	case <-ctx.Done():
+		if e.removeResp(id) {
+			e.fireNotify()
+			return ResponseDecision{Drop: true}
+		}
+		return <-item.done
+	}
 }
 
 // ForwardResponse releases a held response (optionally replacing its raw bytes).

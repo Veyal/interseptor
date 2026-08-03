@@ -7,6 +7,7 @@ package intercept
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -188,6 +189,11 @@ func (e *Engine) fireNotify() {
 // with a forward decision; otherwise it blocks until the UI resolves it. raw is
 // the editable origin-form snapshot shown in the UI.
 func (e *Engine) Hold(flow *store.Flow, req *http.Request, raw []byte) Decision {
+	return e.HoldContext(context.Background(), flow, req, raw)
+}
+
+// HoldContext releases a held request as dropped when its client is canceled.
+func (e *Engine) HoldContext(ctx context.Context, flow *store.Flow, req *http.Request, raw []byte) Decision {
 	e.mu.Lock()
 	if !e.enabled {
 		e.mu.Unlock()
@@ -210,9 +216,19 @@ func (e *Engine) Hold(flow *store.Flow, req *http.Request, raw []byte) Decision 
 	e.mu.Unlock()
 
 	e.fireNotify()
-	d := <-item.done
-	d.Held = true
-	return d
+	select {
+	case d := <-item.done:
+		d.Held = true
+		return d
+	case <-ctx.Done():
+		if e.remove(id) {
+			e.fireNotify()
+			return Decision{Drop: true, Held: true}
+		}
+		d := <-item.done
+		d.Held = true
+		return d
+	}
 }
 
 // Queue returns a snapshot of held requests in arrival order.

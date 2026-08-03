@@ -132,10 +132,17 @@ func (h *sessionAPI) getSession(w http.ResponseWriter, r *http.Request) {
 	if hostHdr == nil {
 		hostHdr = map[string]string{}
 	}
+	macro := h.loadMacro()
+	loginMacro := h.loadLoginMacro()
+	if requestScope(r) == store.ScopeRead {
+		text = ""
+		hostHdr = map[string]string{}
+		macro.Request = ""
+		loginMacro.Request = ""
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": enabled == "1", "headers": text, "unscoped": unscoped == "1",
-		"scopeGated": unscoped != "1",
-		"macro": h.loadMacro(), "loginMacro": h.loadLoginMacro(),
+		"scopeGated": unscoped != "1", "macro": macro, "loginMacro": loginMacro,
 		"hostHeaders": hostHdr,
 	})
 }

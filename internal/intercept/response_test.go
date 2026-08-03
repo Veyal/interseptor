@@ -1,6 +1,7 @@
 package intercept
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -61,5 +62,33 @@ func TestHoldResponseDisabledPassesThrough(t *testing.T) {
 	d := e.HoldResponse(&store.Flow{}, []byte("raw"))
 	if d.Drop || string(d.Raw) != "raw" {
 		t.Fatalf("disabled response intercept should forward unchanged: %+v", d)
+	}
+}
+
+func TestHoldResponseContextCancelsAndRemovesResponse(t *testing.T) {
+	e := New()
+	e.SetResponseEnabled(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := make(chan ResponseDecision, 1)
+	go func() { got <- e.HoldResponseContext(ctx, &store.Flow{}, []byte("HTTP/1.1 200 OK\r\n\r\nbody")) }()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && len(e.ResponseQueue()) == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(e.ResponseQueue()) != 1 {
+		t.Fatal("response was not held")
+	}
+	cancel()
+	select {
+	case d := <-got:
+		if !d.Drop {
+			t.Fatalf("canceled response decision = %+v, want drop", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled response hold did not return")
+	}
+	if len(e.ResponseQueue()) != 0 {
+		t.Fatal("canceled response remained held")
 	}
 }

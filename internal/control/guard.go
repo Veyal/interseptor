@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
@@ -29,6 +30,8 @@ import (
 //
 // maxRequestBody bounds every control request body as a DoS backstop (see below).
 var maxRequestBody int64 = 128 << 20
+
+type requestScopeKey struct{}
 
 // sessionCookie is the name of the httpOnly cookie holding a browser session's
 // API token (set by the login endpoint, cleared by logout).
@@ -103,6 +106,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, scope))
 			next.ServeHTTP(w, r)
 			return
 
@@ -119,6 +123,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, store.ScopeFull))
 			next.ServeHTTP(w, r)
 			return
 
@@ -137,6 +142,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				}
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, store.ScopeFull))
 			next.ServeHTTP(w, r)
 			return
 
@@ -153,6 +159,14 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			return
 		}
 	})
+}
+
+func requestScope(r *http.Request) string {
+	scope, ok := r.Context().Value(requestScopeKey{}).(string)
+	if !ok {
+		return store.ScopeFull
+	}
+	return scope
 }
 
 // auth token sources, in precedence order.

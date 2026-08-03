@@ -1,6 +1,7 @@
 package intercept
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"regexp"
@@ -118,6 +119,28 @@ func TestHoldThenDrop(t *testing.T) {
 	}
 	if d := recvDecision(t, got); !d.Drop {
 		t.Fatalf("expected drop decision, got %+v", d)
+	}
+}
+
+func TestHoldContextCancelsAndRemovesRequest(t *testing.T) {
+	e := New()
+	e.SetEnabled(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := make(chan Decision, 1)
+	go func() { got <- e.HoldContext(ctx, &store.Flow{}, newReq(t, "GET", "https://example.com/p", ""), nil) }()
+	waitQueue(t, e, 1)
+	cancel()
+	select {
+	case d := <-got:
+		if !d.Drop || !d.Held {
+			t.Fatalf("canceled hold decision = %+v, want held drop", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled hold did not return")
+	}
+	if len(e.Queue()) != 0 {
+		t.Fatal("canceled request remained held")
 	}
 }
 
