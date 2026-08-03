@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, syncUiSelectStyles } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, syncUiSelectStyles, icon } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -337,12 +337,12 @@ const INTR_TPL='POST /login HTTP/1.1\nHost: example.com\nContent-Type: applicati
 const INTR_SNIPER="admin\nadministrator\nroot\n' OR 1=1--\n../../../etc/passwd";
 const INTR_POS=["admin\nadministrator\nroot","password\n123456\nchangeme"];
 // INTR_RESULTS_EMPTY — the idle state of #intrResults before the first attack.
-const INTR_RESULTS_EMPTY='<div class="state-empty"><div class="state-empty-icon">🎯</div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div>';
+const INTR_RESULTS_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg></div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div>';
 // Live editing mirror of the active tab's mode + payload lists (the other fields —
 // target/template/threads/delay/repeat — live in the DOM and are snapshotted to tabs).
 const INTR_NUM_DEFAULT=()=>({start:1,end:100,step:1,mode:'sequence',count:100,pad:0,unique:false});
 export const intrState={type:'sniper',sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],sniperSource:'list',sniperNums:INTR_NUM_DEFAULT(),posSources:[],posNums:[]};
-let intrLastFlowId=null; // last flow loaded into Intruder (for ✨ Generate)
+let intrLastFlowId=null; // last flow loaded into Intruder (for the Generate action)
 export function lines(s){return s.split('\n').map(x=>x.trim()).filter(Boolean);}
 
 // expandNumbers — client-side Numbers payload source (#15). Mirrors
@@ -526,7 +526,7 @@ function renderIntrHistory(){
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
   if(!box)return;
   if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
-  box.innerHTML=intrHistory.map((h,i)=>`<div class="h" data-i="${i}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'⚑</span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  box.innerHTML=intrHistory.map((h,i)=>`<div class="h" data-i="${i}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
   box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
 }
 function intrLoadHistory(i){
@@ -549,10 +549,10 @@ function intrModeText(){
   if(intrState.type==='cluster')
     return 'Cluster bomb — one payload list per § marker; every combination is tried (cartesian product). Mark N points → fill N lists.';
   if(intrState.type==='pitchfork')
-    return 'Pitchfork — one payload list per § marker (colour-matched below). Lists advance together, so mark N injection points → fill N lists; fires min(list lengths) requests. Load each list from a file with 📂 / ＋.';
-  return 'Sniper — a single payload list, tried at each § marker one position at a time (the others keep their original value). Load payloads from a file with 📂 / ＋.';
+    return 'Pitchfork — one payload list per § marker (colour-matched below). Lists advance together, so mark N injection points → fill N lists; fires min(list lengths) requests. Load each list from a file with the Load / Append buttons.';
+  return 'Sniper — a single payload list, tried at each § marker one position at a time (the others keep their original value). Load payloads from a file with the Load / Append buttons.';
 }
-const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file">📂</button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
+const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
 async function intrLoadPayloadFile(ta, append){
   try{
     const got=await pickTextFile();
@@ -675,9 +675,9 @@ function renderPayloadInputs(){
       note.textContent=intrPayloadNote(p);
       const tab=intrTabs.cur();
       if(p==='s'&&tab?.sniperLarge&&!intrState.sniperLines){
-        note.textContent=(tab.sniperCount?tab.sniperCount.toLocaleString()+' payloads were':'Large payload list was')+' not restored after reload — load the file again with 📂.';
+        note.textContent=(tab.sniperCount?tab.sniperCount.toLocaleString()+' payloads were':'Large payload list was')+' not restored after reload — load the file again with the Load button.';
       }else if(p!=='s'&&tab?.posCounts?.[Number(p)]&&!intrState.posLines?.[Number(p)]){
-        note.textContent=`${tab.posCounts[Number(p)].toLocaleString()} payloads were not restored after reload — load the file again with 📂.`;
+        note.textContent=`${tab.posCounts[Number(p)].toLocaleString()} payloads were not restored after reload — load the file again with the Load button.`;
       }
     }
     ta.addEventListener('input',()=>{
@@ -868,7 +868,7 @@ export function renderIntr(st){
   if(stats){
     const fl=res.filter(r=>r.flagged).length, int=res.filter(intrIsInteresting).length;
     const shown=intrApplyFilter(res).length;
-    stats.textContent=res.length?`${res.length} sent${fl?' · '+fl+' flagged ⚑':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
+    stats.textContent=res.length?`${res.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
   }
   // capture a completed run into history (once per Start)
   if(!running&&total>0&&intrCapturePending){
@@ -879,7 +879,7 @@ export function renderIntr(st){
   }
   if(running)scheduleIntr(); // self-poll until the attack converges (robust to event/POST races)
   const box=$('#intrResults');
-  if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon">⚠</div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
+  if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!res.length){
     box.innerHTML=running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
@@ -930,7 +930,7 @@ function intrRowHTML(r){
   const title=r.error?(r.error):(fid?('open attempt #'+r.id+' · flow #'+fid):('attempt #'+r.id+(r.error?' · '+r.error:'')));
   return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}" data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
     <div style="color:var(--fg3)">${r.id}</div>
-    <div class="pl">${esc(r.payload)}${r.flagged?' ⚑':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
+    <div class="pl">${esc(r.payload)}${r.flagged?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg>':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
     <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
     <div style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
     <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
@@ -1032,7 +1032,7 @@ export async function intrGeneratePayloads(hint){
     const data=await api('/api/ai/intruder-payloads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     applyIntruderPayloadSuggestion(data);
   }catch(e){toast(e.message||'AI generate failed','error');}
-  finally{if(btn){btn.disabled=false;btn.textContent='✨ Generate';}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=icon('sparkle')+' Generate';}}
 }
 export async function sendToIntruder(f){
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),

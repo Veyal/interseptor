@@ -296,16 +296,16 @@ export async function loadMCP(){
       <div class="row" style="gap:8px"><span class="sev ${m.status==='ready'?'Low':'Info'}">${esc(m.status)}</span>
         <span class="hint">Let your AI assistant drive Interseptor — same tools as the UI.</span></div>
       <p class="hint" style="margin:12px 0;line-height:1.6">${esc(m.note||'')}</p>
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--accent);margin:14px 0 6px">RECOMMENDED · CURSOR / STREAMABLE HTTP (auto-syncs on restart)</div>
+      <div class="micro-label micro-label-accent" style="margin:14px 0 6px">RECOMMENDED · CURSOR / STREAMABLE HTTP (auto-syncs on restart)</div>
       <div class="row" style="gap:10px;margin:0 0 6px"><span class="hint">Paste into <code>.cursor/mcp.json</code> — uses the running Interseptor, no stale stdio binary.</span><button class="btn accent" id="mcpCopyHttp" style="padding:3px 10px">Copy</button></div>
       <pre class="evidence" style="white-space:pre;overflow:auto;margin-top:0">${esc(httpCfg)}</pre>
       ${m.httpTransport?`<p class="hint" style="margin:8px 0 0;line-height:1.6">Endpoint: <code>${esc(m.httpTransport.url||'')}</code> · ${esc(m.httpTransport.note||'')}</p>`:''}
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:16px 0 6px">STDIO · Claude Desktop / separate MCP process</div>
+      <div class="micro-label" style="margin:16px 0 6px">STDIO · Claude Desktop / separate MCP process</div>
       <div class="evidence" style="font-family:var(--mono);margin-bottom:8px">${esc(cmd)}</div>
       <p class="hint" style="margin:0 0 8px">Windows: <code>scripts/interceptor-mcp.cmd</code> resolves the latest <code>interseptor</code> on PATH after <code>go install</code> / <code>interseptor update</code>.</p>
-      <div class="row" style="gap:10px;margin:0 0 6px"><span style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3)">STDIO CLIENT CONFIG</span><button class="btn" id="mcpCopyStdio" style="padding:3px 10px">Copy</button></div>
+      <div class="row" style="gap:10px;margin:0 0 6px"><span class="micro-label">STDIO CLIENT CONFIG</span><button class="btn" id="mcpCopyStdio" style="padding:3px 10px">Copy</button></div>
       <pre class="evidence" style="white-space:pre;overflow:auto;margin-top:0">${esc(stdioCfg)}</pre>
-      <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:18px 0 6px">TOOLS · ${(m.tools||[]).length}</div>
+      <div class="micro-label" style="margin:18px 0 6px">TOOLS · ${(m.tools||[]).length}</div>
       <table class="rules-tbl"><thead><tr><th style="width:160px">Tool</th><th>Description</th></tr></thead><tbody>${tools}</tbody></table>`;
     const cpH=document.getElementById('mcpCopyHttp'); if(cpH) cpH.onclick=()=>copyText(httpCfg,'Cursor MCP config copied');
     const cpS=document.getElementById('mcpCopyStdio'); if(cpS) cpS.onclick=()=>copyText(stdioCfg,'stdio MCP config copied');

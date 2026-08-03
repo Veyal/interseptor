@@ -238,7 +238,7 @@ async function start(){
   }
 
   const ok = await uiConfirm(
-    '⚠ Launch autonomous pentest?',
+    'Launch autonomous pentest?',
     `Autopilot runs a <b>fully-autonomous</b> active pentest. It will:<br><br>` +
     `• test <b>only targets that match your scope rules</b> (own listeners always excluded)<br>` +
     `• send <b>real attack traffic</b> to those targets<br>` +

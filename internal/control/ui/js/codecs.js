@@ -73,7 +73,7 @@ async function loadCodecDocs() {
     box.innerHTML = renderMD(d.markdown || '');
     codecDocsLoaded = true;
   } catch (e) {
-    box.innerHTML = '<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">' + esc(e.message) + '</p></div>';
+    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">' + esc(e.message) + '</p></div>';
   }
 }
 
@@ -88,7 +88,7 @@ function codecRow(c) {
   ].filter(Boolean).join('');
   return `<div class="checks-row checks-pick codecs-row${codecSel === id ? ' sel' : ''}" data-id="${escAttr(id)}" title="${escAttr(err ? c.error : title)}" aria-label="codec ${escAttr(id)}">
     <div class="checks-body">
-      <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' ⚠' : ''}</span>
+      <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>' : ''}</span>
       <div class="checks-meta"><span class="checks-cat">${esc(id)}</span>${badges}</div>
     </div>
   </div>`;
@@ -128,7 +128,7 @@ export async function loadCodecsList() {
     });
     codecsApplyFilter();
   } catch (e) {
-    box.innerHTML = `<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">Couldn't load codecs: ${esc(e.message)}</p></div>`;
+    box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">Couldn't load codecs: ${esc(e.message)}</p></div>`;
   }
 }
 
@@ -232,7 +232,7 @@ async function codecTest() {
     }
     const note = (d.title || d.codecId || 'matched') + ' · flow #' + (d.flowId || flowId || '?');
     const body = esc(d.plaintext || '').slice(0, 4000);
-    out.innerHTML = `<div class="check-status check-status-ok"><div class="hint" style="margin-bottom:6px">${esc(note)}${d.note ? ' — ' + esc(d.note) : ''}</div><pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:11.5px">${body}</pre></div>`;
+    out.innerHTML = `<div class="check-status check-status-ok"><div class="hint" style="margin-bottom:6px">${esc(note)}${d.note ? ' — ' + esc(d.note) : ''}</div><pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:var(--fs-xs)">${body}</pre></div>`;
   } catch (e) {
     if (out) out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre>' + esc(e.message) + '</pre></div>';
     else toast(e.message);

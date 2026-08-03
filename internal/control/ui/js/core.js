@@ -15,6 +15,14 @@ export const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'
 // deliberately keeps quotes) stays for text and the JSON/HTTP highlighters.
 export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+// icon(name) -> markup referencing the inline sprite in index.html. Use this
+// anywhere JS builds HTML strings, instead of pasting an emoji: emoji are
+// font-dependent, render differently on macOS/Linux/Windows, and cannot take a
+// colour token. `name` is the sprite id without the `i-` prefix.
+// Decorative by default (aria-hidden) because these sit next to a text label;
+// pass a label for icon-only controls so screen readers still announce them.
+export const icon=(name,label)=>`<svg class="icon" ${label?`role="img" aria-label="${escAttr(label)}"`:'aria-hidden="true"'} focusable="false"><use href="#i-${name}"/></svg>`;
+
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
   filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
@@ -949,7 +957,10 @@ export function openCtxMenu(x,y,sections){
       if(it.sep){html+='<div class="ctx-sep"></div>';return;}
       const dStyle=it.danger?' style="color:var(--red)"':'';
       const right=it.val!=null?`<span class="mono"${dStyle}>${esc(it.val)}</span>`:'';
-      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${esc(it.label)}</span>${right}</div>`;
+      // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
+      // smuggled through it.label — the icon has to be its own field.
+      const glyph=it.icon?icon(it.icon):'';
+      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
       acts.push(it.act);
     });
   });
@@ -973,7 +984,7 @@ export function openCtxMenu(x,y,sections){
   document.addEventListener('keydown',ctx._keyHandler);
 }
 
-export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','✨ Smart']];
+export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
 
 // selectionFromRaw maps a DOM selection to the underlying source text when the
 // view is pretty-printed/highlighted (span boundaries can split tokens).

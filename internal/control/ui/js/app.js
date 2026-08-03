@@ -2,7 +2,7 @@
 // own DOM handlers on load), then owns the cross-cutting pieces: tab switching,
 // the command palette, global keyboard shortcuts, the live SSE event stream,
 // theme, the version badge, and the boot sequence that kicks everything off.
-import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject } from './core.js';
+import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
 import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
@@ -309,9 +309,9 @@ function cmdkBuild(){
   o.style.cssText='position:fixed;inset:0;z-index:300;display:none;align-items:flex-start;justify-content:center;background:var(--overlay)';
   o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell" style="margin-top:11vh;width:min(680px,92vw)">'
     +'<div class="modal-shell-head"><span id="cmdkTitle" class="modal-shell-title">Command palette</span></div>'
-    +'<input id="cmdkInput" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:15px">'
+    +'<input id="cmdkInput" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:var(--fs-xl)">'
     +'<div id="cmdkList" role="listbox" aria-label="Command results" style="max-height:52vh;overflow:auto;padding:6px"></div>'
-    +'<div style="padding:7px 14px;border-top:1px solid var(--line);color:var(--fg3);font-size:10px;display:flex;gap:16px"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
+    +'<div style="padding:7px 14px;border-top:1px solid var(--line);color:var(--fg3);font-size:var(--fs-xs);display:flex;gap:16px"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
   document.body.appendChild(o);
   cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');
   cmdk.input.oninput=cmdkRender;
@@ -391,7 +391,7 @@ function cmdkPaint(){
   cmdk.list.innerHTML=cmdk.items.map((it,i)=>
     '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accent);color:var(--onAccent)':'')+'">'
     +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'
-    +'<span style="opacity:.55;font-size:11px;flex:none">'+esc(it.sub||it.kind)+'</span></div>'
+    +'<span style="opacity:.55;font-size:var(--fs-xs);flex:none">'+esc(it.sub||it.kind)+'</span></div>'
   ).join('')||'<div style="padding:14px;color:var(--fg3)">No matches</div>';
   if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
   else cmdk.input.removeAttribute('aria-activedescendant');
@@ -492,7 +492,7 @@ function currentTheme(){return document.documentElement.getAttribute('data-theme
 function applyTheme(t){
   if(t==='light')document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
-  const b=$('#themeToggle');if(b)b.textContent=t==='light'?'☀':'☾';
+  const b=$('#themeToggle');if(b)b.innerHTML=t==='light'?icon('sun'):icon('moon');
 }
 function toggleTheme(){const t=currentTheme()==='light'?'dark':'light';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
 $('#themeToggle').onclick=toggleTheme;

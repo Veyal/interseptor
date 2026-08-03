@@ -24,7 +24,7 @@ function authzScopeRuleLine(r){
   const color=tag==='exclude'?'var(--red)':'var(--accent)';
   const host=r.host||'(any host)';
   const extra=[r.path?'path:'+r.path:'',r.scheme?r.scheme:''].filter(Boolean).join(' · ');
-  return `<div style="font-family:var(--mono);font-size:11.5px;padding:3px 0"><span style="font-weight:700;color:${color}">${tag}</span> <span style="color:var(--fg)">${esc(host)}</span>${extra?` <span class="hint">${esc(extra)}</span>`:''}</div>`;
+  return `<div style="font-family:var(--mono);font-size:var(--fs-xs);padding:3px 0"><span style="font-weight:700;color:${color}">${tag}</span> <span style="color:var(--fg)">${esc(host)}</span>${extra?` <span class="hint">${esc(extra)}</span>`:''}</div>`;
 }
 async function renderAuthzScopePanel(){
   const panel=$('#authzScopePanel');if(!panel)return;
@@ -42,9 +42,9 @@ async function renderAuthzScopePanel(){
     html=`<p class="hint" style="color:var(--amber);margin:0 0 8px"><b>No include rules.</b> Add at least one before bulk run.</p>`;
     if(excludes.length)html+=excludes.map(authzScopeRuleLine).join('');
   }else{
-    html=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:0 0 6px">IN-SCOPE (from Settings → Target scope)</div>`;
+    html=`<div class="micro-label" style="margin:0 0 6px">IN-SCOPE (from Settings → Target scope)</div>`;
     html+=includes.map(authzScopeRuleLine).join('');
-    if(excludes.length)html+=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:10px 0 4px">EXCLUDE (always wins)</div>`+excludes.map(authzScopeRuleLine).join('');
+    if(excludes.length)html+=`<div class="micro-label" style="margin:10px 0 4px">EXCLUDE (always wins)</div>`+excludes.map(authzScopeRuleLine).join('');
   }
   html+=`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" id="authzScopeEdit">Settings → Target scope</button><span class="hint" id="authzScopeHosts">checking captured traffic…</span></div>`;
   panel.innerHTML=html;
@@ -103,10 +103,10 @@ function renderIdentities(ids){
     <input class="authz-name btn" style="background:var(--bg3)" placeholder="role e.g. ${i===0?'admin (baseline)':'user'}" value="${escAttr(id.name||'')}">
     <textarea class="authz-hdr rep-edit" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
     <div style="display:flex;gap:4px">
-      <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'⚠ broken':'⚠'}</button>
+      <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>'}</button>
       <button class="btn danger authz-del" data-i="${i}" title="remove">✕</button>
     </div>
-    ${id.broken&&id.brokenNote?`<div class="hint" style="font-size:11px;margin-top:2px;color:var(--amber)">${esc(id.brokenNote)}</div>`:''}
+    ${id.broken&&id.brokenNote?`<div class="hint" style="font-size:var(--fs-xs);margin-top:2px;color:var(--amber)">${esc(id.brokenNote)}</div>`:''}
   </div>`).join('');
   document.querySelectorAll('#authzIds .authz-del').forEach(b=>b.onclick=()=>{
     const ids=collectIds();ids.splice(Number(b.dataset.i),1);
@@ -157,7 +157,7 @@ async function checkSessions(){
       +checks.map(c=>c.broken?`<div class="authz-row" style="opacity:.55">
         <span>${esc(c.name||'(unnamed)')}</span>
         <span style="color:var(--fg3)">—</span>
-        <span><span style="color:var(--amber)">⚠ broken</span></span>
+        <span><span style="color:var(--amber)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken</span></span>
         <span></span></div>`:`<div class="authz-row${c.sessionInvalid?' flag':''}">
         <span>${esc(c.name||'(unnamed)')}</span>
         <span style="color:${statusColor(c.status)};font-weight:700">${c.error?'ERR':(c.status||'—')}</span>
@@ -177,10 +177,10 @@ function runBody(){
 
 function renderAuthzRow(r,i){
   let verdict='';
-  if(r.broken)verdict='<span style="color:var(--amber)">⚠ broken — skipped</span>';
+  if(r.broken)verdict='<span style="color:var(--amber)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken — skipped</span>';
   else if(i===0)verdict='<span class="hint">baseline</span>';
   else if(r.sessionInvalid)verdict='<span style="color:var(--amber);font-weight:700">session?</span>';
-  else if(r.sameAsBaseline)verdict='<span style="color:var(--red);font-weight:700">⚠ same access</span>';
+  else if(r.sameAsBaseline)verdict='<span style="color:var(--red);font-weight:700"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> same access</span>';
   else verdict='<span class="hint">differs ✓</span>';
   return `<div class="authz-row${r.sameAsBaseline||r.sessionInvalid?' flag':''}${r.broken?' authz-broken-row':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
     <span${r.broken?' style="opacity:.6"':''}>${esc(r.name||'(unnamed)')}</span>
@@ -194,9 +194,9 @@ function renderAuthzListBulk(runs){
   runs.forEach(run=>{
     const flagged=(run.results||[]).some((r,i)=>i>0&&r.sameAsBaseline);
     html+=`<details style="margin-bottom:8px;border:1px solid var(--line);border-radius:8px;padding:6px 10px"${flagged?' open':''}>
-      <summary style="cursor:pointer;font-family:var(--mono);font-size:11.5px;color:${flagged?'var(--red)':'var(--fg)'}">
+      <summary style="cursor:pointer;font-family:var(--mono);font-size:var(--fs-xs);color:${flagged?'var(--red)':'var(--fg)'}">
         <span style="color:var(--accent);font-weight:700">${esc(run.method)}</span> ${esc(run.host)}${esc(run.path||'/')}
-        ${flagged?' · <b style="color:var(--red)">⚠ access issue</b>':''}
+        ${flagged?' · <b style="color:var(--red)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> access issue</b>':''}
       </summary>
       <div class="authz-row authz-head" style="margin-top:8px"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>
       ${(run.results||[]).map((r,i)=>renderAuthzRow(r,i)).join('')}
@@ -208,7 +208,7 @@ function renderAuthzListBulk(runs){
 function renderAuthzMatrix(runs){
   if(!runs.length)return '<div class="hint">no results</div>';
   const names=(runs[0].results||[]).map(r=>r.name||'(unnamed)');
-  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">
+  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:var(--fs-xs)">
     <thead><tr>
       <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);color:var(--fg3)">endpoint</th>
       ${names.map((n,i)=>`<th style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap">${i===0?`<span style="color:var(--fg3)">${esc(n)}</span>`:esc(n)}</th>`).join('')}
@@ -216,11 +216,11 @@ function renderAuthzMatrix(runs){
   for(const run of runs){
     const rowFlagged=(run.results||[]).some((r,i)=>i>0&&r.sameAsBaseline);
     html+=`<tr${rowFlagged?' style="background:color-mix(in srgb,var(--red) 7%,transparent)"':''}>
-      <td style="padding:5px 8px;font-family:var(--mono);border-bottom:1px solid var(--line2);white-space:nowrap"><span style="color:var(--accent);font-weight:700">${esc(run.method)}</span> <span style="color:var(--fg2);font-size:11px">${esc(run.host)}${esc(run.path||'/')}</span></td>
+      <td style="padding:5px 8px;font-family:var(--mono);border-bottom:1px solid var(--line2);white-space:nowrap"><span style="color:var(--accent);font-weight:700">${esc(run.method)}</span> <span style="color:var(--fg2);font-size:var(--fs-xs)">${esc(run.host)}${esc(run.path||'/')}</span></td>
       ${(run.results||[]).map((r,i)=>{
         const warn=i>0&&r.sameAsBaseline;
         const err=!!r.error||r.status===0;
-        return `<td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--line2)"${r.flowId?` data-flow="${r.flowId}"`:''}>${i===0?`<span class="hint" style="font-size:10px">—</span>`:`<span style="color:${err?'var(--fg3)':statusColor(r.status)};font-weight:700">${err?'ERR':(r.status||'—')}</span><span style="color:var(--fg3);font-size:10px;display:block">${fmtSize(r.length)}</span>${warn?'<span style="color:var(--red);font-size:10px">⚠</span>':''}${r.sessionInvalid?'<span style="color:var(--amber);font-size:10px">sess?</span>':''}`}</td>`;
+        return `<td style="text-align:center;padding:5px 8px;border-bottom:1px solid var(--line2)"${r.flowId?` data-flow="${r.flowId}"`:''}>${i===0?`<span class="hint" style="font-size:var(--fs-xs)">—</span>`:`<span style="color:${err?'var(--fg3)':statusColor(r.status)};font-weight:700">${err?'ERR':(r.status||'—')}</span><span style="color:var(--fg3);font-size:var(--fs-xs);display:block">${fmtSize(r.length)}</span>${warn?'<span style="color:var(--red);font-size:var(--fs-xs)"><svg class="icon" role="img" aria-label="same access as baseline" focusable="false"><use href="#i-warning"/></svg></span>':''}${r.sessionInvalid?'<span style="color:var(--amber);font-size:var(--fs-xs)">sess?</span>':''}`}</td>`;
       }).join('')}
     </tr>`;
   }
@@ -244,8 +244,8 @@ function renderAuthzResults(d){
   const toggleHtml=`<div class="row" style="gap:6px;margin-bottom:8px;align-items:center">
     <span class="hint">${sum.endpoints||runs.length} endpoint${(sum.endpoints||runs.length)===1?'':'s'} · ${sum.flagged||0} flagged</span>
     <div class="spacer"></div>
-    <button class="btn${authzViewMode==='list'?' on':''}" id="authzViewList" style="padding:2px 7px;font-size:11px">☰ List</button>
-    <button class="btn${authzViewMode==='matrix'?' on':''}" id="authzViewMatrix" style="padding:2px 7px;font-size:11px">⊞ Matrix</button>
+    <button class="btn${authzViewMode==='list'?' on':''}" id="authzViewList" style="padding:2px 7px;font-size:var(--fs-xs)">☰ List</button>
+    <button class="btn${authzViewMode==='matrix'?' on':''}" id="authzViewMatrix" style="padding:2px 7px;font-size:var(--fs-xs)">⊞ Matrix</button>
   </div>`;
   box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
   $('#authzViewList')?.addEventListener('click',()=>{authzViewMode='list';renderAuthzResults(d);});
@@ -273,10 +273,10 @@ function renderCrossHostResults(d){
   results.forEach(r=>{
     const err=!!r.error||r.status===0;
     html+=`<div class="authz-row${r.accepted?' flag':''}"${r.flowId?` data-flow="${r.flowId}"`:''}>
-      <span style="font-family:var(--mono);font-size:11.5px">${esc(r.host)}</span>
+      <span style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(r.host)}</span>
       <span style="color:${err?'var(--fg3)':statusColor(r.status)};font-weight:700">${err?'ERR':(r.status||'—')}</span>
       <span>${fmtSize(r.length)}</span>
-      <span>${r.accepted?'<span style="color:var(--red);font-weight:700">⚠ accepted</span>':'<span class="hint">rejected ✓</span>'}</span>
+      <span>${r.accepted?'<span style="color:var(--red);font-weight:700"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> accepted</span>':'<span class="hint">rejected ✓</span>'}</span>
     </div>`;
   });
   box.innerHTML=html;

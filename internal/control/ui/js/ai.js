@@ -2,7 +2,7 @@
 // and the model's reply streams in token by token, rendered as Markdown. Follow-up
 // questions keep the thread (prior Q&A is sent as history). A footer action bar loads
 // the analysed flow into Repeater / Intruder in one click.
-import { $, api, openModal, closeModal, state, toast, renderMD, esc, copyText } from './core.js';
+import { $, api, openModal, closeModal, state, toast, renderMD, esc, copyText, icon } from './core.js';
 import { sendToRepeater, sendToIntruder, applyIntruderPayloadSuggestion } from './tools.js';
 
 let aiKind = 'ask';         // only mode now: a free-text question
@@ -95,7 +95,7 @@ function updateAiMode() {
   const title = $('#aiModalTitle');
   const question = $('#aiQuestion');
   const agentRow = document.querySelector('.ai-agent-row');
-  if (title) title.textContent = aiProject ? 'Ask AI about current project' : '✨ Ask AI';
+  if (title) title.innerHTML = aiProject ? 'Ask AI about current project' : icon('sparkle')+' Ask AI';
   if (question) question.setAttribute('aria-label', aiProject ? 'Ask a question about the current project' : 'Ask a question about the selected flow(s)');
   if (agentRow) agentRow.style.display = aiProject ? 'none' : '';
 }
@@ -338,7 +338,7 @@ $('#aiPayloadsIntruder') && ($('#aiPayloadsIntruder').onclick = async () => {
     showError(e.message || 'generate failed');
   } finally {
     setStatus('');
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Payloads → Intruder'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = icon('sparkle')+' Payloads &rarr; Intruder'; }
   }
 });
 $('#aiCopy').onclick = () => copyAiThread();

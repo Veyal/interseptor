@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
@@ -325,7 +325,7 @@ function flowRowHTML(f){
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
-    host:`<div class="tr-host" data-field="host">${esc(f.scheme==='https'?'🔒 ':'')}${esc(f.host)}</div>`,
+    host:`<div class="tr-host" data-field="host">${f.scheme==='https'?icon('lock','HTTPS')+' ':''}${esc(f.host)}</div>`,
     path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
@@ -509,15 +509,15 @@ export function handleFlowUpdate(f){
 export function getStartedCard(){
   const diag=getStartedDiagnosisHint();
   return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
-    <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
+    <div style="font-size:var(--fs-lg);font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
     <div class="hint" style="margin-bottom:14px">Interseptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
     ${diag}
-    <ol style="color:var(--fg2);line-height:2;font-size:12.5px;padding-left:20px;margin:0">
+    <ol style="color:var(--fg2);line-height:2;font-size:var(--fs-sm);padding-left:20px;margin:0">
       <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
       <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
       <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
-      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or ✨ ask AI'}</li>
+      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> ask AI'}</li>
       ${state.aiDisabled?'':`<li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>`}
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
@@ -561,7 +561,7 @@ export function renderRows(){
   const flows=state.flows;
   if(!flows.length){
     if(anyFilter()||state.inScopeOnly){
-      box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🔍</div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">No flows match the current filters.</p><button class="btn" id="emptyClear">Clear filters</button></div>';
+      box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">No flows match the current filters.</p><button class="btn" id="emptyClear">Clear filters</button></div>';
       const c=document.getElementById('emptyClear');if(c)c.onclick=()=>{
         if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
         clearAllFilters();
@@ -794,7 +794,7 @@ async function wsReplay(url){
   try{
     const r=await api('/api/ws/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,message:msg})});
     const frames=r.frames||[];
-    const head=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:4px 0 4px">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
+    const head=`<div class="micro-label" style="margin:4px 0 4px">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
     if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
   }catch(e){if(out)out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
 }
@@ -1138,7 +1138,7 @@ export function renderChips(){
   add('method','method',f.method);
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
-  add('tag','🏷',f.tag);
+  add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
   add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
   if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><span class="x" id="chipHideTlsClear" title="show TLS failures">✕</span></span>`);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
@@ -1204,12 +1204,12 @@ function flowGlobalSection(f,head){
   ];
   if(!state.aiDisabled){
     items.push({sep:true},
-      {label:'✨ Ask AI',act:()=>openAi({ids: [f.id]})});
+      {label:'Ask AI',icon:'sparkle',act:()=>openAi({ids: [f.id]})});
   }
   items.push({sep:true},
-    {label:'🔍 Scan this host',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
-    {label:'🔓 Authz test',val:'roles',act:()=>openAuthz(f.id)},
-    {label:'🔑 Use as login macro',act:()=>saveLoginMacroFromFlow(f.id)});
+    {label:'Scan this host',icon:'search',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
+    {label:'Authz test',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
+    {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)});
   return {head:head||'REQUEST', items};
 }
 
@@ -1243,7 +1243,7 @@ export function showCtx(x,y,f,field){
     }
     items.push({label:'Add host to scope',val:f.host,act:()=>addHostToScope(f.host)});
     items.push({sep:true});
-    items.push({label:'🗑 Delete all from host',val:f.host,danger:true,act:deleteHost(f)});
+    items.push({label:'Delete all from host',icon:'trash',val:f.host,danger:true,act:deleteHost(f)});
     sections.push({head:'HOST · '+f.host, items});
   }else if(field==='status'){
     const items=[];
@@ -1273,16 +1273,16 @@ export function showCtx(x,y,f,field){
   const tagN=tagTargets.length;
   const tagItems=[];
   (f.tags||[]).forEach(t=>{
-    tagItems.push({label:'🏷 Filter · '+t,on:state.filters.tag===t,act:()=>filterByTag(t)});
+    tagItems.push({label:'Filter · '+t,icon:'tag',on:state.filters.tag===t,act:()=>filterByTag(t)});
     tagItems.push({label:'✕ Remove · '+t,danger:true,val:tagN>1?tagN+' flows':'',act:()=>mutateFlowTags(tagTargets,{remove:[t]})});
   });
   const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
-  tagItems.push({label:selN?('🏷 Tag '+selN+' selected…'):'🏷 Tag…',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
+  tagItems.push({label:selN?('Tag '+selN+' selected…'):'Tag…',icon:'tag',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
   if(selN)tagItems.push({label:'✕ Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
   sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
-  const fitems=ff.map(x=>({label:'📌 '+x.title,val:x.severity,act:()=>openFinding(x.id)}));
-  fitems.push({label:'➕ Add to finding',act:()=>addFlowToFinding(f.id)});
+  const fitems=ff.map(x=>({label:x.title,icon:'pin',val:x.severity,act:()=>openFinding(x.id)}));
+  fitems.push({label:'Add to finding',icon:'plus',act:()=>addFlowToFinding(f.id)});
   sections.push({head:ff.length?('FINDINGS · in '+ff.length):'FINDINGS',items:fitems});
   if(anyFilter())sections.push({items:[{label:'Clear all filters',act:clearAllFilters}]});
   const sendAsIds=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
@@ -1386,7 +1386,7 @@ function compareWordDiff(a,b){
     }
     n++;
   }
-  return `<div style="font-family:var(--mono);font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word">${rows.join('')}${(i<ta.length||j<tb.length)?'<span class="hint"> …truncated</span>':''}</div>`;
+  return `<div style="font-family:var(--mono);font-size:var(--fs-xs);line-height:1.55;white-space:pre-wrap;word-break:break-word">${rows.join('')}${(i<ta.length||j<tb.length)?'<span class="hint"> …truncated</span>':''}</div>`;
 }
 function compareHeaderDiff(ha,hb){
   const keys=new Set([...Object.keys(ha||{}),...Object.keys(hb||{})]);
@@ -1394,8 +1394,8 @@ function compareHeaderDiff(ha,hb){
   if(!sorted.length)return '<div class="hint">No response headers</div>';
   const rows=sorted.map(k=>{
     const x=(ha&&ha[k]||[]).join(', '),y=(hb&&hb[k]||[]).join(', ');
-    if(x===y)return `<div style="font-family:var(--mono);font-size:11px;color:var(--fg3)"><b>${esc(k)}:</b> ${esc(x||'—')}</div>`;
-    return `<div style="font-family:var(--mono);font-size:11px;margin:4px 0"><div style="color:var(--red)"><b>${esc(k)}:</b> ${esc(x||'∅')}</div><div style="color:var(--accent)"><b>${esc(k)}:</b> ${esc(y||'∅')}</div></div>`;
+    if(x===y)return `<div style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)"><b>${esc(k)}:</b> ${esc(x||'—')}</div>`;
+    return `<div style="font-family:var(--mono);font-size:var(--fs-xs);margin:4px 0"><div style="color:var(--red)"><b>${esc(k)}:</b> ${esc(x||'∅')}</div><div style="color:var(--accent)"><b>${esc(k)}:</b> ${esc(y||'∅')}</div></div>`;
   });
   return rows.join('');
 }
@@ -1403,8 +1403,8 @@ function compareLineDiff(a,b){
   const la=a.split('\n'),lb=b.split('\n'),n=Math.max(la.length,lb.length),rows=[];
   for(let i=0;i<n&&rows.length<300;i++){
     const x=la[i]??'',y=lb[i]??'';
-    if(x===y)rows.push(`<div style="color:var(--fg3);font-family:var(--mono);font-size:11px;white-space:pre-wrap">${esc(x||' ')}</div>`);
-    else rows.push(`<div style="font-family:var(--mono);font-size:11px"><span style="color:var(--red);white-space:pre-wrap">${esc(x||'∅')}</span><br><span style="color:var(--accent);white-space:pre-wrap">${esc(y||'∅')}</span></div>`);
+    if(x===y)rows.push(`<div style="color:var(--fg3);font-family:var(--mono);font-size:var(--fs-xs);white-space:pre-wrap">${esc(x||' ')}</div>`);
+    else rows.push(`<div style="font-family:var(--mono);font-size:var(--fs-xs)"><span style="color:var(--red);white-space:pre-wrap">${esc(x||'∅')}</span><br><span style="color:var(--accent);white-space:pre-wrap">${esc(y||'∅')}</span></div>`);
   }
   return rows.join('')+(n>300?'<div class="hint">…line diff truncated</div>':'');
 }
@@ -1422,14 +1422,14 @@ export async function openCompare(){
     const mode=($('#compareMode')&&$('#compareMode').querySelector('.on')?.dataset.m)||'words';
     const bodyHtml=mode==='lines'?compareLineDiff(ba,bb):compareWordDiff(ba,bb);
     $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
-    if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:11px;flex-wrap:wrap">
+    if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:var(--fs-xs);flex-wrap:wrap">
       <span><b style="color:var(--red)">#${ids[0]}</b> ${esc(fa.method)} ${esc(fa.status||'—')} · ${fmtSize(fa.resLen)}</span>
       <span><b style="color:var(--accent)">#${ids[1]}</b> ${esc(fb.method)} ${esc(fb.status||'—')} · ${fmtSize(fb.resLen)}</span>
       <div class="seg" id="compareMode" style="margin-left:auto"><button class="on" data-m="words">Words</button><button data-m="lines">Lines</button></div>
     </div>
-    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:8px 0 4px">RESPONSE HEADERS</div>
+    <div class="micro-label" style="margin:8px 0 4px">RESPONSE HEADERS</div>
     ${compareHeaderDiff(fa.resHeaders,fb.resHeaders)}
-    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:12px 0 4px">RESPONSE BODY</div>
+    <div class="micro-label" style="margin:12px 0 4px">RESPONSE BODY</div>
     ${bodyHtml}`;
     $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{ $('#compareMode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); openCompare(); };});
   }catch(e){if(box)box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
@@ -1448,8 +1448,8 @@ $('#selScope').onclick=async()=>{
 export let _delArm=false,_delTimer;
 $('#selDelete').onclick=async()=>{
   const ids=[...state.selected];if(!ids.length)return;
-  if(!_delArm){_delArm=true;$('#selDelete').textContent='🗑 Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').textContent='🗑 Delete';},2500);return;}
-  clearTimeout(_delTimer);_delArm=false;$('#selDelete').textContent='🗑 Delete';
+  if(!_delArm){_delArm=true;$('#selDelete').innerHTML=icon('trash')+' Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';},2500);return;}
+  clearTimeout(_delTimer);_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';
   try{
     const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
     if(state.selected.has(state.selId))state.selId=null;

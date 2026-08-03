@@ -342,7 +342,7 @@ export function mapEpRow(e, dim){
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
     const extra = e._cluster.count - 1;
     const expanded = mapState.expandedClusters.has(e._cluster.key);
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}">${label === 'soft-404' ? 'soft-404' : '⚡'} +${extra}</button>`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
@@ -416,9 +416,9 @@ export async function loadParams(){
 function renderMapParams(d){
   const box=$('#mapParams'); if(!box) return;
   const hosts=d.hosts||[];
-  if(!hosts.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon">🔬</div><div class="state-empty-title">No parameters found</div><p class="state-empty-hint">Capture in-scope traffic with query strings or form/JSON bodies.</p></div>';return;}
+  if(!hosts.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask"/></svg></div><div class="state-empty-title">No parameters found</div><p class="state-empty-hint">Capture in-scope traffic with query strings or form/JSON bodies.</p></div>';return;}
   box.innerHTML=hosts.map(h=>`<div style="margin-bottom:16px">
-    <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--accent);margin-bottom:6px">${esc(h.host)}</div>
+    <div class="micro-label micro-label-accent" style="margin-bottom:6px">${esc(h.host)}</div>
     <table class="rules-tbl"><thead><tr><th>Name</th><th style="width:70px">Source</th><th style="width:50px">Hits</th><th style="width:90px">Sample</th></tr></thead><tbody>
     ${(h.params||[]).map(p=>`<tr class="map-param-row" data-flow="${p.lastFlowId}" title="${escAttr(p.samplePath||'')}">
       <td style="font-family:var(--mono);color:var(--fg)">${esc(p.name)}</td>
@@ -512,12 +512,12 @@ export function renderMap(){
 export function renderMapTree(eps){
   const box = $('#mapTree'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗺️</div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
+    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
     mapState._treeHosts = null;
     return;
   }
   if(eps.length > MAP_TREE_EAGER_MAX && (mapState.expandAll || mapState.search)){
-    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon">⚠️</div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
+    box.innerHTML = `<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-empty-title">Too many endpoints (${eps.length.toLocaleString()})</div><p class="state-empty-hint">Switch to <b>Table</b> view, filter by domain, or narrow your search to render expanded.</p></div>`;
     mapState._treeHosts = null;
     return;
   }
@@ -527,9 +527,9 @@ export function renderMapTree(eps){
   const lazy = mapTreeLazyEnabled(eps);
   box.innerHTML = [...mapState._treeHosts.values()].sort((a, b) => a.name.localeCompare(b.name)).map(h => {
     if(lazy){
-      return `<details class="map-host"><summary>🌐 ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body" data-lazy-key="${escAttr(h.key)}"></div></details>`;
+      return `<details class="map-host"><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body" data-lazy-key="${escAttr(h.key)}"></div></details>`;
     }
-    return `<details class="map-host" open><summary>🌐 ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, open, dim, false)}</div></details>`;
+    return `<details class="map-host" open><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, open, dim, false)}</div></details>`;
   }).join('');
   wireMapEpRows(box);
 }
@@ -552,10 +552,10 @@ function mapTableRow(e, showHost){
   if(e._cluster && !e._clusterChild){
     const extra = e._cluster.count - 1;
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
-    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '⚡'} +${extra}</span>`;
+    clusterCell = ` <span class="map-cluster-badge-static" title="${extra} with ${label}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</span>`;
   }
   return `<tr data-flow="${e.lastFlowId || ''}" class="${hit ? 'map-hit-row' : ''}${e._clusterChild ? ' map-cluster-child' : ''}">
-    ${showHost ? `<td style="font-family:var(--mono);font-size:11px">${esc(e.host)}</td>` : ''}
+    ${showHost ? `<td style="font-family:var(--mono);font-size:var(--fs-xs)">${esc(e.host)}</td>` : ''}
     <td class="map-tbl-m" style="color:${methodColor(e.method)}">${esc(e.method)}</td>
     <td class="map-tbl-p" title="${escAttr(path)}">${esc(path)}${clusterCell}</td>
     <td class="map-tbl-sts">${sts || '—'}</td>
@@ -582,7 +582,7 @@ function wireMapTableRows(box){
 function renderMapTable(eps){
   const box = $('#mapTable'); if(!box) return;
   if(!eps.length){
-    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗺️</div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
+    box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"/></svg></div><div class="state-empty-title">No endpoints match</div><p class="state-empty-hint">Capture traffic or relax the filters.</p></div>';
     return;
   }
   const sorted = mapSortEps(eps);

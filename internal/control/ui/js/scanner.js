@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 
@@ -62,7 +62,7 @@ async function loadCheckDocs(){
     const d=await api('/api/checks/reference');
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
-  }catch(e){box.innerHTML='<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">'+esc(e.message)+'</p></div>';}
+  }catch(e){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p></div>';}
 }
 function updateCheckFlowHint(){
   const el=$('#checkFlowHint');if(!el)return;
@@ -80,7 +80,7 @@ export async function loadChecksList(){
     const d=await api('/api/checks');const box=$('#checksList');if(!box)return;
     const cs=d.checks||[];const dis=new Set(d.disabled||[]);
     const builtin=d.builtin||[];const active=d.active||[];
-    const sevBadge=s=>`<span class="sev ${escAttr(s)}" style="font-size:9px">${esc(s)}</span>`;
+    const sevBadge=s=>`<span class="sev ${escAttr(s)}" style="font-size:var(--fs-xs)">${esc(s)}</span>`;
     const catBadge=c=>c?`<span class="checks-cat">${esc(c)}</span>`:'';
     const builtinIds=new Set(builtin.map(b=>b.id));
     const activeIds=new Set(active.map(a=>a.id));
@@ -88,7 +88,7 @@ export async function loadChecksList(){
     const row=(opts)=>{
       const enId=opts.customActive&&!builtinIds.has(opts.id)&&!activeIds.has(opts.id)?'custom-active:'+opts.id:opts.id;
       const cb=opts.toggleable!==false?`<input type="checkbox" class="check-en" data-id="${escAttr(enId)}" ${dis.has(enId)?'':'checked'} aria-label="enable ${escAttr(opts.title)}">`:'';
-      const bolt=opts.activeKind==='active'?'<span style="width:14px;flex:none;color:var(--amber);margin-top:2px" title="sends traffic">⚡</span>':'';
+      const bolt=opts.activeKind==='active'?'<span style="width:14px;flex:none;color:var(--amber);margin-top:2px" title="sends traffic"><svg class="icon" role="img" aria-label="sends real traffic" focusable="false"><use href="#i-bolt"/></svg></span>':'';
       const pick=opts.pickable?' checks-pick':'';
       const cls=['checks-row',opts.rowClass||'',pick].filter(Boolean).join(' ');
       const data=opts.id?` data-id="${escAttr(opts.id)}"${opts.activeKind==='active'?' data-active="1"':''}`:'';
@@ -96,7 +96,7 @@ export async function loadChecksList(){
       const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
       return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
         ${cb}${bolt}<div class="checks-body">
-        <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' ⚠':''}</span>
+        <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>':''}</span>
         <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
         </div></div>`;
     };
@@ -143,7 +143,7 @@ export async function loadChecksList(){
         toast('check '+(cb.checked?'enabled':'disabled'));}catch(e){toast(e.message);}
     });
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
-  }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="state-error"><div class="state-error-icon">⚠</div><p class="state-error-msg">Couldn't load checks: ${esc(e.message)}</p></div>`;}
+  }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">Couldn't load checks: ${esc(e.message)}</p></div>`;}
 }
 // Filters the sidebar by title/id substring match. Groups auto-expand while a
 // filter is active (so a match in a collapsed built-in group is still found)
@@ -164,7 +164,7 @@ function checksApplyFilter(){
   });
 }
 const ACTIVE_CHECK_TEMPLATE=`# Active check: send probes at an injection point, confirm a vuln.
-# ⚡ probe(payload) sends a real request — it counts against the run's budget.
+# probe(payload) sends a real request — it counts against the run's budget.
 def check(point, baseline, probe):
     r = probe("'")
     if re_search("(?i)SQL syntax", r.body):
@@ -178,7 +178,7 @@ function refreshCheckEditorMode(){
   if(checkKind==='active' && checkMode==='describe') checkSetMode('code');
   const kh=$('#checkKindHint');
   if(kh){
-    if(checkKind==='active'){kh.style.display='';kh.textContent='⚡ def check(point, baseline, probe): — probe() sends a real request';}
+    if(checkKind==='active'){kh.style.display='';kh.textContent='def check(point, baseline, probe): — probe() sends a real request';}
     else{kh.style.display='none';kh.textContent='';}
   }
 }
@@ -193,7 +193,7 @@ function updateCheckDeleteLabel(){
     btn.title=checkOverridden?'Delete your Starlark override — the built-in check runs again':'No override saved yet — nothing to revert';
     btn.disabled=!checkOverridden;
   }else{
-    btn.textContent='🗑 Delete';
+    btn.innerHTML=icon('trash')+' Delete';
     btn.title='Delete this custom check';
     btn.disabled=false;
   }
@@ -232,7 +232,7 @@ export async function checkTest(){
   const out=$('#checkOut');out.innerHTML='<div class="check-status check-status-pending">running…</div>';
   try{const r=await api(checkEndpoint()+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
     if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';return;}
-    const suffix=checkKind==='active'?' · ⚡ sent real probes':'';
+    const suffix=checkKind==='active'?' · sent real probes':'';
     if(checkKind==='active'){
       // Active checks return a single {finding} (or {note} when none) — the shape
       // testActiveCheck (internal/control/active_checks.go) always emits.
@@ -413,7 +413,7 @@ function asScopeRuleLine(r){
   const color=tag==='exclude'?'var(--red)':'var(--accent)';
   const host=r.host||'(any host)';
   const extra=[r.path?'path:'+r.path:'',r.scheme?r.scheme:''].filter(Boolean).join(' · ');
-  return `<div style="font-family:var(--mono);font-size:11.5px;padding:3px 0"><span style="font-weight:700;color:${color}">${tag}</span> <span style="color:var(--fg)">${esc(host)}</span>${extra?` <span class="hint">${esc(extra)}</span>`:''}</div>`;
+  return `<div style="font-family:var(--mono);font-size:var(--fs-xs);padding:3px 0"><span style="font-weight:700;color:${color}">${tag}</span> <span style="color:var(--fg)">${esc(host)}</span>${extra?` <span class="hint">${esc(extra)}</span>`:''}</div>`;
 }
 export async function renderAsScopePanel(){
   const panel=$('#asScopePanel');if(!panel)return;
@@ -429,11 +429,11 @@ export async function renderAsScopePanel(){
     html=`<p class="hint" style="color:var(--amber);margin:0;line-height:1.55"><b>No scope rules.</b> Bulk active scan requires at least one <b>include</b> rule — without it, every captured host would be attacked. Define targets under <b>Settings → Target scope</b>.</p>`;
   }else if(!includes.length){
     html=`<p class="hint" style="color:var(--amber);margin:0 0 8px;line-height:1.55"><b>No include rules.</b> Add at least one enabled <b>include</b> rule before running bulk active scan.</p>`;
-    if(excludes.length)html+=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:8px 0 4px">EXCLUDE RULES</div>`+excludes.map(asScopeRuleLine).join('');
+    if(excludes.length)html+=`<div class="micro-label" style="margin:8px 0 4px">EXCLUDE RULES</div>`+excludes.map(asScopeRuleLine).join('');
   }else{
-    html=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:0 0 6px">IN-SCOPE (from Settings → Target scope)</div>`;
+    html=`<div class="micro-label" style="margin:0 0 6px">IN-SCOPE (from Settings → Target scope)</div>`;
     html+=includes.map(asScopeRuleLine).join('');
-    if(excludes.length)html+=`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:10px 0 4px">EXCLUDE (always wins)</div>`+excludes.map(asScopeRuleLine).join('');
+    if(excludes.length)html+=`<div class="micro-label" style="margin:10px 0 4px">EXCLUDE (always wins)</div>`+excludes.map(asScopeRuleLine).join('');
   }
   html+=`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" id="asScopeEdit">Settings → Target scope</button><span class="hint" id="asScopeHosts">checking captured traffic…</span></div>`;
   panel.innerHTML=html;
@@ -470,7 +470,7 @@ function renderAsLogs(d){
     const st=p.status||0;
     const err=p.error?` <span style="color:var(--red)">${esc(p.error)}</span>`:'';
     const flow=p.flowId?` <span style="color:var(--blue)">#${p.flowId}</span>`:'';
-    return `<div class="as-log-row${p.flowId?'':' muted'}"${p.flowId?` data-flow="${p.flowId}"`:''} style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);cursor:${p.flowId?'pointer':'default'};font-size:11.5px;font-family:var(--mono)">
+    return `<div class="as-log-row${p.flowId?'':' muted'}"${p.flowId?` data-flow="${p.flowId}"`:''} style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);cursor:${p.flowId?'pointer':'default'};font-size:var(--fs-xs);font-family:var(--mono)">
       <span style="width:44px;flex:none;color:${methodColor(p.method)}">${esc(p.method||'—')}</span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)">${esc(p.host||'')}${esc(p.path||'')}</span>
       <span style="width:36px;flex:none;text-align:right;color:${statusColor(st)}">${st||'—'}</span>${flow}${err}</div>`;
@@ -589,7 +589,7 @@ export function scanGroups(){
 }
 export function renderScan(){
   const list=$('#scanList');
-  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon">🛡️</div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon">📋</div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';return;}
+  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';return;}
   const groups=scanState.groups=scanGroups();
   const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
   $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
@@ -605,19 +605,19 @@ export function renderScanDetail(){
   const first=g.items[0];
   const shared=g.items.every(i=>i.detail===first.detail); // show a common description once
   const tgts=g.items.map(i=>`<div class="scan-tgt"${i.flowId?` data-flow="${i.flowId}"`:''} style="${i.flowId?'cursor:pointer;':''}padding:7px 9px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px">
-    <div style="font-family:var(--mono);font-size:12px;color:var(--accent);word-break:break-all">${esc(i.target||'(no target)')}${i.flowId?` <span style="color:var(--fg3)">· flow #${i.flowId}</span>`:''}</div>
-    ${(!shared&&i.detail)?`<div style="font-size:12px;color:var(--fg2);margin-top:5px;line-height:1.5">${esc(i.detail)}</div>`:''}
+    <div style="font-family:var(--mono);font-size:var(--fs-sm);color:var(--accent);word-break:break-all">${esc(i.target||'(no target)')}${i.flowId?` <span style="color:var(--fg3)">· flow #${i.flowId}</span>`:''}</div>
+    ${(!shared&&i.detail)?`<div style="font-size:var(--fs-sm);color:var(--fg2);margin-top:5px;line-height:1.5">${esc(i.detail)}</div>`:''}
     ${i.evidence?`<div class="evidence" style="margin-top:6px">${esc(i.evidence)}</div>`:''}</div>`).join('');
   $('#scanDetail').innerHTML=`<div class="scan-wrap">
     <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
     <div class="row" style="align-items:center;gap:10px;margin:12px 0 6px;flex-wrap:wrap">
-      <h1 style="font-size:17px;font-weight:700;line-height:1.3;flex:1;margin:0;min-width:0">${esc(g.title)}</h1>
-      <button class="btn accent" id="scanPromote" title="Create a curated finding from this issue — title, detail, fix, and every PoC flow attached">➕ Promote to Finding</button>
+      <h1 style="font-size:var(--fs-2xl);font-weight:700;line-height:1.3;flex:1;margin:0;min-width:0">${esc(g.title)}</h1>
+      <button class="btn accent" id="scanPromote" title="Create a curated finding from this issue — title, detail, fix, and every PoC flow attached"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Promote to Finding</button>
     </div>
-    ${(shared&&first.detail)?`<p style="font-size:13px;color:var(--fg2);line-height:1.6">${esc(first.detail)}</p>`:''}
-    <div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
+    ${(shared&&first.detail)?`<p style="font-size:var(--fs-md);color:var(--fg2);line-height:1.6">${esc(first.detail)}</p>`:''}
+    <div class="micro-label" style="margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
     ${tgts}
-    ${first.fix?`<div style="font-size:9px;font-weight:700;letter-spacing:.6px;color:var(--fg3);margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
+    ${first.fix?`<div class="micro-label" style="margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
   $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
   const pm=$('#scanPromote'); if(pm) pm.onclick=()=>promoteFinding(g);
 }

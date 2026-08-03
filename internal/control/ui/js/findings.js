@@ -49,7 +49,7 @@ function findingIsEmpty(f) {
 
 function findingListMeta(f) {
   const st = f.status === 'needs_verification'
-    ? '<span class="find-needs-verif" title="Needs human verification">⚠ needs verification</span>'
+    ? '<span class="find-needs-verif" title="Needs human verification"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> needs verification</span>'
     : esc(statusLabel(f.status));
   const ready = f.ready
     ? '<span class="find-ready">Ready</span>'
@@ -58,7 +58,7 @@ function findingListMeta(f) {
   const tags = f.tags || [];
   if (tags.length) parts.push('<span class="find-tags-inline">' + tags.map(t => esc(t)).join(' · ') + '</span>');
   if (f.verification && f.verification.confidence != null) {
-    parts.push('<span class="find-conf" title="Autopilot verifier confidence">⚙ ' + esc(String(f.verification.confidence)) + '%</span>');
+    parts.push('<span class="find-conf" title="Autopilot verifier confidence"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> ' + esc(String(f.verification.confidence)) + '%</span>');
   }
   const pocs = findingPocCount(f);
   if (pocs) parts.push(pocs + ' PoC');
@@ -115,12 +115,12 @@ export async function loadFindings() {
 
 function findingsEmptyHTML() {
   return `<div class="state-empty find-empty">
-    <div class="state-empty-icon">🔎</div>
+    <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
     <div class="state-empty-title">No findings yet</div>
     <p class="state-empty-hint">File a vulnerability with PoC evidence — manually, from Autopilot, or by asking AI to triage history.</p>
     <div class="find-empty-actions">
       <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
-      <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui>✨ Ask AI for findings</button>
+      <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI for findings</button>
     </div>
     <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
   </div>`;
@@ -162,7 +162,7 @@ function renderFindings() {
   }
   setFindingsViewEmpty(false);
   if (!list.length) {
-    box.innerHTML = `<div class="state-empty find-empty"><div class="state-empty-icon">🏷️</div><div class="state-empty-title">No findings with tag “${esc(findTagFilter)}”</div><p class="state-empty-hint">Clear the tag filter or tag a finding in the detail pane.</p><div class="find-empty-actions"><button type="button" class="btn" id="findClearTagFilter">Show all findings</button></div></div>`;
+    box.innerHTML = `<div class="state-empty find-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg></div><div class="state-empty-title">No findings with tag “${esc(findTagFilter)}”</div><p class="state-empty-hint">Clear the tag filter or tag a finding in the detail pane.</p><div class="find-empty-actions"><button type="button" class="btn" id="findClearTagFilter">Show all findings</button></div></div>`;
     const clr = box.querySelector('#findClearTagFilter');
     if (clr) clr.onclick = () => { findTagFilter = ''; renderFindTagFilter(); renderFindings(); };
     selFinding = null; renderFindingDetail(); return;
@@ -241,9 +241,9 @@ function finishTextEdit(block, ta, fid) {
 
 function renderBlockEl(b, i, total) {
   const isFirst = i === 0, isLast = i === total - 1;
-  const upBtn = isFirst ? '' : `<button class="btn xs" data-mv="${i}" data-dir="-1" title="Move up" style="padding:1px 5px;font-size:11px">↑</button>`;
-  const dnBtn = isLast ? '' : `<button class="btn xs" data-mv="${i}" data-dir="1" title="Move down" style="padding:1px 5px;font-size:11px">↓</button>`;
-  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" style="padding:1px 5px;font-size:11px">✕</button>`;
+  const upBtn = isFirst ? '' : `<button class="btn xs" data-mv="${i}" data-dir="-1" title="Move up" style="padding:1px 5px;font-size:var(--fs-xs)">↑</button>`;
+  const dnBtn = isLast ? '' : `<button class="btn xs" data-mv="${i}" data-dir="1" title="Move down" style="padding:1px 5px;font-size:var(--fs-xs)">↓</button>`;
+  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" style="padding:1px 5px;font-size:var(--fs-xs)">✕</button>`;
   const controls = `<div class="find-block-controls">${upBtn}${dnBtn}${delBtn}</div>`;
 
   if (b.type === 'text') {
@@ -262,7 +262,7 @@ function renderBlockEl(b, i, total) {
       return `<div class="find-block find-doc-image find-block-missing" data-i="${i}">
         ${controls}
         <blockquote class="find-poc-callout find-poc-missing">
-          <div>⚠ Screenshot — evidence blob missing</div>
+          <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot — evidence blob missing</div>
           <span class="hint">${esc(b.hash || '')}</span>
         </blockquote>
         <input class="find-poc-note-input block-caption" data-i="${i}" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
@@ -286,7 +286,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-flow find-block-missing" data-i="${i}">
       ${controls}
       <blockquote class="find-poc-callout find-poc-missing">
-        <div>⚠ PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
+        <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
         <span class="hint">Re-capture this endpoint to restore evidence</span>
       </blockquote>
       <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
@@ -425,7 +425,7 @@ async function patchFinding(id, fields) {
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
   const f = findings.find(x => x.id === selFinding);
-  if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon">🗂️</div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
+  if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg></div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
   const sevOpts = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(s => `<option value="${s}"${s === f.severity ? ' selected' : ''}>${s}</option>`).join('');
@@ -438,7 +438,7 @@ function renderFindingDetail() {
     if (missFlow) parts.push(`${missFlow} PoC flow${missFlow === 1 ? '' : 's'} deleted from history`);
     if (missImg) parts.push(`${missImg} screenshot${missImg === 1 ? '' : 's'} missing`);
     if (badType) parts.push(`${badType} unknown block type${badType === 1 ? '' : 's'} (edit & re-save to fix)`);
-    return parts.length ? `<div class="find-missing-banner">⚠ ${parts.join(' · ')} — restore evidence if needed.</div>` : '';
+    return parts.length ? `<div class="find-missing-banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> ${parts.join(' · ')} — restore evidence if needed.</div>` : '';
   })();
   const gaps = f.missing || [];
   const completeBar = f.ready
@@ -446,7 +446,7 @@ function renderFindingDetail() {
     : `<div class="find-complete find-complete-draft" role="status"><span class="find-draft">Draft</span> — still need: ${gaps.map(g => `<a href="#find-sec-${escAttr(g === 'poc_before_after' ? 'poc' : g)}" class="find-gap-link">${esc(missingLabel(g))}</a>`).join(', ') || 'content'}</div>`;
   const verifBanner = (f.status === 'needs_verification' || f.verificationInstructions)
     ? `<div class="find-verif-banner" role="status">
-        <div class="find-verif-title">⚠ Needs human verification</div>
+        <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Needs human verification</div>
         <textarea id="findVerifInstr" class="find-verif-text" rows="3" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>
       </div>` : '';
   const machineProof = (() => {
@@ -468,7 +468,7 @@ function renderFindingDetail() {
         }).join('')
       : '<span class="hint">Gate detail unavailable</span>';
     return `<div class="find-machine-proof" role="status">
-      <div class="find-machine-title">⚙ Autopilot trust · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
+      <div class="find-machine-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> Autopilot trust · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
       <div class="hint">Class <b>${esc(v.vulnClass || '—')}</b>${v.runId ? ' · run #' + esc(String(v.runId)) : ''}${v.reproCount ? ' · repro ×' + esc(String(v.reproCount)) : ''}${v.oobToken ? ' · OOB' : ''}</div>
       <div class="find-gate-list">${gateRows}</div>
       ${(v.baselineFlow || v.payloadFlow) ? `<div class="hint">PoC flows: ${[v.baselineFlow && ('#' + v.baselineFlow), v.payloadFlow && ('#' + v.payloadFlow)].filter(Boolean).join(' · ')}</div>` : ''}
@@ -488,7 +488,7 @@ function renderFindingDetail() {
            <p><b>Target</b> — ${f.target ? esc(f.target) : '<span class="hint">—</span>'}</p>`}
       <p class="hint">CVSS ${esc(f.cvss || '—')} · CWE ${esc(f.cwe || '—')} · env ${esc(f.environment || '—')}</p>
       <div class="find-tags-bar"><div class="find-tag-chips">${(f.tags || []).map(t => `<span class="find-tag-chip">${esc(t)}</span>`).join('') || '<span class="hint">no tags</span>'}</div>
-        ${edit ? `<button class="btn xs" id="findEditTags">✎ Tags</button>` : ''}</div>
+        ${edit ? `<button class="btn xs" id="findEditTags"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Tags</button>` : ''}</div>
     </div></details>`;
 
   box.innerHTML = `<article class="find-article${edit ? ' find-editing' : ' find-reading'}">
@@ -498,7 +498,7 @@ function renderFindingDetail() {
         ${edit
           ? `<select id="findSeverity" class="btn find-sev-select" aria-label="Severity" style="color:${sevColor(f.severity)}">${sevOpts}</select>
              <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
-             <button class="btn xs" id="findRename" title="Rename finding">✎</button>`
+             <button class="btn xs" id="findRename" title="Rename finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg></button>`
           : `<span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
              <h2 class="find-title-text" id="findTitleText">${esc(f.title)}</h2>
              <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
@@ -511,10 +511,10 @@ function renderFindingDetail() {
         <div class="find-cvss-field"><label for="findCvss">CVSS</label><input id="findCvss" class="find-cvss-inline" type="text" value="${escAttr(f.cvss || '')}"></div>
         <div class="find-cvss-field"><label for="findCwe">CWE</label><input id="findCwe" class="find-cvss-inline" type="text" value="${escAttr(f.cwe || '')}"></div>
         <div class="spacer"></div>
-        <button class="btn accent" id="findAskAi" data-ai-ui>✨ Ask AI</button>
+        <button class="btn accent" id="findAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
         <button class="btn danger xs" id="findDelete">Delete</button>
       </div>` : `<div class="find-meta-bar">
-        <button class="btn accent" id="findAskAi" data-ai-ui>✨ Ask AI</button>
+        <button class="btn accent" id="findAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
         <button class="btn danger xs" id="findDelete">Delete</button>
       </div>`}
     </header>
@@ -680,7 +680,7 @@ function renderFindReportBody(fid) {
     if (b.type === 'image') {
       step++;
       if (b.missing) {
-        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div><div class="find-poc-missing">⚠ Screenshot missing</div></div>`;
+        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div><div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot missing</div></div>`;
       }
       const src = b.url || ('/api/findings/images/' + (b.hash || ''));
       return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
@@ -691,7 +691,7 @@ function renderFindReportBody(fid) {
       step++;
       if (b.missing) {
         return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
-          <div class="find-poc-missing">⚠ PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
+          <div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — missing${b.note ? ' · ' + esc(b.note) : ''}</div></div>`;
       }
       const reqLine = b.method
         ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
@@ -1039,7 +1039,7 @@ export function addFlowToFinding(flowId) {
   if (flowId) pickFindingForFlows([flowId]);
 }
 
-/* ---- "➕ Add to finding" from the History selection bar ---- */
+/* ---- "Add to finding" from the History selection bar ---- */
 export function pickFindingForSelection() {
   pickFindingForFlows(state.selected ? [...state.selected] : []);
 }

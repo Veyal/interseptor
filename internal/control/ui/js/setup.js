@@ -56,15 +56,18 @@ function renderStep() {
     b.innerHTML = `<p style="margin:0 0 10px">Choose the correct project before capture so engagement data stays separated. <button class="btn xs" id="setupChooseProject">Choose project…</button></p>
       <p style="margin:0 0 10px">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
       <div class="row" style="gap:8px;margin-bottom:14px">
-        <code class="evidence" style="flex:1;margin:0;font-size:13px">${addr}</code>
+        <code class="evidence" style="flex:1;margin:0;font-size:var(--fs-md)">${addr}</code>
         <button class="btn" id="setupCopyAddr">⧉ Copy</button>
       </div>
-      <button class="btn" id="setupSysProxy" style="margin-bottom:10px">Set as macOS system proxy</button>
+       <button class="btn" id="setupSysProxy" style="margin-bottom:10px">Set as system proxy</button>
       <p class="hint" style="margin:0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
       <div id="setupReadiness" class="evidence" style="margin-top:10px"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
-    $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
-    $('#setupSysProxy').onclick = async () => {
+     $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
+     api('/api/sysproxy').then(st => {
+       if (!st.supported) $('#setupSysProxy').style.display = 'none';
+     }).catch(() => {});
+     $('#setupSysProxy').onclick = async () => {
       try {
         const st = await api('/api/sysproxy');
         if (!st.supported) { toast('automatic system-proxy is macOS-only — set it manually on Windows/Linux'); return; }
@@ -77,7 +80,7 @@ function renderStep() {
     const os = osHint();
     const trust = TRUST_STEPS[os] || `<li>Install the CA into your OS/browser root trust store.</li>`;
     const cmd = TRUST_COMMANDS[os];
-    const cmdBox = cmd ? `<div class="row" style="gap:8px;margin:10px 0 0"><code class="evidence" style="flex:1;margin:0;font-size:11px;white-space:pre-wrap;word-break:break-all">${esc(cmd)}</code><button class="btn" id="setupCopyCmd">⧉</button></div><p class="hint" style="margin:4px 0 0">…or paste this one-liner into a terminal after downloading.</p>` : '';
+    const cmdBox = cmd ? `<div class="row" style="gap:8px;margin:10px 0 0"><code class="evidence" style="flex:1;margin:0;font-size:var(--fs-xs);white-space:pre-wrap;word-break:break-all">${esc(cmd)}</code><button class="btn" id="setupCopyCmd">⧉</button></div><p class="hint" style="margin:4px 0 0">…or paste this one-liner into a terminal after downloading.</p>` : '';
     b.innerHTML = `<p style="margin:0 0 10px">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
       <a class="btn accent" href="/api/ca.crt" download style="text-decoration:none;display:inline-block;margin-bottom:14px">⤓ Download CA certificate</a>
       <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol style="margin:8px 0 4px;padding-left:22px;color:var(--fg2)">${trust}</ol></details>

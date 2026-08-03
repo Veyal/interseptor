@@ -62,8 +62,8 @@ function makeHostHdrRow(host, hdrs) {
   const row = document.createElement('div');
   row.className = 'host-hdr-row';
   row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
-  row.innerHTML = `<input class="btn host-hdr-host" style="background:var(--bg3);font-family:var(--mono);font-size:11px;width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
-    `<textarea class="host-hdr-headers" rows="2" style="flex:1;font-family:var(--mono);font-size:11px;resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
+  row.innerHTML = `<input class="btn host-hdr-host" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
+    `<textarea class="host-hdr-headers" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
     `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override">×</button>`;
   row.querySelector('.host-hdr-del').onclick = () => row.remove();
   return row;
@@ -138,7 +138,7 @@ function makeProxyListenerRow(addr){
   row.className='proxy-listener-row row';
   row.style.cssText='gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap';
   row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" style="width:100%;text-align:left"></select></div>`+
-    `<div style="width:100px"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" value="${escAttr(port)}" style="width:100%"></div>`+
+    `<div style="width:100px"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
     `<button type="button" class="btn proxy-listener-del" title="Remove listener" style="color:var(--red);padding:3px 10px">×</button>`;
   renderHostSelect(row.querySelector('.proxy-host-select'),host);
   row.querySelector('.proxy-listener-del').onclick=()=>{
@@ -667,7 +667,7 @@ if($('#loginMacroTest'))$('#loginMacroTest').onclick=async()=>{
     const hdrs=r.headers||[];
     let html=`<div style="margin-bottom:6px">Login responded <b style="color:${scColor}">${sc||'no response'}</b> · captured <b>${hdrs.length}</b> session header${hdrs.length===1?'':'s'} <span class="hint">(dry-run — live session unchanged)</span></div>`;
     if(hdrs.length){
-      html+=hdrs.map(h=>{const v=String(h.value||'');return `<div style="font-family:var(--mono);font-size:11px;overflow-wrap:anywhere"><span style="color:var(--accent)">${esc(h.key)}</span>: ${esc(v.length>160?v.slice(0,160)+'…':v)}</div>`;}).join('');
+      html+=hdrs.map(h=>{const v=String(h.value||'');return `<div style="font-family:var(--mono);font-size:var(--fs-xs);overflow-wrap:anywhere"><span style="color:var(--accent)">${esc(h.key)}</span>: ${esc(v.length>160?v.slice(0,160)+'…':v)}</div>`;}).join('');
     }else{
       html+='<div class="hint" style="color:var(--amber)">No session captured — the login response set no Set-Cookie or Authorization. Check the request, credentials and target.</div>';
     }
@@ -956,7 +956,7 @@ async function renderProjModal(){
     const others=(d.projects||[]).filter(p=>p.name!==d.current);
     list.innerHTML=others.length
       ?others.map(p=>{
-        const sub=p.path?`<div class="hint" style="font-family:var(--mono);font-size:10px;margin-top:1px">${esc(p.path)}</div>`:'';
+        const sub=p.path?`<div class="hint" style="font-family:var(--mono);font-size:var(--fs-xs);margin-top:1px">${esc(p.path)}</div>`:'';
         return `<button class="btn pm-row" data-proj="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}" style="text-align:left;background:var(--bg3);display:block">◧ ${esc(p.name)}${sub}</button>`;
       }).join('')
       :'<div class="hint">No other saved projects yet — create one below.</div>';

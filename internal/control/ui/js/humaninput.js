@@ -17,7 +17,7 @@ function renderHumanInput(prompts) {
     const opts = (p.options || []).map(o =>
       `<button class="btn xs hi-opt" data-id="${p.id}" data-ans="${escAttr(o)}">${esc(o)}</button>`).join('');
     return `<div class="hi-prompt" data-id="${p.id}">
-      <span class="hi-icon" title="The AI is waiting for your input">🤖</span>
+      <span class="hi-icon" title="The AI is waiting for your input"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-robot"/></svg></span>
       <span class="hi-msg">${esc(p.message)}</span>
       <span class="hi-actions">${opts}
         <input class="hi-input" data-id="${p.id}" placeholder="type an answer…" aria-label="Answer the AI">

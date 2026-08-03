@@ -3,7 +3,7 @@ import { $, esc, state, api, toast } from './core.js';
 
 const VERDICT = {
   ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '✓' },
-  tls_blocked: { label: 'TLS blocked — pinning or untrusted CA', color: 'var(--red)', icon: '⛔' },
+  tls_blocked: { label: 'TLS blocked — pinning or untrusted CA', color: 'var(--red)', icon: '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg>' },
   no_traffic: { label: 'No traffic captured yet', color: 'var(--amber)', icon: '○' },
   no_https: { label: 'No HTTPS traffic intercepted yet (HTTP only so far)', color: 'var(--amber)', icon: '?' },
 };
@@ -18,11 +18,11 @@ function verdictMeta(v) {
 
 function hostsLine(rep) {
   if (!rep.hostsBlocked || !rep.hostsBlocked.length) return '';
-  return `<div style="margin-top:6px;font-size:11.5px;color:var(--fg3)">Blocked hosts: <code>${rep.hostsBlocked.map(h => esc(h)).join('</code>, <code>')}</code></div>`;
+  return `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--fg3)">Blocked hosts: <code>${rep.hostsBlocked.map(h => esc(h)).join('</code>, <code>')}</code></div>`;
 }
 
 function bypassNote() {
-  return `<p style="margin:8px 0 0;font-size:11.5px;color:var(--fg3)"><b>Interseptor cannot bypass SSL pinning to read this traffic</b> — that requires changes on the device (Frida, patched APK, emulator + system CA if the app does not pin). If these domains aren't important to your test, <b>pass them through</b> so the app keeps working while you intercept the rest.</p>`;
+  return `<p style="margin:8px 0 0;font-size:var(--fs-xs);color:var(--fg3)"><b>Interseptor cannot bypass SSL pinning to read this traffic</b> — that requires changes on the device (Frida, patched APK, emulator + system CA if the app does not pin). If these domains aren't important to your test, <b>pass them through</b> so the app keeps working while you intercept the rest.</p>`;
 }
 
 export function isTlsBannerHidden() {
@@ -78,14 +78,14 @@ export function renderTrafficDiagnosis(rep) {
 
   const body = `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
     <span style="font-weight:700;color:${v.color};white-space:nowrap">${v.icon} ${esc(v.label)}</span>
-    <span style="flex:1;min-width:200px;color:var(--fg2);font-size:12px;line-height:1.55">${esc(rep.detail || '')}</span>
+    <span style="flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:1.55">${esc(rep.detail || '')}</span>
     ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" id="tlsFilterPinBtn" style="flex:none">Show PIN rows</button>` : ''}
     ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent" id="tlsPassthroughBtn" style="flex:none" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
     ${rep.verdict !== 'ok' ? `<button type="button" class="btn" id="tlsOpenSettingsBtn" style="flex:none">Settings → TLS</button>` : ''}
     <button type="button" class="btn" id="tlsBannerDismiss" title="Dismiss until verdict changes" style="flex:none;padding:3px 8px" aria-label="Dismiss TLS diagnosis banner">✕</button>
-    <button type="button" class="btn" id="tlsBannerDismissForever" title="Never show this banner in Proxy History" style="flex:none;font-size:11px">Don't show again</button>
+    <button type="button" class="btn" id="tlsBannerDismissForever" title="Never show this banner in Proxy History" style="flex:none;font-size:var(--fs-xs)">Don't show again</button>
   </div>
-  ${rep.fix ? `<div style="margin-top:6px;font-size:11.5px;color:var(--fg2)"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
+  ${rep.fix ? `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--fg2)"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
   ${hostsLine(rep)}
   ${rep.verdict === 'tls_blocked' ? bypassNote() : ''}`;
 
@@ -99,7 +99,7 @@ export function renderTrafficDiagnosis(rep) {
       banner.innerHTML = '';
     } else {
       banner.style.display = '';
-      banner.style.cssText = 'display:block;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);font-size:12px;line-height:1.55';
+      banner.style.cssText = 'display:block;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-sm);line-height:1.55';
       banner.innerHTML = body;
       wireTrafficDiagnosisActions(banner);
       wireBannerDismiss(banner, rep);
@@ -166,7 +166,7 @@ export async function loadTrafficDiagnosis(host) {
 export function getStartedDiagnosisHint() {
   if (!lastDiag || lastDiag.verdict === 'ok') return '';
   const v = verdictMeta(lastDiag.verdict);
-  return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:12px;line-height:1.6">
+  return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:var(--fs-sm);line-height:1.6">
     <div style="font-weight:700;color:${v.color};margin-bottom:4px">${v.icon} ${esc(v.label)}</div>
     <div style="color:var(--fg2)">${esc(lastDiag.detail || '')}</div>
     ${lastDiag.verdict === 'tls_blocked' ? '<div style="margin-top:6px;color:var(--fg3)">Interseptor detects pinning but <b>cannot bypass it</b> — use Frida, a patched APK, or an emulator with system CA.</div>' : ''}
