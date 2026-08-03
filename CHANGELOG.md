@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-08-03
+
+### Added
+- **Design-system contract tests (`internal/control/ui_design_system_test.go`).** The UI ships as embedded static assets with no build step, so nothing enforced the design system. These tests are that enforcement: they parse `app.css` and compute real WCAG 2.2 contrast ratios for every foreground token against every surface token in *both* themes, and assert token discipline, one-source-of-truth per selector, the icon contract, font roles, breakpoint coherence, and the type/radius scale bounds.
+- **Inline SVG icon sprite (`index.html` `#iconSprite`) and `icon()` helper (`js/core.js`).** 36 stroke icons in one family (24×24, `currentColor`, uniform 1.75 stroke), inlined so they need no build step, no network, and no extra request. `openCtxMenu` gained an `icon:` field, since menu labels are escaped and cannot carry markup. The helper takes an optional label so icons carrying meaning on their own (the HTTPS lock in the Proxy host column) get `role="img"`/`aria-label` rather than being hidden from assistive tech.
+- **`--accentSolid` / `--redSolid` / `--onDanger` tokens**, splitting text-safe tints from control fills.
+
+### Fixed
+- **Read-only API keys no longer expose reusable session or authorization credentials.** Session headers, host-specific headers, login/macro request bodies, and authz identity headers are redacted from credential-bearing GET responses for read-scoped keys; full-access and trusted local access retain their existing behavior.
+- **Mobile UI layout now honors handset viewport width.** The embedded shell uses `width=device-width`, allowing the existing responsive breakpoints to activate on phones.
+- **Active setup documentation now matches runtime names and paths.** Environment variables use the `INTERSEPTOR_*` prefix, live project databases are documented as `interseptor.db`, and stale startup-picker wording is removed.
+- **Upgrade forwarding now preserves declined-upgrade response bodies and forces HTTP/1.1 for raw HTTPS upgrade handshakes.** Held request and response interception also releases canceled client operations instead of leaving stale queue entries.
+- **Narrow viewport layout no longer overflows the browser.** The mobile shell constrains the top bar, navigation, and panels to the viewport, and the login card fits within its padded content area. The setup wizard hides the macOS system-proxy action on unsupported platforms.
+- **Primary and destructive buttons were rendering as plain grey.** The trailing "Shared visual system pass" declared `.btn{…;background:var(--bg3)}` a thousand lines *after* `.btn-primary` and `.btn-danger`. All three are single-class selectors, so specificity tied and the later rule won: **49 `.btn-primary` buttons lost their accent gradient entirely** (`background-image: none`) and 7 `.btn-danger` buttons lost their red tint, both falling back to the neutral `--bg3` surface. Only `.btn.accent` (two call sites) survived, because its two-class selector outranked the override. Folding the shared block into the primitives restores both. Found by rendering the same markup under the old and new stylesheets and diffing every computed property across 1,735 elements.
+- **Other component rules the same block was silently overriding**, now effective again: `.btn-compact` padding (was pinned to the full `.btn` padding), `.toolbar-secondary` and `.findings-toolbar` padding, and `.android-proxy-seg` padding.
+- **Primary CTA failed WCAG AA in both themes.** `.btn.accent` / `.btn-primary` painted `#fff` on the `--grad-accent` gradient at **2.54:1** (gradient start) to 3.77:1 — the `text-shadow` was compensating for unreadable text. The gradient is now `#047857`→`#065f46` (white at 5.48:1–7.68:1). Same defect fixed in `.btn.danger:hover`, `.intr-src-seg .btn.on`, and `.sev.Critical`.
+- **Light theme failed WCAG AA across all secondary text and every accent.** It was a mechanical inversion of the dark palette: `--fg3` hit 3.21:1 on `--bg3`, `--accent` 2.54:1, `--amber` 2.15:1. Root cause was `--bg3` being slate-300 — a mid-tone, not a raised surface — which dragged every foreground toward black. Re-ramped `--bg3` to `#dde5ee` and gave the light theme its own darker foreground values. Dark theme also failed on `--red`/`--blue`/`--violet` over raised surfaces; each moved one step lighter.
+- **Error and warning toasts were invisible in light mode.** `.toast-item.error/.warn` and `.sse-dot.reconnecting` used hardcoded hex outside `:root`, so they could not follow the theme; pale pink error text landed near 1.6:1 on the light surface. Now tokenized via `--dangerFg`/`--warnFg`/`--pendingFill`.
+- **Dead CSS that silently never applied.** `.rep-tab.active` was styled while `core.js` emits `.rep-tab.on`; `.find-list` matched nothing in markup or JS; `var(--amberDim)` was read but never declared, so `#humanInputBar` always used its hardcoded fallback and ignored the theme.
+- **Duplicate `.md-img` and `.ui-select-search .ui-select-trigger` rules** with conflicting borders/margins.
+- **Status icons that carry meaning on their own are now announced to assistive tech.** Three were conveying state with no adjacent text and would have been silent as decorative icons: the HTTPS lock in the Proxy host column, the authorization-test "same access as baseline" marker (a privilege-escalation signal), and the Scanner marker for checks that send real attack traffic. All three now render with `role="img"` and an `aria-label`.
+- **The proxy listener Port field had no accessible name** (pre-existing: its `<label>` neither wrapped the input nor used `for`). Given an `aria-label`. Verified against Chrome's accessibility tree: zero interactive elements across all 11 panels now lack an accessible name.
+
+### Changed
+- **Folded the trailing "Shared visual system pass" block into the component primitives.** It re-declared ~40 selectors (`.btn`, `.toolbar`, `.thead`, `.trow`, `.seg`, `.pane-head`, …) with different padding, radii, and heights than their definitions a thousand lines earlier, so the stylesheet had two sources of truth and editing a primitive silently did nothing.
+- **Replaced ~135 emoji used as structural icons with the SVG sprite.** Emoji are font-dependent, render differently per OS, cannot take a colour token, and cannot follow the theme — and these screens get screenshotted into client reports. This includes the theme toggle (`☾`/`☀`), `⚡`, `➕`, `⏱`, `⏸`, `♻` and `⌨`, which a first pass missed because the detection ranges were too narrow — `⚡` (U+26A1) and `➕` (U+2795) carry `Emoji_Presentation=Yes` and render in full colour. Monochrome typographic symbols (arrows, checks, `✕`, `⌘`, disclosure triangles) are deliberately kept: they are plain text glyphs that inherit colour correctly.
+- **Fonts are no longer fetched from Google Fonts.** The render-blocking `@import` to `fonts.googleapis.com` leaked that the operator was running Interseptor, and broke the UI on air-gapped engagements. The stacks now prefer locally-installed Inter / JetBrains Mono and fall through to platform faces.
+- **Inverted the font roles.** `body` defaulted to `--mono` with `--ui` opted into per component, so findings prose — the surface that ends up in client reports — rendered in JetBrains Mono. The interface is now proportional; monospace is scoped to raw HTTP, payloads, paths, and code.
+- **Collapsed the type scale from 13 steps to 6** (`--fs-9`, `-9-5`, `-10-5`, `-11-5`, `-13-5` … were a continuum, not a scale) with an 11px legibility floor, and the **radius scale from 11 steps to 5**.
+- **Removed layout-shifting hover.** `.btn:hover` and `.find-row:hover` used `transform`, making rows jitter under the cursor in dense lists; `transition:all` replaced with named properties.
+- **Reconciled the responsive breakpoints.** `body` had `min-width:1024px` while media queries existed at 900px and 720px, so widths 721–1023px scrolled the whole app horizontally while those queries were firing. `min-width` is now 720px.
+- Severity tokens (`--sev-*`) now reference the themed base tokens instead of being frozen at their dark-mode hex values.
+- **The sign-in page now uses the product's design system.** `login.html` carried its own private palette (`#0e1116` surfaces, a *blue* `#3b82f6` accent against the product's green), its own type sizes, no light theme, and the wrong product name ("Interceptor"). It now loads `app.css`, shares the tokens and the pre-paint theme script, and stays usable at phone widths.
+- **Tokenized all 83 inline `font-size` values in markup and JS template strings.** 22 of them were 9px or 10px — the stylesheet had been cleaned to an 11px floor while the markup still shipped sub-floor text. The type-scale test now covers `index.html`, `login.html`, and every JS module, not just `app.css`.
+- **Replaced 15 inline duplications of the `.micro-label` recipe** with the class that already existed, plus a `.micro-label-accent` modifier.
+- `.gitignore` now covers `.omc/` agent state, which appeared inside `internal/control/ui/`.
+
 ## [1.7.2] - 2026-07-28
 
 ### Changed
@@ -750,4 +787,3 @@ The **"you can attack that"** release: user-authored active checks, a fully auto
   which are already marked with a "DSC" badge on their rows and findable via the
   Discover tab — so the toolbar toggle was redundant. The `?discovery=1` API filter
   on `/api/flows` is unchanged.
-

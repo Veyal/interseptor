@@ -20,6 +20,10 @@
 # Local runtime data (created under ~/.interseptor by default; ignore if run in-tree)
 /.interseptor/
 
+# Agent orchestration state (oh-my-claudecode). These appear anywhere the agent
+# runs, including inside internal/control/ui/, and are never source.
+.omc/
+
 # Engagement / working artifacts must never be committed (real target data, PII,
 # findings dumps). Keep these out of a public repo.
 scripts/fix-findings-*.ps1
