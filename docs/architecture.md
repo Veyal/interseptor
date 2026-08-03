@@ -10,7 +10,7 @@ The control plane has **two trust modes** (`internal/control/guard.go`):
   **rejects any request with a non-loopback `Host` header or a non-loopback `Origin`**, so a web page
   you happen to visit can't quietly drive the API (CSRF) or read your captured traffic via
   DNS-rebinding. Rebinding the **proxy** or **control UI** to a non-loopback address (e.g. `0.0.0.0`
-  for LAN device capture) is allowed from Settings; set `INTERCEPTOR_ALLOW_EXTERNAL_BIND=0` to refuse
+  for LAN device capture) is allowed from Settings; set `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` to refuse
   non-loopback binds.
 - **Key-authorized remote access (opt-in, added in v0.29.0).** A request carrying a valid API key is
   authorized regardless of Host/Origin/connection — this is what lets an AI agent on a VPS or a
@@ -30,7 +30,7 @@ your chosen provider, or traffic you deliberately expose via the remote-access m
 
 **Data at rest is unencrypted.** Captured requests/responses — which can include credentials, session
 tokens, and other PII from whatever you're testing — are stored **unencrypted** under `~/.interseptor/`
-(SQLite database + content-addressed body files). Interseptor does not encrypt this data at rest;
+(`interseptor.db` SQLite database + content-addressed body files). Interseptor does not encrypt this data at rest;
 securing the machine and disk it runs on is the operator's responsibility.
 
 For the vulnerability-reporting policy (bugs *in* Interseptor itself), see [SECURITY.md](../SECURITY.md).

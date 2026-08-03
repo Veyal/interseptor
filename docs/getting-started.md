@@ -57,8 +57,8 @@ tracks the latest release.)
 4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
    the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.
 
-Runtime data lives under `~/.interseptor/` (`interceptor.db`, `bodies/`, `ca/`). Delete that
-directory to reset.
+Runtime data lives under `~/.interseptor/` (`interseptor.db`, `bodies/`, `ca/`). Full-project archives
+intentionally use the compatibility filename `interceptor.db`. Delete the runtime directory to reset.
 
 ## Intercepting HTTPS
 
@@ -72,27 +72,27 @@ directory to reset.
 
 | Environment variable | Effect |
 |---|---|
-| `INTERCEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
-| `INTERCEPTOR_NO_BROWSER` | Hard-disable browser auto-open, overriding `--open`/`INTERCEPTOR_OPEN_BROWSER`. |
-| `INTERCEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](architecture.md#security-model). |
-| `INTERCEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). |
-| `INTERCEPTOR_CONTROL_ADDR` | Env equivalent of `--control-addr`: full control UI/API listen address (`host:port`). |
-| `INTERCEPTOR_PROJECT` | Env equivalent of `--project`: open a specific project by name/path, skipping the picker. |
-| `INTERCEPTOR_PROXY_ADDR` | Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). |
-| `INTERCEPTOR_NO_UPDATE_CHECK` | Disable the background update check Interseptor runs on every startup. |
+| `INTERSEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
+| `INTERSEPTOR_NO_BROWSER` | Hard-disable browser auto-open, overriding `--open`/`INTERSEPTOR_OPEN_BROWSER`. |
+| `INTERSEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](architecture.md#security-model). |
+| `INTERSEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). |
+| `INTERSEPTOR_CONTROL_ADDR` | Env equivalent of `--control-addr`: full control UI/API listen address (`host:port`). |
+| `INTERSEPTOR_PROJECT` | Env equivalent of `--project`: open a specific project by name/path. |
+| `INTERSEPTOR_PROXY_ADDR` | Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). |
+| `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the background update check Interseptor runs on every startup. |
 | `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | Optional fallback key for AI assist when none is set in **Settings → AI**. |
 | `GLM_API_KEY` / `ZAI_API_KEY` | Optional fallback key for the GLM/Zhipu AI-assist provider (same tier as `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`); `GLM_API_KEY` wins if both are set. |
-| `GITHUB_TOKEN` / `INTERCEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Raises the GitHub API rate limit used for update checks (first non-empty wins). |
+| `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Raises the GitHub API rate limit used for update checks (first non-empty wins). |
 
 The proxy bind address is also runtime-configurable in **Settings** (and persisted).
 
 ## Running multiple projects
 
 For one-off multi-instance use, `interseptor` takes root flags: `--project <name|path>` (or
-`INTERCEPTOR_PROJECT`) opens a specific project and skips the startup picker; `--control-port <port>`
+`INTERSEPTOR_PROJECT`) opens a specific project; `--control-port <port>`
 picks the control UI/API port on loopback (default `9966`); `--control-addr host:port` sets the full
-control listen address and overrides `--control-port` (or `INTERCEPTOR_CONTROL_ADDR` — see
-[Configuration](#configuration)). Pair `--control-port`/`--control-addr` with `INTERCEPTOR_PROXY_ADDR`
+control listen address and overrides `--control-port` (or `INTERSEPTOR_CONTROL_ADDR` — see
+[Configuration](#configuration)). Pair `--control-port`/`--control-addr` with `INTERSEPTOR_PROXY_ADDR`
 to give a second manually-launched instance its own proxy port too.
 
 For running several projects at once, **`interseptor launcher`** is a small dashboard process
