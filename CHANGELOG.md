@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.5] - 2026-08-03
+
+### Fixed
+- **macOS release asset publication now waits for the GitHub Release to exist before uploading the app bundle and DMG.**
+
 ## [1.7.4] - 2026-08-03
 
 ### Added

@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   macos-app:
-    needs: test
+    needs: [test, goreleaser]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
