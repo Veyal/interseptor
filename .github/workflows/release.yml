@@ -36,3 +36,32 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  macos-app:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build unsigned app and DMG
+        run: MAKE_DMG=1 make macos-app
+      - name: Validate bundle
+        run: |
+          set -euo pipefail
+          APP=dist/macos/Interseptor.app
+          test -x "$APP/Contents/MacOS/interseptor"
+          test -x "$APP/Contents/MacOS/interseptor-macapp"
+          plutil -lint "$APP/Contents/Info.plist"
+          for bin in "$APP/Contents/MacOS/"*; do
+            lipo -info "$bin" | grep -q 'x86_64 arm64'
+          done
+      - name: Archive app bundle
+        run: ditto -c -k --keepParent dist/macos/Interseptor.app dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip
+      - name: Upload macOS app assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip dist/macos/*.dmg

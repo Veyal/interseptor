@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-08-03
+
+### Added
+- **macOS desktop bundle.** Build and launch `Interseptor.app` with a Finder double-click; it supervises the existing proxy binary, opens the browser UI, logs startup failures, and supports optional DMG, signing, and notarization.
+- **Release automation for the unsigned macOS app.** Tagged releases now attach universal arm64/x86_64 app and DMG artifacts.
+
 ## [1.7.3] - 2026-08-03
 
 ### Added

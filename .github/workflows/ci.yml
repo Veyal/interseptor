@@ -41,3 +41,44 @@ jobs:
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o interseptor ./cmd/interseptor
+
+  # macOS-native job: covers the darwin-only source (internal/proc, internal/sysproxy)
+  # that the cross-compiling matrix above can build but never runs, and verifies the
+  # Interseptor.app bundle assembles. Unsigned — signing and notarization need a
+  # Developer ID certificate and notary credentials in secrets, which CI does not have.
+  macos-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are needed for `git describe` to yield a real version; a shallow
+          # checkout would stamp a bare commit SHA into CFBundleShortVersionString.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test on macOS
+        run: go test ./...
+      - name: Build Interseptor.app
+        run: make macos-app
+      - name: Validate bundle
+        run: |
+          set -euo pipefail
+          APP=dist/macos/Interseptor.app
+          test -x "$APP/Contents/MacOS/interseptor"
+          test -x "$APP/Contents/MacOS/interseptor-macapp"
+          plutil -lint "$APP/Contents/Info.plist"
+          for bin in "$APP/Contents/MacOS/"*; do
+            lipo -info "$bin" | grep -q 'x86_64 arm64' || { echo "not universal: $bin"; exit 1; }
+          done
+          echo "bundle OK"
+      # Zip before upload: upload-artifact does not preserve the executable bit, so
+      # uploading the .app directly produces a bundle that cannot launch. ditto
+      # keeps the bundle structure and permissions intact inside the archive.
+      - name: Archive bundle
+        run: ditto -c -k --keepParent dist/macos/Interseptor.app dist/macos/Interseptor-app-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interseptor-macos-app-unsigned
+          path: dist/macos/Interseptor-app-unsigned.zip
+          if-no-files-found: error

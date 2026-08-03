@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/version"
@@ -18,6 +20,17 @@ func runUpdate(args []string) error {
 	ver := fs.String("version", "", "install a specific version (e.g. 0.7.0) instead of latest")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	// --check only reads release metadata, so it stays available everywhere; an
+	// actual install inside a .app bundle would break the bundle's signature.
+	if !*check {
+		exe, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("locate the running binary: %w", err)
+		}
+		if err := guardSelfUpdate(runtime.GOOS, exe, os.Getenv(allowBundleUpdateEnv) != "", filepath.EvalSymlinks); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
