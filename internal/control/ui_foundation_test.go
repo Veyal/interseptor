@@ -71,6 +71,21 @@ func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
 	requireUIContains(t, login, ":focus-visible", "outline:3px solid")
 }
 
+func TestUIFoundationResponsiveViewportContract(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `<meta name="viewport" content="width=device-width, initial-scale=1">`)
+	if strings.Contains(index, `<meta name="viewport" content="width=1280">`) {
+		t.Error("index.html still forces a desktop viewport width")
+	}
+}
+
+func TestUIFoundationLoginCardFitsViewport(t *testing.T) {
+	login := readUIAsset(t, "login.html")
+	if !strings.Contains(login, ".card{ width:min(100%,380px)") {
+		t.Error("login card must fit the padded mobile viewport")
+	}
+}
+
 func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	core := executableJS(readUIAsset(t, "js/core.js"))
