@@ -39,52 +39,58 @@ type Store struct {
 // Flow is one captured request/response exchange. Bodies are referenced by
 // content hash, never embedded.
 type Flow struct {
-	ID          int64
-	TS          time.Time
-	Method      string
-	Scheme      string
-	Host        string
-	Port        int
-	Path        string
-	HTTPVersion string
-	Status      int
-	ReqHeaders  map[string][]string
-	ResHeaders  map[string][]string
-	ReqBodyHash string
-	ResBodyHash string
-	ReqLen      int64
-	ResLen      int64
-	Mime        string
-	DurationMs  int64
-	ClientAddr  string
-	Error       string
-	Flags       int64
-	Note        string   // free-text annotation an operator (or the AI) attaches to the flow
-	Tags        []string // labels attached to the flow (manual or AI); loaded on demand, not a flows column
+	ID                  int64
+	TS                  time.Time
+	Method              string
+	Scheme              string
+	Host                string
+	Port                int
+	Path                string
+	HTTPVersion         string
+	Status              int
+	ReqHeaders          map[string][]string
+	ResHeaders          map[string][]string
+	OriginalReqHeaders  map[string][]string
+	OriginalResHeaders  map[string][]string
+	ReqBodyHash         string
+	ResBodyHash         string
+	OriginalReqBodyHash string
+	OriginalResBodyHash string
+	ReqLen              int64
+	ResLen              int64
+	Mime                string
+	DurationMs          int64
+	ClientAddr          string
+	Error               string
+	Flags               int64
+	Note                string   // free-text annotation an operator (or the AI) attaches to the flow
+	Tags                []string // labels attached to the flow (manual or AI); loaded on demand, not a flows column
 }
 
 // Flow flag bits, OR'd into Flow.Flags.
 const (
-	FlagIntercepted  int64 = 1 << iota // request passed through the intercept hold queue
-	FlagEdited                         // request was edited before forwarding
-	FlagDropped                        // request was dropped by the user (not forwarded)
-	FlagCaptureError                   // a body could not be captured; forwarding still succeeded
-	FlagTLSFailed                      // TLS interception failed for this flow
-	FlagWebSocket                      // a protocol-upgrade (WebSocket) handshake, tunneled transparently
-	FlagRepeater                       // a request sent from the Repeater module
-	FlagIntruder                       // a request sent from the Intruder module
-	FlagImported                       // a flow imported from a HAR file (not proxied)
-	FlagActiveScan                     // a probe sent by the active scanner
-	FlagAI                             // request originated from the AI assistant (over MCP)
-	FlagAuthz                          // a request replayed by the authorization (access-control) tester
-	FlagDiscovery                      // an endpoint found by the content-discovery (forced-browse) engine
-	FlagTLSBypassed                    // CONNECT tunneled raw (no MITM) — host on the TLS-bypass list
+	FlagIntercepted    int64 = 1 << 0  // request passed through the intercept hold queue
+	FlagEdited         int64 = 1 << 1  // request was edited before forwarding
+	FlagDropped        int64 = 1 << 2  // request was dropped by the user (not forwarded)
+	FlagCaptureError   int64 = 1 << 3  // a body could not be captured; forwarding still succeeded
+	FlagTLSFailed      int64 = 1 << 4  // TLS interception failed for this flow
+	FlagWebSocket      int64 = 1 << 5  // a protocol-upgrade (WebSocket) handshake, tunneled transparently
+	FlagRepeater       int64 = 1 << 6  // a request sent from the Repeater module
+	FlagIntruder       int64 = 1 << 7  // a request sent from the Intruder module
+	FlagImported       int64 = 1 << 8  // a flow imported from a HAR file (not proxied)
+	FlagActiveScan     int64 = 1 << 9  // a probe sent by the active scanner
+	FlagAI             int64 = 1 << 10 // request originated from the AI assistant (over MCP)
+	FlagAuthz          int64 = 1 << 11 // a request replayed by the authorization (access-control) tester
+	FlagDiscovery      int64 = 1 << 12 // an endpoint found by the content-discovery (forced-browse) engine
+	FlagTLSBypassed    int64 = 1 << 13 // CONNECT tunneled raw (no MITM) — host on the TLS-bypass list
+	FlagResponseEdited int64 = 1 << 14 // response was edited before delivery
 )
 
 // flowColumns is the canonical SELECT column order; scanFlow consumes it.
 const flowColumns = `id, ts, method, scheme, host, port, path, http_version, status,
-	req_headers, res_headers, req_body_hash, res_body_hash,
-	req_len, res_len, mime, duration_ms, client_addr, error, flags, note`
+		req_headers, res_headers, original_req_headers, original_res_headers,
+		req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
+		req_len, res_len, mime, duration_ms, client_addr, error, flags, note`
 
 const schema = `
 CREATE TABLE IF NOT EXISTS flows (
@@ -93,7 +99,9 @@ CREATE TABLE IF NOT EXISTS flows (
   method TEXT, scheme TEXT, host TEXT, port INTEGER, path TEXT,
   http_version TEXT, status INTEGER,
   req_headers TEXT, res_headers TEXT,
+  original_req_headers TEXT, original_res_headers TEXT,
   req_body_hash TEXT, res_body_hash TEXT,
+  original_req_body_hash TEXT, original_res_body_hash TEXT,
   req_len INTEGER, res_len INTEGER,
   mime TEXT, duration_ms INTEGER, client_addr TEXT, error TEXT,
   flags INTEGER NOT NULL DEFAULT 0,
@@ -300,6 +308,10 @@ func Open(dir string) (*Store, error) {
 	// which is the idempotent no-op we want to ignore.
 	for _, mig := range []string{
 		`ALTER TABLE flows ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_req_headers TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_res_headers TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_req_body_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE flows ADD COLUMN original_res_body_hash TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE activity ADD COLUMN intent TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
@@ -342,9 +354,11 @@ func (s *Store) Close() error {
 
 // InsertFlow stores a new flow and sets f.ID to the assigned row id.
 func (s *Store) InsertFlow(f *Flow) (int64, error) {
-	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash)
+	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
+	orh, _ := json.Marshal(f.OriginalReqHeaders)
+	osh, _ := json.Marshal(f.OriginalResHeaders)
 	// The flow row and its FTS index entry go in one transaction so a crash
 	// between them can't leave a flow invisible to full-text search.
 	tx, err := s.db.Begin()
@@ -354,12 +368,14 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 	defer tx.Rollback()
 	res, err := tx.Exec(
 		`INSERT INTO flows
-		 (ts, method, scheme, host, port, path, http_version, status,
-		  req_headers, res_headers, req_body_hash, res_body_hash,
-		  req_len, res_len, mime, duration_ms, client_addr, error, flags)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			 (ts, method, scheme, host, port, path, http_version, status,
+			  req_headers, res_headers, original_req_headers, original_res_headers,
+			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
+			  req_len, res_len, mime, duration_ms, client_addr, error, flags)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
-		string(rh), string(sh), f.ReqBodyHash, f.ResBodyHash,
+		string(rh), string(sh), string(orh), string(osh),
+		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
 		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags)
 	if err != nil {
 		return 0, err
@@ -384,9 +400,11 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // that was first inserted at request time, keyed by f.ID. The immutable request
 // identity (ts, scheme, host, port, version, client) is left untouched.
 func (s *Store) UpdateFlow(f *Flow) error {
-	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash)
+	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
+	orh, _ := json.Marshal(f.OriginalReqHeaders)
+	osh, _ := json.Marshal(f.OriginalResHeaders)
 	// One transaction; no pre-SELECT round-trip. host is immutable and the note is
 	// not touched here, so the FTS index only needs its path/method refreshed (a
 	// column UPDATE that leaves the indexed note in place).
@@ -398,11 +416,13 @@ func (s *Store) UpdateFlow(f *Flow) error {
 	if _, err := tx.Exec(
 		`UPDATE flows SET
 		   method=?, path=?, status=?, req_headers=?, res_headers=?,
-		   req_body_hash=?, res_body_hash=?, req_len=?, res_len=?,
+		   original_req_headers=?, original_res_headers=?,
+		   req_body_hash=?, res_body_hash=?, original_req_body_hash=?, original_res_body_hash=?,
+		   req_len=?, res_len=?,
 		   mime=?, duration_ms=?, error=?, flags=?
 		 WHERE id=?`,
-		f.Method, f.Path, f.Status, string(rh), string(sh),
-		f.ReqBodyHash, f.ResBodyHash, f.ReqLen, f.ResLen,
+		f.Method, f.Path, f.Status, string(rh), string(sh), string(orh), string(osh),
+		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash, f.ReqLen, f.ResLen,
 		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID); err != nil {
 		return err
 	}
@@ -480,10 +500,12 @@ func scanFlow(row scanner) (*Flow, error) {
 		f          Flow
 		tsMillis   int64
 		reqH, resH string
+		orh, osh   string
 	)
 	if err := row.Scan(
 		&f.ID, &tsMillis, &f.Method, &f.Scheme, &f.Host, &f.Port, &f.Path, &f.HTTPVersion, &f.Status,
-		&reqH, &resH, &f.ReqBodyHash, &f.ResBodyHash,
+		&reqH, &resH, &orh, &osh, &f.ReqBodyHash, &f.ResBodyHash,
+		&f.OriginalReqBodyHash, &f.OriginalResBodyHash,
 		&f.ReqLen, &f.ResLen, &f.Mime, &f.DurationMs, &f.ClientAddr, &f.Error, &f.Flags, &f.Note,
 	); err != nil {
 		return nil, err
@@ -491,6 +513,8 @@ func scanFlow(row scanner) (*Flow, error) {
 	f.TS = time.UnixMilli(tsMillis).UTC()
 	_ = json.Unmarshal([]byte(reqH), &f.ReqHeaders)
 	_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
+	_ = json.Unmarshal([]byte(orh), &f.OriginalReqHeaders)
+	_ = json.Unmarshal([]byte(osh), &f.OriginalResHeaders)
 	return &f, nil
 }
 

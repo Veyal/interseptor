@@ -223,23 +223,27 @@ func (h *Hub) loopbackControlBase() string {
 // ---- DTOs ----
 
 type flowJSON struct {
-	ID         int64    `json:"id"`
-	TS         int64    `json:"ts"`
-	Method     string   `json:"method"`
-	Scheme     string   `json:"scheme"`
-	Host       string   `json:"host"`
-	Port       int      `json:"port"`
-	Path       string   `json:"path"`
-	Status     int      `json:"status"`
-	Mime       string   `json:"mime"`
-	ReqLen     int64    `json:"reqLen"`
-	ResLen     int64    `json:"resLen"`
-	DurationMs int64    `json:"durationMs"`
-	ClientAddr string   `json:"clientAddr"`
-	Error      string   `json:"error"`
-	Flags      int64    `json:"flags"`
-	Note       string   `json:"note"`
-	Tags       []string `json:"tags,omitempty"`
+	ID                  int64               `json:"id"`
+	TS                  int64               `json:"ts"`
+	Method              string              `json:"method"`
+	Scheme              string              `json:"scheme"`
+	Host                string              `json:"host"`
+	Port                int                 `json:"port"`
+	Path                string              `json:"path"`
+	Status              int                 `json:"status"`
+	Mime                string              `json:"mime"`
+	ReqLen              int64               `json:"reqLen"`
+	ResLen              int64               `json:"resLen"`
+	DurationMs          int64               `json:"durationMs"`
+	ClientAddr          string              `json:"clientAddr"`
+	Error               string              `json:"error"`
+	Flags               int64               `json:"flags"`
+	Note                string              `json:"note"`
+	OriginalReqBodyHash string              `json:"originalReqBodyHash,omitempty"`
+	OriginalResBodyHash string              `json:"originalResBodyHash,omitempty"`
+	OriginalReqHeaders  map[string][]string `json:"originalReqHeaders,omitempty"`
+	OriginalResHeaders  map[string][]string `json:"originalResHeaders,omitempty"`
+	Tags                []string            `json:"tags,omitempty"`
 }
 
 type flowDetailJSON struct {
@@ -326,7 +330,10 @@ func toFlowJSON(f *store.Flow) flowJSON {
 		ID: f.ID, TS: f.TS.UnixMilli(), Method: f.Method, Scheme: f.Scheme, Host: f.Host,
 		Port: f.Port, Path: f.Path, Status: f.Status, Mime: f.Mime, ReqLen: f.ReqLen,
 		ResLen: f.ResLen, DurationMs: f.DurationMs, ClientAddr: f.ClientAddr, Error: f.Error, Flags: f.Flags,
+
 		Note: f.Note, Tags: f.Tags,
+		OriginalReqBodyHash: f.OriginalReqBodyHash, OriginalResBodyHash: f.OriginalResBodyHash,
+		OriginalReqHeaders: f.OriginalReqHeaders, OriginalResHeaders: f.OriginalResHeaders,
 	}
 }
 
@@ -745,11 +752,20 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	original := r.URL.Query().Get("variant") == "original"
 	if r.URL.Query().Get("side") == "res" {
+		if original {
+			w.Write(h.rawResponseVariant(f, true))
+			return
+		}
 		w.Write(h.rawResponse(f))
-	} else {
-		w.Write(h.rawRequest(f))
+		return
 	}
+	if original {
+		w.Write(h.rawRequestVariant(f, true))
+		return
+	}
+	w.Write(h.rawRequest(f))
 }
 
 // getFlowBody streams just the (decoded) body bytes with Content-Type and a
@@ -812,25 +828,48 @@ func flowBodyFilename(id int64, side, mimeType string) string {
 }
 
 func (h *Hub) rawRequest(f *store.Flow) []byte {
+	return h.rawRequestVariant(f, false)
+}
+
+func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
-	hdr, body := decodeForDisplay(f.ReqHeaders, h.bodyBytes(f.ReqBodyHash))
+	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
+	if original {
+		if f.OriginalReqHeaders != nil {
+			hdrs = f.OriginalReqHeaders
+		}
+		if f.OriginalReqBodyHash != "" {
+			hash = f.OriginalReqBodyHash
+		}
+	}
+	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
 	writeHeaders(&b, hdr, f.Host)
 	b.WriteString("\r\n")
 	b.Write(body)
 	return b.Bytes()
 }
 
-func (h *Hub) rawResponse(f *store.Flow) []byte {
+func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
-	// Decompress Content-Encoding (gzip/br/zstd/deflate) so the body is readable
-	// rather than showing compressed bytes that look undecrypted.
-	hdr, body := decodeForDisplay(f.ResHeaders, h.bodyBytes(f.ResBodyHash))
+	hdrs, hash := f.ResHeaders, f.ResBodyHash
+	if original {
+		if f.OriginalResHeaders != nil {
+			hdrs = f.OriginalResHeaders
+		}
+		if f.OriginalResBodyHash != "" {
+			hash = f.OriginalResBodyHash
+		}
+	}
+	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
 	writeHeaders(&b, hdr, "")
 	b.WriteString("\r\n")
 	b.Write(body)
 	return b.Bytes()
+}
+func (h *Hub) rawResponse(f *store.Flow) []byte {
+	return h.rawResponseVariant(f, false)
 }
 
 func (h *flowAPI) flowWS(w http.ResponseWriter, r *http.Request) {

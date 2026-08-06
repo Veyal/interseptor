@@ -266,6 +266,9 @@
         <div class="icpt-edhead" id="heldEditor" style="display:none">
           <div class="icpt-edtitle" id="heldTitle"></div>
           <div class="spacer"></div>
+          <span id="heldModified" class="icpt-modified" hidden>MODIFIED</span>
+          <button class="btn" id="heldBeautifyBtn" title="Beautify JSON or HTML body">Beautify</button>
+          <button class="btn" id="heldResetBtn" title="Reset editor to original held bytes">Reset</button>
           <button class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body">Decoded</button>
           <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
           <button class="btn btn-danger" id="dropBtn" title="Drop (D)">✕ Drop</button>
@@ -1119,7 +1122,7 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell" style="width:min(1100px,94vw);height:min(82vh,820px)">
     <div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line);gap:10px">
       <div id="fmTitle" style="flex:1;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div class="seg" id="fmSeg"><button data-v="raw">Raw</button><button class="on" data-v="pretty">Pretty</button></div>
+      <div class="seg" id="fmSeg"><button data-v="raw">Raw</button><button class="on" data-v="pretty">Pretty</button><button data-v="compare" hidden>Compare</button></div>
       <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
       <button class="btn" id="fmCopyLink" title="Copy deep link to this flow">⧉ Copy link</button>
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>

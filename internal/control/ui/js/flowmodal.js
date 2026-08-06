@@ -10,7 +10,10 @@ function fmFlowUrl(d){
 export async function flowPopup(id){
   let d;
   try{ d = await api('/api/flows/'+id); }catch(e){ toast('flow: '+e.message); return; }
-  state.fm = { id, detail: d, url: fmFlowUrl(d), pretty: true };
+  state.fm = { id, detail: d, url: fmFlowUrl(d), pretty: true, compare: false };
+  const compareBtn=$('#fmSeg').querySelector('[data-v="compare"]');
+  const hasCompare=!!(d.originalReqBodyHash||d.originalResBodyHash||d.originalReqHeaders||d.originalResHeaders);
+  if(compareBtn){compareBtn.hidden=!hasCompare;compareBtn.disabled=!hasCompare;}
   $('#fmTitle').innerHTML = `<span style="color:${methodColor(d.method)};font-weight:700">${esc(d.method)}</span> <span style="font-family:var(--mono);color:var(--fg2)">${esc((d.scheme||'http')+'://'+d.host+d.path)}</span>`;
   $('#fmStatus').textContent = d.status ? `${d.status} ${statusText(d.status)}`+(d.durationMs ? ` · ${fmtDur(d.durationMs)}` : '') : (d.error || '');
   $('#fmStatus').style.color = statusColor(d.status);
@@ -19,7 +22,21 @@ export async function flowPopup(id){
   fmRenderSide('req'); fmRenderSide('res');
 }
 
-// Clickable markdown flow refs (renderMD → .md-flow-link) open the same modal.
+function fmOriginal(d,side){
+  const names=side==='req'?['originalReqRaw','originalRequest','originalReq']:['originalResRaw','originalResponse','originalRes'];
+  for(const name of names){if(typeof d?.[name]==='string'&&d[name])return d[name];}
+  return '';
+}
+function fmCurrent(d,side){
+  const names=side==='req'?['currentReqRaw','modifiedReqRaw','modifiedRequest']:['currentResRaw','modifiedResRaw','modifiedResponse'];
+  for(const name of names){if(typeof d?.[name]==='string'&&d[name])return d[name];}
+  return '';
+}
+function fmCompare(raw,original,current){
+  if(!original&&!current)return raw;
+  const left=original||raw,right=current||raw;
+  return `--- original\n${left}\n\n+++ current\n${right}`;
+}
 document.addEventListener('click', e => {
   const a = e.target.closest && e.target.closest('a.md-flow-link');
   if (!a) return;
@@ -48,10 +65,11 @@ export async function fmRenderSide(side){
   }
   el.innerHTML = '<span class="hint" style="padding:12px">loading…</span>';
   try{
-    const raw = await api('/api/flows/'+id+'/raw?side='+side);
-    if(state.fm.id !== id) return; // a newer flowPopup superseded this render
-    el._rawText=raw;
-    el.innerHTML = highlightHTTP(state.fm.pretty ? prettify(raw) : raw, state.fm.pretty, mime);
+const raw = await api('/api/flows/'+id+'/raw?side='+side+(state.fm.compare?'&variant=original':''));
+     if(state.fm.id !== id) return; // a newer flowPopup superseded this render
+     el._rawText=raw;
+     const shown=raw;
+    el.innerHTML = highlightHTTP(state.fm.pretty ? prettify(shown) : shown, state.fm.pretty, mime);
   }catch(e){ el.textContent = '(error: '+e.message+')'; }
 }
 
@@ -76,6 +94,7 @@ $('#fmProxy') && ($('#fmProxy').onclick = () => {
 });
 $('#fmSeg') && $('#fmSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   state.fm.pretty = b.dataset.v === 'pretty';
+  state.fm.compare = b.dataset.v === 'compare';
   $('#fmSeg').querySelectorAll('button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
   fmRenderSide('req'); fmRenderSide('res');
 });

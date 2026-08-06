@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Original and modified flow variants.** Backend history now preserves original request/response body hashes and header snapshots, exposes response edits with `FlagResponseEdited`, and keeps original body variants safe from garbage collection.
+
+### Added
+- **Intercept editor readability controls.** Held messages now support body beautification, reset-to-original, and visible modified state; flow details expose additive original/current comparison when API data provides it.
+
 ## [1.7.5] - 2026-08-03
 
 ### Fixed

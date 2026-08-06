@@ -1,9 +1,17 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey, prettify } from './core.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
 // is {id, side:'req'|'resp'} for the selected item, or null.
 const heldRawCache=new Map();
+const heldOriginalCache=new Map();
+function heldKey(side,id){return side+':'+id;}
+function heldOriginal(h){return h.original||h.raw||'';}
+function setHeldModified(raw, original){
+  const badge=$('#heldModified');
+  const modified=raw!==original;
+  if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
+}
 
 export function renderIntercept(){
   const ic=state.intercept||{};
@@ -50,7 +58,8 @@ function showEditor(h){
   if(head)head.style.display='flex';
   if(empty)empty.style.display='none';
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
-  if(ta){ta.style.display='block';ta.value=h.raw||'';}
+  const original=heldOriginal(h);
+  if(ta){ta.style.display='block';ta.value=h.raw||'';setHeldModified(ta.value,original);}
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
@@ -58,9 +67,11 @@ function showEditor(h){
 export async function selectHeld(id,side,opts={}){
   state.heldSel={id,side};
   $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
-  const h=heldItem(id,side);if(!h)return;
-  const cacheKey=side+':'+id;
-  let raw=h.raw;
+   const h=heldItem(id,side);if(!h)return;
+   const cacheKey=side+':'+id;
+   let raw=h.raw;
+   if(!heldOriginalCache.has(cacheKey))heldOriginalCache.set(cacheKey,heldOriginal(h));
+
   if(opts.keepEditor){
     const ta=$('#heldRaw');
     if(ta&&document.activeElement===ta)return;
@@ -97,6 +108,7 @@ $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
   try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
     heldRawCache.delete(sel.side+':'+sel.id);
+    heldOriginalCache.delete(heldKey(sel.side,sel.id));
     toast(sel.side==='resp'?'response forwarded':'forwarded');}catch(e){toast(e.message);}};
 $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const sel=state.heldSel;if(!sel)return;
@@ -118,10 +130,25 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
     decEl.hidden=false;decEl.style.display='block';rawEl.style.display='none';
   }catch(e){toast(e.message);}
 });
+$('#heldRaw').addEventListener('input',()=>{
+  const sel=state.heldSel,h=sel&&heldItem(sel.id,sel.side);
+  if(h)setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
+});
+$('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
+  const ta=$('#heldRaw');if(!ta)return;
+  ta.value=prettify(ta.value);ta.dispatchEvent(new Event('input'));ta.focus();
+});
+$('#heldResetBtn')&&($('#heldResetBtn').onclick=()=>{
+  const sel=state.heldSel,ta=$('#heldRaw');if(!sel||!ta)return;
+  const original=heldOriginalCache.get(heldKey(sel.side,sel.id));if(original==null)return;
+  ta.value=original;ta.dispatchEvent(new Event('input'));ta.focus();
+});
+
 $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
   try{await api(base+sel.id+'/drop',{method:'POST'});
     heldRawCache.delete(sel.side+':'+sel.id);
+    heldOriginalCache.delete(heldKey(sel.side,sel.id));
     toast(sel.side==='resp'?'response dropped':'dropped');}catch(e){toast(e.message);}};
 export async function applyInterceptFilter(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;

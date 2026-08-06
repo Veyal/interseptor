@@ -669,7 +669,14 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			out.RequestURI = ""
 			out.URL.Scheme = flow.Scheme
 			if d.Edited {
+				if flow.OriginalReqHeaders == nil {
+					flow.OriginalReqHeaders = cloneHeaders(flow.ReqHeaders)
+				}
+				if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+					flow.OriginalReqBodyHash, _ = s.storeBytes(raw[i+4:])
+				}
 				flow.Flags |= store.FlagEdited
+
 				// An edited Host header must actually retarget the connection —
 				// not just the wire header — or the operator gets a confused-deputy
 				// primitive: connect to the original host while claiming (on the
@@ -912,8 +919,14 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 	h := resp.Header.Clone()
 	removeHopHeaders(h)
 	st := resp.StatusCode
+	originalBody := append([]byte(nil), b...)
+	originalHeaders := h.Clone()
 	if hasRules {
 		h, b = s.eng.ApplyResponseRules(h, b)
+		if !bytes.Equal(originalBody, b) {
+			flow.OriginalResHeaders = cloneHeaders(originalHeaders)
+			flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
+		}
 	}
 	if hold {
 		flow.Flags |= store.FlagIntercepted
@@ -928,8 +941,11 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 		}
 		if d.Edited {
 			if nst, nh, nb, err := parseRawResponse(d.Raw); err == nil {
+				if flow.OriginalResHeaders == nil {
+					flow.OriginalResHeaders = cloneHeaders(flow.ResHeaders)
+				}
 				st, h, b = nst, nh, nb
-				flow.Flags |= store.FlagEdited
+				flow.Flags |= store.FlagResponseEdited
 			}
 		}
 	}
@@ -937,6 +953,13 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 	h.Set("Content-Length", strconv.Itoa(len(b)))
 	h.Del("Transfer-Encoding")
 	return st, h, b, true, false
+}
+
+func cloneHeaders(src http.Header) http.Header {
+	if src == nil {
+		return nil
+	}
+	return src.Clone()
 }
 
 // storeBytes captures an in-memory body into the content-addressed store.

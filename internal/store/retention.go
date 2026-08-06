@@ -204,6 +204,10 @@ func (s *Store) GCBodies() (removedFiles int64, freedBytes int64, err error) {
 			SELECT req_body_hash AS h FROM flows WHERE req_body_hash != ''
 			UNION
 			SELECT res_body_hash AS h FROM flows WHERE res_body_hash != ''
+			UNION
+			SELECT original_req_body_hash AS h FROM flows WHERE original_req_body_hash != ''
+			UNION
+			SELECT original_res_body_hash AS h FROM flows WHERE original_res_body_hash != ''
 		)`)
 	if err != nil {
 		return 0, 0, fmt.Errorf("store.GCBodies: query refs: %w", err)
