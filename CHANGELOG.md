@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Raw HTTP flow exports.** Proxy context menus now save current or available original request/response messages as plain `.http` files suitable for tools such as `sqlmap -r`.
 - **Original and modified flow variants.** Backend history now preserves original request/response body hashes and header snapshots, exposes response edits with `FlagResponseEdited`, and keeps original body variants safe from garbage collection.
 
 ### Added

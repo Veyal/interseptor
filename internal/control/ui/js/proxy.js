@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
@@ -1191,10 +1191,32 @@ function deleteHost(f){
 // active session/auth; session=flow replays it exactly as captured.
 function replayLink(f,session){return location.origin+'/replay/'+f.id+'?session='+session;}
 function copyReplayLink(f,session){copyText(replayLink(f,session),'replay link copied');}
+async function exportRawFlow(f,side,variant=''){
+  try{
+    const query=new URLSearchParams({side});
+    if(variant)query.set('variant',variant);
+    const raw=await api('/api/flows/'+f.id+'/raw?'+query.toString());
+    const host=(f.host||'flow').replace(/[^a-z0-9.-]+/gi,'_');
+    const method=(f.method||'HTTP').replace(/[^a-z0-9]+/gi,'_');
+    const suffix=variant==='original'?'_original':'';
+    const name=`flow-${f.id}_${host}_${method}_${side}${suffix}.http`;
+    await saveFile(new Blob([raw],{type:'message/http'}),name,'message/http');
+    toast('exported '+name);
+  }catch(e){if(e&&e.name==='AbortError')return;toast('export '+side+(variant?' original':'')+': '+e.message);}
+}
+function rawExportItems(f,side){
+  const label=side==='req'?'request':'response';
+  const items=[{label:'Export raw '+label,act:()=>exportRawFlow(f,side)}];
+  const hasOriginal=side==='req'?!!(f.originalReqBodyHash||f.originalReqHeaders):!!(f.originalResBodyHash||f.originalResHeaders);
+  if(hasOriginal)items.push({label:'Export original raw '+label,act:()=>exportRawFlow(f,side,'original')});
+  return items;
+}
 // flowGlobalSection — the flow-wide actions present in every history/inspector
 // menu regardless of which column was clicked (send, copy, AI, authz).
 function flowGlobalSection(f,head){
   const items=[
+    ...rawExportItems(f,'req'),
+    {sep:true},
     {label:'Send to Repeater',act:()=>sendToRepeater(f)},
     {label:'Send to Intruder',act:()=>sendToIntruder(f)},
     {label:'Copy URL',act:()=>copyURL(f)},
@@ -1207,6 +1229,7 @@ function flowGlobalSection(f,head){
       {label:'Ask AI',icon:'sparkle',act:()=>openAi({ids: [f.id]})});
   }
   items.push({sep:true},
+    ...rawExportItems(f,'res'),
     {label:'Scan this host',icon:'search',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
     {label:'Authz test',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
     {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)});
