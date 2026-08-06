@@ -1213,9 +1213,14 @@ function rawExportItems(f,side){
 }
 // flowGlobalSection — the flow-wide actions present in every history/inspector
 // menu regardless of which column was clicked (send, copy, AI, authz).
-function flowGlobalSection(f,head){
-  const items=[
+function flowGlobalSection(f,head,side='both'){
+  const exportItems=side==='req'?rawExportItems(f,'req'):side==='res'?rawExportItems(f,'res'):[
     ...rawExportItems(f,'req'),
+    {sep:true},
+    ...rawExportItems(f,'res'),
+  ];
+  const items=[
+    ...exportItems,
     {sep:true},
     {label:'Send to Repeater',act:()=>sendToRepeater(f)},
     {label:'Send to Intruder',act:()=>sendToIntruder(f)},
@@ -1229,7 +1234,7 @@ function flowGlobalSection(f,head){
       {label:'Ask AI',icon:'sparkle',act:()=>openAi({ids: [f.id]})});
   }
   items.push({sep:true},
-    ...rawExportItems(f,'res'),
+    ...(side==='req'?[]:side==='res'?[]:rawExportItems(f,'res')),
     {label:'Scan this host',icon:'search',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
     {label:'Authz test',icon:'lock-open',val:'roles',act:()=>openAuthz(f.id)},
     {label:'Use as login macro',icon:'key',act:()=>saveLoginMacroFromFlow(f.id)});
@@ -1290,7 +1295,7 @@ export function showCtx(x,y,f,field){
   // mime/size/time columns have no column-specific filter — they fall through to
   // the global section below.
 
-  sections.push(flowGlobalSection(f,'REQUEST'));
+  sections.push(flowGlobalSection(f,'REQUEST','both'));
   // TAGS: filter by / remove an existing tag, or add tags (to this flow, or the whole selection).
   const tagTargets=tagActionTargets(f.id);
   const tagN=tagTargets.length;
@@ -1332,7 +1337,7 @@ export function showInspectorCtx(x,y,side){
     items.push({label:'Search in Map (body)',val:short,act:()=>focusMapSearch(sel,'body')});
     sections.push({head:'SELECTION', items});
   }
-  sections.push(flowGlobalSection(f, side==='req'?'REQUEST':'RESPONSE'));
+  sections.push(flowGlobalSection(f, side==='req'?'REQUEST':'RESPONSE', side));
   if(!sel)sections.push({items:[{label:'Open Decoder',act:()=>openDecoder('')}]});
   const sendAsIds2=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
   if(sendAsIds2.length)sections.push({head:'SEND AS',items:sendAsIds2.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
