@@ -398,6 +398,96 @@ func TestFullProjectImportRejectsDatabaseBodyReferenceMissingFromArchive(t *test
 	}
 }
 
+func TestUnpackFullArchiveRejectsExpandedFileOverLimitAndRemovesPartialFile(t *testing.T) {
+	// Given
+	archivePath := filepath.Join(t.TempDir(), "project.zip")
+	writeProjectZip(t, archivePath, []zipMember{{name: archiveDBName, data: bytes.Repeat([]byte("x"), 33)}})
+	dest := t.TempDir()
+
+	// When
+	err := unpackFullArchiveWithLimits(archivePath, dest, archiveReadLimits{entries: 8, fileBytes: 32, totalBytes: 128})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "expanded size limit") {
+		t.Fatalf("unpack error=%v, want expanded size limit", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, archiveDBName)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("partial file remains: %v", statErr)
+	}
+}
+
+func TestUnpackFullArchiveAcceptsExpandedFileAtLimit(t *testing.T) {
+	// Given
+	archivePath := filepath.Join(t.TempDir(), "project.zip")
+	writeProjectZip(t, archivePath, []zipMember{{name: archiveDBName, data: bytes.Repeat([]byte("x"), 32)}})
+	dest := t.TempDir()
+
+	// When
+	err := unpackFullArchiveWithLimits(archivePath, dest, archiveReadLimits{entries: 8, fileBytes: 32, totalBytes: 128})
+
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dest, archiveDBName))
+	if err != nil || info.Size() != 32 {
+		t.Fatalf("extracted DB size=%v err=%v", info, err)
+	}
+}
+
+func TestUnpackFullArchiveRejectsEntryAndCumulativeLimits(t *testing.T) {
+	tests := []struct {
+		name    string
+		members []zipMember
+		limits  archiveReadLimits
+		want    string
+	}{
+		{name: "entry count", members: []zipMember{{archiveDBName, []byte("db")}, {"extra", []byte("x")}}, limits: archiveReadLimits{entries: 1, fileBytes: 32, totalBytes: 64}, want: "entry count limit"},
+		{name: "cumulative bytes", members: []zipMember{{archiveDBName, bytes.Repeat([]byte("x"), 24)}, {"bodies/aa/bb/aabb000000000000000000000000000000000000000000000000000000000000", bytes.Repeat([]byte("x"), 24)}}, limits: archiveReadLimits{entries: 8, fileBytes: 32, totalBytes: 40}, want: "cumulative expanded size limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "project.zip")
+			writeProjectZip(t, archivePath, tt.members)
+
+			err := unpackFullArchiveWithLimits(archivePath, t.TempDir(), tt.limits)
+
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("unpack error=%v, want %s", err, tt.want)
+			}
+		})
+	}
+}
+
+type zipMember struct {
+	name string
+	data []byte
+}
+
+func writeProjectZip(t *testing.T, filename string, members []zipMember) {
+	t.Helper()
+	out, err := os.Create(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(out)
+	for _, member := range members {
+		w, err := zw.Create(member.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(member.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFullProjectConcurrentOverwritesRemainUsable(t *testing.T) {
 	source, sourceStore, _ := newHub(t)
 	if _, err := sourceStore.InsertFlow(&store.Flow{

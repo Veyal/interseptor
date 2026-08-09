@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -81,6 +83,98 @@ func TestReadPackRejectsMissingManifest(t *testing.T) {
 	}
 }
 
+func TestReadPackRejectsMemberOverExpandedLimit(t *testing.T) {
+	// Given
+	limits := packReadLimits{entries: 8, fileBytes: 32, totalBytes: 128}
+	pack := packWithMembers(t, []member{{name: manifestName, data: []byte(`{"name":"p","entries":[]}`)}, {name: "checks/bomb.star", data: bytes.Repeat([]byte("x"), int(limits.fileBytes+1))}})
+
+	// When
+	_, _, err := readPackWithLimits(bytes.NewReader(pack), limits)
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "expanded size limit") {
+		t.Fatalf("ReadPack error=%v, want expanded size limit", err)
+	}
+}
+
+func TestReadPackAcceptsMemberAtExpandedLimit(t *testing.T) {
+	// Given
+	limits := packReadLimits{entries: 8, fileBytes: 256, totalBytes: 1024}
+	data := bytes.Repeat([]byte("x"), int(limits.fileBytes))
+	manifest := Manifest{Name: "p", Entries: []Entry{{Kind: KindPassive, ID: "exact", SHA256: sha256Hex(data)}}}
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack := packWithMembers(t, []member{{name: manifestName, data: manifestData}, {name: "checks/exact.star", data: data}})
+
+	// When
+	_, files, err := readPackWithLimits(bytes.NewReader(pack), limits)
+
+	// Then
+	if err != nil || len(files) != 1 || int64(len(files[0].Data)) != limits.fileBytes {
+		t.Fatalf("ReadPack files=%d err=%v", len(files), err)
+	}
+}
+
+func TestReadPackRejectsTooManyMembers(t *testing.T) {
+	// Given
+	limits := packReadLimits{entries: 4, fileBytes: 64, totalBytes: 256}
+	members := []member{{name: manifestName, data: []byte(`{"name":"p","entries":[]}`)}}
+	for i := 0; i < limits.entries; i++ {
+		members = append(members, member{name: fmt.Sprintf("extra-%d", i), data: []byte("x")})
+	}
+
+	// When
+	_, _, err := readPackWithLimits(bytes.NewReader(packWithMembers(t, members)), limits)
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "entry count limit") {
+		t.Fatalf("ReadPack error=%v, want entry count limit", err)
+	}
+}
+
+func TestReadPackRejectsCumulativeExpandedLimit(t *testing.T) {
+	// Given
+	limits := packReadLimits{entries: 8, fileBytes: 64, totalBytes: 96}
+	members := []member{{name: manifestName, data: []byte(`{"name":"p","entries":[]}`)}, {name: "extra-1", data: bytes.Repeat([]byte("x"), 48)}, {name: "extra-2", data: bytes.Repeat([]byte("x"), 48)}}
+
+	// When
+	_, _, err := readPackWithLimits(bytes.NewReader(packWithMembers(t, members)), limits)
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "cumulative expanded size limit") {
+		t.Fatalf("ReadPack error=%v, want cumulative expanded size limit", err)
+	}
+}
+
+type member struct {
+	name string
+	data []byte
+}
+
+func packWithMembers(t *testing.T, members []member) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, item := range members {
+		if err := tw.WriteHeader(&tar.Header{Name: item.name, Mode: 0o644, Size: int64(len(item.data))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(item.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 // tamperMember rebuilds the gzip+tar with one member's bytes replaced, leaving
 // the manifest untouched — so the integrity check is what catches the swap.
 func tamperMember(t *testing.T, pack []byte, target string, replacement []byte) []byte {
@@ -90,7 +184,10 @@ func tamperMember(t *testing.T, pack []byte, target string, replacement []byte) 
 		t.Fatal(err)
 	}
 	tr := tar.NewReader(gz)
-	type member struct{ name string; data []byte }
+	type member struct {
+		name string
+		data []byte
+	}
 	var members []member
 	for {
 		h, err := tr.Next()

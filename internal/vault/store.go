@@ -49,13 +49,13 @@ type ProjectInfo struct {
 
 // RevInfo describes one stored revision.
 type RevInfo struct {
-	Rev       int    `json:"rev"`
-	Size      int64  `json:"size"`
-	SHA256    string `json:"sha256"`
-	At        int64  `json:"at"`
-	Label     string `json:"label,omitempty"`
-	Source    string `json:"source,omitempty"`
-	Filename  string `json:"filename"`
+	Rev      int    `json:"rev"`
+	Size     int64  `json:"size"`
+	SHA256   string `json:"sha256"`
+	At       int64  `json:"at"`
+	Label    string `json:"label,omitempty"`
+	Source   string `json:"source,omitempty"`
+	Filename string `json:"filename"`
 }
 
 func (s *Store) keep() int {
@@ -142,7 +142,10 @@ func (s *Store) Put(id, label, source string, r io.Reader) (RevInfo, error) {
 		Filename: filepath.Base(final),
 	}
 	if err := writeJSONFile(filepath.Join(pdir, fmt.Sprintf("rev-%06d.json", next)), info); err != nil {
-		return RevInfo{}, err
+		if removeErr := os.Remove(final); removeErr != nil {
+			return RevInfo{}, fmt.Errorf("write revision metadata: %w (remove archive: %v)", err, removeErr)
+		}
+		return RevInfo{}, fmt.Errorf("write revision metadata: %w", err)
 	}
 	_ = writeJSONFile(filepath.Join(pdir, "meta.json"), map[string]any{
 		"id": id, "updatedAt": info.At, "latestRev": next,
@@ -289,7 +292,9 @@ func (s *Store) DeleteRev(id string, rev int) error {
 	if rev <= 0 {
 		return fmt.Errorf("revision required")
 	}
-	_ = os.Remove(filepath.Join(pdir, fmt.Sprintf("rev-%06d.zip", rev)))
+	if err := os.Remove(filepath.Join(pdir, fmt.Sprintf("rev-%06d.zip", rev))); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove revision archive: %w", err)
+	}
 	if err := os.Remove(filepath.Join(pdir, fmt.Sprintf("rev-%06d.json", rev))); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -328,7 +333,24 @@ func writeJSONFile(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-json-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func readJSON(path string, v any) error {

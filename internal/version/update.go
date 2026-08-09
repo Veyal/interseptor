@@ -540,13 +540,37 @@ func extractBinary(archive []byte, name string) ([]byte, error) {
 	}
 }
 
+const (
+	maxUpdateArchiveEntries = 64
+	maxUpdateBinaryBytes    = 128 << 20
+	maxUpdateExpandedBytes  = 256 << 20
+)
+
+type archiveReadLimits struct {
+	entries    int
+	fileBytes  int64
+	totalBytes int64
+}
+
+var defaultUpdateArchiveLimits = archiveReadLimits{
+	entries:    maxUpdateArchiveEntries,
+	fileBytes:  maxUpdateBinaryBytes,
+	totalBytes: maxUpdateExpandedBytes,
+}
+
 func untarGz(data []byte) ([]byte, error) {
+	return untarGzWithLimits(data, defaultUpdateArchiveLimits)
+}
+
+func untarGzWithLimits(data []byte, limits archiveReadLimits) ([]byte, error) {
 	zr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	defer zr.Close()
 	tr := tar.NewReader(zr)
+	entryCount := 0
+	var expandedBytes int64
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -555,12 +579,30 @@ func untarGz(data []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		entryCount++
+		if entryCount > limits.entries {
+			return nil, fmt.Errorf("update archive exceeds entry count limit of %d", limits.entries)
+		}
 		if h.Typeflag == tar.TypeDir {
 			continue
 		}
+		if h.Size > limits.fileBytes {
+			return nil, fmt.Errorf("update archive member %q exceeds expanded size limit of %d bytes", h.Name, limits.fileBytes)
+		}
+		if h.Size > limits.totalBytes-expandedBytes {
+			return nil, fmt.Errorf("update archive exceeds cumulative expanded size limit of %d bytes", limits.totalBytes)
+		}
+		expandedBytes += h.Size
 		base := filepath.Base(h.Name)
 		if isReleaseBinaryName(base) {
-			return io.ReadAll(io.LimitReader(tr, 128<<20))
+			binary, err := io.ReadAll(&io.LimitedReader{R: tr, N: limits.fileBytes + 1})
+			if err != nil {
+				return nil, fmt.Errorf("read update binary: %w", err)
+			}
+			if int64(len(binary)) > limits.fileBytes {
+				return nil, fmt.Errorf("update binary exceeds expanded size limit of %d bytes", limits.fileBytes)
+			}
+			return binary, nil
 		}
 	}
 	return nil, fmt.Errorf("interseptor binary not found in archive")
@@ -579,11 +621,26 @@ func isReleaseBinaryName(base string) bool {
 }
 
 func unzipBin(data []byte) ([]byte, error) {
+	return unzipBinWithLimits(data, defaultUpdateArchiveLimits)
+}
+
+func unzipBinWithLimits(data []byte, limits archiveReadLimits) ([]byte, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, err
 	}
+	if len(zr.File) > limits.entries {
+		return nil, fmt.Errorf("update archive exceeds entry count limit of %d", limits.entries)
+	}
+	var expandedBytes int64
 	for _, f := range zr.File {
+		if f.UncompressedSize64 > uint64(limits.fileBytes) {
+			return nil, fmt.Errorf("update archive member %q exceeds expanded size limit of %d bytes", f.Name, limits.fileBytes)
+		}
+		if f.UncompressedSize64 > uint64(limits.totalBytes-expandedBytes) {
+			return nil, fmt.Errorf("update archive exceeds cumulative expanded size limit of %d bytes", limits.totalBytes)
+		}
+		expandedBytes += int64(f.UncompressedSize64)
 		base := filepath.Base(f.Name)
 		if !isReleaseBinaryName(base) {
 			continue
@@ -593,7 +650,14 @@ func unzipBin(data []byte) ([]byte, error) {
 			return nil, err
 		}
 		defer rc.Close()
-		return io.ReadAll(io.LimitReader(rc, 128<<20))
+		binary, err := io.ReadAll(&io.LimitedReader{R: rc, N: limits.fileBytes + 1})
+		if err != nil {
+			return nil, fmt.Errorf("read update binary: %w", err)
+		}
+		if int64(len(binary)) > limits.fileBytes {
+			return nil, fmt.Errorf("update binary exceeds expanded size limit of %d bytes", limits.fileBytes)
+		}
+		return binary, nil
 	}
 	return nil, fmt.Errorf("interseptor binary not found in zip")
 }

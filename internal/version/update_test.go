@@ -2,10 +2,12 @@ package version
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -69,6 +71,85 @@ func TestUntarGz(t *testing.T) {
 	if err != nil || string(got) != "bin" {
 		t.Fatalf("untarGz: %q err=%v", got, err)
 	}
+}
+
+func TestUntarGzRejectsBinaryOverExpandedLimit(t *testing.T) {
+	// Given
+	archive := tarGzBinary(t, 1025)
+
+	// When
+	_, err := untarGzWithLimits(archive, archiveReadLimits{entries: 8, fileBytes: 1024, totalBytes: 4096})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "expanded size limit") {
+		t.Fatalf("untarGz error=%v, want expanded size limit", err)
+	}
+}
+
+func TestUntarGzAcceptsBinaryAtExpandedLimit(t *testing.T) {
+	// Given
+	archive := tarGzBinary(t, 1024)
+
+	// When
+	binary, err := untarGzWithLimits(archive, archiveReadLimits{entries: 8, fileBytes: 1024, totalBytes: 4096})
+
+	// Then
+	if err != nil || len(binary) != 1024 {
+		t.Fatalf("untarGz bytes=%d err=%v", len(binary), err)
+	}
+}
+
+func TestUnzipBinRejectsTooManyEntries(t *testing.T) {
+	// Given
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for i := 0; i < 5; i++ {
+		w, err := zw.Create(fmt.Sprintf("extra-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	_, err := unzipBinWithLimits(buf.Bytes(), archiveReadLimits{entries: 4, fileBytes: 1024, totalBytes: 4096})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "entry count limit") {
+		t.Fatalf("unzipBin error=%v, want entry count limit", err)
+	}
+}
+
+func tarGzBinary(t *testing.T, size int64) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	if err := tw.WriteHeader(&tar.Header{Name: "interseptor", Mode: 0o755, Size: size}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(tw, zeroReader{}, size); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
 }
 
 func TestVerifySHA256(t *testing.T) {
@@ -173,7 +254,6 @@ func TestInstallLegacyShimSymlink(t *testing.T) {
 	}
 }
 
-
 func TestWindowsUpdateScript(t *testing.T) {
 	script := windowsUpdateScript(
 		`C:\tools\interseptor.exe.new`,
@@ -217,4 +297,3 @@ func TestWindowsUpdateScriptRebrand(t *testing.T) {
 		}
 	}
 }
-

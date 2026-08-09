@@ -38,7 +38,11 @@ type Auth struct {
 func OpenAuth(dir string) (*Auth, error) {
 	a := &Auth{path: filepath.Join(dir, "tokens.json")}
 	if b, err := os.ReadFile(a.path); err == nil && len(b) > 0 {
-		_ = json.Unmarshal(b, &a.toks)
+		if err := json.Unmarshal(b, &a.toks); err != nil {
+			return nil, fmt.Errorf("parse tokens: %w", err)
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read tokens: %w", err)
 	}
 	return a, nil
 }

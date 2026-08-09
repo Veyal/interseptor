@@ -24,10 +24,25 @@ import (
 // it reproduces the project byte-for-byte on another machine. The CA and custom
 // checks are global (shared across projects) and deliberately excluded.
 const (
-	archiveDBName   = "interceptor.db"
-	archiveBodyRoot = "bodies"
-	maxArchiveBytes = 4 << 30 // 4 GiB import cap — a runaway-upload backstop
+	archiveDBName           = "interceptor.db"
+	archiveBodyRoot         = "bodies"
+	maxArchiveBytes         = 4 << 30 // 4 GiB compressed upload cap
+	maxArchiveEntries       = 1_000_000
+	maxArchiveFileBytes     = 4 << 30
+	maxArchiveExpandedBytes = 32 << 30
 )
+
+type archiveReadLimits struct {
+	entries    int
+	fileBytes  int64
+	totalBytes int64
+}
+
+var defaultArchiveReadLimits = archiveReadLimits{
+	entries:    maxArchiveEntries,
+	fileBytes:  maxArchiveFileBytes,
+	totalBytes: maxArchiveExpandedBytes,
+}
 
 type destinationImportLock struct {
 	mu   sync.Mutex
@@ -166,6 +181,10 @@ func (h *Hub) snapshotDB() (string, error) {
 // the two known members (interceptor.db, bodies/**) and rejects any entry that
 // would escape destDir (zip-slip). It requires interceptor.db to be present.
 func unpackFullArchive(zipPath, destDir string) error {
+	return unpackFullArchiveWithLimits(zipPath, destDir, defaultArchiveReadLimits)
+}
+
+func unpackFullArchiveWithLimits(zipPath, destDir string, limits archiveReadLimits) error {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("not a valid project archive: %w", err)
@@ -179,7 +198,11 @@ func unpackFullArchive(zipPath, destDir string) error {
 	if err := os.MkdirAll(destAbs, 0o755); err != nil {
 		return err
 	}
+	if len(zr.File) > limits.entries {
+		return fmt.Errorf("project archive exceeds entry count limit of %d", limits.entries)
+	}
 	sawDB := false
+	var expandedBytes int64
 	for _, f := range zr.File {
 		// Normalize and constrain the entry name to the allowed members.
 		rel := strings.TrimPrefix(path.Clean("/"+f.Name), "/")
@@ -202,9 +225,17 @@ func unpackFullArchive(zipPath, destDir string) error {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		if err := extractZipFile(f, dst); err != nil {
+		if f.UncompressedSize64 > uint64(limits.fileBytes) {
+			return fmt.Errorf("archive entry %q exceeds expanded size limit of %d bytes", f.Name, limits.fileBytes)
+		}
+		if f.UncompressedSize64 > uint64(limits.totalBytes-expandedBytes) {
+			return fmt.Errorf("project archive exceeds cumulative expanded size limit of %d bytes", limits.totalBytes)
+		}
+		written, err := extractZipFile(f, dst, min(limits.fileBytes, limits.totalBytes-expandedBytes))
+		if err != nil {
 			return err
 		}
+		expandedBytes += written
 		if bodyHash != "" {
 			actual, err := fileContentHash(dst)
 			if err != nil {
@@ -249,24 +280,34 @@ func fileContentHash(filename string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func extractZipFile(f *zip.File, dst string) error {
+func extractZipFile(f *zip.File, dst string, limit int64) (int64, error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return 0, err
 	}
 	rc, err := f.Open()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rc.Close()
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := io.Copy(out, rc); err != nil {
-		out.Close()
-		return err
+	written, copyErr := io.Copy(out, &io.LimitedReader{R: rc, N: limit + 1})
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(dst)
+		return 0, copyErr
 	}
-	return out.Close()
+	if closeErr != nil {
+		_ = os.Remove(dst)
+		return 0, closeErr
+	}
+	if written > limit {
+		_ = os.Remove(dst)
+		return 0, fmt.Errorf("archive entry %q exceeds expanded size limit of %d bytes", f.Name, limit)
+	}
+	return written, nil
 }
 
 // projectImportDir resolves a plain project name to its target directory under
@@ -468,12 +509,20 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-	if _, err := io.Copy(tmp, io.LimitReader(r.Body, maxArchiveBytes)); err != nil {
-		tmp.Close()
-		httpErr(w, http.StatusBadRequest, err.Error())
+	written, copyErr := io.Copy(tmp, &io.LimitedReader{R: r.Body, N: maxArchiveBytes + 1})
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		httpErr(w, http.StatusBadRequest, copyErr.Error())
 		return
 	}
-	tmp.Close()
+	if closeErr != nil {
+		httpErr(w, http.StatusBadRequest, closeErr.Error())
+		return
+	}
+	if written > maxArchiveBytes {
+		httpErr(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("project archive exceeds compressed size limit of %d bytes", maxArchiveBytes))
+		return
+	}
 	if err := installFullArchive(tmpPath, destDir, r.URL.Query().Get("overwrite") == "1"); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return

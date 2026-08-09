@@ -87,6 +87,91 @@ func TestInvalidSlug(t *testing.T) {
 	}
 }
 
+func TestPutRemovesArchiveWhenRevisionMetadataWriteFails(t *testing.T) {
+	// Given
+	st, err := Open(t.TempDir(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdir, err := st.projectDir("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(pdir, "rev-000001.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	_, err = st.Put("acme", "lab", "host", bytes.NewReader(writeMiniZip(t)))
+
+	// Then
+	if err == nil {
+		t.Fatal("expected metadata write error")
+	}
+	if _, statErr := os.Stat(filepath.Join(pdir, "rev-000001.zip")); !os.IsNotExist(statErr) {
+		t.Fatalf("published archive remains after metadata failure: %v", statErr)
+	}
+}
+
+func TestDeleteRevPreservesMetadataWhenArchiveDeleteFails(t *testing.T) {
+	// Given
+	st, err := Open(t.TempDir(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := st.Put("acme", "lab", "host", bytes.NewReader(writeMiniZip(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdir, err := st.projectDir("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(pdir, info.Filename)
+	if err := os.Remove(zipPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(zipPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(zipPath, "block"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	err = st.DeleteRev("acme", info.Rev)
+
+	// Then
+	if err == nil {
+		t.Fatal("expected archive deletion error")
+	}
+	if _, statErr := os.Stat(filepath.Join(pdir, "rev-000001.json")); statErr != nil {
+		t.Fatalf("metadata removed after archive deletion failure: %v", statErr)
+	}
+}
+
+func TestOpenAuthReturnsErrorForMalformedTokens(t *testing.T) {
+	// Given
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tokens.json")
+	contents := []byte(`{"broken":`)
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	_, err := OpenAuth(dir)
+
+	// Then
+	if err == nil {
+		t.Fatal("expected malformed tokens error")
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil || !bytes.Equal(got, contents) {
+		t.Fatalf("tokens overwritten: got=%q err=%v", got, readErr)
+	}
+}
+
 func TestAuthBootstrap(t *testing.T) {
 	dir := t.TempDir()
 	a, err := OpenAuth(dir)

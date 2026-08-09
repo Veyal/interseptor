@@ -56,7 +56,24 @@ type Manifest struct {
 	Signature   *Signature `json:"signature,omitempty"` // also mirrored as signature.json
 }
 
-const manifestName = "manifest.json"
+const (
+	manifestName         = "manifest.json"
+	maxPackEntries       = 512
+	maxPackFileBytes     = 2 << 20
+	maxPackExpandedBytes = 64 << 20
+)
+
+type packReadLimits struct {
+	entries    int
+	fileBytes  int64
+	totalBytes int64
+}
+
+var defaultPackReadLimits = packReadLimits{
+	entries:    maxPackEntries,
+	fileBytes:  maxPackFileBytes,
+	totalBytes: maxPackExpandedBytes,
+}
 
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -201,6 +218,10 @@ type File struct {
 // every check file's sha256 matches the manifest. A missing manifest, an unknown
 // member, or any hash mismatch is an error — nothing is returned partial.
 func ReadPack(r io.Reader) (Manifest, []File, error) {
+	return readPackWithLimits(r, defaultPackReadLimits)
+}
+
+func readPackWithLimits(r io.Reader, limits packReadLimits) (Manifest, []File, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return Manifest{}, nil, fmt.Errorf("rules: not a gzip pack: %w", err)
@@ -209,6 +230,8 @@ func ReadPack(r io.Reader) (Manifest, []File, error) {
 	files := map[string][]byte{}
 	var manifest *Manifest
 	var sigBlock *Signature
+	var expandedBytes int64
+	entryCount := 0
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -217,13 +240,32 @@ func ReadPack(r io.Reader) (Manifest, []File, error) {
 		if err != nil {
 			return Manifest{}, nil, fmt.Errorf("rules: read tar: %w", err)
 		}
+		entryCount++
+		if entryCount > limits.entries {
+			return Manifest{}, nil, fmt.Errorf("rules: archive exceeds entry count limit of %d", limits.entries)
+		}
 		if strings.HasPrefix(hdr.Name, "/") || strings.Contains(hdr.Name, "..") {
 			return Manifest{}, nil, fmt.Errorf("rules: unsafe member %q", hdr.Name)
 		}
-		data, err := io.ReadAll(io.LimitReader(tr, 1<<20))
+		if hdr.Size > limits.fileBytes {
+			return Manifest{}, nil, fmt.Errorf("rules: %s exceeds expanded size limit of %d bytes", hdr.Name, limits.fileBytes)
+		}
+		remaining := limits.totalBytes - expandedBytes
+		if remaining < 0 {
+			return Manifest{}, nil, fmt.Errorf("rules: archive exceeds cumulative expanded size limit of %d bytes", limits.totalBytes)
+		}
+		readLimit := min(limits.fileBytes, remaining)
+		data, err := io.ReadAll(&io.LimitedReader{R: tr, N: readLimit + 1})
 		if err != nil {
 			return Manifest{}, nil, fmt.Errorf("rules: read %s: %w", hdr.Name, err)
 		}
+		if int64(len(data)) > readLimit {
+			if remaining < limits.fileBytes {
+				return Manifest{}, nil, fmt.Errorf("rules: archive exceeds cumulative expanded size limit of %d bytes", limits.totalBytes)
+			}
+			return Manifest{}, nil, fmt.Errorf("rules: %s exceeds expanded size limit of %d bytes", hdr.Name, limits.fileBytes)
+		}
+		expandedBytes += int64(len(data))
 		switch hdr.Name {
 		case manifestName:
 			var m Manifest
