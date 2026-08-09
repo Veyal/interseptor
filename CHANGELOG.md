@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.10] - 2026-08-10
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.7.9`.**
 - **Self-update output is quieter.** Successful updates no longer print editor-specific Cursor and MCP restart guidance.
