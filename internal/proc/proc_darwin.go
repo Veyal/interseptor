@@ -12,7 +12,25 @@ import (
 // List returns every running interseptor process (excluding the caller).
 // macOS has no /proc — use pgrep directly.
 func List() ([]Proc, error) {
-	return listViaPgrep(os.Getpid())
+	self := os.Getpid()
+	out, err := exec.Command("ps", "-axo", "pid=,command=").Output()
+	if err != nil {
+		return listViaPgrep(self)
+	}
+	var procs []Proc
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid == self || !matchesInterseptor(baseFromPath(fields[1])) {
+			continue
+		}
+		args := fields[1:]
+		procs = append(procs, Proc{PID: pid, Path: fields[1], Args: args, Role: ClassifyRole(args)})
+	}
+	return procs, nil
 }
 
 // aliveInterseptor reports whether pid is alive AND its command name is an

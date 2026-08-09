@@ -80,6 +80,7 @@ func (h *Hub) StopTunnel() {
 func (h *Hub) Close() {
 	h.tunnelCloseOnce.Do(func() {
 		h.StopTunnel()
+		h.closeActivitySocket()
 		if h.intr != nil {
 			h.intr.Close()
 		}

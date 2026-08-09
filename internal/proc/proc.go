@@ -14,7 +14,64 @@ const (
 // Proc is a discovered interseptor process.
 type Proc struct {
 	PID  int
-	Path string // absolute path to the binary, if known
+	Path string   // absolute path to the binary, if known
+	Args []string // process arguments, when available
+	Role Role
+}
+
+// Role identifies an Interseptor process mode.
+type Role string
+
+const (
+	RoleServer   Role = "server"
+	RoleVault    Role = "vault"
+	RoleLauncher Role = "launcher"
+	RoleUnknown  Role = "unknown"
+)
+
+// ClassifyRole identifies non-server modes from executable arguments.
+func ClassifyRole(args []string) Role {
+	for _, arg := range args[1:] {
+		switch strings.TrimSpace(arg) {
+		case "vault":
+			return RoleVault
+		case "launcher", "macapp":
+			return RoleLauncher
+		}
+	}
+	return RoleServer
+}
+
+// Stoppable reports whether default stop may target p.
+func (p Proc) Stoppable() bool { return p.Role == RoleServer || p.Role == RoleUnknown }
+
+func IsServerArgs(args []string) bool {
+	if len(args) == 0 || !matchesInterseptor(baseFromPath(args[0])) {
+		return false
+	}
+	return ClassifyRole(args) == RoleServer
+}
+
+func ParseLaunchdArguments(output string) []string {
+	var args []string
+	inArguments := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "arguments = {" {
+			inArguments = true
+			continue
+		}
+		if !inArguments {
+			continue
+		}
+		if trimmed == "}" {
+			break
+		}
+		if trimmed != "" {
+			args = append(args, trimmed)
+		}
+	}
+	return args
 }
 
 // matchesInterseptor reports whether baseName is an Interseptor executable.

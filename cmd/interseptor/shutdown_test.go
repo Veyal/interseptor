@@ -2,38 +2,65 @@ package main
 
 import (
 	"context"
-	"reflect"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-type shutdownRecorder struct {
-	name  string
-	calls *[]string
+type shutdownFunc func(context.Context)
+
+func (f shutdownFunc) Shutdown(ctx context.Context) {
+	f(ctx)
 }
 
-func (r shutdownRecorder) Shutdown(context.Context) {
-	*r.calls = append(*r.calls, r.name)
+type closeFunc func()
+
+func (f closeFunc) Close() {
+	f()
 }
 
-type closeRecorder struct {
-	calls *[]string
-}
+func TestShutdownRuntimeSlowControlDoesNotStarveProxy(t *testing.T) {
+	// Given
+	controlStarted := make(chan struct{})
+	proxyStarted := make(chan struct{})
+	releaseControl := make(chan struct{})
+	var active atomic.Int32
+	var hubClosed atomic.Bool
 
-func (r closeRecorder) Close() {
-	*r.calls = append(*r.calls, "hub")
-}
+	control := shutdownFunc(func(ctx context.Context) {
+		active.Add(1)
+		defer active.Add(-1)
+		close(controlStarted)
+		<-releaseControl
+	})
+	proxy := shutdownFunc(func(ctx context.Context) {
+		active.Add(1)
+		defer active.Add(-1)
+		if err := ctx.Err(); err != nil {
+			t.Errorf("proxy shutdown context expired before drain: %v", err)
+		}
+		close(proxyStarted)
+	})
+	hub := closeFunc(func() {
+		if active.Load() != 0 {
+			t.Error("hub closed while shutdown handlers were active")
+		}
+		hubClosed.Store(true)
+	})
 
-func TestShutdownStopsControlBeforeClosingHub(t *testing.T) {
-	var calls []string
-	shutdownRuntime(
-		context.Background(),
-		shutdownRecorder{name: "control", calls: &calls},
-		closeRecorder{calls: &calls},
-		shutdownRecorder{name: "proxy", calls: &calls},
-	)
+	// When
+	done := make(chan struct{})
+	go func() {
+		shutdownRuntime(time.Second, control, hub, proxy)
+		close(done)
+	}()
+	<-controlStarted
+	<-proxyStarted
+	close(releaseControl)
+	<-done
 
-	want := []string{"control", "hub", "proxy"}
-	if !reflect.DeepEqual(calls, want) {
-		t.Fatalf("shutdown order = %v, want %v", calls, want)
+	// Then
+	if !hubClosed.Load() {
+		t.Error("hub was not closed after server drains")
 	}
 }

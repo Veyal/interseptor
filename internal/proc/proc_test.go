@@ -10,6 +10,21 @@ import (
 	"github.com/Veyal/interseptor/internal/proc"
 )
 
+func TestClassifyRole(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want proc.Role
+	}{
+		{[]string{"interseptor", "vault"}, proc.RoleVault},
+		{[]string{"interseptor", "launcher"}, proc.RoleLauncher},
+		{[]string{"interseptor", "--project", "example"}, proc.RoleServer},
+	} {
+		if got := proc.ClassifyRole(test.args); got != test.want {
+			t.Fatalf("ClassifyRole(%q) = %q, want %q", test.args, got, test.want)
+		}
+	}
+}
+
 func TestListExcludesSelf(t *testing.T) {
 	procs, err := proc.List()
 	if err != nil {

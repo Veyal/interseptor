@@ -9,6 +9,14 @@ import (
 	"github.com/Veyal/interseptor/internal/proc"
 )
 
+var (
+	stopList     = proc.List
+	stopBootout  = proc.BootoutLaunchdServer
+	stopGraceful = proc.Graceful
+	stopForce    = proc.Force
+	stopAlive    = proc.AliveInterseptor
+)
+
 func runStop(args []string) error {
 	const defaultGrace = 6 * time.Second
 
@@ -26,7 +34,7 @@ func runStop(args []string) error {
 		return fmt.Errorf("timeout must be >= 0")
 	}
 
-	procs, err := proc.List()
+	procs, err := stopList()
 	if err != nil {
 		return fmt.Errorf("find interseptor processes: %w", err)
 	}
@@ -35,14 +43,34 @@ func runStop(args []string) error {
 		return nil
 	}
 
+	var candidates []proc.Proc
+	for _, p := range procs {
+		if p.Stoppable() {
+			candidates = append(candidates, p)
+		}
+	}
+	if len(candidates) == 0 {
+		fmt.Println("no stoppable Interseptor server process is running")
+		return nil
+	}
+	if len(candidates) > 1 {
+		return fmt.Errorf("refusing to stop %d Interseptor server processes; use a targeted stop", len(candidates))
+	}
+	procs = candidates
+
 	fmt.Printf("stopping %d Interseptor process(es)…\n", len(procs))
 	for _, p := range procs {
 		fmt.Printf("  · PID %d  %s\n", p.PID, p.Path)
+		if label, booted, err := stopBootout(p.PID); err != nil {
+			return fmt.Errorf("stop launchd-managed server: %w", err)
+		} else if booted {
+			fmt.Printf("  · booted out launchd job %s\n", label)
+		}
 		if doForce {
-			_ = proc.Force(p.PID)
+			_ = stopForce(p.PID)
 			continue
 		}
-		_ = proc.Graceful(p.PID)
+		_ = stopGraceful(p.PID)
 	}
 
 	if doForce {
@@ -55,7 +83,8 @@ func runStop(args []string) error {
 	for time.Now().Before(deadline) {
 		alive := false
 		for _, p := range procs {
-			if proc.Alive(p.PID) {
+			if stopAlive(p.PID) {
+
 				alive = true
 				break
 			}
@@ -68,7 +97,7 @@ func runStop(args []string) error {
 
 	var survivors []int
 	for _, p := range procs {
-		if proc.Alive(p.PID) {
+		if stopAlive(p.PID) {
 			survivors = append(survivors, p.PID)
 		}
 	}

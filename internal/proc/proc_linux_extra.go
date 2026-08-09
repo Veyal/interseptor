@@ -21,11 +21,22 @@ func procFromProcFS(pid int) (Proc, bool) {
 	exePath, _ := os.Readlink(filepath.Join(dir, "exe"))
 	exeBase := baseFromPath(exePath)
 
+	args := readProcArgs(dir)
+	role := ClassifyRole(args)
 	if matchesInterseptor(comm) {
-		return Proc{PID: pid, Path: exePath}, true
+		return Proc{PID: pid, Path: exePath, Args: args, Role: role}, true
 	}
 	if exeBase != "" && matchesInterseptor(exeBase) {
-		return Proc{PID: pid, Path: exePath}, true
+		return Proc{PID: pid, Path: exePath, Args: args, Role: role}, true
 	}
 	return Proc{}, false
+}
+
+func readProcArgs(dir string) []string {
+	data, err := os.ReadFile(filepath.Join(dir, "cmdline"))
+	if err != nil {
+		return nil
+	}
+	parts := strings.Split(strings.TrimRight(string(data), "\x00"), "\x00")
+	return parts
 }

@@ -38,7 +38,7 @@ func List() ([]Proc, error) {
 		if err != nil || pid == self {
 			continue
 		}
-		procs = append(procs, Proc{PID: pid, Path: image})
+		procs = append(procs, Proc{PID: pid, Path: image, Role: RoleUnknown})
 	}
 	return procs, nil
 }

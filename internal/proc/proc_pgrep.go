@@ -31,7 +31,7 @@ func listViaPgrep(self int) ([]Proc, error) {
 		if p, ok := procFromProcFS(pid); ok {
 			procs = append(procs, p)
 		} else {
-			procs = append(procs, Proc{PID: pid})
+			procs = append(procs, Proc{PID: pid, Role: RoleUnknown})
 		}
 	}
 	return procs, nil
