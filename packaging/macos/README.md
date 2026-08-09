@@ -104,9 +104,8 @@ INTERSEPTOR_REQUIRE_LOCAL_AUTH=1 /Applications/Interseptor.app/Contents/MacOS/in
 
 Enforcement only arms itself once at least one API key exists, so turning it on
 with a fresh profile cannot lock you out of the UI you need in order to mint the
-first key. In-process callers (the HTTP `/mcp` front end and the Autopilot tool
-bus) carry a per-process internal token and keep working; that token is never
-persisted and is rejected on any non-loopback connection.
+first key. The HTTP `/mcp` front end carries a per-process internal token for its control-plane calls; that token
+is never persisted and is rejected on any non-loopback connection.
 
 The cost is that **external** local clients must then authenticate: `curl` needs
 `Authorization: Bearer <key>`, and the separate `interseptor mcp` stdio process

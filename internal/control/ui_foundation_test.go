@@ -1,6 +1,7 @@
 package control
 
 import (
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -34,6 +35,30 @@ func requireUIRegex(t *testing.T, body, pattern string) {
 func executableJS(src string) string {
 	comments := regexp.MustCompile(`(?s:/\*.*?\*/)|(?m:^\s*//.*$)`)
 	return comments.ReplaceAllString(src, "")
+}
+
+func TestUIBootHasNoDeadBindings(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	app := readUIAsset(t, "js/app.js")
+	scanner := readUIAsset(t, "js/scanner.js")
+	codecs := readUIAsset(t, "js/codecs.js")
+	notes := readUIAsset(t, "js/notes.js")
+	setup := readUIAsset(t, "js/setup.js")
+	for _, src := range []string{index, app, scanner, codecs, notes, setup} {
+		for _, dead := range []string{"panel-removed", "notesAiModal", "checkAiGen", "codecAiGen", "organizeNotes", "Ask AI", "AI assist"} {
+			if strings.Contains(src, dead) {
+				t.Errorf("dead UI binding remains: %q", dead)
+			}
+		}
+	}
+	if strings.Contains(app, "import { loadNotes, flushNotesSave, focusNotes, organizeNotes }") {
+		t.Error("app.js imports removed organizeNotes export")
+	}
+
+	script := `const fs=require('fs'), path=require('path'); const root='ui/js'; const seen=new Set(); function walk(file){file=path.normalize(file); if(seen.has(file))return; seen.add(file); const src=fs.readFileSync(file,'utf8'); for(const m of src.matchAll(/(?:import|from)\s*['"](\.\/[^'"]+)['"]/g)){const dep=path.resolve(path.dirname(file),m[1]); const target=fs.existsSync(dep)?dep:dep+'.js'; if(!fs.existsSync(target)) throw new Error(file+' imports missing '+m[1]); walk(target);}} walk(path.join(root,'app.js')); require('child_process').execFileSync(process.execPath,['--check',path.join(root,'app.js')],{stdio:'inherit'});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("app.js module graph failed to validate: %v\n%s", err, out)
+	}
 }
 
 func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
@@ -92,8 +117,8 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 
 	re := regexp.MustCompile(`<div id="([^"]+(?:Modal|Lightbox))"`)
 	dialogs := re.FindAllStringSubmatch(index, -1)
-	if len(dialogs) < 20 {
-		t.Fatalf("found %d dialogs, want at least 20", len(dialogs))
+	if len(dialogs) != 17 {
+		t.Fatalf("found %d dialogs, want exactly 17 live dialogs", len(dialogs))
 	}
 	for _, dialog := range dialogs {
 		if !strings.Contains(core, "'"+dialog[1]+"'") {

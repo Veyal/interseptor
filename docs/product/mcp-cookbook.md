@@ -1,7 +1,8 @@
-# MCP Cookbook — recipes for the AI-assisted pentester
+# MCP Cookbook, recipes for external agents
 
-*For Priya + Atlas: copy these prompts into your MCP client after connecting
-`interseptor mcp` or `POST http://127.0.0.1:9966/mcp`.*
+*Connect any MCP-capable external agent with `interseptor mcp` or
+`POST http://127.0.0.1:9966/mcp`. Interseptor provides deterministic tools and evidence. Your agent
+provides model reasoning and sequencing.*
 
 ## Recipe 1 — Map an API from captured traffic
 
@@ -67,21 +68,21 @@ captured flows, no separate Discover tab.
 
 **Human checklist:** [engagement-closeout.md](../engagement-closeout.md)
 
-## Recipe 5 — Autopilot with trust review
+## Recipe 5 — External agent active testing
 
-**Goal:** Run Autopilot, then accept only what the Trust ledger justified.
+**Goal:** Let an external agent sequence deterministic scans and human-reviewed evidence.
 
 ```
-1. list_scope — Autopilot refuses to start without include rules
-2. check_readiness — fix blockers (OOB, auth, traffic)
-3. autopwn_start with a tight budget (maxRequests / maxWallMs)
-4. autopwn_state while it runs; watch Activity + History (glass box)
-5. list_findings — review only newly filed items; delete/revise noise
-6. autopwn_stop if budgets look wrong mid-run
+1. list_scope — confirm include rules before any active request
+2. check_readiness — fix blockers (auth, traffic, OOB when needed)
+3. run active_scan with arm=true on authorized targets
+4. Review Activity and History while requests run
+5. Reproduce important candidates with send_request or Repeater
+6. create_finding and add_finding_poc only after evidence review
 ```
 
-**Tip:** In the UI, the Autopilot **Trust ledger** shows filed / rejected / skipped
-with reasons — use that before you trust Critical/High.
+**Safety:** Interseptor doesn't decide what to test. The external agent must follow scope and
+authorization constraints, while Interseptor records requests and results.
 
 ## Recipe 6 — Custom checks and rule packs
 
@@ -96,14 +97,14 @@ with reasons — use that before you trust Critical/High.
    `interseptor rules install pack.tar.gz`
 ```
 
-## Recipe 7 — Intruder from AI payload lists
+## Recipe 7 — Intruder from external payload lists
 
 **Goal:** Fuzz one injection point with AI-suggested payloads, then file a finding.
 
 ```
 1. get_flow on the target exchange
-2. suggest_intruder_payloads with flowId (+ optional hint)
-3. start_intruder using the returned positions/payloads (or UI ✨ Generate)
+2. Prepare payloads in your external agent, based on the captured flow
+3. start_intruder using positions and payloads
 4. After the run: inspect flagged / interesting results in History
 5. create_finding + add_finding_poc with the best attempt's flowId
 ```

@@ -50,10 +50,9 @@ function checkSetMode(mode){
     b.classList.toggle('on',on);
     b.setAttribute('aria-selected',on?'true':'false');
   });
-  const panes={code:'#checkPaneCode',describe:'#checkPaneDescribe',docs:'#checkPaneDocs'};
+  const panes={code:'#checkPaneCode',docs:'#checkPaneDocs'};
   Object.entries(panes).forEach(([m,sel])=>{const el=$(sel);if(el)el.style.display=m===mode?'':'none';});
   if(mode==='docs')loadCheckDocs();
-  if(mode==='describe')setTimeout(()=>$('#checkDescribe')?.focus(),0);
 }
 async function loadCheckDocs(){
   if(checkDocsLoaded)return;
@@ -172,10 +171,6 @@ def check(point, baseline, probe):
     return []
 `;
 function refreshCheckEditorMode(){
-  // The AI "Describe" tab is passive-only; hide it for active checks.
-  const describe=$('#checkModeSeg button[data-mode="describe"]');
-  if(describe) describe.style.display = checkKind==='active'?'none':'';
-  if(checkKind==='active' && checkMode==='describe') checkSetMode('code');
   const kh=$('#checkKindHint');
   if(kh){
     if(checkKind==='active'){kh.style.display='';kh.textContent='def check(point, baseline, probe): — probe() sends a real request';}
@@ -281,33 +276,6 @@ export async function checkDelete(){
     toast(checkBuiltin?'reverted to built-in':'deleted '+id);
   }catch(e){toast(e.message);}
 }
-async function checkAiGenerate(){
-  if(state.aiDisabled){toast('AI features are disabled — enable in Settings → AI assist');return;}
-  const desc=($('#checkDescribe')||{}).value?.trim();
-  if(!desc){toast('describe what the check should detect');$('#checkDescribe')?.focus();return;}
-  const status=$('#checkAiStatus'),btn=$('#checkAiGen');
-  if(status)status.textContent='generating…';
-  if(btn)btn.disabled=true;
-  try{
-    const r=await api('/api/ai/checks/generate',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({description:desc,source:$('#checkSrc').value||'',flowId:state.selId||0})});
-    if(r.error&&!r.source){
-      if(status)status.innerHTML='<span style="color:var(--red)">'+esc(r.error)+'</span>';
-      return;
-    }
-    if(r.source)$('#checkSrc').value=r.source;
-    if(r.suggestedId&&!$('#checkId').value.trim())$('#checkId').value=r.suggestedId;
-    checkSetMode('code');
-    if(status)status.textContent='generated — running test…';
-    await checkTest();
-    if(status){
-      if(r.error)status.innerHTML='<span style="color:var(--amber)">compiled after retry; review output</span>';
-      else status.textContent='done — review code, set id, Save';
-    }
-  }catch(e){
-    if(status)status.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';
-  }finally{if(btn)btn.disabled=false;}
-}
 async function loadPacksPanel(){
   const box=$('#checksPackList'); if(!box) return;
   try{
@@ -373,7 +341,6 @@ if($('#checkSave'))$('#checkSave').onclick=checkSave;
 if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
 if($('#checkModeSeg'))$('#checkModeSeg').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>checkSetMode(b.dataset.mode));
 if($('#checksSearch'))$('#checksSearch').oninput=checksApplyFilter;
-if($('#checkAiGen'))$('#checkAiGen').onclick=checkAiGenerate;
 
 /* ---- decoder ---- */
 export { DEC_OPS };

@@ -24,8 +24,8 @@ export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 export const icon=(name,label)=>`<svg class="icon" ${label?`role="img" aria-label="${escAttr(label)}"`:'aria-hidden="true"'} focusable="false"><use href="#i-${name}"/></svg>`;
 
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
-  rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,showAI:true,aiDisabled:false,flowTruncated:false,selected:new Set(),lastSelIdx:-1,aiIds:[],view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
-  filters:{scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
+  rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
+  filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
 export function toast(m, sev){
@@ -1078,7 +1078,7 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['notesAiModal','flowModal','aiModal','shortcutsModal','checksModal','codecsModal','activeModal','oobModal','projModal','authzModal','findCreateModal','findTriageModal','findPickModal','findFlowPickModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','activeModal','oobModal','projModal','authzModal','findCreateModal','findPickModal','findFlowPickModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];

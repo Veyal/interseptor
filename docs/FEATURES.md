@@ -6,6 +6,8 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   (per-host leaf certs minted on demand).
 - **Live history** — every flow captured (metadata in SQLite, bodies content-addressed on disk),
   filterable/searchable, with a raw/pretty request & response inspector and right-click filters.
+  Search supports metadata, headers, tags, and bounded body matching, plus deterministic saved
+  Starlark predicates for custom Anywhere searches. See [history search](history-search.md).
 - **Intercept workflow** — hold / forward (with edits) / drop **requests *and* responses**, plus
   ordered **match-&-replace** rules.
 - **Repeater** — multi-tab; re-send any request, edit it freely, inspect the response, per-tab history.
@@ -14,13 +16,11 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   **grep-match/extract**, anomaly flagging, attack tabs and run history.
 - **Authorization testing** — replay a request as each saved identity (role) and diff for broken
   access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner when you have a tunnel or public URL).
-- **Autonomous AI pentesting ("Autopilot")** — reads captured history, plans and runs **active**
-  testing autonomously via Interseptor's own tools, and files **only** machine-verified findings
-  through a 4-gate verifier (differential reproduction → adversarial verifier agent → out-of-band
-  proof for blind classes → human confirm for Critical/High). Every step lands in Activity with the
-  request visible in History — nothing is a black box.
+- **External agent orchestration** — MCP exposes deterministic capture, replay, mutation, scope,
+  scanning, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
+  Interseptor records every request and result in History, Activity, and findings.
 - **Active scanning** — a deterministic active-scan engine (`active_scan`) fires per-class payloads
-  at a request's injection points and confirms hits with detectors, independent of Autopilot; extend
+  at a request's injection points and confirms hits with detectors, independent of external orchestration; extend
   it with your own **active** Starlark checks the same way as passive ones.
 - **Mobile device support** — Android (adb-based CA install + proxy config) and iOS (profile-based,
   including jailbroken-device SSH automation) setup for HTTPS interception on real devices.
@@ -29,8 +29,8 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   sharing a target.
 - **Multi-project launcher** — `interseptor launcher` runs a small dashboard that starts/stops
   multiple project instances from one place.
-- **AI assist** — BYO-key LLM explains requests, suggests payloads (with Repeater/Intruder routing),
-  and summarizes findings; streamed, rendered as Markdown.
+- **External AI integration** — connect an AI assistant through MCP or REST/SSE. Interseptor
+  supplies tools and evidence; model calls, reasoning, and sequencing stay outside the binary.
 - **Scanner** — built-in passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
   reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
   exportable as a **Markdown findings report**.
@@ -55,8 +55,9 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   settings).
 - **Project vault** — always-on archive store (`interseptor vault`) for multi-device backup / import /
   merge (Tailscale Serve). See [vault](vault.md).
-- **BYO-key AI assist** — explain a request, suggest payloads, or summarize findings via your own
-  **Anthropic**, **OpenRouter**, **GLM**/Zhipu, or **OpenAI** key (off until you set one; the exchange is sent only on request).
+- **Model-free core** — no provider keys, built-in chat, or autonomous pentest loop. Use any
+  external model or agent that supports MCP, with deterministic Interseptor tools enforcing scope
+  and recording evidence.
 - **Finding tags** — report-scope labels on curated findings (same slug model as History tags), with
   list filters and export grouping (`cms` / `website` / `app` / `api` / `out-of-scope` convention).
 - **API & MCP** — a REST control API + SSE event stream and a full **Model Context Protocol** server

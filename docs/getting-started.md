@@ -75,13 +75,11 @@ intentionally use the compatibility filename `interceptor.db`. Delete the runtim
 | `INTERSEPTOR_OPEN_BROWSER` | Auto-open the UI on start (same as `--open`). The default is **not** to open it. |
 | `INTERSEPTOR_NO_BROWSER` | Hard-disable browser auto-open, overriding `--open`/`INTERSEPTOR_OPEN_BROWSER`. |
 | `INTERSEPTOR_ALLOW_EXTERNAL_BIND` | Lock down to **loopback-only** binds when set to `0`/`false`. External bind (e.g. `0.0.0.0` for LAN capture) is allowed by default — see [Security model](architecture.md#security-model). |
-| `INTERSEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). |
+| `INTERSEPTOR_CONTROL_URL` | For `interseptor mcp`: the control API to drive (default `http://127.0.0.1:9966`). External MCP clients connect through this server; model providers are configured outside Interseptor. |
 | `INTERSEPTOR_CONTROL_ADDR` | Env equivalent of `--control-addr`: full control UI/API listen address (`host:port`). |
 | `INTERSEPTOR_PROJECT` | Env equivalent of `--project`: open a specific project by name/path. |
 | `INTERSEPTOR_PROXY_ADDR` | Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). |
 | `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the background update check Interseptor runs on every startup. |
-| `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` | Optional fallback key for AI assist when none is set in **Settings → AI**. |
-| `GLM_API_KEY` / `ZAI_API_KEY` | Optional fallback key for the GLM/Zhipu AI-assist provider (same tier as `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`); `GLM_API_KEY` wins if both are set. |
 | `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Raises the GitHub API rate limit used for update checks (first non-empty wins). |
 
 The proxy bind address is also runtime-configurable in **Settings** (and persisted).

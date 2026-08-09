@@ -1018,22 +1018,6 @@ export function applyIntruderPayloadSuggestion(data, opts){
   const n=pos.reduce((a,p)=>a+(p.payloads||[]).length,0);
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
-export async function intrGeneratePayloads(hint){
-  let flowId=intrLastFlowId;
-  if(!flowId){
-    // Fall back to selected History flow if the operator never used Send→Intruder.
-    try{const {state}=await import('./core.js');if(state.selId)flowId=state.selId;}catch(e){}
-  }
-  if(!flowId){toast('load a request into Intruder (or select a History flow) first','warn');return;}
-  const btn=$('#intrAiGen');if(btn){btn.disabled=true;btn.textContent='…';}
-  try{
-    const body={flowId};
-    if(hint) body.hint=hint;
-    const data=await api('/api/ai/intruder-payloads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    applyIntruderPayloadSuggestion(data);
-  }catch(e){toast(e.message||'AI generate failed','error');}
-  finally{if(btn){btn.disabled=false;btn.innerHTML=icon('sparkle')+' Generate';}}
-}
 export async function sendToIntruder(f){
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
   // and capture the active attack tab before any await so a sub-tab switch during

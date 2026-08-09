@@ -1,9 +1,39 @@
 package control
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestUIJourneyProxyAnywhereAndSavedScriptSearchContracts(t *testing.T) {
+	// Given
+	index := readUIAsset(t, "index.html")
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
+
+	// When / Then
+	requireUIContains(t, index,
+		`<option value="anywhere" selected>Anywhere</option>`,
+		`<option value="body">Body</option>`,
+		`<option value="id">ID</option>`,
+		`<option value="script">Script</option>`,
+		`id="flowSearchScriptEditor"`,
+		`aria-label="Saved search Starlark editor"`,
+		`id="flowSearchScriptSave"`,
+		`id="flowSearchScriptError"`,
+	)
+	requireUIContains(t, proxy,
+		"searchScope:'anywhere'",
+		"'/api/flow-searches'",
+		"flowSearchScriptEditor",
+		"flowSearchScriptSave",
+		"flowSearchScriptError",
+		"state.filters.searchScope",
+		"savedSearch",
+		"loadFlows();",
+	)
+}
 
 func TestUIJourneyProxyActionsAndKeyboardContextMenu(t *testing.T) {
 	index := readUIAsset(t, "index.html")
@@ -60,9 +90,35 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 }
 
+func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
+	findings := executableJS(readUIAsset(t, "js/findings.js"))
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, findings,
+		`import { sendToRepeater } from './tools.js';`,
+		`find-send-repeater`,
+		`aria-label="Send attached flow #`,
+		`sendToRepeater({ id });`,
+		`!block.missing`,
+		`find-report-flow`,
+	)
+	requireUIContains(t, tools,
+		`sendToRepeater`,
+		`'/api/flows/'`,
+		`raw?side=req`,
+		`method=d.method`,
+		`headersToText(d.reqHeaders)`,
+		`sourceFlowId=f.id`,
+	)
+	if strings.Contains(findings, "Copy URL") || strings.Contains(findings, "Copy link") {
+		t.Error("finding flow actions retain copy controls")
+	}
+	if strings.Contains(findings, "fetch('/api/flows") || strings.Contains(findings, "api('/api/flows/'+id+'/raw") {
+		t.Error("finding flow action reconstructs request instead of using Repeater helper")
+	}
+}
+
 func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *testing.T) {
 	setup := executableJS(readUIAsset(t, "js/setup.js"))
-	autopwn := executableJS(readUIAsset(t, "js/autopwn.js"))
 	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	app := executableJS(readUIAsset(t, "js/app.js"))
@@ -76,12 +132,11 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 		"tls_intercept",
 		"traffic",
 	)
-	requireUIContains(t, autopwn,
-		"'/api/readiness'",
-		"'scope'",
-		"'ai_provider'",
-	)
-	requireUIRegex(t, autopwn, `(?s)api\('/api/readiness'\).*?api\('/api/autopwn/start'`)
+	for _, asset := range []string{"js/ai.js", "js/autopwn.js"} {
+		if _, err := os.Stat(filepath.Join("ui", asset)); err == nil {
+			t.Errorf("removed UI asset still exists: %s", asset)
+		}
+	}
 	requireUIContains(t, scanner, "'/api/readiness'", "in-scope")
 	requireUIContains(t, scanner,
 		"'/api/scanner/targets'",
@@ -113,7 +168,7 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}
-	requireUIContains(t, findings, "findExportStatuses", "statuses=")
+	requireUIContains(t, index, `id="findExportStatuses"`)
 	requireUIContains(t, intercept, "intercept-danger", "held")
 	requireUIContains(t, index,
 		`id="interceptWarning"`,
@@ -122,8 +177,25 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 		`id="scanRescanState"`,
 		`id="sharePrereq"`,
 	)
-	requireUIContains(t, index, `id="findEmptyNew"`, `id="findEmptyAskAi"`, `find-view is-empty`, `class="state-empty find-empty"`)
+	requireUIContains(t, index, `id="findEmptyNew"`, `find-view is-empty`, `class="state-empty find-empty"`)
 	requireUIContains(t, findings, "findingsEmptyHTML(", "setFindingsViewEmpty(", "findEmptyNew", "is-empty")
+}
+
+func TestUIHasNoBuiltInProviderSurfaces(t *testing.T) {
+	assets := []string{"index.html", "app.css", "js/app.js", "js/settings.js", "js/findings.js", "js/scanner.js", "js/codecs.js", "js/notes.js", "js/tools.js", "js/setup.js", "js/proxy.js"}
+	for _, asset := range assets {
+		body := readUIAsset(t, asset)
+		for _, forbidden := range []string{"/api/ai", "/api/autopwn", "Ask AI", "Autopilot", "aiProvider", "setAiProvider", "autopwn.update"} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("%s retains removed built-in provider surface %q", asset, forbidden)
+			}
+		}
+	}
+	for _, asset := range []string{"js/ai.js", "js/autopwn.js"} {
+		if _, err := os.Stat(filepath.Join("ui", asset)); !os.IsNotExist(err) {
+			t.Errorf("removed UI asset exists: %s", asset)
+		}
+	}
 }
 
 func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
@@ -136,7 +208,8 @@ func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
 		`id="codecsDirHint"`,
 		`id="codecModeSeg"`,
 		`id="codecPaneCode"`,
-		`id="codecPaneDescribe"`,
+		`id="codecTest"`,
+		`id="codecSave"`,
 		`id="codecPaneDocs"`,
 		`id="codecDocs"`,
 		`id="codecOut"`,
@@ -151,7 +224,6 @@ func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
 		"codecsDirLabel(",
 		"codecSetMode(",
 		"/api/codecs/reference",
-		"/api/ai/codecs/generate",
 		"loadCodecDocs(",
 	)
 	if strings.Contains(codecs, `class="h${`) || strings.Contains(codecs, `".h${codecSel`) {

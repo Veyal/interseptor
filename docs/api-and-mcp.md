@@ -1,9 +1,11 @@
 # API & MCP
 
-Interseptor exposes everything the UI can do over two machine-facing surfaces, so a human and an AI
-agent can drive the *same* engine at the same time.
+Interseptor exposes deterministic security operations over two machine-facing surfaces, so a human
+and an external agent can drive the *same* engine at the same time. Interseptor doesn't provide a
+model, provider integration, or autonomous decision loop. The external agent owns reasoning and
+sequencing.
 
-## Drive it with AI (MCP)
+## Connect an external agent with MCP
 
 Interseptor ships a **Model Context Protocol** server so an AI assistant can operate the proxy with
 the same capabilities as the UI. Run the app, then connect your MCP client one of two ways:
@@ -29,8 +31,6 @@ arguments (types, required fields, accepted variants) inline, so an agent can re
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
-BYO-key AI assist in the UI supports **Anthropic**, **OpenRouter**, **GLM**/Zhipu, and **OpenAI** providers.
-
 For a task-oriented walkthrough (recon → auth → scan → record findings), see
 [docs/product/mcp-cookbook.md](product/mcp-cookbook.md).
 
@@ -41,6 +41,23 @@ section) — including the request/response body shape for every mutating route,
 and path. Live updates stream over Server-Sent Events at `GET /api/events`. Highlights:
 `/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
+
+### History search API
+
+`GET /api/flows` supports `searchScope=anywhere|body|id` and `savedSearch=<name>`. Anywhere search checks flow metadata, headers, tags, and bodies, with an 8,000-candidate cap and 256 KiB per-body read cap. Responses expose `searchNote` when a search reaches its scan limit and `truncated` when the result page exceeds `limit`.
+
+Saved deterministic Starlark searches use these routes. They inspect at most 64 filtered flows, expose at most 64 KiB per body and 8 MiB of body data per request; this remains separate from Anywhere search's 8,000-candidate cap:
+
+```text
+POST   /api/flow-searches/test
+GET    /api/flow-searches
+POST   /api/flow-searches
+GET    /api/flow-searches/{name}/source
+PUT    /api/flow-searches/{name}
+DELETE /api/flow-searches/{name}
+```
+
+POST and PUT accept JSON `{name, scope, script}`. `scope` normalizes to `anywhere`, `body`, or `id`. The script must define `match(flow)` and return bool. Saved searches are project-scoped and persist in project settings. Full fields, helpers, limits, and examples live in [History search](history-search.md).
 
 Auth and trust rules for both surfaces (loopback vs. key-authorized remote access, scoped keys,
 CSRF handling) are covered in [Security model](architecture.md#security-model).

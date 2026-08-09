@@ -14,9 +14,9 @@ weight of a JVM — and that an AI agent or CI job can drive as easily as a huma
 assistant together.*** The human and the AI are **both first-class users of the same engine**:
 
 - the **human** gets a fast, low-friction web UI to watch, intercept, replay, fuzz, and scan traffic;
-- the **AI** gets the *same capabilities* through a real **MCP server** and a clean **REST/SSE API**,
-  so it can autonomously list/inspect flows, replay and mutate requests, run Intruder/Scanner, toggle
-  intercept, and add match-&-replace rules — under the tester's direction.
+- the **external AI assistant** gets the *same capabilities* through a real **MCP server** and a clean
+  **REST/SSE API**, so it can list/inspect flows, replay and mutate requests, run Intruder/Scanner,
+  toggle intercept, and add match-&-replace rules under the tester's direction.
 
 Everything we build serves that pairing: **great UI/UX for the tester, and an equally first-class
 MCP/API surface for the AI.** If a capability exists in the UI, it must be reachable by the agent,
@@ -46,14 +46,14 @@ CI-integrated, and increasingly agent-driven.
 
 ## Target users & personas
 
-Our **primary target is the AI-assisted penetration tester**: a tester who works *with* an AI
+Our **primary target is the agent-assisted penetration tester**: a tester who works *with* an external AI agent
 assistant (Claude, etc.) in the loop. This is a **pair** — the human and the agent — and we design
 for both as first-class users of the same engine.
 
 | Persona | Who | Primary jobs-to-be-done | What they value |
 |---|---|---|---|
-| **Priya — the AI-assisted pentester** (primary, human half) | Pentester/bug-bounty hunter who drives an AI assistant while testing | Direct the AI to capture/inspect/replay/fuzz/scan; jump in via the UI to verify, intercept, and edit | A fast UI to supervise + take over; an AI that can actually *do* the work in the tool |
-| **Atlas — her AI agent** (primary, agent half) | An LLM agent (Claude Code/Desktop, custom) connected over MCP | List & read flows, replay/mutate requests, run Intruder/Scanner, toggle intercept, add rules — autonomously | A complete, well-described **MCP** toolset + **REST/SSE** API; predictable, machine-readable results |
+| **Priya — the agent-assisted pentester** (primary, human half) | Pentester/bug-bounty hunter who drives an AI assistant while testing | Direct the AI to capture/inspect/replay/fuzz/scan; jump in via the UI to verify, intercept, and edit | A fast UI to supervise + take over; an AI that can actually *do* the work in the tool |
+| **Atlas — her AI agent** (primary, agent half) | An external LLM agent (Claude Code/Desktop, custom) connected over MCP | Under tester direction, list and read flows, replay/mutate requests, run Intruder/Scanner, toggle intercept, and add rules | A complete, well-described **MCP** toolset + **REST/SSE** API; predictable, machine-readable results |
 | **Bug-bounty hunter "Bea"** (secondary) | Independent, price-sensitive, post-2024 cohort | Capture & replay fast; fuzz; find auth/IDOR/injection bugs | Zero cost, instant start, portability |
 | **Security-minded dev "Devi"** (secondary) | Builds APIs, self-tests | Inspect own traffic; catch missing headers/secrets | Clean UI, low noise, runs locally |
 
@@ -106,7 +106,7 @@ people who want Burp's workflow without Burp's weight, cost, or lock-in.*
 - **Agent/MCP tooling is brand-new and hot** (post-late-2024). Security toolkits are racing to
   expose themselves to AI agents via MCP. "Drive an intercepting proxy from an AI agent" is a fresh,
   defensible angle the JVM incumbents don't have natively.
-- **AI-assisted testing is now table-stakes at the top** (Burp AI: Explore Issue, Explainer,
+- **Agent-operable testing is now table-stakes at the top** (Burp AI: Explore Issue, Explainer,
   AI login sequences, Shadow Repeater). We don't need to match it — being the *best substrate for an
   external agent* (via MCP) is our pragmatic lane.
 

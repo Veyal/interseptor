@@ -25,8 +25,8 @@ The control plane has **two trust modes** (`internal/control/guard.go`):
   (Settings → API & MCP → Share) is opt-in and **refuses to start unless at least one API key already
   exists**, so the tunnel can never expose an unauthenticated instance.
 
-Captured traffic and any AI key never leave your machine except on an explicit AI-assist request to
-your chosen provider, or traffic you deliberately expose via the remote-access mode above.
+Captured traffic never leaves your machine unless you deliberately expose it through remote access or an external MCP/REST client. Interseptor has no built-in model provider and stores no provider keys.
+
 
 **Data at rest is unencrypted.** Captured requests/responses — which can include credentials, session
 tokens, and other PII from whatever you're testing — are stored **unencrypted** under `~/.interseptor/`
@@ -51,7 +51,7 @@ independently tested.
 | `internal/sender` | One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater & Intruder |
 | `internal/intruder` | Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) |
 | `internal/scanner` | Passive security checks over captured flows |
-| `internal/activescan` | Deterministic **active**-scan engine: enumerates a request's injection points, fires per-class payloads through a caller-supplied sender, confirms with detectors (distinct from the passive `internal/scanner`) |
+| `internal/activescan` | Deterministic active-scan engine; external agents can invoke it through MCP or REST |
 | `internal/activescript` | Runs user-authored **active** scanner checks in Starlark — the active twin of `internal/checkscript` |
 | `internal/oob` | Out-of-band interaction catcher (blind SSRF/XXE/SQLi/RCE callbacks) |
 | `internal/checkscript` | Runs user-authored Starlark scanner checks (sandboxed, bounded) |
@@ -60,10 +60,7 @@ independently tested.
 | `internal/wsrepeater` | WebSocket Repeater (RFC 6455 handshake + masked frames, no deps) |
 | `internal/harx` | HAR 1.2 import/export |
 | `internal/sysproxy` | Opt-in macOS system-proxy toggle |
-| `internal/aiassist` | BYO-key LLM bridge (Anthropic + OpenRouter + GLM/Zhipu + OpenAI) |
-| `internal/aiagent` | Provider-agnostic, budgeted tool-calling agent loop that powers Autopilot's planning and adversarial-verifier agents |
-| `internal/autopwn` | Autonomous-pentest ("Autopilot") run engine: plans and executes active testing over Interseptor's own tools, files only findings proven by the 4-gate verifier |
-| `internal/verify` | Deterministic, LLM-free primitives (differential reproduction, OOB-callback confirmation) behind Gates 1 and 3 of Autopilot's 4-gate finding verifier |
+| `internal/verify` | Deterministic verification primitives for replay and evidence workflows |
 | `internal/android` | Configures a USB-connected Android device for HTTPS interception via `adb` (CA install + proxy config) |
 | `internal/ios` | Configures iOS simulators (via `simctl`) and physical devices (`.mobileconfig` profile, or SSH automation for jailbroken devices) for HTTPS interception |
 | `internal/tunnel` | Manages a Cloudflare quick tunnel (`cloudflared` child process) exposing the control plane at a public `https://*.trycloudflare.com` URL |

@@ -1,10 +1,7 @@
-import { $, api, toast, renderMD, accordionize, openModal, closeModal, state, copyText, uiConfirm, createAutosave } from './core.js';
+import { $, api, toast, renderMD, accordionize, createAutosave } from './core.js';
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
 export const notesState={loaded:'',mode:'edit'};
-let notesOrganizedText='';
-let notesOrganizeAbort=null;
-let notesOrganizeSeq=0;
 
 function setNotesStatus(kind){
   const s=$('#notesStatus');
@@ -66,144 +63,6 @@ export function focusNotes(){
   if(ta&&notesState.mode==='edit')ta.focus();
 }
 
-function setNotesAiStatus(msg){
-  const s=$('#notesAiStatus');if(s)s.textContent=msg||'';
-}
-
-function abortNotesOrganize(){
-  if(notesOrganizeAbort){try{notesOrganizeAbort.abort();}catch(e){}notesOrganizeAbort=null;}
-  const stop=$('#notesAiStop');if(stop)stop.style.display='none';
-}
-
-function handleNotesSSE(chunk,onText,onErr){
-  let ev='message',data='';
-  chunk.split('\n').forEach(line=>{
-    if(line.startsWith('event:'))ev=line.slice(6).trim();
-    else if(line.startsWith('data:'))data+=line.slice(5).trim();
-  });
-  if(!data)return;
-  if(ev==='error'){let m=data;try{m=JSON.parse(data);}catch(e){}onErr(m);return;}
-  if(ev==='done')return;
-  try{const t=JSON.parse(data);if(typeof t==='string')onText(t);}catch(e){}
-}
-
-let notesAiRenderTimer=null,notesAiPending='';
-function scheduleNotesAiRender(seq,text){
-  notesAiPending=text;
-  clearTimeout(notesAiRenderTimer);
-  notesAiRenderTimer=setTimeout(()=>{
-    if(seq!==notesOrganizeSeq)return;
-    const out=$('#notesAiOut');
-    if(out){out.innerHTML=renderMD(notesAiPending);accordionize(out);}
-  },90);
-}
-
-export async function organizeNotes(){
-  if(state.aiDisabled){toast('AI features are disabled — enable in Settings → AI assist');return;}
-  await flushNotesSave();
-  const src=($('#notesEdit')||{}).value||'';
-  if(!src.trim()){toast('write some notes first');return;}
-  const seq=++notesOrganizeSeq;
-  abortNotesOrganize();
-  notesOrganizedText='';
-  const apply=$('#notesAiApply');if(apply)apply.disabled=true;
-  const before=$('#notesAiBefore');if(before)before.textContent=src;
-  const out=$('#notesAiOut');if(out)out.innerHTML='<div class="hint">Organizing…</div>';
-  setNotesAiStatus('Sending to your AI provider…');
-  openModal($('#notesAiModal'));
-  const ctrl=new AbortController();notesOrganizeAbort=ctrl;
-  const stop=$('#notesAiStop');if(stop)stop.style.display='';
-  let acc='';
-  try{
-    // Raw fetch (not core.js's api()) because this is a streaming SSE response and
-    // api() always awaits the full body as json/text. Manually replicate its two
-    // behaviors that matter for a mutating request: the anti-CSRF header for
-    // remote (cookie-authed) sessions, and redirecting to /login on 401 rather
-    // than surfacing a raw fetch error.
-    const r=await fetch('/api/ai/notes/organize/stream',{
-      method:'POST',headers:{'content-type':'application/json','X-Interseptor-CSRF':'1'},
-      body:JSON.stringify({notes:src}),signal:ctrl.signal,
-    });
-    if(r.status===401){
-      if(location.pathname!=='/login')location.href='/login';
-      throw new Error('unauthorized');
-    }
-    if(!r.ok||!r.body)throw new Error('stream-unavailable');
-    const reader=r.body.getReader(),dec=new TextDecoder();
-    let buf='',streaming=false;
-    for(;;){
-      const {value,done}=await reader.read();
-      if(done)break;
-      if(seq!==notesOrganizeSeq)return;
-      buf+=dec.decode(value,{stream:true});
-      let idx;
-      while((idx=buf.indexOf('\n\n'))>=0){
-        const chunk=buf.slice(0,idx);buf=buf.slice(idx+2);
-        handleNotesSSE(chunk,
-          t=>{if(seq!==notesOrganizeSeq)return;if(!streaming){streaming=true;setNotesAiStatus('Streaming organized draft…');}
-            acc+=t;scheduleNotesAiRender(seq,acc);},
-          msg=>{throw new Error(msg);});
-      }
-    }
-    if(seq!==notesOrganizeSeq)return;
-    notesOrganizedText=acc.trim();
-    if(out){out.innerHTML=renderMD(notesOrganizedText||'_(empty response)_');accordionize(out);}
-    if(apply)apply.disabled=!notesOrganizedText;
-    setNotesAiStatus(notesOrganizedText?'Ready — review and Apply':'No output');
-  }catch(e){
-    if(seq!==notesOrganizeSeq)return;
-    if(ctrl.signal.aborted){setNotesAiStatus('stopped');}
-    else if(e.message==='stream-unavailable'){await organizeNotesNonStream(seq,src);}
-    else{
-      setNotesAiStatus('');
-      if(out)out.innerHTML='<div class="hint" style="color:var(--red)">Error: '+e.message+'</div>';
-      toast('organize: '+e.message);
-    }
-  }finally{
-    if(seq===notesOrganizeSeq){
-      if(notesOrganizeAbort===ctrl)notesOrganizeAbort=null;
-      if(stop)stop.style.display='none';
-    }
-  }
-}
-
-async function organizeNotesNonStream(seq,src){
-  setNotesAiStatus('Thinking…');
-  try{
-    const r=await api('/api/ai/notes/organize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({notes:src})});
-    if(seq!==notesOrganizeSeq)return;
-    notesOrganizedText=(r.text||'').trim();
-    const out=$('#notesAiOut');
-    if(out){out.innerHTML=renderMD(notesOrganizedText||'_(empty response)_');accordionize(out);}
-    const apply=$('#notesAiApply');if(apply)apply.disabled=!notesOrganizedText;
-    setNotesAiStatus(notesOrganizedText?'Ready — review and Apply':'No output');
-  }catch(e){
-    if(seq!==notesOrganizeSeq)return;
-    const out=$('#notesAiOut');
-    if(out)out.innerHTML='<div class="hint" style="color:var(--red)">Error: '+e.message+'</div>';
-    setNotesAiStatus('');
-    toast('organize: '+e.message);
-  }
-}
-
-async function applyOrganizedNotes(){
-  if(!notesOrganizedText){toast('nothing to apply');return;}
-  if(!await uiConfirm('Replace your project notes with the organized draft?','Apply organized notes'))return;
-  const ta=$('#notesEdit');
-  if(!ta)return;
-  ta.value=notesOrganizedText;
-  notesState.mode='edit';
-  $('#notesSeg')?.querySelectorAll('button').forEach(x=>{const on=x.dataset.m==='edit';x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
-  ta.style.display='block';
-  const prev=$('#notesPreview');if(prev)prev.style.display='none';
-  notesPreviewCache={src:'',html:''};
-  await saveNotes();
-  closeModal($('#notesAiModal'));
-  abortNotesOrganize();
-  focusNotes();
-  toast('notes updated');
-}
-
 $('#notesEdit')&&$('#notesEdit').addEventListener('input',scheduleNotesSave);
 $('#notesEdit')&&$('#notesEdit').addEventListener('blur',()=>{flushNotesSave();});
 $('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
@@ -231,12 +90,6 @@ $('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=a
   $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';
   if(!edit)showNotesPreview();
 });
-$('#notesOrganizeBtn')&&($('#notesOrganizeBtn').onclick=()=>organizeNotes());
-$('#notesAiClose')&&($('#notesAiClose').onclick=()=>{abortNotesOrganize();closeModal($('#notesAiModal'));});
-$('#notesAiStop')&&($('#notesAiStop').onclick=abortNotesOrganize);
-$('#notesAiApply')&&($('#notesAiApply').onclick=()=>applyOrganizedNotes());
-$('#notesAiCopy')&&($('#notesAiCopy').onclick=()=>{if(notesOrganizedText)copyText(notesOrganizedText,'organized notes copied');else toast('nothing to copy');});
-
 let notesPreviewCache={src:'',html:''};
 
 export function showNotesPreview(){

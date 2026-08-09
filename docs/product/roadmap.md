@@ -2,23 +2,23 @@
 
 *Owner: Product · Last updated: 2026-07-16 · Horizon: rolling. Now/Next/Later, not dates.*
 
-Strategy: a proxy operated by **a penetration tester and their AI assistant together**.
-Priority order: **(A) engagement close-out**, **(B) trustworthy AI**, **(C) table-stakes
-proxy depth**, then **(D) reach / packaging**. See [improvements.md](improvements.md).
+Strategy: a proxy operated by **a penetration tester and external agents together**.
+Priority order: **(A) engagement close-out**, **(B) deterministic, agent-operable workflows**, **(C)
+table-stakes proxy depth**, then **(D) reach / packaging**. See [improvements.md](improvements.md).
 
 ## Themes
 
 1. **Close the engagement** — findings → evidence → report is the sticky loop.
-2. **AI-operable + trustworthy** — agents drive the same engine; humans see *why* Autopilot filed or rejected.
+2. **Agent-operable + trustworthy** — external agents drive the same engine; humans review deterministic evidence and findings.
 3. **Project = whole workspace** — tabs, presets, packs, notes travel with the project.
 4. **Trustworthy core** — HTTP/2, correctness, never break forwarding.
 5. **Interop & reach** — install paths, packs ecosystem, collaboration.
 
 ## ✅ Shipped (through v1.5.0)
 
-MCP (tool registry), scope, Repeater/Intruder, scanner + active scan + Autopilot, findings
+MCP (tool registry), scope, Repeater/Intruder, scanner + deterministic active scan, findings
 redesign, rule packs + check CLI + Starlark stdlib, project-scoped + project-DB UI tabs,
-Intruder Numbers / AI payloads / result viewer, retention, OpenAPI, mobile helpers,
+Intruder Numbers / result viewer, retention, OpenAPI, mobile helpers,
 remote/tunnel pieces, HAR + full project export.
 
 ## Now (committed slice)
@@ -29,7 +29,6 @@ remote/tunnel pieces, HAR + full project export.
 | Project-DB UI state (Repeater/Intruder/presets) | Drafts survive machine/browser switches | Shipped this cycle |
 | Official rule packs + Checks UI install | Growth channel without growing core | Shipped this cycle |
 | Intruder Interesting filter → Finding | Analysis, not firehose | Shipped this cycle |
-| Autopilot Trust ledger copy | Surface verifier gates | Shipped this cycle |
 | MCP cookbook v2 recipes | Agent onboarding | Shipped this cycle |
 | Packaging truth (tool counts, install docs) | Stop lying in README | Shipped this cycle |
 
@@ -60,4 +59,4 @@ RICE — Reach × Impact × Confidence ÷ Effort. Revisit each planning cycle.
 
 1. Roadmap item → GitHub issue (and PRD when L/XL).
 2. TDD + CHANGELOG under `[Unreleased]`.
-3. Measure against engagement outcomes: report exports, findings filed, Autopilot accept rate.
+3. Measure against engagement outcomes: report exports, findings filed, and evidence review time.

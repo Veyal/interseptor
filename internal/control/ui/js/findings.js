@@ -1,6 +1,6 @@
 import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, methodColor, statusColor } from './core.js';
-import { openAi } from './ai.js';
 import { flowPopup } from './flowmodal.js';
+import { sendToRepeater } from './tools.js';
 
 // Findings tab: the human reviews/curates the project's vulnerability findings.
 // Each finding has a narrative body — an ordered sequence of text blocks (markdown)
@@ -58,7 +58,7 @@ function findingListMeta(f) {
   const tags = f.tags || [];
   if (tags.length) parts.push('<span class="find-tags-inline">' + tags.map(t => esc(t)).join(' · ') + '</span>');
   if (f.verification && f.verification.confidence != null) {
-    parts.push('<span class="find-conf" title="Autopilot verifier confidence"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> ' + esc(String(f.verification.confidence)) + '%</span>');
+    parts.push('<span class="find-conf" title="External-agent verification confidence"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> ' + esc(String(f.verification.confidence)) + '%</span>');
   }
   const pocs = findingPocCount(f);
   if (pocs) parts.push(pocs + ' PoC');
@@ -117,11 +117,10 @@ function findingsEmptyHTML() {
   return `<div class="state-empty find-empty">
     <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
     <div class="state-empty-title">No findings yet</div>
-    <p class="state-empty-hint">File a vulnerability with PoC evidence — manually, from Autopilot, or by asking AI to triage history.</p>
+    <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
     <div class="find-empty-actions">
       <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
-      <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI for findings</button>
-    </div>
+       </div>
     <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
   </div>`;
 }
@@ -130,9 +129,9 @@ function wireFindingsEmptyActions(root) {
   const box = root || $('#findList');
   if (!box) return;
   const neu = box.querySelector('#findEmptyNew');
-  const ask = box.querySelector('#findEmptyAskAi');
+
   if (neu) neu.onclick = openFindCreate;
-  if (ask) ask.onclick = openFindAskAi;
+
 }
 
 function setFindingsViewEmpty(empty) {
@@ -297,10 +296,11 @@ function renderBlockEl(b, i, total) {
     : `<span class="hint">flow #${esc(String(b.flowId))}</span>`;
   return `<div class="find-block find-doc-flow" data-i="${i}" data-flow="${b.flowId}">
     ${controls}
-    <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
-    <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}"
-      placeholder="Annotation (optional)" onclick="event.stopPropagation()">
-  </div>`;
+     <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
+     <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater</button>
+     <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}"
+       placeholder="Annotation (optional)" onclick="event.stopPropagation()">
+   </div>`;
 }
 
 function renderBodyEditor(container, fid) {
@@ -363,10 +363,18 @@ function renderBodyEditor(container, fid) {
 
   // Flow click → open flow modal. Missing (purged) flow blocks aren't clickable.
   container.querySelectorAll('.find-doc-flow:not(.find-block-missing) .find-poc-callout').forEach(el => {
-    el.onclick = ev => {
-      if (ev.target.closest('[data-del],[data-mv],.block-note,.find-poc-note-input')) return;
-      const block = el.closest('.find-doc-flow');
-      if (block) openFindingFlow(Number(block.dataset.flow));
+     el.onclick = ev => {
+       if (ev.target.closest('[data-del],[data-mv],.block-note,.find-poc-note-input,.find-send-repeater')) return;
+       const block = el.closest('.find-doc-flow');
+       if (block) openFindingFlow(Number(block.dataset.flow));
+     };
+   });
+  container.querySelectorAll('.find-send-repeater').forEach(btn => {
+    btn.onclick = event => {
+      event.stopPropagation();
+      const id = Number(btn.dataset.flow);
+      const block = bodyBlocks.find(b => b.type === 'flow' && b.flowId === id);
+      if (block && !block.missing && id) sendToRepeater({ id });
     };
   });
 }
@@ -468,7 +476,7 @@ function renderFindingDetail() {
         }).join('')
       : '<span class="hint">Gate detail unavailable</span>';
     return `<div class="find-machine-proof" role="status">
-      <div class="find-machine-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> Autopilot trust · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
+      <div class="find-machine-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gear"/></svg> External-agent verification · confidence <b>${esc(String(v.confidence ?? 0))}%</b></div>
       <div class="hint">Class <b>${esc(v.vulnClass || '—')}</b>${v.runId ? ' · run #' + esc(String(v.runId)) : ''}${v.reproCount ? ' · repro ×' + esc(String(v.reproCount)) : ''}${v.oobToken ? ' · OOB' : ''}</div>
       <div class="find-gate-list">${gateRows}</div>
       ${(v.baselineFlow || v.payloadFlow) ? `<div class="hint">PoC flows: ${[v.baselineFlow && ('#' + v.baselineFlow), v.payloadFlow && ('#' + v.payloadFlow)].filter(Boolean).join(' · ')}</div>` : ''}
@@ -511,10 +519,10 @@ function renderFindingDetail() {
         <div class="find-cvss-field"><label for="findCvss">CVSS</label><input id="findCvss" class="find-cvss-inline" type="text" value="${escAttr(f.cvss || '')}"></div>
         <div class="find-cvss-field"><label for="findCwe">CWE</label><input id="findCwe" class="find-cvss-inline" type="text" value="${escAttr(f.cwe || '')}"></div>
         <div class="spacer"></div>
-        <button class="btn accent" id="findAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
+
         <button class="btn danger xs" id="findDelete">Delete</button>
       </div>` : `<div class="find-meta-bar">
-        <button class="btn accent" id="findAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
+
         <button class="btn danger xs" id="findDelete">Delete</button>
       </div>`}
     </header>
@@ -629,7 +637,6 @@ function renderFindingDetail() {
       await loadFindings();
     } catch (err) { toast(err.message); }
   });
-  $('#findAskAi') && ($('#findAskAi').onclick = () => openAi({ findingId: f.id }));
   if (edit) {
     $('#findAddText').onclick = () => {
       bodyBlocks.push({ type: 'text', md: '' });
@@ -696,16 +703,24 @@ function renderFindReportBody(fid) {
       const reqLine = b.method
         ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
         : `flow #${esc(String(b.flowId))}`;
-      return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
-        <button type="button" class="find-report-flow" data-flow="${b.flowId}">
-          ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
-          <div class="find-poc-req">${reqLine}</div>
-        </button></div>`;
+       return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
+         <button type="button" class="find-report-flow" data-flow="${b.flowId}">
+           ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
+           <div class="find-poc-req">${reqLine}</div>
+         </button>
+         <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater</button></div>`;
     }
     return '';
   }).join('');
   container.querySelectorAll('.find-report-flow').forEach(btn => {
-    btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
+     btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
+   });
+  container.querySelectorAll('.find-send-repeater').forEach(btn => {
+    btn.onclick = event => {
+      event.stopPropagation();
+      const block = bodyBlocks.find(b => b.type === 'flow' && b.flowId === Number(btn.dataset.flow));
+      if (block && !block.missing && block.flowId) sendToRepeater({ id: block.flowId });
+    };
   });
 }
 
@@ -841,158 +856,6 @@ $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
 $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
 
-/* ---- Ask AI for findings (triage) ---- */
-let triageAbort = null;
-let triageSeq = 0;
-function setTriageStatus(s) { const el = $('#ftStatus'); if (el) el.textContent = s || ''; }
-function closeTriage() { if (triageAbort) triageAbort.abort(); closeModal($('#findTriageModal')); }
-function openFindAskAi() {
-  if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
-  const out = $('#ftOut'); if (out) out.innerHTML = '<div class="hint">Ready — click Run triage.</div>';
-  setTriageStatus('');
-  const stop = $('#ftStop'); if (stop) stop.style.display = 'none';
-  openModal($('#findTriageModal'), { onEscape: closeTriage, onDismiss: closeTriage });
-  setTimeout(() => { const s = $('#ftSteer'); if (s) s.focus(); }, 30);
-}
-$('#findAskAiFindings') && ($('#findAskAiFindings').onclick = openFindAskAi);
-$('#findEmptyAskAi') && ($('#findEmptyAskAi').onclick = openFindAskAi);
-$('#ftClose') && ($('#ftClose').onclick = closeTriage);
-$('#ftStop') && ($('#ftStop').onclick = () => { if (triageAbort) triageAbort.abort(); });
-$('#ftRun') && ($('#ftRun').onclick = async () => {
-  const seq = ++triageSeq;
-  if (triageAbort) triageAbort.abort();
-  const ctrl = new AbortController();
-  triageAbort = ctrl;
-  const out = $('#ftOut');
-  const stop = $('#ftStop');
-  if (out) out.innerHTML = '<div class="hint">Starting…</div>';
-  if (stop) stop.style.display = '';
-  setTriageStatus('Building context…');
-  let log = '';
-  const render = () => { if (seq === triageSeq && out) out.innerHTML = renderMD(log || '…'); };
-  try {
-    const r = await fetch('/api/ai/findings/triage', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'X-Interseptor-CSRF': '1' },
-      body: JSON.stringify({ steer: ($('#ftSteer') || {}).value || '' }),
-      signal: ctrl.signal,
-    });
-    if (r.status === 401) {
-      if (location.pathname !== '/login') location.href = '/login';
-      throw new Error('unauthorized');
-    }
-    if (!r.ok || !r.body) {
-      const t = await r.text().catch(() => '');
-      let msg = t;
-      try { msg = (JSON.parse(t).error) || t; } catch { /* keep */ }
-      throw new Error(msg || ('HTTP ' + r.status));
-    }
-    const reader = r.body.getReader(), dec = new TextDecoder();
-    let buf = '', event = 'message';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (seq !== triageSeq) return;
-      buf += dec.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf('\n\n')) >= 0) {
-        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
-        let data = '';
-        for (const line of chunk.split('\n')) {
-          if (line.startsWith('event:')) event = line.slice(6).trim();
-          else if (line.startsWith('data:')) data += line.slice(5).trim();
-        }
-        if (!data) continue;
-        let payload = {};
-        try { payload = JSON.parse(data); } catch { continue; }
-        if (event === 'status') {
-          setTriageStatus(payload.message || '');
-          log += (log ? '\n' : '') + '_'+ (payload.message || '') + '_';
-          render();
-        } else if (event === 'tool') {
-          log += '\n- tool `' + (payload.name || '?') + '`';
-          render();
-        } else if (event === 'text') {
-          log += '\n\n' + (payload.text || '');
-          render();
-        } else if (event === 'error') {
-          throw new Error(payload.message || 'triage failed');
-        } else if (event === 'done') {
-          setTriageStatus('Done · ' + (payload.toolCalls || 0) + ' tools · ' + (payload.steps || 0) + ' steps');
-        }
-        event = 'message';
-      }
-    }
-    if (seq !== triageSeq) return;
-    await loadFindings();
-    toast('Triage finished — findings refreshed');
-  } catch (e) {
-    if (seq !== triageSeq) return;
-    if (ctrl.signal.aborted) setTriageStatus('stopped');
-    else {
-      setTriageStatus('');
-      if (out) out.innerHTML = '<div class="hint" style="color:var(--red)">Error: ' + esc(e.message) + '</div>';
-      toast('triage: ' + e.message);
-    }
-  } finally {
-    if (seq === triageSeq) {
-      if (triageAbort === ctrl) triageAbort = null;
-      if (stop) stop.style.display = 'none';
-    }
-  }
-});
-
-function findReportQuery(extra) {
-  const q = new URLSearchParams(extra || {});
-  const statuses=($('#findExportStatuses')||{}).value||'open,verified,fixed';
-  q.set('statuses',statuses);
-  if (findTagFilter) q.set('tag', findTagFilter);
-  if ($('#findExportGroupByTag')?.checked) {
-    q.set('groupBy', 'tag');
-    q.set('omitTags', 'out-of-scope');
-    q.set('tagOrder', 'cms,website,app,api');
-  }
-  const s = q.toString();
-  return s ? '?' + s : '';
-}
-$('#findExport') && ($('#findExport').onclick = async () => {
-  const fmt = ($('#findExportFmt') || {}).value || 'md';
-  try {
-    if (fmt === 'pdf') {
-      const html = await api('/api/findings/report' + findReportQuery({ format: 'html' }));
-      // Note: 'noopener' makes window.open return null per spec, which would
-      // always trip the pop-up blocker branch and skip the print entirely.
-      const w = window.open('', '_blank');
-      if (!w) { toast('Allow pop-ups to export PDF'); return; }
-      w.document.write(html);
-      w.document.close();
-      setTimeout(() => { w.focus(); w.print(); }, 250);
-      toast('Print dialog — choose Save as PDF');
-      return;
-    }
-    if (fmt === 'json') {
-      const body = await api('/api/findings/report' + findReportQuery({ format: 'json' }));
-      const text = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
-      await saveFile(new Blob([text], { type: 'application/json' }), 'interseptor-report.json', 'application/json');
-      toast('Report downloaded');
-      return;
-    }
-    const isHtml = fmt === 'html';
-    const body = await api('/api/findings/report' + findReportQuery(isHtml ? { format: 'html' } : {}));
-    const mime = isHtml ? 'text/html' : 'text/markdown';
-    await saveFile(new Blob([body], { type: mime }), 'interseptor-report.' + (isHtml ? 'html' : 'md'), mime);
-    toast('Report downloaded');
-  } catch (e) { if (!(e && e.name === 'AbortError')) toast(e.message); }
-});
-$('#fcSave') && ($('#fcSave').onclick = async () => {
-  const title = $('#fcTitle').value.trim(); if (!title) { toast('title required'); return; }
-  try {
-    const f = await api('/api/findings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, severity: $('#fcSeverity').value, source: 'human' }) });
-    closeModal($('#findCreateModal')); selFinding = f && f.id;
-  } catch (e) { toast(e.message); }
-});
-
-/* ---- cross-linking: which findings reference a flow, and jump to one ---- */
 export function flowFindings(flowId) {
   return findings.filter(f => (f.blocks || []).some(b => b.type === 'flow' && b.flowId === flowId) || (f.flows || []).some(x => x.flowId === flowId)).map(f => ({ id: f.id, title: f.title, severity: f.severity }));
 }

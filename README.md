@@ -13,10 +13,10 @@ A native **intercepting proxy + security-testing toolkit**, shipped as **one sta
 JVM to warm up, no license dongle, no "upgrade to Pro to export more than 3 findings." Point traffic
 at it, watch it flow, break things (yours, or things you're allowed to break).
 
-**Built for the AI-assisted pentester.** You drive a fast web UI; your AI assistant drives the exact
-same engine through a real **MCP server** and a **REST/SSE API** — listing flows, replaying and
-mutating requests, fuzzing, scanning, toggling intercept — all under your direction, all on **your
-machine**, nothing phoned home.
+**Built for human-led, agent-assisted testing.** You drive a fast web UI; external AI assistants and
+agents drive the exact same engine through a real **MCP server** and a **REST/SSE API**. Interseptor
+provides deterministic capture, replay, mutation, scanning, scope, evidence, and finding tools. The
+external agent owns reasoning and sequencing. Nothing phones home.
 
 > ⚖️ **Responsible use.** Interseptor is for testing systems you **own or are explicitly authorized
 > to test**. Pointing it at traffic that isn't yours, or systems you don't have permission to test, is
@@ -30,13 +30,12 @@ machine**, nothing phoned home.
   CA, with match-&-replace rules.
 - **Repeater & Intruder** — resend and mutate requests by hand, or run Sniper/Pitchfork/Race attacks
   with grep-match/extract and anomaly flagging.
-- **Scanner** — passive checks out of the box, plus a deterministic **active-scan** engine, plus an
-  autonomous **Autopilot** mode that plans and runs its own testing and files only findings it can
-  prove (differential repro → adversarial review → OOB proof → human confirm for the scary ones).
+- **Scanner** — passive checks out of the box, plus a deterministic **active-scan** engine. External
+  agents can orchestrate scans through MCP while Interseptor records requests, evidence, and findings.
 - **Extensible** — write your own passive/active checks in sandboxed Starlark, no fork required.
 - **Mobile-ready** — Android and iOS setup for HTTPS interception on real devices.
-- **AI & API native** — a full MCP server and a REST/SSE API so an agent or script drives
-  the same core as the UI, plus BYO-key AI assist (Anthropic, OpenRouter, GLM/Zhipu, OpenAI) for explaining requests and suggesting payloads.
+- **MCP & API native** — a full MCP server and a REST/SSE API so an external agent or script drives
+  the same core as the UI. Interseptor has no built-in model provider or autonomous decision loop.
 
 That's the highlight reel — the **[full feature list](docs/FEATURES.md)** covers WebSockets, HAR
 import/export, project bundles, collaboration/remote access, session & login macros, and more.
@@ -82,6 +81,7 @@ several projects at once are all in **[Getting started](docs/getting-started.md)
 | **[Getting started](docs/getting-started.md)** | Install, quick start, HTTPS setup, configuration, multi-project |
 | **[Full feature list](docs/FEATURES.md)** | Every capability, in detail |
 | **[API & MCP](docs/api-and-mcp.md)** | Drive Interseptor from an AI agent or a script |
+| **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
 | **[Custom checks](docs/custom-checks.md)** · [active checks](docs/custom-active-checks.md) | Author your own Starlark checks |
 | **[Rule packs](docs/rule-packs.md)** | Share, install, and manage bundles of checks |

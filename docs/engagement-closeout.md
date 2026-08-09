@@ -12,7 +12,7 @@ The goal is a **report-ready project**, not just a pile of History rows.
 ## 2. Triage → Findings
 
 - [ ] Run **Scanner** (passive) and triage hits worth promoting
-- [ ] Use **Ask AI for findings** or file manually — prefer point-first findings
+- [ ] Review scanner and agent evidence, then file findings manually or through MCP — prefer point-first findings
   (Impact / Why / Target + PoC timeline)
 - [ ] Tag findings by deliverable scope (`cms` / `website` / `app` / `api`; use
   `out-of-scope` for adjacent evidence you want to keep out of the client pack)
@@ -20,11 +20,11 @@ The goal is a **report-ready project**, not just a pile of History rows.
 - [ ] Mark uncertain items `needs_verification` with concrete check steps
 - [ ] Intruder: filter **Interesting** → **→ Finding** to attach flagged attempts
 
-## 3. Autopilot / active work
+## 3. Active work and external orchestration
 
-- [ ] Review Autopilot **Trust ledger** — filed vs rejected vs skipped
-- [ ] On each Autopilot-filed finding, read the **Autopilot trust** block (confidence + gates)
-- [ ] Promote only verified Autopilot findings you accept; delete or revise noise
+- [ ] Review deterministic active-scan results and external-agent activity in History
+- [ ] Reproduce important candidates with `send_request` or Repeater
+- [ ] Attach evidence flows and record concrete verification steps
 - [ ] Confirm Critical/High with a human read of the PoC
 
 ## 4. Export & handoff

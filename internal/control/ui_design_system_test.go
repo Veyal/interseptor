@@ -280,7 +280,7 @@ func TestUIStylesheetHasNoDeadSelectors(t *testing.T) {
 func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 	assets := []string{"index.html", "login.html", "js/core.js", "js/app.js", "js/proxy.js",
 		"js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
-		"js/activity.js", "js/authz.js", "js/codecs.js", "js/ai.js", "js/autopwn.js",
+		"js/activity.js", "js/authz.js", "js/codecs.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/apipanel.js", "js/setup.js", "js/flowmodal.js"}
 
@@ -551,7 +551,7 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	// that is where 9px and 10px text survived the first cleanup.
 	for _, name := range []string{"app.css", "index.html", "login.html", "js/core.js", "js/app.js",
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
-		"js/activity.js", "js/authz.js", "js/codecs.js", "js/ai.js", "js/autopwn.js", "js/apipanel.js",
+		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
 		"js/setup.js", "js/flowmodal.js"} {
 		for _, m := range regexp.MustCompile(`font-size:\s*([0-9.]+)px`).FindAllStringSubmatch(readUIAsset(t, name), -1) {

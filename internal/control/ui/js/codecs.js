@@ -58,10 +58,9 @@ function codecSetMode(mode) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  const panes = { code: '#codecPaneCode', describe: '#codecPaneDescribe', docs: '#codecPaneDocs' };
+  const panes = { code: '#codecPaneCode', docs: '#codecPaneDocs' };
   Object.entries(panes).forEach(([m, sel]) => { const el = $(sel); if (el) el.style.display = m === mode ? '' : 'none'; });
   if (mode === 'docs') loadCodecDocs();
-  if (mode === 'describe') setTimeout(() => $('#codecDescribe')?.focus(), 0);
 }
 
 async function loadCodecDocs() {
@@ -239,36 +238,6 @@ async function codecTest() {
   }
 }
 
-async function codecAiGenerate() {
-  if (state.aiDisabled) { toast('AI features are disabled — enable in Settings → AI assist'); return; }
-  const desc = ($('#codecDescribe') || {}).value?.trim();
-  if (!desc) { toast('describe the wire format / crypto to unwrap'); $('#codecDescribe')?.focus(); return; }
-  const status = $('#codecAiStatus'), btn = $('#codecAiGen');
-  if (status) status.textContent = 'generating…';
-  if (btn) btn.disabled = true;
-  try {
-    const r = await api('/api/ai/codecs/generate', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ description: desc, source: $('#codecSrc').value || '', flowId: state.selId || 0 }),
-    });
-    if (r.error && !r.source) {
-      if (status) status.innerHTML = '<span style="color:var(--red)">' + esc(r.error) + '</span>';
-      return;
-    }
-    if (r.source) $('#codecSrc').value = r.source;
-    if (r.suggestedId && !$('#codecId').value.trim()) $('#codecId').value = r.suggestedId;
-    codecSetMode('code');
-    if (status) status.textContent = 'generated — running test…';
-    await codecTest();
-    if (status) {
-      if (r.error) status.innerHTML = '<span style="color:var(--amber)">compiled after retry; review output</span>';
-      else status.textContent = 'done — review code, set id, Save';
-    }
-  } catch (e) {
-    if (status) status.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + '</span>';
-  } finally { if (btn) btn.disabled = false; }
-}
-
 if ($('#codecsBtn')) $('#codecsBtn').onclick = openCodecs;
 if ($('#codecsClose')) $('#codecsClose').onclick = () => closeModal($('#codecsModal'));
 if ($('#codecNew')) $('#codecNew').onclick = codecNew;
@@ -276,5 +245,4 @@ if ($('#codecSave')) $('#codecSave').onclick = codecSave;
 if ($('#codecDelete')) $('#codecDelete').onclick = codecDelete;
 if ($('#codecTest')) $('#codecTest').onclick = codecTest;
 if ($('#codecModeSeg')) $('#codecModeSeg').querySelectorAll('[data-mode]').forEach(b => b.onclick = () => codecSetMode(b.dataset.mode));
-if ($('#codecAiGen')) $('#codecAiGen').onclick = codecAiGenerate;
 if ($('#codecsSearch')) $('#codecsSearch').addEventListener('input', codecsApplyFilter);

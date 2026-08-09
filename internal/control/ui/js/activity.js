@@ -56,7 +56,7 @@ export function renderActivity(){
   };if(row.classList.contains('act-jump')){row.onclick=open;wireRowKey(row,open);}});
 }
 export function onActivity(it){
-  if(!it||state.aiDisabled)return;
+  if(!it)return;
   state.activity.unshift(it);
   if(state.activity.length>ACT_MAX)state.activity.length=ACT_MAX;
   const onTab=document.querySelector('.tab[data-tab="activity"]').classList.contains('active');

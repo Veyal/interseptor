@@ -30,7 +30,7 @@
      colour token. Enforced by TestUIUsesVectorIconsNotEmoji. -->
 <svg id="iconSprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M10 11v6M14 11v6"/></symbol>
-<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3l1.7 4.8L17.5 9.5l-4.8 1.7L11 16l-1.7-4.8L4.5 9.5l4.8-1.7z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+<path d="M11 3l1.7 4.8L17.5 9.5l-4.8 1.7L11 16l-1.7-4.8L4.5 9.5l4.8-1.7z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.6-4.6"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 5a1 1 0 0 1 1-1h11l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 4v6h7V4M7 20v-6h10v6"/></symbol>
@@ -73,20 +73,17 @@
   <div class="spacer"></div>
   <div class="row" style="gap:6px" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button><span class="kv kv-dim" id="capStat"></span><span class="kv state-active" id="icptStat" aria-live="polite" style="display:none"></span></div>
   <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
-  <button type="button" id="askAiBtn" class="btn" data-ai-ui title="Ask AI about the current project" aria-label="Ask AI about the current project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6c0 4-2 5-2 5h16s-2-1-2-5a6 6 0 0 0-6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg><span>Ask AI</span></button>
+   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 5H4s2-1 2-5a6 6 0 0 1 6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg>
+
   <span class="sse-status" id="sseStatus" title="Live updates: connected"><span class="sse-dot" id="sseDot"></span><span id="sseLabel" class="kv kv-dim">live</span></span>
   <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Jump to…</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg></button>
 </div>
 
-<div id="humanInputBar" role="region" aria-label="AI is asking for your input" style="display:none"></div>
+
 
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
-  <div class="nav-rail-group" data-nav-group="autopilot">
-    <div class="nav-rail-group-label">Autopilot</div>
-    <button class="tab" id="tab-autopwn" role="tab" aria-selected="false" aria-controls="panel-autopwn" data-tab="autopwn" data-group="Autopilot">Autopilot<span id="autopwnBadge" class="nav-dot" aria-label="Unread Autopilot updates"></span></button>
-  </div>
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
     <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
@@ -106,7 +103,7 @@
     <div class="nav-rail-group-label">Report</div>
     <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report">Findings</button>
     <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report">Notes</button>
-    <button class="tab" id="tab-activity" data-ai-ui role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
+    <button class="tab" id="tab-activity"  role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="configure">
     <div class="nav-rail-group-label">Configure</div>
@@ -119,52 +116,11 @@
 </div>
 
 <div id="main">
-  <!-- AUTOPILOT (autonomous AI pentester) -->
-  <div class="panel" id="panel-autopwn" role="tabpanel" aria-labelledby="tab-autopwn" data-panel="autopwn">
-    <div class="toolbar">
-      <input id="apTargetHint" class="btn btn-field ap-hint" placeholder="Target hint (optional) — e.g. focus on /api/*" spellcheck="false" aria-label="Target hint for the run">
-      <label class="ap-num" title="Hard cap on total requests sent this run"><span>⇉</span><input id="apMaxReq" class="btn btn-field" type="number" min="1" value="2000" aria-label="Max requests">req</label>
-      <label class="ap-num" title="Hard cap on LLM tokens spent this run"><span>◈</span><input id="apMaxTok" class="btn btn-field" type="number" min="1000" step="1000" value="500000" aria-label="Max tokens">tok</label>
-      <label class="ap-num" title="Hard wall-clock limit in minutes"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span><input id="apMaxMin" class="btn btn-field" type="number" min="1" value="30" aria-label="Max wall-clock minutes">min</label>
-      <button class="btn btn-primary" id="apStart">Start ▸</button>
-      <button class="btn btn-danger" id="apStop" disabled title="Kill switch — cancels the run immediately">■ Stop</button>
-      <span id="apStatus" class="badge ap-status" style="display:none"></span>
-      <div class="spacer"></div>
-    </div>
-    <div class="ap-body" id="apBody">
-      <div class="state-empty" id="apEmpty">
-        <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-robot"/></svg></div>
-        <div class="state-empty-title">Autopilot is idle</div>
-        <p class="state-empty-hint">Fully-autonomous AI pentester — it reads your captured history, plans and runs active security testing against your <b>in-scope</b> targets, and files <b>only machine-verified</b> findings. Set budgets and press <b>Start</b>.</p>
-        <p class="state-empty-hint state-empty-cmdk">Add <b>target scope rules</b> in Settings first — Autopilot refuses to run without a defined boundary.</p>
-      </div>
-      <div id="apRun" class="ap-run" style="display:none">
-        <div class="ap-meters" id="apMeters"></div>
-        <div class="ap-pipeline">
-          <section class="pane ap-plan-pane">
-            <div class="pane-head"><span class="lbl">PLAN</span><span id="apPhaseNote" class="hint"></span></div>
-            <div id="apPlan" class="ap-plan scroll"></div>
-          </section>
-          <section class="pane ap-cand-pane">
-            <div class="pane-head"><span class="lbl">TRUST LEDGER</span><span id="apCandCounts" class="hint"></span></div>
-            <div class="ap-ledger-legend hint" id="apLedgerLegend">Filed = verified · Rejected = failed a gate · Skipped = not pursued</div>
-            <div id="apCandidates" class="ap-candidates scroll"></div>
-          </section>
-        </div>
-        <p class="hint ap-glassbox">Every request is visible in <b>Proxy History</b>; every step in the <b>Activity</b> feed (the glass box). The <b>Trust ledger</b> shows why each candidate was filed, rejected, or skipped — only machine-verified findings land in <b>Findings</b>.</p>
-      </div>
-      <div class="ap-history" id="apHistoryWrap" style="display:none">
-        <div class="ap-history-head">PAST RUNS</div>
-        <div id="apHistory" class="ap-history-list"></div>
-      </div>
-    </div>
-  </div>
-
   <!-- PROXY -->
   <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
     <div class="toolbar">
       <div class="search">
-        <select id="fSearchScope" class="btn" title="Search in path/host (FTS), body, or flow id"><option value="path">path</option><option value="body">body</option><option value="id">id</option></select>
+        <select id="fSearchScope" class="btn" title="Search in history" aria-label="Search scope"><option value="anywhere" selected>Anywhere</option><option value="body">Body</option><option value="id">ID</option><option value="script">Script</option></select>
         <input id="fSearch" aria-label="Search history (method / host / path / id)" placeholder="Search method / host / path / #id…">
       </div>
       <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
@@ -173,12 +129,27 @@
       <div class="spacer"></div>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-haspopup="menu" aria-expanded="false">▦ Cols</button>
     </div>
+    <details class="toolbar toolbar-secondary" id="flowSearchScripts">
+      <summary class="hint" style="cursor:pointer">Saved Starlark searches</summary>
+      <div class="row" style="width:100%;gap:6px;flex-wrap:wrap">
+        <select id="flowSearchScriptList" class="btn btn-field" aria-label="Saved search scripts"><option value="">new search…</option></select>
+        <input id="flowSearchScriptName" class="btn btn-field" aria-label="Saved search name" placeholder="name" autocomplete="off">
+        <button class="btn" id="flowSearchScriptTest" type="button">Test</button>
+        <button class="btn btn-primary" id="flowSearchScriptSave" type="button">Save</button>
+        <button class="btn btn-danger" id="flowSearchScriptDelete" type="button">Delete</button>
+        <span id="flowSearchScriptStatus" class="hint" role="status" aria-live="polite"></span>
+      </div>
+      <textarea id="flowSearchScriptEditor" aria-label="Saved search Starlark editor" spellcheck="false" style="width:100%;min-height:96px;font-family:var(--mono);resize:vertical">def match(flow):
+  return False</textarea>
+      <div id="flowSearchScriptError" role="alert" style="color:var(--red);white-space:pre-wrap"></div>
+    </details>
     <div class="toolbar toolbar-secondary">
       <button class="uisw" id="notesFilter" title="Flows with notes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
       <button class="uisw" id="hideTlsFilter" title="Hide TLS failures"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> PIN</button>
       <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
       <button class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
-      <button class="uisw" id="aiFilter" title="Show AI / MCP-sent flows" aria-pressed="true">AI</button>
+       <button class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
+
     </div>
     <div id="chips"></div>
     <div id="tagBar" class="tagbar" style="display:none" aria-label="Filter by tag"></div>
@@ -186,7 +157,7 @@
     <div id="selBar" class="row sel-bar" style="display:none">
       <span id="selCount" class="sel-count"></span>
       <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
-      <button class="btn" id="selAsk" data-ai-ui title="Analyze with AI"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
+
       <button class="btn" id="selScope" title="Add hosts to scope">◎ Scope</button>
       <button class="btn" id="selAddFinding" title="Attach to finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Finding</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
@@ -204,7 +175,7 @@
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
           <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
-          <button class="btn btn-compact" id="aiExplainBtn" data-ai-ui title="Ask AI about this flow" aria-label="Ask AI about this flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg></button>
+
         </div>
         <div class="sel-decode" id="reqDecode" hidden>
           <span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
@@ -379,7 +350,7 @@ Host: example.com
 Content-Type: application/json
 
 {"user":"§admin§","pass":"§password§"}</textarea>
-        <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span><div class="spacer"></div><button type="button" class="btn" id="intrAiGen" data-ai-ui title="Generate Intruder payload lists from the loaded request with AI"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Generate</button></div>
+        <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span><div class="spacer"></div></div>
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
       <section class="pane intr-results">
@@ -444,7 +415,7 @@ Content-Type: application/json
       <div class="findings-toolbar-title"><span class="findings-eyebrow">REPORT</span><strong>Findings</strong><span id="findCount" class="count"></span></div>
       <div class="findings-toolbar-actions">
         <button class="btn btn-primary" id="findNew">＋ New finding</button>
-        <button class="btn accent" id="findAskAiFindings" data-ai-ui title="Ask AI to triage history and file evidence-backed findings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</button>
+
         <span class="toolbar-divider"></span>
         <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
           <option value="md">Markdown</option><option value="html">HTML</option><option value="json">JSON</option><option value="pdf">PDF</option>
@@ -460,10 +431,10 @@ Content-Type: application/json
         <div class="state-empty find-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
           <div class="state-empty-title">No findings yet</div>
-          <p class="state-empty-hint">File a vulnerability with PoC evidence — manually, from Autopilot, or by asking AI to triage history.</p>
+          <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
           <div class="find-empty-actions">
             <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
-            <button type="button" class="btn accent" id="findEmptyAskAi" data-ai-ui><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI for findings</button>
+
           </div>
           <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
         </div>
@@ -532,42 +503,15 @@ Content-Type: application/json
     <div class="toolbar">
       <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
-      <button class="btn btn-primary" id="notesOrganizeBtn" data-ai-ui title="Organize with AI"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Organize</button>
+
       <div class="spacer"></div>
     </div>
     <textarea id="notesEdit" class="notes-edit" aria-label="Engagement notes editor" spellcheck="false" placeholder="# Engagement notes&#10;&#10;## Credentials&#10;&#10;## Findings&#10;&#10;## To-do"></textarea>
     <div id="notesPreview" class="md" style="flex:1;overflow:auto;padding:16px 22px;display:none"></div>
   </div>
 
-  <!-- Notes AI organize preview -->
-  <div id="notesAiModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">
-    <div role="dialog" aria-modal="true" aria-labelledby="notesAiTitle" class="modal-shell notes-ai-dialog">
-      <div class="modal-shell-head">
-        <span id="notesAiTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Organize notes</span>
-        <button class="btn" id="notesAiStop" style="display:none">Stop</button>
-        <button class="btn" id="notesAiClose" aria-label="Close">✕</button>
-      </div>
-      <div class="notes-ai-panes">
-        <div class="notes-ai-pane">
-          <div class="notes-ai-pane-head">Current</div>
-          <pre id="notesAiBefore" class="notes-ai-src"></pre>
-        </div>
-        <div class="notes-ai-pane notes-ai-pane-grow">
-          <div class="notes-ai-pane-head">Organized</div>
-          <div id="notesAiOut" class="md notes-ai-out"></div>
-        </div>
-      </div>
-      <div class="modal-shell-foot">
-        <span class="hint">Review — <b>Apply</b> replaces your notebook.</span>
-        <div class="spacer"></div>
-        <button class="btn" id="notesAiCopy" title="Copy organized markdown">⧉ Copy</button>
-        <button class="btn btn-primary" id="notesAiApply" disabled>Apply to notes</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Activity (live AI feed) -->
-  <div class="panel" id="panel-activity" data-ai-ui role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
+  <div class="panel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
       <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
@@ -597,7 +541,7 @@ Content-Type: application/json
         </div>
         <div class="settings-nav-group" data-nav-group="system">
           <div class="settings-nav-group-label">System</div>
-          <button data-sec="ai">AI assist</button>
+
           <button data-sec="project">Project &amp; data</button>
           <button data-sec="api">API &amp; MCP</button>
         </div>
@@ -870,44 +814,6 @@ Content-Type: application/json
             </div>
           </div>
         </section>
-        <section class="set-sec" data-sec="ai" hidden>
-          <div class="section">
-            <h3>AI ASSIST</h3>
-            <label class="chk-row" style="margin:12px 0 14px;font-size:var(--fs-sm)">
-              <input type="checkbox" id="setAiDisabled"> Disable all AI features for this project
-            </label>
-            <p id="aiDisabledHint" class="hint" style="display:none;margin-bottom:12px;color:var(--amber)">AI is off — assist UI and the Activity tab are hidden (MCP server still runs). Uncheck above to re-enable.</p>
-            <div id="aiSettingsFields">
-            <p class="hint" style="margin-bottom:10px">Bring-your-own-key. Data goes to your provider only when you ask. <b id="aiKeyState"></b></p>
-            <div class="field" id="aiProfilesField" style="display:none">
-              <label>Saved providers <span class="hint">— click to switch the active one</span></label>
-              <div id="aiProfiles"></div>
-            </div>
-            <div class="field"><label>Provider</label><select id="setAiProvider"><option value="anthropic">Anthropic (native API)</option><option value="glm">GLM Coding Plan (Zhipu / z.ai)</option><option value="openrouter">OpenRouter (many models)</option><option value="openai">OpenAI (ChatGPT)</option></select></div>
-            <div class="field"><label>API key</label><input id="setAiKey" type="password" placeholder="sk-ant-…"></div>
-            <div class="field" id="setAiModelField">
-              <label>Model <span class="hint" id="setAiModelHint">(optional)</span></label>
-              <input id="setAiModel" placeholder="claude-haiku-4-5-20251001">
-              <select id="setAiModelSelect" style="display:none;width:100%;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:var(--fs-sm)">
-                <option value="">— load models with your API key —</option>
-              </select>
-            </div>
-            <div class="field" id="setAiEndpointField">
-              <label>Custom Endpoint URL <span class="hint">(optional)</span></label>
-              <input id="setAiEndpoint" placeholder="e.g. https://api.openai.com/v1/chat/completions">
-            </div>
-            <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
-              <button class="btn" id="loadAiModelsBtn" style="display:none" title="Fetch models from OpenRouter (validates your API key)">↻ Load models</button>
-              <button class="btn btn-primary" id="saveAiBtn">Save AI settings</button>
-              <span class="hint" id="aiValidateState"></span>
-            </div>
-            <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
-              <input id="aiProfileName" class="repurl" style="max-width:200px" aria-label="Profile name" placeholder="profile name (e.g. Claude prod)">
-              <button class="btn" id="aiProfileSave" title="Save the current provider/key/model/endpoint as a reusable, switchable profile">＋ Save as provider profile</button>
-            </div>
-            </div>
-          </div>
-        </section>
         <section class="set-sec" data-sec="scanner" hidden>
           <div class="section">
             <h3>OUT-OF-BAND (OOB) CATCHER</h3>
@@ -920,7 +826,7 @@ Content-Type: application/json
         </section>
         <section class="set-sec" data-sec="api" hidden>
           <div class="section">
-            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="allowlist">Allowlist</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" data-ai-ui>MCP</button></div>
+            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="allowlist">Allowlist</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" >MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
               <p class="hint" style="margin-bottom:12px">Authenticate remote access. New tokens are shown once at creation. If you're signed in remotely, <b>Show session key</b> reveals the key in your current browser session so you can copy it again. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
@@ -989,7 +895,7 @@ Content-Type: application/json
               <table class="rules-tbl"><thead><tr><th style="width:64px">Method</th><th style="width:280px">Path</th><th>Description</th></tr></thead><tbody id="restList"></tbody></table>
             </div>
             <div id="apiMcp" class="api-pane" style="display:none">
-              <div data-ai-ui><h3>MODEL CONTEXT PROTOCOL</h3><div id="mcpBody"></div></div>
+              <div ><h3>MODEL CONTEXT PROTOCOL</h3><div id="mcpBody"></div></div>
             </div>
           </div>
         </section>
@@ -1150,35 +1056,6 @@ Content-Type: application/json
     </div>
   </div>
 </div>
-<div id="aiModal" class="modal-overlay" style="display:none">
-  <div role="dialog" aria-modal="true" aria-labelledby="aiModalTitle" class="modal-shell" style="max-width:700px;max-height:80vh;width:90%">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap">
-      <span id="aiModalTitle" style="font-weight:700;color:var(--accent)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI</span>
-      <button class="btn" id="aiNewChat" title="Clear the conversation and start over">↺ New chat</button>
-      <div class="spacer"></div>
-      <button class="btn" id="aiClose" aria-label="Close">✕</button>
-    </div>
-    <div class="row" style="padding:8px 16px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap">
-      <input id="aiQuestion" class="btn btn-field field-grow" style="min-width:200px" placeholder="Ask anything about this request / response… (Enter)" aria-label="Ask a question about the selected flow(s)" spellcheck="false">
-      <button class="btn btn-primary" id="aiAskBtn">Ask ▸</button>
-    </div>
-    <div class="row ai-agent-row" style="padding:0 16px 8px;gap:8px;border-bottom:1px solid var(--line)">
-      <label class="ai-agent-toggle"><input type="checkbox" id="aiAgentToggle"> Let AI send requests</label>
-      <span class="hint">Up to 5 Repeater steps per question. Anthropic only.</span>
-    </div>
-    <div id="aiBody" style="flex:1;overflow:auto;padding:16px;min-height:140px">
-      <div id="aiOut" class="md"></div>
-    </div>
-    <div class="row" id="aiActions" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap">
-      <span id="aiStatus" class="hint" style="margin-right:auto"></span>
-      <button class="btn" id="aiStop" style="display:none">■ Stop</button>
-      <button class="btn" id="aiPayloadsIntruder" data-ai-ui title="AI: generate Intruder payload lists from this exchange"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Payloads → Intruder</button>
-      <button class="btn" id="aiToRepeater" title="Load this request into Repeater">→ Repeater</button>
-      <button class="btn" id="aiToIntruder" title="Load this request into Intruder">→ Intruder</button>
-      <button class="btn" id="aiCopy" title="Copy the conversation">⧉ Copy</button>
-    </div>
-  </div>
-</div>
 <div id="shortcutsModal" class="modal-overlay" style="display:none">
   <div role="dialog" aria-modal="true" aria-labelledby="scTitle" class="modal-shell sc-dialog">
     <div class="row" style="padding:12px 18px;border-bottom:1px solid var(--line)">
@@ -1191,7 +1068,7 @@ Content-Type: application/json
         <h3 class="sc-section">Navigation</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>p</kbd></div><p class="sc-desc">Go to a panel — p Proxy, i Intercept, r Repeater, u Intruder</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings, o Autopilot</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings, o Removed</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus History search (Proxy)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>?</kbd></div><p class="sc-desc">This shortcuts panel</p></div>
         <h3 class="sc-section">History</h3>
@@ -1251,7 +1128,7 @@ Content-Type: application/json
         <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
           <div class="seg" id="checkModeSeg" role="tablist" aria-label="Check editor mode">
             <button type="button" class="on" data-mode="code" role="tab" aria-selected="true">Code</button>
-            <button type="button" data-mode="describe" data-ai-ui role="tab" aria-selected="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Describe</button>
+
             <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
           </div>
           <span class="hint" id="checkFlowHint">Test uses selected flow or latest capture</span>
@@ -1259,16 +1136,6 @@ Content-Type: application/json
         </div>
         <div id="checkPaneCode" class="check-pane">
           <textarea id="checkSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
-        </div>
-        <div id="checkPaneDescribe" class="check-pane" data-ai-ui style="display:none">
-          <div class="check-describe-wrap">
-            <p class="hint" style="margin:0 0 8px;line-height:1.5">Describe what to detect in plain English. AI writes Starlark using the sandboxed check API, then runs <b>Test</b> against your selected flow.</p>
-            <textarea id="checkDescribe" class="rep-edit" spellcheck="true" placeholder="Example: On HTTPS responses, flag missing Strict-Transport-Security header with medium severity and a fix hint."></textarea>
-            <div class="row" style="margin-top:8px;gap:8px">
-              <button class="btn btn-primary" id="checkAiGen"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Generate &amp; test</button>
-              <span class="hint" id="checkAiStatus"></span>
-            </div>
-          </div>
         </div>
         <div id="checkPaneDocs" class="check-pane" style="display:none">
           <div id="checkDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
@@ -1307,23 +1174,13 @@ Content-Type: application/json
         <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
           <div class="seg" id="codecModeSeg" role="tablist" aria-label="Codec editor mode">
             <button type="button" class="on" data-mode="code" role="tab" aria-selected="true">Code</button>
-            <button type="button" data-mode="describe" data-ai-ui role="tab" aria-selected="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Describe</button>
+
             <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
           </div>
           <span class="hint" id="codecFlowHint">Test uses selected flow or latest capture</span>
         </div>
         <div id="codecPaneCode" class="check-pane">
           <textarea id="codecSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="meta = {&#10;    &quot;id&quot;: &quot;aes-content-field&quot;,&#10;    &quot;title&quot;: &quot;JSON content&quot;,&#10;    &quot;apply_on_send&quot;: False,&#10;}&#10;&#10;def match(flow, side):&#10;    return True&#10;&#10;def decode(flow, side, raw):&#10;    return raw"></textarea>
-        </div>
-        <div id="codecPaneDescribe" class="check-pane" data-ai-ui style="display:none">
-          <div class="check-describe-wrap">
-            <p class="hint" style="margin:0 0 8px;line-height:1.5">Describe the wire format / crypto in plain English. AI writes a Starlark message codec, then runs <b>Test</b> against your selected flow.</p>
-            <textarea id="codecDescribe" class="rep-edit" spellcheck="true" placeholder="Example: JSON bodies have a content field = 32-char prefix + Base64(AES-ECB(plaintext)). Decrypt with key = SHA-512(prefix + SECRET)[:32]. Display-only."></textarea>
-            <div class="row" style="margin-top:8px;gap:8px">
-              <button class="btn btn-primary" id="codecAiGen"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Generate &amp; test</button>
-              <span class="hint" id="codecAiStatus"></span>
-            </div>
-          </div>
         </div>
         <div id="codecPaneDocs" class="check-pane" style="display:none">
           <div id="codecDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
@@ -1465,27 +1322,6 @@ Content-Type: application/json
     </div>
     <div class="modal-shell-foot">
       <button class="btn btn-primary" id="fcSave">Create finding</button>
-    </div>
-  </div>
-</div>
-<div id="findTriageModal" class="modal-overlay" style="display:none">
-  <div role="dialog" aria-modal="true" aria-labelledby="ftTitle" class="modal-shell" style="max-width:640px;max-height:80vh;width:90%">
-    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:8px">
-      <span id="ftTitle" style="font-weight:700;color:var(--accent)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> Ask AI for findings</span>
-      <div class="spacer"></div>
-      <button class="btn" id="ftClose" aria-label="Close">✕</button>
-    </div>
-    <div style="padding:12px 16px;border-bottom:1px solid var(--line)">
-      <p class="hint" style="margin:0 0 8px">Triages in-scope history and files evidence-backed findings (no active attacks). Optional steer focuses the review.</p>
-      <input id="ftSteer" class="btn btn-field" style="width:100%" placeholder="Optional steer — e.g. IDOR on /api/v3/*, authz only, unauth only" aria-label="Triage steer" spellcheck="false">
-    </div>
-    <div id="ftBody" style="flex:1;overflow:auto;padding:16px;min-height:120px;max-height:50vh">
-      <div id="ftOut" class="md hint">Ready — click Run triage.</div>
-    </div>
-    <div class="row" style="gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap">
-      <span id="ftStatus" class="hint" style="margin-right:auto"></span>
-      <button class="btn" id="ftStop" style="display:none">■ Stop</button>
-      <button class="btn btn-primary" id="ftRun">Run triage ▸</button>
     </div>
   </div>
 </div>
