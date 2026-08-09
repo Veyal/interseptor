@@ -9,7 +9,6 @@ func (h *Hub) routes() {
 	tools := &toolsAPI{h}
 	scan := &scannerAPI{h}
 	chk := &checksAPI{h}
-	ai := &aiAPI{h}
 	proj := &projectAPI{h}
 	and := &androidAPI{h}
 	iosH := &iosAPI{h}
@@ -27,12 +26,10 @@ func (h *Hub) routes() {
 	h.registerToolsRoutes(tools)
 	h.registerScannerRoutes(scan)
 	h.registerChecksRoutes(chk, as)
-	h.registerAIRoutes(ai)
 	h.registerProjectRoutes(proj)
 	h.registerOobRoutes(oob)
 	h.registerAuthzRoutes(az)
 	h.registerMetaRoutes(meta)
-	h.registerAutopwnRoutes()
 	h.registerPacksRoutes()
 
 	h.mux.HandleFunc("/", h.serveUI)
@@ -40,6 +37,12 @@ func (h *Hub) routes() {
 
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
+	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
+	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
+	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
+	h.mux.HandleFunc("GET /api/flow-searches/{name}/source", f.getFlowSearchSource)
+	h.mux.HandleFunc("PUT /api/flow-searches/{name}", f.updateFlowSearch)
+	h.mux.HandleFunc("DELETE /api/flow-searches/{name}", f.deleteFlowSearch)
 	h.mux.HandleFunc("GET /api/flows/inscope", f.trafficInScope)
 	h.mux.HandleFunc("GET /api/params", f.listParams)
 	h.mux.HandleFunc("GET /api/flows/{id}", f.getFlow)
@@ -193,24 +196,6 @@ func (h *Hub) registerPacksRoutes() {
 	h.mux.HandleFunc("DELETE /api/packs/{name}", h.removePack)
 }
 
-func (h *Hub) registerAIRoutes(ai *aiAPI) {
-	h.mux.HandleFunc("POST /api/ai/notes/organize", ai.aiNotesOrganize)
-	h.mux.HandleFunc("POST /api/ai/notes/organize/stream", ai.aiNotesOrganizeStream)
-	h.mux.HandleFunc("POST /api/ai/checks/generate", ai.aiChecksGenerate)
-	h.mux.HandleFunc("POST /api/ai/codecs/generate", ai.aiCodecsGenerate)
-	h.mux.HandleFunc("POST /api/ai/assist", ai.aiAssist)
-	h.mux.HandleFunc("POST /api/ai/assist/stream", ai.aiAssistStream)
-	h.mux.HandleFunc("POST /api/ai/findings/triage", ai.aiFindingsTriage)
-	h.mux.HandleFunc("POST /api/ai/actions", ai.aiActions)
-	h.mux.HandleFunc("POST /api/ai/intruder-payloads", ai.aiIntruderPayloads)
-	h.mux.HandleFunc("GET /api/ai/openrouter/models", ai.aiOpenRouterModels)
-	// Saved AI provider profiles (switch the active provider with one click).
-	h.mux.HandleFunc("GET /api/ai/providers", h.listAiProviders)
-	h.mux.HandleFunc("POST /api/ai/providers", h.saveAiProvider)
-	h.mux.HandleFunc("DELETE /api/ai/providers/{id}", h.deleteAiProvider)
-	h.mux.HandleFunc("POST /api/ai/providers/{id}/activate", h.activateAiProvider)
-}
-
 func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", proj.putNotes)
@@ -261,16 +246,6 @@ func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
 
-// registerAutopwnRoutes wires the autonomous-pentest ("Autopilot") run lifecycle.
-// The handlers hang off *Hub directly (the engine is a Hub-owned singleton built
-// lazily), so there is no dedicated API facade type.
-func (h *Hub) registerAutopwnRoutes() {
-	h.mux.HandleFunc("POST /api/autopwn/start", h.autopwnStart)
-	h.mux.HandleFunc("POST /api/autopwn/stop", h.autopwnStop)
-	h.mux.HandleFunc("GET /api/autopwn/state", h.autopwnStateHandler)
-	h.mux.HandleFunc("GET /api/autopwn/runs", h.autopwnRuns)
-}
-
 func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /api/keys", meta.listKeys)
 	h.mux.HandleFunc("POST /api/keys", meta.createKey)
@@ -280,7 +255,7 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("DELETE /api/allowlist/{id}", meta.deleteAllowlist)
 	h.mux.HandleFunc("GET /api/version", meta.apiVersion)
 	h.mux.HandleFunc("GET /api/activity", meta.listActivity)
-	h.mux.HandleFunc("POST /api/activity", meta.postActivity)
+	h.mux.HandleFunc("POST /api/activity", h.rejectActivity)
 	h.mux.HandleFunc("DELETE /api/activity", meta.clearActivity)
 	h.mux.HandleFunc("POST /api/human-input", meta.createHumanInput)
 	h.mux.HandleFunc("GET /api/human-input", meta.listHumanInput)

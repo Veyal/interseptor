@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestMintCorrelatedRoundTrip(t *testing.T) {
@@ -87,20 +88,39 @@ func TestCorrelationDoesNotAffectRing(t *testing.T) {
 	}
 }
 
-func TestCorrelationBounded(t *testing.T) {
+func TestCorrelationRetainsEarliestActiveAttributionPastInteractionCap(t *testing.T) {
+	// Given
 	c := New()
 	first, _ := c.MintCorrelated(0, "first", 0)
-	for i := 0; i < maxCorrelations+10; i++ {
-		c.MintCorrelated(int64(i), "x", int64(i))
+
+	// When
+	for i := 0; i < maxInteractions; i++ {
+		c.MintCorrelated(int64(i), "active", int64(i))
 	}
-	if _, ok := c.CorrelationFor(first); ok {
-		t.Fatal("oldest correlation should have been evicted past the cap")
+
+	// Then
+	corr, ok := c.CorrelationFor(first)
+	if !ok {
+		t.Fatal("earliest active correlation should be retained")
 	}
-	c.cmu.Lock()
-	n := len(c.corr)
-	c.cmu.Unlock()
-	if n > maxCorrelations {
-		t.Fatalf("correlation map unbounded: %d > %d", n, maxCorrelations)
+	if corr.CandidateID != "first" {
+		t.Fatalf("earliest attribution = %+v, want candidate first", corr)
+	}
+}
+
+func TestCorrelationReclaimsExpiredAttribution(t *testing.T) {
+	// Given
+	c := New()
+	expired := "expired"
+	c.corr = map[string]Correlation{expired: {Token: expired, InjectedAt: time.Now().Add(-correlationLifetime - time.Millisecond).UnixMilli()}}
+	c.corrOrder = []string{expired}
+
+	// When
+	c.MintCorrelated(1, "active", 1)
+
+	// Then
+	if _, ok := c.CorrelationFor(expired); ok {
+		t.Fatal("expired correlation should be reclaimed")
 	}
 }
 

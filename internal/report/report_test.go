@@ -419,6 +419,58 @@ func TestProjectIncludesFlowRequestResponseBodies(t *testing.T) {
 	}
 }
 
+func TestProjectPreservesUnmatchedLegacyNarrativeWithBlocks(t *testing.T) {
+	findings := []store.Finding{{
+		ID:       1,
+		Severity: "High",
+		Status:   "open",
+		Title:    "Mixed finding",
+		Detail:   "Legacy detail <script>",
+		Evidence: "Legacy evidence <proof>",
+		Blocks: []store.FindingBlock{
+			{Type: "text", MD: "Current narrative."},
+			{Type: "flow", FlowID: 7, Method: "GET", Host: "app.example.com", Path: "/proof", Status: 200},
+		},
+	}}
+
+	md := Project(findings, nil)
+	for _, want := range []string{"Legacy detail <script>", "**Evidence:** Legacy evidence <proof>"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("unmatched legacy text %q missing:\n%s", want, md)
+		}
+	}
+
+	html := ProjectHTML(findings, nil)
+	for _, want := range []string{"Legacy detail &lt;script&gt;", "Legacy evidence &lt;proof&gt;"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("unmatched legacy text %q missing or unescaped:\n%s", want, html)
+		}
+	}
+}
+
+func TestProjectDoesNotDuplicateEquivalentLegacyNarrativeBlocks(t *testing.T) {
+	findings := []store.Finding{{
+		ID:       1,
+		Severity: "High",
+		Status:   "open",
+		Title:    "Equivalent finding",
+		Detail:   "Current narrative <script>",
+		Evidence: "Current evidence <proof>",
+		Blocks: []store.FindingBlock{
+			{Type: "text", MD: "Current narrative <script>"},
+			{Type: "text", MD: "Current evidence <proof>"},
+		},
+	}}
+
+	for _, out := range []string{Project(findings, nil), ProjectHTML(findings, nil)} {
+		for _, want := range []string{"Current narrative", "Current evidence"} {
+			if strings.Count(out, want) != 1 {
+				t.Fatalf("equivalent legacy text %q duplicated:\n%s", want, out)
+			}
+		}
+	}
+}
+
 func TestProjectHTMLRendersHTTPFences(t *testing.T) {
 	findings := []store.Finding{
 		{ID: 1, Severity: "High", Status: "verified", Title: "IDOR",

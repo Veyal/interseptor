@@ -132,6 +132,46 @@ func TestConfirmOOBContextCancelled(t *testing.T) {
 	}
 }
 
+func TestConfirmOOBSkipsInitialSend_when_ContextAlreadyCancelled(t *testing.T) {
+	// Given
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s := &probeSender{flow: 1}
+
+	// When
+	res := ConfirmOOB(ctx, s, &arrivingPoller{}, OOBSpec{Probe: req("probe"), Token: "tok", sleep: noopSleep})
+
+	// Then
+	if s.sent != 0 {
+		t.Fatalf("cancelled OOB confirmation sent %d probes, want 0", s.sent)
+	}
+	if res.ProbeFlow != 0 {
+		t.Fatalf("cancelled OOB confirmation recorded probe flow %d, want 0", res.ProbeFlow)
+	}
+}
+
+func TestConfirmOOBDoesNotSleepPastWindow(t *testing.T) {
+	// Given
+	var sleeps []time.Duration
+	spec := OOBSpec{
+		Probe:    req("probe"),
+		Token:    "tok",
+		Window:   150 * time.Millisecond,
+		Interval: 100 * time.Millisecond,
+		sleep: func(_ context.Context, d time.Duration) {
+			sleeps = append(sleeps, d)
+		},
+	}
+
+	// When
+	ConfirmOOB(context.Background(), &probeSender{flow: 1}, &arrivingPoller{}, spec)
+
+	// Then
+	if len(sleeps) != 2 || sleeps[0] != 100*time.Millisecond || sleeps[1] != 50*time.Millisecond {
+		t.Fatalf("sleep intervals = %v, want [100ms 50ms]", sleeps)
+	}
+}
+
 func TestConfirmOOBDefaultsWindowInterval(t *testing.T) {
 	// With no Window/Interval set, defaults (30s/500ms) apply. Using a poller that
 	// arrives immediately keeps this fast while exercising the default path.

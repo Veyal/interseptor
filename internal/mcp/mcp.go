@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/httplines"
@@ -26,11 +27,13 @@ const protocolVersion = "2024-11-05"
 
 // Server is an MCP stdio server backed by the control API at base.
 type Server struct {
-	base   string
-	cl     *http.Client
-	tools  map[string]tool
-	order  []string
-	report func(Activity) // called after each tool call; surfaces AI actions in the UI
+	base          string
+	cl            *http.Client
+	tools         map[string]tool
+	order         []string
+	authMu        sync.RWMutex
+	authorization string
+	report        func(Activity) // called after each tool call; surfaces AI actions in the UI
 }
 
 type tool struct {
@@ -97,36 +100,28 @@ func New(baseURL string) *Server {
 		cl:    &http.Client{Timeout: 60 * time.Second},
 		tools: map[string]tool{},
 	}
-	s.report = s.postActivity
 	s.registerTools()
 	return s
 }
 
 // SetActivityReporter replaces the Activity callback used after each tool call.
-// Pass nil to disable reporting (useful in tests that race SQLite with the
-// async /api/activity POST).
+// Pass nil to disable reporting.
 func (s *Server) SetActivityReporter(fn func(Activity)) {
 	s.report = fn
 }
 
-// postActivity reports a tool call to the control plane (best-effort, async) so
-// it shows up in the live AI-activity feed. Failures are ignored — observability
-// must never affect the tool call itself.
-func (s *Server) postActivity(a Activity) {
-	b, err := json.Marshal(a)
-	if err != nil {
-		return
-	}
-	go func() {
-		req, err := http.NewRequest(http.MethodPost, s.base+"/api/activity", bytes.NewReader(b))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req); err == nil {
-			resp.Body.Close()
-		}
-	}()
+// SetAuthorization forwards an authenticated HTTP MCP caller's bearer credential
+// to control API calls. Stdio uses loopback trust and leaves it unset.
+func (s *Server) SetAuthorization(authorization string) {
+	s.authMu.Lock()
+	s.authorization = authorization
+	s.authMu.Unlock()
+}
+
+func (s *Server) authorizationHeader() string {
+	s.authMu.RLock()
+	defer s.authMu.RUnlock()
+	return s.authorization
 }
 
 // Serve runs the JSON-RPC loop over newline-delimited messages until EOF.
@@ -181,7 +176,7 @@ func mcpInstructions() string {
 		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
 		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, active scan arm, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
-		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings (without a full autopwn), read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text) and render_flow_preview to attach HTTP PNG screenshots for report-ready evidence. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
+		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text) and render_flow_preview to attach HTTP PNG screenshots for report-ready evidence. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
 		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
 }
 
@@ -269,11 +264,7 @@ func (s *Server) runTool(name string, args map[string]any) (string, error) {
 }
 
 // Call invokes a registered tool by name in-process, returning its text result.
-// It is the seam the autonomous pentest engine (internal/autopwn) uses to drive
-// all tools without a JSON-RPC round-trip. Activity logging + FlagAI History
-// tagging still happen via the tool's own REST calls, exactly as for JSON-RPC:
-// Call routes through the same runTool helper as callTool, so the Activity
-// report (timing, summary, intent, outcome) is emitted identically.
+// It routes through runTool, preserving transport-independent activity reporting.
 func (s *Server) Call(name string, args map[string]any) (string, error) {
 	return s.runTool(name, args)
 }
@@ -316,6 +307,7 @@ func (s *Server) marshalResponse(id json.RawMessage, result any, rerr *rpcError)
 // without launching the `interseptor mcp` stdio subcommand. Bind localhost-only;
 // it shares the (unauthenticated, local) trust model of the control API it fronts.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.SetAuthorization(r.Header.Get("Authorization"))
 	switch r.Method {
 	case http.MethodPost:
 		s.servePost(w, r)
@@ -442,6 +434,9 @@ func (s *Server) api(method, path string, body any) (string, error) {
 	// Marks every call as AI-originated so the control plane can tag the
 	// resulting Repeater/Intruder/scan sends (FlagAI) and show them in History.
 	req.Header.Set("X-Interseptor-Source", "ai")
+	if authorization := s.authorizationHeader(); authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -1578,19 +1573,6 @@ func (s *Server) registerTools() {
 			})
 		})
 
-	s.add("suggest_intruder_payloads",
-		"BYO-key AI: propose Intruder-ready payload lists from a captured flow (full request + response context). Does not start an attack — review and call start_intruder yourself. Optional hint narrows the class/parameter (e.g. \"SQLi on query:id\").",
-		obj(map[string]any{
-			"flowId": p("integer", "captured flow id"),
-			"hint":   p("string", "optional focus (parameter or attack class)"),
-		}, "flowId"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/ai/intruder-payloads", map[string]any{
-				"flowId": argInt(a, "flowId", 0),
-				"hint":   argStr(a, "hint"),
-			})
-		})
-
 	s.add("intruder_state",
 		"Intruder progress + results (status/length/time per payload; anomalies flagged).",
 		obj(map[string]any{}),
@@ -1946,33 +1928,6 @@ func (s *Server) registerTools() {
 	s.add("active_scan_stop", "Stop the running active scan (kill switch).",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/activescan/stop", nil) })
-
-	s.add("autopwn_start",
-		"Launch a FULLY AUTONOMOUS pentest run: the engine reads captured in-scope history, plans and executes active testing using Interseptor's own tools, verifies every candidate through a 4-gate verifier, and files ONLY machine-proven findings (no 'possible' issues). Scope-gated — refuses to start without target-scope rules; own listeners are never probed. Budgets (maxRequests/maxTokens/maxWallMs) are hard kill switches. Returns immediately with a runId; the run continues in the background — poll autopwn_state. targetHint optionally steers the planning phase.",
-		obj(map[string]any{
-			"maxRequests": p("integer", "hard cap on real HTTP sends (0 = engine default)"),
-			"maxTokens":   p("integer", "advisory LLM token ceiling (0 = unbounded)"),
-			"maxWallMs":   p("integer", "hard wall-clock kill in milliseconds (0 = unbounded)"),
-			"targetHint":  p("string", "optional operator steer for the planning phase"),
-		}),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/autopwn/start", map[string]any{
-				"budget": map[string]any{
-					"maxRequests": argInt(a, "maxRequests", 0),
-					"maxTokens":   argInt(a, "maxTokens", 0),
-					"maxWallMs":   argInt(a, "maxWallMs", 0),
-				},
-				"targetHint": argStr(a, "targetHint"),
-			})
-		})
-
-	s.add("autopwn_state", "Autonomous-pentest run progress: phase, budget consumption, and candidate/verified/filed/rejected counts for the current or last run.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/autopwn/state") })
-
-	s.add("autopwn_stop", "Stop the running autonomous pentest (kill switch — cancels the run context immediately).",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/autopwn/stop", nil) })
 
 	s.add("decode",
 		"Encode/decode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode, smart (auto-detect one layer).",

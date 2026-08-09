@@ -76,22 +76,12 @@ func TestReadinessReportsAutopilotPreflight(t *testing.T) {
 	if check(rep, "scope").OK {
 		t.Fatal("exclude-only scope must not satisfy autopilot preflight")
 	}
-	if check(rep, "ai_provider").OK {
-		t.Fatal("AI provider without credentials must not satisfy autopilot preflight")
-	}
-
 	if _, err := st.CreateScopeRule(&store.ScopeRule{Enabled: true, Action: "include", Host: "example.com"}); err != nil {
 		t.Fatalf("CreateScopeRule: %v", err)
-	}
-	if err := st.SetSetting("ai.apiKey", "test-key"); err != nil {
-		t.Fatalf("SetSetting: %v", err)
 	}
 	rep = read()
 	if !check(rep, "scope").OK {
 		t.Fatal("enabled include scope must satisfy autopilot preflight")
-	}
-	if !check(rep, "ai_provider").OK {
-		t.Fatal("configured AI provider must satisfy autopilot preflight")
 	}
 }
 

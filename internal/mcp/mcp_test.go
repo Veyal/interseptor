@@ -16,6 +16,54 @@ import (
 // TestCreateFindingWithImpact verifies that the create_finding MCP tool forwards
 // the "impact" argument to the control-plane POST /api/findings endpoint (not "fix"),
 // and that update_finding likewise forwards "impact".
+func TestToolRegistryExcludesBuiltInAIAndAutopwn(t *testing.T) {
+	// Given: MCP server exposes deterministic local tools.
+	server := New("http://127.0.0.1:1")
+
+	// When: registered tool names are inspected.
+	registered := map[string]bool{}
+	for _, name := range server.ToolNames() {
+		registered[name] = true
+	}
+
+	// Then: no tool invokes an in-process provider or autonomous run.
+	for _, name := range []string{"suggest_intruder_payloads", "autopwn_start", "autopwn_state", "autopwn_stop"} {
+		if registered[name] {
+			t.Errorf("built-in AI/autopwn tool %q remains registered", name)
+		}
+	}
+	for _, name := range []string{"list_flows", "active_scan", "create_finding"} {
+		if !registered[name] {
+			t.Errorf("deterministic tool %q was removed", name)
+		}
+	}
+}
+
+func TestHTTPMCPForwardsCallerAuthorization(t *testing.T) {
+	// Given: an HTTP MCP caller authenticated with an API-key bearer token.
+	const authorization = "Bearer ick_test"
+	var gotAuthorization string
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		io.WriteString(w, `{"flows":[]}`)
+	}))
+	defer control.Close()
+
+	server := New(control.URL)
+	server.SetActivityReporter(nil)
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_flows","arguments":{}}}`))
+	request.Header.Set("Authorization", authorization)
+	recorder := httptest.NewRecorder()
+
+	// When: the authenticated caller invokes a tool over Streamable HTTP.
+	server.ServeHTTP(recorder, request)
+
+	// Then: internal REST calls retain the caller credential, not ambient loopback scope.
+	if gotAuthorization != authorization {
+		t.Fatalf("internal Authorization = %q, want %q", gotAuthorization, authorization)
+	}
+}
+
 func TestCreateFindingWithImpact(t *testing.T) {
 	var createBody, updateBody map[string]any
 
@@ -95,7 +143,9 @@ func TestCreateUpdateFindingUIURL(t *testing.T) {
 
 	extract := func(res json.RawMessage) string {
 		var r struct {
-			Content []struct{ Text string `json:"text"` } `json:"content"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
 		}
 		json.Unmarshal(res, &r)
 		if len(r.Content) == 0 {

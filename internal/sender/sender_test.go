@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/capture"
@@ -327,6 +328,98 @@ func TestMacroInjectsFreshToken(t *testing.T) {
 	if gotHeader == "" || gotHeader[:4] != "tok-" {
 		t.Fatalf("expected a fresh macro token header, got %q", gotHeader)
 	}
+}
+
+func TestSendAndSetSessionScopeConcurrent(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.cl.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			snd.SetSessionScope(func(string, string, int, string) bool { return true })
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			if _, err := snd.Send(Request{URL: "https://example.com/"}); err != nil {
+				t.Errorf("Send: %v", err)
+			}
+		}
+	}()
+	wg.Wait()
+}
+
+func TestSessionHostHeadersDoNotRetainCallerMutation(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(string, string, int, string) bool { return true })
+	snd.SetSession(true, nil)
+
+	headers := map[string][]Header{"example.com": {{Key: "Authorization", Value: "Bearer original"}}}
+	snd.SetSessionHostHeaders(headers)
+	headers["example.com"][0].Value = "Bearer mutated"
+	headers["other.example"] = []Header{{Key: "Authorization", Value: "Bearer added"}}
+
+	var gotAuth string
+	snd.cl.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		gotAuth = req.Header.Get("Authorization")
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+	if _, err := snd.Send(Request{URL: "https://example.com/"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if gotAuth != "Bearer original" {
+		t.Fatalf("Authorization=%q; want original copied value", gotAuth)
+	}
+}
+
+func TestSendDoesNotRaceCallerHostHeaderMutation(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+	snd.SetSessionScope(func(string, string, int, string) bool { return true })
+	snd.SetSession(true, nil)
+	headers := map[string][]Header{"example.com": {{Key: "Authorization", Value: "Bearer original"}}}
+	snd.SetSessionHostHeaders(headers)
+	snd.cl.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			headers["example.com"][0].Value = "Bearer changed"
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			if _, err := snd.Send(Request{URL: "https://example.com/"}); err != nil {
+				t.Errorf("Send: %v", err)
+			}
+		}
+	}()
+	wg.Wait()
 }
 
 func itoa(n int) string {

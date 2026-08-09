@@ -360,6 +360,7 @@ func Run(ctx context.Context, t Target, send SendFunc, opts Options) ([]Finding,
 	// Built-in probes plus any user-authored (Starlark) active checks. A custom
 	// check whose ID matches a built-in replaces that built-in for this run.
 	checks := mergeChecks(Checks, opts.Custom)
+dispatch:
 	for _, p := range points {
 		for _, c := range checks {
 			if opts.Disabled != nil && opts.Disabled[c.ID] {
@@ -368,8 +369,16 @@ func Run(ctx context.Context, t Target, send SendFunc, opts Options) ([]Finding,
 			if ctx.Err() != nil {
 				break
 			}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				break dispatch
+			}
+			if ctx.Err() != nil {
+				<-sem
+				break dispatch
+			}
 			wg.Add(1)
-			sem <- struct{}{}
 			go func(p Point, c Check) {
 				defer wg.Done()
 				defer func() { <-sem }()

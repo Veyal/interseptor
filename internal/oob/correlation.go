@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// maxCorrelations bounds the correlation map so a long autonomous run cannot
-// grow it without limit. It mirrors the interaction ring's maxInteractions cap.
-const maxCorrelations = 500
+// correlationLifetime retains active correlations long enough for delayed OOB
+// callbacks, then lets later mints reclaim expired attribution metadata.
+const correlationLifetime = 24 * time.Hour
 
 // Correlation links a minted OOB token back to the exact probe that injected it,
 // so an arriving interaction is attributable to a specific run/candidate/flow.
@@ -57,14 +57,14 @@ func (c *Catcher) mintCorrelated(runID int64, candidateID string, probeFlowID in
 		c.corr = make(map[string]Correlation)
 		c.corrOrder = nil
 	}
-	c.corr[tok] = corr
-	c.corrOrder = append(c.corrOrder, tok)
-	// Bound the map: evict oldest tokens once over the cap.
-	for len(c.corrOrder) > maxCorrelations {
+	cutoff := time.Now().Add(-correlationLifetime).UnixMilli()
+	for len(c.corrOrder) > 0 && c.corr[c.corrOrder[0]].InjectedAt < cutoff {
 		oldest := c.corrOrder[0]
 		c.corrOrder = c.corrOrder[1:]
 		delete(c.corr, oldest)
 	}
+	c.corr[tok] = corr
+	c.corrOrder = append(c.corrOrder, tok)
 	c.cmu.Unlock()
 
 	if baseURL != "" {

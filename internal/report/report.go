@@ -280,8 +280,12 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 	// Render interleaved PoC timeline (text + flows + images in author's order).
 	if len(f.Blocks) > 0 {
+		hasDetailBlock := false
+		hasEvidenceBlock := false
 		for _, bl := range f.Blocks {
 			if bl.Type == "text" && bl.MD != "" {
+				hasDetailBlock = hasDetailBlock || bl.MD == f.Detail
+				hasEvidenceBlock = hasEvidenceBlock || bl.MD == f.Evidence
 				b.WriteString(sanitizeBody(bl.MD) + "\n\n")
 			} else if bl.Type == "flow" {
 				if bl.Missing {
@@ -320,6 +324,12 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 					b.WriteString(fmt.Sprintf("**Screenshot:** %s (`%s`)\n\n", sanitizeLine(cap), code(bl.Hash)))
 				}
 			}
+		}
+		if f.Detail != "" && !hasDetailBlock {
+			b.WriteString(sanitizeBody(f.Detail) + "\n\n")
+		}
+		if f.Evidence != "" && !hasEvidenceBlock {
+			b.WriteString("**Evidence:** " + sanitizeBody(f.Evidence) + "\n\n")
 		}
 	} else {
 		// Legacy fallback: separate detail / evidence / flows sections.

@@ -402,6 +402,38 @@ func TestRunRespectsCancel(t *testing.T) {
 	}
 }
 
+func TestRunStopsSemaphoreDispatch_when_ContextCancelled(t *testing.T) {
+	// Given
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var runs atomic.Int32
+	check := Check{ID: "block", Run: func(_ Point, _ Response, _ Prober) *Hit {
+		if runs.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		return nil
+	}}
+
+	// When
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, Target{URL: "http://victim/a/b"}, func(Target) Response { return Response{Status: 200} }, Options{Concurrency: 1, Custom: []Check{check}, Disabled: onlyCheck("block")})
+		close(done)
+	}()
+	<-started
+	cancel()
+	close(release)
+	<-done
+
+	// Then
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("cancelled dispatch ran %d checks, want 1", got)
+	}
+}
+
 // TestRunHonorsDisabledChecks confirms a check toggled off in the Checks manager
 // is skipped by the engine (no probes sent, no finding) — same toggle surface as
 // passive checks.

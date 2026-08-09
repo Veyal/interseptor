@@ -81,6 +81,9 @@ func runOnce(ctx context.Context, s Sender, spec DiffSpec, res *DiffResult) (boo
 	switch spec.Class {
 	case ClassReflected:
 		base := s.Send(ctx, spec.Baseline)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		pl := s.Send(ctx, spec.Payload)
 		recordBaseline(res, base)
 		recordPayload(res, pl)
@@ -92,6 +95,9 @@ func runOnce(ctx context.Context, s Sender, spec DiffSpec, res *DiffResult) (boo
 
 	case ClassError:
 		base := s.Send(ctx, spec.Baseline)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		pl := s.Send(ctx, spec.Payload)
 		recordBaseline(res, base)
 		recordPayload(res, pl)
@@ -99,7 +105,13 @@ func runOnce(ctx context.Context, s Sender, spec DiffSpec, res *DiffResult) (boo
 
 	case ClassBoolean:
 		base := s.Send(ctx, spec.Baseline)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		tru := s.Send(ctx, spec.PayloadTrue)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		fls := s.Send(ctx, spec.PayloadFalse)
 		recordBaseline(res, base)
 		recordPayload(res, tru)
@@ -109,7 +121,13 @@ func runOnce(ctx context.Context, s Sender, spec DiffSpec, res *DiffResult) (boo
 
 	case ClassTiming:
 		base := s.Send(ctx, spec.Baseline)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		pl := s.Send(ctx, spec.Payload)
+		if ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		ctrl := s.Send(ctx, spec.Control)
 		recordBaseline(res, base)
 		recordBaseline(res, ctrl)

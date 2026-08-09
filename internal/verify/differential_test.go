@@ -180,3 +180,32 @@ func TestReproduceDifferentialContextCancelled(t *testing.T) {
 		t.Fatalf("cancelled before first attempt should send nothing, sent %d", s.sent)
 	}
 }
+
+func TestReproduceDifferentialStopsSending_when_ContextCancelledDuringAttempt(t *testing.T) {
+	// Given
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &cancelAfterFirstSend{cancel: cancel}
+	spec := DiffSpec{Class: ClassReflected, Baseline: req("base"), Payload: req("payload"), Marker: "MARK7"}
+
+	// When
+	res := ReproduceDifferential(ctx, s, spec)
+
+	// Then
+	if res.Reproduced {
+		t.Fatalf("cancelled ctx must not reproduce, got %+v", res)
+	}
+	if s.sent != 1 {
+		t.Fatalf("cancelled attempt sent %d requests, want 1", s.sent)
+	}
+}
+
+type cancelAfterFirstSend struct {
+	cancel context.CancelFunc
+	sent   int
+}
+
+func (s *cancelAfterFirstSend) Send(_ context.Context, _ Request) Exchange {
+	s.sent++
+	s.cancel()
+	return exFlow("clean", 1)
+}

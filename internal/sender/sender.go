@@ -77,7 +77,8 @@ type Sender struct {
 	macroMu sync.RWMutex
 	macro   Macro
 
-	sessionScope SessionScope
+	sessionScopeMu sync.RWMutex
+	sessionScope   SessionScope
 
 	login       loginState
 	refreshSess func([]Header)
@@ -153,7 +154,7 @@ func (s *Sender) macroToken() (token, name, mode string) {
 func (s *Sender) SetSession(enabled bool, headers []Header) {
 	s.sess.mu.Lock()
 	s.sess.enabled = enabled
-	s.sess.headers = headers
+	s.sess.headers = append([]Header(nil), headers...)
 	s.sess.mu.Unlock()
 }
 
@@ -162,20 +163,36 @@ func (s *Sender) SetSession(enabled bool, headers []Header) {
 // headers for that request. Pass nil to clear all per-host overrides.
 func (s *Sender) SetSessionHostHeaders(hh map[string][]Header) {
 	s.sess.mu.Lock()
-	s.sess.hostHeaders = hh
+	s.sess.hostHeaders = cloneHostHeaders(hh)
 	s.sess.mu.Unlock()
+}
+
+func cloneHostHeaders(headers map[string][]Header) map[string][]Header {
+	if headers == nil {
+		return nil
+	}
+	cloned := make(map[string][]Header, len(headers))
+	for host, values := range headers {
+		cloned[host] = append([]Header(nil), values...)
+	}
+	return cloned
 }
 
 // SetSessionScope sets the host gate for session injection (typically target scope).
 func (s *Sender) SetSessionScope(fn SessionScope) {
+	s.sessionScopeMu.Lock()
 	s.sessionScope = fn
+	s.sessionScopeMu.Unlock()
 }
 
 func (s *Sender) sessionAllowed(host, scheme string, port int, path string) bool {
-	if s.sessionScope == nil {
+	s.sessionScopeMu.RLock()
+	fn := s.sessionScope
+	s.sessionScopeMu.RUnlock()
+	if fn == nil {
 		return false
 	}
-	return s.sessionScope(host, scheme, port, path)
+	return fn(host, scheme, port, path)
 }
 
 // applySession forces the configured session headers onto req (replacing any

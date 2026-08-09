@@ -11,7 +11,6 @@ type findingsAPI struct{ *Hub }
 type toolsAPI struct{ *Hub }
 type scannerAPI struct{ *Hub }
 type checksAPI struct{ *Hub }
-type aiAPI struct{ *Hub }
 type projectAPI struct{ *Hub }
 type androidAPI struct{ *Hub }
 type iosAPI struct{ *Hub }

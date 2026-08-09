@@ -87,9 +87,8 @@ More ready-to-copy examples ship in the repo under `examples/checks/`.
 - **Isolated failures:** a check that fails to compile or errors at runtime is logged and skipped —
   it never aborts the scan or the other checks.
 
-## AI-assisted authoring
+## External-agent authoring
 
-When AI is enabled in **Settings → AI assist**, open **Scanner → ✎ Custom checks** and use the
-**✨ Describe** tab: write what you want to detect in plain English, click **Generate & test**, then
-**Save** once the test output looks right. The **Code** tab shows the Starlark; **Docs** (this page)
-lists the API the generator must follow.
+Use an external MCP-capable agent to draft Starlark, then validate and test it locally before saving.
+Interseptor has no built-in model provider or check generator. The contract above is authoritative,
+and `examples/checks/` contains ready-to-copy patterns.

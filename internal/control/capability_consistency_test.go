@@ -85,17 +85,7 @@ func TestRaceRepeatTerminologyAndAPIFieldStayConsistent(t *testing.T) {
 	}
 }
 
-func TestProviderAndHostedDocumentationConsistency(t *testing.T) {
-	providers := []string{"Anthropic", "OpenRouter", "GLM", "Zhipu", "OpenAI"}
-	for _, path := range []string{"README.md", "docs/api-and-mcp.md", "docs/FEATURES.md", "docs/architecture.md"} {
-		body := readRepoFile(t, strings.Split(path, "/")...)
-		for _, provider := range providers {
-			if !strings.Contains(body, provider) {
-				t.Errorf("%s does not document %s", path, provider)
-			}
-		}
-	}
-
+func TestHostedDocumentationConsistency(t *testing.T) {
 	hosted := "https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md"
 	for _, asset := range []string{"index.html", "js/findings.js"} {
 		body := readUIAsset(t, asset)

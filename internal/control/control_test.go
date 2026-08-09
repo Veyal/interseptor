@@ -35,34 +35,6 @@ func newHub(t *testing.T) (*Hub, *store.Store, *intercept.Engine) {
 	return h, s, eng
 }
 
-func TestServeUIIncludesAskAIProjectShell(t *testing.T) {
-	h, _, _ := newHub(t)
-	ts := httptest.NewServer(h.Handler())
-	defer ts.Close()
-
-	resp, err := http.Get(ts.URL + "/")
-	if err != nil {
-		t.Fatalf("GET /: %v", err)
-	}
-	defer resp.Body.Close()
-	body := readAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /: expected 200, got %d", resp.StatusCode)
-	}
-
-	for _, want := range []string{
-		`id="askAiBtn"`,
-		`data-ai-ui`,
-		`type="button"`,
-		`aria-label="Ask AI about the current project"`,
-		`id="aiModal"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("served UI missing %q", want)
-		}
-	}
-}
-
 // A loopback request must not be able to relocate the process to an arbitrary
 // path via /api/project/switch — only plain project names are accepted.
 func TestSwitchProjectRejectsPaths(t *testing.T) {
@@ -312,24 +284,63 @@ func TestListFlowsSortAsc(t *testing.T) {
 	}
 }
 
+func TestActivitySocketPersistsStdioReporterActivity(t *testing.T) {
+	// Given: a Hub-owned Unix socket and a stdio MCP reporter connected to it.
+	h, s, _ := newHub(t)
+	path := filepath.Join(os.TempDir(), "interseptor-activity-"+strconv.Itoa(os.Getpid())+".sock")
+	if err := h.StartActivitySocket(path); err != nil {
+		t.Fatalf("StartActivitySocket: %v", err)
+	}
+	// When: trusted process-local transport reports one tool call.
+	mcp.ActivitySocketReporter(path)(mcp.Activity{Tool: "list_flows", Summary: "host=example.com", OK: true})
+
+	// Then: Hub persists it exactly once.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		items, err := s.ListActivity(10)
+		if err != nil {
+			t.Fatalf("ListActivity: %v", err)
+		}
+		if len(items) == 1 {
+			if items[0].Tool != "list_flows" || items[0].Summary != "host=example.com" {
+				t.Fatalf("activity = %+v", items[0])
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("stdio activity was not persisted")
+}
+
+func TestActivityPostRejectsOrdinaryLoopbackCaller(t *testing.T) {
+	// Given: an ordinary loopback client without MCP-origin authentication.
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	// When: it attempts to forge an MCP activity entry.
+	resp, err := http.Post(ts.URL+"/api/activity", "application/json", strings.NewReader(`{"tool":"send_request"}`))
+	if err != nil {
+		t.Fatalf("POST activity: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Then: activity ingress rejects the untrusted write.
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST activity status %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
 func TestActivityFeed(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
-	post := func(tool, summary string, ok bool) {
-		body, _ := json.Marshal(map[string]any{"tool": tool, "summary": summary, "ok": ok, "result": "r", "ms": 12})
-		resp, err := http.Post(ts.URL+"/api/activity", "application/json", strings.NewReader(string(body)))
-		if err != nil {
-			t.Fatalf("POST activity: %v", err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNoContent {
-			t.Fatalf("POST activity status %d", resp.StatusCode)
-		}
+	record := func(tool, summary string, ok bool) {
+		h.recordMCPActivity(mcp.Activity{Tool: tool, Summary: summary, OK: ok, Result: "r", Ms: 12})
 	}
-	post("send_request", "method=POST url=/login", true)
-	post("active_scan", "target=https://x", true)
+	record("send_request", "method=POST url=/login", true)
+	record("active_scan", "target=https://x", true)
 
 	resp, err := http.Get(ts.URL + "/api/activity")
 	if err != nil {
@@ -350,14 +361,13 @@ func TestActivityFeed(t *testing.T) {
 		t.Fatalf("server should assign id+ts: %+v", out.Activity[0])
 	}
 
-	// A bad POST (no tool) is rejected.
 	bad, err := http.Post(ts.URL+"/api/activity", "application/json", strings.NewReader(`{}`))
 	if err != nil {
-		t.Fatalf("POST bad activity: %v", err)
+		t.Fatalf("POST activity: %v", err)
 	}
 	defer bad.Body.Close()
-	if bad.StatusCode != http.StatusBadRequest {
-		t.Fatalf("empty activity should be 400, got %d", bad.StatusCode)
+	if bad.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("activity POST should be 401, got %d", bad.StatusCode)
 	}
 }
 

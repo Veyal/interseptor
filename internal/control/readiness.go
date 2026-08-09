@@ -59,13 +59,6 @@ func (h *authzAPI) buildReadiness() readinessReport {
 		add("scope", false, "no enabled include rules", "scope_from_url to focus on the target")
 	}
 
-	provider, _, _, aiOK := h.aiCreds()
-	aiDetail := "not configured"
-	if aiOK {
-		aiDetail = provider + " configured"
-	}
-	add("ai_provider", aiOK, aiDetail, "configure an AI provider and API key in Settings")
-
 	flowN, _ := h.st.FlowCount()
 	trafficOK := flowN > 0
 	add("traffic", trafficOK, flowCountDetail(flowN), "route the target through the proxy and browse the app")

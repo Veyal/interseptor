@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -25,12 +24,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Veyal/interseptor/internal/aiassist"
-	"github.com/Veyal/interseptor/internal/autopwn"
 	"github.com/Veyal/interseptor/internal/bind"
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/ios"
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/oob"
 	"github.com/Veyal/interseptor/internal/scope"
@@ -113,18 +111,15 @@ type Hub struct {
 	switchMu    sync.Mutex  // guards switchTimer
 	switchTimer *time.Timer // pending delayed project switch; reset per request so only the latest fires
 
-	mcpMu       sync.Mutex
-	mcpSrv      *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
-	mcpKeysSeen atomic.Bool // last-known "API keys exist" — mcpAuthorized fails closed on a store error once true
+	mcpMu           sync.Mutex
+	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
+	mcpKeysSeen     atomic.Bool // last-known durable auth mode — mcpAuthorized fails closed on a store error once true
+	iosTCPReachable func(string, int) bool
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
 	tunnelCloseOnce sync.Once
 
 	as asState // active-scan state (armed/running/findings)
-
-	autopwnMu     sync.Mutex      // guards lazy engine + tool-bus construction
-	autopwnEngine *autopwn.Engine // autonomous-pentest ("Autopilot") run engine (built lazily)
-	autopwnTools  *mcp.Server     // in-process tool bus (built lazily once the control addr is known)
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
 	updLatest string
@@ -137,6 +132,11 @@ type Hub struct {
 
 	wsMu     sync.Mutex
 	wsTimers map[int64]*time.Timer // debounce ws.frame SSE per flow
+
+	activitySocket      net.Listener
+	activitySocketPath  string
+	activitySocketToken string
+	activitySocketWG    sync.WaitGroup
 }
 
 // New builds a Hub. eng, ca, and rebind may be nil. If eng is non-nil, the
@@ -146,14 +146,15 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sc = scope.New()
 	}
 	h := &Hub{
-		st:      st,
-		eng:     eng,
-		ca:      ca,
-		rebind:  rebind,
-		sc:      sc,
-		snd:     sender.New(st, capture.New(st)),
-		mux:     http.NewServeMux(),
-		clients: map[chan string]struct{}{},
+		st:              st,
+		eng:             eng,
+		ca:              ca,
+		rebind:          rebind,
+		sc:              sc,
+		snd:             sender.New(st, capture.New(st)),
+		mux:             http.NewServeMux(),
+		clients:         map[chan string]struct{}{},
+		iosTCPReachable: ios.TCPReachable,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
@@ -193,19 +194,20 @@ func (h *Hub) SetControlRebinder(r Rebinder) { h.ctrlRebind = r }
 // security guard (see securityGuard).
 func (h *Hub) Handler() http.Handler { return h.securityGuard(h.mux) }
 
-// handleMCP serves the Streamable-HTTP MCP transport. The backing mcp.Server is
-// built against this control server's own LOOPBACK address — not the request Host
-// — so its tool calls always loop back locally even when the client reached us
-// over a tunnel (a tunnel Host would send the tool bus back out over the internet,
-// where the auth gate would then 401 the unauthenticated internal calls).
+// handleMCP serves Streamable-HTTP MCP with a per-request tool client. Internal
+// calls stay on loopback while retaining the authenticated caller's credential.
 func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
-	h.mcpMu.Lock()
-	if h.mcpSrv == nil {
-		h.mcpSrv = mcp.New(h.loopbackControlBase())
-	}
-	srv := h.mcpSrv
-	h.mcpMu.Unlock()
+	srv := mcp.New(h.loopbackControlBase())
+	srv.SetAuthorization(r.Header.Get("Authorization"))
+	srv.SetActivityReporter(h.recordMCPActivity)
 	srv.ServeHTTP(w, r)
+}
+
+func (h *Hub) recordMCPActivity(a mcp.Activity) {
+	it := (&metaAPI{h}).recordActivity(store.Activity{
+		Tool: a.Tool, Summary: a.Summary, OK: a.OK, Result: a.Result, Ms: a.Ms, Intent: a.Intent,
+	})
+	h.broadcast(map[string]any{"type": "activity", "item": it})
 }
 
 // loopbackControlBase returns an http://127.0.0.1:<port> base URL for the control
@@ -290,11 +292,6 @@ type settingsJSON struct {
 	ControlAddr              string   `json:"controlAddr"`
 	InterceptEnabled         bool     `json:"interceptEnabled"`
 	UpstreamProxy            string   `json:"upstreamProxy"`
-	AiProvider               string   `json:"aiProvider"`
-	AiModel                  string   `json:"aiModel"`
-	AiEndpoint               string   `json:"aiEndpoint"`
-	AiHasKey                 bool     `json:"aiHasKey"` // never returns the key itself
-	AiDisabled               bool     `json:"aiDisabled"`
 	OobEnabled               bool     `json:"oobEnabled"`
 	CaptureScopeOnly         bool     `json:"captureScopeOnly"`
 	SuppressBrowserTelemetry bool     `json:"suppressBrowserTelemetry"`
@@ -631,8 +628,7 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		f.WithoutFlags |= store.FlagTLSFailed
 	}
 	switch {
-	case showManual && showAI && !h.aiDisabled():
-		// Both sources: proxy traffic plus AI sends (FlagAI exempts Repeater/Intruder noise).
+	case showManual && showAI:
 		f.IncludeFlags = store.FlagAI
 	case showAI && !showManual:
 		f.RequireFlags |= store.FlagAI
@@ -643,9 +639,29 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 	if sc := q.Get("status"); sc != "" {
 		f.StatusClass = atoiOr(sc, 0)
 	}
-	f.SearchScope = strings.ToLower(strings.TrimSpace(q.Get("searchScope")))
+	f.SearchScope = normalizeFlowSearchScope(q.Get("searchScope"))
+	w.Header().Set("X-Interseptor-Search-Scope", f.SearchScope)
+	if q.Get("hasNote") == "1" {
+		f.HasNote = true
+	}
+	f.Tag = q.Get("tag")
+	// Negative filters (repeatable): notMethod, notHost, notPath, notStatus.
+	f.NotMethods, f.NotHosts, f.NotPaths = q["notMethod"], q["notHost"], q["notPath"]
+	for _, s := range q["notStatus"] {
+		if n := atoiOr(s, 0); n > 0 {
+			f.NotStatuses = append(f.NotStatuses, n)
+		}
+	}
 	searchScope := f.SearchScope
-	var searchNote string
+	searchNote, emptySearch, err := h.applyFlowSearch(r, &f)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if emptySearch {
+		writeJSON(w, http.StatusOK, map[string]any{"flows": []flowJSON{}, "truncated": false, "searchNote": searchNote})
+		return
+	}
 	if searchScope == "body" && strings.TrimSpace(f.Search) != "" {
 		ids, note, err := h.st.FlowIDsBodySearch(f, 8000)
 		if err != nil {
@@ -658,17 +674,6 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		if len(ids) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"flows": []flowJSON{}, "truncated": false, "searchNote": note})
 			return
-		}
-	}
-	if q.Get("hasNote") == "1" {
-		f.HasNote = true
-	}
-	f.Tag = q.Get("tag")
-	// Negative filters (repeatable): notMethod, notHost, notPath, notStatus.
-	f.NotMethods, f.NotHosts, f.NotPaths = q["notMethod"], q["notHost"], q["notPath"]
-	for _, s := range q["notStatus"] {
-		if n := atoiOr(s, 0); n > 0 {
-			f.NotStatuses = append(f.NotStatuses, n)
 		}
 	}
 	inScopeOnly := q.Get("inScope") == "1"
@@ -1301,22 +1306,6 @@ func (h *Hub) currentControlAddr() string {
 
 func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
-	aiProvider, _, _ := h.st.GetSetting("ai.provider")
-	if aiProvider == "" {
-		aiProvider = "anthropic"
-	}
-	aiKey, _, _ := h.st.GetSetting("ai.apiKey")
-	aiModel, _, _ := h.st.GetSetting("ai.model")
-	aiEndpoint, _, _ := h.st.GetSetting("ai.endpoint")
-	envKey := os.Getenv("ANTHROPIC_API_KEY")
-	switch aiProvider {
-	case "openrouter":
-		envKey = os.Getenv("OPENROUTER_API_KEY")
-	case aiassist.ProviderGLM:
-		if envKey = os.Getenv("GLM_API_KEY"); envKey == "" {
-			envKey = os.Getenv("ZAI_API_KEY")
-		}
-	}
 	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
 	// Default to true when the key has never been written (first run).
@@ -1326,7 +1315,6 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
 	autoBypass, _, _ := h.st.GetSetting("proxy.autoBypassOnPinFailure")
-	aiDisabled, _, _ := h.st.GetSetting("ai.disabled")
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
@@ -1337,11 +1325,6 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		ControlAddr:              h.currentControlAddr(),
 		InterceptEnabled:         h.eng != nil && h.eng.Enabled(),
 		UpstreamProxy:            up,
-		AiProvider:               aiProvider,
-		AiModel:                  aiModel,
-		AiEndpoint:               aiEndpoint,
-		AiHasKey:                 !h.aiDisabled() && (aiKey != "" || envKey != ""),
-		AiDisabled:               aiDisabled == "1",
 		OobEnabled:               h.oobEnabled(),
 		CaptureScopeOnly:         scopeOnly == "1",
 		SuppressBrowserTelemetry: suppressTelemetryOn,
@@ -1376,11 +1359,6 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		ProxyAddrs               []string  `json:"proxyAddrs"`
 		ControlAddr              string    `json:"controlAddr"`
 		UpstreamProxy            *string   `json:"upstreamProxy"` // pointer so "" can clear it
-		AiProvider               *string   `json:"aiProvider"`
-		AiApiKey                 *string   `json:"aiApiKey"`
-		AiModel                  *string   `json:"aiModel"`
-		AiEndpoint               *string   `json:"aiEndpoint"`
-		AiDisabled               *bool     `json:"aiDisabled"`
 		OobEnabled               *bool     `json:"oobEnabled"`
 		CaptureScopeOnly         *bool     `json:"captureScopeOnly"`
 		SuppressBrowserTelemetry *bool     `json:"suppressBrowserTelemetry"`
@@ -1392,66 +1370,6 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
-	}
-	if in.AiProvider != nil || in.AiApiKey != nil || in.AiModel != nil {
-		if h.aiDisabled() && (in.AiDisabled == nil || *in.AiDisabled) {
-			httpErr(w, http.StatusForbidden, aiDisabledMsg)
-			return
-		}
-		prov, _, _ := h.st.GetSetting("ai.provider")
-		if prov == "" {
-			prov = aiassist.ProviderAnthropic
-		}
-		if in.AiProvider != nil {
-			prov = *in.AiProvider
-		}
-		if prov == aiassist.ProviderOpenRouter {
-			key, _, _ := h.st.GetSetting("ai.apiKey")
-			if in.AiApiKey != nil {
-				key = *in.AiApiKey
-			}
-			if key == "" {
-				key = os.Getenv("OPENROUTER_API_KEY")
-			}
-			model, _, _ := h.st.GetSetting("ai.model")
-			if in.AiModel != nil {
-				model = *in.AiModel
-			}
-			if err := aiassist.ValidateOpenRouter(r.Context(), key, model); err != nil {
-				httpErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-	}
-	if in.AiProvider != nil {
-		if !h.persistSetting(w, "ai.provider", *in.AiProvider) {
-			return
-		}
-	}
-	if in.AiApiKey != nil {
-		if !h.persistSetting(w, "ai.apiKey", *in.AiApiKey) {
-			return
-		}
-	}
-	if in.AiModel != nil {
-		if !h.persistSetting(w, "ai.model", *in.AiModel) {
-			return
-		}
-	}
-	if in.AiEndpoint != nil {
-		if !h.persistSetting(w, "ai.endpoint", *in.AiEndpoint) {
-			return
-		}
-	}
-	if in.AiDisabled != nil {
-		v := "0"
-		if *in.AiDisabled {
-			v = "1"
-		}
-		if !h.persistSetting(w, "ai.disabled", v) {
-			return
-		}
-		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.OobEnabled != nil {
 		v := "0"

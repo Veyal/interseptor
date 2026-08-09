@@ -61,6 +61,10 @@ func ConfirmOOB(ctx context.Context, s Sender, poll OOBPoller, spec OOBSpec) OOB
 		return res
 	}
 
+	if err := ctx.Err(); err != nil {
+		res.Detail = "cancelled: " + err.Error()
+		return res
+	}
 	probe := s.Send(ctx, spec.Probe)
 	res.ProbeFlow = probe.FlowID
 
@@ -86,6 +90,10 @@ func ConfirmOOB(ctx context.Context, s Sender, poll OOBPoller, spec OOBSpec) OOB
 		if deadline >= window {
 			res.Detail = "no OOB callback within window"
 			return res
+		}
+		remaining := window - deadline
+		if remaining < interval {
+			interval = remaining
 		}
 		sleep(ctx, interval)
 		deadline += interval

@@ -162,7 +162,7 @@ func (s *Sender) runLoginMacro() ([]Header, error) {
 func (s *Sender) applySessionHeaders(hdrs []Header) {
 	s.sess.mu.Lock()
 	s.sess.enabled = true
-	s.sess.headers = hdrs
+	s.sess.headers = append([]Header(nil), hdrs...)
 	s.sess.mu.Unlock()
 }
 
