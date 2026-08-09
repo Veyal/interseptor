@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **Interceptor** are recorded here.
+All notable changes to **Interseptor** are recorded here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
@@ -9,11 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- **Raw HTTP flow exports.** Proxy context menus now save current or available original request/response messages as plain `.http` files suitable for tools such as `sqlmap -r`.
-- **Original and modified flow variants.** Backend history now preserves original request/response body hashes and header snapshots, exposes response edits with `FlagResponseEdited`, and keeps original body variants safe from garbage collection.
+## [1.7.9] - 2026-08-10
+
+### Removed
+- **Built-in AI providers and Autopilot.** External agents now use deterministic MCP transports and tools; legacy AI/autopilot data remains readable.
+
+### Fixed
+- **Saved Starlark flow-search bounds and test fidelity.** Saved searches now evaluate at most 64 candidates, expose at most 64 KiB per body and 8 MiB per request, stop with cancelled HTTP requests, cap saved-search names and collection size, and test against selected `flowId` when supplied.
+- **Stdio MCP activity persistence.** `interseptor mcp` now reports tool activity through a process-local Unix socket on Unix or authenticated loopback TCP on Windows, both owned by running control Hub; unauthenticated `POST /api/activity` remains rejected.
+- **Active-scan and verifier cancellation.** Cancelled scans stop while waiting for dispatch capacity; differential verification stops before later request variants; OOB verification avoids initial sends after cancellation and never waits beyond its configured window.
+- **Mixed legacy/current finding reports preserve unmatched narrative fields.** Markdown and HTML exports retain legacy Detail and Evidence when no equivalent text block exists, without duplicating equivalent block content.
+- **OOB correlation retention.** Active callback attribution is retained beyond the former 500-entry FIFO limit; expired records are reclaimed when minting new tokens.
+- **Vault revision integrity.** Failed revision metadata writes now remove published ZIPs, failed ZIP deletion preserves revision metadata, and malformed `tokens.json` fails open instead of being overwritten.
+- **Sender session configuration races.** Concurrent session-scope updates and sends now synchronize safely; session and per-host header inputs are copied so caller mutations cannot affect active sends.
+- **Launchd-aware process stop safety.** On macOS, `interseptor stop` identifies only the current-session launchd job whose `ProgramArguments` invoke an Interseptor server, boots out that job without touching its plist or vault jobs, then stops the process.
+- **Process stop safety.** `interseptor stop` excludes vault and launcher roles, refuses ambiguous multiple server candidates, and verifies process identity before escalation.
 
 ### Added
+- **Anywhere and saved flow searches.** Flow history can search bounded metadata, headers, tags, and bodies or run project-scoped saved Starlark predicates through control API endpoints. Added current API, field, helper, limit, safety, persistence, and troubleshooting documentation in [History search](docs/history-search.md).
+- **Raw HTTP flow exports.** Proxy context menus now save current or available original request/response messages as plain `.http` files suitable for tools such as `sqlmap -r`.
+- **Original and modified flow variants.** Backend history now preserves original request/response body hashes and header snapshots, exposes response edits with `FlagResponseEdited`, and keeps original body variants safe from garbage collection.
 - **Intercept editor readability controls.** Held messages now support body beautification, reset-to-original, and visible modified state; flow details expose additive original/current comparison when API data provides it.
 
 ## [1.7.5] - 2026-08-03
