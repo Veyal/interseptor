@@ -299,7 +299,6 @@ $$('#setNav button').forEach(b=>b.onclick=()=>{
 })();
 
 /* ---- settings ---- */
-let savedAiModel='';
 let apiLoaded=false;
 
 function settingsLoadState(){
@@ -322,16 +321,8 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   if($('#setControlAddr'))$('#setControlAddr').value=state.controlAddr;
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
-  state.aiDisabled=!!s.aiDisabled;
   state.oobEnabled=!!s.oobEnabled;
-  if($('#setAiDisabled'))$('#setAiDisabled').checked=state.aiDisabled;
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
-  if($('#setAiProvider'))$('#setAiProvider').value=s.aiProvider||'anthropic';
-  savedAiModel=s.aiModel||'';
-  if($('#setAiModel'))$('#setAiModel').value=savedAiModel;
-  if($('#setAiEndpoint'))$('#setAiEndpoint').value=s.aiEndpoint||'';
-  if($('#aiKeyState'))$('#aiKeyState').textContent=s.aiHasKey?'Key configured ✓':'No key set.';
-  loadAiProviders();
   if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
   if($('#suppressTelemetryToggle'))setSuppressTelemetry(s.suppressBrowserTelemetry!==false);
   if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(s.suppressAndroidTelemetry!==false);
@@ -341,8 +332,6 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
   const bl=$('#tlsBypassList');
   if(bl&&document.activeElement!==bl){bl.value=(s.tlsBypassHosts||[]).join('\n');updateBypassCount();}
-  aiSyncProviderUI();
-  applyAiDisabledUI();
   applyOobDisabledUI();
   state.intercept.enabled=s.interceptEnabled;if(loadState)loadState.style.display='none';}
   catch(e){renderLoadError(loadState,'Settings',e,loadSettings,true);}
@@ -366,238 +355,6 @@ $('#setOobEnabled')&&($('#setOobEnabled').onchange=async()=>{
   }catch(e){toast(e.message);loadSettings();}
 });
 
-export function applyAiDisabledUI(){
-  const off=!!state.aiDisabled;
-  document.documentElement.classList.toggle('ai-disabled',off);
-  const fields=$('#aiSettingsFields'),hint=$('#aiDisabledHint');
-  if(fields)fields.style.display=off?'none':'';
-  if(hint)hint.style.display=off?'block':'none';
-  if(off){
-    const aiModal=$('#aiModal');
-    if(aiModal&&aiModal.style.display==='flex')closeModal(aiModal);
-    const act=document.querySelector('.panel[data-panel="activity"]');
-    if(act&&act.classList.contains('active'))document.querySelector('.tab[data-tab="proxy"]')?.click();
-    const mcpBtn=document.querySelector('#apiSub button[data-s="mcp"]');
-    if(mcpBtn&&mcpBtn.classList.contains('on'))document.querySelector('#apiSub button[data-s="keys"]')?.click();
-    state.actUnseen=0;
-    const b=$('#actBadge');if(b)b.style.display='none';
-    // Keep History AI source filter as-is — FlagAI marks MCP/agent traffic,
-    // independent of whether BYO-key AI assist is enabled.
-  }
-}
-
-$('#setAiDisabled')&&($('#setAiDisabled').onchange=async()=>{
-  const disabled=$('#setAiDisabled').checked;
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({aiDisabled:disabled})});
-    state.aiDisabled=disabled;
-    applyAiDisabledUI();
-    if(disabled){toast('AI features disabled');loadFlows();}
-    else toast('AI features enabled');
-  }catch(e){toast(e.message);$('#setAiDisabled').checked=!disabled;}
-});
-
-function aiProviderVal(){return ($('#setAiProvider')||{}).value;}
-function aiIsOpenRouter(){return aiProviderVal()==='openrouter';}
-function aiIsGLM(){return aiProviderVal()==='glm';}
-function aiIsOpenAI(){return aiProviderVal()==='openai';}
-// Providers whose model is chosen from a dropdown (vs. a free-text field).
-function aiUsesModelList(){return aiIsOpenRouter()||aiIsGLM();}
-
-// GLM Coding Plan (z.ai) model lineup — curated, newest/flagship first. z.ai's
-// Anthropic-compatible endpoint takes these lowercase ids in the `model` field.
-// There is no "glm-5-flash"; the GLM-5 speed model is glm-5-turbo (the default),
-// and the free flash tier is glm-4.7-flash / glm-4.5-flash.
-const GLM_DEFAULT_MODEL='glm-5-turbo';
-const GLM_MODELS=[
-  {id:'glm-5-turbo',name:'GLM-5-Turbo — GLM-5 speed (default)'},
-  {id:'glm-5.2',name:'GLM-5.2 — flagship · 1M context'},
-  {id:'glm-5.1',name:'GLM-5.1 — 200K context'},
-  {id:'glm-5',name:'GLM-5'},
-  {id:'glm-4.7-flash',name:'GLM-4.7-Flash — fast · free'},
-  {id:'glm-4.5-flash',name:'GLM-4.5-Flash — free'},
-  {id:'glm-4.7',name:'GLM-4.7'},
-  {id:'glm-4.6',name:'GLM-4.6 — 200K context'},
-  {id:'glm-4.5',name:'GLM-4.5'},
-  {id:'glm-4.5-air',name:'GLM-4.5-Air — low cost'},
-  {id:'glm-4-air',name:'GLM-4-Air — ultra-low cost'},
-];
-function populateGlmModels(){
-  const sel=$('#setAiModelSelect');if(!sel)return;
-  const opts=GLM_MODELS.slice();
-  // Keep an unknown-but-saved GLM id selectable so a saved config is never lost.
-  if(savedAiModel&&savedAiModel.startsWith('glm-')&&!opts.some(m=>m.id===savedAiModel))
-    opts.unshift({id:savedAiModel,name:savedAiModel+' (saved)'});
-  sel.innerHTML=opts.map(m=>`<option value="${escAttr(m.id)}">${esc(m.name)}</option>`).join('');
-  const want=(savedAiModel&&opts.some(m=>m.id===savedAiModel))?savedAiModel:GLM_DEFAULT_MODEL;
-  sel.value=want;
-  syncUiSelectStyles(sel);
-  const stateEl=$('#aiValidateState');if(stateEl)stateEl.textContent='';
-}
-
-export function aiSyncProviderUI(){
-  if(!$('#setAiProvider'))return;
-  const or=aiIsOpenRouter(),glm=aiIsGLM(),openai=aiIsOpenAI(),usesList=or||glm;
-  const inp=$('#setAiModel'),sel=$('#setAiModelSelect'),loadBtn=$('#loadAiModelsBtn'),hint=$('#setAiModelHint');
-  const epField=$('#setAiEndpointField');
-  if(epField)epField.style.display=(openai||or||glm)?'':'none';
-  if(inp)inp.style.display=usesList?'none':'';
-  if(sel){sel.style.display=usesList?'':'none';syncUiSelectStyles(sel);}
-  if(loadBtn)loadBtn.style.display=or?'':'none'; // only OpenRouter fetches its list
-  if(hint)hint.textContent=usesList?'(pick from list)':'(optional)';
-  // Agent mode (let-AI-send-requests) needs the Anthropic tool-use format, which
-  // OpenRouter and OpenAI's chat API don't expose — disable it there so it isn't a silent
-  // no-op. GLM speaks the Anthropic format, so agent mode stays available.
-  const agent=$('#aiAgentToggle');
-  if(agent){
-    const supported=!(or||openai);
-    if(!supported&&agent.checked)agent.checked=false;
-    agent.disabled=!supported;
-  }
-  aiPlaceholders();
-  if(or)loadOpenRouterModels(false);
-  else if(glm)populateGlmModels();
-}
-
-export async function loadOpenRouterModels(force){
-  if(!aiIsOpenRouter())return;
-  const sel=$('#setAiModelSelect'),stateEl=$('#aiValidateState');
-  if(!sel)return;
-  const key=($('#setAiKey')||{}).value.trim();
-  if(!key&&!force&&sel.options.length>1)return;
-  sel.disabled=true;
-  if(stateEl)stateEl.textContent='Loading models…';
-  try{
-    const q=key?'?key='+encodeURIComponent(key):'';
-    const d=await api('/api/ai/openrouter/models'+q);
-    const cur=sel.value||savedAiModel;
-    sel.innerHTML='<option value="">— select a model —</option>'+
-      (d.models||[]).map(m=>`<option value="${escAttr(m.id)}">${esc(m.name||m.id)}</option>`).join('');
-    if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
-    else if(savedAiModel&&[...sel.options].some(o=>o.value===savedAiModel))sel.value=savedAiModel;
-    if(stateEl){
-      if(d.keyError)stateEl.textContent=d.keyError;
-      else if(d.keyValid)stateEl.textContent='Key valid ✓';
-      else stateEl.textContent=key?'':'Enter API key, then load models';
-    }
-  }catch(e){
-    if(stateEl)stateEl.textContent='';
-    toast('models: '+e.message);
-  }finally{sel.disabled=false;}
-}
-
-export function aiPlaceholders(){if(!$('#setAiProvider'))return;
-  const p=$('#setAiProvider').value;
-  if(p==='openrouter'){$('#setAiKey').placeholder='sk-or-…';}
-  else if(p==='glm'){$('#setAiKey').placeholder='your GLM Coding Plan key';$('#setAiModel').placeholder='glm-4.6';}
-  else if(p==='openai'){$('#setAiKey').placeholder='sk-…';$('#setAiModel').placeholder='gpt-3.5-turbo';}
-  else{$('#setAiKey').placeholder='sk-ant-…';$('#setAiModel').placeholder='claude-haiku-4-5-20251001';}}
-if($('#setAiProvider'))$('#setAiProvider').onchange=aiSyncProviderUI;
-if($('#loadAiModelsBtn'))$('#loadAiModelsBtn').onclick=()=>loadOpenRouterModels(true);
-export function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Saving in-scope only':'Saving all traffic';}
-$('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
-  const on=!$('#capScopeToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
-  catch(e){toast('capture: '+e.message);}
-});
-export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser telemetry':'Allowing browser telemetry';}
-$('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressBrowserTelemetry:on})});setSuppressTelemetry(on);toast(on?'Browser telemetry suppressed':'Browser telemetry now visible in history');}
-  catch(e){toast('telemetry: '+e.message);}
-});
-export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
-$('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressAndroidTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressAndroidTelemetry:on})});setSuppressAndroidTelemetry(on);toast(on?'Android telemetry suppressed':'Android telemetry now visible in history');}
-  catch(e){toast('android telemetry: '+e.message);}
-});
-export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
-$('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
-  const on=!$('#invisibleProxyToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({invisibleProxy:on})});setInvisibleProxy(on);toast(on?'Invisible proxy enabled':'Invisible proxy disabled');}
-  catch(e){toast('invisible: '+e.message);}
-});
-// ---- TLS passthrough / SSL-pinning bypass ----
-export function setAutoBypass(on){const b=$('#autoBypassToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Auto-bypass on pinning failure is on':'Auto-bypass on pinning failure is off';}
-function bypassHostsFromText(){return ($('#tlsBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
-function updateBypassCount(){const el=$('#tlsBypassCount');if(el)el.textContent=(n=>n?n+' domain'+(n>1?'s':'')+' passed through':'No passthrough domains')(bypassHostsFromText().length);}
-$('#tlsBypassList')&&($('#tlsBypassList').addEventListener('input',updateBypassCount));
-$('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
-  const on=!$('#autoBypassToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({autoBypassOnPinFailure:on})});setAutoBypass(on);toast(on?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');}
-  catch(e){toast('auto-bypass: '+e.message);}
-});
-$('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
-  const hosts=bypassHostsFromText();
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tlsBypassHosts:hosts})});
-    if($('#tlsBypassList'))$('#tlsBypassList').value=hosts.join('\n');updateBypassCount();
-    toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
-  catch(e){toast('passthrough: '+e.message);}
-});
-$('#saveUpstreamBtn').onclick=async()=>{
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
-    toast('upstream proxy saved');}catch(e){toast(e.message);}
-};
-$('#saveAiBtn').onclick=async()=>{
-  const provider=$('#setAiProvider').value;
-  const body={aiProvider:provider};
-  if($('#setAiKey').value)body.aiApiKey=$('#setAiKey').value;
-  if($('#setAiEndpoint'))body.aiEndpoint=$('#setAiEndpoint').value.trim();
-  if(provider==='openrouter'||provider==='glm'){
-    const model=($('#setAiModelSelect')||{}).value;
-    if(!model){toast('Select a '+(provider==='glm'?'GLM':'OpenRouter')+' model from the list');return;}
-    body.aiModel=model;
-  }else{
-    const model=$('#setAiModel').value.trim();
-    if(model)body.aiModel=model;
-  }
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    $('#setAiKey').value='';toast('AI settings saved');loadSettings();
-  }catch(e){toast(e.message);}
-};
-
-/* ---- Saved AI provider profiles (switch active provider) ---- */
-const PROVIDER_LABEL={anthropic:'Anthropic',glm:'GLM',openrouter:'OpenRouter',openai:'OpenAI'};
-export async function loadAiProviders(){
-  const box=$('#aiProfiles'),field=$('#aiProfilesField');if(!box)return;
-  try{const d=await api('/api/ai/providers');const ps=d.providers||[];
-    field.style.display=ps.length?'block':'none';
-    box.innerHTML=ps.map(p=>{
-      const active=p.id===d.activeId;
-      return `<div class="row" data-pid="${escAttr(p.id)}" style="gap:8px;align-items:center;padding:6px 8px;margin-bottom:6px;border:1px solid var(--${active?'accent':'line'});border-radius:7px;background:var(--bg3)">
-        <span style="flex:1;min-width:0">
-          <b style="color:var(--fg)">${esc(p.name)}</b>
-          <span class="hint" style="margin-left:6px">${esc(PROVIDER_LABEL[p.provider]||p.provider)}${p.model?' · '+esc(p.model):''}${p.hasKey?'':' · <span style="color:var(--amber)">no key</span>'}</span>
-        </span>
-        ${active?'<span class="sev Low">active</span>':`<button class="btn" data-act="${escAttr(p.id)}" style="padding:3px 12px">Switch</button>`}
-        <button class="btn danger" data-del="${escAttr(p.id)}" style="padding:3px 10px" title="Delete profile">✕</button>
-      </div>`;
-    }).join('');
-    box.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>activateAiProvider(b.dataset.act));
-    box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteAiProvider(b.dataset.del));
-  }catch(e){}
-}
-async function activateAiProvider(id){
-  try{const r=await api('/api/ai/providers/'+id+'/activate',{method:'POST'});
-    toast('Switched to '+(PROVIDER_LABEL[r.provider]||r.provider));loadSettings();
-  }catch(e){toast(e.message);}
-}
-async function deleteAiProvider(id){
-  if(!await uiConfirm('Delete provider profile','Delete this saved provider? This does not affect the active AI settings unless it is the active one.','Delete','btn danger','var(--red)'))return;
-  try{await api('/api/ai/providers/'+id,{method:'DELETE'});loadAiProviders();toast('profile deleted');}catch(e){toast(e.message);}
-}
-$('#aiProfileSave')&&($('#aiProfileSave').onclick=async()=>{
-  const name=($('#aiProfileName')||{}).value.trim();
-  const provider=$('#setAiProvider').value;
-  const model=aiIsOpenRouter()||aiIsGLM()?(($('#setAiModelSelect')||{}).value||''):$('#setAiModel').value.trim();
-  const endpoint=($('#setAiEndpoint')||{}).value.trim();
-  const apiKey=$('#setAiKey').value; // blank ⇒ backend snapshots the live active key
-  try{await api('/api/ai/providers',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,provider,model,endpoint,apiKey})});
-    $('#aiProfileName').value='';toast('provider profile saved');loadAiProviders();
-  }catch(e){toast(e.message);}
-});
 export async function loadSession(){try{const s=await api('/api/session');
   if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
   if($('#setSessionUnscoped'))$('#setSessionUnscoped').checked=!!s.unscoped;
