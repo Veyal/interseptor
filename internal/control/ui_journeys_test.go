@@ -90,6 +90,26 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 }
 
+func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+
+	requireUIContains(t, settings,
+		"document.querySelector('#panel-settings .settings-body')",
+		"function setCapScope(",
+		"function setSuppressTelemetry(",
+		"function setSuppressAndroidTelemetry(",
+		"function setInvisibleProxy(",
+		"function setAutoBypass(",
+		"captureScopeOnly:on",
+		"suppressBrowserTelemetry:on",
+		"suppressAndroidTelemetry:on",
+		"invisibleProxy:on",
+		"autoBypassOnPinFailure:on",
+		"tlsBypassHosts:hosts",
+		"upstreamProxy:$('#setUpstream').value.trim()",
+	)
+}
+
 func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	tools := readUIAsset(t, "js/tools.js")
