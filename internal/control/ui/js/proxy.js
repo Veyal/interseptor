@@ -3,10 +3,10 @@ import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from '.
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
-import { openAi } from './ai.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
 // it is a panel lazy-loaded on first visit (Phase 4a, UI-REDESIGN-ROADMAP.md §4) —
@@ -294,8 +294,7 @@ function flowMatchesFilters(f){
   const fl=state.filters;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
-  if(!state.showManual&&!(f.flags&FLAG_AI))return false;
-  if(!state.showAI&&(f.flags&FLAG_AI))return false;
+
   if(state.notesOnly&&!(f.note&&String(f.note).trim()))return false;
   if(fl.scheme&&f.scheme!==fl.scheme)return false;
   if(fl.method&&f.method!==fl.method)return false;
@@ -517,8 +516,8 @@ export function getStartedCard(){
       <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
       <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
-      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder${state.aiDisabled?'':', or <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"/></svg> ask AI'}</li>
-      ${state.aiDisabled?'':`<li>Using an AI assistant? <button id="gsMcp" class="btn accent" style="padding:2px 9px;vertical-align:middle">Connect it via MCP</button></li>`}
+      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder }</li>
+
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
 }
@@ -639,8 +638,8 @@ function buildFlowParams(){
   if(f.scheme)q.set('scheme',f.scheme);
   if(f.search){
     q.set('search',f.search);
-    if(f.searchScope==='body')q.set('searchScope','body');
-    else if(f.searchScope==='id')q.set('searchScope','id');
+    if(f.searchScope==='script')q.set('savedSearch',f.search);
+    else if(f.searchScope&&f.searchScope!=='anywhere')q.set('searchScope',f.searchScope);
   }
   if(state.notesOnly)q.set('hasNote','1');
   if(f.method)q.set('method',f.method);
@@ -649,16 +648,13 @@ function buildFlowParams(){
   if(f.tag)q.set('tag',f.tag);
   (f.exclude||[]).forEach(e=>{const k={method:'notMethod',host:'notHost',path:'notPath',status:'notStatus'}[e.field];if(k)q.append(k,e.value);});
   if(state.inScopeOnly)q.set('inScope','1');
-  if(!state.showManual)q.set('manual','0');
-  if(!state.showAI)q.set('ai','0');
+
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
   q.set('sort',state.sort.key);
   q.set('dir',sortDirParam());
   return q;
 }
-// bodySearchActive: body search resolves a bounded id set server-side, so it isn't
-// cursor-paginated — load-more is disabled for it.
-function bodySearchActive(){return state.filters.searchScope==='body'&&!!state.filters.search.trim();}
+function bodySearchActive(){return false;}
 
 export async function loadFlows(){
   const q=buildFlowParams();
@@ -934,12 +930,27 @@ $('#fMethod').onchange=e=>setFilter('method',e.target.value);
 $('#fStatus').onchange=e=>setFilter('status',e.target.value);
 $('#fSearch').oninput=e=>{state.filters.search=e.target.value;renderChips();scheduleReload();};
 function syncSearchPlaceholder(){
-  const inp=$('#fSearch'),sc=state.filters.searchScope||'path';
+  const inp=$('#fSearch'),sc=state.filters.searchScope||'anywhere';
   if(!inp)return;
-  inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':'Search method / host / path / #id…';
+  inp.placeholder=sc==='id'?'Flow id (e.g. 285 or #285)…':sc==='body'?'Search request/response bodies…':sc==='headers'?'Search request/response headers…':sc==='metadata'?'Search flow metadata…':sc==='script'?'Search with saved script…':'Search method / host / path / #id…';
 }
-if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'path';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
+if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=e.target.value||'anywhere';syncSearchPlaceholder();if(state.filters.search)loadFlows();};
 syncSearchPlaceholder();
+const defaultFlowSearch={searchScope:'anywhere'};
+const flowSearchUI={items:[],name:''};
+function flowSearchStatus(text,error=false){const el=$('#flowSearchScriptError'),status=$('#flowSearchScriptStatus');if(el)el.textContent=error?String(text||''):'';if(status)status.textContent=error?'':String(text||'');}
+function flowSearchPayload(){return {name:($('#flowSearchScriptName')||{}).value.trim(),scope:'anywhere',script:($('#flowSearchScriptEditor')||{}).value||'',flowId:state.selId||0};}
+function renderFlowSearches(){const list=$('#flowSearchScriptList');if(!list)return;list.innerHTML='<option value="">new search…</option>'+flowSearchUI.items.map(x=>`<option value="${escAttr(x.name)}">${esc(x.name)} · ${esc(x.scope||'anywhere')}</option>`).join('');list.value=flowSearchUI.name;}
+async function loadFlowSearches(){try{const d=await api('/api/flow-searches');flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
+async function loadFlowSearchSource(name){try{const d=await api('/api/flow-searches/'+encodeURIComponent(name)+'/source');flowSearchUI.name=name;$('#flowSearchScriptName').value=d.name||name;$('#flowSearchScriptEditor').value=d.script||'';state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();}catch(e){flowSearchStatus(e.message,true);}}
+async function testFlowSearch(){const p=flowSearchPayload();if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchStatus(d.valid?'valid':'invalid');}catch(e){flowSearchStatus(e.message,true);}}
+async function saveFlowSearch(){const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchUI.name=p.name;flowSearchStatus('saved');await loadFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
+async function deleteFlowSearch(){const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name)return;try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';renderFlowSearches();flowSearchStatus('deleted');}catch(e){flowSearchStatus(e.message,true);}}
+$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+$('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
+$('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
+$('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
+loadFlowSearches();
 if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;const nf=$('#notesFilter');nf.classList.toggle('on',state.notesOnly);nf.setAttribute('aria-pressed',state.notesOnly?'true':'false');loadFlows();};
 if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   const next=!state.hideTlsFailed;
@@ -958,23 +969,12 @@ $('#scopeToggle').onclick=()=>{
   loadFlows();
 };
 function syncSourceFilters(){
-  const mf=$('#manualFilter'), af=$('#aiFilter');
+  const mf=$('#manualFilter');
   if(mf){mf.classList.toggle('on',state.showManual);mf.setAttribute('aria-pressed',state.showManual?'true':'false');}
-  if(af){af.classList.toggle('on',state.showAI);af.setAttribute('aria-pressed',state.showAI?'true':'false');}
 }
 export { syncSourceFilters };
-function toggleSourceFilter(which){
-  const nextManual=which==='manual'?!state.showManual:state.showManual;
-  const nextAI=which==='ai'?!state.showAI:state.showAI;
-  if(!nextManual&&!nextAI){toast('Keep at least one of Manual or AI on');return;}
-  state.showManual=nextManual;
-  state.showAI=nextAI;
-  syncSourceFilters();
-  loadFlows();
-}
-$('#manualFilter')&&($('#manualFilter').onclick=()=>toggleSourceFilter('manual'));
-$('#aiFilter')&&($('#aiFilter').onclick=()=>toggleSourceFilter('ai'));
-syncSourceFilters();
+$('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
+ syncSourceFilters();
 export async function saveNote(){
   if(!state.selId)return;
   const note=$('#noteInput').value;
@@ -1075,7 +1075,7 @@ export function syncControls(){
   $('#fMethod').value=state.filters.method;
   $('#fStatus').value=state.filters.status;
   $('#fSearch').value=state.filters.search;
-  const ss=$('#fSearchScope');if(ss)ss.value=state.filters.searchScope||'path';
+  const ss=$('#fSearchScope');if(ss)ss.value=state.filters.searchScope||'anywhere';
 }
 export function setFilter(key,val){
   if(key==='tag'&&val==='tls-failed'){
@@ -1086,7 +1086,7 @@ export function setFilter(key,val){
 }
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
-  state.filters={scheme:'',search:'',searchScope:'path',method:'',status:'',host:'',tag:'',exclude:[]};
+  state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
   state.notesOnly=false;
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncControls();renderChips();loadFlows();
@@ -1229,10 +1229,7 @@ function flowGlobalSection(f,head,side='both'){
     {label:'Copy replay link · current session',act:()=>copyReplayLink(f,'current')},
     {label:"Copy replay link · flow's session",act:()=>copyReplayLink(f,'flow')},
   ];
-  if(!state.aiDisabled){
-    items.push({sep:true},
-      {label:'Ask AI',icon:'sparkle',act:()=>openAi({ids: [f.id]})});
-  }
+
   items.push({sep:true},
     ...(side==='req'?[]:side==='res'?[]:rawExportItems(f,'res')),
     {label:'Scan this host',icon:'search',val:f.host,act:()=>prefillScanner(f.host, (f.path||'').split('?')[0])},
@@ -1465,7 +1462,7 @@ export async function openCompare(){
 if($('#selCompare'))$('#selCompare').onclick=openCompare;
 if($('#compareClose'))$('#compareClose').onclick=()=>closeModal($('#compareModal'));
 $('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
-$('#selAsk').onclick=()=>{const ids=[...state.selected];if(ids.length)openAi({ids});};
+
 $('#selScope').onclick=async()=>{
   const hosts=[...new Set([...state.selected].map(id=>{const f=flowStore.byId.get(id);return f&&f.host;}).filter(Boolean))];
   if(!hosts.length)return;
