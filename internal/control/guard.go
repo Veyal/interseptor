@@ -71,6 +71,10 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 		case keyOK:
 			// Authenticated remote (or local) client. Bypass the loopback Host/Origin
 			// checks; enforce scope, MCP tier, and CSRF for the ambient-cookie path.
+			if requiresFullScope(r) && scope != store.ScopeFull {
+				httpErr(w, http.StatusForbidden, "this operation requires a full-access key")
+				return
+			}
 			if isMutatingMethod(r.Method) {
 				if scope == store.ScopeRead {
 					httpErr(w, http.StatusForbidden, "this key is read-only — it may view but not modify")
@@ -119,7 +123,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 			}
 			if r.URL.Path == "/mcp" && !h.mcpAuthorized(r) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="interseptor"`)
-				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create one in the API tab, or remove all keys to disable auth")
+				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create a replacement key in the local API tab")
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -209,6 +213,10 @@ func isMutatingMethod(m string) bool {
 	}
 }
 
+func requiresFullScope(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/api/ios/ssh/status" && strings.TrimSpace(r.URL.Query().Get("host")) != ""
+}
+
 // wantsHTML reports whether a request looks like a browser navigation (so an
 // unauthenticated one should be redirected to the login page rather than 401'd).
 func wantsHTML(r *http.Request) bool {
@@ -231,20 +239,17 @@ func sameHostOrigin(origin, host string) bool {
 	return strings.EqualFold(oh, rh)
 }
 
-// mcpAuthorized reports whether a request to /mcp may proceed. Auth is opt-in:
-// with no API keys the endpoint is open (loopback trust); once any key exists a
-// valid bearer token is required. On a store error it falls back to the last-known
-// key state (mcpKeysSeen) — so a keyless install stays open through a transient DB
-// hiccup, but once keys are known to exist the endpoint fails CLOSED rather than
-// briefly dropping auth.
+// mcpAuthorized reports whether a request to /mcp may proceed. Auth is opt-in
+// only for a fresh store; after first key creation, durable auth remains armed.
+// Store errors fall back to last-known state so armed auth fails closed.
 func (h *Hub) mcpAuthorized(r *http.Request) bool {
-	has, err := h.st.HasAPIKeys()
+	required, err := h.st.APIKeyAuthRequired()
 	if err != nil {
-		has = h.mcpKeysSeen.Load()
+		required = h.mcpKeysSeen.Load()
 	} else {
-		h.mcpKeysSeen.Store(has)
+		h.mcpKeysSeen.Store(required)
 	}
-	if !has {
+	if !required {
 		return true
 	}
 	tok := bearerToken(r)

@@ -97,6 +97,87 @@ func TestIOSSetupNoDeviceReturnsRealPort(t *testing.T) {
 	}
 }
 
+func TestIOSSSHStatusProbeRequiresFullAuthorizationBeforeDial(t *testing.T) {
+	// Given
+	hub, st, _ := newHub(t)
+	readToken, _, err := st.CreateAPIKey("viewer", store.ScopeRead, 0)
+	if err != nil {
+		t.Fatalf("CreateAPIKey: %v", err)
+	}
+	dials := 0
+	hub.iosTCPReachable = func(string, int) bool {
+		dials++
+		return true
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://remote.example/api/ios/ssh/status?host=192.0.2.1&port=22", nil)
+	req.Host = "remote.example"
+	req.Header.Set("Authorization", "Bearer "+readToken)
+
+	// When
+	rec := httptest.NewRecorder()
+	hub.Handler().ServeHTTP(rec, req)
+
+	// Then
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if dials != 0 {
+		t.Fatalf("reachability probes = %d, want 0", dials)
+	}
+}
+
+func TestIOSSSHStatusMetadataAllowsReadAuthorization(t *testing.T) {
+	// Given
+	hub, st, _ := newHub(t)
+	readToken, _, err := st.CreateAPIKey("viewer", store.ScopeRead, 0)
+	if err != nil {
+		t.Fatalf("CreateAPIKey: %v", err)
+	}
+	dials := 0
+	hub.iosTCPReachable = func(string, int) bool {
+		dials++
+		return true
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://remote.example/api/ios/ssh/status", nil)
+	req.Host = "remote.example"
+	req.Header.Set("Authorization", "Bearer "+readToken)
+
+	// When
+	rec := httptest.NewRecorder()
+	hub.Handler().ServeHTTP(rec, req)
+
+	// Then
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if dials != 0 {
+		t.Fatalf("reachability probes = %d, want 0", dials)
+	}
+}
+
+func TestIOSSSHStatusProbeRejectsInvalidPortBeforeDial(t *testing.T) {
+	// Given
+	hub, _, _ := newHub(t)
+	dials := 0
+	hub.iosTCPReachable = func(string, int) bool {
+		dials++
+		return true
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/ios/ssh/status?host=192.0.2.1&port=invalid", nil)
+
+	// When
+	rec := httptest.NewRecorder()
+	hub.Handler().ServeHTTP(rec, req)
+
+	// Then
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if dials != 0 {
+		t.Fatalf("reachability probes = %d, want 0", dials)
+	}
+}
+
 func TestIOSStatusEndpoint(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {

@@ -12,6 +12,8 @@ import (
 const (
 	ScopeFull = "full"
 	ScopeRead = "read"
+
+	apiKeyAuthArmedSetting = "auth.api_keys_armed"
 )
 
 // NormalizeScope maps any input to a known scope (default full).
@@ -51,10 +53,23 @@ func (s *Store) CreateAPIKey(label, scope string, expires int64) (token string, 
 		expires = 0
 	}
 
-	res, err := s.keysDB().Exec(
+	tx, err := s.keysDB().Begin()
+	if err != nil {
+		return "", APIKey{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`INSERT INTO api_keys (label, prefix, hash, created, scope, expires) VALUES (?,?,?,?,?,?)`,
 		label, prefix, hash, now, scope, expires)
 	if err != nil {
+		return "", APIKey{}, err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO settings(key, value) VALUES(?, '1')
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, apiKeyAuthArmedSetting); err != nil {
+		return "", APIKey{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", APIKey{}, err
 	}
 	id, _ := res.LastInsertId()
@@ -81,8 +96,20 @@ func (s *Store) ListAPIKeys() ([]APIKey, error) {
 
 // DeleteAPIKey revokes a key by id.
 func (s *Store) DeleteAPIKey(id int64) error {
-	_, err := s.keysDB().Exec(`DELETE FROM api_keys WHERE id = ?`, id)
-	return err
+	tx, err := s.keysDB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`INSERT INTO settings(key, value) VALUES(?, '1')
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, apiKeyAuthArmedSetting); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM api_keys WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // HasAPIKeys reports whether any control-API key exists. Auth is opt-in: while
@@ -94,6 +121,20 @@ func (s *Store) HasAPIKeys() (bool, error) {
 		return false, err
 	}
 	return n > 0, nil
+}
+
+// APIKeyAuthRequired reports whether API-key auth was ever armed. Unlike
+// HasAPIKeys, deleting the final key does not clear this durable security mode.
+func (s *Store) APIKeyAuthRequired() (bool, error) {
+	var value string
+	err := s.keysDB().QueryRow(`SELECT value FROM settings WHERE key = ?`, apiKeyAuthArmedSetting).Scan(&value)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return false, nil
+		}
+		return false, err
+	}
+	return value == "1", nil
 }
 
 // VerifyAPIKey reports whether token matches a stored, unexpired key. Retained

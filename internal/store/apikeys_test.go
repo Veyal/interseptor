@@ -47,6 +47,57 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuthRemainsArmedAfterFinalDeletionAndReopen(t *testing.T) {
+	// Given
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	_, key, err := s.CreateAPIKey("recovery", ScopeFull, 0)
+	if err != nil {
+		t.Fatalf("CreateAPIKey: %v", err)
+	}
+	if err := s.DeleteAPIKey(key.ID); err != nil {
+		t.Fatalf("DeleteAPIKey: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// When
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+
+	// Then
+	if has, err := reopened.HasAPIKeys(); err != nil || has {
+		t.Fatalf("HasAPIKeys = %v, %v; want false, nil", has, err)
+	}
+	if required, err := reopened.APIKeyAuthRequired(); err != nil || !required {
+		t.Fatalf("APIKeyAuthRequired = %v, %v; want true, nil", required, err)
+	}
+}
+
+func TestAPIKeyAuthStartsOpenOnFreshStore(t *testing.T) {
+	// Given
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	// When
+	required, err := s.APIKeyAuthRequired()
+
+	// Then
+	if err != nil || required {
+		t.Fatalf("APIKeyAuthRequired = %v, %v; want false, nil", required, err)
+	}
+}
+
 func TestAPIKeyScopeAndExpiry(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

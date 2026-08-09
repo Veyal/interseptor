@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS ip_allowlist (
   label TEXT,
   created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `
 
 // AttachGlobalKeys points API-key CRUD/verify at a SQLite file under globalDir
@@ -81,36 +85,66 @@ func (s *Store) AttachGlobalKeys(globalDir string) error {
 }
 
 // migrateAPIKeysInto copies api_keys rows from src into dst when dst is empty.
-// Uses INSERT OR IGNORE so re-runs are safe. No-op if src has no api_keys table.
+// Durable auth state migrates independently, so deleting the final legacy key
+// cannot reopen auth. INSERT OR IGNORE and setting upsert make re-runs safe.
 func migrateAPIKeysInto(dst, src *sql.DB) error {
-	var n int
-	if err := dst.QueryRow(`SELECT COUNT(1) FROM api_keys`).Scan(&n); err != nil {
-		return err
-	}
-	if n > 0 {
-		return nil
-	}
-	rows, err := src.Query(`SELECT label, prefix, hash, created, scope, expires FROM api_keys`)
+	tx, err := dst.Begin()
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
-			return nil
-		}
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var label, prefix, hash, scope string
-		var created, expires int64
-		if err := rows.Scan(&label, &prefix, &hash, &created, &scope, &expires); err != nil {
-			return err
+	defer tx.Rollback()
+
+	var keyCount int
+	if err := tx.QueryRow(`SELECT COUNT(1) FROM api_keys`).Scan(&keyCount); err != nil {
+		return err
+	}
+	armed := keyCount > 0
+	var armedValue string
+	if err := src.QueryRow(`SELECT value FROM settings WHERE key = ?`, apiKeyAuthArmedSetting).Scan(&armedValue); err == nil {
+		armed = armed || armedValue == "1"
+	} else if err != sql.ErrNoRows && !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+		return err
+	}
+
+	if keyCount == 0 {
+		rows, err := src.Query(`SELECT label, prefix, hash, created, scope, expires FROM api_keys`)
+		if err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				return err
+			}
+		} else {
+			for rows.Next() {
+				var label, prefix, hash, scope string
+				var created, expires int64
+				if err := rows.Scan(&label, &prefix, &hash, &created, &scope, &expires); err != nil {
+					rows.Close()
+					return err
+				}
+				armed = true
+				if _, err := tx.Exec(
+					`INSERT OR IGNORE INTO api_keys (label, prefix, hash, created, scope, expires) VALUES (?,?,?,?,?,?)`,
+					label, prefix, hash, created, scope, expires); err != nil {
+					rows.Close()
+					return err
+				}
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := rows.Close(); err != nil {
+				return err
+			}
 		}
-		if _, err := dst.Exec(
-			`INSERT OR IGNORE INTO api_keys (label, prefix, hash, created, scope, expires) VALUES (?,?,?,?,?,?)`,
-			label, prefix, hash, created, scope, expires); err != nil {
+	}
+	if armed {
+		if _, err := tx.Exec(
+			`INSERT INTO settings(key, value) VALUES(?, '1')
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, apiKeyAuthArmedSetting); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	return tx.Commit()
 }
 
 func (s *Store) keysDB() *sql.DB {

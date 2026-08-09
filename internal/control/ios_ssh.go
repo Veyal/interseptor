@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/bind"
@@ -52,14 +53,19 @@ func (h *iosAPI) iosSSHMeta() map[string]any {
 func (h *iosAPI) getIOSSSHStatus(w http.ResponseWriter, r *http.Request) {
 	rep := h.iosSSHMeta()
 	host := strings.TrimSpace(r.URL.Query().Get("host"))
-	port := atoiOr(r.URL.Query().Get("port"), 0)
 	if host != "" {
-		rep["host"] = host
-		if port <= 0 {
-			port = 22
+		port := 22
+		if rawPort := r.URL.Query().Get("port"); rawPort != "" {
+			parsed, err := strconv.Atoi(rawPort)
+			if err != nil || parsed < 1 || parsed > 65535 {
+				httpErr(w, http.StatusBadRequest, "port must be between 1 and 65535")
+				return
+			}
+			port = parsed
 		}
+		rep["host"] = host
 		rep["port"] = port
-		rep["reachable"] = ios.TCPReachable(host, port)
+		rep["reachable"] = h.iosTCPReachable(host, port)
 		if !rep["reachable"].(bool) {
 			rep["message"] = "TCP port not reachable — ensure OpenSSH is running and the device is on the same network"
 		} else {

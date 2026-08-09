@@ -116,7 +116,11 @@ func main() {
 		if base == "" {
 			base = "http://" + resolveControlAddr(nil, "")
 		}
-		if err := mcp.New(base).Serve(os.Stdin, os.Stdout); err != nil {
+		srv := mcp.New(base)
+		if socket := mcp.ActivitySocketPath(base); socket != "" {
+			srv.SetActivityReporter(mcp.ActivitySocketReporter(socket))
+		}
+		if err := srv.Serve(os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -217,7 +221,7 @@ func run() error {
 	// manager (rebind), the manager needs the proxy handler. Create the manager
 	// first, then the hub, then the proxy handler, then attach it to the manager.
 	sc := scope.New() // one shared target-scope matcher: control owns CRUD, the proxy gate reads it
-	pm := &proxyManager{}
+	pm := &proxyManager{verifyAPIKeyScope: st.VerifyAPIKeyScope}
 	cm := &controlManager{}
 	hub := control.New(st, eng, ca, pm, sc)
 	defer hub.Close()
@@ -327,6 +331,11 @@ func run() error {
 		return fmt.Errorf("control listen on %s: %w", controlAddr, err)
 	}
 	hub.SetSelfAddr(cm.Addr())
+	if socket := mcp.ActivitySocketPath("http://" + cm.Addr()); socket != "" {
+		if err := hub.StartActivitySocket(socket); err != nil {
+			log.Printf("activity socket unavailable: %v", err)
+		}
+	}
 
 	uiURL := "http://" + cm.Addr()
 	log.Printf("Interseptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
@@ -360,9 +369,7 @@ func run() error {
 
 	log.Println("shutting down…")
 	close(retentionStop)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	shutdownRuntime(ctx, cm, hub, pm)
+	shutdownRuntime(5*time.Second, cm, hub, pm)
 	return nil
 }
 
@@ -374,10 +381,19 @@ type runtimeCloser interface {
 	Close()
 }
 
-func shutdownRuntime(ctx context.Context, control runtimeShutdowner, hub runtimeCloser, proxy runtimeShutdowner) {
-	control.Shutdown(ctx)
+func shutdownRuntime(timeout time.Duration, control runtimeShutdowner, hub runtimeCloser, proxy runtimeShutdowner) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for _, shutdowner := range []runtimeShutdowner{control, proxy} {
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			shutdowner.Shutdown(ctx)
+		}()
+	}
+	wg.Wait()
 	hub.Close()
-	proxy.Shutdown(ctx)
 }
 
 // controlManager owns the control-plane listener and supports runtime rebinding.
@@ -450,7 +466,8 @@ func (m *controlManager) Shutdown(ctx context.Context) {
 // new listeners before tearing down old ones, so a failed rebind leaves the running
 // proxy untouched. It implements control.Rebinder and control.MultiProxyRebinder.
 type proxyManager struct {
-	handler http.Handler
+	handler           http.Handler
+	verifyAPIKeyScope func(string) (bool, string, error)
 
 	mu    sync.Mutex
 	addrs []string
@@ -458,13 +475,49 @@ type proxyManager struct {
 }
 
 func (m *proxyManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: m.handler}
+	srv := &http.Server{Handler: proxyListenerHandler(ln.Addr(), m.handler, m.verifyAPIKeyScope)}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("proxy serve: %v", err)
 		}
 	}()
 	return srv
+}
+
+func proxyListenerHandler(addr net.Addr, next http.Handler, verify func(string) (bool, string, error)) http.Handler {
+	if !proxyListenerRequiresAuth(addr) {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var token string
+		credentialsPresent := false
+		if value := r.Header.Get("Proxy-Authorization"); value != "" {
+			credentials := r.Header.Get("Authorization")
+			r.Header.Set("Authorization", value)
+			_, token, credentialsPresent = r.BasicAuth()
+			if credentials == "" {
+				r.Header.Del("Authorization")
+			} else {
+				r.Header.Set("Authorization", credentials)
+			}
+		}
+		ok, scope, err := false, "", error(nil)
+		if credentialsPresent && verify != nil {
+			ok, scope, err = verify(token)
+		}
+		if err != nil || !ok || scope != store.ScopeFull {
+			w.Header().Set("Proxy-Authenticate", `Basic realm="interseptor"`)
+			w.WriteHeader(http.StatusProxyAuthRequired)
+			return
+		}
+		r.Header.Del("Proxy-Authorization")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func proxyListenerRequiresAuth(addr net.Addr) bool {
+	tcpAddr, ok := addr.(*net.TCPAddr)
+	return !ok || tcpAddr.IP == nil || !tcpAddr.IP.IsLoopback()
 }
 
 func (m *proxyManager) listenAll(addrs []string) ([]net.Listener, error) {
