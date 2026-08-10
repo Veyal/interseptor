@@ -304,7 +304,7 @@ let apiLoaded=false;
 function settingsLoadState(){
   let el=$('#settingsLoadState');if(el)return el;
   el=document.createElement('div');el.id='settingsLoadState';el.className='tls-diag-banner';
-  const wrap=document.querySelector('#panel-settings .settings-wrap');if(wrap)wrap.prepend(el);
+  const body=document.querySelector('#panel-settings .settings-body');if(body)body.prepend(el);
   return el;
 }
 export async function loadSettings(){const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
@@ -353,6 +353,53 @@ $('#setOobEnabled')&&($('#setOobEnabled').onchange=async()=>{
     applyOobDisabledUI();
     toast(enabled?'OOB catcher enabled':'OOB catcher disabled');
   }catch(e){toast(e.message);loadSettings();}
+});
+
+export function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Saving in-scope only':'Saving all traffic';}
+$('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
+  const on=!$('#capScopeToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
+  catch(e){toast('capture: '+e.message);}
+});
+export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser telemetry':'Allowing browser telemetry';}
+$('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
+  const on=!$('#suppressTelemetryToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressBrowserTelemetry:on})});setSuppressTelemetry(on);toast(on?'Browser telemetry suppressed':'Browser telemetry now visible in history');}
+  catch(e){toast('telemetry: '+e.message);}
+});
+export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
+$('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').onclick=async()=>{
+  const on=!$('#suppressAndroidTelemetryToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressAndroidTelemetry:on})});setSuppressAndroidTelemetry(on);toast(on?'Android telemetry suppressed':'Android telemetry now visible in history');}
+  catch(e){toast('android telemetry: '+e.message);}
+});
+export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
+$('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
+  const on=!$('#invisibleProxyToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({invisibleProxy:on})});setInvisibleProxy(on);toast(on?'Invisible proxy enabled':'Invisible proxy disabled');}
+  catch(e){toast('invisible: '+e.message);}
+});
+
+// ---- TLS passthrough / SSL-pinning bypass ----
+export function setAutoBypass(on){const b=$('#autoBypassToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Auto-bypass on pinning failure is on':'Auto-bypass on pinning failure is off';}
+function bypassHostsFromText(){return ($('#tlsBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
+function updateBypassCount(){const el=$('#tlsBypassCount');if(el)el.textContent=(n=>n?n+' domain'+(n>1?'s':'')+' passed through':'No passthrough domains')(bypassHostsFromText().length);}
+$('#tlsBypassList')&&($('#tlsBypassList').addEventListener('input',updateBypassCount));
+$('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
+  const on=!$('#autoBypassToggle').classList.contains('on');
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({autoBypassOnPinFailure:on})});setAutoBypass(on);toast(on?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');}
+  catch(e){toast('auto-bypass: '+e.message);}
+});
+$('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
+  const hosts=bypassHostsFromText();
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tlsBypassHosts:hosts})});
+    if($('#tlsBypassList'))$('#tlsBypassList').value=hosts.join('\n');updateBypassCount();
+    toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
+  catch(e){toast('passthrough: '+e.message);}
+});
+$('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=async()=>{
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
+    toast('upstream proxy saved');}catch(e){toast(e.message);}
 });
 
 export async function loadSession(){try{const s=await api('/api/session');

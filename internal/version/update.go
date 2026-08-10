@@ -159,10 +159,7 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 			return err
 		}
 		prog.done("Updated to interseptor v%s → %s", ver, installDest)
-		if rebranded {
-			printRebrandNotice(out, legacyPath, installDest)
-		}
-		printMCPUpdateNote(out)
+		printPostInstallNotes(out, legacyPath, installDest, rebranded)
 		return nil
 	}
 
@@ -177,13 +174,13 @@ func Update(ctx context.Context, opts UpdateOptions) error {
 	} else {
 		prog.done("Installed interseptor v%s via go install (ensure $(go env GOPATH)/bin is on your PATH)", ver)
 	}
-	printMCPUpdateNote(out)
 	return nil
 }
 
-func printMCPUpdateNote(out io.Writer) {
-	fmt.Fprintf(out, "\nMCP: if Cursor uses Streamable HTTP (http://127.0.0.1:9966/mcp), restart Interseptor to pick up this build — no MCP config change needed.\n")
-	fmt.Fprintf(out, "     stdio clients: restart the MCP server or use scripts/interseptor-mcp to resolve the updated binary on PATH.\n")
+func printPostInstallNotes(out io.Writer, legacyPath, newPath string, rebranded bool) {
+	if rebranded {
+		printRebrandNotice(out, legacyPath, newPath)
+	}
 }
 
 // isLegacyBinaryName reports whether base is the pre-rename product binary name.

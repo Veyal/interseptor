@@ -186,6 +186,16 @@ func TestProgressReaderReports(t *testing.T) {
 	}
 }
 
+func TestPostInstallNotesAreSilentForNormalUpdate(t *testing.T) {
+	var buf bytes.Buffer
+
+	printPostInstallNotes(&buf, "", "", false)
+
+	if got := buf.String(); got != "" {
+		t.Fatalf("normal update printed post-install notes: %q", got)
+	}
+}
+
 func TestAssetCandidates(t *testing.T) {
 	c := assetCandidates("0.7.0", "linux", "amd64")
 	if len(c) < 2 || c[0] != "interseptor_0.7.0_linux_amd64.tar.gz" {

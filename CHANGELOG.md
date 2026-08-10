@@ -9,8 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.10] - 2026-08-10
+
 ### Changed
 - **Dev-build fallback version advanced to the published `1.7.9`.**
+- **Self-update output is quieter.** Successful updates no longer print editor-specific Cursor and MCP restart guidance.
+- **UI feature-removal guidance.** Added a project skill for auditing neighboring controls, unresolved references, and focused regression coverage when deleting interleaved embedded-UI features.
+
+### Fixed
+- **Settings initialization and controls.** Restored capture policy, browser and Android telemetry, invisible proxy, TLS auto-bypass and passthrough, and upstream proxy handlers accidentally removed with the built-in AI settings; Settings no longer remains stale with `setCapScope is not defined`, and future load errors render in the content area instead of consuming a column beside the menu.
 
 ## [1.7.9] - 2026-08-10
 
