@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.11] - 2026-08-11
+
+### Fixed
+- **Upstream proxy authentication is now optional and explicit in Settings.** Credential-free proxy saves no longer add userinfo or send `Proxy-Authorization`; separate credentials remain supported for authenticated upstreams, and any chained-upstream `407 Proxy Authentication Required` response is intentionally converted to a sanitized local error, preventing browser Basic Auth prompts; direct/no-upstream `407` responses remain unchanged.
+
 ## [1.7.10] - 2026-08-10
 
 ### Changed
