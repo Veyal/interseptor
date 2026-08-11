@@ -270,6 +270,92 @@ func TestFullProjectExportImportRoundTrip(t *testing.T) {
 }
 
 // Importing onto an existing project name must be refused unless overwrite=1.
+func TestFullProjectArchivePreservesCodecs(t *testing.T) {
+	// Given
+	h, _, _ := newHub(t)
+	h.ProjectDir = t.TempDir()
+	codecPath := filepath.Join(h.ProjectDir, "codecs", "example.star")
+	if err := os.MkdirAll(filepath.Dir(codecPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codecPath, []byte("def decode(flow):\n    return None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	// When
+	resp, err := http.Get(ts.URL + "/api/export/full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Then
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range zr.File {
+		if file.Name == "codecs/example.star" {
+			return
+		}
+	}
+	t.Fatal("project codec missing from full archive")
+}
+
+func TestFullProjectCodecRoundTripPreservesExactBytes(t *testing.T) {
+	// Given
+	source, _, _ := newHub(t)
+	source.ProjectDir = t.TempDir()
+	codecBytes := []byte("# codec\ndef decode(flow):\n    return None\n")
+	codecPath := filepath.Join(source.ProjectDir, "codecs", "exact.star")
+	if err := os.MkdirAll(filepath.Dir(codecPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codecPath, codecBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sourceServer := httptest.NewServer(source.Handler())
+	defer sourceServer.Close()
+	resp, err := http.Get(sourceServer.URL + "/api/export/full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _, _ := newHub(t)
+	target.GlobalDir = t.TempDir()
+	targetServer := httptest.NewServer(target.Handler())
+	defer targetServer.Close()
+
+	// When
+	resp, err = http.Post(targetServer.URL+"/api/import/full?name=codec-copy", "application/zip", bytes.NewReader(archive))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Then
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("codec archive import status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	restored, err := os.ReadFile(filepath.Join(target.GlobalDir, "projects", "codec-copy", "codecs", "exact.star"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, codecBytes) {
+		t.Fatalf("restored codec bytes = %q, want %q", restored, codecBytes)
+	}
+}
+
 func TestFullProjectImportRefusesOverwrite(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.InsertFlow(&store.Flow{Method: "GET", Scheme: "https", Host: "app.test", Path: "/", Status: 200})

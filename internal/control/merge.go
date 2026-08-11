@@ -210,7 +210,7 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 	}
 	arcPath := arc.Name()
 	defer os.Remove(arcPath)
-	if err := buildFullArchive(arc, snap, h.st.BodiesDir()); err != nil {
+	if err := buildFullArchive(arc, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
 		arc.Close()
 		httpInternalErr(w, err)
 		return

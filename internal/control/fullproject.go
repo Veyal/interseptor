@@ -26,6 +26,7 @@ import (
 const (
 	archiveDBName           = "interceptor.db"
 	archiveBodyRoot         = "bodies"
+	archiveCodecRoot        = "codecs"
 	maxArchiveBytes         = 4 << 30 // 4 GiB compressed upload cap
 	maxArchiveEntries       = 1_000_000
 	maxArchiveFileBytes     = 4 << 30
@@ -112,31 +113,36 @@ type projectDirOps struct {
 var realProjectDirOps = projectDirOps{rename: os.Rename, removeAll: os.RemoveAll}
 
 // buildFullArchive writes a zip of {snapshotPath as interceptor.db, bodiesDir/**
-// as bodies/**} to w. snapshotPath is a self-contained DB snapshot (see
-// store.BackupTo); bodiesDir may not exist (empty project) — that is fine.
-func buildFullArchive(w io.Writer, snapshotPath, bodiesDir string) error {
+// as bodies/**, codecsDir/** as codecs/**} to w. snapshotPath is a self-contained
+// DB snapshot (see store.BackupTo); source directories may not exist.
+func buildFullArchive(w io.Writer, snapshotPath, bodiesDir, codecsDir string) error {
 	zw := zip.NewWriter(w)
 	if err := addFileToZip(zw, snapshotPath, archiveDBName); err != nil {
 		zw.Close()
 		return err
 	}
-	if err := filepath.WalkDir(bodiesDir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil // skip unreadable entries and directories; blobs are leaves
-		}
-		if strings.HasPrefix(d.Name(), ".tmp-") {
-			return nil // in-flight body captures are not part of the committed set
-		}
-		rel, rerr := filepath.Rel(bodiesDir, p)
-		if rerr != nil {
-			return nil
-		}
-		return addFileToZip(zw, p, archiveBodyRoot+"/"+filepath.ToSlash(rel))
-	}); err != nil {
+	if err := addArchiveFiles(zw, bodiesDir, archiveBodyRoot, true); err != nil {
+		zw.Close()
+		return err
+	}
+	if err := addArchiveFiles(zw, codecsDir, archiveCodecRoot, false); err != nil {
 		zw.Close()
 		return err
 	}
 	return zw.Close()
+}
+
+func addArchiveFiles(zw *zip.Writer, sourceDir, archiveRoot string, skipTemporary bool) error {
+	return filepath.WalkDir(sourceDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
+			return nil
+		}
+		rel, err := filepath.Rel(sourceDir, p)
+		if err != nil {
+			return nil
+		}
+		return addFileToZip(zw, p, archiveRoot+"/"+filepath.ToSlash(rel))
+	})
 }
 
 func addFileToZip(zw *zip.Writer, srcPath, name string) error {
@@ -206,7 +212,7 @@ func unpackFullArchiveWithLimits(zipPath, destDir string, limits archiveReadLimi
 	for _, f := range zr.File {
 		// Normalize and constrain the entry name to the allowed members.
 		rel := strings.TrimPrefix(path.Clean("/"+f.Name), "/")
-		if rel != archiveDBName && !strings.HasPrefix(rel, archiveBodyRoot+"/") {
+		if rel != archiveDBName && !strings.HasPrefix(rel, archiveBodyRoot+"/") && !strings.HasPrefix(rel, archiveCodecRoot+"/") {
 			continue // ignore anything outside the project layout
 		}
 		bodyHash := ""
@@ -482,7 +488,7 @@ func (h *projectAPI) exportFull(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(snap)
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+archiveFilename(h.ProjectName)+`"`)
-	if err := buildFullArchive(w, snap, h.st.BodiesDir()); err != nil {
+	if err := buildFullArchive(w, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
 		// Headers are already sent; log-and-abort is all we can do mid-stream.
 		log.Printf("control: full export failed: %v", err)
 	}
@@ -559,7 +565,7 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "create: "+err.Error())
 		return
 	}
-	if err := buildFullArchive(out, snap, h.st.BodiesDir()); err != nil {
+	if err := buildFullArchive(out, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
 		out.Close()
 		httpInternalErr(w, err)
 		return
