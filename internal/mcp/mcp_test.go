@@ -561,6 +561,21 @@ func TestStreamableHTTPTransport(t *testing.T) {
 	}
 }
 
+func TestStreamableHTTPTransportReturns413ForBodiesOverLimit(t *testing.T) {
+	// Given
+	srv := New("http://127.0.0.1:1")
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(strings.Repeat("x", 8<<20+1)))
+	rec := httptest.NewRecorder()
+
+	// When
+	srv.ServeHTTP(rec, req)
+
+	// Then
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large MCP body status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
 func TestMCPUnknownToolIsToolError(t *testing.T) {
 	srv := New("http://127.0.0.1:1") // unused
 	script := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nope","arguments":{}}}` + "\n"

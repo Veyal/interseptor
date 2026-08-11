@@ -325,9 +325,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+	const maxMCPHTTPBody = 8 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPHTTPBody+1))
 	if err != nil {
 		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxMCPHTTPBody {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	body = bytes.TrimSpace(body)
