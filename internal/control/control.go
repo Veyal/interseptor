@@ -6,8 +6,10 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -351,6 +353,10 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.SetFlowNote(id, in.Note); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "flow not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}
