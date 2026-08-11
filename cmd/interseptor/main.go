@@ -52,6 +52,14 @@ func isLoopbackBind(addr string) bool {
 	return false
 }
 
+func knownTopLevelCommand(arg string) bool {
+	switch arg {
+	case "version", "-v", "--version", "update", "stop", "launcher", "vault", "check", "rules", "help", "-h", "--help", "mcp":
+		return true
+	}
+	return false
+}
+
 func main() {
 	// One-shot migration: if this process is still the pre-rename `interceptor`
 	// binary on disk, install as `interseptor` and leave a compatibility shim.
@@ -106,6 +114,12 @@ func main() {
 		case "help", "-h", "--help":
 			printUsage()
 			return
+		case "mcp":
+		default:
+			if !knownTopLevelCommand(os.Args[1]) && !strings.HasPrefix(os.Args[1], "-") {
+				fmt.Fprintf(os.Stderr, "unknown command %q (see `interseptor help`)\n", os.Args[1])
+				os.Exit(1)
+			}
 		}
 	}
 	// `interseptor mcp` runs a Model Context Protocol server on stdio that drives

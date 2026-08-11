@@ -21,9 +21,14 @@ import (
 //	interseptor rules list                                                   installed packs
 //	interseptor rules info <name>                                            show a pack's record
 //	interseptor rules remove <name>                                          uninstall a pack
+func printRulesUsage() {
+	fmt.Fprintln(os.Stdout, "Usage: interseptor rules create|install|list|info|remove [options]")
+}
+
 func runRules(args []string) error {
-	if len(args) == 0 {
-		return errors.New("rules: expected create|install|list|info|remove (see `interseptor help`)")
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		printRulesUsage()
+		return nil
 	}
 	switch args[0] {
 	case "create":

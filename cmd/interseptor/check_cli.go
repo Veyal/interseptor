@@ -23,9 +23,14 @@ import (
 //
 // `new`/`validate` (no files) operate on ~/.interseptor/checks (passive) and,
 // with --active, ~/.interseptor/active-checks.
+func printCheckUsage() {
+	fmt.Fprintln(os.Stdout, "Usage: interseptor check new|validate|lint|test [options]")
+}
+
 func runCheck(args []string) error {
-	if len(args) == 0 {
-		return errors.New("check: expected new|validate|lint|test (see `interseptor help`)")
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		printCheckUsage()
+		return nil
 	}
 	active := false
 	rest := args[1:]
@@ -98,6 +103,9 @@ func checkNew(args []string, active bool) error {
 		return errors.New("check new: expected exactly one <id>")
 	}
 	id := args[0]
+	if !checkscript.ValidID(id) {
+		return fmt.Errorf("check new: invalid check id %q (use letters, digits, - or _)", id)
+	}
 	dir, err := globalChecksDir(active)
 	if err != nil {
 		return err
@@ -188,9 +196,19 @@ func checkTest(args []string, active bool) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", args[0], err)
 	}
-	for _, a := range args[1:] {
-		if strings.HasPrefix(a, "--flow-json=") {
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case strings.HasPrefix(a, "--flow-json="):
 			flowJSON = strings.TrimPrefix(a, "--flow-json=")
+		case a == "--flow-json":
+			if i+1 == len(args) {
+				return errors.New("check test: --flow-json requires a path")
+			}
+			i++
+			flowJSON = args[i]
+		default:
+			return fmt.Errorf("check test: unknown argument %q", a)
 		}
 	}
 	var raw []byte
