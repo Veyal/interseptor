@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-- **Dev-build fallback version advanced to the published `1.7.11`.**
+## [1.7.12] - 2026-08-11
+
+### Fixed
+- **CLI, archive, and API QA gaps.** `check test` accepts both `--flow-json path` and `--flow-json=path`; unknown commands fail instead of launching proxy; `check --help` and `rules --help` succeed; unsafe check IDs are rejected; full project ZIPs preserve project codecs; route catalog includes replay confirmation and labels activity POST as MCP-only.
+- **HTTP and release correctness.** MCP HTTP bodies above 8 MiB return `413`; annotating a missing flow returns `404`; dirty Go build metadata falls back to release version rather than exposing `+dirty`.
 
 ## [1.7.11] - 2026-08-11
 
