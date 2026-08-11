@@ -57,10 +57,18 @@ func TestIsReleaseVersion(t *testing.T) {
 	}
 }
 
-func TestStringFallsBackToConst(t *testing.T) {
-	// In `go test` the main module version is "(devel)", so String() returns the const.
-	if String() != Version {
-		t.Fatalf("String()=%q, expected baked-in %q in test builds", String(), Version)
+func TestStringUsesLinkerSettableFallback_whenBuildVersionIsNotReleaseTag(t *testing.T) {
+	// Given
+	original := Version
+	t.Cleanup(func() { Version = original })
+	Version = "1.7.13-test"
+
+	// When
+	got := String()
+
+	// Then
+	if got != "1.7.13-test" {
+		t.Fatalf("String()=%q, want linker-settable fallback %q", got, "1.7.13-test")
 	}
 }
 

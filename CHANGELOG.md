@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Release binary version reporting.** GoReleaser now injects each release tag into both current and legacy binary builds, preventing stale dev fallback versions in published artifacts.
+
 ## [1.7.12] - 2026-08-11
 
 ### Fixed

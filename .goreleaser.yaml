@@ -16,7 +16,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      - -s -w -X github.com/Veyal/interseptor/internal/version.Version={{.Version}}
   # Same binary under the pre-rename name so legacy `interceptor update`
   # self-updaters can extract it from interceptor_* archives.
   - id: interceptor-legacy
@@ -32,7 +32,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      - -s -w -X github.com/Veyal/interseptor/internal/version.Version={{.Version}}
 
 archives:
   - id: default

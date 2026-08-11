@@ -12,12 +12,11 @@ import (
 	"strings"
 )
 
-// Version is the baked-in fallback version for dev builds. Release binaries
-// report the real version from the module build info (the git tag) instead, so
-// this constant deliberately tracks the last *published* release — bumping it
-// ahead of the tag would break the update-check test, which verifies the named
-// release actually exists on GitHub. See CONTRIBUTING.md §"Cutting a release".
-const Version = "1.7.11"
+// Version is the baked-in fallback version for dev builds. GoReleaser replaces
+// it with the release tag through -ldflags -X; local builds retain this value.
+// It deliberately tracks the last published release. See CONTRIBUTING.md
+// §"Cutting a release".
+var Version = "1.7.11"
 
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interseptor"
