@@ -20,6 +20,7 @@ func readRepoFile(t *testing.T, parts ...string) string {
 
 func TestParityRESTRoutesAreRegisteredAndIndexed(t *testing.T) {
 	wants := []string{
+		"GET /replay/{id}",
 		"POST /api/intercept/response/{id}/forward",
 		"POST /api/intercept/response/{id}/drop",
 		"POST /api/rules",
@@ -45,6 +46,25 @@ func TestParityRESTRoutesAreRegisteredAndIndexed(t *testing.T) {
 		if !strings.Contains(src, `HandleFunc("`+want+`"`) {
 			t.Errorf("HTTP mux registration missing %s", want)
 		}
+	}
+}
+
+func TestActivityPostCatalogStatesMCPOnly(t *testing.T) {
+	// Given
+	var description string
+	for _, route := range apiRoutes {
+		if route.Method == "POST" && route.Path == "/api/activity" {
+			description = route.Desc
+			break
+		}
+	}
+
+	// When
+	containsMCPOnly := strings.Contains(strings.ToLower(description), "mcp-only")
+
+	// Then
+	if !containsMCPOnly {
+		t.Fatalf("POST /api/activity description = %q, want MCP-only restriction", description)
 	}
 }
 
