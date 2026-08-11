@@ -35,11 +35,11 @@ func String() string {
 	return Version
 }
 
-// isReleaseVersion reports whether v is a clean release tag (vX.Y.Z, optionally
-// with a +dirty / build-metadata suffix) rather than "(devel)" or a pseudo-version.
+// isReleaseVersion reports whether v is a clean release tag (vX.Y.Z) rather
+// than "(devel)", a pseudo-version, or a dirty/build-metadata version.
 func isReleaseVersion(v string) bool {
-	base := strings.SplitN(strings.TrimPrefix(v, "v"), "+", 2)[0]
-	return base != "" && !strings.Contains(base, "-") && parseSemver(base) != nil
+	base := strings.TrimPrefix(v, "v")
+	return base != "" && !strings.ContainsAny(base, "-+") && parseSemver(base) != nil
 }
 
 // CheckLatest queries GitHub for the latest release tag and reports whether it

@@ -46,7 +46,7 @@ func TestIsReleaseVersion(t *testing.T) {
 		in string
 		ok bool
 	}{
-		{"v0.2.1", true}, {"0.2.1", true}, {"v0.2.1+dirty", true},
+		{"v0.2.1", true}, {"0.2.1", true}, {"v0.2.1+dirty", false},
 		{"(devel)", false}, {"", false},
 		{"v0.2.2-0.20260623120000-abcdef123456", false}, // pseudo-version
 		{"v0.2.1-rc1", false},
