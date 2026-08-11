@@ -751,6 +751,15 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	if rtErr != nil {
 		return nil, false, rtErr
 	}
+	if resp.StatusCode == http.StatusProxyAuthRequired && s.upstream.Load() != nil {
+		// Go's Transport does not expose whether a 407 came from chained proxy or
+		// origin. Treat every 407 with chaining enabled as proxy auth failure: HTTP
+		// origins should use 401, and forwarding Proxy-Authenticate triggers prompts.
+		const maxProxyErrorBody = 1 << 20
+		_, _ = io.CopyN(io.Discard, resp.Body, maxProxyErrorBody)
+		_ = resp.Body.Close()
+		return nil, false, fmt.Errorf("upstream proxy authentication required")
+	}
 	return resp, false, nil
 }
 

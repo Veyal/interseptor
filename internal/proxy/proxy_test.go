@@ -1056,6 +1056,68 @@ func TestProxyMITMInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {
 	}
 }
 
+func TestGateAndForwardSuppressesChainedUpstream407(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Proxy-Authenticate", `Basic realm="upstream"`)
+		w.WriteHeader(http.StatusProxyAuthRequired)
+		_, _ = io.WriteString(w, "proxy credentials required")
+	}))
+	defer upstream.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+	proxyURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("Parse upstream URL: %v", err)
+	}
+	srv.upstream.Store(proxyURL)
+
+	flow := &store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"}
+	req := httptest.NewRequest(http.MethodGet, "http://origin.example/", nil)
+	resp, dropped, err := srv.gateAndForward(flow, req)
+	if resp != nil || dropped {
+		t.Fatalf("gateAndForward returned resp=%v dropped=%v, want upstream error", resp, dropped)
+	}
+	if err == nil || !strings.Contains(err.Error(), "upstream proxy authentication required") {
+		t.Fatalf("error = %v, want upstream auth requirement", err)
+	}
+	if strings.Contains(err.Error(), "Proxy-Authenticate") || strings.Contains(err.Error(), upstream.URL) {
+		t.Fatalf("error exposes upstream response or URL: %v", err)
+	}
+}
+
+func TestPlainHTTPUpstreamUsesBasicProxyAuthorization(t *testing.T) {
+	got := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- r.Header.Get("Proxy-Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv := New(st, capture.New(st), nil, nil, nil)
+	if err := srv.SetUpstreamProxy(strings.Replace(upstream.URL, "http://", "http://alice:secret@", 1)); err != nil {
+		t.Fatal(err)
+	}
+	flow := &store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"}
+	resp, _, err := srv.gateAndForward(flow, httptest.NewRequest(http.MethodGet, "http://origin.example/", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+	if got := <-got; got != want {
+		t.Fatalf("Proxy-Authorization=%q, want %q", got, want)
+	}
+}
+
 func TestUpstreamProxyConfig(t *testing.T) {
 	s, err := store.Open(t.TempDir())
 	if err != nil {
@@ -1128,6 +1190,45 @@ func TestSetUpstreamProxyNormalizesSchemeCase(t *testing.T) {
 	mixed := &url.URL{Scheme: "HtTpS", Host: "proxy.example"}
 	if got := upstreamProxyAddress(mixed); got != "proxy.example:443" {
 		t.Errorf("mixed-case HTTPS address = %q, want proxy.example:443", got)
+	}
+}
+
+func TestDialViaUpstreamCredentialFreeCONNECTOmitsProxyAuthorization(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	gotAuth := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		req, err := http.ReadRequest(bufio.NewReader(conn))
+		if err != nil {
+			return
+		}
+		gotAuth <- req.Header.Get("Proxy-Authorization")
+		_, _ = io.WriteString(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+	}()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener address: %v", err)
+	}
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxy("http://localhost:" + port); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	conn, err := dialViaUpstream(&net.Dialer{Timeout: time.Second}, srv.upstream.Load(), "origin.example:443", nil)
+	if err != nil {
+		t.Fatalf("dialViaUpstream: %v", err)
+	}
+	conn.Close()
+	if got := <-gotAuth; got != "" {
+		t.Fatalf("credential-free CONNECT Proxy-Authorization = %q, want empty", got)
 	}
 }
 
