@@ -90,6 +90,27 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 }
 
+func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`id="setUpstream"`,
+		`id="setUpstreamUser"`,
+		`id="setUpstreamPassword"`,
+		`Optional; leave blank for no proxy authentication`,
+	)
+	requireUIContains(t, settings,
+		"parseUpstreamProxyCredentials(",
+		"upstreamProxy:buildUpstreamProxyURL(",
+		"setUpstreamUser",
+		"setUpstreamPassword",
+		"new URL(raw)",
+	)
+	if strings.Contains(settings, "encodeURIComponent($('#setUpstreamUser').value.trim())") {
+		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
+	}
+}
+
 func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 
@@ -106,7 +127,7 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"invisibleProxy:on",
 		"autoBypassOnPinFailure:on",
 		"tlsBypassHosts:hosts",
-		"upstreamProxy:$('#setUpstream').value.trim()",
+		"upstreamProxy:buildUpstreamProxyURL()",
 	)
 }
 

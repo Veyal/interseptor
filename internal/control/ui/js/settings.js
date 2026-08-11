@@ -321,6 +321,7 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   if($('#setControlAddr'))$('#setControlAddr').value=state.controlAddr;
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
+  parseUpstreamProxyCredentials(s.upstreamProxy||'');
   state.oobEnabled=!!s.oobEnabled;
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
   if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
@@ -397,8 +398,23 @@ $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
     toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
   catch(e){toast('passthrough: '+e.message);}
 });
+function parseUpstreamProxyCredentials(raw){
+  const user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');
+  if(user)user.value='';if(pass)pass.value='';
+  try{const parsed=new URL(raw);if(user)user.value=decodeURIComponent(parsed.username);if(pass&&parsed.password)pass.value=decodeURIComponent(parsed.password);parsed.username='';parsed.password='';if($('#setUpstream'))$('#setUpstream').value=parsed.toString();}catch(_){/* preserve raw API compatibility */}
+}
+function buildUpstreamProxyURL(){
+  const raw=$('#setUpstream').value.trim(), user=$('#setUpstreamUser').value, pass=$('#setUpstreamPassword').value;
+  if(!raw)return '';
+  try{
+    const parsed=new URL(raw);
+    parsed.username='';parsed.password='';
+    if(user||pass){parsed.username=user;parsed.password=pass;}
+    return parsed.toString();
+  }catch(_){return raw;}
+}
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=async()=>{
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:$('#setUpstream').value.trim()})});
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:buildUpstreamProxyURL()})});
     toast('upstream proxy saved');}catch(e){toast(e.message);}
 });
 
