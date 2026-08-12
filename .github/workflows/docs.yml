@@ -1,0 +1,45 @@
+name: Documentation
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: go run ./tools/docscheck generate
+      - run: git diff --exit-code -- website/data/search.json '*.md'
+      - run: go test ./tools/docscheck
+      - run: go run ./tools/docscheck check
+      - run: go test ./...
+      - run: go vet ./...
+  deploy:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: .
+          destination: ./_site
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: go run ./tools/docscheck check-site _site
+      - uses: actions/upload-pages-artifact@v3
+        with: {path: _site}
+      - id: deployment
+        uses: actions/deploy-pages@v4
