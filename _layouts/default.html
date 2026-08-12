@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Public documentation for Interseptor, a native HTTP/HTTPS intercepting proxy and security-testing toolkit.">
+  <meta name="theme-color" content="#10151d">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  <meta property="og:title" content="{{ page.title | default: site.title }}">
+  <meta property="og:description" content="Public documentation for Interseptor.">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <title>{{ page.title | default: site.title }}</title>
+  <link rel="stylesheet" href="{{ '/website/assets/site.css' | relative_url }}">
+</head>
+<body data-baseurl="{{ site.baseurl }}/">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar"><a class="brand" href="{{ '/' | relative_url }}"><span class="brand-mark">I</span><span>Interseptor<span class="brand-dot">.</span></span></a><nav aria-label="Primary"><a href="{{ '/getting-started/' | relative_url }}">Start</a><a href="{{ '/features/' | relative_url }}">Features</a><a href="{{ '/api-and-mcp/' | relative_url }}">API &amp; MCP</a><a href="{{ '/benchmarks/' | relative_url }}">Benchmarks</a><a href="{{ '/mcp-cookbook/' | relative_url }}">Cookbook</a><a href="{{ '/custom-active-checks/' | relative_url }}">Active checks</a><a href="https://github.com/Veyal/interseptor">GitHub</a></nav><div class="search"><label for="search" class="sr-only">Search documentation</label><input id="search" type="search" placeholder="Search docs" autocomplete="off" aria-describedby="search-help search-status"><small id="search-help" class="sr-only">Type to filter documentation links.</small><span id="search-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span><div class="search-results" aria-label="Search results"></div></div></header>
+<div class="layout"><aside class="sidebar" aria-label="Documentation"><p class="eyebrow">DOCUMENTATION</p><a href="{{ '/' | relative_url }}">Overview</a><a href="{{ '/getting-started/' | relative_url }}">Getting started</a><a href="{{ '/features/' | relative_url }}">Feature index</a><a href="{{ '/api-and-mcp/' | relative_url }}">REST &amp; MCP</a><p class="eyebrow">OPERATE</p><a href="{{ '/history-search/' | relative_url }}">History search</a><a href="{{ '/custom-checks/' | relative_url }}">Custom checks</a><a href="{{ '/rule-packs/' | relative_url }}">Rule packs</a><a href="{{ '/content-discovery/' | relative_url }}">Content discovery</a><a href="{{ '/vault/' | relative_url }}">Project vault</a><a href="{{ '/engagement-closeout/' | relative_url }}">Close-out</a><p class="eyebrow">REFERENCE</p><a href="{{ '/architecture/' | relative_url }}">Architecture</a><a href="{{ '/http2/' | relative_url }}">HTTP/2</a><a href="{{ '/message-codecs/' | relative_url }}">Message codecs</a><a href="{{ '/extensions/' | relative_url }}">Extensions</a><a href="{{ '/reference/' | relative_url }}">Project reference</a></aside><main id="main" tabindex="-1">{{ content }}</main></div>
+<footer><span>Interseptor · MIT licensed</span><span><a href="{{ '/sitemap.xml' | relative_url }}">Sitemap</a> · <a href="https://github.com/Veyal/interseptor/issues">Report an issue</a></span></footer>
+<script src="{{ '/website/assets/search.js' | relative_url }}" defer></script>
+</body></html>

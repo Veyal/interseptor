@@ -1,0 +1,36 @@
+title: Interseptor documentation
+url: https://veyal.github.io/interseptor
+baseurl: /interseptor
+markdown: kramdown
+permalink: pretty
+include:
+  - _pages
+exclude:
+  - README.md
+  - AGENTS.md
+  - CLAUDE.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CHANGELOG.md
+  - internal
+  - cmd
+  - examples
+  - scripts
+  - tools
+  - packaging
+  - .github
+  - .claude
+  - .opencode
+  - .omc
+  - .omo
+  - _data
+  - docs
+  - DESIGN.md
+  - Gemfile
+  - go.mod
+  - go.sum
+  - Makefile
+  - '*.go'
+  - '*.yml'
+  - '*.yaml'
+  - '*.json'
