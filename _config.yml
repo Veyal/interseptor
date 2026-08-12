@@ -12,6 +12,7 @@ exclude:
   - CONTRIBUTING.md
   - SECURITY.md
   - CHANGELOG.md
+  - CHANGELOG
   - internal
   - cmd
   - examples
