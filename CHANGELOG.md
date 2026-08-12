@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **Published documentation website.** Added responsive GitHub Pages docs with full canonical guide publication, feature coverage, dependency-free search, accessibility and SEO metadata, deep links, 404/sitemap, automated source/build drift checks, and pull-request validation.
+- **Documentation validation.** Repaired explicit docs generator/checker commands, source-relative published and GitHub link mapping, semantic feature drift checks, deterministic search output, accessible search status announcements, and post-Jekyll built-site validation.
 - **Dev-build fallback version advanced to published `1.7.13`.**
 
 ## [1.7.13] - 2026-08-11
