@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.15] - 2026-08-13
+
+### Added
+- **Upstream proxy CA trust.** Settings now accepts a PEM CA certificate for chained upstream proxies, validates before saving, reloads it before proxy URL startup, and includes it in portable project bundles.
+- **SOCKS5 chained upstreams.** HTTP forwarding, WebSocket upgrades, and TLS-bypass tunnels now support `socks5://` and `socks5h://` proxies, including SSH dynamic forwarding from `ssh -D`.
+
 ### Changed
 - **Dev-build fallback version advanced to published `1.7.14`.**
 
