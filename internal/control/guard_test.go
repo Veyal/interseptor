@@ -12,6 +12,30 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+func TestSettingsPersistOriginTLSVerifyBypassHosts(t *testing.T) {
+	// Given
+	h, st, _ := newHub(t)
+	var applied []string
+	h.SetOriginTLSVerifyBypassHosts = func(hosts []string) { applied = append([]string(nil), hosts...) }
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"originTLSVerifyBypassHosts":[" *.test.example ","api.example","*.test.example"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	// When
+	h.mux.ServeHTTP(rec, req)
+
+	// Then
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	if got, ok, _ := st.GetSetting(originTLSVerifyBypassSettingKey); !ok || got != "*.test.example\napi.example" {
+		t.Fatalf("persisted origin verification exceptions = %q, ok=%v", got, ok)
+	}
+	if len(applied) != 2 || applied[0] != "*.test.example" || applied[1] != "api.example" {
+		t.Fatalf("applied origin verification exceptions = %v", applied)
+	}
+}
+
 func TestSecurityGuardHostAndOrigin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	g := (&Hub{}).securityGuard(next)
@@ -470,7 +494,7 @@ func TestGetNetworkHosts(t *testing.T) {
 	}
 	var out struct {
 		Hosts     []struct{ Address string } `json:"hosts"`
-		Suggested string                      `json:"suggested"`
+		Suggested string                     `json:"suggested"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)

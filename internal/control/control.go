@@ -87,7 +87,8 @@ type Hub struct {
 	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
 	SetInvisibleProxy func(bool)
 	// SetTLSBypassHosts replaces the list of hosts tunneled raw (no MITM). Set by cmd.
-	SetTLSBypassHosts func([]string)
+	SetTLSBypassHosts             func([]string)
+	SetOriginTLSVerifyBypassHosts func([]string)
 	// SetAutoBypassOnPinFailure toggles auto-adding a host to the bypass list on
 	// an MITM handshake failure (SSL pinning). Set by cmd.
 	SetAutoBypassOnPinFailure func(bool)
@@ -293,25 +294,28 @@ type interceptJSON struct {
 }
 
 type settingsJSON struct {
-	ProxyAddr                string   `json:"proxyAddr"`
-	ProxyAddrs               []string `json:"proxyAddrs,omitempty"`
-	ControlAddr              string   `json:"controlAddr"`
-	InterceptEnabled         bool     `json:"interceptEnabled"`
-	UpstreamProxy            string   `json:"upstreamProxy"`
-	UpstreamProxyCA          string   `json:"upstreamProxyCA"`
-	OobEnabled               bool     `json:"oobEnabled"`
-	CaptureScopeOnly         bool     `json:"captureScopeOnly"`
-	SuppressBrowserTelemetry bool     `json:"suppressBrowserTelemetry"`
-	SuppressAndroidTelemetry bool     `json:"suppressAndroidTelemetry"`
-	InvisibleProxy           bool     `json:"invisibleProxy"`
-	TLSBypassHosts           []string `json:"tlsBypassHosts"`
-	AutoBypassOnPinFailure   bool     `json:"autoBypassOnPinFailure"`
-	DeviceProxy              string   `json:"deviceProxy,omitempty"`
-	DeviceProxyMode          string   `json:"deviceProxyMode,omitempty"`
+	ProxyAddr                  string   `json:"proxyAddr"`
+	ProxyAddrs                 []string `json:"proxyAddrs,omitempty"`
+	ControlAddr                string   `json:"controlAddr"`
+	InterceptEnabled           bool     `json:"interceptEnabled"`
+	UpstreamProxy              string   `json:"upstreamProxy"`
+	UpstreamProxyCA            string   `json:"upstreamProxyCA"`
+	OobEnabled                 bool     `json:"oobEnabled"`
+	CaptureScopeOnly           bool     `json:"captureScopeOnly"`
+	SuppressBrowserTelemetry   bool     `json:"suppressBrowserTelemetry"`
+	SuppressAndroidTelemetry   bool     `json:"suppressAndroidTelemetry"`
+	InvisibleProxy             bool     `json:"invisibleProxy"`
+	TLSBypassHosts             []string `json:"tlsBypassHosts"`
+	OriginTLSVerifyBypassHosts []string `json:"originTLSVerifyBypassHosts"`
+	AutoBypassOnPinFailure     bool     `json:"autoBypassOnPinFailure"`
+	DeviceProxy                string   `json:"deviceProxy,omitempty"`
+	DeviceProxyMode            string   `json:"deviceProxyMode,omitempty"`
 }
 
 // tlsBypassSettingKey stores the newline-separated host patterns that bypass MITM.
 const tlsBypassSettingKey = "proxy.tlsBypassHosts"
+
+const originTLSVerifyBypassSettingKey = "proxy.originTLSVerifyBypassHosts"
 
 // parseHostList splits a stored/edited host-list blob (newline- or comma-
 // separated) into trimmed, non-empty, lower-cased, de-duplicated patterns.
@@ -1326,25 +1330,27 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	suppressAndroidOn := !andOK || suppressAndroid == "1"
 	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
+	originTLSVerifyBypassRaw, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	autoBypass, _, _ := h.st.GetSetting("proxy.autoBypassOnPinFailure")
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
-		ProxyAddr:                displayProxyAddrs(proxyAddrs),
-		ProxyAddrs:               proxyAddrs,
-		DeviceProxy:              deviceEP.Endpoint,
-		DeviceProxyMode:          loadDeviceProxyMode(h.st),
-		ControlAddr:              h.currentControlAddr(),
-		InterceptEnabled:         h.eng != nil && h.eng.Enabled(),
-		UpstreamProxy:            up,
-		UpstreamProxyCA:          upCA,
-		OobEnabled:               h.oobEnabled(),
-		CaptureScopeOnly:         scopeOnly == "1",
-		SuppressBrowserTelemetry: suppressTelemetryOn,
-		SuppressAndroidTelemetry: suppressAndroidOn,
-		InvisibleProxy:           invisibleProxy == "1",
-		TLSBypassHosts:           parseHostList(tlsBypassRaw),
-		AutoBypassOnPinFailure:   autoBypass == "1",
+		ProxyAddr:                  displayProxyAddrs(proxyAddrs),
+		ProxyAddrs:                 proxyAddrs,
+		DeviceProxy:                deviceEP.Endpoint,
+		DeviceProxyMode:            loadDeviceProxyMode(h.st),
+		ControlAddr:                h.currentControlAddr(),
+		InterceptEnabled:           h.eng != nil && h.eng.Enabled(),
+		UpstreamProxy:              up,
+		UpstreamProxyCA:            upCA,
+		OobEnabled:                 h.oobEnabled(),
+		CaptureScopeOnly:           scopeOnly == "1",
+		SuppressBrowserTelemetry:   suppressTelemetryOn,
+		SuppressAndroidTelemetry:   suppressAndroidOn,
+		InvisibleProxy:             invisibleProxy == "1",
+		TLSBypassHosts:             parseHostList(tlsBypassRaw),
+		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw),
+		AutoBypassOnPinFailure:     autoBypass == "1",
 	})
 }
 
@@ -1387,18 +1393,19 @@ func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
 
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ProxyAddr                string    `json:"proxyAddr"`
-		ProxyAddrs               []string  `json:"proxyAddrs"`
-		ControlAddr              string    `json:"controlAddr"`
-		UpstreamProxy            *string   `json:"upstreamProxy"` // pointer so "" can clear it
-		UpstreamProxyCA          *string   `json:"upstreamProxyCA"`
-		OobEnabled               *bool     `json:"oobEnabled"`
-		CaptureScopeOnly         *bool     `json:"captureScopeOnly"`
-		SuppressBrowserTelemetry *bool     `json:"suppressBrowserTelemetry"`
-		SuppressAndroidTelemetry *bool     `json:"suppressAndroidTelemetry"`
-		InvisibleProxy           *bool     `json:"invisibleProxy"`
-		TLSBypassHosts           *[]string `json:"tlsBypassHosts"`
-		AutoBypassOnPinFailure   *bool     `json:"autoBypassOnPinFailure"`
+		ProxyAddr                  string    `json:"proxyAddr"`
+		ProxyAddrs                 []string  `json:"proxyAddrs"`
+		ControlAddr                string    `json:"controlAddr"`
+		UpstreamProxy              *string   `json:"upstreamProxy"` // pointer so "" can clear it
+		UpstreamProxyCA            *string   `json:"upstreamProxyCA"`
+		OobEnabled                 *bool     `json:"oobEnabled"`
+		CaptureScopeOnly           *bool     `json:"captureScopeOnly"`
+		SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
+		SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
+		InvisibleProxy             *bool     `json:"invisibleProxy"`
+		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
+		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
+		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -1473,6 +1480,16 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SetTLSBypassHosts != nil {
 			h.SetTLSBypassHosts(hosts)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.OriginTLSVerifyBypassHosts != nil {
+		hosts := parseHostList(strings.Join(*in.OriginTLSVerifyBypassHosts, "\n"))
+		if !h.persistSetting(w, originTLSVerifyBypassSettingKey, strings.Join(hosts, "\n")) {
+			return
+		}
+		if h.SetOriginTLSVerifyBypassHosts != nil {
+			h.SetOriginTLSVerifyBypassHosts(hosts)
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
