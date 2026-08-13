@@ -20,7 +20,7 @@ jobs:
       - run: go test ./...
       - run: CGO_ENABLED=1 go test -race ./...
 
-  goreleaser:
+  candidate:
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -30,15 +30,90 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Build GoReleaser snapshot candidate
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --snapshot --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CGO_ENABLED: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-dist
+          path: dist/
+          if-no-files-found: error
+
+  validate-candidate:
+    needs: candidate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidate-dist
+          path: dist
+      - name: Validate candidate archives and checksums
+        run: |
+          set -euo pipefail
+          test -s dist/checksums.txt
+          (
+            cd dist
+            sha256sum -c checksums.txt
+          )
+          check_archive() {
+            local archive="$1" binary="$2" members wanted member found
+            case "$archive" in
+              *.tar.gz) members="$(tar -tzf "$archive")" ;;
+              *.zip) members="$(unzip -Z1 "$archive")" ;;
+              *) echo "unsupported archive: $archive" >&2; return 1 ;;
+            esac
+            for wanted in "$binary" README.md LICENSE; do
+              found=0
+              while IFS= read -r member; do
+                if [[ "$member" == "$wanted" || "$member" == */"$wanted" ]]; then
+                  found=1
+                  break
+                fi
+              done <<< "$members"
+              if [[ "$found" -ne 1 ]]; then
+                echo "$archive missing $wanted" >&2
+                return 1
+              fi
+            done
+          }
+
+          for family in interseptor interceptor; do
+            for goos in linux darwin windows; do
+              for goarch in amd64 arm64; do
+                if [[ "$goos" == windows ]]; then
+                  ext=zip
+                  binary="$family.exe"
+                else
+                  ext=tar.gz
+                  binary="$family"
+                fi
+                archives=(dist/${family}_*_${goos}_${goarch}.${ext})
+                [[ ${#archives[@]} -eq 1 ]] || {
+                  echo "expected one ${family} ${goos}/${goarch} archive, found ${#archives[@]}" >&2
+                  exit 1
+                }
+                check_archive "${archives[0]}" "$binary"
+              done
+            done
+          done
+
+          native=(dist/interseptor_*_linux_amd64.tar.gz)
+          [[ ${#native[@]} -eq 1 ]]
+          native_dir="$(mktemp -d)"
+          trap 'rm -rf "$native_dir"' EXIT
+          tar -xzf "${native[0]}" -C "$native_dir"
+          test -x "$native_dir/interseptor"
+          case "$("$native_dir/interseptor" version)" in
+            "interseptor v"*) ;;
+            *) echo "native version smoke test failed" >&2; exit 1 ;;
+          esac
 
   macos-app:
-    needs: [test, goreleaser]
+    needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +124,7 @@ jobs:
           go-version-file: go.mod
       - name: Build unsigned app and DMG
         run: MAKE_DMG=1 make macos-app
-      - name: Validate bundle
+      - name: Validate bundle before publication
         run: |
           set -euo pipefail
           APP=dist/macos/Interseptor.app
@@ -59,9 +134,41 @@ jobs:
           for bin in "$APP/Contents/MacOS/"*; do
             lipo -info "$bin" | grep -q 'x86_64 arm64'
           done
+          shopt -s nullglob
+          dmgs=(dist/macos/*.dmg)
+          [[ ${#dmgs[@]} -ge 1 ]]
       - name: Archive app bundle
         run: ditto -c -k --keepParent dist/macos/Interseptor.app dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip
-      - name: Upload macOS app assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-assets
+          path: |
+            dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip
+            dist/macos/*.dmg
+          if-no-files-found: error
+
+  publish:
+    needs: [validate-candidate, macos-app]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Publish validated GoReleaser release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos-assets
+          path: validated-macos
+      - name: Upload validated macOS app assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" dist/macos/Interseptor-${{ github.ref_name }}-unsigned.zip dist/macos/*.dmg
+        run: gh release upload "${{ github.ref_name }}" validated-macos/Interseptor-${{ github.ref_name }}-unsigned.zip validated-macos/*.dmg
