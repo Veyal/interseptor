@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.17] - 2026-08-13
+
+### Fixed
+- **SOCKS HTTPS destinations on port 443.** MITM forwarding now preserves the explicit origin port for SOCKS5/SOCKS5H dialing instead of passing a portless host to the SOCKS client.
+
+### Changed
+- **Dev-build fallback version advanced to published `1.7.16`.**
+
 ## [1.7.16] - 2026-08-13
 
 ### Added
