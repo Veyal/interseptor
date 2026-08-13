@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
 	"github.com/Veyal/interseptor/internal/tlsca"
+	"golang.org/x/net/proxy"
 )
 
 // Events is an optional sink notified when a flow is captured (used by the
@@ -53,10 +55,11 @@ type Server struct {
 	Scope                    ScopeChecker      // nil → everything in scope
 	tr                       *http.Transport
 	upstream                 atomic.Pointer[url.URL] // optional chained upstream proxy
-	scopeOnly                atomic.Bool             // when set, only in-scope flows are persisted
-	suppressTelemetry        atomic.Bool             // when set, browser telemetry is not captured or intercepted
-	suppressAndroidTelemetry atomic.Bool             // when set, Android/GMS/Crashlytics telemetry is not captured or intercepted
-	invisible                atomic.Bool             // when set, origin-form requests (no absolute URI) are forwarded from the Host header
+	upstreamProxyRoots       atomic.Pointer[x509.CertPool]
+	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
+	suppressTelemetry        atomic.Bool // when set, browser telemetry is not captured or intercepted
+	suppressAndroidTelemetry atomic.Bool // when set, Android/GMS/Crashlytics telemetry is not captured or intercepted
+	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
@@ -80,7 +83,13 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 	s := &Server{st: st, cap: cap, ca: ca, eng: eng, events: events}
 	s.tr = &http.Transport{
 		// Honor an optionally-configured chained upstream proxy (race-safe).
-		Proxy:           func(*http.Request) (*url.URL, error) { return s.upstream.Load(), nil },
+		Proxy: func(*http.Request) (*url.URL, error) {
+			up := s.upstream.Load()
+			if up != nil && isSOCKSUpstream(up) {
+				return nil, nil
+			}
+			return up, nil
+		},
 		MaxIdleConns:    100,
 		IdleConnTimeout: 90 * time.Second,
 		// No ResponseHeaderTimeout: slow/long-polling upstreams must not be cut
@@ -92,8 +101,78 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 		TLSClientConfig: &tls.Config{
 			NextProtos: []string{"h2", "http/1.1"},
 		},
+		DialTLSContext: s.dialTLSContext,
+		DialContext:    s.dialContext,
 	}
 	return s
+}
+
+// SetUpstreamProxyCA adds PEM-encoded certificates to roots used only for an
+// HTTPS chained upstream proxy. Empty input restores system roots.
+func (s *Server) SetUpstreamProxyCA(pemBytes []byte) error {
+	var roots *x509.CertPool
+	if len(bytes.TrimSpace(pemBytes)) != 0 {
+		var err error
+		roots, err = x509.SystemCertPool()
+		if err != nil {
+			return fmt.Errorf("load system certificate roots: %w", err)
+		}
+		if roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(pemBytes) {
+			return fmt.Errorf("invalid upstream proxy CA PEM")
+		}
+	}
+	s.upstreamProxyRoots.Store(roots)
+	s.tr.CloseIdleConnections()
+	return nil
+}
+
+func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if up := s.upstream.Load(); up != nil && isSOCKSUpstream(up) {
+		return dialViaSOCKS(ctx, up, network, addr)
+	}
+	return (&net.Dialer{}).DialContext(ctx, network, addr)
+}
+
+func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	cfg := s.tlsConfigForHost(host)
+	if up := s.upstream.Load(); up != nil && strings.EqualFold(up.Scheme, "https") && addr == upstreamProxyAddress(up) {
+		cfg.RootCAs = s.upstreamProxyRoots.Load()
+		cfg = forceHTTP11TLSConfig(cfg)
+	}
+	raw, err := s.dialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	tc := tls.Client(raw, cfg)
+	if err := tc.HandshakeContext(ctx); err != nil {
+		raw.Close()
+		return nil, err
+	}
+	return tc, nil
+}
+
+func (s *Server) tlsConfigForHost(host string) *tls.Config {
+	cfg := &tls.Config{ServerName: host, NextProtos: []string{"h2", "http/1.1"}}
+	if s.tr.TLSClientConfig != nil {
+		cfg = s.tr.TLSClientConfig.Clone()
+		if cfg.ServerName == "" {
+			cfg.ServerName = host
+		}
+	}
+	return cfg
+}
+
+func (s *Server) upstreamProxyTLSConfig(host string) *tls.Config {
+	cfg := s.tlsConfigForHost(host)
+	cfg.RootCAs = s.upstreamProxyRoots.Load()
+	return forceHTTP11TLSConfig(cfg)
 }
 
 // SetUpstreamProxy routes outbound traffic through a chained proxy (e.g. a
@@ -101,6 +180,7 @@ func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.En
 func (s *Server) SetUpstreamProxy(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		s.upstream.Store(nil)
+		s.tr.CloseIdleConnections()
 		return nil
 	}
 	u, err := url.Parse(raw)
@@ -108,7 +188,11 @@ func (s *Server) SetUpstreamProxy(raw string) error {
 		return fmt.Errorf("invalid upstream proxy URL %q", raw)
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
+	if !isSupportedUpstreamScheme(u.Scheme) {
+		return fmt.Errorf("unsupported upstream proxy scheme %q", u.Scheme)
+	}
 	s.upstream.Store(u)
+	s.tr.CloseIdleConnections()
 	return nil
 }
 
@@ -492,20 +576,24 @@ func (s *Server) dialUpstream(scheme, host string, port int) (net.Conn, error) {
 	// without an application-level timeout that would kill a legitimately idle one.
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	tlsCfg := func() *tls.Config {
-		c := &tls.Config{ServerName: host}
-		if s.tr.TLSClientConfig != nil {
-			c = s.tr.TLSClientConfig.Clone()
-			if c.ServerName == "" {
-				c.ServerName = host
-			}
-		}
-		return c
+		return s.tlsConfigForHost(host)
 	}
 	// If a chained upstream proxy is configured, CONNECT-tunnel through it.
 	// (Plain HTTP/HTTPS requests already honor it via s.tr.Proxy; a WebSocket
 	// upgrade dials here and would otherwise bypass the upstream.)
-	if up := s.upstream.Load(); up != nil && isHTTPUpstream(up) {
-		raw, err := dialViaUpstream(d, up, addr, s.tr.TLSClientConfig)
+	if up := s.upstream.Load(); up != nil {
+		var (
+			raw net.Conn
+			err error
+		)
+		switch {
+		case isHTTPUpstream(up):
+			raw, err = dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
+		case isSOCKSUpstream(up):
+			raw, err = dialViaSOCKS(context.Background(), up, "tcp", addr)
+		default:
+			return nil, fmt.Errorf("unsupported upstream proxy scheme %q", up.Scheme)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -611,7 +699,46 @@ func upstreamProxyAddress(up *url.URL) string {
 }
 
 func isHTTPUpstream(up *url.URL) bool {
-	return up.Scheme == "" || strings.EqualFold(up.Scheme, "http") || strings.EqualFold(up.Scheme, "https")
+	return up.Scheme == "http" || up.Scheme == "https"
+}
+
+func isSOCKSUpstream(up *url.URL) bool {
+	return up.Scheme == "socks5" || up.Scheme == "socks5h"
+}
+
+func isSupportedUpstreamScheme(scheme string) bool {
+	return scheme == "http" || scheme == "https" || scheme == "socks5" || scheme == "socks5h"
+}
+
+func dialViaSOCKS(ctx context.Context, up *url.URL, network, addr string) (net.Conn, error) {
+	if up.Scheme == "socks5" {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("resolve SOCKS destination %q: no addresses", host)
+		}
+		addr = net.JoinHostPort(ips[0].IP.String(), port)
+	}
+	var auth *proxy.Auth
+	if up.User != nil {
+		password, _ := up.User.Password()
+		auth = &proxy.Auth{User: up.User.Username(), Password: password}
+	}
+	dialer, err := proxy.SOCKS5(network, upstreamProxyAddress(up), auth, &net.Dialer{})
+	if err != nil {
+		return nil, err
+	}
+	contextDialer, ok := dialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, fmt.Errorf("SOCKS dialer does not support context")
+	}
+	return contextDialer.DialContext(ctx, network, addr)
 }
 
 // writeResponseHead writes a response's status line and headers (no body) so an
@@ -1256,10 +1383,14 @@ func writeSimpleResponse(conn net.Conn, code int, msg string) {
 }
 
 func defaultPort(scheme string) int {
-	if scheme == "https" {
+	switch scheme {
+	case "https":
 		return 443
+	case "socks5", "socks5h":
+		return 1080
+	default:
+		return 80
 	}
-	return 80
 }
 
 func hostPort(host string, port int, scheme string) string {

@@ -1295,6 +1295,108 @@ func TestDialViaHTTPSUpstreamUsesTLSAndSNI(t *testing.T) {
 	}
 }
 
+func TestHTTPSChainedUpstreamPrivateCAPublicHTTPFailsUntilProxyCAIsTrusted(t *testing.T) {
+	proxyCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	leaf, err := proxyCA.LeafForHost("localhost")
+	if err != nil {
+		t.Fatalf("proxy leaf: %v", err)
+	}
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "origin reached")
+	}))
+	defer origin.Close()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		raw, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer raw.Close()
+		conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*leaf}})
+		req, err := http.ReadRequest(bufio.NewReader(conn))
+		if err != nil {
+			return
+		}
+		if req.Method != http.MethodGet || req.URL.String() != origin.URL+"/" {
+			return
+		}
+		io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\norigin reached")
+	}()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener address: %v", err)
+	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	srv := New(st, capture.New(st), nil, nil, nil)
+	if err := srv.SetUpstreamProxy("https://localhost:" + port); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	if err := srv.SetUpstreamProxyCA(proxyCA.CertPEM()); err != nil {
+		t.Fatalf("SetUpstreamProxyCA: %v", err)
+	}
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, origin.URL, nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("public request through CA-signed HTTPS upstream = %d: %s; want 200 (proxy TLS trust must be configurable independently from origin trust)", rr.Code, rr.Body.String())
+	}
+	if got := rr.Body.String(); got != "origin reached" {
+		t.Fatalf("public request body = %q, want origin response", got)
+	}
+}
+
+func TestSetUpstreamProxyCARejectsInvalidPEMAndClearsTrustedRoots(t *testing.T) {
+	// Given
+	proxyCA, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxyCA(proxyCA.CertPEM()); err != nil {
+		t.Fatalf("SetUpstreamProxyCA: %v", err)
+	}
+	trustedRoots := srv.upstreamProxyRoots.Load()
+
+	// When
+	err = srv.SetUpstreamProxyCA([]byte("not PEM"))
+
+	// Then
+	if err == nil {
+		t.Fatal("SetUpstreamProxyCA accepted invalid PEM")
+	}
+	if got := srv.upstreamProxyRoots.Load(); got != trustedRoots {
+		t.Fatal("invalid PEM changed trusted upstream proxy roots")
+	}
+
+	// When
+	if err := srv.SetUpstreamProxyCA(nil); err != nil {
+		t.Fatalf("SetUpstreamProxyCA clear: %v", err)
+	}
+
+	// Then
+	if got := srv.upstreamProxyRoots.Load(); got != nil {
+		t.Fatalf("cleared upstream proxy roots = %v, want nil", got)
+	}
+	if cfg := srv.upstreamProxyTLSConfig("localhost"); cfg.InsecureSkipVerify || cfg.ServerName != "localhost" {
+		t.Fatalf("upstream proxy TLS config = %+v, want hostname verification enabled", cfg)
+	}
+	if cfg := srv.tlsConfigForHost("origin.example"); cfg.RootCAs != nil || cfg.InsecureSkipVerify || cfg.ServerName != "origin.example" {
+		t.Fatalf("origin TLS config = %+v, want system roots and hostname verification", cfg)
+	}
+}
+
 func TestDialViaUpstreamTimesOutSilentCONNECTAndClosesConnection(t *testing.T) {
 	proxyCA, err := tlsca.LoadOrCreate(t.TempDir())
 	if err != nil {
@@ -1980,4 +2082,228 @@ func TestProxyRecordsErroredFlowOnUpstreamFailure(t *testing.T) {
 	if f.Method != "GET" || f.Path != "/gone" {
 		t.Fatalf("unexpected errored flow: %+v", f)
 	}
+}
+
+func TestSOCKSUpstreamRoutesTransportAndRawDials(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "origin through socks")
+	}))
+	defer origin.Close()
+	originURL, err := url.Parse(origin.URL)
+	if err != nil {
+		t.Fatalf("parse origin URL: %v", err)
+	}
+	host, port, err := net.SplitHostPort(originURL.Host)
+	if err != nil {
+		t.Fatalf("split origin address: %v", err)
+	}
+
+	socksAddr, destinations := newSOCKS5Relay(t)
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, origin.URL, nil)
+	if err != nil {
+		t.Fatalf("new transport request: %v", err)
+	}
+	resp, err := srv.tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("transport through SOCKS: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read transport response: %v", err)
+	}
+	if string(body) != "origin through socks" {
+		t.Fatalf("transport body = %q", body)
+	}
+	assertSOCKSDestination(t, destinations, originURL.Host)
+
+	originPort, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatalf("parse origin port: %v", err)
+	}
+	conn, err := srv.dialUpstream("http", host, originPort)
+	if err != nil {
+		t.Fatalf("dialUpstream through SOCKS: %v", err)
+	}
+	conn.Close()
+	conn, err = srv.dialRawUpstream(host, originPort)
+	if err != nil {
+		t.Fatalf("dialRawUpstream through SOCKS: %v", err)
+	}
+	conn.Close()
+	assertSOCKSDestination(t, destinations, originURL.Host)
+	assertSOCKSDestination(t, destinations, originURL.Host)
+}
+
+func TestSOCKSUpstreamRoutesHTTPS(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "secure through socks")
+	}))
+	defer origin.Close()
+	originURL, err := url.Parse(origin.URL)
+	if err != nil {
+		t.Fatalf("parse origin URL: %v", err)
+	}
+
+	socksAddr, destinations := newSOCKS5Relay(t)
+	srv := New(nil, nil, nil, nil, nil)
+	srv.tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // test origin only
+	if err := srv.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, origin.URL, nil)
+	if err != nil {
+		t.Fatalf("new HTTPS request: %v", err)
+	}
+	resp, err := srv.tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("HTTPS transport through SOCKS: %v", err)
+	}
+	resp.Body.Close()
+	assertSOCKSDestination(t, destinations, originURL.Host)
+}
+
+func TestSetUpstreamProxyClosesIdleConnectionsAfterRouteChange(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "route changed")
+	}))
+	defer origin.Close()
+	originURL, err := url.Parse(origin.URL)
+	if err != nil {
+		t.Fatalf("parse origin URL: %v", err)
+	}
+	srv := New(nil, nil, nil, nil, nil)
+	request := func() {
+		req, err := http.NewRequest(http.MethodGet, origin.URL, nil)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		resp, err := srv.tr.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("RoundTrip: %v", err)
+		}
+		resp.Body.Close()
+	}
+	request()
+	socksAddr, destinations := newSOCKS5Relay(t)
+	if err := srv.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	request()
+	assertSOCKSDestination(t, destinations, originURL.Host)
+}
+
+func assertSOCKSDestination(t *testing.T, destinations <-chan string, want string) {
+	t.Helper()
+	select {
+	case got := <-destinations:
+		if got != want {
+			t.Fatalf("SOCKS destination = %q, want %q", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("SOCKS did not receive destination %q", want)
+	}
+}
+
+func TestSetUpstreamProxySupportsOnlyKnownSchemes(t *testing.T) {
+	srv := New(nil, nil, nil, nil, nil)
+	if err := srv.SetUpstreamProxy("https://kept.example"); err != nil {
+		t.Fatalf("set valid upstream: %v", err)
+	}
+	for _, raw := range []string{"ftp://proxy.example", "proxy.example", "socks5://"} {
+		if err := srv.SetUpstreamProxy(raw); err == nil {
+			t.Errorf("SetUpstreamProxy(%q) succeeded", raw)
+		}
+		if got := srv.upstream.Load(); got == nil || got.String() != "https://kept.example" {
+			t.Errorf("invalid %q replaced upstream with %v", raw, got)
+		}
+	}
+	if err := srv.SetUpstreamProxy("SoCkS5H://proxy.example"); err != nil {
+		t.Fatalf("set SOCKS upstream: %v", err)
+	}
+	up := srv.upstream.Load()
+	if up.Scheme != "socks5h" || upstreamProxyAddress(up) != "proxy.example:1080" {
+		t.Fatalf("normalized SOCKS upstream = %s at %s", up.Scheme, upstreamProxyAddress(up))
+	}
+}
+
+func newSOCKS5Relay(t *testing.T) (string, <-chan string) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen SOCKS fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	destinations := make(chan string, 3)
+	go func() {
+		for {
+			client, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go relaySOCKS5(client, destinations)
+		}
+	}()
+	return ln.Addr().String(), destinations
+}
+
+func relaySOCKS5(client net.Conn, destinations chan<- string) {
+	defer client.Close()
+	_ = client.SetDeadline(time.Now().Add(time.Second))
+	greeting := make([]byte, 3)
+	if _, err := io.ReadFull(client, greeting); err != nil || !bytes.Equal(greeting, []byte{5, 1, 0}) {
+		return
+	}
+	if _, err := client.Write([]byte{5, 0}); err != nil {
+		return
+	}
+	request := make([]byte, 4)
+	if _, err := io.ReadFull(client, request); err != nil || request[0] != 5 || request[1] != 1 || request[2] != 0 {
+		return
+	}
+	var host string
+	switch request[3] {
+	case 1:
+		ip := make([]byte, net.IPv4len)
+		if _, err := io.ReadFull(client, ip); err != nil {
+			return
+		}
+		host = net.IP(ip).String()
+	case 3:
+		var length [1]byte
+		if _, err := io.ReadFull(client, length[:]); err != nil {
+			return
+		}
+		name := make([]byte, length[0])
+		if _, err := io.ReadFull(client, name); err != nil {
+			return
+		}
+		host = string(name)
+	default:
+		return
+	}
+	var portBytes [2]byte
+	if _, err := io.ReadFull(client, portBytes[:]); err != nil {
+		return
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(int(portBytes[0])<<8|int(portBytes[1])))
+	destinations <- addr
+	origin, err := net.Dial("tcp", addr)
+	if err != nil {
+		_, _ = client.Write([]byte{5, 5, 0, 1, 0, 0, 0, 0, 0, 0})
+		return
+	}
+	defer origin.Close()
+	if _, err := client.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+		return
+	}
+	_ = client.SetDeadline(time.Time{})
+	done := make(chan struct{}, 1)
+	go func() { _, _ = io.Copy(origin, client); done <- struct{}{} }()
+	_, _ = io.Copy(client, origin)
+	<-done
 }

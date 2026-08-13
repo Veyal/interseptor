@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -131,8 +133,14 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
-	if up := s.upstream.Load(); up != nil && isHTTPUpstream(up) {
-		return dialViaUpstream(d, up, addr, s.tr.TLSClientConfig)
+	if up := s.upstream.Load(); up != nil {
+		if isHTTPUpstream(up) {
+			return dialViaUpstream(d, up, addr, s.upstreamProxyTLSConfig(up.Hostname()))
+		}
+		if isSOCKSUpstream(up) {
+			return dialViaSOCKS(context.Background(), up, "tcp", addr)
+		}
+		return nil, fmt.Errorf("unsupported upstream proxy scheme %q", up.Scheme)
 	}
 	return d.Dial("tcp", addr)
 }
