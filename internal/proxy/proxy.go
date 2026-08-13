@@ -64,6 +64,7 @@ type Server struct {
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
 	bypassHosts                atomic.Pointer[[]string] // host patterns to pass through untouched
+	originTLSVerify            atomic.Bool              // verify origin certificates when enabled
 	originTLSVerifyBypassHosts atomic.Pointer[[]string] // origin patterns permitted to skip certificate verification
 	bypassVersion              atomic.Uint64            // detects a newer list while a callback is running
 	bypassMu                   sync.Mutex               // serializes bypass-list read-modify-write
@@ -190,12 +191,9 @@ func (s *Server) baseTLSConfig(host string) *tls.Config {
 	}
 	return cfg
 }
-
 func (s *Server) originTLSConfig(host string) *tls.Config {
 	cfg := s.baseTLSConfig(host)
-	if s.shouldBypassOriginTLSVerify(host) {
-		cfg.InsecureSkipVerify = true
-	}
+	cfg.InsecureSkipVerify = !s.originTLSVerify.Load() || s.shouldBypassOriginTLSVerify(host)
 	return cfg
 }
 

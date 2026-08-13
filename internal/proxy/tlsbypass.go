@@ -29,6 +29,17 @@ func (s *Server) TLSBypassHosts() []string {
 	return copyHosts(s.bypassHosts.Load())
 }
 
+// SetOriginTLSVerify controls certificate verification for origin TLS only.
+// Existing active connections continue; idle connections are closed so new
+// requests use updated policy.
+func (s *Server) SetOriginTLSVerify(v bool) {
+	s.originTLSVerify.Store(v)
+	s.tr.CloseIdleConnections()
+}
+
+// OriginTLSVerify reports whether origin certificate verification is enabled.
+func (s *Server) OriginTLSVerify() bool { return s.originTLSVerify.Load() }
+
 // SetOriginTLSVerifyBypassHosts replaces origin host patterns permitted to skip
 // certificate verification. This affects only origin TLS, never HTTPS upstream proxies.
 func (s *Server) SetOriginTLSVerifyBypassHosts(hosts []string) {
