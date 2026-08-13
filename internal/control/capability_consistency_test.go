@@ -92,6 +92,32 @@ func TestSettingsHARImportExportJourney(t *testing.T) {
 	requireUIRegex(t, settings, `(?s)importHARFile.*?uiConfirm\(.*?api\('/api/import/har'.*?loadFlows\(\)`)
 }
 
+func TestOriginTLSVerifyBypassSettingsJourney(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`id="originTLSVerifyBypassList"`,
+		`id="originTLSVerifyBypassSave"`,
+		`id="originTLSVerifyBypassCount"`,
+	)
+	requireUIContains(t, settings,
+		"originTLSVerifyBypassList",
+		"originTLSVerifyBypassSave",
+		"originTLSVerifyBypassHosts",
+		"method:'PUT'",
+		"'/api/settings'",
+	)
+	for _, route := range apiRoutes {
+		if route.Method == "PUT" && route.Path == "/api/settings" {
+			if !strings.Contains(route.Desc, "originTLSVerifyBypassHosts") {
+				t.Fatal("settings route catalog omits originTLSVerifyBypassHosts")
+			}
+			return
+		}
+	}
+	t.Fatal("PUT /api/settings missing from route catalog")
+}
+
 func TestRaceRepeatTerminologyAndAPIFieldStayConsistent(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	tools := executableJS(readUIAsset(t, "js/tools.js"))

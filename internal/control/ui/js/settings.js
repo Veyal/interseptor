@@ -332,8 +332,11 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   if($('#autoBypassToggle'))setAutoBypass(!!s.autoBypassOnPinFailure);
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
-  const bl=$('#tlsBypassList');
-  if(bl&&document.activeElement!==bl){bl.value=(s.tlsBypassHosts||[]).join('\n');updateBypassCount();}
+   const bl=$('#tlsBypassList');
+   if(bl&&document.activeElement!==bl){bl.value=(s.tlsBypassHosts||[]).join('\n');updateBypassCount();}
+   const ol=$('#originTLSVerifyBypassList');
+   if(ol&&document.activeElement!==ol){ol.value=(s.originTLSVerifyBypassHosts||[]).join('\n');updateOriginTLSVerifyBypassCount();}
+
   applyOobDisabledUI();
   state.intercept.enabled=s.interceptEnabled;if(loadState)loadState.style.display='none';}
   catch(e){renderLoadError(loadState,'Settings',e,loadSettings,true);}
@@ -398,6 +401,16 @@ $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
     if($('#tlsBypassList'))$('#tlsBypassList').value=hosts.join('\n');updateBypassCount();
     toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
   catch(e){toast('passthrough: '+e.message);}
+});
+function originTLSVerifyBypassHostsFromText(){return ($('#originTLSVerifyBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
+function updateOriginTLSVerifyBypassCount(){const el=$('#originTLSVerifyBypassCount');if(el)el.textContent=(n=>n?n+' verification exception'+(n>1?'s':''):'No verification exceptions')(originTLSVerifyBypassHostsFromText().length);}
+$('#originTLSVerifyBypassList')&&($('#originTLSVerifyBypassList').addEventListener('input',updateOriginTLSVerifyBypassCount));
+$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=async()=>{
+  const hosts=originTLSVerifyBypassHostsFromText();
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerifyBypassHosts:hosts})});
+    if($('#originTLSVerifyBypassList'))$('#originTLSVerifyBypassList').value=hosts.join('\n');updateOriginTLSVerifyBypassCount();
+    toast(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared');}
+  catch(e){toast('origin TLS: '+e.message);}
 });
 function parseUpstreamProxyCredentials(raw){
   const user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');

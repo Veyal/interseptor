@@ -625,6 +625,12 @@ Content-Type: application/json
             <textarea id="tlsBypassList" spellcheck="false" placeholder="api.pinned-app.com&#10;*.analytics.example.com" style="width:100%;min-height:96px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="tlsBypassSave">Save passthrough list</button><span class="hint" id="tlsBypassCount"></span></div>
           </div>
+          <div class="section" id="originTLSVerifyBypassSection">
+            <h3>ORIGIN TLS VERIFICATION EXCEPTIONS</h3>
+            <p class="hint" style="margin-bottom:10px"><b style="color:var(--red)">Warning:</b> matching origins stay intercepted, but Interseptor accepts any server certificate. This permits server impersonation. This is not TLS passthrough; captured traffic remains visible. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
+            <textarea id="originTLSVerifyBypassList" spellcheck="false" placeholder="api.example.com&#10;*.test.example.com" style="width:100%;min-height:72px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
+            <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="originTLSVerifyBypassSave">Save verification exceptions</button><span class="hint" id="originTLSVerifyBypassCount"></span></div>
+          </div>
           <div class="section" id="tlsPinningSection">
             <h3>SSL PINNING &amp; MISSING TRAFFIC</h3>
             <p class="hint" style="margin-bottom:10px">Interseptor decrypts HTTPS only when the client trusts the CA. It does <b>not</b> bypass SSL pinning.</p>
