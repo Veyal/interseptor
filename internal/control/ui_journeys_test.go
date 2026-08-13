@@ -135,6 +135,31 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 	)
 }
 
+func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`id="originTLSVerifyWarning"`,
+		`settings-origin-tls-warning`,
+		`role="alert"`,
+		`id="originTLSVerifyToggle"`,
+		`aria-label="Verify origin TLS certificates"`,
+		`Verify origin TLS certificates`,
+		`Origin certificates are not verified`,
+		`Interception/capture can accept impersonated servers`,
+		`HTTPS upstream-proxy verification remains strict`,
+	)
+	requireUIContains(t, settings,
+		"s.originTLSVerify",
+		"originTLSVerify:on",
+		"setOriginTLSVerify(",
+		"loadSettings();",
+		"document.activeElement!==ol",
+		"setOriginTLSVerify(prior)",
+		"catch(e){renderOriginTLSVerifyWarning(true)",
+	)
+}
+
 func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	tools := readUIAsset(t, "js/tools.js")

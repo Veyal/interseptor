@@ -307,8 +307,31 @@ function settingsLoadState(){
   const body=document.querySelector('#panel-settings .settings-body');if(body)body.prepend(el);
   return el;
 }
+function renderOriginTLSVerifyWarning(on){
+  const warning=$('#originTLSVerifyWarning');
+  if(warning)warning.hidden=!!on;
+}
+export function setOriginTLSVerify(on){
+  const toggle=$('#originTLSVerifyToggle');
+  if(toggle){toggle.classList.toggle('on',!!on);toggle.setAttribute('aria-checked',on?'true':'false');toggle.setAttribute('aria-pressed',on?'true':'false');}
+  renderOriginTLSVerifyWarning(!!on);
+}
+$('#originTLSVerifyToggle')&&($('#originTLSVerifyToggle').onclick=async()=>{
+  const toggle=$('#originTLSVerifyToggle');
+  const prior=toggle?.getAttribute('aria-pressed')==='true';
+  const on=!prior;
+  try{
+    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerify:on})});
+    setOriginTLSVerify(on);
+    toast(on?'Origin TLS certificate verification enabled':'Origin TLS certificate verification disabled');
+  }catch(e){
+    setOriginTLSVerify(prior);
+    toast('origin TLS: '+e.message);
+    loadSettings();
+  }
+});
 export async function loadSettings(){const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
-  try{const s=await api('/api/settings');state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
+  try{const s=await api('/api/settings');setOriginTLSVerify(!!s.originTLSVerify);state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
   await loadNetworkHosts();
   renderProxyListeners(s.proxyAddrs||[s.proxyAddr]);
   if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
@@ -339,7 +362,7 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
 
   applyOobDisabledUI();
   state.intercept.enabled=s.interceptEnabled;if(loadState)loadState.style.display='none';}
-  catch(e){renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  catch(e){renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
   finally{if(loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){

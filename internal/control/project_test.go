@@ -58,6 +58,84 @@ func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {
 	}
 }
 
+func TestPortableProjectIncludesAndAppliesOriginTLSSettings(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.SetSetting(originTLSVerifySettingKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(originTLSVerifyBypassSettingKey, "*.test.example\napi.example"); err != nil {
+		t.Fatal(err)
+	}
+
+	export := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(export, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if export.Code != http.StatusOK {
+		t.Fatalf("export status = %d", export.Code)
+	}
+	var bundle projectBundle
+	if err := json.NewDecoder(export.Body).Decode(&bundle); err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Settings[originTLSVerifySettingKey] != "1" || bundle.Settings[originTLSVerifyBypassSettingKey] != "*.test.example\napi.example" {
+		t.Fatalf("origin TLS settings = %#v", bundle.Settings)
+	}
+
+	h2, st2, _ := newHub(t)
+	var gotVerify bool
+	var gotHosts []string
+	h2.SetOriginTLSVerify = func(v bool) { gotVerify = v }
+	h2.SetOriginTLSVerifyBypassHosts = func(hosts []string) { gotHosts = append([]string(nil), hosts...) }
+	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{
+		originTLSVerifySettingKey: "0", originTLSVerifyBypassSettingKey: " *.example.com\napi.example\n*.example.com",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := httptest.NewRecorder()
+	(&projectAPI{Hub: h2}).importProject(imported, httptest.NewRequest(http.MethodPost, "/api/import/project", bytes.NewReader(payload)))
+	if imported.Code != http.StatusOK {
+		t.Fatalf("import status = %d: %s", imported.Code, imported.Body.String())
+	}
+	if gotVerify {
+		t.Fatal("origin TLS verification callback received true, want false")
+	}
+	if want := []string{"*.example.com", "api.example"}; !reflect.DeepEqual(gotHosts, want) {
+		t.Fatalf("origin TLS exception callback = %v, want %v", gotHosts, want)
+	}
+	if got, ok, _ := st2.GetSetting(originTLSVerifySettingKey); !ok || got != "0" {
+		t.Fatalf("stored origin TLS verification = %q, ok=%v", got, ok)
+	}
+	if got, ok, _ := st2.GetSetting(originTLSVerifyBypassSettingKey); !ok || got != "*.example.com\napi.example" {
+		t.Fatalf("stored origin TLS exceptions = %q, ok=%v", got, ok)
+	}
+}
+
+func TestPortableProjectRejectsInvalidOriginTLSVerificationBeforeApplying(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.SetSetting(originTLSVerifySettingKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	h.SetOriginTLSVerify = func(bool) { called = true }
+	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{
+		originTLSVerifySettingKey: "2",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).importProject(rr, httptest.NewRequest(http.MethodPost, "/api/import/project", bytes.NewReader(payload)))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("import status = %d, want 400", rr.Code)
+	}
+	if called {
+		t.Fatal("origin TLS verification callback called for invalid bundle")
+	}
+	if got, ok, _ := st.GetSetting(originTLSVerifySettingKey); !ok || got != "1" {
+		t.Fatalf("invalid bundle changed origin TLS setting to %q, ok=%v", got, ok)
+	}
+}
+
 func TestPortableProjectRejectsInvalidUpstreamCAWithoutApplyingProxy(t *testing.T) {
 	h, st, _ := newHub(t)
 	proxyCalled := false

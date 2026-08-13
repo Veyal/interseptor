@@ -523,6 +523,7 @@ Content-Type: application/json
 
   <!-- SETTINGS -->
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
+    <div id="originTLSVerifyWarning" class="tls-diag-banner intercept-danger settings-origin-tls-warning" role="alert">Origin certificates are not verified. Interception/capture can accept impersonated servers. HTTPS upstream-proxy verification remains strict.</div>
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
@@ -613,6 +614,11 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
+          <div class="section" id="originTLSVerifySection">
+            <h3>ORIGIN CONNECTION SECURITY</h3>
+            <p class="hint" style="margin-bottom:10px">When enabled, origin server certificates are verified before intercepted connections are accepted.</p>
+            <button type="button" class="uisw" id="originTLSVerifyToggle" role="switch" aria-label="Verify origin TLS certificates" aria-checked="false" aria-pressed="false">Verify origin TLS certificates</button>
+          </div>
           <div class="section">
             <h3>TLS CERTIFICATE AUTHORITY</h3>
             <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA to intercept HTTPS. HTTP works without it.</p>

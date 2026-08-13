@@ -85,7 +85,7 @@ type Hub struct {
 	// SetSuppressAndroidTelemetry toggles suppression of Android/GMS/Crashlytics telemetry. Set by cmd.
 	SetSuppressAndroidTelemetry func(bool)
 	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
-	SetInvisibleProxy func(bool)
+	SetInvisibleProxy             func(bool)
 	SetTLSBypassHosts             func([]string)
 	SetOriginTLSVerify            func(bool)
 	SetOriginTLSVerifyBypassHosts func([]string)
@@ -1504,9 +1504,15 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.OriginTLSVerify != nil {
 		v := "0"
-		if *in.OriginTLSVerify { v = "1" }
-		if !h.persistSetting(w, originTLSVerifySettingKey, v) { return }
-		if h.SetOriginTLSVerify != nil { h.SetOriginTLSVerify(*in.OriginTLSVerify) }
+		if *in.OriginTLSVerify {
+			v = "1"
+		}
+		if !h.persistSetting(w, originTLSVerifySettingKey, v) {
+			return
+		}
+		if h.SetOriginTLSVerify != nil {
+			h.SetOriginTLSVerify(*in.OriginTLSVerify)
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	newProxyAddrs := in.ProxyAddrs

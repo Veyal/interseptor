@@ -320,7 +320,9 @@ func run() error {
 	}
 	originTLSVerify, ok, err := st.GetSetting("proxy.originTLSVerify")
 	if !ok || (originTLSVerify != "0" && originTLSVerify != "1") {
-		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil { log.Printf("origin TLS verification default persist failed: %v", err) }
+		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil {
+			log.Printf("origin TLS verification default persist failed: %v", err)
+		}
 		originTLSVerify = "0"
 	}
 	prx.SetOriginTLSVerify(originTLSVerify == "1")

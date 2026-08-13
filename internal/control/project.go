@@ -39,7 +39,9 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
 	authz, _, _ := h.st.GetSetting("authz.identities")
 	originVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
-	if originVerify != "1" { originVerify = "0" }
+	if originVerify != "1" {
+		originVerify = "0"
+	}
 	originBypass, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	notes, _ := h.st.LoadNotes()
 	bundle := projectBundle{
@@ -157,7 +159,9 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 			httpInternalErr(w, err)
 			return
 		}
-		if h.SetOriginTLSVerify != nil { h.SetOriginTLSVerify(raw == "1") }
+		if h.SetOriginTLSVerify != nil {
+			h.SetOriginTLSVerify(raw == "1")
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if raw, ok := bundle.Settings[originTLSVerifyBypassSettingKey]; ok {
@@ -166,7 +170,9 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 			httpInternalErr(w, err)
 			return
 		}
-		if h.SetOriginTLSVerifyBypassHosts != nil { h.SetOriginTLSVerifyBypassHosts(hosts) }
+		if h.SetOriginTLSVerifyBypassHosts != nil {
+			h.SetOriginTLSVerifyBypassHosts(hosts)
+		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if strings.TrimSpace(bundle.Notes) != "" {

@@ -630,6 +630,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-progbar{flex:none;height:3px;background:var(--bg3);overflow:hidden}
 .intr-progbar>div{height:100%;background:var(--accent);width:0;transition:width .2s ease}
 .settings-wrap{flex:1;display:flex;min-height:0}
+.settings-origin-tls-warning{flex:none;padding:10px 26px;border-bottom:1px solid var(--dangerLine);background:var(--redDim);color:var(--dangerFg);font-family:var(--ui);font-size:var(--fs-sm);line-height:1.45}
 .settings-nav{flex:none;width:196px;border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:3px;overflow:auto;background:var(--bg1)}
 .settings-search{font-family:var(--ui);width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;font-size:var(--fs-sm);color:var(--fg);margin-bottom:8px}
 .settings-search::placeholder{color:var(--fg3)}
