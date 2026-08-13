@@ -26,13 +26,41 @@ func (s *Server) SetTLSBypassHosts(hosts []string) {
 
 // TLSBypassHosts returns the current bypass patterns (a copy).
 func (s *Server) TLSBypassHosts() []string {
-	p := s.bypassHosts.Load()
+	return copyHosts(s.bypassHosts.Load())
+}
+
+// SetOriginTLSVerifyBypassHosts replaces origin host patterns permitted to skip
+// certificate verification. This affects only origin TLS, never HTTPS upstream proxies.
+func (s *Server) SetOriginTLSVerifyBypassHosts(hosts []string) {
+	s.originTLSVerifyBypassHosts.Store(normalizeHosts(hosts))
+	s.tr.CloseIdleConnections()
+}
+
+// OriginTLSVerifyBypassHosts returns current origin TLS verification exceptions.
+func (s *Server) OriginTLSVerifyBypassHosts() []string {
+	return copyHosts(s.originTLSVerifyBypassHosts.Load())
+}
+
+func copyHosts(p *[]string) []string {
 	if p == nil {
 		return nil
 	}
 	out := make([]string, len(*p))
 	copy(out, *p)
 	return out
+}
+
+func (s *Server) shouldBypassOriginTLSVerify(host string) bool {
+	p := s.originTLSVerifyBypassHosts.Load()
+	if p == nil {
+		return false
+	}
+	for _, pat := range *p {
+		if hostpattern.MatchHost(pat, host) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetAutoBypassOnPinFailure toggles auto-adding a host to the bypass list when

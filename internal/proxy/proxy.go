@@ -63,11 +63,12 @@ type Server struct {
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
 	// client's pinning/handshake reaches the real origin and the app keeps working.
-	bypassHosts   atomic.Pointer[[]string] // host patterns to pass through untouched
-	bypassVersion atomic.Uint64            // detects a newer list while a callback is running
-	bypassMu      sync.Mutex               // serializes bypass-list read-modify-write
-	autoBypass    atomic.Bool              // add a host to bypassHosts when its MITM handshake fails (pinning)
-	bypassSeen    sync.Map                 // host → struct{}: hosts already logged as bypassed (dedupe the info flow)
+	bypassHosts                atomic.Pointer[[]string] // host patterns to pass through untouched
+	originTLSVerifyBypassHosts atomic.Pointer[[]string] // origin patterns permitted to skip certificate verification
+	bypassVersion              atomic.Uint64            // detects a newer list while a callback is running
+	bypassMu                   sync.Mutex               // serializes bypass-list read-modify-write
+	autoBypass                 atomic.Bool              // add a host to bypassHosts when its MITM handshake fails (pinning)
+	bypassSeen                 sync.Map                 // host → struct{}: hosts already logged as bypassed (dedupe the info flow)
 	// OnBypassAdded is fired (outside locks) after autoBypass appends a host, with
 	// the full updated list, so the control plane can persist it and refresh the UI.
 	OnBypassAdded func([]string)
@@ -136,17 +137,34 @@ func (s *Server) dialContext(ctx context.Context, network, addr string) (net.Con
 	return (&net.Dialer{}).DialContext(ctx, network, addr)
 }
 
+type originDialContextKey struct{}
+
+type originDialTarget struct{ addr string }
+
+func withOriginDialTarget(r *http.Request, addr string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), originDialContextKey{}, originDialTarget{addr: addr}))
+}
+
+func originDialAddress(ctx context.Context, addr string) string {
+	target, ok := ctx.Value(originDialContextKey{}).(originDialTarget)
+	if !ok || target.addr == "" {
+		return addr
+	}
+	return target.addr
+}
+
 func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
-	cfg := s.tlsConfigForHost(host)
+	cfg := s.originTLSConfig(host)
+	dialAddr := originDialAddress(ctx, addr)
 	if up := s.upstream.Load(); up != nil && strings.EqualFold(up.Scheme, "https") && addr == upstreamProxyAddress(up) {
-		cfg.RootCAs = s.upstreamProxyRoots.Load()
-		cfg = forceHTTP11TLSConfig(cfg)
+		cfg = s.upstreamProxyTLSConfig(host)
+		dialAddr = addr
 	}
-	raw, err := s.dialContext(ctx, network, addr)
+	raw, err := s.dialContext(ctx, network, dialAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +176,7 @@ func (s *Server) dialTLSContext(ctx context.Context, network, addr string) (net.
 	return tc, nil
 }
 
-func (s *Server) tlsConfigForHost(host string) *tls.Config {
+func (s *Server) baseTLSConfig(host string) *tls.Config {
 	cfg := &tls.Config{ServerName: host, NextProtos: []string{"h2", "http/1.1"}}
 	if s.tr.TLSClientConfig != nil {
 		cfg = s.tr.TLSClientConfig.Clone()
@@ -169,8 +187,21 @@ func (s *Server) tlsConfigForHost(host string) *tls.Config {
 	return cfg
 }
 
+func (s *Server) originTLSConfig(host string) *tls.Config {
+	cfg := s.baseTLSConfig(host)
+	if s.shouldBypassOriginTLSVerify(host) {
+		cfg.InsecureSkipVerify = true
+	}
+	return cfg
+}
+
+func (s *Server) tlsConfigForHost(host string) *tls.Config {
+	return s.originTLSConfig(host)
+}
+
 func (s *Server) upstreamProxyTLSConfig(host string) *tls.Config {
-	cfg := s.tlsConfigForHost(host)
+	cfg := s.baseTLSConfig(host)
+	cfg.InsecureSkipVerify = false
 	cfg.RootCAs = s.upstreamProxyRoots.Load()
 	return forceHTTP11TLSConfig(cfg)
 }
@@ -293,7 +324,8 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "TLS interception unavailable", http.StatusNotImplemented)
 		return
 	}
-	host, port := splitHostPort(r.Host, 443)
+	dialHost, port := splitHostPort(r.Host, 443)
+	logicalHost := dialHost
 	connectStarted := time.Now()
 
 	hj, ok := w.(http.Hijacker)
@@ -313,45 +345,38 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// TLS-bypass: tunnel this host straight through without MITM, so the client
 	// negotiates TLS (and its pinning) with the real origin. Lets a pinned-but-
 	// unimportant domain keep working while other domains are still intercepted.
-	if s.shouldBypassTLS(host) {
-		s.tunnelRaw(clientConn, host, port, r)
+	if s.shouldBypassTLS(dialHost) {
+		s.tunnelRaw(clientConn, dialHost, port, r)
 		return
 	}
 
-	var sni string
 	cfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		// Offer HTTP/2 on the forged leaf; clients that don't select it fall
 		// back to HTTP/1.1 and take the ReadRequest loop below (#19).
 		NextProtos: h2ALPN,
 		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			name := chi.ServerName
-			if name == "" {
-				name = host // IP literals send no SNI; fall back to the CONNECT host
-			}
-			sni = chi.ServerName
-			return s.ca.LeafForHost(name)
+			logicalHost = connectUpstreamHost(dialHost, chi.ServerName)
+			return s.ca.LeafForHost(logicalHost)
 		},
 	}
 	tlsConn := tls.Server(clientConn, cfg)
 	if err := tlsConn.Handshake(); err != nil {
-		s.recordTLSFailure(host, port, clientConn.RemoteAddr().String(), r, connectStarted, err)
+		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err)
 		// The client rejected our leaf (pinning or untrusted CA). If auto-bypass is
 		// on, add this host so the app's next attempt tunnels through and works.
 		if s.autoBypass.Load() {
-			s.addBypassHost(host)
+			s.addBypassHost(logicalHost)
 		}
 		return
 	}
 	defer tlsConn.Close()
 
-	host = connectUpstreamHost(host, sni)
-
 	// Client selected HTTP/2 on the MITM leg — serve it with an http2.Server
 	// that bridges each stream into the same forwarding pipeline (#19). When
 	// h2 wasn't negotiated, fall through to the HTTP/1.1 request loop.
 	if tlsConn.ConnectionState().NegotiatedProtocol == "h2" {
-		s.serveH2MITM(tlsConn, host, port)
+		s.serveH2MITM(tlsConn, dialHost, logicalHost, port)
 		return
 	}
 
@@ -366,7 +391,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			return // EOF, idle timeout, or malformed → close tunnel
 		}
 		tlsConn.SetReadDeadline(time.Time{})
-		if !s.mitmExchange(tlsConn, br, req, host, port) {
+		if !s.mitmExchange(tlsConn, br, req, dialHost, logicalHost, port) {
 			return
 		}
 	}
@@ -397,10 +422,11 @@ const tunnelIdleTimeout = 3 * time.Minute
 
 // mitmExchange forwards one tunnelled request and writes the response back over
 // conn. It returns false when the tunnel should be closed.
-func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request, host string, port int) bool {
+func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request, dialHost, logicalHost string, port int) bool {
 	req.URL.Scheme = "https"
-	req.URL.Host = hostPort(host, port, "https")
-	flow := buildFlow(req, "https", host, port, time.Now())
+	req.URL.Host = hostPort(logicalHost, port, "https")
+	req = withOriginDialTarget(req, hostPort(dialHost, port, "https"))
+	flow := buildFlow(req, "https", logicalHost, port, time.Now())
 	flow.ClientAddr = conn.RemoteAddr().String()
 
 	if isUpgradeRequest(req.Header) {

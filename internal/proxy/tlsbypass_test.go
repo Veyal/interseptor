@@ -285,6 +285,35 @@ func TestShouldBypassTLSPatterns(t *testing.T) {
 	}
 }
 
+func TestOriginTLSVerifyBypassHosts(t *testing.T) {
+	// Given
+	srv := New(nil, nil, nil, nil, nil)
+	srv.SetOriginTLSVerifyBypassHosts([]string{" *.untrusted.test ", "exact.test", "*.untrusted.test"})
+
+	// When
+	matched := srv.originTLSConfig("api.untrusted.test")
+	exact := srv.originTLSConfig("exact.test")
+	strict := srv.originTLSConfig("other.test")
+	upstream := srv.upstreamProxyTLSConfig("api.untrusted.test")
+
+	// Then
+	if !matched.InsecureSkipVerify || !exact.InsecureSkipVerify {
+		t.Fatal("matching origin hosts must bypass certificate verification")
+	}
+	if strict.InsecureSkipVerify {
+		t.Fatal("non-matching origin host must keep certificate verification")
+	}
+	if upstream.InsecureSkipVerify {
+		t.Fatal("HTTPS upstream proxy verification must remain strict")
+	}
+	if matched.ServerName != "api.untrusted.test" {
+		t.Fatalf("origin SNI = %q, want logical host", matched.ServerName)
+	}
+	if got := srv.OriginTLSVerifyBypassHosts(); len(got) != 2 || !contains(got, "*.untrusted.test") || !contains(got, "exact.test") {
+		t.Fatalf("normalized origin exception hosts = %v", got)
+	}
+}
+
 func contains(xs []string, v string) bool {
 	for _, x := range xs {
 		if x == v {
