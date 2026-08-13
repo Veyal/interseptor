@@ -16,7 +16,7 @@ import (
 // it with the release tag through -ldflags -X; local builds retain this value.
 // It deliberately tracks the last published release. See CONTRIBUTING.md
 // §"Cutting a release".
-var Version = "1.7.14"
+var Version = "1.7.15"
 
 // Repo is the GitHub owner/name used for the update check.
 const Repo = "Veyal/interseptor"

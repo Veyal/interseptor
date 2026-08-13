@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.16] - 2026-08-13
+
+### Added
+- **Host-scoped origin TLS verification exceptions.** Exact and wildcard host patterns can keep interception and capture active while bypassing only matching origin certificate verification; HTTPS upstream proxy verification remains strict.
+
+### Changed
+- **Dev-build fallback version advanced to published `1.7.15`.**
+
 ## [1.7.15] - 2026-08-13
 
 ### Added
