@@ -320,8 +320,9 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   renderHostSelect($('#setControlHost'),c.host);
   if($('#setControlAddr'))$('#setControlAddr').value=state.controlAddr;
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
-  if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
-  parseUpstreamProxyCredentials(s.upstreamProxy||'');
+   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
+   if($('#setUpstreamCA')&&document.activeElement!==$('#setUpstreamCA'))$('#setUpstreamCA').value=s.upstreamProxyCA||'';
+   parseUpstreamProxyCredentials(s.upstreamProxy||'');
   state.oobEnabled=!!s.oobEnabled;
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
   if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
@@ -414,7 +415,9 @@ function buildUpstreamProxyURL(){
   }catch(_){return raw;}
 }
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=async()=>{
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:buildUpstreamProxyURL()})});
+  const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
+  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:buildUpstreamProxyURL(),upstreamProxyCA})});
+    if($('#setUpstreamCA'))$('#setUpstreamCA').value=upstreamProxyCA;
     toast('upstream proxy saved');}catch(e){toast(e.message);}
 });
 

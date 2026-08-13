@@ -582,8 +582,9 @@ Content-Type: application/json
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
              <div class="field" style="margin-top:16px"><label>Upstream proxy (blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
              <div class="row" style="gap:10px;flex-wrap:wrap"><div class="field" style="flex:1;min-width:180px;margin-bottom:0"><label>Username <span class="hint">(optional)</span></label><input id="setUpstreamUser" autocomplete="username"></div><div class="field" style="flex:1;min-width:180px;margin-bottom:0"><label>Password <span class="hint">(optional)</span></label><input id="setUpstreamPassword" type="password" autocomplete="current-password"></div></div>
-             <p class="hint">Optional; leave blank for no proxy authentication.</p>
-             <div class="row"><button class="btn" id="saveUpstreamBtn">Save upstream</button></div>
+              <p class="hint">Optional; leave blank for no proxy authentication.</p>
+              <div class="field"><label>Upstream proxy CA certificate <span class="hint">(PEM, optional)</span></label><textarea id="setUpstreamCA" rows="6" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+              <div class="row"><button class="btn" id="saveUpstreamBtn">Save upstream</button></div>
           </div>
           <div class="section" id="sysProxySection">
             <h3>SYSTEM PROXY</h3>

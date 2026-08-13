@@ -75,6 +75,9 @@ type Hub struct {
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
+	// SetUpstreamProxyCA applies PEM trust roots for the chained upstream proxy. Set by cmd.
+	SetUpstreamProxyCA func([]byte) error
+	setSetting         func(string, string) error
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
@@ -157,6 +160,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		mux:             http.NewServeMux(),
 		clients:         map[chan string]struct{}{},
 		iosTCPReachable: ios.TCPReachable,
+		setSetting:      st.SetSetting,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
@@ -294,6 +298,7 @@ type settingsJSON struct {
 	ControlAddr              string   `json:"controlAddr"`
 	InterceptEnabled         bool     `json:"interceptEnabled"`
 	UpstreamProxy            string   `json:"upstreamProxy"`
+	UpstreamProxyCA          string   `json:"upstreamProxyCA"`
 	OobEnabled               bool     `json:"oobEnabled"`
 	CaptureScopeOnly         bool     `json:"captureScopeOnly"`
 	SuppressBrowserTelemetry bool     `json:"suppressBrowserTelemetry"`
@@ -1312,6 +1317,7 @@ func (h *Hub) currentControlAddr() string {
 
 func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
+	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
 	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
 	// Default to true when the key has never been written (first run).
@@ -1331,6 +1337,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		ControlAddr:              h.currentControlAddr(),
 		InterceptEnabled:         h.eng != nil && h.eng.Enabled(),
 		UpstreamProxy:            up,
+		UpstreamProxyCA:          upCA,
 		OobEnabled:               h.oobEnabled(),
 		CaptureScopeOnly:         scopeOnly == "1",
 		SuppressBrowserTelemetry: suppressTelemetryOn,
@@ -1352,11 +1359,30 @@ func (h *Hub) NotifyBypassAdded(hosts []string) {
 }
 
 func (h *Hub) persistSetting(w http.ResponseWriter, key, val string) bool {
-	if err := h.st.SetSetting(key, val); err != nil {
+	if err := h.setSetting(key, val); err != nil {
 		httpInternalErr(w, err)
 		return false
 	}
 	return true
+}
+
+func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
+	previous, _, err := h.st.GetSetting("upstream.proxyCA")
+	if err != nil {
+		return false, err
+	}
+	if h.SetUpstreamProxyCA != nil {
+		if err := h.SetUpstreamProxyCA([]byte(value)); err != nil {
+			return false, err
+		}
+	}
+	if err := h.setSetting("upstream.proxyCA", value); err != nil {
+		if h.SetUpstreamProxyCA != nil {
+			_ = h.SetUpstreamProxyCA([]byte(previous))
+		}
+		return true, err
+	}
+	return true, nil
 }
 
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -1365,6 +1391,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		ProxyAddrs               []string  `json:"proxyAddrs"`
 		ControlAddr              string    `json:"controlAddr"`
 		UpstreamProxy            *string   `json:"upstreamProxy"` // pointer so "" can clear it
+		UpstreamProxyCA          *string   `json:"upstreamProxyCA"`
 		OobEnabled               *bool     `json:"oobEnabled"`
 		CaptureScopeOnly         *bool     `json:"captureScopeOnly"`
 		SuppressBrowserTelemetry *bool     `json:"suppressBrowserTelemetry"`
@@ -1514,6 +1541,18 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SyncSelfPorts != nil {
 			h.SyncSelfPorts()
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.UpstreamProxyCA != nil {
+		applied, err := h.applyUpstreamProxyCA(strings.TrimSpace(*in.UpstreamProxyCA))
+		if err != nil {
+			if applied {
+				httpInternalErr(w, err)
+			} else {
+				httpErr(w, http.StatusBadRequest, err.Error())
+			}
+			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}

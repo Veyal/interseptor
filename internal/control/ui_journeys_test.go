@@ -97,6 +97,7 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		`id="setUpstream"`,
 		`id="setUpstreamUser"`,
 		`id="setUpstreamPassword"`,
+		`id="setUpstreamCA"`,
 		`Optional; leave blank for no proxy authentication`,
 	)
 	requireUIContains(t, settings,
@@ -104,6 +105,8 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		"upstreamProxy:buildUpstreamProxyURL(",
 		"setUpstreamUser",
 		"setUpstreamPassword",
+		"setUpstreamCA",
+		"upstreamProxyCA",
 		"new URL(raw)",
 	)
 	if strings.Contains(settings, "encodeURIComponent($('#setUpstreamUser').value.trim())") {
@@ -128,6 +131,7 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"autoBypassOnPinFailure:on",
 		"tlsBypassHosts:hosts",
 		"upstreamProxy:buildUpstreamProxyURL()",
+		"upstreamProxyCA",
 	)
 }
 

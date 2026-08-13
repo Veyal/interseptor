@@ -36,6 +36,7 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	rules, _ := h.st.ListRules()
 	scope, _ := h.st.ListScopeRules()
 	up, _, _ := h.st.GetSetting("upstream.proxy")
+	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
 	authz, _, _ := h.st.GetSetting("authz.identities")
 	notes, _ := h.st.LoadNotes()
 	bundle := projectBundle{
@@ -44,7 +45,7 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 		Rules:    rules,
 		Scope:    scope,
 		Notes:    notes,
-		Settings: map[string]string{"upstream.proxy": up, "authz.identities": authz},
+		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-project.json"`)
@@ -101,11 +102,48 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		bundle.Scope[i].ID = 0
 		h.st.CreateScopeRule(&bundle.Scope[i])
 	}
-	if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" {
-		if h.Upstream != nil {
-			_ = h.Upstream(up)
+	upCA, hasUpCA := bundle.Settings["upstream.proxyCA"]
+	if hasUpCA {
+		upCA = strings.TrimSpace(upCA)
+		previousCA, _, err := h.st.GetSetting("upstream.proxyCA")
+		if err != nil {
+			httpInternalErr(w, err)
+			return
 		}
-		_ = h.st.SetSetting("upstream.proxy", up)
+		if h.SetUpstreamProxyCA != nil {
+			if err := h.SetUpstreamProxyCA([]byte(upCA)); err != nil {
+				httpErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" && h.Upstream != nil {
+			if err := h.Upstream(up); err != nil {
+				if h.SetUpstreamProxyCA != nil {
+					_ = h.SetUpstreamProxyCA([]byte(previousCA))
+				}
+				httpErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		if err := h.setSetting("upstream.proxyCA", upCA); err != nil {
+			if h.SetUpstreamProxyCA != nil {
+				_ = h.SetUpstreamProxyCA([]byte(previousCA))
+			}
+			httpInternalErr(w, err)
+			return
+		}
+	}
+	if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" {
+		if !hasUpCA && h.Upstream != nil {
+			if err := h.Upstream(up); err != nil {
+				httpErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		if err := h.setSetting("upstream.proxy", up); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
 	}
 	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
 		_ = h.st.SetSetting("authz.identities", authz)

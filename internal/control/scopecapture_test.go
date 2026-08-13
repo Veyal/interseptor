@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -84,6 +85,98 @@ func TestInvisibleProxySetting(t *testing.T) {
 
 // PUT /api/settings {tlsBypassHosts, autoBypassOnPinFailure} normalizes + persists
 // the list, calls the wired proxy hooks, and GET reflects the choices.
+func TestUpstreamProxyCASetting(t *testing.T) {
+	h, st, _ := newHub(t)
+	var got string
+	h.SetUpstreamProxyCA = func(v []byte) error { got = string(v); return nil }
+
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	body := []byte(`{"upstreamProxyCA":"\n  -----BEGIN CERTIFICATE-----\ngeneric-ca\n-----END CERTIFICATE-----\n  "}`)
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT settings: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT settings status %d", resp.StatusCode)
+	}
+	want := "-----BEGIN CERTIFICATE-----\ngeneric-ca\n-----END CERTIFICATE-----"
+	if got != want {
+		t.Fatalf("SetUpstreamProxyCA = %q, want %q", got, want)
+	}
+	stored, ok, err := st.GetSetting("upstream.proxyCA")
+	if err != nil || !ok || stored != want {
+		t.Fatalf("stored upstream CA = %q, %v, %v; want %q, true, nil", stored, ok, err, want)
+	}
+
+	var settings map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["upstreamProxyCA"] != want {
+		t.Fatalf("response upstreamProxyCA = %q, want %q", settings["upstreamProxyCA"], want)
+	}
+}
+
+func TestUpstreamProxyCASettingRollsBackRuntimeOnPersistenceFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.SetSetting("upstream.proxyCA", "previous"); err != nil {
+		t.Fatal(err)
+	}
+	var applied []string
+	h.SetUpstreamProxyCA = func(v []byte) error { applied = append(applied, string(v)); return nil }
+	h.setSetting = func(string, string) error { return errors.New("store unavailable") }
+
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewBufferString(`{"upstreamProxyCA":"new"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT settings: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("PUT settings status %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+	}
+	if len(applied) != 2 || applied[0] != "new" || applied[1] != "previous" {
+		t.Fatalf("runtime CA applications = %q, want [new previous]", applied)
+	}
+	stored, ok, err := st.GetSetting("upstream.proxyCA")
+	if err != nil || !ok || stored != "previous" {
+		t.Fatalf("stored upstream CA = %q, %v, %v; want previous, true, nil", stored, ok, err)
+	}
+}
+
+func TestUpstreamProxyCASettingRejectsInvalidWithoutPersisting(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.SetSetting("upstream.proxyCA", "existing"); err != nil {
+		t.Fatal(err)
+	}
+	h.SetUpstreamProxyCA = func([]byte) error { return errors.New("invalid certificate") }
+
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewBufferString(`{"upstreamProxyCA":"not a certificate"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT settings: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("PUT settings status %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	stored, ok, err := st.GetSetting("upstream.proxyCA")
+	if err != nil || !ok || stored != "existing" {
+		t.Fatalf("stored upstream CA = %q, %v, %v; want existing, true, nil", stored, ok, err)
+	}
+}
+
 func TestTLSBypassSettings(t *testing.T) {
 	h, _, _ := newHub(t)
 	var gotHosts []string

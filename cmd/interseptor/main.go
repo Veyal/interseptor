@@ -275,6 +275,12 @@ func run() error {
 		})
 	}
 	hub.Upstream = prx.SetUpstreamProxy
+	hub.SetUpstreamProxyCA = prx.SetUpstreamProxyCA
+	if v, ok, _ := st.GetSetting("upstream.proxyCA"); ok {
+		if err := prx.SetUpstreamProxyCA([]byte(strings.TrimSpace(v))); err != nil {
+			log.Printf("upstream proxy CA (saved) ignored: %v", err)
+		}
+	}
 	if v, ok, _ := st.GetSetting("upstream.proxy"); ok && v != "" {
 		_ = prx.SetUpstreamProxy(v)
 	}

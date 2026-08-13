@@ -162,7 +162,7 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/scope/{id}", "Update a scope rule. Body: same shape as POST /api/scope"},
 	{"DELETE", "/api/scope/{id}", "Delete a scope rule"},
 	{"GET", "/api/settings", "Get proxy/intercept settings"},
-	{"PUT", "/api/settings", "Update settings (rebinds proxy/control listeners). Body: any subset of {proxyAddr, proxyAddrs, controlAddr, upstreamProxy, oobEnabled, captureScopeOnly, suppressBrowserTelemetry, suppressAndroidTelemetry, invisibleProxy, tlsBypassHosts, autoBypassOnPinFailure} — only fields present are changed"},
+	{"PUT", "/api/settings", "Update settings (rebinds proxy/control listeners). Body: any subset of {proxyAddr, proxyAddrs, controlAddr, upstreamProxy, upstreamProxyCA, oobEnabled, captureScopeOnly, suppressBrowserTelemetry, suppressAndroidTelemetry, invisibleProxy, tlsBypassHosts, autoBypassOnPinFailure} — only fields present are changed"},
 	{"GET", "/api/network/hosts", "List bindable network hosts with suggested LAN IP"},
 	{"GET", "/api/proxy/device-endpoint", "Resolved device-facing proxy endpoint (auto/manual)"},
 	{"POST", "/api/proxy/device-endpoint", "Set device proxy mode and optional manual host. Body: {mode, host?} — mode is auto|manual"},
