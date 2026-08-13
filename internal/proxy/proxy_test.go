@@ -456,6 +456,86 @@ func TestProxyMITMCapturesHTTPS(t *testing.T) {
 	}
 }
 
+func TestProxyMITMIPConnectPreservesDialIPAndUsesSNIHost(t *testing.T) {
+	// Given
+	originSNI := make(chan string, 1)
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "origin")
+	}))
+	origin.TLS = &tls.Config{GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		originSNI <- hello.ServerName
+		return nil, nil
+	}}
+	origin.StartTLS()
+	defer origin.Close()
+	originURL, _ := url.Parse(origin.URL)
+	connectIP, connectPort := splitHostPort(originURL.Host, 443)
+	logicalHost := "service.example.test"
+	socksAddr, destinations := newSOCKS5Relay(t)
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	srv := New(st, capture.New(st), ca, nil, nil)
+	srv.SetOriginTLSVerifyBypassHosts([]string{logicalHost})
+	if err := srv.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen proxy: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// When
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer raw.Close()
+	_, _ = fmt.Fprintf(raw, "CONNECT %s:%d HTTP/1.1\r\nHost: %s:%d\r\n\r\n", connectIP, connectPort, connectIP, connectPort)
+	connectResponse, err := http.ReadResponse(bufio.NewReader(raw), &http.Request{Method: http.MethodConnect})
+	if err != nil || connectResponse.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT: %v / %v", err, connectResponse)
+	}
+	clientRoots := x509.NewCertPool()
+	if !clientRoots.AppendCertsFromPEM(ca.CertPEM()) {
+		t.Fatal("add CA to client roots")
+	}
+	tlsClient := tls.Client(raw, &tls.Config{ServerName: logicalHost, RootCAs: clientRoots})
+	if err := tlsClient.Handshake(); err != nil {
+		t.Fatalf("MITM handshake: %v", err)
+	}
+	_, _ = fmt.Fprintf(tlsClient, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", logicalHost)
+	response, err := http.ReadResponse(bufio.NewReader(tlsClient), &http.Request{Method: http.MethodGet})
+	if err != nil {
+		t.Fatalf("origin response: %v", err)
+	}
+	response.Body.Close()
+
+	// Then
+	assertSOCKSDestination(t, destinations, net.JoinHostPort(connectIP, strconv.Itoa(connectPort)))
+	select {
+	case got := <-originSNI:
+		if got != logicalHost {
+			t.Fatalf("origin SNI = %q, want %q", got, logicalHost)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("origin did not receive TLS SNI")
+	}
+	flow := waitFlows(t, st, 1)[0]
+	if flow.Host != logicalHost {
+		t.Fatalf("flow host = %q, want logical hostname", flow.Host)
+	}
+}
+
 func TestProxyTunnelsWebSocketUpgrade(t *testing.T) {
 	// Minimal upstream that completes a WebSocket-style handshake then echoes.
 	upLn, err := net.Listen("tcp", "127.0.0.1:0")
