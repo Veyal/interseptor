@@ -28,7 +28,7 @@ func (s *Server) h2Handler(dialHost, logicalHost string, port int) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Scheme = "https"
 		r.URL.Host = hostPort(logicalHost, port, "https")
-		r = withOriginDialTarget(r, hostPort(dialHost, port, "https"))
+		r = withOriginDialTarget(r, originDialTargetAddress(dialHost, port))
 
 		// buildFlow records the client-leg proto (HTTP/2.0) before we normalize
 		// the request below, so History shows the client actually spoke h2.

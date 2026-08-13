@@ -141,6 +141,10 @@ type originDialContextKey struct{}
 
 type originDialTarget struct{ addr string }
 
+func originDialTargetAddress(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
 func withOriginDialTarget(r *http.Request, addr string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), originDialContextKey{}, originDialTarget{addr: addr}))
 }
@@ -425,7 +429,7 @@ const tunnelIdleTimeout = 3 * time.Minute
 func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request, dialHost, logicalHost string, port int) bool {
 	req.URL.Scheme = "https"
 	req.URL.Host = hostPort(logicalHost, port, "https")
-	req = withOriginDialTarget(req, hostPort(dialHost, port, "https"))
+	req = withOriginDialTarget(req, originDialTargetAddress(dialHost, port))
 	flow := buildFlow(req, "https", logicalHost, port, time.Now())
 	flow.ClientAddr = conn.RemoteAddr().String()
 

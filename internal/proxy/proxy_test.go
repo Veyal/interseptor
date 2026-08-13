@@ -456,6 +456,15 @@ func TestProxyMITMCapturesHTTPS(t *testing.T) {
 	}
 }
 
+func TestOriginDialTargetKeepsDefaultHTTPSPort(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://service.example.test/", nil)
+	req = withOriginDialTarget(req, originDialTargetAddress("10.243.194.19", 443))
+
+	if got := originDialAddress(req.Context(), req.URL.Host); got != "10.243.194.19:443" {
+		t.Fatalf("origin dial address = %q, want %q", got, "10.243.194.19:443")
+	}
+}
+
 func TestProxyMITMIPConnectPreservesDialIPAndUsesSNIHost(t *testing.T) {
 	// Given
 	originSNI := make(chan string, 1)
