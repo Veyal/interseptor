@@ -308,6 +308,7 @@ func run() error {
 	// TLS-bypass list: CONNECTs to these hosts are tunneled raw (no MITM) so a
 	// pinned-but-unimportant domain keeps working while others stay intercepted.
 	hub.SetTLSBypassHosts = prx.SetTLSBypassHosts
+	hub.SetOriginTLSVerify = prx.SetOriginTLSVerify
 	hub.SetOriginTLSVerifyBypassHosts = prx.SetOriginTLSVerifyBypassHosts
 	hub.SetAutoBypassOnPinFailure = prx.SetAutoBypassOnPinFailure
 	prx.OnBypassAdded = hub.NotifyBypassAdded // persist + refresh UI on auto-bypass
@@ -317,6 +318,12 @@ func run() error {
 	if v, ok, _ := st.GetSetting("proxy.originTLSVerifyBypassHosts"); ok && v != "" {
 		prx.SetOriginTLSVerifyBypassHosts(strings.FieldsFunc(v, func(r rune) bool { return r == '\n' || r == '\r' || r == ',' }))
 	}
+	originTLSVerify, ok, err := st.GetSetting("proxy.originTLSVerify")
+	if !ok || (originTLSVerify != "0" && originTLSVerify != "1") {
+		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil { log.Printf("origin TLS verification default persist failed: %v", err) }
+		originTLSVerify = "0"
+	}
+	prx.SetOriginTLSVerify(originTLSVerify == "1")
 	if v, ok, _ := st.GetSetting("proxy.autoBypassOnPinFailure"); ok && v == "1" {
 		prx.SetAutoBypassOnPinFailure(true)
 	}

@@ -38,14 +38,14 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	up, _, _ := h.st.GetSetting("upstream.proxy")
 	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
 	authz, _, _ := h.st.GetSetting("authz.identities")
+	originVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
+	if originVerify != "1" { originVerify = "0" }
+	originBypass, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	notes, _ := h.st.LoadNotes()
 	bundle := projectBundle{
-		Version:  "1",
-		HAR:      json.RawMessage(harx.Build(flows, h.bodyBytes)),
-		Rules:    rules,
-		Scope:    scope,
-		Notes:    notes,
-		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz},
+		Version: "1", HAR: json.RawMessage(harx.Build(flows, h.bodyBytes)), Rules: rules, Scope: scope, Notes: notes,
+		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz,
+			originTLSVerifySettingKey: originVerify, originTLSVerifyBypassSettingKey: originBypass},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-project.json"`)
@@ -147,6 +147,27 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
 		_ = h.st.SetSetting("authz.identities", authz)
+	}
+	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok {
+		if raw != "0" && raw != "1" {
+			httpErr(w, http.StatusBadRequest, "invalid originTLSVerify setting")
+			return
+		}
+		if err := h.setSetting(originTLSVerifySettingKey, raw); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if h.SetOriginTLSVerify != nil { h.SetOriginTLSVerify(raw == "1") }
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if raw, ok := bundle.Settings[originTLSVerifyBypassSettingKey]; ok {
+		hosts := parseHostList(raw)
+		if err := h.setSetting(originTLSVerifyBypassSettingKey, strings.Join(hosts, "\n")); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if h.SetOriginTLSVerifyBypassHosts != nil { h.SetOriginTLSVerifyBypassHosts(hosts) }
+		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if strings.TrimSpace(bundle.Notes) != "" {
 		if _, err := h.st.PersistNotes(bundle.Notes); err == nil {
