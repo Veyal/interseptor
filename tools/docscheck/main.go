@@ -357,7 +357,7 @@ func validateBuiltSite(site, basePath string) error {
 			return fmt.Errorf("missing built page %s: %w", page, err)
 		}
 	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "data/search.json"} {
 		if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(asset))); err != nil {
 			return fmt.Errorf("missing built asset %s: %w", asset, err)
 		}
