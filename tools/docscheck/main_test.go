@@ -156,8 +156,11 @@ func TestDocumentationSearchLoadsPublishedIndexPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "website/data/search.json") {
+	if !strings.Contains(string(data), "data/search.json") {
 		t.Fatal("documentation search does not fetch the published search index path")
+	}
+	if strings.Contains(string(data), "website/data/search.json") {
+		t.Fatal("documentation search still fetches the pre-build source path")
 	}
 }
 
@@ -182,7 +185,7 @@ func builtSiteFixture(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(site, "assets", "site.css"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "data/search.json"} {
 		file := filepath.Join(site, filepath.FromSlash(asset))
 		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 			t.Fatal(err)
@@ -221,10 +224,10 @@ func TestValidateBuiltSiteRejectsInvalidTargets(t *testing.T) {
 
 func TestValidateBuiltSiteRequiresSearchIndex(t *testing.T) {
 	site := builtSiteFixture(t)
-	if err := os.Remove(filepath.Join(site, "website", "data", "search.json")); err != nil {
+	if err := os.Remove(filepath.Join(site, "data", "search.json")); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateBuiltSite(site, "/interseptor"); err == nil || !strings.Contains(err.Error(), "website/data/search.json") {
+	if err := validateBuiltSite(site, "/interseptor"); err == nil || !strings.Contains(err.Error(), "data/search.json") {
 		t.Fatalf("validateBuiltSite without search index = %v, want missing search asset", err)
 	}
 }

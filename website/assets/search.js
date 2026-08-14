@@ -26,7 +26,7 @@ function setActive(next){
 }
 async function load(){
   try{
-    const response=await fetch(new URL('website/data/search.json',base));
+    const response=await fetch(new URL('data/search.json',base));
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
     index=await response.json();
   }catch(_){index=[];announce('Documentation search failed to load.')}
