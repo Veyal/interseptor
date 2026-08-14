@@ -35,4 +35,5 @@ exclude:
   - '*.go'
   - '*.yml'
   - '*.yaml'
-  - '*.json'
+  - .mcp.json
+  - opencode.json

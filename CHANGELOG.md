@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- **GitHub Pages search deployment.** Built-site validation and the search client now use Jekyll's published `data/search.json` path, allowing Pages deployment to complete and documentation search to load its index.
+- **GitHub Pages search deployment.** Jekyll no longer excludes every JSON file, allowing the explicitly included `website/data/search.json` index to publish, pass built-site validation, and power documentation search.
 
 ## [1.8.0] - 2026-08-14
 
