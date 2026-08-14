@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Repeater upstream routing.** Repeater, Intruder, login macros, active scans, and custom-check sends now honor the same HTTP/HTTPS/SOCKS5/SOCKS5H proxy URL, DNS mode, credentials, and HTTPS-proxy CA as captured traffic instead of bypassing the configured upstream and returning misleading `502` flows.
+
 ## [1.8.0] - 2026-08-14
 
 ### Changed

@@ -16,3 +16,5 @@ When the API persists one proxy URL but the UI exposes separate controls:
 7. Keep HTTPS-proxy CA trust visibly separate from origin TLS verification.
 8. Show a readable connection summary and stack every field/action at narrow widths.
 9. Cover the structured controls, URL parse/build path, protocol choices, and responsive CSS in journey tests.
+10. Apply the same runtime route to both the capture proxy and `sender`; Repeater, Intruder, login macros, active scans, and custom checks must not bypass Settings.
+11. Prove HTTP, HTTPS-with-private-CA, and SOCKS5H with end-to-end relay tests, plus a Settings-to-Repeater control-plane test.

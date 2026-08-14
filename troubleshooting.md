@@ -57,6 +57,11 @@ For upstream setup, select a mode instead of typing a URL: **HTTP/HTTPS** for an
 **SOCKS5** for local DNS, or **SOCKS5H** for proxy-side DNS. Verify host and port in the status summary.
 Private CA PEM applies only to HTTPS upstream proxies.
 
+If captured traffic works through the upstream but Repeater returns `502`, confirm the saved summary,
+then reopen Settings and save once. Current releases apply one shared upstream route to capture,
+Repeater, Intruder, login macros, active scans, and custom-check sends. The Repeater flow's error field
+contains the upstream dial, DNS, TLS, or authentication failure.
+
 ## Send to Repeater does not look right
 
 Use the action on the attached PoC flow, wait for “loaded #… into Repeater,” and verify method, complete

@@ -620,6 +620,54 @@ func TestRepeaterSendAndHistory(t *testing.T) {
 	}
 }
 
+func TestRepeaterUsesConfiguredUpstreamProxy(t *testing.T) {
+	seen := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.URL.String()
+		_, _ = io.WriteString(w, "through upstream")
+	}))
+	defer upstream.Close()
+
+	h, _, _ := newHub(t)
+	// The capture proxy hook is independently wired by cmd/interseptor. This
+	// fixture records that Settings still applies the same URL to Sender.
+	h.Upstream = func(string) error { return nil }
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	settingsBody, _ := json.Marshal(map[string]string{"upstreamProxy": upstream.URL})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(settingsBody))
+	req.Header.Set("Content-Type", "application/json")
+	settingsResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT settings: %v", err)
+	}
+	settingsResp.Body.Close()
+	if settingsResp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT settings status=%d", settingsResp.StatusCode)
+	}
+
+	body := `{"method":"GET","url":"http://target.example/repeater?q=1","headers":"","body":""}`
+	resp, err := http.Post(ts.URL+"/api/repeater/send", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("repeater send: %v", err)
+	}
+	defer resp.Body.Close()
+	var sent map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&sent)
+	if sent["status"] != float64(http.StatusOK) {
+		t.Fatalf("repeater flow=%v", sent)
+	}
+	select {
+	case got := <-seen:
+		if got != "http://target.example/repeater?q=1" {
+			t.Fatalf("upstream saw URL=%q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Repeater bypassed configured upstream proxy")
+	}
+}
+
 func TestScannerRunFindsIssues(t *testing.T) {
 	h, s, _ := newHub(t)
 	// An HTTPS flow with no HSTS and wildcard CORS → two findings.

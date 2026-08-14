@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ import (
 // entry (the root project) that availableProjects always lists first.
 func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {
 	h, st, _ := newHub(t)
-	want := "-----BEGIN CERTIFICATE-----\ngeneric-ca\n-----END CERTIFICATE-----"
+	want := strings.TrimSpace(testCertificatePEM(t))
 	if err := st.SetSetting("upstream.proxyCA", want); err != nil {
 		t.Fatal(err)
 	}
@@ -165,14 +166,16 @@ func TestPortableProjectRejectsInvalidUpstreamCAWithoutApplyingProxy(t *testing.
 
 func TestPortableProjectRejectsUpstreamProxyFailureWithoutPersistingCA(t *testing.T) {
 	h, st, _ := newHub(t)
-	if err := st.SetSetting("upstream.proxyCA", "previous"); err != nil {
+	previous := strings.TrimSpace(testCertificatePEM(t))
+	current := strings.TrimSpace(testCertificatePEM(t))
+	if err := st.SetSetting("upstream.proxyCA", previous); err != nil {
 		t.Fatal(err)
 	}
 	var applied []string
 	h.SetUpstreamProxyCA = func(v []byte) error { applied = append(applied, string(v)); return nil }
 	h.Upstream = func(string) error { return errors.New("invalid proxy") }
 	payload, err := json.Marshal(projectBundle{Version: "1", Settings: map[string]string{
-		"upstream.proxyCA": "new", "upstream.proxy": "http://proxy.example:8080",
+		"upstream.proxyCA": current, "upstream.proxy": "http://proxy.example:8080",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -182,12 +185,12 @@ func TestPortableProjectRejectsUpstreamProxyFailureWithoutPersistingCA(t *testin
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("import status %d, want %d", rr.Code, http.StatusBadRequest)
 	}
-	if len(applied) != 2 || applied[0] != "new" || applied[1] != "previous" {
-		t.Fatalf("runtime CA applications = %q, want [new previous]", applied)
+	if len(applied) != 2 || applied[0] != current || applied[1] != previous {
+		t.Fatalf("runtime CA applications did not apply current then previous")
 	}
 	stored, ok, err := st.GetSetting("upstream.proxyCA")
-	if err != nil || !ok || stored != "previous" {
-		t.Fatalf("stored upstream CA = %q, %v, %v; want previous, true, nil", stored, ok, err)
+	if err != nil || !ok || stored != previous {
+		t.Fatalf("stored upstream CA did not retain previous value: ok=%v err=%v", ok, err)
 	}
 	if _, ok, _ := st.GetSetting("upstream.proxy"); ok {
 		t.Fatal("failed import persisted upstream proxy")

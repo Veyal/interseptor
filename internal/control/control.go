@@ -1372,8 +1372,12 @@ func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if err := h.snd.SetUpstreamProxyCA([]byte(value)); err != nil {
+		return false, err
+	}
 	if h.SetUpstreamProxyCA != nil {
 		if err := h.SetUpstreamProxyCA([]byte(value)); err != nil {
+			_ = h.snd.SetUpstreamProxyCA([]byte(previous))
 			return false, err
 		}
 	}
@@ -1381,9 +1385,23 @@ func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
 		if h.SetUpstreamProxyCA != nil {
 			_ = h.SetUpstreamProxyCA([]byte(previous))
 		}
+		_ = h.snd.SetUpstreamProxyCA([]byte(previous))
 		return true, err
 	}
 	return true, nil
+}
+
+// ConfigureSenderUpstreamProxy applies a saved route to Repeater, Intruder,
+// and scanner traffic during startup. Runtime Settings updates call the same
+// Sender methods inside settingsAPI.
+func (h *Hub) ConfigureSenderUpstreamProxy(value string) error {
+	return h.snd.SetUpstreamProxy(value)
+}
+
+// ConfigureSenderUpstreamProxyCA applies saved HTTPS-proxy trust to Sender
+// consumers during startup.
+func (h *Hub) ConfigureSenderUpstreamProxyCA(value []byte) error {
+	return h.snd.SetUpstreamProxyCA(value)
 }
 
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -1583,13 +1601,28 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.UpstreamProxy != nil {
+		previous, _, err := h.st.GetSetting("upstream.proxy")
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if err := h.snd.SetUpstreamProxy(*in.UpstreamProxy); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if h.Upstream != nil {
 			if err := h.Upstream(*in.UpstreamProxy); err != nil {
+				_ = h.snd.SetUpstreamProxy(previous)
 				httpErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
 		}
-		if !h.persistSetting(w, "upstream.proxy", *in.UpstreamProxy) {
+		if err := h.setSetting("upstream.proxy", *in.UpstreamProxy); err != nil {
+			_ = h.snd.SetUpstreamProxy(previous)
+			if h.Upstream != nil {
+				_ = h.Upstream(previous)
+			}
+			httpInternalErr(w, err)
 			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})

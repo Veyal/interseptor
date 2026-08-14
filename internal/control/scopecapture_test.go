@@ -3,11 +3,20 @@ package control
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func testCertificatePEM(t *testing.T) string {
+	t.Helper()
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer ts.Close()
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ts.Certificate().Raw}))
+}
 
 // PUT /api/settings {captureScopeOnly:true} persists the choice, calls the wired
 // proxy hook, and GET /api/settings reflects it.
@@ -89,11 +98,12 @@ func TestUpstreamProxyCASetting(t *testing.T) {
 	h, st, _ := newHub(t)
 	var got string
 	h.SetUpstreamProxyCA = func(v []byte) error { got = string(v); return nil }
+	want := testCertificatePEM(t)
 
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
-	body := []byte(`{"upstreamProxyCA":"\n  -----BEGIN CERTIFICATE-----\ngeneric-ca\n-----END CERTIFICATE-----\n  "}`)
+	body, _ := json.Marshal(map[string]string{"upstreamProxyCA": "\n  " + want + "  "})
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -104,7 +114,7 @@ func TestUpstreamProxyCASetting(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("PUT settings status %d", resp.StatusCode)
 	}
-	want := "-----BEGIN CERTIFICATE-----\ngeneric-ca\n-----END CERTIFICATE-----"
+	want = strings.TrimSpace(want)
 	if got != want {
 		t.Fatalf("SetUpstreamProxyCA = %q, want %q", got, want)
 	}
@@ -124,7 +134,9 @@ func TestUpstreamProxyCASetting(t *testing.T) {
 
 func TestUpstreamProxyCASettingRollsBackRuntimeOnPersistenceFailure(t *testing.T) {
 	h, st, _ := newHub(t)
-	if err := st.SetSetting("upstream.proxyCA", "previous"); err != nil {
+	previous := strings.TrimSpace(testCertificatePEM(t))
+	current := strings.TrimSpace(testCertificatePEM(t))
+	if err := st.SetSetting("upstream.proxyCA", previous); err != nil {
 		t.Fatal(err)
 	}
 	var applied []string
@@ -133,7 +145,8 @@ func TestUpstreamProxyCASettingRollsBackRuntimeOnPersistenceFailure(t *testing.T
 
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
-	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewBufferString(`{"upstreamProxyCA":"new"}`))
+	body, _ := json.Marshal(map[string]string{"upstreamProxyCA": current})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -143,12 +156,12 @@ func TestUpstreamProxyCASettingRollsBackRuntimeOnPersistenceFailure(t *testing.T
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("PUT settings status %d, want %d", resp.StatusCode, http.StatusInternalServerError)
 	}
-	if len(applied) != 2 || applied[0] != "new" || applied[1] != "previous" {
-		t.Fatalf("runtime CA applications = %q, want [new previous]", applied)
+	if len(applied) != 2 || applied[0] != current || applied[1] != previous {
+		t.Fatalf("runtime CA applications did not apply current then previous")
 	}
 	stored, ok, err := st.GetSetting("upstream.proxyCA")
-	if err != nil || !ok || stored != "previous" {
-		t.Fatalf("stored upstream CA = %q, %v, %v; want previous, true, nil", stored, ok, err)
+	if err != nil || !ok || stored != previous {
+		t.Fatalf("stored upstream CA did not retain previous value: ok=%v err=%v", ok, err)
 	}
 }
 

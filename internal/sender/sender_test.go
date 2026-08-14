@@ -1,15 +1,22 @@
 package sender
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/store"
@@ -32,6 +39,197 @@ func TestSenderHasNoRequestTimeout(t *testing.T) {
 	if tr.ResponseHeaderTimeout != 0 {
 		t.Fatalf("ResponseHeaderTimeout=%v; want 0 (no limit)", tr.ResponseHeaderTimeout)
 	}
+}
+
+func TestSendUsesConfiguredHTTPUpstreamProxy(t *testing.T) {
+	proxyRequests := make(chan *http.Request, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyRequests <- r.Clone(r.Context())
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = io.WriteString(w, "through upstream")
+	}))
+	defer upstream.Close()
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	if err := snd.SetUpstreamProxy(upstream.URL); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+
+	flow, err := snd.Send(Request{Method: http.MethodGet, URL: "http://target.example/repeater?q=1", Flags: store.FlagRepeater})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if flow.Status != http.StatusOK {
+		t.Fatalf("flow status=%d error=%q", flow.Status, flow.Error)
+	}
+	select {
+	case req := <-proxyRequests:
+		if req.URL.String() != "http://target.example/repeater?q=1" {
+			t.Fatalf("upstream request URL=%q", req.URL.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Repeater request bypassed configured upstream proxy")
+	}
+}
+
+func TestSenderUpstreamProxySupportsKnownSchemes(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	for _, raw := range []string{"http://proxy.example:8080", "https://proxy.example", "socks5://proxy.example", "socks5h://proxy.example"} {
+		if err := snd.SetUpstreamProxy(raw); err != nil {
+			t.Errorf("SetUpstreamProxy(%q): %v", raw, err)
+		}
+	}
+	if err := snd.SetUpstreamProxy("ftp://proxy.example"); err == nil {
+		t.Fatal("unsupported upstream scheme accepted")
+	}
+}
+
+func TestSendUsesConfiguredSOCKS5HUpstreamProxy(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "through socks")
+	}))
+	defer target.Close()
+	targetURL, _ := url.Parse(target.URL)
+	_, port, _ := net.SplitHostPort(targetURL.Host)
+	targetURL.Host = net.JoinHostPort("localhost", port)
+
+	socksAddr, destinations := newSenderSOCKS5Relay(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	if err := snd.SetUpstreamProxy("socks5h://" + socksAddr); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+
+	flow, err := snd.Send(Request{URL: targetURL.String(), Flags: store.FlagRepeater})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if flow.Status != http.StatusOK {
+		t.Fatalf("flow status=%d error=%q", flow.Status, flow.Error)
+	}
+	select {
+	case got := <-destinations:
+		if got != targetURL.Host {
+			t.Fatalf("SOCKS5H destination=%q want=%q", got, targetURL.Host)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Repeater request bypassed configured SOCKS5H proxy")
+	}
+}
+
+func TestSendUsesConfiguredHTTPSUpstreamProxyCA(t *testing.T) {
+	seen := make(chan string, 1)
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.URL.String()
+		_, _ = io.WriteString(w, "through secure upstream")
+	}))
+	defer upstream.Close()
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: upstream.Certificate().Raw})
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	snd := New(st, capture.New(st))
+	if err := snd.SetUpstreamProxyCA(caPEM); err != nil {
+		t.Fatalf("SetUpstreamProxyCA: %v", err)
+	}
+	if err := snd.SetUpstreamProxy(upstream.URL); err != nil {
+		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+
+	flow, err := snd.Send(Request{URL: "http://target.example/secure-proxy", Flags: store.FlagRepeater})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if flow.Status != http.StatusOK {
+		t.Fatalf("flow status=%d error=%q", flow.Status, flow.Error)
+	}
+	select {
+	case got := <-seen:
+		if got != "http://target.example/secure-proxy" {
+			t.Fatalf("HTTPS upstream saw URL=%q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Repeater request bypassed configured HTTPS proxy")
+	}
+}
+
+func newSenderSOCKS5Relay(t *testing.T) (string, <-chan string) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen SOCKS fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	destinations := make(chan string, 2)
+	go func() {
+		for {
+			client, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go relaySenderSOCKS5(client, destinations)
+		}
+	}()
+	return ln.Addr().String(), destinations
+}
+
+func relaySenderSOCKS5(client net.Conn, destinations chan<- string) {
+	defer client.Close()
+	_ = client.SetDeadline(time.Now().Add(2 * time.Second))
+	greeting := make([]byte, 3)
+	if _, err := io.ReadFull(client, greeting); err != nil || !bytes.Equal(greeting, []byte{5, 1, 0}) {
+		return
+	}
+	if _, err := client.Write([]byte{5, 0}); err != nil {
+		return
+	}
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(client, header); err != nil || header[0] != 5 || header[1] != 1 || header[3] != 3 {
+		return
+	}
+	var size [1]byte
+	if _, err := io.ReadFull(client, size[:]); err != nil {
+		return
+	}
+	host := make([]byte, int(size[0]))
+	var portBytes [2]byte
+	if _, err := io.ReadFull(client, host); err != nil {
+		return
+	}
+	if _, err := io.ReadFull(client, portBytes[:]); err != nil {
+		return
+	}
+	destination := net.JoinHostPort(string(host), strconv.Itoa(int(binary.BigEndian.Uint16(portBytes[:]))))
+	destinations <- destination
+	origin, err := net.Dial("tcp", destination)
+	if err != nil {
+		_, _ = client.Write([]byte{5, 5, 0, 1, 0, 0, 0, 0, 0, 0})
+		return
+	}
+	defer origin.Close()
+	if _, err := client.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+		return
+	}
+	_ = client.SetDeadline(time.Time{})
+	go io.Copy(origin, client)
+	_, _ = io.Copy(client, origin)
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

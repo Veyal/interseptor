@@ -277,12 +277,17 @@ func run() error {
 	hub.Upstream = prx.SetUpstreamProxy
 	hub.SetUpstreamProxyCA = prx.SetUpstreamProxyCA
 	if v, ok, _ := st.GetSetting("upstream.proxyCA"); ok {
-		if err := prx.SetUpstreamProxyCA([]byte(strings.TrimSpace(v))); err != nil {
+		value := []byte(strings.TrimSpace(v))
+		if err := prx.SetUpstreamProxyCA(value); err != nil {
 			log.Printf("upstream proxy CA (saved) ignored: %v", err)
+		} else if err := hub.ConfigureSenderUpstreamProxyCA(value); err != nil {
+			log.Printf("sender upstream proxy CA (saved) ignored: %v", err)
 		}
 	}
 	if v, ok, _ := st.GetSetting("upstream.proxy"); ok && v != "" {
-		_ = prx.SetUpstreamProxy(v)
+		if err := prx.SetUpstreamProxy(v); err == nil {
+			_ = hub.ConfigureSenderUpstreamProxy(v)
+		}
 	}
 	// Capture policy: persist all traffic, or only in-scope (saves DB space).
 	hub.SetCaptureScopeOnly = prx.SetCaptureScopeOnly

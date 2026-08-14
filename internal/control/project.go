@@ -105,6 +105,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.st.CreateScopeRule(&bundle.Scope[i])
 	}
 	upCA, hasUpCA := bundle.Settings["upstream.proxyCA"]
+	previousUp, _, _ := h.st.GetSetting("upstream.proxy")
 	if hasUpCA {
 		upCA = strings.TrimSpace(upCA)
 		previousCA, _, err := h.st.GetSetting("upstream.proxyCA")
@@ -118,8 +119,18 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if err := h.snd.SetUpstreamProxyCA([]byte(upCA)); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" && h.Upstream != nil {
+			if err := h.snd.SetUpstreamProxy(up); err != nil {
+				httpErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			if err := h.Upstream(up); err != nil {
+				_ = h.snd.SetUpstreamProxy(previousUp)
+				_ = h.snd.SetUpstreamProxyCA([]byte(previousCA))
 				if h.SetUpstreamProxyCA != nil {
 					_ = h.SetUpstreamProxyCA([]byte(previousCA))
 				}
@@ -128,6 +139,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err := h.setSetting("upstream.proxyCA", upCA); err != nil {
+			_ = h.snd.SetUpstreamProxyCA([]byte(previousCA))
 			if h.SetUpstreamProxyCA != nil {
 				_ = h.SetUpstreamProxyCA([]byte(previousCA))
 			}
@@ -136,8 +148,13 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if up, ok := bundle.Settings["upstream.proxy"]; ok && up != "" {
+		if err := h.snd.SetUpstreamProxy(up); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if !hasUpCA && h.Upstream != nil {
 			if err := h.Upstream(up); err != nil {
+				_ = h.snd.SetUpstreamProxy(previousUp)
 				httpErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
