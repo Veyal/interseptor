@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-14
+
 ### Changed
 - **Origin TLS verification is configurable and defaults off for compatibility.** The policy applies only to origin connections, preserves exact and wildcard host exceptions, and keeps HTTPS upstream-proxy certificate verification strict.
 - **Settings UI guidance.** Documented the layout rule for persistent settings safety alerts.
