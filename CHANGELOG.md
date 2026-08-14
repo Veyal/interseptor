@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Origin TLS verification is configurable and defaults off for compatibility.** The policy applies only to origin connections, preserves exact and wildcard host exceptions, and keeps HTTPS upstream-proxy certificate verification strict.
 - **Settings UI guidance.** Documented the layout rule for persistent settings safety alerts.
+- **Findings workspace.** Reworked attached-flow actions into a stable evidence toolbar, made Inspect and Send to Repeater explicit, hid edit-only controls in read mode, improved narrow-window layouts, surfaced technical context, and added an in-product pentester writing guide.
+- **Documentation site.** Rebuilt the responsive shell to contain code, tables, links, navigation, and search at narrow widths; search now indexes section content; navigation now exposes the complete operator/reference set.
+- **Documentation coverage.** Added full guides for proxy/TLS/networking, finding writing and reporting, CLI usage, projects/data retention, mobile testing, and troubleshooting, including the non-loopback `interseptor` Basic-auth prompt.
+
+### Fixed
+- **Findings → Repeater.** Flow metadata is loaded before endpoint-tab selection and navigation, preventing ID-only finding actions from collapsing into an `undefined` Repeater tab or leaving the finding before a failed load.
+- **Documentation search publication.** GitHub Pages now includes the generated JSON index, validates that asset after the Jekyll build, and fetches it from its actual published path.
 ## [1.7.17] - 2026-08-13
 
 ### Fixed

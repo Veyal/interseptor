@@ -163,6 +163,7 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	tools := readUIAsset(t, "js/tools.js")
+	css := readUIAsset(t, "app.css")
 	requireUIContains(t, findings,
 		`import { sendToRepeater } from './tools.js';`,
 		`find-send-repeater`,
@@ -170,14 +171,31 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 		`sendToRepeater({ id });`,
 		`!block.missing`,
 		`find-report-flow`,
+		`find-evidence-actions`,
+		`wireSendToRepeaterButtons`,
 	)
 	requireUIContains(t, tools,
 		`sendToRepeater`,
 		`'/api/flows/'`,
 		`raw?side=req`,
+		`repFlowEndpoint(d)`,
 		`method=d.method`,
 		`headersToText(d.reqHeaders)`,
 		`sourceFlowId=f.id`,
+	)
+	// Resolve the flow before choosing a Repeater tab. Findings intentionally
+	// pass only {id}; using the partial object makes every action target an
+	// "undefined" endpoint tab. Do not navigate away until both reads succeed.
+	loadFlow := strings.Index(tools, "const d=await api('/api/flows/'+f.id)")
+	chooseTab := strings.Index(tools, "repFlowEndpoint(d)")
+	navigate := strings.Index(tools, `document.querySelector('.tab[data-tab="repeater"]').click()`)
+	if loadFlow < 0 || chooseTab < loadFlow || navigate < chooseTab {
+		t.Error("Send to Repeater must load metadata, select the real endpoint tab, then navigate")
+	}
+	requireUIContains(t, css,
+		`[hidden]{display:none!important}`,
+		`.find-evidence-actions`,
+		`.find-report-stepbody`,
 	)
 	if strings.Contains(findings, "Copy URL") || strings.Contains(findings, "Copy link") {
 		t.Error("finding flow actions retain copy controls")
@@ -185,6 +203,32 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	if strings.Contains(findings, "fetch('/api/flows") || strings.Contains(findings, "api('/api/flows/'+id+'/raw") {
 		t.Error("finding flow action reconstructs request instead of using Repeater helper")
 	}
+}
+
+func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	findings := executableJS(readUIAsset(t, "js/findings.js"))
+	css := readUIAsset(t, "app.css")
+	requireUIContains(t, index,
+		`id="findGuide"`,
+		`id="findGuideModal"`,
+		`Technical finding template`,
+		`Reproduction`,
+		`Evidence`,
+		`Remediation`,
+	)
+	requireUIContains(t, findings,
+		`findGuideModal`,
+		`findGuideClose`,
+	)
+	requireUIContains(t, css,
+		`@media (max-width:900px)`,
+		`.find-view{flex-direction:column}`,
+		`.find-view .scan-list{width:100%`,
+		`@media (max-width:720px)`,
+		`#appRow{flex-direction:column}`,
+		`#tabs{width:100%`,
+	)
 }
 
 func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *testing.T) {

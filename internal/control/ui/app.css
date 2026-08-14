@@ -76,6 +76,7 @@
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 html,body{height:100%}
 /* Font roles: the interface is proportional (--ui), and monospace is reserved for
    the things that are actually machine data — raw HTTP, payloads, paths, code.
@@ -805,6 +806,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-report-stepbody{min-width:0;font-size:var(--fs-lg);line-height:1.5}
 .find-report-flow{display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);cursor:pointer;font:inherit;color:inherit}
 .find-report-flow:hover{border-color:var(--accent);background:var(--sel)}
+.find-evidence-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:6px;flex-wrap:wrap}
+.find-evidence-actions .find-open-flow{background:transparent;box-shadow:none}
+.find-evidence-actions .find-send-repeater{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line2))}
 .find-report-note{font-size:var(--fs-md);margin-bottom:6px;color:var(--fg)}
 .find-report-flow .find-poc-req{font-family:var(--mono);font-size:var(--fs-sm)}
 .find-row-empty{opacity:.75}
@@ -885,6 +889,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-text-edit{width:100%;resize:none;overflow:hidden;background:transparent;color:var(--fg);font-size:var(--fs-lg);line-height:1.65;padding:0;border:none;min-height:1.65em;font-family:inherit;display:block;field-sizing:content}
 .find-doc-text-empty .find-text-edit::placeholder{font-style:italic;color:var(--fg3)}
 .find-doc-flow{margin:14px 0}
+.find-evidence-card{min-width:0}
 .find-doc-image{margin:14px 0}
 .find-doc-figure{margin:0}
 .find-doc-img{display:block;max-width:100%;max-height:420px;object-fit:contain;background:var(--bg3);cursor:zoom-in}
@@ -1066,14 +1071,26 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #bar>.spacer{min-width:0}
   #bar>.row{min-width:0;overflow:hidden}
   #bar>.row .kv,#bar>.kv-dim,#bar>.sse-status{display:none}
-  #tabs{width:132px;padding-left:4px;padding-right:4px}
-  #main{min-width:0;overflow:hidden}
+  #appRow{flex-direction:column}
+  #tabs{width:100%;height:44px;min-height:44px;flex-direction:row;align-items:center;gap:3px;padding:4px 6px;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line2);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+  .nav-rail-group{display:contents}
+  .nav-rail-group-label,.nav-rail-foot{display:none}
+  .tab{width:auto;min-height:34px;padding:6px 10px;flex:none}
+  #main{width:100%;min-width:0;overflow:hidden}
   .panel{min-width:0;overflow:hidden}
   #panel-proxy.active #inspect{height:38%;flex-direction:column}
   #panel-proxy.active #inspect .pane{flex:1;min-height:110px}
   .icpt-work{flex-direction:column}
   .icpt-queue{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .sc-grid{grid-template-columns:repeat(2,1fr)!important}
+  .find-guide-body{grid-template-columns:1fr}
+  .find-guide-check{grid-column:1}
+  .find-detail{padding:12px}
+  .find-article{padding:16px}
+  .find-title-text{font-size:var(--fs-xl)}
+  .find-header-top{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center}
+  .find-header-top .find-title-text{grid-column:1/-1;grid-row:2;margin-top:4px}
+  .find-header-top>.spacer{display:none}
 }
 
 /* CA trust how-to (Settings → TLS / CA) */
@@ -1177,6 +1194,13 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .find-flow-pick-search-input{width:100%;text-align:left}
 .find-flow-pick-list{flex:1;min-height:120px}
 .find-flow-pick-foot{gap:8px}
+.find-guide-dialog{width:min(760px,94vw);max-height:88vh}
+.find-guide-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;overflow:auto}
+.find-guide-body section{display:flex;gap:10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg1)}
+.find-guide-body h3{font-size:var(--fs-sm);margin-bottom:4px;color:var(--fg)}
+.find-guide-body p{font-size:var(--fs-sm);line-height:1.55;color:var(--fg2)}
+.find-guide-n{display:flex;align-items:center;justify-content:center;width:24px;height:24px;flex:none;border-radius:50%;background:var(--accentDim);color:var(--accent);font-weight:800;font-size:var(--fs-xs)}
+.find-guide-check{grid-column:1/-1;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accentDim);font-size:var(--fs-sm);line-height:1.55}
 
 .ai-turn{margin:0 0 14px;padding:10px 12px;border-radius:var(--r-lg);border:1px solid var(--line)}
 .ai-turn-user{background:var(--bg3);border-color:var(--line2)}
@@ -1217,6 +1241,9 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 @media (max-width:900px){
   .toolbar{padding-left:10px;padding-right:10px}
   .findings-toolbar{align-items:flex-start;flex-wrap:wrap}
-  .findings-toolbar-actions{flex-wrap:wrap}
-  .findings-toolbar .find-groupby{width:100%;padding-left:160px}
+  .findings-toolbar-actions{flex:1 1 100%;width:100%;flex-wrap:wrap}
+  .findings-toolbar .find-groupby{width:100%;padding-left:0}
+  .find-view{flex-direction:column}
+  .find-view .scan-list{width:100%;height:auto;max-height:210px;flex:none;border-right:none;border-bottom:1px solid var(--line2)}
+  .find-view .find-detail{min-height:0}
 }

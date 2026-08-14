@@ -498,7 +498,7 @@ func TestUIResponsiveShellConstrainsNarrowViewport(t *testing.T) {
 	if !strings.Contains(css, "@media (max-width:720px){") {
 		t.Fatal("narrow viewport media rule not found")
 	}
-	for _, contract := range []string{"#bar{min-width:0", "#tabs{width:132px", "#main{min-width:0", ".panel{min-width:0"} {
+	for _, contract := range []string{"#bar{min-width:0", "#appRow{flex-direction:column}", "#tabs{width:100%", "#main{width:100%;min-width:0", ".panel{min-width:0"} {
 		if !strings.Contains(css, contract) {
 			t.Errorf("narrow viewport rule missing %q", contract)
 		}

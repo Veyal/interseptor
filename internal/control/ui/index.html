@@ -415,6 +415,7 @@ Content-Type: application/json
       <div class="findings-toolbar-title"><span class="findings-eyebrow">REPORT</span><strong>Findings</strong><span id="findCount" class="count"></span></div>
       <div class="findings-toolbar-actions">
         <button class="btn btn-primary" id="findNew">＋ New finding</button>
+        <button class="btn" id="findGuide" title="How to write a clear, reproducible technical finding">Writing guide</button>
 
         <span class="toolbar-divider"></span>
         <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
@@ -1319,6 +1320,23 @@ Content-Type: application/json
       </div>
       <div class="micro-label">RESULTS</div>
       <div id="authzResults"><div class="hint">Run to compare access across roles.</div></div>
+    </div>
+  </div>
+</div>
+<div id="findGuideModal" class="modal-overlay" style="display:none">
+  <div role="dialog" aria-modal="true" aria-labelledby="findGuideTitle" class="modal-shell find-guide-dialog">
+    <div class="modal-shell-head">
+      <div><div id="findGuideTitle" class="modal-shell-title">Technical finding template</div><div class="hint">Write for fast triage, independent reproduction, and retesting.</div></div>
+      <button class="btn" id="findGuideClose" aria-label="Close finding writing guide">✕</button>
+    </div>
+    <div class="modal-shell-body find-guide-body">
+      <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
+      <section><span class="find-guide-n">2</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
+      <section><span class="find-guide-n">3</span><div><h3>Technical context</h3><p>Record the exact target, environment, CWE, CVSS vector/score, scope tags, and why the behavior violates a security boundary.</p></div></section>
+      <section><span class="find-guide-n">4</span><div><h3>Reproduction</h3><p>Use a numbered Before → Action → After chain. Include prerequisites, exact parameter changes, identities or roles, and the security-relevant response.</p></div></section>
+      <section><span class="find-guide-n">5</span><div><h3>Evidence</h3><p>Attach the smallest useful request/response flows and screenshots. Annotate what proves the issue; redact secrets and unrelated personal data.</p></div></section>
+      <section><span class="find-guide-n">6</span><div><h3>Remediation</h3><p>Recommend the failed control, not only input filtering. Explain how to retest and include a negative authorization case when relevant.</p></div></section>
+      <div class="find-guide-check"><strong>Ready-to-report check</strong><span>A pentester unfamiliar with the target can reproduce it; a developer can identify the failed control; a retester knows the expected secure result.</span></div>
     </div>
   </div>
 </div>

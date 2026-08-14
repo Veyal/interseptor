@@ -1,43 +1,293 @@
 [
   {
     "title": "API and MCP",
-    "text": "current",
+    "text": "API \u0026 MCP Interseptor exposes deterministic security operations over two machine-facing surfaces, so a human and an external agent can drive the same engine at the same time. Interseptor doesn't provide a model, provider integration, or autonomous decision loop. The external agent owns reasoning and sequencing.",
     "url": "api-and-mcp/"
   },
   {
+    "title": "Connect an external agent with MCP",
+    "text": "Interseptor ships a Model Context Protocol server so an AI assistant can operate the proxy with the same capabilities as the UI. Run the app, then connect your MCP client one of two ways: stdio (Claude Desktop / Claude Code) — point your client at the mcp subcommand: Streamable-HTTP (hosted/remote agents) — POST JSON-RPC to http://127.0.0.1:9966/mcp (stateless; no subprocess needed). Both expose the same tool registry as the control plane — reading flows (list flows, get flow, analyze flow, flow as curl), replaying/fuzzing (send request, start intruder, ws send), scanning (run scanner, scan report), intercept/rules/scope control, and set session — with bounded results so large bodies don't blow the agent's context. Each tool's JSON Schema documents its arguments (types, required fields, accepted variants) inline, so an agent can read a tool's definition instead of guessing. The Settings → API \u0026 MCP section shows a copy-paste config and the live tool list. For a task-oriented walkthrough (recon → auth → scan → record findings), see docs/product/mcp-cookbook.md.",
+    "url": "api-and-mcp/#connect-an-external-agent-with-mcp"
+  },
+  {
+    "title": "Control API",
+    "text": "The full REST surface is documented at runtime: GET /api/reference (or the Settings → API \u0026 MCP section) — including the request/response body shape for every mutating route, not just its method and path. Live updates stream over Server-Sent Events at GET /api/events. Highlights: /api/flows, /api/repeater/send, /api/intruder/start, /api/scanner/run, /api/scope, /api/session, /api/ws/send, /api/export/{har,project}, /api/settings.",
+    "url": "api-and-mcp/#control-api"
+  },
+  {
+    "title": "History search API",
+    "text": "GET /api/flows supports searchScope=anywhere body id and savedSearch= . Anywhere search checks flow metadata, headers, tags, and bodies, with an 8,000-candidate cap and 256 KiB per-body read cap. Responses expose searchNote when a search reaches its scan limit and truncated when the result page exceeds limit. Saved deterministic Starlark searches use these routes. They inspect at most 64 filtered flows, expose at most 64 KiB per body and 8 MiB of body data per request; this remains separate from Anywhere search's 8,000-candidate cap: POST and PUT accept JSON {name, scope, script}. scope normalizes to anywhere, body, or id. The script must define match(flow) and return bool. Saved searches are project-scoped and persist in project settings. Full fields, helpers, limits, and examples live in History search. Auth and trust rules for both surfaces (loopback vs. key-authorized remote access, scoped keys, CSRF handling) are covered in Security model.",
+    "url": "api-and-mcp/#history-search-api"
+  },
+  {
     "title": "Architecture",
-    "text": "current",
+    "text": "Architecture",
     "url": "architecture/"
   },
   {
+    "title": "Package layout",
+    "text": "One Go binary, two localhost listeners. Each internal/ package has a single responsibility and is independently tested. Package Responsibility --- --- internal/store SQLite metadata (flows, rules, settings, issues, ws frames, scope, views, keys) + content-addressed body files internal/capture Stream bodies to the store via io.TeeReader (never buffered whole) internal/tlsca Local CA: load/generate, mint + cache per-host leaf certificates internal/intercept Hold queue (forward/edit/drop) for requests and responses + match-\u0026-replace internal/proxy Forward proxy, CONNECT + TLS MITM, WebSocket frame relay, flow capture, upstream proxy internal/scope Target-scope include/exclude matcher (host wildcards + path prefixes) internal/sender One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater \u0026 Intruder internal/intruder Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) internal/scanner Passive security checks over captured flows internal/activescan Deterministic active-scan engine; external agents can invoke it through MCP or REST internal/activescript Runs user-authored active scanner chec",
+    "url": "architecture/#package-layout"
+  },
+  {
+    "title": "Security model",
+    "text": "The control plane has two trust modes (internal/control/guard.go): - Loopback trust (default, unchanged). Both listeners bind loopback by default. A request that arrives on a loopback connection with a loopback Host and no API key is allowed — this is how the embedded UI, curl, and the in-process MCP tool bus reach it. The control plane additionally rejects any request with a non-loopback Host header or a non-loopback Origin, so a web page you happen to visit can't quietly drive the API (CSRF) or read your captured traffic via DNS-rebinding. Rebinding the proxy or control UI to a non-loopback address (e.g. 0.0.0.0 for LAN device capture) is allowed from Settings; set INTERSEPTOR ALLOW EXTERNAL BIND=0 to refuse non-loopback binds. - Non-loopback proxy authentication. A proxy listener bound to a non-loopback interface returns 407 Proxy Authentication Required with Basic realm interseptor until the client supplies any username and a valid full-scope API key as the password. Read-only keys cannot proxy because forwarding and capture mutate state. The listener strips Proxy-Authorization before forwarding. Loopback listeners do not require this credential. See Proxy authentication. - K",
+    "url": "architecture/#security-model"
+  },
+  {
+    "title": "Web UI",
+    "text": "The web UI lives in internal/control/ui/ (embedded via //go:embed): an index.html shell, app.css, and native ES modules under js/ — core.js (shared foundation) plus one module per feature, wired together by app.js. No build step or bundler; the binary stays single and static. Design notes and per-slice specs/plans live under docs/.",
+    "url": "architecture/#web-ui"
+  },
+  {
     "title": "Benchmarks",
-    "text": "reference",
+    "text": "Benchmarks The product thesis is \"lightweight and instant.\" This page records how we measure that and the current numbers. Methodology is reproducible; comparative numbers vs Burp/ZAP are a follow-up that needs those tools installed (the order-of-magnitude gap is the point — see below). Measured 2026-06-22 on an Apple-silicon Mac, Go 1.25, CGO ENABLED=0 static binary.",
     "url": "benchmarks/"
   },
   {
+    "title": "Follow-up (tracked in the v2 roadmap)",
+    "text": "- Comparative runs with Burp Suite Pro and ZAP installed (same machine, same traffic): idle RSS, cold start, and large-history (10k+ flow) scroll responsiveness, published as a reproducible script. - A sustained-throughput proxy benchmark (replay N-thousand requests; assert a RAM ceiling and a throughput floor) wired into CI as a regression guard.",
+    "url": "benchmarks/#follow-up-tracked-in-the-v2-roadmap"
+  },
+  {
+    "title": "Headline numbers",
+    "text": "Metric Interseptor Reference (widely reported) --- --- --- Idle RSS ~20 MB Burp: ~3,500 MB idle; enterprise installs \"16–17 GB RAM\" Cold start → serving UI ~1 s (first run also generates the CA) JVM tools: several seconds + JVM warmup Binary size ~16.7 MB, one static file, no runtime Burp/ZAP: JVM + install; HTTP Toolkit: Electron Capture throughput ~444 MB/s, 1.5 KB + 18 allocs/op — (we stream; we don't buffer bodies) The idle-RSS figure is the differentiator: Interseptor uses roughly 1/100th of Burp's idle memory because it's a compiled native binary that streams bodies to disk instead of holding full HTTP history (with bodies) in a JVM heap.",
+    "url": "benchmarks/#headline-numbers"
+  },
+  {
+    "title": "How to reproduce",
+    "text": "Capture hot path (proves bodies stream, not buffer — note the tiny B/op): Cold start + idle RSS:",
+    "url": "benchmarks/#how-to-reproduce"
+  },
+  {
+    "title": "What this validates",
+    "text": "- Streaming capture: BenchmarkTeeBody allocates ~1.5 KB regardless of body size — RAM does not grow with traffic, which is exactly the property Burp lacks. - Native start: sub-second to a usable UI, no JVM warmup.",
+    "url": "benchmarks/#what-this-validates"
+  },
+  {
+    "title": "CLI reference",
+    "text": "CLI reference",
+    "url": "cli-reference/"
+  },
+  {
+    "title": "Check authoring",
+    "text": "Passive checks live under the data directory's checks/; --active selects active-checks/. Validation compiles checks without starting the server. Test consumes the documented flow JSON shape from a file or standard input.",
+    "url": "cli-reference/#check-authoring"
+  },
+  {
+    "title": "Launcher",
+    "text": "interseptor launcher --addr 127.0.0.1:9965 opens the multi-project dashboard. Each started project runs in its own process with allocated proxy and control ports. Closing the launcher does not stop those processes.",
+    "url": "cli-reference/#launcher"
+  },
+  {
+    "title": "Main server",
+    "text": "Flag or environment variable Meaning --- --- --project / INTERSEPTOR PROJECT Open a named project or an explicit project folder. --open / INTERSEPTOR OPEN BROWSER Open the control UI after startup. INTERSEPTOR NO BROWSER Disable browser opening even when another option enables it. --control-port Bind the control UI/API to that port on loopback. --control-addr / INTERSEPTOR CONTROL ADDR Set the complete control address; overrides --control-port. --proxy-port Bind one loopback proxy listener to that port. INTERSEPTOR PROXY ADDR Override proxy listener address configuration for this launch. --data-dir / INTERSEPTOR DATA DIR Set the global data directory. INTERSEPTOR ALLOW EXTERNAL BIND=0 Refuse non-loopback proxy, control, launcher, and related binds. INTERSEPTOR NO UPDATE CHECK Disable the startup update check. Underscore aliases such as --control port are accepted for compatibility, but hyphenated names are canonical.",
+    "url": "cli-reference/#main-server"
+  },
+  {
+    "title": "MCP",
+    "text": "interseptor mcp runs the MCP server on stdio and connects to the control URL in INTERSEPTOR CONTROL URL (default http://127.0.0.1:9966). The running application also exposes Streamable HTTP at /mcp. See API and MCP.",
+    "url": "cli-reference/#mcp"
+  },
+  {
+    "title": "Rule packs",
+    "text": "Use Rule packs for manifest, signing, and installation behavior.",
+    "url": "cli-reference/#rule-packs"
+  },
+  {
+    "title": "Stop and version",
+    "text": "Stop first requests graceful shutdown, then force-kills processes that exceed the timeout. Use --force only when preserving in-flight work is not important.",
+    "url": "cli-reference/#stop-and-version"
+  },
+  {
+    "title": "Update",
+    "text": "Update prefers a release binary and verifies published checksums when present; otherwise it falls back to go install.",
+    "url": "cli-reference/#update"
+  },
+  {
+    "title": "Vault",
+    "text": "INTERSEPTOR VAULT DIR sets the archive directory. See Project vault before exposing it through Tailscale Serve or another network layer.",
+    "url": "cli-reference/#vault"
+  },
+  {
     "title": "Content discovery",
-    "text": "current",
+    "text": "Content discovery (guided) Interseptor intentionally has no built-in forced-browse engine. The old Discover feature polluted Proxy History and AI agents over-relied on it. Recon still belongs here — via external tools pointed through the proxy, then triage in History / Map.",
     "url": "content-discovery/"
   },
   {
+    "title": "Example commands",
+    "text": "",
+    "url": "content-discovery/#example-commands"
+  },
+  {
+    "title": "Future (engine return)",
+    "text": "A scope-aware, soft-404-calibrated engine with strict History policy may return later. Until then, guided external tools are the supported path (issue 22).",
+    "url": "content-discovery/#future-engine-return"
+  },
+  {
+    "title": "History policy",
+    "text": "- Prefer tools that rate-limit and respect scope. - Map’s Hiding 403/404-only filters dead forced-browse paths from the endpoint view (toggle off to see everything: ?hideNoise=0 on /api/endpoints). - Legacy FlagDiscovery / DSC badges remain for old projects; new runs are ordinary proxied flows.",
+    "url": "content-discovery/#history-policy"
+  },
+  {
+    "title": "MCP",
+    "text": "RECON guidance tells agents to run a real forced-browser through this proxy, then list flows / host stats — there is no start discovery tool.",
+    "url": "content-discovery/#mcp"
+  },
+  {
+    "title": "Operator flow",
+    "text": "1. Set scope (include the target host). 2. Point the browser or tool at the proxy (127.0.0.1:8080 by default). 3. Run feroxbuster / gobuster / ffuf (copy-paste from Map → Discovery ▸). 4. Triage in Proxy History and Map (403/404-only noise hidden by default; soft-404 clusters).",
+    "url": "content-discovery/#operator-flow"
+  },
+  {
+    "title": "Soft-404 policy (Map)",
+    "text": "Map clusters endpoints whose latest response body matches a not-found signature even when status is 200 (soft-404), separate from byte-identical response clusters. Nothing is auto-deleted — collapse only.",
+    "url": "content-discovery/#soft-404-policy-map"
+  },
+  {
     "title": "Custom active checks",
-    "text": "current",
+    "text": "Writing custom ACTIVE checks The passive twin of this guide is docs/custom-checks.md — read that first if you haven't; this page only covers what's different about active checks. Interseptor's active scanner is extensible too: drop a check written in Starlark into your active-checks folder and it runs alongside the built-in active probes when you arm \u0026 run an active scan, sending real mutated requests to confirm vulnerabilities. This page is the standard every active check is written against. - Where checks live: ~/.interseptor/active-checks/.star (global — shared across all projects, like the CA). The folder is created on first save; you can also create it by hand. - When they run: only when you arm \u0026 run an active scan (the Active scan dialog, or POST /api/activescan/start). They never run passively. Files are re-read each run, so editing a check takes effect immediately — no restart. - Why it's safe to share checks: Starlark is deterministic and sandboxed — a check cannot read files, open sockets, read the clock, or import anything. The only way a check can talk to the network is the probe(payload) callback we hand it, which goes through the engine (recorded, session-aut",
     "url": "custom-active-checks/"
   },
   {
+    "title": "Authoring in the UI",
+    "text": "Open Scanner → ✎ Custom checks. Under CUSTOM · ACTIVE ⚡ you can create, edit, delete, and Test active checks. Test compiles your source and runs it against the first injectable parameter of a captured flow (your latest in-scope one, or a flow you pick), sending a handful of real probes so you can iterate before saving. (The AI Describe tab is passive-only and is hidden for active checks.)",
+    "url": "custom-active-checks/#authoring-in-the-ui"
+  },
+  {
+    "title": "Builtins",
+    "text": "Active checks get the same standard library as passive checks (it's shared), plus probe: Builtin Description --- --- probe(payload) Send one mutated request at point. Real traffic — recorded in History, session-auth applied, counts against the run's request budget. finding(severity, title, detail=\"\", evidence=\"\", fix=\"\") construct one finding. severity ∈ high / medium / low / info (critical → high; anything else → info). re search(pattern, text) first regex match (RE2 syntax) as a string, or None. json decode(text) / json encode(value) JSON parse / serialize. b64decode(text) / b64encode(text) base64 decode/encode. url decode(text) / url encode(text) percent-encoding decode/encode. hash(algo, text) / hmac(algo, key, message) hex digest / HMAC; algo ∈ sha256, sha1, sha512, md5.",
+    "url": "custom-active-checks/#builtins"
+  },
+  {
+    "title": "Example",
+    "text": "More ready-to-copy examples ship in examples/active-checks/.",
+    "url": "custom-active-checks/#example"
+  },
+  {
+    "title": "Limits \u0026 safety",
+    "text": "- Sandboxed: no file/network/clock access, no load(), no imports. The only network egress is the probe() callback, which is mediated by the engine. - Budgeted: every probe() call counts against the run's request budget, so a runaway script can't infinite-loop the target. (The in-UI Test path is capped at ~6 probes.) - Step-bounded: each check() call is also capped at a few million execution steps, so a pure compute loop aborts that one check instead of hanging the scan. - Isolated failures: a check that fails to compile or errors at runtime is logged and skipped — it never aborts the scan or the other checks. - Scope-enforced: probes are sent through the same sender as the built-in probes, so they obey your target scope, the circuit breaker, and the \"never attack our own listeners\" guard. - One finding per point: a custom active check currently surfaces its highest-severity finding per injection point (the engine's Hit model is one-per-point). That covers the vast majority of real checks (confirm-one-vuln); if you later want a single check to emit multiple distinct findings per point, that's a small engine extension.",
+    "url": "custom-active-checks/#limits--safety"
+  },
+  {
+    "title": "The contract",
+    "text": "An active check is a .star file that defines one function: The file name (without .star) is the check's id. check is called once per injection point of every in-scope target in the scan. Return a list of finding(...); return [] (or None) when there's nothing to report.",
+    "url": "custom-active-checks/#the-contract"
+  },
+  {
+    "title": "The point object",
+    "text": "Field Type Notes --- --- --- point.kind str query, form, json, path, cookie, header, or body (body is the whole XML body, for XXE-style checks). point.name str The parameter/cookie/header name (e.g. id). For path points, the segment index; for body points, xml. point.value str The parameter's original value.",
+    "url": "custom-active-checks/#the-point-object"
+  },
+  {
+    "title": "The response object (baseline and each probe result)",
+    "text": "Field Type Notes --- --- --- r.status int HTTP status (0 if the request never completed). r.body str response body (bounded). r.headers dict canonicalized header name → first value. r.duration ms int round-trip time in milliseconds. r.flow id int the History flow id of this request (probe results only — useful for evidence). Method: Call Returns --- --- r.header(name) header value (case-insensitive), or \"\" if absent. r.header all(name) all values for a header as a list (e.g. multiple Set-Cookie); [] if absent.",
+    "url": "custom-active-checks/#the-response-object-baseline-and-each-probe-result"
+  },
+  {
+    "title": "The three arguments",
+    "text": "Arg What it is --- --- point The injection point being tested (a query/form/json parameter, a path segment, a cookie, a request header, or the whole XML body). baseline The un-mutated response — what a normal request returns. Use it to suppress false positives (e.g. \"the marker was already in the body\"). probe A callback: probe(payload) sends one mutated request — with payload injected at point — and returns its response.",
+    "url": "custom-active-checks/#the-three-arguments"
+  },
+  {
     "title": "Custom checks",
-    "text": "current",
+    "text": "Writing custom scanner checks The control UI embeds internal/control/checks reference.md for the in-app Docs tab — keep both files in sync when editing this guide. Interseptor's passive scanner is extensible: drop a check written in Starlark (a small, Python-like language) into your checks folder and it runs on every scan, right alongside the built-in checks. This page is the standard every check is written against. - Where checks live: ~/.interseptor/checks/.star (global — shared across all projects, like the CA). - When they run: every time you Run scan (or POST /api/scanner/run). Files are re-read each run, so editing a check takes effect immediately — no restart. - Why Starlark: it's deterministic and sandboxed — a check cannot read files, open network connections, read the clock, or import anything. That makes checks safe to download and share.",
     "url": "custom-checks/"
   },
   {
+    "title": "Builtins",
+    "text": "Builtin Description --- --- finding(severity, title, detail=\"\", evidence=\"\", fix=\"\") construct one finding. severity ∈ high / medium / low / info (critical → high; anything else → info). re search(pattern, text) first regex match (RE2 syntax) as a string, or None. json decode(text) parse JSON into dicts/lists/strings/ints/floats/bools/None. json encode(value) serialize a Starlark value to a compact JSON string. b64decode(text) / b64encode(text) base64 decode/encode. url decode(text) / url encode(text) percent-encoding decode/encode (query escaping). hash(algo, text) hex digest; algo ∈ sha256, sha1, sha512, md5. hmac(algo, key, message) lowercase-hex HMAC digest; same algorithms as hash.",
+    "url": "custom-checks/#builtins"
+  },
+  {
+    "title": "Example",
+    "text": "More ready-to-copy examples live in examples/checks/.",
+    "url": "custom-checks/#example"
+  },
+  {
+    "title": "Limits \u0026 safety",
+    "text": "- Sandboxed: no file/network/clock access, no load(), no imports. Checks are pure functions of the flow you pass in. - Bounded: each check() call is capped at a few million execution steps, so a runaway loop aborts that one check instead of hanging the scan. - Isolated failures: a check that fails to compile or errors at runtime is logged and skipped — it never aborts the scan or the other checks.",
+    "url": "custom-checks/#limits--safety"
+  },
+  {
+    "title": "See also",
+    "text": "- Writing custom ACTIVE checks — the active twin of this page: send real mutated requests with probe(payload) to confirm a vulnerability (SQLi, XSS, …), gated behind arming an active scan.",
+    "url": "custom-checks/#see-also"
+  },
+  {
+    "title": "The contract",
+    "text": "A check is a .star file that defines one function: The file name (without .star) is the check's id. check is called once per captured in-scope flow. Return a list of finding(...); return [] (or None) when there's nothing to report.",
+    "url": "custom-checks/#the-contract"
+  },
+  {
+    "title": "The flow object",
+    "text": "Field Type Notes --- --- --- flow.method str GET, POST, … flow.scheme str http / https flow.host str hostname flow.port int flow.path str path + query, e.g. /search?q=1 flow.status int response status (0 if the request never completed) flow.mime str response Content-Type flow.req body / flow.res body str bodies (bounded) flow.req headers / flow.res headers dict canonicalized name → first value Methods: Call Returns --- --- flow.req header(name) / flow.res header(name) header value (case-insensitive), or \"\" if absent flow.req header all(name) / flow.res header all(name) all values for a header as a list (use for multi-Set-Cookie, etc.); [] if absent flow.query param(name) query-string value, or \"\"",
+    "url": "custom-checks/#the-flow-object"
+  },
+  {
     "title": "Engagement close-out",
-    "text": "current",
+    "text": "End an engagement — close-out checklist Use this when you are wrapping a pentest / bug-bounty session in Interseptor. The goal is a report-ready project, not just a pile of History rows.",
     "url": "engagement-closeout/"
   },
   {
+    "title": "1. Scope \u0026 capture",
+    "text": "- [ ] Target scope include rules cover every host you tested - [ ] Out-of-scope noise is excluded (or filtered via Views) - [ ] Session / login macro still refreshes auth if you need last-minute PoCs",
+    "url": "engagement-closeout/#1-scope--capture"
+  },
+  {
+    "title": "2. Triage → Findings",
+    "text": "- [ ] Run Scanner (passive) and triage hits worth promoting - [ ] Review scanner and agent evidence, then file findings manually or through MCP — prefer point-first findings (Impact / Why / Target + PoC timeline) - [ ] Tag findings by deliverable scope (cms / website / app / api; use out-of-scope for adjacent evidence you want to keep out of the client pack) - [ ] Attach PoC flows (add finding poc / UI) and screenshots where needed - [ ] Mark uncertain items needs verification with concrete check steps - [ ] Intruder: filter Interesting → → Finding to attach flagged attempts",
+    "url": "engagement-closeout/#2-triage--findings"
+  },
+  {
+    "title": "3. Active work and external orchestration",
+    "text": "- [ ] Review deterministic active-scan results and external-agent activity in History - [ ] Reproduce important candidates with send request or Repeater - [ ] Attach evidence flows and record concrete verification steps - [ ] Confirm Critical/High with a human read of the PoC",
+    "url": "engagement-closeout/#3-active-work-and-external-orchestration"
+  },
+  {
+    "title": "4. Export \u0026 handoff",
+    "text": "- [ ] Export Findings report (Markdown / HTML / JSON) with PoC bodies as needed; enable Group by tag (omits out-of-scope by default) for multi-scope write-ups - [ ] Export full project zip if the client needs a portable archive - [ ] Copy deep links (/ finding-N, / flow-N) into notes / ticket system - [ ] Install any custom checks you want to reuse as a rule pack for next time",
+    "url": "engagement-closeout/#4-export--handoff"
+  },
+  {
+    "title": "5. Hygiene",
+    "text": "- [ ] Retention policy set if the project will sit idle (Settings → Project \u0026 data) - [ ] API keys still valid for remote/Tailscale follow-up - [ ] Clear or archive the project when the engagement is done For agent-driven close-out, see MCP cookbook recipe Close out findings.",
+    "url": "engagement-closeout/#5-hygiene"
+  },
+  {
     "title": "Extensions",
-    "text": "current",
+    "text": "Writing Interseptor extensions Interseptor has a small, stable in-process hook API for extending the tool without forking it. This is Phase 1 of PRD-0005 (issue 25): first-party Go packages register hooks at startup. Later phases add UI panel slots and an untrusted (WASM / Starlark) host; the hook contract described here is the foundation they build on.",
     "url": "extensions/"
+  },
+  {
+    "title": "Enabling it",
+    "text": "The annotator is wired in cmd/interseptor but off by default. Opt in with environment variables: INTERSEPTOR EXT ANNOTATE TAG defaults to annotated. With no INTERSEPTOR EXT ANNOTATE HOSTS set, the extension is never registered.",
+    "url": "extensions/#enabling-it"
+  },
+  {
+    "title": "Roadmap",
+    "text": "- Phase 2 — declared UI panel slots (ES module under ~/.interseptor/extensions/), so an extension can add a tab, not just a hook. - Phase 3 — WASM / Starlark host for untrusted third-party logic. See PRD-0005 for the full plan.",
+    "url": "extensions/#roadmap"
+  },
+  {
+    "title": "The hook API — internal/plugin",
+    "text": "Two lifecycle hooks are available today. Both pass only IDs and small scalars — never store or proxy types — so an extension can never create an import cycle and never stall the proxy hot path.",
+    "url": "extensions/#the-hook-api--internalplugin"
+  },
+  {
+    "title": "The official example — a flow annotator",
+    "text": "internal/plugin/annotator is a complete, tested example extension. It tags every captured flow whose host matches a configured substring — e.g. auto-label everything that touches an internal admin host. It talks to the host through a minimal interface rather than importing the concrete store: store.Store satisfies it. The hook body just spawns a goroutine:",
+    "url": "extensions/#the-official-example--a-flow-annotator"
+  },
+  {
+    "title": "Two rules every hook must follow",
+    "text": "1. Never block. The emitter runs your hook inline, best-effort. By the time OnFlowCaptured fires the proxy has already answered the client, but a slow hook still delays connection reuse — so hand off to a goroutine and return immediately. 2. Never import proxy/control types. Reach the host through a narrow interface you declare yourself (see below). This keeps your extension decoupled and unit-testable, and keeps the dependency graph acyclic. Both emitters snapshot their hook slice under a lock and invoke hooks outside the lock, so registering a hook from inside another hook is safe.",
+    "url": "extensions/#two-rules-every-hook-must-follow"
+  },
+  {
+    "title": "Writing your own",
+    "text": "1. Add a package under internal/plugin/ /. 2. Declare a narrow Store-style interface for exactly the host calls you need. 3. Expose an Enable(...) that registers your hooks via plugin.OnFlowCaptured / plugin.OnScanIssue, guarding against a no-op config so an accidental enable can't misfire. 4. Do real work (DB, network, notifications) in a goroutine. 5. Wire Enable into cmd/interseptor, gated behind an opt-in setting or env var so default behavior is unchanged. 6. Unit-test the logic against a fake store — no proxy needed. See internal/plugin/annotator/annotator test.go. A copy-paste starting point lives in examples/extensions/hello/.",
+    "url": "extensions/#writing-your-own"
   },
   {
     "title": "External agent orchestration",
@@ -170,38 +420,478 @@
     "url": "features/#websockets"
   },
   {
+    "title": "Findings and reporting",
+    "text": "Findings and reporting Findings are curated, durable vulnerability records. Scanner issues are leads; promote only validated issues into Findings, attach the minimum useful evidence, and write enough context for an independent pentester to reproduce the result.",
+    "url": "findings-and-reporting/"
+  },
+  {
+    "title": "Evidence",
+    "text": "Attach only the flows and screenshots needed to establish the claim. Give every flow a proof-oriented annotation, for example “low-privilege identity receives another tenant's record.” A status code alone is rarely sufficient; point to the returned field, authorization difference, OOB interaction, or confirmed state change. Redact session tokens, passwords, API keys, unrelated personal information, and third-party data from screenshots and exported prose. Keep original request/response evidence only inside the protected project when the engagement requires it. Use Inspect request to review an attached flow. Send to Repeater loads the complete captured request into an endpoint-matched Repeater tab; it does not send the request until you press Send.",
+    "url": "findings-and-reporting/#evidence"
+  },
+  {
+    "title": "Export and close-out",
+    "text": "Findings export supports Markdown, HTML, JSON, and PDF, status filters, body inclusion, and grouping by tag. Exported PoC flows can include reconstructed request/response bodies, so handle reports as sensitive engagement material. Review the output rather than treating generation as final editorial approval. Follow the engagement close-out guide for final exports, project archives, credential cleanup, and CA removal.",
+    "url": "findings-and-reporting/#export-and-close-out"
+  },
+  {
+    "title": "Impact",
+    "text": "State what a realistic attacker gains, required privileges or position, the affected data or action, and meaningful scale. Do not merely repeat the payload or HTTP status. Example: “A basic account can download invoices belonging to other organizations, exposing customer names, addresses, and billing history.”",
+    "url": "findings-and-reporting/#impact"
+  },
+  {
+    "title": "Readability checklist",
+    "text": "Before export, confirm that: - a pentester unfamiliar with the target can reproduce the result; - a developer can identify the failed control and affected component; - the evidence proves the stated impact rather than only showing an unusual response; - severity is consistent with prerequisites, scope, and realistic consequence; - examples contain no live secrets or unrelated private data; - a retester knows the expected secure behavior.",
+    "url": "findings-and-reporting/#readability-checklist"
+  },
+  {
+    "title": "Recommended workflow",
+    "text": "1. Capture a clean baseline request and the security-relevant response. 2. Reproduce the behavior in Repeater or the appropriate testing tool. 3. Create a finding from selected History flows, or create a draft in Findings. 4. Fill Impact, Why, Target, classification, and the ordered PoC chain. 5. Attach before/action/after flows and screenshots with short proof annotations. 6. Mark the status accurately, export a draft, and have another operator retest it. The readiness banner is a completeness check, not proof that a vulnerability is real. High and Critical findings require before-and-after evidence because the security boundary must be visible.",
+    "url": "findings-and-reporting/#recommended-workflow"
+  },
+  {
+    "title": "Remediation and retest",
+    "text": "Recommend the control at the failed trust boundary, not only a payload blacklist. Include enough specificity to be actionable, but allow engineering to choose the implementation. Describe the secure expected result and a negative test for retesting. For object authorization, for example: enforce ownership/tenant authorization server-side on every object lookup; retest with two unrelated accounts and confirm the cross-tenant request returns a denial without disclosing whether the object exists.",
+    "url": "findings-and-reporting/#remediation-and-retest"
+  },
+  {
+    "title": "Reproduction",
+    "text": "Write a Before → Action → After chain. Each step should contain one operator action and one observable result: 1. State prerequisites: account role, object ownership, feature flags, and starting state. 2. Attach the baseline flow and annotate the identity and expected access. 3. Describe the exact mutation: parameter, header, body field, method, or sequence change. 4. Attach the exploit flow and identify the response fragment or state change that proves impact. 5. Include a negative/control request when it distinguishes the vulnerability from normal behavior. Use “send request with account id=42” rather than “change the ID.” State whether IDs are examples and avoid copying real customer data into prose.",
+    "url": "findings-and-reporting/#reproduction"
+  },
+  {
+    "title": "Status lifecycle",
+    "text": "Status Use when --- --- open Reproduced and actionable, awaiting remediation or triage. needs verification A scanner or agent produced a credible lead that a human must confirm. verified A human or accepted proof workflow reproduced the vulnerability. false positive The behavior is not vulnerable after investigation. Preserve the rationale. wont fix Accepted risk or out-of-scope remediation decision. Record the decision context. fixed Remediation was retested and the secure expected result was observed. Do not use verified as a synonym for “scanner matched.” Do not delete false positives when their rationale is useful to avoid repeat work.",
+    "url": "findings-and-reporting/#status-lifecycle"
+  },
+  {
+    "title": "Target and classification",
+    "text": "Record the exact environment and affected route or component without embedding live credentials. Add CWE, CVSS score/vector when required by the engagement, and stable scope tags such as api, website, mobile, or a report section name. Tags are also used for filtering and grouped exports.",
+    "url": "findings-and-reporting/#target-and-classification"
+  },
+  {
+    "title": "Technical finding template",
+    "text": "",
+    "url": "findings-and-reporting/#technical-finding-template"
+  },
+  {
+    "title": "Title",
+    "text": "Name the weakness, affected action, and asset. Use a specific outcome: - Good: Broken object authorization exposes another customer's invoice - Weak: IDOR issue Avoid severity, speculation, and duplicate endpoint details in the title.",
+    "url": "findings-and-reporting/#title"
+  },
+  {
+    "title": "Why it is a finding",
+    "text": "Identify the failed security boundary. Tie the observation to authorization, authentication, trust, data validation, state transition, or isolation. This lets engineering distinguish a vulnerability from intended product behavior.",
+    "url": "findings-and-reporting/#why-it-is-a-finding"
+  },
+  {
     "title": "Getting started",
-    "text": "current",
+    "text": "Getting started",
     "url": "getting-started/"
   },
   {
+    "title": "Configuration",
+    "text": "Environment variable Effect --- --- INTERSEPTOR OPEN BROWSER Auto-open the UI on start (same as --open). The default is not to open it. INTERSEPTOR NO BROWSER Hard-disable browser auto-open, overriding --open/INTERSEPTOR OPEN BROWSER. INTERSEPTOR ALLOW EXTERNAL BIND Lock down to loopback-only binds when set to 0/false. External bind (e.g. 0.0.0.0 for LAN capture) is allowed by default — see Security model. INTERSEPTOR CONTROL URL For interseptor mcp: the control API to drive (default http://127.0.0.1:9966). External MCP clients connect through this server; model providers are configured outside Interseptor. INTERSEPTOR CONTROL ADDR Env equivalent of --control-addr: full control UI/API listen address (host:port). INTERSEPTOR PROJECT Env equivalent of --project: open a specific project by name/path. INTERSEPTOR PROXY ADDR Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). INTERSEPTOR NO UPDATE CHECK Disable the background update check Interseptor runs on every startup. GITHUB TOKEN / INTERSEPTOR GITHUB TOKEN / GH TOKEN Raises the GitHub API rate limit used for update checks (first non-empty wins). The proxy bind address is also r",
+    "url": "getting-started/#configuration"
+  },
+  {
+    "title": "From source",
+    "text": "",
+    "url": "getting-started/#from-source"
+  },
+  {
+    "title": "Install",
+    "text": "Interseptor is a single static binary — no cgo, no Node, no runtime dependencies.",
+    "url": "getting-started/#install"
+  },
+  {
+    "title": "Intercepting HTTPS",
+    "text": "1. Point your client at the proxy (127.0.0.1:8080). 2. Download the CA from the Settings tab (or http://127.0.0.1:9966/api/ca.crt) and install/trust it in your OS/browser trust store. 3. HTTPS flows are now decrypted, captured, and editable. Per-host leaf certs are minted on demand and cached.",
+    "url": "getting-started/#intercepting-https"
+  },
+  {
+    "title": "Prebuilt binaries",
+    "text": "Each tagged release attaches static binaries for linux / macOS / windows (amd64 \u0026 arm64) plus a checksums.txt on the Releases page (built by the release workflow when a v tag is pushed) — download, verify the checksum, chmod +x, and run. (go install above is equivalent and always tracks the latest release.)",
+    "url": "getting-started/#prebuilt-binaries"
+  },
+  {
+    "title": "Quick start",
+    "text": "1. Run it. interseptor starts the proxy on 127.0.0.1:8080 and the UI on 127.0.0.1:9966. Open that URL in your browser — or start with --open to launch it automatically. 2. Send traffic through it. Point your browser/HTTP client (or the OS proxy via Settings → System proxy on macOS) at 127.0.0.1:8080. 3. For HTTPS, trust the CA (see below) — then HTTPS flows are decrypted and editable. 4. Work the loop. Watch flows land in Proxy, send one to Repeater or Intruder, run the Scanner, set Scope, or flip on Intercept to hold/edit requests and responses. For a LAN or mobile listener, read Proxy authentication before rebinding: non-loopback listeners require a full-scope API key as the proxy password. The browser realm is interseptor; it is not asking for the target site's credentials. Runtime data lives under ~/.interseptor/ (interseptor.db, bodies/, ca/). Full-project archives intentionally use the compatibility filename interceptor.db. Delete the runtime directory to reset.",
+    "url": "getting-started/#quick-start"
+  },
+  {
+    "title": "Recommended — go install (uses the release tags)",
+    "text": "Requires Go 1.25+: Or update in place (no go install to remember): interseptor update downloads a prebuilt binary from GitHub Releases when one is attached for your OS/arch (and verifies checksums.txt when present). If the release has no binary yet, it falls back to go install automatically. Every tagged version is listed on the Releases page with its changelog; @latest resolves to the newest tag, @vX.Y.Z pins one.",
+    "url": "getting-started/#recommended--go-install-uses-the-release-tags"
+  },
+  {
+    "title": "Running multiple projects",
+    "text": "For one-off multi-instance use, interseptor takes root flags: --project (or INTERSEPTOR PROJECT) opens a specific project; --control-port picks the control UI/API port on loopback (default 9966); --control-addr host:port sets the full control listen address and overrides --control-port (or INTERSEPTOR CONTROL ADDR — see Configuration). Pair --control-port/--control-addr with INTERSEPTOR PROXY ADDR to give a second manually-launched instance its own proxy port too. For running several projects at once, interseptor launcher is a small dashboard process (default http://127.0.0.1:9965, no separate auth setup — it auto-generates a local token on start) that starts/stops per-project Interseptor instances, each its own OS process with its own auto-allocated control+proxy ports, sharing only the global CA and Starlark checks. Closing the launcher does not stop the instances it spawned. interseptor stop gracefully stops all running Interseptor instances (SIGINT/SIGTERM, waiting up to a --timeout, default 6s); add --force/-f to force-kill immediately instead.",
+    "url": "getting-started/#running-multiple-projects"
+  },
+  {
     "title": "History search",
-    "text": "current",
+    "text": "History search Interseptor History supports ordinary filters and deterministic Starlark predicates. Saved searches run inside the project that contains them. They don't call an AI model, send traffic, or inspect anything outside captured flow data.",
     "url": "history-search/"
   },
   {
+    "title": "Anywhere search",
+    "text": "GET /api/flows accepts search and searchScope. anywhere is default. It checks stored flow metadata, request and response headers, tags, and request and response bodies. body limits matching to bodies. id is the ID search mode. Other filters, such as host, method, status, tag, hasNote=1, inScope=1, and includeTools=1, still apply. Body and Anywhere searches inspect at most the latest 8,000 filtered flows. Each stored body read is capped at 256 KiB. A capped result includes searchNote, for example: The normal response contains flows and truncated. limit defaults to 200 and accepts 1 through 5000. The server fetches one extra row to set truncated.",
+    "url": "history-search/#anywhere-search"
+  },
+  {
+    "title": "Author, test, save, select",
+    "text": "Test source before saving. Include flowId to execute it against that captured flow and receive its matched result: A valid response has valid: true; a selected flow also returns flowId and matched. Save it with POST, or replace it with PUT: GET /api/flow-searches lists names and scopes. The source endpoint returns the saved name, scope, and script. PUT /api/flow-searches/{name} updates the source. DELETE /api/flow-searches/{name} removes it. Names cannot contain / or \\\\. Saved searches persist in project settings under flow.searches. They are not global. Project switching changes which saved searches are visible. scope accepts anywhere, body, or id; unknown or empty values normalize to anywhere. Scope is metadata for the saved search and does not change what the Starlark predicate can inspect. A project stores at most 100 saved searches; names are limited to 128 bytes. Selecting savedSearch runs the predicate against at most the latest 64 flows after other filters. If that limit is reached, the response includes searchNote:",
+    "url": "history-search/#author-test-save-select"
+  },
+  {
+    "title": "Safety and troubleshooting",
+    "text": "Scripts are compiled and validated before test or save. Compilation requires callable match(flow). Validation invokes it once with an empty flow, so guard assumptions about body, headers, and status. Runtime errors return safe API errors and don't expose flow content in the error text. Source is capped at 64 KiB. Compilation and each predicate run are capped at 100,000 Starlark steps. Active predicate evaluation stops when its HTTP request context is cancelled. load() has no loader. Scripts have no file, network, environment, or wall-clock access. They cannot mutate the supplied flow or its headers. Common errors: - missing a match(flow) function: add def match(flow): at top level. - match(flow) must return bool: return a comparison or True/False, not a string, list, or dictionary. - source exceeds 64 KiB: shorten the script. - execution failed or a step-limit error: remove unbounded work and narrow filters before selecting the saved search. - Empty results with a limit note: add host, method, or another flow filter, then retry. The candidate limit is intentional. Search scripts are predicates only. External agents can use the same REST routes or the control API, but no built-in AI",
+    "url": "history-search/#safety-and-troubleshooting"
+  },
+  {
+    "title": "Saved Starlark searches",
+    "text": "Use a saved search when string matching isn't enough. Each script defines match(flow) and returns a Starlark boolean. The flow value exposes: Attribute Value --- --- method, scheme, host, path, mime strings port, status integers req body, res body strings req headers, res headers dictionaries, first value per header Available helpers: Helper Result --- --- req header(name), res header(name) first matching header value, or \"\" req header all(name), res header all(name) all matching values as a list query param(name) first URL query value, or \"\" Header lookup is case-insensitive. req headers and res headers use canonical header names. Each body attribute contains at most the first 64 KiB of its stored body. A saved-search request evaluates at most 64 filtered flows and reads at most 8 MiB of bodies total. Missing, unreadable, or budget-exhausted bodies appear as empty strings.",
+    "url": "history-search/#saved-starlark-searches"
+  },
+  {
+    "title": "Valid examples",
+    "text": "Match response status and MIME type: Match a request header and query parameter: Match any response cookie value: The last example is valid Starlark because in works on strings and lists. Use flow.res header all(\"Set-Cookie\") when repeated header values matter.",
+    "url": "history-search/#valid-examples"
+  },
+  {
     "title": "HTTP/2",
-    "text": "current",
+    "text": "HTTP/2 and MITM",
     "url": "http2/"
   },
   {
+    "title": "Client → proxy leg",
+    "text": "The forged leaf offers ALPN h2, http/1.1 (handleConnect). When the client selects h2, the MITM connection is handed to an http2.Server (serveH2MITM, internal/proxy/http2.go) whose handler bridges every decoded stream into the same forwarding pipeline the HTTP/1.1 loop uses — gateAndForward → writeResponseHTTP. Intercept holds, match-\u0026-replace, scope, capture, and history all apply identically; only the client-facing framing differs. When the client stays on HTTP/1.1, the request falls through to the http.ReadRequest loop unchanged. History records the client leg proto for h2 sessions (HTTPVersion: HTTP/2.0), captured by buildFlow before the forwarded request is normalized to HTTP/1.1 for http.Transport (which does its own upstream ALPN and rejects ProtoMajor == 2 requests).",
+    "url": "http2/#client--proxy-leg"
+  },
+  {
+    "title": "Current behavior",
+    "text": "Leg Protocol ----- ---------- Client → proxy (CONNECT + MITM TLS) HTTP/2 when ALPN negotiates h2, else HTTP/1.1 Proxy → origin (via http.Transport) HTTP/2 when ALPN negotiates h2, else HTTP/1.1",
+    "url": "http2/#current-behavior"
+  },
+  {
+    "title": "HTTP/1.1 client, HTTP/2 origin",
+    "text": "A client that stays on HTTP/1.1 while the origin speaks h2 still works: the proxy downgrades framing to HTTP/1.1 + chunked before writing back over the h1 MITM socket (writeResponseConn), so browsers never hang on an HTTP/2.0 status line. HTTPVersion in that case records the upstream proto.",
+    "url": "http2/#http11-client-http2-origin"
+  },
+  {
+    "title": "Ops notes",
+    "text": "- TLS-bypass (pinning) tunnels CONNECT raw — origin may speak h2 end-to-end; Interseptor does not decrypt those sessions. - WebSocket upgrades remain a separate path (HTTP/1.1 Upgrade). h2 has no HTTP/1.1-style Upgrade, so the WebSocket relay only runs on the h1 leg. - h2-only APIs that refused to work through the old h1-only MITM leg now capture correctly end-to-end.",
+    "url": "http2/#ops-notes"
+  },
+  {
+    "title": "Proxy → origin leg",
+    "text": "Upstream HTTP/2 is enabled with ForceAttemptHTTP2 and TLS NextProtos: h2, http/1.1. Forwarding never depends on h2 being available — ALPN/h1 fallback is automatic on both legs.",
+    "url": "http2/#proxy--origin-leg"
+  },
+  {
     "title": "MCP cookbook",
-    "text": "current",
+    "text": "MCP Cookbook, recipes for external agents Connect any MCP-capable external agent with interseptor mcp or POST http://127.0.0.1:9966/mcp. Interseptor provides deterministic tools and evidence. Your agent provides model reasoning and sequencing.",
     "url": "mcp-cookbook/"
   },
   {
+    "title": "Recipe 1 — Map an API from captured traffic",
+    "text": "Goal: Triage what landed in History and pick endpoints worth attacking. Tip: Add an include-scope rule (add scope rule) first so list flows isn't noisy.",
+    "url": "mcp-cookbook/#recipe-1--map-an-api-from-captured-traffic"
+  },
+  {
+    "title": "Recipe 2 — Content discovery through the proxy",
+    "text": "Goal: Find hidden paths, with every hit landing in History for triage. Interseptor has no built-in forced-browser (the old start discovery / discovery state / suggest discovery paths tools were removed — see CHANGELOG). Run a real tool instead, pointed through the Interseptor proxy, so every request it fires is captured like any other traffic: Human takeover: Watch Proxy History live — hits appear as normal captured flows, no separate Discover tab.",
+    "url": "mcp-cookbook/#recipe-2--content-discovery-through-the-proxy"
+  },
+  {
+    "title": "Recipe 3 — Triage scanner findings and fuzz",
+    "text": "Goal: Turn passive hits into confirmed bugs. Safety: active scan sends real payloads — pass arm=true once per session and only on authorized targets.",
+    "url": "mcp-cookbook/#recipe-3--triage-scanner-findings-and-fuzz"
+  },
+  {
+    "title": "Recipe 4 — Close out findings (engagement end)",
+    "text": "Goal: Leave a report-ready project, not a History pile. Human checklist: engagement-closeout.md",
+    "url": "mcp-cookbook/#recipe-4--close-out-findings-engagement-end"
+  },
+  {
+    "title": "Recipe 5 — External agent active testing",
+    "text": "Goal: Let an external agent sequence deterministic scans and human-reviewed evidence. Safety: Interseptor doesn't decide what to test. The external agent must follow scope and authorization constraints, while Interseptor records requests and results.",
+    "url": "mcp-cookbook/#recipe-5--external-agent-active-testing"
+  },
+  {
+    "title": "Recipe 6 — Custom checks and rule packs",
+    "text": "Goal: Encode a finding as a reusable check, or install an official pack.",
+    "url": "mcp-cookbook/#recipe-6--custom-checks-and-rule-packs"
+  },
+  {
+    "title": "Recipe 7 — Intruder from external payload lists",
+    "text": "Goal: Fuzz one injection point with AI-suggested payloads, then file a finding.",
+    "url": "mcp-cookbook/#recipe-7--intruder-from-external-payload-lists"
+  },
+  {
     "title": "Message codecs",
-    "text": "current",
+    "text": "Message codecs Project-scoped Starlark transforms that decrypt/encrypt (or otherwise decode/encode) application-layer request and response bodies so History, Repeater, Intercept, and MCP can show plaintext without leaving Interseptor. This is not Content-Encoding decompression (gzip/br/…) and not the one-shot Decoder tool (base64/url/hex/html/jwt). Codecs are for engagement-specific app crypto (AES-wrapped JSON fields, custom token packing, …).",
     "url": "message-codecs/"
   },
   {
+    "title": "Builtins",
+    "text": "Shared Starlark stdlib (internal/starx) plus AES-ECB helpers: Builtin Notes --- --- aes ecb encrypt(key, plaintext) PKCS7 pad → AES-ECB → base64 ciphertext aes ecb decrypt(key, ciphertext) base64 or raw → AES-ECB → plaintext string hash, hmac, b64, json , re search, … same as checks key may be 16/24/32 raw bytes or hex of that length (32/48/64 hex chars).",
+    "url": "message-codecs/#builtins"
+  },
+  {
+    "title": "Contract",
+    "text": "flow matches the custom-check surface (method, host, path, req body / res body, req header(n), …). See custom checks.",
+    "url": "message-codecs/#contract"
+  },
+  {
+    "title": "Example",
+    "text": "See examples/codecs/aes-content-field.star for the common prefix + Base64(AES-ECB(JSON)) wire shape.",
+    "url": "message-codecs/#example"
+  },
+  {
+    "title": "Safety",
+    "text": "- Codecs run only on explicit UI/API/MCP decode requests — never on the proxy hot path. - Failures fall back to raw; forwarding is never broken by a bad codec. - apply on send is opt-in. Repeater Send with Decoded view re-encodes only when that flag is set.",
+    "url": "message-codecs/#safety"
+  },
+  {
+    "title": "Where codecs live",
+    "text": "/codecs/.star — created automatically under the active project directory. They are not shared across projects (unlike global scanner checks). UI: Scanner → Codecs. REST under /api/codecs and /api/flows/{id}/decoded. MCP: list codecs, test codec, save codec, delete codec, get flow decoded, encode codec.",
+    "url": "message-codecs/#where-codecs-live"
+  },
+  {
+    "title": "Mobile testing",
+    "text": "Mobile testing",
+    "url": "mobile-testing/"
+  },
+  {
+    "title": "Android",
+    "text": "Install adb, enable USB debugging, connect exactly one authorized device, then open Settings → Mobile devices. Setup all selects a system CA for an emulator/rooted target and a user CA for a normal phone, then configures the chosen proxy mode. Use Clear proxy during close-out. Android 7+ applications do not automatically trust user-installed CAs. A user CA may work in the browser while an app still rejects it. For an authorized test, use a debuggable build with a network security configuration, an emulator/rooted device with a system CA, or an approved instrumentation method. Interseptor does not defeat pinning itself.",
+    "url": "mobile-testing/#android"
+  },
+  {
+    "title": "Choose a connection mode",
+    "text": "- Android over USB: Interseptor uses adb reverse; the device proxy points to loopback and no LAN listener is required. - Android or iOS over Wi-Fi: bind the proxy to 0.0.0.0:8080 (or a specific LAN interface), put both devices on a reachable network, and configure the phone with the workstation's LAN address. - iOS Simulator: use the built-in Simulator setup on macOS with Xcode tools installed. Wi-Fi clients use a non-loopback listener and therefore need proxy authentication: any username plus a full-scope Interseptor API key as the password.",
+    "url": "mobile-testing/#choose-a-connection-mode"
+  },
+  {
+    "title": "Cleanup",
+    "text": "Clear device proxies, remove profiles and CA trust, remove any temporary system CA or instrumentation, revoke the device API key, and restore the proxy listener to loopback.",
+    "url": "mobile-testing/#cleanup"
+  },
+  {
+    "title": "iOS",
+    "text": "For Simulator, select the target and use Setup all or install the CA and open the profile separately. For a physical device, download the .mobileconfig profile over a trusted path and install it. Then enable full trust under Settings → General → About → Certificate Trust Settings. The profile can configure the global HTTP proxy but cannot bypass application pinning. Jailbroken SSH automation sends credentials only for the setup request and does not persist them in project settings.",
+    "url": "mobile-testing/#ios"
+  },
+  {
+    "title": "Verification",
+    "text": "1. Open an HTTP test URL and confirm a History row. 2. Open an HTTPS URL and confirm a decrypted path rather than only a CONNECT row. 3. Check the device proxy address, CA trust, and client time if HTTPS fails. 4. If browsers work but one app fails, treat pinning or app-specific trust as the leading hypothesis. 5. If no traffic arrives, verify Wi-Fi reachability, host firewall, listener bind, and whether the app ignores the operating-system proxy. Use the TLS diagnostic in Settings → TLS / CA to distinguish no traffic, no HTTPS, and a failed client TLS handshake. See Troubleshooting for the complete decision tree.",
+    "url": "mobile-testing/#verification"
+  },
+  {
+    "title": "Projects and data",
+    "text": "Projects and data",
+    "url": "projects-and-data/"
+  },
+  {
+    "title": "Backup and collaboration",
+    "text": "For handoff, prefer a full project archive when exact bodies and report evidence must survive. Use portable JSON or peer merge for additive collaboration. Preview merge counts, confirm the target project, and review scope/session settings afterward. The optional Project vault stores revisioned project archives. It is not a replacement for access control, encrypted disks, retention policy, or an engagement-approved backup location.",
+    "url": "projects-and-data/#backup-and-collaboration"
+  },
+  {
+    "title": "Close-out",
+    "text": "Export the required report and archive, verify each artifact opens, revoke API keys and tunnels, remove client CA trust and proxy settings, then delete local evidence according to the engagement's retention agreement. See Engagement close-out.",
+    "url": "projects-and-data/#close-out"
+  },
+  {
+    "title": "Export formats",
+    "text": "Format Purpose Behavior --- --- --- Portable project JSON Sharing selected operational state with another Interseptor instance Imports additively into the current project; duplicate data is skipped. HAR Interchange with browser and proxy tooling Imports flows into History; some Interseptor-only metadata is not represented. Full project ZIP Lossless migration or backup Contains the database and captured bodies; import creates a new project. Findings report Client/editorial output May include reconstructed PoC request/response bodies; treat as sensitive. The full archive intentionally excludes the global CA and custom checks. Transfer those separately only when authorized and necessary.",
+    "url": "projects-and-data/#export-formats"
+  },
+  {
+    "title": "Project boundaries",
+    "text": "History, scope, rules, findings, notes, session settings, UI drafts, and codecs are project-scoped. Switching projects restarts/re-executes the application so proxy and control listeners move to the new store together. Finish unsaved edits and check the project badge before sending traffic. Use one project per target or engagement boundary. This reduces accidental cross-target evidence, session-header reuse, and report contamination.",
+    "url": "projects-and-data/#project-boundaries"
+  },
+  {
+    "title": "Retention and deletion",
+    "text": "Automatic retention can enforce a maximum age, maximum flow count, or both. The job runs periodically; Run now applies it immediately. Host purge and “keep only” are destructive. Flow deletion removes metadata first. Content-addressed bodies may still be referenced by another flow, a finding screenshot, or another record. Reclaim space garbage-collects only unreferenced body files. A finding that references a deleted flow preserves a missing-evidence marker, but the request/response cannot be reconstructed; archive required PoC evidence before pruning.",
+    "url": "projects-and-data/#retention-and-deletion"
+  },
+  {
+    "title": "Storage layout",
+    "text": "The default project lives in ~/.interseptor/. Named projects normally live in ~/.interseptor/projects/ /; an explicit path can place a project elsewhere. A project contains SQLite metadata, content-addressed captured bodies, project settings, findings, and message codecs. The CA and custom scanner checks are shared globally rather than copied into every project. Captured data is not encrypted at rest. Protect the workstation, backups, exported reports, and project archives as engagement evidence.",
+    "url": "projects-and-data/#storage-layout"
+  },
+  {
+    "title": "Proxy, TLS, and networking",
+    "text": "Proxy, TLS, and networking This guide explains the listener, the browser authentication prompt, HTTPS interception, origin certificate verification, TLS passthrough, and chained upstream proxies.",
+    "url": "proxy-and-tls/"
+  },
+  {
+    "title": "Browser prompt",
+    "text": "The dialog saying that moz-proxy://… requests a username and password is Firefox's normal response to HTTP 407 Proxy Authentication Required. The realm text is interseptor. It is the proxy asking, not the destination website and not a compromised page. If you do not need LAN/device capture, bind the proxy to 127.0.0.1; the prompt disappears. If you do need it, enter any username and a full-scope Interseptor API key as the password. Repeated prompts mean the key is absent, expired, revoked, or read-only. Do not enter the target application's credentials. Command-line clients can authenticate explicitly: Avoid putting a real key in shell history on an engagement; use your client's protected credential store or an environment-specific secret mechanism.",
+    "url": "proxy-and-tls/#browser-prompt"
+  },
+  {
+    "title": "HTTPS interception",
+    "text": "For HTTPS, the client first creates a CONNECT tunnel. Interseptor presents a per-host certificate signed by its local CA, decrypts the request, forwards it to the origin, and records the exchange. 1. Download the CA from Settings → TLS / CA, or http://127.0.0.1:9966/api/ca.crt. 2. Install it in the trust store used by the test client. 3. Confirm an HTTPS flow appears in History with a visible path and response status. Installing the CA authorizes Interseptor to impersonate HTTPS sites on that client. Remove it after the engagement when it is no longer required.",
+    "url": "proxy-and-tls/#https-interception"
+  },
+  {
+    "title": "Listener model",
+    "text": "Interseptor starts an HTTP/HTTPS forward proxy on 127.0.0.1:8080 and a control UI/API on 127.0.0.1:9966. Configure one client to use the proxy for both HTTP and HTTPS. For a phone or another machine, add a non-loopback listener such as 0.0.0.0:8080 in Settings → Network → Proxy listener, then use the workstation's LAN address as the device proxy. INTERSEPTOR ALLOW EXTERNAL BIND=0 disables all non-loopback listener changes. This is useful on a workstation that must never accept LAN traffic.",
+    "url": "proxy-and-tls/#listener-model"
+  },
+  {
+    "title": "Origin certificate verification",
+    "text": "Client trust and origin trust are separate TLS legs. The client trusts Interseptor's CA; Interseptor may also verify the real origin certificate. Origin verification is off by default for compatibility with test environments. Enable Verify origin TLS certificates in Settings → TLS / CA when authenticity matters. With verification on, an expired, mismatched, self-signed, or untrusted origin certificate produces an upstream TLS error instead of a captured response. Verification exceptions keep traffic intercepted but accept any origin certificate for matching hosts. Use them narrowly for known test systems. This is different from passthrough and weakens server authentication for those hosts.",
+    "url": "proxy-and-tls/#origin-certificate-verification"
+  },
+  {
+    "title": "Proxy authentication",
+    "text": "A loopback proxy listener does not request credentials. Every non-loopback proxy listener requires proxy authentication, even when the client happens to connect from the same workstation. This protects captured traffic and prevents an accidentally exposed listener from becoming an open proxy. Create a full-scope API key in Settings → API \u0026 MCP → API keys. Configure the client with: - username: any non-empty label, such as interseptor; - password: the full-scope API key. A read-only key is rejected because proxying creates captured flows and can send traffic. Interseptor removes Proxy-Authorization before forwarding, so the listener credential is never sent to the target origin.",
+    "url": "proxy-and-tls/#proxy-authentication"
+  },
+  {
+    "title": "Safe network checklist",
+    "text": "- Bind only the interfaces needed for the engagement. - Use a scoped, expiring full key for non-loopback proxy clients. - Keep the control UI loopback-only unless remote access is intentional and key-protected. - Enable origin verification unless the target environment requires an explicit exception. - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out. See Mobile testing, Troubleshooting, and the security model.",
+    "url": "proxy-and-tls/#safe-network-checklist"
+  },
+  {
+    "title": "TLS passthrough and pinning",
+    "text": "TLS passthrough tunnels selected hosts without decryption. Use it when a pinned client must continue working and capture is not required for that host. Passthrough rows contain connection metadata, not HTTP paths, headers, or bodies. Interseptor does not bypass certificate pinning. A CONNECT followed by a failed client handshake is usually an untrusted CA or pinning. Options include installing the CA correctly, using a test build, an emulator/rooted device with a system CA, or an authorized runtime instrumentation workflow. Do not add a host to passthrough if you still need HTTP evidence from it.",
+    "url": "proxy-and-tls/#tls-passthrough-and-pinning"
+  },
+  {
+    "title": "Upstream proxies",
+    "text": "Configure an HTTP, HTTPS, socks5, or socks5h upstream in Settings → Network → Control UI and upstream proxy. Credentials are optional. For a private HTTPS upstream proxy, add its CA PEM in the dedicated upstream CA field; upstream-proxy TLS verification stays strict and is independent from origin verification. If an upstream returns 407, Interseptor reports an upstream authentication failure without passing the upstream's authentication challenge to the browser. This avoids a misleading second credential prompt.",
+    "url": "proxy-and-tls/#upstream-proxies"
+  },
+  {
     "title": "Rule packs",
-    "text": "current",
+    "text": "Rule packs A rule pack is a shareable bundle of Starlark checks (passive and/or active) plus a manifest. It's how a community shares detection logic: build a pack from a folder of .star files, hand the .tar.gz to a teammate (or publish it), and they install it with one command — no fork, no copy-paste. Packs install checks that run on every scan, so install/remove are human-gated (CLI or the full-scope REST surface). The AI agent surface is read-only (list packs, pack info) — an agent can see what's installed and suggest checks, but can't install them unsupervised.",
     "url": "rule-packs/"
   },
   {
+    "title": "Authoring checks for a pack",
+    "text": "A check in a pack is just a normal Starlark check (see custom checks / active checks), optionally with a key: value front-matter header for provenance: The front-matter is parsed and surfaced in list checks / list active checks so a pack listing can show what each check does without reading its source.",
+    "url": "rule-packs/#authoring-checks-for-a-pack"
+  },
+  {
+    "title": "CLI",
+    "text": "Installed checks live in the same global ~/.interseptor/checks and ~/.interseptor/active-checks directories the engines already read, so they run immediately alongside your other checks and custom-built-ins — no restart.",
+    "url": "rule-packs/#cli"
+  },
+  {
+    "title": "Pack format",
+    "text": "A pack is a .tar.gz containing: Every check file's sha256 is recorded in the manifest at build time and verified on install, so a corrupted or tampered pack is rejected before any check reaches disk. An optional ed25519 publisher signature (signature.json) covers the manifest digest (name, version, per-file hashes) so install can verify who published the pack — see PRD-0003.",
+    "url": "rule-packs/#pack-format"
+  },
+  {
+    "title": "REST + MCP",
+    "text": "Method Path Notes --- --- --- GET /api/packs list installed packs GET /api/packs/{name} one pack's record GET /api/packs/catalog official packs bundled in the binary POST /api/packs/catalog/{name}/install one-click install of an official pack POST /api/packs/install upload a .tar.gz (full-scope; ?allowUnsigned=1 optional) DELETE /api/packs/{name} uninstall (full-scope key) UI: Scanner → Checks has an Official packs list plus a .tar.gz upload (with Allow unsigned packs). MCP tools: list packs, pack info (read-only — see the note above).",
+    "url": "rule-packs/#rest--mcp"
+  },
+  {
+    "title": "Trust model",
+    "text": "Source Policy -------- -------- Official catalog (bundled) Trusted as builtin (same trust as app code) Signed install Verified against interseptor-1 + ~/.interseptor/trusted-pack-keys/ .pub Unsigned Refused unless --allow-unsigned / UI checkbox / ?allowUnsigned=1",
+    "url": "rule-packs/#trust-model"
+  },
+  {
+    "title": "Troubleshooting",
+    "text": "Troubleshooting Start with the first symptom that matches. Keep a terminal open for application logs and use a generic test target before debugging a complex application.",
+    "url": "troubleshooting/"
+  },
+  {
+    "title": "Browser asks for a proxy username and password",
+    "text": "This is expected on a non-loopback proxy listener. The realm is interseptor. Enter any username and a full-scope API key as the password. A read key, expired key, or target-site password produces another prompt. Bind to 127.0.0.1 if the listener is local-only and authentication is unnecessary. See Proxy authentication.",
+    "url": "troubleshooting/#browser-asks-for-a-proxy-username-and-password"
+  },
+  {
+    "title": "Collecting a useful bug report",
+    "text": "Include Interseptor version, OS/architecture, exact command flags with secrets removed, the smallest generic reproduction, relevant log lines, and whether the problem occurs on loopback. Never attach real captured traffic, API keys, session tokens, or target/customer data to a public issue.",
+    "url": "troubleshooting/#collecting-a-useful-bug-report"
+  },
+  {
+    "title": "Finding layout or evidence is incomplete",
+    "text": "Switch to Edit to reveal block controls and add actions. Read mode intentionally hides edit-only controls. Use one step note per action, annotate each flow, and keep screenshots inside the article width. If a finding says evidence was deleted, restore from a full archive or recapture it; the marker does not contain the original body.",
+    "url": "troubleshooting/#finding-layout-or-evidence-is-incomplete"
+  },
+  {
+    "title": "High memory or disk use",
+    "text": "Bodies stream to content-addressed files, but a long engagement can still retain many flows. Configure age/count retention, purge noisy hosts, then run body-file GC. Large responses are deliberately capped in browser rendering and machine-tool output; download or inspect source evidence with an appropriate bounded workflow.",
+    "url": "troubleshooting/#high-memory-or-disk-use"
+  },
+  {
+    "title": "HTTP works but HTTPS fails",
+    "text": "The client does not trust Interseptor's CA, is using a different trust store, has an incorrect clock, or pins the server certificate. Install and explicitly trust the CA in the client actually making the request. A browser working while one app fails strongly suggests app-specific trust or pinning. TLS passthrough restores connectivity but removes HTTP visibility. Use it only when that tradeoff is intentional.",
+    "url": "troubleshooting/#http-works-but-https-fails"
+  },
+  {
+    "title": "HTTPS returns an upstream TLS or 502 error",
+    "text": "If origin verification is enabled, inspect the origin certificate for hostname, expiry, chain, and private-CA trust. Add a narrow verification exception only for a known test host. For an HTTPS chained proxy, install its CA in the upstream proxy CA field; origin exceptions do not weaken upstream-proxy verification.",
+    "url": "troubleshooting/#https-returns-an-upstream-tls-or-502-error"
+  },
+  {
+    "title": "No traffic appears",
+    "text": "1. Confirm Interseptor reports the expected proxy address and the port is not used by another process. 2. Send a simple HTTP request through that exact proxy. 3. Check client bypass lists (localhost, private ranges, or VPN-managed exclusions). 4. For a phone, verify LAN reachability and workstation firewall rules. 5. For an app, check whether it ignores the operating-system proxy or uses QUIC/HTTP3 directly. 6. Disable History filters and confirm capture policy is not limited to a mismatched scope.",
+    "url": "troubleshooting/#no-traffic-appears"
+  },
+  {
+    "title": "Port already in use",
+    "text": "Stop the existing instance with interseptor stop, choose --proxy-port and --control-port, or use the launcher for multiple projects. Give every manual instance unique proxy and control ports.",
+    "url": "troubleshooting/#port-already-in-use"
+  },
+  {
+    "title": "Repeated 407 or upstream authentication errors",
+    "text": "A browser-visible 407 from Interseptor means listener credentials are missing or invalid. An Interseptor toast/log saying “upstream proxy authentication required” means the configured chained proxy rejected its credentials. These are different authentication layers.",
+    "url": "troubleshooting/#repeated-407-or-upstream-authentication-errors"
+  },
+  {
+    "title": "Send to Repeater does not look right",
+    "text": "Use the action on the attached PoC flow, wait for “loaded … into Repeater,” and verify method, complete URL, headers, and body before sending. Interseptor reuses a tab for the same host and path; query values remain in the loaded request. A deleted/missing evidence flow cannot be sent and must be recaptured.",
+    "url": "troubleshooting/#send-to-repeater-does-not-look-right"
+  },
+  {
+    "title": "UI cannot connect or keeps returning to login",
+    "text": "On loopback, open the exact control address printed at startup. For remote access, use /login and a valid key; read keys cannot perform mutations. Confirm the browser origin matches the exposed control URL and that a tunnel or reverse proxy preserves same-origin behavior. Recreate expired keys rather than weakening control-plane guards.",
+    "url": "troubleshooting/#ui-cannot-connect-or-keeps-returning-to-login"
+  },
+  {
+    "title": "Update or installation fails",
+    "text": "Check network access to GitHub Releases and the installed Go version. Use interseptor update --check to separate update metadata problems from installation. A source build must use CGO ENABLED=0 and the Go version documented in Getting started.",
+    "url": "troubleshooting/#update-or-installation-fails"
+  },
+  {
     "title": "Project vault",
-    "text": "current",
+    "text": "Project vault Always-on archive store for Interseptor projects. Run interseptor vault on a durable host (Mac mini, VPS, NAS), expose it over Tailscale Serve (tailnet-only), and use any laptop’s Interseptor UI / REST / MCP to backup, list, import, or merge without USB zips or a live peer process. This is complementary to peer sync (/api/merge/): peers need both Interseptors online; the vault keeps revisions on disk.",
     "url": "vault/"
+  },
+  {
+    "title": "Client (any Interseptor)",
+    "text": "Machine-wide config: ~/.interseptor/vault-client.json (url + key). UI: Settings → API \u0026 MCP → Share → Project Vault — save URL/token, Backup, list, Import as new, Merge into current (dry-run confirm). REST (proxied by the control plane): Method Path Body -------- ------ ------ GET/PUT /api/vault/config {url?, key?} — key never echoed GET /api/vault/remote list remote projects POST /api/vault/backup {id?, label?} POST /api/vault/import {id, name?, rev?, overwrite?} POST /api/vault/merge {id, rev?, label?, dryRun?} MCP: vault list, vault backup, vault import, vault merge.",
+    "url": "vault/#client-any-interseptor"
+  },
+  {
+    "title": "Layout on disk",
+    "text": "",
+    "url": "vault/#layout-on-disk"
+  },
+  {
+    "title": "Server",
+    "text": "On first start a bootstrap token (iv …) is printed and written to /vault.token (mode 0600). Use that as Authorization: Bearer … from clients.",
+    "url": "vault/#server"
+  },
+  {
+    "title": "Tailscale Serve (recommended)",
+    "text": "Keep the vault on loopback; Serve publishes HTTPS on the tailnet only (not Funnel): Clients on the tailnet use https://mac-mini.tailXXXX.ts.net:9977 (or your MagicDNS name) plus the vault token.",
+    "url": "vault/#tailscale-serve-recommended"
+  },
+  {
+    "title": "Vault HTTP API",
+    "text": "Method Path Scope Notes -------- ------ ------- -------- GET /api/vault/status read dir, keep, counts GET /api/vault/projects read list projects + latest rev GET /api/vault/projects/{id} read revision list PUT /api/vault/projects/{id}?label= full body = full-project zip GET /api/vault/projects/{id}/latest read download zip GET /api/vault/projects/{id}/revs/{n} read download zip DELETE /api/vault/projects/{id}/revs/{n} full drop one rev DELETE /api/vault/projects/{id} full drop project Archive format matches Export full project: interceptor.db + bodies/.",
+    "url": "vault/#vault-http-api"
   }
 ]

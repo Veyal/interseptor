@@ -80,7 +80,13 @@ several projects at once are all in **[Getting started](docs/getting-started.md)
 |---|---|
 | **[Getting started](docs/getting-started.md)** | Install, quick start, HTTPS setup, configuration, multi-project |
 | **[Full feature list](docs/FEATURES.md)** | Every capability, in detail |
+| **[Proxy, TLS & networking](docs/proxy-and-tls.md)** | Listener auth, the `interseptor` browser prompt, CA trust, pinning, upstream proxies |
+| **[Mobile testing](docs/mobile-testing.md)** | Android/iOS USB, Wi-Fi, CA trust, and cleanup |
+| **[Findings & reporting](docs/findings-and-reporting.md)** | Pentester writing standard, evidence workflow, status, export |
+| **[Projects & data](docs/projects-and-data.md)** | Storage, project boundaries, export formats, retention |
 | **[API & MCP](docs/api-and-mcp.md)** | Drive Interseptor from an AI agent or a script |
+| **[CLI reference](docs/cli-reference.md)** | Commands, flags, environment variables, checks, rules, vault |
+| **[Troubleshooting](docs/troubleshooting.md)** | No traffic, TLS, 407 auth, Repeater, UI, ports, disk use |
 | **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
 | **[Custom checks](docs/custom-checks.md)** · [active checks](docs/custom-active-checks.md) | Author your own Starlark checks |

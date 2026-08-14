@@ -296,11 +296,35 @@ function renderBlockEl(b, i, total) {
     : `<span class="hint">flow #${esc(String(b.flowId))}</span>`;
   return `<div class="find-block find-doc-flow" data-i="${i}" data-flow="${b.flowId}">
     ${controls}
-     <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
-     <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater</button>
+     <div class="find-evidence-card">
+       <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
+       <div class="find-evidence-actions">
+         <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}">Inspect request</button>
+         <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
+       </div>
+     </div>
      <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}"
        placeholder="Annotation (optional)" onclick="event.stopPropagation()">
    </div>`;
+}
+
+function wireSendToRepeaterButtons(container) {
+  container.querySelectorAll('.find-send-repeater').forEach(btn => {
+    btn.onclick = async event => {
+      event.stopPropagation();
+      const id = Number(btn.dataset.flow);
+      const block = bodyBlocks.find(b => b.type === 'flow' && b.flowId === id);
+      if (!(block && !block.missing && id)) return;
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      const ok = await sendToRepeater({ id });
+      if (!ok && btn.isConnected) {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    };
+  });
 }
 
 function renderBodyEditor(container, fid) {
@@ -369,14 +393,14 @@ function renderBodyEditor(container, fid) {
        if (block) openFindingFlow(Number(block.dataset.flow));
      };
    });
-  container.querySelectorAll('.find-send-repeater').forEach(btn => {
+  container.querySelectorAll('.find-open-flow').forEach(btn => {
     btn.onclick = event => {
       event.stopPropagation();
       const id = Number(btn.dataset.flow);
-      const block = bodyBlocks.find(b => b.type === 'flow' && b.flowId === id);
-      if (block && !block.missing && id) sendToRepeater({ id });
+      if (id) openFindingFlow(id);
     };
   });
+  wireSendToRepeaterButtons(container);
 }
 
 // ---- body editor ---------------------------------------------------------
@@ -487,7 +511,7 @@ function renderFindingDetail() {
   const impactRead = f.impact
     ? `<div class="find-sticky-impact">${esc(f.impact)}</div>`
     : `<div class="hint">No impact written yet.</div>`;
-  const metaStrip = `<details class="find-meta-strip"${edit ? ' open' : ''}><summary>Why / Target / CVSS / CWE / Tags</summary>
+  const metaStrip = `<details class="find-meta-strip" open><summary>Technical context · target, classification, and tags</summary>
     <div class="find-meta-strip-body">
       ${edit
         ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2">${esc(f.why || '')}</textarea></section>
@@ -521,10 +545,7 @@ function renderFindingDetail() {
         <div class="spacer"></div>
 
         <button class="btn danger xs" id="findDelete">Delete</button>
-      </div>` : `<div class="find-meta-bar">
-
-        <button class="btn danger xs" id="findDelete">Delete</button>
-      </div>`}
+      </div>` : ''}
     </header>
     ${completeBar}
     ${missBanner}
@@ -551,7 +572,7 @@ function renderFindingDetail() {
       </div>
     </section>
 
-    <details class="find-more">
+    <details class="find-more"${f.fix ? ' open' : ''}>
       <summary>Remediation (optional)</summary>
       ${edit
         ? `<textarea id="findFix" class="find-field-text" rows="2">${esc(f.fix || '')}</textarea>`
@@ -621,7 +642,8 @@ function renderFindingDetail() {
       await loadFindings();
     } catch (err) { toast(err.message); }
   };
-  $('#findDelete').onclick = async () => {
+  const deleteBtn = $('#findDelete');
+  if (deleteBtn) deleteBtn.onclick = async () => {
     try { await api('/api/findings/' + f.id, { method: 'DELETE' }); selFinding = null; toast('finding deleted'); loadFindings(); }
     catch (err) { toast(err.message); }
   };
@@ -704,24 +726,26 @@ function renderFindReportBody(fid) {
         ? `<span class="m" style="color:${methodColor(b.method)}">${esc(b.method)}</span> <span class="p">${esc(b.host || '')}${esc(b.path || '')}</span>${b.status ? `<span class="sts" style="color:${statusColor(b.status)}">→ ${b.status}</span>` : ''}`
         : `flow #${esc(String(b.flowId))}`;
        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
-         <button type="button" class="find-report-flow" data-flow="${b.flowId}">
-           ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
-           <div class="find-poc-req">${reqLine}</div>
-         </button>
-         <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater</button></div>`;
+         <div class="find-report-stepbody">
+           <button type="button" class="find-report-flow" data-flow="${b.flowId}">
+             ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
+             <div class="find-poc-req">${reqLine}</div>
+           </button>
+           <div class="find-evidence-actions">
+             <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}">Inspect request</button>
+             <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
+           </div>
+         </div></div>`;
     }
     return '';
   }).join('');
   container.querySelectorAll('.find-report-flow').forEach(btn => {
      btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
    });
-  container.querySelectorAll('.find-send-repeater').forEach(btn => {
-    btn.onclick = event => {
-      event.stopPropagation();
-      const block = bodyBlocks.find(b => b.type === 'flow' && b.flowId === Number(btn.dataset.flow));
-      if (block && !block.missing && block.flowId) sendToRepeater({ id: block.flowId });
-    };
+  container.querySelectorAll('.find-open-flow').forEach(btn => {
+    btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
   });
+  wireSendToRepeaterButtons(container);
 }
 
 function pocFlowIdsReady() {
@@ -855,6 +879,8 @@ function openFindCreate() {
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
 $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
+$('#findGuide') && ($('#findGuide').onclick = () => openModal($('#findGuideModal')));
+$('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
 
 export function flowFindings(flowId) {
   return findings.filter(f => (f.blocks || []).some(b => b.type === 'flow' && b.flowId === flowId) || (f.flows || []).some(x => x.flowId === flowId)).map(f => ({ id: f.id, title: f.title, severity: f.severity }));
