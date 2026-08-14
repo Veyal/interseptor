@@ -9,9 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-- **Repeater upstream routing.** Repeater, Intruder, login macros, active scans, and custom-check sends now honor the same HTTP/HTTPS/SOCKS5/SOCKS5H proxy URL, DNS mode, credentials, and HTTPS-proxy CA as captured traffic instead of bypassing the configured upstream and returning misleading `502` flows.
-
 ## [1.8.0] - 2026-08-14
 
 ### Changed
@@ -23,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Documentation coverage.** Added full guides for proxy/TLS/networking, finding writing and reporting, CLI usage, projects/data retention, mobile testing, and troubleshooting, including the non-loopback `interseptor` Basic-auth prompt.
 
 ### Fixed
+- **Repeater upstream routing.** Repeater, Intruder, login macros, active scans, and custom-check sends now honor the same HTTP/HTTPS/SOCKS5/SOCKS5H proxy URL, DNS mode, credentials, and HTTPS-proxy CA as captured traffic instead of bypassing the configured upstream and returning misleading `502` flows.
 - **Actionable IP certificate failures.** Strict origin TLS hostname mismatches retain the verifier error and now identify the exact Settings path for adding a narrow authorized-test exception.
 - **Findings → Repeater.** Flow metadata is loaded before endpoint-tab selection and navigation, preventing ID-only finding actions from collapsing into an `undefined` Repeater tab or leaving the finding before a failed load.
 - **Documentation search publication.** GitHub Pages now includes the generated JSON index, validates that asset after the Jekyll build, and fetches it from its actual published path.
