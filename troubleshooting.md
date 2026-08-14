@@ -42,11 +42,20 @@ private-CA trust. Add a narrow verification exception only for a known test host
 proxy, install its CA in the upstream proxy CA field; origin exceptions do not weaken upstream-proxy
 verification.
 
+For `x509: cannot validate certificate for <IP> because it doesn't contain any IP SANs`, the URL uses
+an IP that the certificate does not identify. Prefer the certificate's DNS hostname. For an authorized
+test target, select the failed History row and use **Settings → TLS / CA → Origin TLS verification
+exceptions → Add selected History host**. Installing a CA alone cannot fix a name mismatch.
+
 ## Repeated 407 or upstream authentication errors
 
 A browser-visible `407` from Interseptor means listener credentials are missing or invalid. An
 Interseptor toast/log saying “upstream proxy authentication required” means the configured chained
 proxy rejected its credentials. These are different authentication layers.
+
+For upstream setup, select a mode instead of typing a URL: **HTTP/HTTPS** for an HTTP CONNECT proxy,
+**SOCKS5** for local DNS, or **SOCKS5H** for proxy-side DNS. Verify host and port in the status summary.
+Private CA PEM applies only to HTTPS upstream proxies.
 
 ## Send to Repeater does not look right
 

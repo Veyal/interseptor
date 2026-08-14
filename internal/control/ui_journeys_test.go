@@ -93,16 +93,30 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	css := readUIAsset(t, "app.css")
 	requireUIContains(t, index,
-		`id="setUpstream"`,
+		`id="upstreamProxySection"`,
+		`id="setUpstreamScheme"`,
+		`value="direct"`,
+		`value="http"`,
+		`value="https"`,
+		`value="socks5"`,
+		`value="socks5h"`,
+		`id="setUpstreamHost"`,
+		`id="setUpstreamPort"`,
 		`id="setUpstreamUser"`,
 		`id="setUpstreamPassword"`,
 		`id="setUpstreamCA"`,
-		`Optional; leave blank for no proxy authentication`,
+		`SOCKS5H resolves target names through the proxy`,
+		`id="upstreamProxySummary"`,
 	)
 	requireUIContains(t, settings,
-		"parseUpstreamProxyCredentials(",
-		"upstreamProxy:buildUpstreamProxyURL(",
+		"parseUpstreamProxyURL(",
+		"renderUpstreamProxyFields(",
+		"buildUpstreamProxyURL(",
+		"setUpstreamScheme",
+		"setUpstreamHost",
+		"setUpstreamPort",
 		"setUpstreamUser",
 		"setUpstreamPassword",
 		"setUpstreamCA",
@@ -112,6 +126,11 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	if strings.Contains(settings, "encodeURIComponent($('#setUpstreamUser').value.trim())") {
 		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
 	}
+	requireUIContains(t, css,
+		`.settings-nav-group{display:contents}`,
+		`grid-template-columns:repeat(4,minmax(0,1fr))`,
+		`grid-template-columns:repeat(3,minmax(0,1fr))`,
+	)
 }
 
 func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
@@ -130,7 +149,7 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"invisibleProxy:on",
 		"autoBypassOnPinFailure:on",
 		"tlsBypassHosts:hosts",
-		"upstreamProxy:buildUpstreamProxyURL()",
+		"buildUpstreamProxyURL()",
 		"upstreamProxyCA",
 	)
 }
@@ -142,20 +161,25 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 		`id="originTLSVerifyWarning"`,
 		`settings-origin-tls-warning`,
 		`role="alert"`,
-		`id="originTLSVerifyToggle"`,
-		`aria-label="Verify origin TLS certificates"`,
-		`Verify origin TLS certificates`,
+		`id="originTLSVerifyMode"`,
+		`Compatibility — accept test certificates`,
+		`Strict — verify origin certificates`,
 		`Origin certificates are not verified`,
 		`Interception/capture can accept impersonated servers`,
 		`HTTPS upstream-proxy verification remains strict`,
+		`id="originTLSVerifyBypassHost"`,
+		`id="originTLSVerifyBypassAdd"`,
+		`id="originTLSVerifyBypassSelected"`,
+		`doesn't contain any IP SANs`,
 	)
 	requireUIContains(t, settings,
 		"s.originTLSVerify",
 		"originTLSVerify:on",
 		"setOriginTLSVerify(",
+		"addOriginTLSVerifyException(",
+		"selectedOriginHost(",
 		"loadSettings();",
 		"document.activeElement!==ol",
-		"setOriginTLSVerify(prior)",
 		"catch(e){renderOriginTLSVerifyWarning(true)",
 	)
 }

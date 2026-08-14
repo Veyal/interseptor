@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -343,6 +344,23 @@ func TestOriginTLSVerifyPolicyDefaultsAndOverridesTransportConfig(t *testing.T) 
 	}
 	if cfg := srv.originTLSConfig("other.example"); cfg.InsecureSkipVerify {
 		t.Fatal("nonmatching origin exception weakened strict policy")
+	}
+}
+
+func TestOriginTLSVerificationErrorExplainsIPHostnameMismatch(t *testing.T) {
+	err := x509.HostnameError{
+		Certificate: &x509.Certificate{DNSNames: []string{"weblelang.example.com"}},
+		Host:        "10.243.234.33",
+	}
+	got := originTLSVerificationError("10.243.234.33", err).Error()
+	for _, want := range []string{
+		"cannot validate certificate for 10.243.234.33",
+		"strict origin TLS verification rejected 10.243.234.33",
+		"Settings → TLS / CA → Origin TLS verification exceptions",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("actionable TLS error = %q, want %q", got, want)
+		}
 	}
 }
 

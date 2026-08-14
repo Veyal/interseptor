@@ -67,13 +67,27 @@ Client trust and origin trust are separate TLS legs. The client trusts Intersept
 may also verify the real origin certificate.
 
 Origin verification is off by default for compatibility with test environments. Enable **Verify
-origin TLS certificates** in **Settings → TLS / CA** when authenticity matters. With verification on,
+origin certificates** by choosing **Strict** in **Settings → TLS / CA → Origin connection security**
+when authenticity matters. With verification on,
 an expired, mismatched, self-signed, or untrusted origin certificate produces an upstream TLS error
 instead of a captured response.
 
 Verification exceptions keep traffic intercepted but accept any origin certificate for matching
 hosts. Use them narrowly for known test systems. This is different from passthrough and weakens server
 authentication for those hosts.
+
+If a target is opened by IP and the certificate contains only DNS names, strict mode reports an error
+such as `x509: cannot validate certificate for 192.0.2.25 because it doesn't contain any IP SANs`.
+Prefer the hostname named by the certificate and map it to the IP with test DNS or a hosts file. When
+that is impossible for an authorized test target:
+
+1. Select the failed request in **History**.
+2. Open **Settings → TLS / CA → Origin TLS verification exceptions**.
+3. Choose **Add selected History host**. You can also enter the IP manually and choose **Add
+   exception**.
+
+Installing another CA does not repair a hostname/IP mismatch. An exception deliberately disables
+origin identity verification only for the listed host or IP.
 
 ## TLS passthrough and pinning
 
@@ -88,10 +102,43 @@ add a host to passthrough if you still need HTTP evidence from it.
 
 ## Upstream proxies
 
-Configure an HTTP, HTTPS, `socks5`, or `socks5h` upstream in **Settings → Network → Control UI and
-upstream proxy**. Credentials are optional. For a private HTTPS upstream proxy, add its CA PEM in the
-dedicated upstream CA field; upstream-proxy TLS verification stays strict and is independent from
-origin verification.
+Configure a second-hop proxy in **Settings → Proxy & network → Upstream proxy**. Select the connection
+type, then enter its host and port. The UI builds and validates the proxy URL; credentials stay in
+separate fields so percent-encoding and special characters are handled safely.
+
+| Type | Choose it when | DNS behavior | Typical port |
+| --- | --- | --- | --- |
+| **Direct** | Interseptor should connect to targets itself | Local | — |
+| **HTTP** | Chaining through a corporate proxy, Burp, or another HTTP CONNECT proxy | Proxy protocol carries target hostnames | `80` or `8080` |
+| **HTTPS** | The connection from Interseptor to the upstream proxy must itself use TLS | Proxy protocol carries target hostnames | `443` |
+| **SOCKS5** | A SOCKS service is available and target DNS should resolve on the Interseptor workstation | Local DNS; the resolved IP is sent to SOCKS | `1080` |
+| **SOCKS5H** | Target names resolve only from the proxy network, or local DNS leakage must be avoided | Remote DNS at the SOCKS proxy | `1080` |
+
+### HTTP or HTTPS upstream
+
+1. Select **HTTP** or **HTTPS**.
+2. Enter the proxy host and port, for example `proxy.example.com` and `8080`.
+3. Add username and password only if the proxy requires authentication.
+4. For an HTTPS proxy signed by a private CA, open **Advanced trust settings** and paste the CA PEM.
+5. Choose **Save upstream proxy** and confirm the summary shows the expected endpoint.
+
+HTTPS upstream-proxy certificates are always verified. The origin compatibility mode and origin
+exceptions never weaken this separate TLS connection.
+
+### SOCKS5 or SOCKS5H upstream
+
+For an SSH dynamic forward, start a local SOCKS listener:
+
+```bash
+ssh -N -D 127.0.0.1:1080 operator@example.com
+```
+
+Then select **SOCKS5H**, use host `127.0.0.1`, port `1080`, and leave credentials blank unless the SOCKS
+server requires them. Choose plain **SOCKS5** only when DNS should be resolved locally before the
+connection is sent through SOCKS.
+
+To disable chaining, select **Direct — no upstream proxy** and save. Stored proxy credentials are not
+sent to target origins; Interseptor uses them only on the upstream-proxy hop.
 
 If an upstream returns `407`, Interseptor reports an upstream authentication failure without passing
 the upstream's authentication challenge to the browser. This avoids a misleading second credential

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Guided network settings.** Upstream chaining now uses a dedicated Direct/HTTP/HTTPS/SOCKS5/SOCKS5H form with explicit DNS behavior, endpoint fields, credentials, HTTPS-proxy trust, responsive layout, and complete operator documentation; origin TLS policy now uses readable compatibility/strict modes with one-click selected-host exceptions.
+
+### Fixed
+- **Actionable IP certificate failures.** Strict origin TLS hostname mismatches retain the verifier error and now identify the exact Settings path for adding a narrow authorized-test exception.
+
 ## [1.8.0] - 2026-08-14
 
 ### Changed

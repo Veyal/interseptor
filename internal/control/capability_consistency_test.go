@@ -96,9 +96,10 @@ func TestOriginTLSVerifySettingsJourney(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	requireUIContains(t, index,
-		`id="originTLSVerifyToggle"`,
-		`aria-label="Verify origin TLS certificates"`,
-		`Verify origin TLS certificates`,
+		`id="originTLSVerifyMode"`,
+		`aria-label="Origin TLS certificate policy"`,
+		`Compatibility — accept test certificates`,
+		`Strict — verify origin certificates`,
 		`id="originTLSVerifyWarning"`,
 		`settings-origin-tls-warning`,
 		`role="alert"`,
@@ -110,7 +111,7 @@ func TestOriginTLSVerifySettingsJourney(t *testing.T) {
 		`id="originTLSVerifyBypassCount"`,
 	)
 	requireUIContains(t, settings,
-		"originTLSVerifyToggle",
+		"originTLSVerifyMode",
 		"originTLSVerifyWarning",
 		"originTLSVerify:on",
 		"s.originTLSVerify",

@@ -312,20 +312,22 @@ function renderOriginTLSVerifyWarning(on){
   if(warning)warning.hidden=!!on;
 }
 export function setOriginTLSVerify(on){
-  const toggle=$('#originTLSVerifyToggle');
-  if(toggle){toggle.classList.toggle('on',!!on);toggle.setAttribute('aria-checked',on?'true':'false');toggle.setAttribute('aria-pressed',on?'true':'false');}
+  const mode=$('#originTLSVerifyMode');
+  if(mode)mode.value=on?'strict':'compatible';
+  const summary=$('#originTLSModeSummary');
+  if(summary)summary.textContent=on
+    ?'Strict mode rejects expired, untrusted, and hostname-mismatched origin certificates. Add only known test hosts as exceptions below.'
+    :'Compatibility mode accepts self-signed, expired, and hostname-mismatched origin certificates so authorized test environments remain reachable.';
   renderOriginTLSVerifyWarning(!!on);
 }
-$('#originTLSVerifyToggle')&&($('#originTLSVerifyToggle').onclick=async()=>{
-  const toggle=$('#originTLSVerifyToggle');
-  const prior=toggle?.getAttribute('aria-pressed')==='true';
-  const on=!prior;
+$('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
+  const mode=$('#originTLSVerifyMode');
+  const on=mode.value==='strict';
   try{
     await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerify:on})});
     setOriginTLSVerify(on);
-    toast(on?'Origin TLS certificate verification enabled':'Origin TLS certificate verification disabled');
+    toast(on?'Strict origin certificate verification enabled':'Compatibility mode enabled');
   }catch(e){
-    setOriginTLSVerify(prior);
     toast('origin TLS: '+e.message);
     loadSettings();
   }
@@ -343,9 +345,8 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   renderHostSelect($('#setControlHost'),c.host);
   if($('#setControlAddr'))$('#setControlAddr').value=state.controlAddr;
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
-   if($('#setUpstream'))$('#setUpstream').value=s.upstreamProxy||'';
    if($('#setUpstreamCA')&&document.activeElement!==$('#setUpstreamCA'))$('#setUpstreamCA').value=s.upstreamProxyCA||'';
-   parseUpstreamProxyCredentials(s.upstreamProxy||'');
+   parseUpstreamProxyURL(s.upstreamProxy||'');
   state.oobEnabled=!!s.oobEnabled;
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
   if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
@@ -428,33 +429,102 @@ $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
 function originTLSVerifyBypassHostsFromText(){return ($('#originTLSVerifyBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
 function updateOriginTLSVerifyBypassCount(){const el=$('#originTLSVerifyBypassCount');if(el)el.textContent=(n=>n?n+' verification exception'+(n>1?'s':''):'No verification exceptions')(originTLSVerifyBypassHostsFromText().length);}
 $('#originTLSVerifyBypassList')&&($('#originTLSVerifyBypassList').addEventListener('input',updateOriginTLSVerifyBypassCount));
-$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=async()=>{
-  const hosts=originTLSVerifyBypassHostsFromText();
+async function saveOriginTLSVerifyExceptions(hosts,message){
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerifyBypassHosts:hosts})});
     if($('#originTLSVerifyBypassList'))$('#originTLSVerifyBypassList').value=hosts.join('\n');updateOriginTLSVerifyBypassCount();
-    toast(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared');}
-  catch(e){toast('origin TLS: '+e.message);}
+    toast(message||(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared'));
+    return true;
+  }catch(e){toast('origin TLS: '+e.message,'error');return false;}
+}
+function normalizeOriginExceptionInput(raw){
+  let value=String(raw||'').trim().toLowerCase();
+  if(!value)return '';
+  if(value.startsWith('*.'))return /^\*\.[a-z0-9.-]+$/.test(value)?value:'';
+  try{
+    const parsed=new URL(value.includes('://')?value:'https://'+value);
+    value=parsed.hostname.replace(/^\[|\]$/g,'');
+  }catch(_){return '';}
+  return value;
+}
+function selectedOriginHost(){
+  const flow=state.flows.find(f=>f.id===state.selId)||state.detail;
+  return normalizeOriginExceptionInput(flow?.host||'');
+}
+async function addOriginTLSVerifyException(raw){
+  const host=normalizeOriginExceptionInput(raw);
+  if(!host){toast('Enter a valid host, IP address, or *.example.com pattern','error');return false;}
+  const hosts=originTLSVerifyBypassHostsFromText();
+  if(!hosts.includes(host))hosts.push(host);
+  const saved=await saveOriginTLSVerifyExceptions(hosts,'Origin TLS exception added for '+host);
+  if(saved&&$('#originTLSVerifyBypassHost'))$('#originTLSVerifyBypassHost').value='';
+  return saved;
+}
+$('#originTLSVerifyBypassAdd')&&($('#originTLSVerifyBypassAdd').onclick=()=>addOriginTLSVerifyException($('#originTLSVerifyBypassHost')?.value));
+$('#originTLSVerifyBypassHost')&&($('#originTLSVerifyBypassHost').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addOriginTLSVerifyException(e.currentTarget.value);}});
+$('#originTLSVerifyBypassSelected')&&($('#originTLSVerifyBypassSelected').onclick=()=>{
+  const host=selectedOriginHost();
+  if(!host){toast('Select a request in History first','error');return;}
+  addOriginTLSVerifyException(host);
 });
-function parseUpstreamProxyCredentials(raw){
-  const user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');
-  if(user)user.value='';if(pass)pass.value='';
-  try{const parsed=new URL(raw);if(user)user.value=decodeURIComponent(parsed.username);if(pass&&parsed.password)pass.value=decodeURIComponent(parsed.password);parsed.username='';parsed.password='';if($('#setUpstream'))$('#setUpstream').value=parsed.toString();}catch(_){/* preserve raw API compatibility */}
+$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText()));
+
+const upstreamDefaultPorts={http:'80',https:'443',socks5:'1080',socks5h:'1080'};
+function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
+  scheme=scheme||$('#setUpstreamScheme')?.value||'direct';
+  const fields=$('#upstreamProxyFields');if(fields)fields.hidden=scheme==='direct';
+  const advanced=$('#upstreamProxyAdvanced');if(advanced)advanced.hidden=scheme!=='https';
+  const ca=$('#setUpstreamCAWrap');if(ca)ca.hidden=scheme!=='https';
+  const port=$('#setUpstreamPort');
+  if(port){port.placeholder=upstreamDefaultPorts[scheme]||'';if(fillDefaultPort&&scheme!=='direct'&&!port.value)port.value=upstreamDefaultPorts[scheme]||'';}
+  const summary=$('#upstreamProxySummary');
+  if(summary){
+    if(scheme==='direct')summary.textContent='Direct connection · no upstream proxy';
+    else{
+      const host=$('#setUpstreamHost')?.value.trim()||'host required';
+      const p=port?.value.trim()||upstreamDefaultPorts[scheme]||'port required';
+      const dns=scheme==='socks5h'?' · remote DNS':scheme==='socks5'?' · local DNS':'';
+      summary.textContent=scheme.toUpperCase()+' · '+host+':'+p+dns;
+    }
+  }
+}
+function decodeURLCredential(value){try{return decodeURIComponent(value);}catch(_){return value;}}
+function parseUpstreamProxyURL(raw){
+  const scheme=$('#setUpstreamScheme'),host=$('#setUpstreamHost'),port=$('#setUpstreamPort'),user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');
+  if(host)host.value='';if(port)port.value='';if(user)user.value='';if(pass)pass.value='';
+  if(!raw){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');return;}
+  try{
+    const parsed=new URL(raw),mode=parsed.protocol.replace(':','').toLowerCase();
+    if(!upstreamDefaultPorts[mode])throw new Error('unsupported mode');
+    if(scheme)scheme.value=mode;
+    if(host)host.value=parsed.hostname.replace(/^\[|\]$/g,'');
+    if(port)port.value=parsed.port||upstreamDefaultPorts[mode];
+    if(user)user.value=decodeURLCredential(parsed.username);
+    if(pass)pass.value=decodeURLCredential(parsed.password);
+    renderUpstreamProxyFields(mode);
+  }catch(_){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
 }
 function buildUpstreamProxyURL(){
-  const raw=$('#setUpstream').value.trim(), user=$('#setUpstreamUser').value, pass=$('#setUpstreamPassword').value;
-  if(!raw)return '';
-  try{
-    const parsed=new URL(raw);
-    parsed.username='';parsed.password='';
-    if(user||pass){parsed.username=user;parsed.password=pass;}
-    return parsed.toString();
-  }catch(_){return raw;}
+  const scheme=$('#setUpstreamScheme')?.value||'direct';
+  if(scheme==='direct')return '';
+  let host=$('#setUpstreamHost')?.value.trim()||'';
+  const port=$('#setUpstreamPort')?.value.trim()||upstreamDefaultPorts[scheme];
+  const user=$('#setUpstreamUser')?.value||'',pass=$('#setUpstreamPassword')?.value||'';
+  if(!host)throw new Error('Proxy host is required');
+  if(/[\s\/@?#]/.test(host))throw new Error('Proxy host must be a hostname or IP address without a URL path');
+  if(!/^\d+$/.test(port)||Number(port)<1||Number(port)>65535)throw new Error('Proxy port must be between 1 and 65535');
+  if(host.includes(':')&&!host.startsWith('['))host='['+host+']';
+  let parsed;
+  try{parsed=new URL(scheme+'://'+host+':'+port);}catch(_){throw new Error('Proxy host is invalid');}
+  if(user||pass){parsed.username=user;parsed.password=pass;}
+  return parsed.toString();
 }
+$('#setUpstreamScheme')&&($('#setUpstreamScheme').onchange=e=>renderUpstreamProxyFields(e.currentTarget.value,true));
+['setUpstreamHost','setUpstreamPort'].forEach(id=>{$('#'+id)?.addEventListener('input',()=>renderUpstreamProxyFields());});
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=async()=>{
   const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy:buildUpstreamProxyURL(),upstreamProxyCA})});
+  try{const upstreamProxy=buildUpstreamProxyURL();await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy,upstreamProxyCA})});
     if($('#setUpstreamCA'))$('#setUpstreamCA').value=upstreamProxyCA;
-    toast('upstream proxy saved');}catch(e){toast(e.message);}
+    parseUpstreamProxyURL(upstreamProxy);toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
 });
 
 export async function loadSession(){try{const s=await api('/api/session');
