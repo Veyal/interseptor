@@ -277,12 +277,17 @@ func run() error {
 	hub.Upstream = prx.SetUpstreamProxy
 	hub.SetUpstreamProxyCA = prx.SetUpstreamProxyCA
 	if v, ok, _ := st.GetSetting("upstream.proxyCA"); ok {
-		if err := prx.SetUpstreamProxyCA([]byte(strings.TrimSpace(v))); err != nil {
+		value := []byte(strings.TrimSpace(v))
+		if err := prx.SetUpstreamProxyCA(value); err != nil {
 			log.Printf("upstream proxy CA (saved) ignored: %v", err)
+		} else if err := hub.ConfigureSenderUpstreamProxyCA(value); err != nil {
+			log.Printf("sender upstream proxy CA (saved) ignored: %v", err)
 		}
 	}
 	if v, ok, _ := st.GetSetting("upstream.proxy"); ok && v != "" {
-		_ = prx.SetUpstreamProxy(v)
+		if err := prx.SetUpstreamProxy(v); err == nil {
+			_ = hub.ConfigureSenderUpstreamProxy(v)
+		}
 	}
 	// Capture policy: persist all traffic, or only in-scope (saves DB space).
 	hub.SetCaptureScopeOnly = prx.SetCaptureScopeOnly
@@ -308,6 +313,7 @@ func run() error {
 	// TLS-bypass list: CONNECTs to these hosts are tunneled raw (no MITM) so a
 	// pinned-but-unimportant domain keeps working while others stay intercepted.
 	hub.SetTLSBypassHosts = prx.SetTLSBypassHosts
+	hub.SetOriginTLSVerify = prx.SetOriginTLSVerify
 	hub.SetOriginTLSVerifyBypassHosts = prx.SetOriginTLSVerifyBypassHosts
 	hub.SetAutoBypassOnPinFailure = prx.SetAutoBypassOnPinFailure
 	prx.OnBypassAdded = hub.NotifyBypassAdded // persist + refresh UI on auto-bypass
@@ -317,6 +323,14 @@ func run() error {
 	if v, ok, _ := st.GetSetting("proxy.originTLSVerifyBypassHosts"); ok && v != "" {
 		prx.SetOriginTLSVerifyBypassHosts(strings.FieldsFunc(v, func(r rune) bool { return r == '\n' || r == '\r' || r == ',' }))
 	}
+	originTLSVerify, ok, err := st.GetSetting("proxy.originTLSVerify")
+	if !ok || (originTLSVerify != "0" && originTLSVerify != "1") {
+		if err := st.SetSetting("proxy.originTLSVerify", "0"); err != nil {
+			log.Printf("origin TLS verification default persist failed: %v", err)
+		}
+		originTLSVerify = "0"
+	}
+	prx.SetOriginTLSVerify(originTLSVerify == "1")
 	if v, ok, _ := st.GetSetting("proxy.autoBypassOnPinFailure"); ok && v == "1" {
 		prx.SetAutoBypassOnPinFailure(true)
 	}

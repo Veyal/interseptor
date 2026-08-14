@@ -12,6 +12,11 @@ The control plane has **two trust modes** (`internal/control/guard.go`):
   DNS-rebinding. Rebinding the **proxy** or **control UI** to a non-loopback address (e.g. `0.0.0.0`
   for LAN device capture) is allowed from Settings; set `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` to refuse
   non-loopback binds.
+- **Non-loopback proxy authentication.** A proxy listener bound to a non-loopback interface returns
+  `407 Proxy Authentication Required` with Basic realm `interseptor` until the client supplies any
+  username and a valid **full-scope** API key as the password. Read-only keys cannot proxy because
+  forwarding and capture mutate state. The listener strips `Proxy-Authorization` before forwarding.
+  Loopback listeners do not require this credential. See [Proxy authentication](proxy-and-tls.md#proxy-authentication).
 - **Key-authorized remote access (opt-in, added in v0.29.0).** A request carrying a valid API key is
   authorized regardless of Host/Origin/connection — this is what lets an AI agent on a VPS or a
   collaborator's browser reach Interseptor over a tunnel. Keys are **scoped**: a **read**-only key may

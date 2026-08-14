@@ -85,9 +85,9 @@ type Hub struct {
 	// SetSuppressAndroidTelemetry toggles suppression of Android/GMS/Crashlytics telemetry. Set by cmd.
 	SetSuppressAndroidTelemetry func(bool)
 	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
-	SetInvisibleProxy func(bool)
-	// SetTLSBypassHosts replaces the list of hosts tunneled raw (no MITM). Set by cmd.
+	SetInvisibleProxy             func(bool)
 	SetTLSBypassHosts             func([]string)
+	SetOriginTLSVerify            func(bool)
 	SetOriginTLSVerifyBypassHosts func([]string)
 	// SetAutoBypassOnPinFailure toggles auto-adding a host to the bypass list on
 	// an MITM handshake failure (SSL pinning). Set by cmd.
@@ -305,6 +305,7 @@ type settingsJSON struct {
 	SuppressBrowserTelemetry   bool     `json:"suppressBrowserTelemetry"`
 	SuppressAndroidTelemetry   bool     `json:"suppressAndroidTelemetry"`
 	InvisibleProxy             bool     `json:"invisibleProxy"`
+	OriginTLSVerify            bool     `json:"originTLSVerify"`
 	TLSBypassHosts             []string `json:"tlsBypassHosts"`
 	OriginTLSVerifyBypassHosts []string `json:"originTLSVerifyBypassHosts"`
 	AutoBypassOnPinFailure     bool     `json:"autoBypassOnPinFailure"`
@@ -314,6 +315,8 @@ type settingsJSON struct {
 
 // tlsBypassSettingKey stores the newline-separated host patterns that bypass MITM.
 const tlsBypassSettingKey = "proxy.tlsBypassHosts"
+
+const originTLSVerifySettingKey = "proxy.originTLSVerify"
 
 const originTLSVerifyBypassSettingKey = "proxy.originTLSVerifyBypassHosts"
 
@@ -1324,33 +1327,25 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
 	scopeOnly, _, _ := h.st.GetSetting("capture.scopeOnly")
 	suppressTelemetry, stOK, _ := h.st.GetSetting("capture.suppressBrowserTelemetry")
-	// Default to true when the key has never been written (first run).
 	suppressTelemetryOn := !stOK || suppressTelemetry == "1"
 	suppressAndroid, andOK, _ := h.st.GetSetting("capture.suppressAndroidTelemetry")
 	suppressAndroidOn := !andOK || suppressAndroid == "1"
 	invisibleProxy, _, _ := h.st.GetSetting("proxy.invisibleProxy")
+	originTLSVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
 	originTLSVerifyBypassRaw, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	autoBypass, _, _ := h.st.GetSetting("proxy.autoBypassOnPinFailure")
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
-		ProxyAddr:                  displayProxyAddrs(proxyAddrs),
-		ProxyAddrs:                 proxyAddrs,
-		DeviceProxy:                deviceEP.Endpoint,
-		DeviceProxyMode:            loadDeviceProxyMode(h.st),
-		ControlAddr:                h.currentControlAddr(),
-		InterceptEnabled:           h.eng != nil && h.eng.Enabled(),
-		UpstreamProxy:              up,
-		UpstreamProxyCA:            upCA,
-		OobEnabled:                 h.oobEnabled(),
-		CaptureScopeOnly:           scopeOnly == "1",
-		SuppressBrowserTelemetry:   suppressTelemetryOn,
-		SuppressAndroidTelemetry:   suppressAndroidOn,
-		InvisibleProxy:             invisibleProxy == "1",
-		TLSBypassHosts:             parseHostList(tlsBypassRaw),
-		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw),
-		AutoBypassOnPinFailure:     autoBypass == "1",
+		ProxyAddr: displayProxyAddrs(proxyAddrs), ProxyAddrs: proxyAddrs,
+		DeviceProxy: deviceEP.Endpoint, DeviceProxyMode: loadDeviceProxyMode(h.st),
+		ControlAddr: h.currentControlAddr(), InterceptEnabled: h.eng != nil && h.eng.Enabled(),
+		UpstreamProxy: up, UpstreamProxyCA: upCA, OobEnabled: h.oobEnabled(),
+		CaptureScopeOnly: scopeOnly == "1", SuppressBrowserTelemetry: suppressTelemetryOn,
+		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
+		OriginTLSVerify: originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
+		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
 	})
 }
 
@@ -1377,8 +1372,12 @@ func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if err := h.snd.SetUpstreamProxyCA([]byte(value)); err != nil {
+		return false, err
+	}
 	if h.SetUpstreamProxyCA != nil {
 		if err := h.SetUpstreamProxyCA([]byte(value)); err != nil {
+			_ = h.snd.SetUpstreamProxyCA([]byte(previous))
 			return false, err
 		}
 	}
@@ -1386,9 +1385,23 @@ func (h *Hub) applyUpstreamProxyCA(value string) (bool, error) {
 		if h.SetUpstreamProxyCA != nil {
 			_ = h.SetUpstreamProxyCA([]byte(previous))
 		}
+		_ = h.snd.SetUpstreamProxyCA([]byte(previous))
 		return true, err
 	}
 	return true, nil
+}
+
+// ConfigureSenderUpstreamProxy applies a saved route to Repeater, Intruder,
+// and scanner traffic during startup. Runtime Settings updates call the same
+// Sender methods inside settingsAPI.
+func (h *Hub) ConfigureSenderUpstreamProxy(value string) error {
+	return h.snd.SetUpstreamProxy(value)
+}
+
+// ConfigureSenderUpstreamProxyCA applies saved HTTPS-proxy trust to Sender
+// consumers during startup.
+func (h *Hub) ConfigureSenderUpstreamProxyCA(value []byte) error {
+	return h.snd.SetUpstreamProxyCA(value)
 }
 
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -1403,6 +1416,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		SuppressBrowserTelemetry   *bool     `json:"suppressBrowserTelemetry"`
 		SuppressAndroidTelemetry   *bool     `json:"suppressAndroidTelemetry"`
 		InvisibleProxy             *bool     `json:"invisibleProxy"`
+		OriginTLSVerify            *bool     `json:"originTLSVerify"`
 		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
 		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
@@ -1506,6 +1520,19 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
+	if in.OriginTLSVerify != nil {
+		v := "0"
+		if *in.OriginTLSVerify {
+			v = "1"
+		}
+		if !h.persistSetting(w, originTLSVerifySettingKey, v) {
+			return
+		}
+		if h.SetOriginTLSVerify != nil {
+			h.SetOriginTLSVerify(*in.OriginTLSVerify)
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
 	newProxyAddrs := in.ProxyAddrs
 	if len(newProxyAddrs) == 0 && in.ProxyAddr != "" {
 		newProxyAddrs = []string{in.ProxyAddr}
@@ -1574,13 +1601,28 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if in.UpstreamProxy != nil {
+		previous, _, err := h.st.GetSetting("upstream.proxy")
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if err := h.snd.SetUpstreamProxy(*in.UpstreamProxy); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if h.Upstream != nil {
 			if err := h.Upstream(*in.UpstreamProxy); err != nil {
+				_ = h.snd.SetUpstreamProxy(previous)
 				httpErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
 		}
-		if !h.persistSetting(w, "upstream.proxy", *in.UpstreamProxy) {
+		if err := h.setSetting("upstream.proxy", *in.UpstreamProxy); err != nil {
+			_ = h.snd.SetUpstreamProxy(previous)
+			if h.Upstream != nil {
+				_ = h.Upstream(previous)
+			}
+			httpInternalErr(w, err)
 			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})

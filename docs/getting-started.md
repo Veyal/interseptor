@@ -57,6 +57,10 @@ tracks the latest release.)
 4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
    the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.
 
+For a LAN or mobile listener, read [Proxy authentication](proxy-and-tls.md#proxy-authentication)
+before rebinding: non-loopback listeners require a full-scope API key as the proxy password. The
+browser realm is `interseptor`; it is not asking for the target site's credentials.
+
 Runtime data lives under `~/.interseptor/` (`interseptor.db`, `bodies/`, `ca/`). Full-project archives
 intentionally use the compatibility filename `interceptor.db`. Delete the runtime directory to reset.
 
@@ -83,6 +87,9 @@ intentionally use the compatibility filename `interceptor.db`. Delete the runtim
 | `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Raises the GitHub API rate limit used for update checks (first non-empty wins). |
 
 The proxy bind address is also runtime-configurable in **Settings** (and persisted).
+
+For the complete command surface, see the [CLI reference](cli-reference.md). For CA trust, origin
+verification, passthrough, pinning, and upstream chaining, see [Proxy, TLS, and networking](proxy-and-tls.md).
 
 ## Running multiple projects
 

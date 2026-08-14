@@ -45,6 +45,10 @@ Do **not** dump long `## Summary` / `## Steps` / `## Evidence` walls into body t
 
 Human UI creates are not gated — MCP only. UI shows Draft vs Ready from the same completeness rules.
 
+The human-facing writing and review standard lives in `docs/findings-and-reporting.md` and the
+Findings **Writing guide** modal. Keep those two surfaces aligned with this enforcement contract when
+fields, readiness rules, evidence actions, or status meanings change.
+
 ## Do not
 
 - Put base64/`path` image data in body JSON — use `add_finding_image`

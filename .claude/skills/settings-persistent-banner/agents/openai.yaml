@@ -1,0 +1,3 @@
+interface:
+  display_name: "Settings Persistent Banner"
+  short_description: "Keep settings alerts visible and well-laid out"

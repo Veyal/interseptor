@@ -93,16 +93,30 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	css := readUIAsset(t, "app.css")
 	requireUIContains(t, index,
-		`id="setUpstream"`,
+		`id="upstreamProxySection"`,
+		`id="setUpstreamScheme"`,
+		`value="direct"`,
+		`value="http"`,
+		`value="https"`,
+		`value="socks5"`,
+		`value="socks5h"`,
+		`id="setUpstreamHost"`,
+		`id="setUpstreamPort"`,
 		`id="setUpstreamUser"`,
 		`id="setUpstreamPassword"`,
 		`id="setUpstreamCA"`,
-		`Optional; leave blank for no proxy authentication`,
+		`SOCKS5H resolves target names through the proxy`,
+		`id="upstreamProxySummary"`,
 	)
 	requireUIContains(t, settings,
-		"parseUpstreamProxyCredentials(",
-		"upstreamProxy:buildUpstreamProxyURL(",
+		"parseUpstreamProxyURL(",
+		"renderUpstreamProxyFields(",
+		"buildUpstreamProxyURL(",
+		"setUpstreamScheme",
+		"setUpstreamHost",
+		"setUpstreamPort",
 		"setUpstreamUser",
 		"setUpstreamPassword",
 		"setUpstreamCA",
@@ -112,6 +126,11 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	if strings.Contains(settings, "encodeURIComponent($('#setUpstreamUser').value.trim())") {
 		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
 	}
+	requireUIContains(t, css,
+		`.settings-nav-group{display:contents}`,
+		`grid-template-columns:repeat(4,minmax(0,1fr))`,
+		`grid-template-columns:repeat(3,minmax(0,1fr))`,
+	)
 }
 
 func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
@@ -130,14 +149,45 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"invisibleProxy:on",
 		"autoBypassOnPinFailure:on",
 		"tlsBypassHosts:hosts",
-		"upstreamProxy:buildUpstreamProxyURL()",
+		"buildUpstreamProxyURL()",
 		"upstreamProxyCA",
+	)
+}
+
+func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`id="originTLSVerifyWarning"`,
+		`settings-origin-tls-warning`,
+		`role="alert"`,
+		`id="originTLSVerifyMode"`,
+		`Compatibility — accept test certificates`,
+		`Strict — verify origin certificates`,
+		`Origin certificates are not verified`,
+		`Interception/capture can accept impersonated servers`,
+		`HTTPS upstream-proxy verification remains strict`,
+		`id="originTLSVerifyBypassHost"`,
+		`id="originTLSVerifyBypassAdd"`,
+		`id="originTLSVerifyBypassSelected"`,
+		`doesn't contain any IP SANs`,
+	)
+	requireUIContains(t, settings,
+		"s.originTLSVerify",
+		"originTLSVerify:on",
+		"setOriginTLSVerify(",
+		"addOriginTLSVerifyException(",
+		"selectedOriginHost(",
+		"loadSettings();",
+		"document.activeElement!==ol",
+		"catch(e){renderOriginTLSVerifyWarning(true)",
 	)
 }
 
 func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	tools := readUIAsset(t, "js/tools.js")
+	css := readUIAsset(t, "app.css")
 	requireUIContains(t, findings,
 		`import { sendToRepeater } from './tools.js';`,
 		`find-send-repeater`,
@@ -145,14 +195,31 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 		`sendToRepeater({ id });`,
 		`!block.missing`,
 		`find-report-flow`,
+		`find-evidence-actions`,
+		`wireSendToRepeaterButtons`,
 	)
 	requireUIContains(t, tools,
 		`sendToRepeater`,
 		`'/api/flows/'`,
 		`raw?side=req`,
+		`repFlowEndpoint(d)`,
 		`method=d.method`,
 		`headersToText(d.reqHeaders)`,
 		`sourceFlowId=f.id`,
+	)
+	// Resolve the flow before choosing a Repeater tab. Findings intentionally
+	// pass only {id}; using the partial object makes every action target an
+	// "undefined" endpoint tab. Do not navigate away until both reads succeed.
+	loadFlow := strings.Index(tools, "const d=await api('/api/flows/'+f.id)")
+	chooseTab := strings.Index(tools, "repFlowEndpoint(d)")
+	navigate := strings.Index(tools, `document.querySelector('.tab[data-tab="repeater"]').click()`)
+	if loadFlow < 0 || chooseTab < loadFlow || navigate < chooseTab {
+		t.Error("Send to Repeater must load metadata, select the real endpoint tab, then navigate")
+	}
+	requireUIContains(t, css,
+		`[hidden]{display:none!important}`,
+		`.find-evidence-actions`,
+		`.find-report-stepbody`,
 	)
 	if strings.Contains(findings, "Copy URL") || strings.Contains(findings, "Copy link") {
 		t.Error("finding flow actions retain copy controls")
@@ -160,6 +227,32 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	if strings.Contains(findings, "fetch('/api/flows") || strings.Contains(findings, "api('/api/flows/'+id+'/raw") {
 		t.Error("finding flow action reconstructs request instead of using Repeater helper")
 	}
+}
+
+func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	findings := executableJS(readUIAsset(t, "js/findings.js"))
+	css := readUIAsset(t, "app.css")
+	requireUIContains(t, index,
+		`id="findGuide"`,
+		`id="findGuideModal"`,
+		`Technical finding template`,
+		`Reproduction`,
+		`Evidence`,
+		`Remediation`,
+	)
+	requireUIContains(t, findings,
+		`findGuideModal`,
+		`findGuideClose`,
+	)
+	requireUIContains(t, css,
+		`@media (max-width:900px)`,
+		`.find-view{flex-direction:column}`,
+		`.find-view .scan-list{width:100%`,
+		`@media (max-width:720px)`,
+		`#appRow{flex-direction:column}`,
+		`#tabs{width:100%`,
+	)
 }
 
 func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *testing.T) {

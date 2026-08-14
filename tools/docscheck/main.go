@@ -36,10 +36,16 @@ type command struct{ name, site, root string }
 var (
 	publicDocs = map[string]pageMeta{
 		"docs/getting-started.md": {"getting-started", "Getting started", "current"}, "docs/api-and-mcp.md": {"api-and-mcp", "API and MCP", "current"}, "docs/history-search.md": {"history-search", "History search", "current"}, "docs/architecture.md": {"architecture", "Architecture", "current"}, "docs/custom-checks.md": {"custom-checks", "Custom checks", "current"}, "docs/custom-active-checks.md": {"custom-active-checks", "Custom active checks", "current"}, "docs/rule-packs.md": {"rule-packs", "Rule packs", "current"}, "docs/vault.md": {"vault", "Project vault", "current"}, "docs/engagement-closeout.md": {"engagement-closeout", "Engagement close-out", "current"}, "docs/content-discovery.md": {"content-discovery", "Content discovery", "current"}, "docs/http2.md": {"http2", "HTTP/2", "current"}, "docs/message-codecs.md": {"message-codecs", "Message codecs", "current"}, "docs/extensions.md": {"extensions", "Extensions", "current"}, "docs/benchmarks.md": {"benchmarks", "Benchmarks", "reference"}, "docs/product/mcp-cookbook.md": {"mcp-cookbook", "MCP cookbook", "current"},
+		"docs/proxy-and-tls.md": {"proxy-and-tls", "Proxy, TLS, and networking", "current"}, "docs/findings-and-reporting.md": {"findings-and-reporting", "Findings and reporting", "current"}, "docs/cli-reference.md": {"cli-reference", "CLI reference", "reference"}, "docs/projects-and-data.md": {"projects-and-data", "Projects and data", "current"}, "docs/mobile-testing.md": {"mobile-testing", "Mobile testing", "current"}, "docs/troubleshooting.md": {"troubleshooting", "Troubleshooting", "reference"},
 	}
-	markdownLink = regexp.MustCompile(`\]\(([^)]+)\)`)
-	featureTitle = regexp.MustCompile(`(?m)^- \*\*([^*]+)\*\*`)
-	hrefPattern  = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
+	markdownLink  = regexp.MustCompile(`\]\(([^)]+)\)`)
+	featureTitle  = regexp.MustCompile(`(?m)^- \*\*([^*]+)\*\*`)
+	hrefPattern   = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
+	searchHeading = regexp.MustCompile(`(?m)^(#{2,3})[ \t]+(.+?)[ \t]*$`)
+	fencedBlock   = regexp.MustCompile("(?s)```.*?```")
+	htmlTag       = regexp.MustCompile(`<[^>]+>`)
+	markdownURL   = regexp.MustCompile(`\[([^]]+)\]\([^)]+\)`)
+	nonSlug       = regexp.MustCompile(`[^a-z0-9 -]+`)
 )
 
 func parseCommand(args []string) (command, error) {
@@ -206,17 +212,71 @@ func loadFeatures(root string) ([]Feature, string, error) {
 	return features, string(canonical), nil
 }
 
-func searchJSON(features []Feature) ([]byte, error) {
+func searchSlug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = nonSlug.ReplaceAllString(s, "")
+	// Match kramdown's auto IDs: punctuation is removed, then every remaining
+	// whitespace character becomes a hyphen. Spaces on both sides of punctuation
+	// therefore intentionally produce a double hyphen ("Limits & safety" →
+	// "limits--safety").
+	s = strings.NewReplacer(" ", "-", "\t", "-", "\n", "-", "\r", "-").Replace(s)
+	return strings.Trim(s, "-")
+}
+
+func searchableText(s string) string {
+	s = fencedBlock.ReplaceAllString(s, " ")
+	s = markdownURL.ReplaceAllString(s, "$1")
+	s = htmlTag.ReplaceAllString(s, " ")
+	s = strings.NewReplacer("`", "", "#", " ", "*", "", "_", " ", ">", " ", "|", " ").Replace(s)
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 1200 {
+		s = s[:1200]
+	}
+	return s
+}
+
+func searchSections(body string, meta pageMeta) []SearchItem {
+	matches := searchHeading.FindAllStringSubmatchIndex(body, -1)
+	introEnd := len(body)
+	if len(matches) > 0 {
+		introEnd = matches[0][0]
+	}
+	items := []SearchItem{{Title: meta.Title, Text: searchableText(body[:introEnd]), URL: meta.Slug + "/"}}
+	for i, match := range matches {
+		end := len(body)
+		if i+1 < len(matches) {
+			end = matches[i+1][0]
+		}
+		title := strings.TrimSpace(body[match[4]:match[5]])
+		items = append(items, SearchItem{
+			Title: searchableText(title),
+			Text:  searchableText(body[match[1]:end]),
+			URL:   meta.Slug + "/#" + searchSlug(title),
+		})
+	}
+	return items
+}
+
+func searchJSON(root string, features []Feature) ([]byte, error) {
 	copyFeatures := append([]Feature(nil), features...)
 	sort.Slice(copyFeatures, func(i, j int) bool { return copyFeatures[i].ID < copyFeatures[j].ID })
 	search := make([]SearchItem, 0, len(copyFeatures)+len(publicDocs))
 	for _, f := range copyFeatures {
 		search = append(search, SearchItem{f.Title, f.Text, "features/#" + f.ID})
 	}
-	for _, meta := range publicDocs {
-		search = append(search, SearchItem{meta.Title, meta.Class, meta.Slug + "/"})
+	for source, meta := range publicDocs {
+		body, err := os.ReadFile(filepath.Join(root, source))
+		if err != nil {
+			return nil, fmt.Errorf("index %s: %w", source, err)
+		}
+		search = append(search, searchSections(string(body), meta)...)
 	}
-	sort.Slice(search, func(i, j int) bool { return search[i].URL < search[j].URL })
+	sort.Slice(search, func(i, j int) bool {
+		if search[i].URL == search[j].URL {
+			return search[i].Title < search[j].Title
+		}
+		return search[i].URL < search[j].URL
+	})
 	return json.MarshalIndent(search, "", "  ")
 }
 
@@ -234,7 +294,7 @@ func generate(root string) error {
 			return err
 		}
 	}
-	data, err := searchJSON(features)
+	data, err := searchJSON(root, features)
 	if err != nil {
 		return err
 	}
@@ -259,7 +319,7 @@ func check(root string) error {
 			return fmt.Errorf("generated page stale: %s.md", meta.Slug)
 		}
 	}
-	want, err := searchJSON(features)
+	want, err := searchJSON(root, features)
 	if err != nil {
 		return err
 	}
@@ -295,6 +355,11 @@ func validateBuiltSite(site, basePath string) error {
 		}
 		if _, err := os.Stat(file); err != nil {
 			return fmt.Errorf("missing built page %s: %w", page, err)
+		}
+	}
+	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+		if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(asset))); err != nil {
+			return fmt.Errorf("missing built asset %s: %w", asset, err)
 		}
 	}
 	return filepath.Walk(site, func(file string, info os.FileInfo, err error) error {

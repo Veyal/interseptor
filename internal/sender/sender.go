@@ -7,20 +7,24 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/capture"
 	"github.com/Veyal/interseptor/internal/httplines"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
+	xproxy "golang.org/x/net/proxy"
 )
 
 // Request describes a request to send.
@@ -69,10 +73,14 @@ type Macro struct {
 
 // Sender sends requests and persists them as flows.
 type Sender struct {
-	st   *store.Store
-	cap  *capture.Capturer
-	cl   *http.Client
-	sess session
+	st  *store.Store
+	cap *capture.Capturer
+	cl  *http.Client
+	tr  *http.Transport
+
+	upstream           atomic.Pointer[url.URL]
+	upstreamProxyRoots atomic.Pointer[x509.CertPool]
+	sess               session
 
 	macroMu sync.RWMutex
 	macro   Macro
@@ -225,18 +233,150 @@ func (s *Sender) applySession(req *http.Request) {
 // flow, like Burp) and does not verify TLS — a security-testing tool routinely
 // talks to targets with self-signed or invalid certificates.
 func New(st *store.Store, cap *capture.Capturer) *Sender {
-	return &Sender{
-		st:  st,
-		cap: cap,
-		cl: &http.Client{
-			// No overall / response-header timeout — Repeater waits as long as
-			// the target takes (long polls, slow APIs). Dial still times out.
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // pentest tool, by design
-			},
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
+	s := &Sender{st: st, cap: cap}
+	s.tr = &http.Transport{
+		Proxy:           s.proxyForRequest,
+		DialContext:     s.dialContext,
+		DialTLSContext:  s.dialTLSContext,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // origin testing, by design
 	}
+	s.cl = &http.Client{
+		// No overall / response-header timeout — Repeater waits as long as
+		// the target takes (long polls, slow APIs). Dial still times out.
+		Transport:     s.tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	return s
+}
+
+func (s *Sender) proxyForRequest(*http.Request) (*url.URL, error) {
+	up := s.upstream.Load()
+	if up == nil || senderSOCKSUpstream(up) {
+		return nil, nil
+	}
+	return up, nil
+}
+
+// SetUpstreamProxy applies the same second-hop route used by captured proxy
+// traffic to Repeater, Intruder, active checks, and other Sender consumers.
+func (s *Sender) SetUpstreamProxy(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		s.upstream.Store(nil)
+		s.tr.CloseIdleConnections()
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("invalid upstream proxy URL %q", raw)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	if !senderSupportedUpstreamScheme(u.Scheme) {
+		return fmt.Errorf("unsupported upstream proxy scheme %q", u.Scheme)
+	}
+	s.upstream.Store(u)
+	s.tr.CloseIdleConnections()
+	return nil
+}
+
+// SetUpstreamProxyCA configures trust for HTTPS upstream proxies only. Origin
+// TLS remains permissive for security testing, matching Sender's prior policy.
+func (s *Sender) SetUpstreamProxyCA(pemBytes []byte) error {
+	var roots *x509.CertPool
+	if len(bytes.TrimSpace(pemBytes)) != 0 {
+		var err error
+		roots, err = x509.SystemCertPool()
+		if err != nil {
+			return fmt.Errorf("load system certificate roots: %w", err)
+		}
+		if roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(pemBytes) {
+			return fmt.Errorf("invalid upstream proxy CA PEM")
+		}
+	}
+	s.upstreamProxyRoots.Store(roots)
+	s.tr.CloseIdleConnections()
+	return nil
+}
+
+func (s *Sender) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	up := s.upstream.Load()
+	if up == nil || !senderSOCKSUpstream(up) {
+		return senderNetDialer().DialContext(ctx, network, addr)
+	}
+	if up.Scheme == "socks5" {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("resolve SOCKS destination %q: no addresses", host)
+		}
+		addr = net.JoinHostPort(ips[0].IP.String(), port)
+	}
+	var auth *xproxy.Auth
+	if up.User != nil {
+		password, _ := up.User.Password()
+		auth = &xproxy.Auth{User: up.User.Username(), Password: password}
+	}
+	dialer, err := xproxy.SOCKS5(network, senderUpstreamAddress(up), auth, senderNetDialer())
+	if err != nil {
+		return nil, err
+	}
+	contextDialer, ok := dialer.(xproxy.ContextDialer)
+	if !ok {
+		return nil, fmt.Errorf("SOCKS dialer does not support context")
+	}
+	return contextDialer.DialContext(ctx, network, addr)
+}
+
+func (s *Sender) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	raw, err := s.dialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // target origins are intentionally permissive
+	if up := s.upstream.Load(); up != nil && up.Scheme == "https" && addr == senderUpstreamAddress(up) {
+		cfg = &tls.Config{ServerName: up.Hostname(), RootCAs: s.upstreamProxyRoots.Load()}
+	} else if host, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+		cfg.ServerName = host
+	}
+	tlsConn := tls.Client(raw, cfg)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		raw.Close()
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+func senderNetDialer() *net.Dialer {
+	return &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+}
+
+func senderSupportedUpstreamScheme(scheme string) bool {
+	return scheme == "http" || scheme == "https" || scheme == "socks5" || scheme == "socks5h"
+}
+
+func senderSOCKSUpstream(up *url.URL) bool { return up.Scheme == "socks5" || up.Scheme == "socks5h" }
+
+func senderUpstreamAddress(up *url.URL) string {
+	port := up.Port()
+	if port == "" {
+		switch up.Scheme {
+		case "https":
+			port = "443"
+		case "socks5", "socks5h":
+			port = "1080"
+		default:
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(up.Hostname(), port)
 }
 
 // Send issues r, captures the response, and persists a flow. Transport-level

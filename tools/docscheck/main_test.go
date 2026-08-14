@@ -90,6 +90,77 @@ func TestRewriteLinksClassifiesTargetsAfterResolvingSourcePath(t *testing.T) {
 	}
 }
 
+func TestSearchSectionsIndexesHeadingsAndReadableBody(t *testing.T) {
+	items := searchSections(strings.Join([]string{
+		"# Proxy and TLS",
+		"Intro text.",
+		"## Proxy authentication",
+		"Use a full API key as the password.",
+		"```text",
+		"Proxy-Authorization: secret-value",
+		"```",
+		"### Browser prompt",
+		"The realm is Interseptor.",
+	}, "\n"), pageMeta{"proxy-and-tls", "Proxy and TLS", "current"})
+
+	assertItem := func(title, url, text string) {
+		t.Helper()
+		for _, item := range items {
+			if item.Title == title && item.URL == url {
+				if !strings.Contains(item.Text, text) {
+					t.Fatalf("search item %q text = %q, want %q", title, item.Text, text)
+				}
+				if strings.Contains(item.Text, "secret-value") {
+					t.Fatalf("search item %q indexed fenced example content", title)
+				}
+				return
+			}
+		}
+		t.Fatalf("missing search item %q at %q: %+v", title, url, items)
+	}
+	assertItem("Proxy authentication", "proxy-and-tls/#proxy-authentication", "full API key")
+	assertItem("Browser prompt", "proxy-and-tls/#browser-prompt", "realm is Interseptor")
+}
+
+func TestSearchSlugMatchesKramdownPunctuationIDs(t *testing.T) {
+	for input, want := range map[string]string{
+		"Limits & safety":                       "limits--safety",
+		"Client → proxy leg":                    "client--proxy-leg",
+		"The hook API — internal/plugin":        "the-hook-api--internalplugin",
+		"HTTP/1.1 client, HTTP/2 origin":        "http11-client-http2-origin",
+		"Recipe 4 — Close out (engagement end)": "recipe-4--close-out-engagement-end",
+	} {
+		if got := searchSlug(input); got != want {
+			t.Errorf("searchSlug(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestPublicDocumentationIncludesOperatorAndReportingGuides(t *testing.T) {
+	for _, source := range []string{
+		"docs/proxy-and-tls.md",
+		"docs/findings-and-reporting.md",
+		"docs/cli-reference.md",
+		"docs/projects-and-data.md",
+		"docs/mobile-testing.md",
+		"docs/troubleshooting.md",
+	} {
+		if _, ok := publicDocs[source]; !ok {
+			t.Errorf("publicDocs missing %s", source)
+		}
+	}
+}
+
+func TestDocumentationSearchLoadsPublishedIndexPath(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "website", "assets", "search.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "website/data/search.json") {
+		t.Fatal("documentation search does not fetch the published search index path")
+	}
+}
+
 func builtSiteFixture(t *testing.T) string {
 	t.Helper()
 	site := t.TempDir()
@@ -110,6 +181,15 @@ func builtSiteFixture(t *testing.T) string {
 	}
 	if err := os.WriteFile(filepath.Join(site, "assets", "site.css"), nil, 0o644); err != nil {
 		t.Fatal(err)
+	}
+	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+		file := filepath.Join(site, filepath.FromSlash(asset))
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("[]"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return site
 }
@@ -136,5 +216,15 @@ func TestValidateBuiltSiteRejectsInvalidTargets(t *testing.T) {
 				t.Fatalf("expected invalid target error for %s", href)
 			}
 		})
+	}
+}
+
+func TestValidateBuiltSiteRequiresSearchIndex(t *testing.T) {
+	site := builtSiteFixture(t)
+	if err := os.Remove(filepath.Join(site, "website", "data", "search.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateBuiltSite(site, "/interseptor"); err == nil || !strings.Contains(err.Error(), "website/data/search.json") {
+		t.Fatalf("validateBuiltSite without search index = %v, want missing search asset", err)
 	}
 }

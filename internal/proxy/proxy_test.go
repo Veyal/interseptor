@@ -456,6 +456,84 @@ func TestProxyMITMCapturesHTTPS(t *testing.T) {
 	}
 }
 
+func TestOriginTLSVerificationLivePolicy(t *testing.T) {
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "origin-ok")
+	}))
+	defer origin.Close()
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("proxy CA: %v", err)
+	}
+	srv := New(st, capture.New(st), ca, nil, nil)
+	proxyServer := httptest.NewServer(srv)
+	defer proxyServer.Close()
+
+	proxyURL, err := url.Parse(proxyServer.URL)
+	if err != nil {
+		t.Fatalf("proxy URL: %v", err)
+	}
+	clientRoots := x509.NewCertPool()
+	if !clientRoots.AppendCertsFromPEM(ca.CertPEM()) {
+		t.Fatal("append proxy CA")
+	}
+	client := &http.Client{Transport: &http.Transport{
+		Proxy:           http.ProxyURL(proxyURL),
+		TLSClientConfig: &tls.Config{RootCAs: clientRoots},
+	}, Timeout: 5 * time.Second}
+	get := func() *http.Response {
+		resp, err := client.Get(origin.URL)
+		if err != nil {
+			t.Fatalf("request through proxy: %v", err)
+		}
+		return resp
+	}
+
+	// The compatibility default accepts the self-signed origin certificate.
+	resp := get()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("default origin verification response = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "origin-ok" {
+		t.Fatalf("default origin response body = %q, want origin-ok", body)
+	}
+
+	srv.SetOriginTLSVerify(true)
+	resp = get()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("strict origin verification response = %d, want 502", resp.StatusCode)
+	}
+	resp.Body.Close()
+	flows := waitFlows(t, st, 2)
+	if flows[0].Status != http.StatusBadGateway || !strings.Contains(strings.ToLower(flows[0].Error), "certificate") {
+		t.Fatalf("strict origin failure flow = %+v, want certificate-related 502", flows[0])
+	}
+
+	srv.SetOriginTLSVerifyBypassHosts([]string{originURLHostname(t, origin.URL)})
+	resp = get()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("matching origin exception response = %d, want 200", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func originURLHostname(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse origin URL: %v", err)
+	}
+	return u.Hostname()
+}
+
 func TestOriginDialTargetKeepsDefaultHTTPSPort(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "https://service.example.test/", nil)
 	req = withOriginDialTarget(req, originDialTargetAddress("10.243.194.19", 443))
@@ -1404,20 +1482,24 @@ func TestHTTPSChainedUpstreamPrivateCAPublicHTTPFailsUntilProxyCAIsTrusted(t *te
 	}
 	defer ln.Close()
 	go func() {
-		raw, err := ln.Accept()
-		if err != nil {
-			return
+		for {
+			raw, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer raw.Close()
+				conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*leaf}})
+				req, err := http.ReadRequest(bufio.NewReader(conn))
+				if err != nil {
+					return
+				}
+				if req.Method != http.MethodGet || req.URL.String() != origin.URL+"/" {
+					return
+				}
+				_, _ = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\norigin reached")
+			}()
 		}
-		defer raw.Close()
-		conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*leaf}})
-		req, err := http.ReadRequest(bufio.NewReader(conn))
-		if err != nil {
-			return
-		}
-		if req.Method != http.MethodGet || req.URL.String() != origin.URL+"/" {
-			return
-		}
-		io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\norigin reached")
 	}()
 
 	_, port, err := net.SplitHostPort(ln.Addr().String())
@@ -1432,6 +1514,11 @@ func TestHTTPSChainedUpstreamPrivateCAPublicHTTPFailsUntilProxyCAIsTrusted(t *te
 	srv := New(st, capture.New(st), nil, nil, nil)
 	if err := srv.SetUpstreamProxy("https://localhost:" + port); err != nil {
 		t.Fatalf("SetUpstreamProxy: %v", err)
+	}
+	withoutCA := httptest.NewRecorder()
+	srv.ServeHTTP(withoutCA, httptest.NewRequest(http.MethodGet, origin.URL, nil))
+	if withoutCA.Code != http.StatusBadGateway {
+		t.Fatalf("public request through untrusted HTTPS upstream = %d, want 502", withoutCA.Code)
 	}
 	if err := srv.SetUpstreamProxyCA(proxyCA.CertPEM()); err != nil {
 		t.Fatalf("SetUpstreamProxyCA: %v", err)
@@ -1453,6 +1540,7 @@ func TestSetUpstreamProxyCARejectsInvalidPEMAndClearsTrustedRoots(t *testing.T) 
 		t.Fatalf("proxy CA: %v", err)
 	}
 	srv := New(nil, nil, nil, nil, nil)
+	srv.SetOriginTLSVerify(true)
 	if err := srv.SetUpstreamProxyCA(proxyCA.CertPEM()); err != nil {
 		t.Fatalf("SetUpstreamProxyCA: %v", err)
 	}

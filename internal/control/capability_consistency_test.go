@@ -92,15 +92,32 @@ func TestSettingsHARImportExportJourney(t *testing.T) {
 	requireUIRegex(t, settings, `(?s)importHARFile.*?uiConfirm\(.*?api\('/api/import/har'.*?loadFlows\(\)`)
 }
 
-func TestOriginTLSVerifyBypassSettingsJourney(t *testing.T) {
+func TestOriginTLSVerifySettingsJourney(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	requireUIContains(t, index,
+		`id="originTLSVerifyMode"`,
+		`aria-label="Origin TLS certificate policy"`,
+		`Compatibility — accept test certificates`,
+		`Strict — verify origin certificates`,
+		`id="originTLSVerifyWarning"`,
+		`settings-origin-tls-warning`,
+		`role="alert"`,
+		`Origin certificates are not verified`,
+		`Interception/capture can accept impersonated servers`,
+		`HTTPS upstream-proxy verification remains strict`,
 		`id="originTLSVerifyBypassList"`,
 		`id="originTLSVerifyBypassSave"`,
 		`id="originTLSVerifyBypassCount"`,
 	)
 	requireUIContains(t, settings,
+		"originTLSVerifyMode",
+		"originTLSVerifyWarning",
+		"originTLSVerify:on",
+		"s.originTLSVerify",
+		"setOriginTLSVerify(",
+		"loadSettings();",
+		"document.activeElement!==ol",
 		"originTLSVerifyBypassList",
 		"originTLSVerifyBypassSave",
 		"originTLSVerifyBypassHosts",
@@ -109,8 +126,8 @@ func TestOriginTLSVerifyBypassSettingsJourney(t *testing.T) {
 	)
 	for _, route := range apiRoutes {
 		if route.Method == "PUT" && route.Path == "/api/settings" {
-			if !strings.Contains(route.Desc, "originTLSVerifyBypassHosts") {
-				t.Fatal("settings route catalog omits originTLSVerifyBypassHosts")
+			if !strings.Contains(route.Desc, "originTLSVerify") {
+				t.Fatal("settings route catalog omits originTLSVerify")
 			}
 			return
 		}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -288,6 +289,7 @@ func TestShouldBypassTLSPatterns(t *testing.T) {
 func TestOriginTLSVerifyBypassHosts(t *testing.T) {
 	// Given
 	srv := New(nil, nil, nil, nil, nil)
+	srv.SetOriginTLSVerify(true)
 	srv.SetOriginTLSVerifyBypassHosts([]string{" *.untrusted.test ", "exact.test", "*.untrusted.test"})
 
 	// When
@@ -311,6 +313,54 @@ func TestOriginTLSVerifyBypassHosts(t *testing.T) {
 	}
 	if got := srv.OriginTLSVerifyBypassHosts(); len(got) != 2 || !contains(got, "*.untrusted.test") || !contains(got, "exact.test") {
 		t.Fatalf("normalized origin exception hosts = %v", got)
+	}
+}
+func TestOriginTLSVerifyPolicyDefaultsAndOverridesTransportConfig(t *testing.T) {
+	srv := New(nil, nil, nil, nil, nil)
+	if srv.OriginTLSVerify() {
+		t.Fatal("origin TLS verification default = true, want false")
+	}
+	roots := x509.NewCertPool()
+	srv.tr.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
+		RootCAs:            roots,
+		NextProtos:         []string{"custom"},
+	}
+	if cfg := srv.originTLSConfig("origin.example"); !cfg.InsecureSkipVerify || cfg.RootCAs != roots || !contains(cfg.NextProtos, "custom") {
+		t.Fatalf("default origin TLS config = %+v, want skip verification with cloned roots and custom ALPN", cfg)
+	}
+
+	srv.SetOriginTLSVerify(true)
+	if !srv.OriginTLSVerify() {
+		t.Fatal("OriginTLSVerify() = false after enabling policy")
+	}
+	if cfg := srv.originTLSConfig("origin.example"); cfg.InsecureSkipVerify || cfg.RootCAs != roots || !contains(cfg.NextProtos, "custom") {
+		t.Fatalf("strict origin TLS config = %+v, want verification with cloned roots and custom ALPN", cfg)
+	}
+
+	srv.SetOriginTLSVerifyBypassHosts([]string{"origin.example"})
+	if cfg := srv.originTLSConfig("origin.example"); !cfg.InsecureSkipVerify {
+		t.Fatal("matching origin exception did not override strict policy")
+	}
+	if cfg := srv.originTLSConfig("other.example"); cfg.InsecureSkipVerify {
+		t.Fatal("nonmatching origin exception weakened strict policy")
+	}
+}
+
+func TestOriginTLSVerificationErrorExplainsIPHostnameMismatch(t *testing.T) {
+	err := x509.HostnameError{
+		Certificate: &x509.Certificate{DNSNames: []string{"weblelang.example.com"}},
+		Host:        "10.243.234.33",
+	}
+	got := originTLSVerificationError("10.243.234.33", err).Error()
+	for _, want := range []string{
+		"cannot validate certificate for 10.243.234.33",
+		"strict origin TLS verification rejected 10.243.234.33",
+		"Settings → TLS / CA → Origin TLS verification exceptions",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("actionable TLS error = %q, want %q", got, want)
+		}
 	}
 }
 

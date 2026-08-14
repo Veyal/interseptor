@@ -415,6 +415,7 @@ Content-Type: application/json
       <div class="findings-toolbar-title"><span class="findings-eyebrow">REPORT</span><strong>Findings</strong><span id="findCount" class="count"></span></div>
       <div class="findings-toolbar-actions">
         <button class="btn btn-primary" id="findNew">＋ New finding</button>
+        <button class="btn" id="findGuide" title="How to write a clear, reproducible technical finding">Writing guide</button>
 
         <span class="toolbar-divider"></span>
         <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
@@ -523,6 +524,7 @@ Content-Type: application/json
 
   <!-- SETTINGS -->
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
+    <div id="originTLSVerifyWarning" class="tls-diag-banner intercept-danger settings-origin-tls-warning" role="alert">Origin certificates are not verified. Interception/capture can accept impersonated servers. HTTPS upstream-proxy verification remains strict.</div>
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav">
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
@@ -580,11 +582,44 @@ Content-Type: application/json
             </div>
             <input type="hidden" id="setControlAddr">
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
-             <div class="field" style="margin-top:16px"><label>Upstream proxy (blank = direct)</label><input id="setUpstream" placeholder="http://corp-proxy:8080"></div>
-             <div class="row" style="gap:10px;flex-wrap:wrap"><div class="field" style="flex:1;min-width:180px;margin-bottom:0"><label>Username <span class="hint">(optional)</span></label><input id="setUpstreamUser" autocomplete="username"></div><div class="field" style="flex:1;min-width:180px;margin-bottom:0"><label>Password <span class="hint">(optional)</span></label><input id="setUpstreamPassword" type="password" autocomplete="current-password"></div></div>
-              <p class="hint">Optional; leave blank for no proxy authentication.</p>
-              <div class="field"><label>Upstream proxy CA certificate <span class="hint">(PEM, optional)</span></label><textarea id="setUpstreamCA" rows="6" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
-              <div class="row"><button class="btn" id="saveUpstreamBtn">Save upstream</button></div>
+          </div>
+          <div class="section settings-feature-card" id="upstreamProxySection">
+            <h3>UPSTREAM PROXY</h3>
+            <p class="hint settings-lead">Route Interseptor's outbound requests through a corporate proxy, Burp, SSH dynamic forwarding, or another SOCKS service. Choose <b>Direct</b> when no second proxy is needed.</p>
+            <div class="field settings-field-wide">
+              <label for="setUpstreamScheme">Connection type</label>
+              <select id="setUpstreamScheme" aria-describedby="upstreamSchemeHelp">
+                <option value="direct">Direct — no upstream proxy</option>
+                <option value="http">HTTP — standard proxy / CONNECT</option>
+                <option value="https">HTTPS — encrypted connection to proxy</option>
+                <option value="socks5">SOCKS5 — Interseptor resolves DNS</option>
+                <option value="socks5h">SOCKS5H — proxy resolves DNS</option>
+              </select>
+              <p class="hint" id="upstreamSchemeHelp">SOCKS5H resolves target names through the proxy, which is useful for remote-only DNS and avoids local DNS leakage.</p>
+            </div>
+            <div id="upstreamProxyFields" hidden>
+              <div class="settings-form-grid settings-form-grid-host">
+                <div class="field"><label for="setUpstreamHost">Proxy host</label><input id="setUpstreamHost" placeholder="proxy.example.com" spellcheck="false" autocomplete="off"></div>
+                <div class="field settings-port-field"><label for="setUpstreamPort">Port</label><input id="setUpstreamPort" inputmode="numeric" placeholder="8080" spellcheck="false" autocomplete="off"></div>
+              </div>
+              <div class="settings-form-grid">
+                <div class="field"><label for="setUpstreamUser">Username <span class="hint">(optional)</span></label><input id="setUpstreamUser" autocomplete="username"></div>
+                <div class="field"><label for="setUpstreamPassword">Password <span class="hint">(optional)</span></label><input id="setUpstreamPassword" type="password" autocomplete="current-password"></div>
+              </div>
+              <p class="hint settings-inline-note">Leave both credential fields blank when the upstream proxy does not require authentication.</p>
+              <details class="set-disc" id="upstreamProxyAdvanced">
+                <summary>Advanced trust settings</summary>
+                <div class="field settings-field-wide upstream-ca-field" id="setUpstreamCAWrap">
+                  <label for="setUpstreamCA">HTTPS proxy CA certificate <span class="hint">(PEM, optional)</span></label>
+                  <textarea id="setUpstreamCA" rows="6" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+                  <p class="hint">Only needed when an HTTPS upstream uses a private CA. This does not change origin-server verification.</p>
+                </div>
+              </details>
+            </div>
+            <div class="settings-save-row">
+              <button class="btn btn-primary" id="saveUpstreamBtn">Save upstream proxy</button>
+              <span class="settings-status" id="upstreamProxySummary" role="status" aria-live="polite">Direct connection</span>
+            </div>
           </div>
           <div class="section" id="sysProxySection">
             <h3>SYSTEM PROXY</h3>
@@ -613,6 +648,18 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
+          <div class="section" id="originTLSVerifySection">
+            <h3>ORIGIN CONNECTION SECURITY</h3>
+            <p class="hint settings-lead">Choose whether Interseptor verifies the real server after decrypting client traffic. This setting affects origins only; HTTPS upstream proxies are always verified.</p>
+            <div class="field settings-field-wide">
+              <label for="originTLSVerifyMode">Certificate policy</label>
+              <select id="originTLSVerifyMode" aria-label="Origin TLS certificate policy">
+                <option value="compatible">Compatibility — accept test certificates</option>
+                <option value="strict">Strict — verify origin certificates</option>
+              </select>
+            </div>
+            <div id="originTLSModeSummary" class="settings-info-callout">Compatibility mode accepts self-signed, expired, and hostname-mismatched origin certificates so authorized test environments remain reachable.</div>
+          </div>
           <div class="section">
             <h3>TLS CERTIFICATE AUTHORITY</h3>
             <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA to intercept HTTPS. HTTP works without it.</p>
@@ -628,6 +675,12 @@ Content-Type: application/json
           <div class="section" id="originTLSVerifyBypassSection">
             <h3>ORIGIN TLS VERIFICATION EXCEPTIONS</h3>
             <p class="hint" style="margin-bottom:10px"><b style="color:var(--red)">Warning:</b> matching origins stay intercepted, but Interseptor accepts any server certificate. This permits server impersonation. This is not TLS passthrough; captured traffic remains visible. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
+            <div class="settings-info-callout settings-error-help"><b>IP certificate error?</b> If History says the certificate “doesn't contain any IP SANs”, use the certificate's hostname when possible. For an authorized test target, add its IP here instead.</div>
+            <div class="settings-quick-add">
+              <div class="field"><label for="originTLSVerifyBypassHost">Host or IP to accept</label><input id="originTLSVerifyBypassHost" placeholder="10.0.0.25 or api.example.com" spellcheck="false" autocomplete="off"></div>
+              <button type="button" class="btn" id="originTLSVerifyBypassAdd">Add exception</button>
+              <button type="button" class="btn" id="originTLSVerifyBypassSelected">Add selected History host</button>
+            </div>
             <textarea id="originTLSVerifyBypassList" spellcheck="false" placeholder="api.example.com&#10;*.test.example.com" style="width:100%;min-height:72px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="originTLSVerifyBypassSave">Save verification exceptions</button><span class="hint" id="originTLSVerifyBypassCount"></span></div>
           </div>
@@ -1313,6 +1366,23 @@ Content-Type: application/json
       </div>
       <div class="micro-label">RESULTS</div>
       <div id="authzResults"><div class="hint">Run to compare access across roles.</div></div>
+    </div>
+  </div>
+</div>
+<div id="findGuideModal" class="modal-overlay" style="display:none">
+  <div role="dialog" aria-modal="true" aria-labelledby="findGuideTitle" class="modal-shell find-guide-dialog">
+    <div class="modal-shell-head">
+      <div><div id="findGuideTitle" class="modal-shell-title">Technical finding template</div><div class="hint">Write for fast triage, independent reproduction, and retesting.</div></div>
+      <button class="btn" id="findGuideClose" aria-label="Close finding writing guide">✕</button>
+    </div>
+    <div class="modal-shell-body find-guide-body">
+      <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
+      <section><span class="find-guide-n">2</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
+      <section><span class="find-guide-n">3</span><div><h3>Technical context</h3><p>Record the exact target, environment, CWE, CVSS vector/score, scope tags, and why the behavior violates a security boundary.</p></div></section>
+      <section><span class="find-guide-n">4</span><div><h3>Reproduction</h3><p>Use a numbered Before → Action → After chain. Include prerequisites, exact parameter changes, identities or roles, and the security-relevant response.</p></div></section>
+      <section><span class="find-guide-n">5</span><div><h3>Evidence</h3><p>Attach the smallest useful request/response flows and screenshots. Annotate what proves the issue; redact secrets and unrelated personal data.</p></div></section>
+      <section><span class="find-guide-n">6</span><div><h3>Remediation</h3><p>Recommend the failed control, not only input filtering. Explain how to retest and include a negative authorization case when relevant.</p></div></section>
+      <div class="find-guide-check"><strong>Ready-to-report check</strong><span>A pentester unfamiliar with the target can reproduce it; a developer can identify the failed control; a retester knows the expected secure result.</span></div>
     </div>
   </div>
 </div>

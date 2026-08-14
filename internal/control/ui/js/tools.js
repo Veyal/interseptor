@@ -233,22 +233,29 @@ export async function repLoadSend(id){
   }catch(e){toast(e.message);}
 }
 export async function sendToRepeater(f){
-  document.querySelector('.tab[data-tab="repeater"]').click();
   repSaveEditor();
-  const fep=repFlowEndpoint(f);
-  let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
-  if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
-  repTabs.active=t.tid;
   try{
     const d=await api('/api/flows/'+f.id);
+    const raw=await api('/api/flows/'+f.id+'/raw?side=req');
+    // Findings and other callers may pass only {id}. Resolve metadata before
+    // choosing a tab so requests do not collapse into an "undefined" endpoint.
+    const fep=repFlowEndpoint(d);
+    let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
+    if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
+    repTabs.active=t.tid;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
-    const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
+    const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
     t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
     t.resId=null;t.status='';t.color='';t.title=repTitle(t);
-    renderRepTabs();repLoadEditor();repPersist();
+    renderRepTabs();repPersist();
+    // Stay on the source panel when either read fails. Navigating now confirms
+    // that a complete editable request is ready.
+    document.querySelector('.tab[data-tab="repeater"]').click();
+    repLoadEditor();
     toast('loaded #'+f.id+' into Repeater');
-  }catch(e){toast(e.message);}
+    return true;
+  }catch(e){toast(e.message);return false;}
 }
 export async function repInit(){
   await hydrateUIState('repeater','rep.tabs');

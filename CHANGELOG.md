@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-14
+
+### Changed
+- **Guided network settings.** Upstream chaining now uses a dedicated Direct/HTTP/HTTPS/SOCKS5/SOCKS5H form with explicit DNS behavior, endpoint fields, credentials, HTTPS-proxy trust, responsive layout, and complete operator documentation; origin TLS policy now uses readable compatibility/strict modes with one-click selected-host exceptions.
+- **Origin TLS verification is configurable and defaults off for compatibility.** The policy applies only to origin connections, preserves exact and wildcard host exceptions, and keeps HTTPS upstream-proxy certificate verification strict.
+- **Settings UI guidance.** Documented the layout rule for persistent settings safety alerts.
+- **Findings workspace.** Reworked attached-flow actions into a stable evidence toolbar, made Inspect and Send to Repeater explicit, hid edit-only controls in read mode, improved narrow-window layouts, surfaced technical context, and added an in-product pentester writing guide.
+- **Documentation site.** Rebuilt the responsive shell to contain code, tables, links, navigation, and search at narrow widths; search now indexes section content; navigation now exposes the complete operator/reference set.
+- **Documentation coverage.** Added full guides for proxy/TLS/networking, finding writing and reporting, CLI usage, projects/data retention, mobile testing, and troubleshooting, including the non-loopback `interseptor` Basic-auth prompt.
+
+### Fixed
+- **Repeater upstream routing.** Repeater, Intruder, login macros, active scans, and custom-check sends now honor the same HTTP/HTTPS/SOCKS5/SOCKS5H proxy URL, DNS mode, credentials, and HTTPS-proxy CA as captured traffic instead of bypassing the configured upstream and returning misleading `502` flows.
+- **Actionable IP certificate failures.** Strict origin TLS hostname mismatches retain the verifier error and now identify the exact Settings path for adding a narrow authorized-test exception.
+- **Findings → Repeater.** Flow metadata is loaded before endpoint-tab selection and navigation, preventing ID-only finding actions from collapsing into an `undefined` Repeater tab or leaving the finding before a failed load.
+- **Documentation search publication.** GitHub Pages now includes the generated JSON index, validates that asset after the Jekyll build, and fetches it from its actual published path.
 ## [1.7.17] - 2026-08-13
 
 ### Fixed

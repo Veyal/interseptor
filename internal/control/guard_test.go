@@ -3,9 +3,11 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -504,5 +506,77 @@ func TestGetNetworkHosts(t *testing.T) {
 	}
 	if out.Suggested == "" {
 		t.Fatal("missing suggested host")
+	}
+}
+func TestSettingsOriginTLSVerifyDefaultsFalseAndStrictParsing(t *testing.T) {
+	h, st, _ := newHub(t)
+	rec := httptest.NewRecorder()
+	(&settingsAPI{h}).getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	var got settingsJSON
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OriginTLSVerify {
+		t.Fatal("missing origin TLS verify setting must default false")
+	}
+	if err := st.SetSetting("proxy.originTLSVerify", "true"); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	(&settingsAPI{h}).getSettings(rec, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	got = settingsJSON{}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OriginTLSVerify {
+		t.Fatal("only stored 1 must enable origin TLS verification")
+	}
+}
+
+func TestPutSettingsOriginTLSVerifyPersistsBeforeCallback(t *testing.T) {
+	h, st, _ := newHub(t)
+	var order []string
+	h.setSetting = func(key, value string) error {
+		order = append(order, "persist:"+key+"="+value)
+		return st.SetSetting(key, value)
+	}
+	h.SetOriginTLSVerify = func(v bool) { order = append(order, "apply:false") }
+	rec := httptest.NewRecorder()
+	(&settingsAPI{h}).putSettings(rec, httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"originTLSVerify":false}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if want := []string{"persist:proxy.originTLSVerify=0", "apply:false"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("operation order = %v, want %v", order, want)
+	}
+	v, ok, err := st.GetSetting("proxy.originTLSVerify")
+	if err != nil || !ok || v != "0" {
+		t.Fatalf("stored value = %q, ok=%v, err=%v", v, ok, err)
+	}
+}
+
+func TestPutSettingsOriginTLSVerifyPersistenceFailureLeavesRuntimeUnchanged(t *testing.T) {
+	h, _, _ := newHub(t)
+	called := false
+	h.setSetting = func(string, string) error { return errors.New("store unavailable") }
+	h.SetOriginTLSVerify = func(bool) { called = true }
+	rec := httptest.NewRecorder()
+	(&settingsAPI{h}).putSettings(rec, httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"originTLSVerify":true}`)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if called {
+		t.Fatal("runtime callback called after persistence failure")
+	}
+}
+
+func TestPutSettingsOriginTLSVerifyRejectsMalformedJSONAndWrongType(t *testing.T) {
+	h, _, _ := newHub(t)
+	for _, body := range []string{`{"originTLSVerify":`, `{"originTLSVerify":"true"}`} {
+		rec := httptest.NewRecorder()
+		(&settingsAPI{h}).putSettings(rec, httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(body)))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %q: status = %d, want 400", body, rec.Code)
+		}
 	}
 }
