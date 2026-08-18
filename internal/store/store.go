@@ -449,14 +449,27 @@ func (s *Store) UpdateFlow(f *Flow) error {
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.
 func (s *Store) SetFlowNote(id int64, note string) error {
-	var host, path, method, oldNote string
-	if err := s.db.QueryRow(`SELECT host, path, method, note FROM flows WHERE id=?`, id).Scan(&host, &path, &method, &oldNote); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`UPDATE flows SET note=? WHERE id=?`, note, id); err != nil {
+	defer tx.Rollback()
+	var host, path, method string
+	if err := tx.QueryRow(`SELECT host, path, method FROM flows WHERE id=?`, id).Scan(&host, &path, &method); err != nil {
 		return err
 	}
-	return s.replaceFlowFTS(id, host, path, method, oldNote, host, path, method, note)
+	if _, err := tx.Exec(`UPDATE flows SET note=? WHERE id=?`, note, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
+		id, host, path, method, note); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // DeleteFlows removes the given flows and returns how many rows were deleted.

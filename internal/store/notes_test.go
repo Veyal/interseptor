@@ -44,6 +44,34 @@ func TestFlowNoteSetGetSearch(t *testing.T) {
 	}
 }
 
+func TestSetFlowNoteRollsBackWhenFTSUpdateFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	id, err := s.InsertFlow(&Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/", Note: "original note",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`DROP TABLE flows_fts`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetFlowNote(id, "unindexed replacement"); err == nil {
+		t.Fatal("SetFlowNote succeeded without its FTS table")
+	}
+	flow, err := s.GetFlow(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flow.Note != "original note" {
+		t.Fatalf("failed note update persisted %q, want original note", flow.Note)
+	}
+}
+
 func TestInsertFlowPersistsInitialNote(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
