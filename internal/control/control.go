@@ -114,8 +114,10 @@ type Hub struct {
 	GlobalDir     string
 	SwitchProject func(target string) error
 
-	switchMu    sync.Mutex  // guards switchTimer
-	switchTimer *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	switchMu     sync.Mutex  // guards the delayed project-switch lifecycle
+	switchTimer  *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	switchClosed bool
+	switchWG     sync.WaitGroup
 
 	mcpMu           sync.Mutex
 	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)

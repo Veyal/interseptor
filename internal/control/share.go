@@ -79,6 +79,7 @@ func (h *Hub) StopTunnel() {
 // Close releases Hub-owned background resources. It is safe to call repeatedly.
 func (h *Hub) Close() {
 	h.tunnelCloseOnce.Do(func() {
+		h.stopProjectSwitch()
 		h.StopTunnel()
 		h.closeActivitySocket()
 		h.stopActiveScan()

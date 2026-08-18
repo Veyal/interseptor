@@ -17,6 +17,8 @@ runtime dependencies.
 - For on-demand workers, publish `cancel` and `done` under the same state lock before launching the
   goroutine, reject new starts after owner shutdown, then cancel and join the published worker in
   `Close` before its project store is allowed to close.
+- Replace delayed one-off `go sleep; callback` work with one owner-held timer. Stop the timer on close,
+  guard callback admission with a closed flag, and join any callback that already passed that gate.
 
 Test cancellation during the initial delay with a short timeout; do not sleep for the production
 delay or infer completion from some state the worker mutates before it actually returns.

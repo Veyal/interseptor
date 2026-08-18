@@ -241,3 +241,45 @@ func TestScheduleProjectSwitchDedups(t *testing.T) {
 		t.Fatalf("expected only the latest target 'c' to fire, got %q", fired[0])
 	}
 }
+
+func TestExternalProjectSwitchDedups(t *testing.T) {
+	var mu sync.Mutex
+	var fired []string
+	h := &Hub{GlobalDir: t.TempDir()}
+	h.SwitchProject = func(target string) error {
+		mu.Lock()
+		fired = append(fired, target)
+		mu.Unlock()
+		return nil
+	}
+	api := &projectAPI{h}
+	for _, path := range []string{filepath.Join(t.TempDir(), "first"), filepath.Join(t.TempDir(), "second")} {
+		body, err := json.Marshal(map[string]string{"path": path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		api.switchProject(rec, httptest.NewRequest(http.MethodPost, "/api/project/switch", bytes.NewReader(body)))
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("switch %q status = %d; body = %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(fired) != 1 || filepath.Base(fired[0]) != "second" {
+		t.Fatalf("external switches fired %v, want only the latest path", fired)
+	}
+}
+
+func TestHubCloseCancelsPendingProjectSwitch(t *testing.T) {
+	fired := make(chan struct{}, 1)
+	h := &Hub{SwitchProject: func(string) error { fired <- struct{}{}; return nil }}
+	h.scheduleProjectSwitch("later", 100*time.Millisecond)
+	h.Close()
+	select {
+	case <-fired:
+		t.Fatal("project switch fired after Hub.Close")
+	case <-time.After(200 * time.Millisecond):
+	}
+}

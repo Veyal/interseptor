@@ -329,12 +329,7 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 		name := filepath.Base(abs)
 		rememberExternalProject(h.GlobalDir, name, abs)
 		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name})
-		go func() {
-			time.Sleep(300 * time.Millisecond)
-			if err := h.SwitchProject(abs); err != nil {
-				log.Printf("control: project switch to %q failed: %v", abs, err)
-			}
-		}()
+		h.scheduleProjectSwitch(abs, 300*time.Millisecond)
 		return
 	}
 	target := strings.TrimSpace(in.Target)
@@ -356,12 +351,38 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) scheduleProjectSwitch(target string, d time.Duration) {
 	h.switchMu.Lock()
 	defer h.switchMu.Unlock()
+	if h.switchClosed {
+		return
+	}
 	if h.switchTimer != nil {
 		h.switchTimer.Stop()
 	}
 	h.switchTimer = time.AfterFunc(d, func() {
-		if err := h.SwitchProject(target); err != nil {
-			log.Printf("control: project switch to %q failed: %v", target, err)
+		h.switchMu.Lock()
+		if h.switchClosed {
+			h.switchMu.Unlock()
+			return
+		}
+		h.switchTimer = nil
+		switchProject := h.SwitchProject
+		h.switchWG.Add(1)
+		h.switchMu.Unlock()
+		defer h.switchWG.Done()
+		if switchProject != nil {
+			if err := switchProject(target); err != nil {
+				log.Printf("control: project switch to %q failed: %v", target, err)
+			}
 		}
 	})
+}
+
+func (h *Hub) stopProjectSwitch() {
+	h.switchMu.Lock()
+	h.switchClosed = true
+	if h.switchTimer != nil {
+		h.switchTimer.Stop()
+		h.switchTimer = nil
+	}
+	h.switchMu.Unlock()
+	h.switchWG.Wait()
 }
