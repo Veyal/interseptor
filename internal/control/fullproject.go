@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -134,12 +135,18 @@ func buildFullArchive(w io.Writer, snapshotPath, bodiesDir, codecsDir string) er
 
 func addArchiveFiles(zw *zip.Writer, sourceDir, archiveRoot string, skipTemporary bool) error {
 	return filepath.WalkDir(sourceDir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
+		if err != nil {
+			if p == sourceDir && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
 			return nil
 		}
 		rel, err := filepath.Rel(sourceDir, p)
 		if err != nil {
-			return nil
+			return fmt.Errorf("archive relative path for %q: %w", p, err)
 		}
 		return addFileToZip(zw, p, archiveRoot+"/"+filepath.ToSlash(rel))
 	})

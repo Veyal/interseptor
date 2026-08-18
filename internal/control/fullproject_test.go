@@ -17,6 +17,22 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+func TestAddArchiveFilesReportsWalkErrors(t *testing.T) {
+	badArchive := zip.NewWriter(io.Discard)
+	if err := addArchiveFiles(badArchive, string([]byte{0}), archiveBodyRoot, true); err == nil {
+		t.Fatal("addArchiveFiles swallowed an invalid source-path walk error")
+	}
+	_ = badArchive.Close()
+
+	missingArchive := zip.NewWriter(io.Discard)
+	if err := addArchiveFiles(missingArchive, filepath.Join(t.TempDir(), "optional-missing"), archiveCodecRoot, false); err != nil {
+		t.Fatalf("optional missing archive directory should be allowed: %v", err)
+	}
+	if err := missingArchive.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDestinationImportLockNormalizesCaseAliases(t *testing.T) {
 	root := t.TempDir()
 	upper := filepath.Join(root, "projects", "..", "projects", "Acme")

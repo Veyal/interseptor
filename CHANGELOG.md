@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Truthful full-project exports.** Filesystem traversal and relative-path failures now abort archive creation instead of silently producing a successful backup with omitted body or codec files; wholly absent optional directories remain supported.
 - **All-valid Burp XML imports.** Burp uploads are now disk-spooled and fully syntax-validated before the first flow is committed, so a malformed later item returns `400` without leaving an earlier partial import.
 - **Owned project-switch delay.** Named and external-path switches now share one deduplicating timer; hub shutdown cancels pending switches and joins any callback already admitted, preventing stacked or post-shutdown re-execs.
 - **Active-scan shutdown join.** Closing the control hub now rejects new scans, cancels an in-flight active scan, and waits for its worker to finish before the project store can close.
