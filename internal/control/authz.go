@@ -291,7 +291,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		}
 		raw, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 			Limit:        limit * 5, // over-fetch; authzTargets dedupes + static filter
-			ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan,
+			ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
 		})
 		flows = h.authzTargets(raw, skipStatic)
 		if len(flows) > limit {
@@ -684,7 +684,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	}
 	allFlows, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 		Limit:        5000,
-		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan | store.FlagAuthz,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagAuthz,
 	})
 	seen := map[hostKey]bool{}
 	var targets []hostKey

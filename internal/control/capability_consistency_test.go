@@ -69,6 +69,22 @@ func TestActivityPostCatalogStatesMCPOnly(t *testing.T) {
 	}
 }
 
+func TestActiveScanningSurfaceIsRemoved(t *testing.T) {
+	for _, route := range apiRoutes {
+		path := strings.ToLower(route.Path)
+		if strings.Contains(path, "activescan") || strings.Contains(path, "active-check") {
+			t.Errorf("removed active-scanning route remains in API catalog: %s %s", route.Method, route.Path)
+		}
+	}
+	src, err := os.ReadFile("routes_register.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(src)), "activescan") || strings.Contains(strings.ToLower(string(src)), "active-check") {
+		t.Fatal("removed active-scanning routes remain registered")
+	}
+}
+
 func TestSettingsHARImportExportJourney(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))

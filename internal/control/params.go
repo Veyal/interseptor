@@ -43,7 +43,7 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 		Host:         host,
 		SortKey:      "id",
 		SortDir:      -1,
-		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
 	}
 
 	var flows []*store.Flow

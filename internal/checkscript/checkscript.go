@@ -52,7 +52,7 @@ type Check struct {
 
 // predeclared returns the builtins every check can use. The shared standard
 // library (finding, re_search, json_*, b64*, url_*, hash, hmac) lives in
-// internal/starx so passive and active checks expose the same surface.
+// internal/starx so every passive check exposes the same standard surface.
 func predeclared() starlark.StringDict {
 	return starx.Predeclared()
 }

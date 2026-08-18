@@ -29,84 +29,80 @@
   text: MCP exposes deterministic capture, replay, mutation, scope, scanning, evidence, and finding tools. Actions remain recorded in History, Activity, and findings.
   link: /api-and-mcp/
 - number: "08"
-  id: scanner
-  title: Active scanning
-  text: Passive checks and deterministic active scanning inspect injection points and confirm hits with detectors. Active Starlark checks extend coverage.
-- number: "09"
   id: mobile
   title: Mobile device support
   text: Android adb-based CA and proxy setup plus iOS profile and jailbroken-device SSH automation.
-- number: "10"
+- number: "09"
   id: collaboration
   title: Collaboration and remote access
   text: Scoped and expiring API keys, key-authorized remote access, browser login, one-click Cloudflare tunnel, and project pull/push merge.
-- number: "11"
+- number: "10"
   id: launcher
   title: Multi-project launcher
   text: The launcher dashboard starts, stops, and discovers multiple project instances.
-- number: "12"
+- number: "11"
   id: external-ai
   title: External AI integration
   text: External assistants connect through MCP or REST/SSE while Interseptor supplies deterministic tools and evidence. Model calls remain outside the binary.
   link: /api-and-mcp/
-- number: "13"
-  id: scanner-passive
+- number: "12"
+  id: scanner
   title: Scanner
   text: Built-in passive checks cover security headers, CORS, reflected parameters, secrets, cookies, authentication, and version disclosure.
-- number: "14"
+- number: "13"
   id: checks
   title: Custom checks and rule packs
-  text: Sandboxed Starlark passive and active checks extend scanner behavior without a fork, with official and community bundles.
+  text: Sandboxed Starlark passive checks extend scanner behavior without a fork, with official and community bundles.
   link: /custom-checks/
-- number: "15"
+- number: "14"
   id: codecs
   title: Message codecs
   text: Project-scoped Starlark encrypt/decrypt helpers provide decoded views and opt-in re-encoding for application payloads.
   link: /message-codecs/
-- number: "16"
+- number: "15"
   id: signed-packs
   title: Signed rule packs
   text: Ed25519 publisher signatures and manifest SHA-256 protect rule-pack provenance during install.
-- number: "17"
+- number: "16"
   id: discovery
   title: Guided content discovery
   text: Run feroxbuster, ffuf, or similar tools through the proxy from Map and cluster soft-404 responses.
   link: /content-discovery/
-- number: "18"
+- number: "17"
   id: http2
   title: HTTP/2 upstream
   text: Prefer h2 to origins while keeping the MITM client leg on HTTP/1.1.
   link: /http2/
-- number: "19"
+- number: "18"
   id: scope
   title: Target scope
   text: Include and exclude rules focus History, intercept gates, and scanner activity.
-- number: "20"
+- number: "19"
   id: websockets
   title: WebSocket
   text: Capture ws and wss traffic per frame and replay it in a WebSocket Repeater.
-- number: "21"
+- number: "20"
   id: session-auth
   title: Session and auth injection
   text: Apply Authorization or Cookie headers, refresh tokens with a token macro, and re-authenticate with a recorded login macro.
-- number: "22"
+- number: "21"
   id: import-export
   title: Import and export
   text: Import and export HAR files and portable project bundles containing flows, rules, scope, and settings.
-- number: "23"
+- number: "22"
   id: vault
   title: Project vault
   text: Always-on archive storage supports multi-device backup, import, and merge through Tailscale Serve.
   link: /vault/
-- number: "24"
+- number: "23"
   id: model-free
   title: Model-free core
   text: No provider keys, built-in chat, or autonomous pentest loop. External models use deterministic tools with scope enforcement and evidence recording.
-- number: "25"
+- number: "24"
   id: findings
   title: Finding tags
   text: Curated findings use report-scope tags and export grouping for cms, website, app, api, and out-of-scope work.
-- number: "26"
+- number: "25"
   id: api-mcp
   title: API and MCP
   text: REST control API, SSE event stream, and full MCP server expose the same deterministic engine to scripts and agents.

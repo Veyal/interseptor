@@ -387,7 +387,7 @@ func TestActivityFeed(t *testing.T) {
 		h.recordMCPActivity(mcp.Activity{Tool: tool, Summary: summary, OK: ok, Result: "r", Ms: 12})
 	}
 	record("send_request", "method=POST url=/login", true)
-	record("active_scan", "target=https://x", true)
+	record("start_intruder", "target=https://x", true)
 
 	resp, err := http.Get(ts.URL + "/api/activity")
 	if err != nil {
@@ -401,7 +401,7 @@ func TestActivityFeed(t *testing.T) {
 	if len(out.Activity) != 2 {
 		t.Fatalf("expected 2 activity items, got %d", len(out.Activity))
 	}
-	if out.Activity[0].Tool != "active_scan" { // newest first
+	if out.Activity[0].Tool != "start_intruder" { // newest first
 		t.Fatalf("expected newest-first, got %q", out.Activity[0].Tool)
 	}
 	if out.Activity[0].ID == 0 || out.Activity[0].TS == 0 {

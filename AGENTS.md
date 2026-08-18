@@ -20,7 +20,7 @@ All three checks must pass before every commit.
 
 ## Architecture
 
-`internal/*` packages, each one responsibility, wired by `cmd/interseptor`. Key packages: `store` (SQLite + content-addressed bodies), `proxy` (forward + MITM), `control` (REST + SSE + embedded UI), `sender`, `intruder`, `activescan`, `ios`, `android`, `mcp`, `scope`.
+`internal/*` packages, each one responsibility, wired by `cmd/interseptor`. Key packages: `store` (SQLite + content-addressed bodies), `proxy` (forward + MITM), `control` (REST + SSE + embedded UI), `sender`, `intruder`, `scanner`, `ios`, `android`, `mcp`, `scope`.
 
 UI: `internal/control/ui/` — embedded via `//go:embed`, no build step. Native ES modules in `js/`. `core.js` = shared foundation, each feature = one module.
 

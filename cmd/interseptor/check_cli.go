@@ -9,20 +9,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Veyal/interseptor/internal/activescript"
 	"github.com/Veyal/interseptor/internal/checkscript"
 )
 
 // `interseptor check` — author-time tooling for Starlark checks, usable without
 // a running server (ideal for CI gates and editor workflows):
 //
-//	interseptor check new <id> [--active]      scaffold a check template
+//	interseptor check new <id>                  scaffold a check template
 //	interseptor check validate [files...]      compile every check (CI gate)
 //	interseptor check lint     [files...]      alias of validate
 //	interseptor check test <file> --flow-json f   compile + run against a flow
 //
-// `new`/`validate` (no files) operate on ~/.interseptor/checks (passive) and,
-// with --active, ~/.interseptor/active-checks.
+// `new`/`validate` (no files) operate on ~/.interseptor/checks.
 func printCheckUsage() {
 	fmt.Fprintln(os.Stdout, "Usage: interseptor check new|validate|lint|test [options]")
 }
@@ -32,34 +30,25 @@ func runCheck(args []string) error {
 		printCheckUsage()
 		return nil
 	}
-	active := false
 	rest := args[1:]
 	for len(rest) > 0 && strings.HasPrefix(rest[0], "--") {
-		if rest[0] == "--active" {
-			active = true
-			rest = rest[1:]
-			continue
-		}
 		return fmt.Errorf("check %s: unknown flag %s", args[0], rest[0])
 	}
 	switch args[0] {
 	case "new":
-		return checkNew(rest, active)
+		return checkNew(rest)
 	case "validate", "lint":
-		return checkValidate(rest, active)
+		return checkValidate(rest)
 	case "test":
-		return checkTest(rest, active)
+		return checkTest(rest)
 	}
 	return fmt.Errorf("check: unknown action %q (want new, validate, lint, or test)", args[0])
 }
 
-func globalChecksDir(active bool) (string, error) {
+func globalChecksDir() (string, error) {
 	root, err := dataRoot()
 	if err != nil {
 		return "", err
-	}
-	if active {
-		return filepath.Join(root, "active-checks"), nil
 	}
 	return filepath.Join(root, "checks"), nil
 }
@@ -87,18 +76,9 @@ def check(flow):
         return [finding("info", "%s", evidence="")]
     return []
 `
-	activeTemplate = `# %s — custom ACTIVE check (fires only on an armed active scan).
-# Send real mutated requests with probe(payload); compare against ` + "`baseline`" + `.
-# Docs: docs/custom-active-checks.md · builtins: probe, finding, re_search, json_*, b64_*, url_*, hash, hmac.
-def check(point, baseline, probe):
-    r = probe("test")  # sends one real, scope-enforced, budget-counted request
-    if False:
-        return [finding("high", "%s", evidence=r.body[:120])]
-    return []
-`
 )
 
-func checkNew(args []string, active bool) error {
+func checkNew(args []string) error {
 	if len(args) != 1 {
 		return errors.New("check new: expected exactly one <id>")
 	}
@@ -106,7 +86,7 @@ func checkNew(args []string, active bool) error {
 	if !checkscript.ValidID(id) {
 		return fmt.Errorf("check new: invalid check id %q (use letters, digits, - or _)", id)
 	}
-	dir, err := globalChecksDir(active)
+	dir, err := globalChecksDir()
 	if err != nil {
 		return err
 	}
@@ -117,37 +97,27 @@ func checkNew(args []string, active bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tpl := passiveTemplate
-	if active {
-		tpl = activeTemplate
-	}
-	if err := os.WriteFile(path, []byte(fmt.Sprintf(tpl, id, id)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(passiveTemplate, id, id)), 0o644); err != nil {
 		return err
 	}
 	fmt.Println(path)
 	return nil
 }
 
-// compileFile picks the right engine by --active (a passive check defines
-// check(flow); an active one defines check(point, baseline, probe)).
-func compileFile(path string, active bool) error {
+func compileFile(path string) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
 	id := strings.TrimSuffix(filepath.Base(path), ".star")
-	if active {
-		_, err = activescript.Compile(id, string(src))
-	} else {
-		_, err = checkscript.Compile(id, string(src))
-	}
+	_, err = checkscript.Compile(id, string(src))
 	return err
 }
 
-func checkValidate(args []string, active bool) error {
+func checkValidate(args []string) error {
 	files := args
 	if len(files) == 0 {
-		dir, err := globalChecksDir(active)
+		dir, err := globalChecksDir()
 		if err != nil {
 			return err
 		}
@@ -167,7 +137,7 @@ func checkValidate(args []string, active bool) error {
 	}
 	var bad int
 	for _, f := range files {
-		if err := compileFile(f, active); err != nil {
+		if err := compileFile(f); err != nil {
 			fmt.Printf("FAIL %s\n      %v\n", f, err)
 			bad++
 			continue
@@ -184,10 +154,7 @@ func checkValidate(args []string, active bool) error {
 // (--flow-json path, or "-" / omitted for stdin). The JSON shape matches the
 // `flow` object: method/scheme/host/port/path/status/mime, req_body/res_body,
 // req_headers/res_headers (each a {name: [values]} map).
-func checkTest(args []string, active bool) error {
-	if active {
-		return errors.New("check test: active checks send real traffic — use the in-UI Test button or the test_active_check MCP tool against a live engine")
-	}
+func checkTest(args []string) error {
 	if len(args) < 1 {
 		return errors.New("check test: expected <file> (--flow-json <path> or stdin)")
 	}

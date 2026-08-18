@@ -26,7 +26,7 @@
   },
   {
     "title": "Package layout",
-    "text": "One Go binary, two localhost listeners. Each internal/ package has a single responsibility and is independently tested. Package Responsibility --- --- internal/store SQLite metadata (flows, rules, settings, issues, ws frames, scope, views, keys) + content-addressed body files internal/capture Stream bodies to the store via io.TeeReader (never buffered whole) internal/tlsca Local CA: load/generate, mint + cache per-host leaf certificates internal/intercept Hold queue (forward/edit/drop) for requests and responses + match-\u0026-replace internal/proxy Forward proxy, CONNECT + TLS MITM, WebSocket frame relay, flow capture, upstream proxy internal/scope Target-scope include/exclude matcher (host wildcards + path prefixes) internal/sender One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater \u0026 Intruder internal/intruder Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) internal/scanner Passive security checks over captured flows internal/activescan Deterministic active-scan engine; external agents can invoke it through MCP or REST internal/activescript Runs user-authored active scanner chec",
+    "text": "One Go binary, two localhost listeners. Each internal/ package has a single responsibility and is independently tested. Package Responsibility --- --- internal/store SQLite metadata (flows, rules, settings, issues, ws frames, scope, views, keys) + content-addressed body files internal/capture Stream bodies to the store via io.TeeReader (never buffered whole) internal/tlsca Local CA: load/generate, mint + cache per-host leaf certificates internal/intercept Hold queue (forward/edit/drop) for requests and responses + match-\u0026-replace internal/proxy Forward proxy, CONNECT + TLS MITM, WebSocket frame relay, flow capture, upstream proxy internal/scope Target-scope include/exclude matcher (host wildcards + path prefixes) internal/sender One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater \u0026 Intruder internal/intruder Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) internal/scanner Passive security checks over captured flows internal/oob Out-of-band interaction catcher (blind SSRF/XXE/SQLi/RCE callbacks) internal/checkscript Runs user-authored Starlark scanner checks (sandboxed, bounded",
     "url": "architecture/#package-layout"
   },
   {
@@ -71,7 +71,7 @@
   },
   {
     "title": "Check authoring",
-    "text": "Passive checks live under the data directory's checks/; --active selects active-checks/. Validation compiles checks without starting the server. Test consumes the documented flow JSON shape from a file or standard input.",
+    "text": "Checks live under the data directory's checks/. Validation compiles passive checks without starting the server. Test consumes the documented flow JSON shape from a file or standard input.",
     "url": "cli-reference/#check-authoring"
   },
   {
@@ -145,51 +145,6 @@
     "url": "content-discovery/#soft-404-policy-map"
   },
   {
-    "title": "Custom active checks",
-    "text": "Writing custom ACTIVE checks The passive twin of this guide is docs/custom-checks.md — read that first if you haven't; this page only covers what's different about active checks. Interseptor's active scanner is extensible too: drop a check written in Starlark into your active-checks folder and it runs alongside the built-in active probes when you arm \u0026 run an active scan, sending real mutated requests to confirm vulnerabilities. This page is the standard every active check is written against. - Where checks live: ~/.interseptor/active-checks/.star (global — shared across all projects, like the CA). The folder is created on first save; you can also create it by hand. - When they run: only when you arm \u0026 run an active scan (the Active scan dialog, or POST /api/activescan/start). They never run passively. Files are re-read each run, so editing a check takes effect immediately — no restart. - Why it's safe to share checks: Starlark is deterministic and sandboxed — a check cannot read files, open sockets, read the clock, or import anything. The only way a check can talk to the network is the probe(payload) callback we hand it, which goes through the engine (recorded, session-aut",
-    "url": "custom-active-checks/"
-  },
-  {
-    "title": "Authoring in the UI",
-    "text": "Open Scanner → ✎ Custom checks. Under CUSTOM · ACTIVE ⚡ you can create, edit, delete, and Test active checks. Test compiles your source and runs it against the first injectable parameter of a captured flow (your latest in-scope one, or a flow you pick), sending a handful of real probes so you can iterate before saving. (The AI Describe tab is passive-only and is hidden for active checks.)",
-    "url": "custom-active-checks/#authoring-in-the-ui"
-  },
-  {
-    "title": "Builtins",
-    "text": "Active checks get the same standard library as passive checks (it's shared), plus probe: Builtin Description --- --- probe(payload) Send one mutated request at point. Real traffic — recorded in History, session-auth applied, counts against the run's request budget. finding(severity, title, detail=\"\", evidence=\"\", fix=\"\") construct one finding. severity ∈ high / medium / low / info (critical → high; anything else → info). re search(pattern, text) first regex match (RE2 syntax) as a string, or None. json decode(text) / json encode(value) JSON parse / serialize. b64decode(text) / b64encode(text) base64 decode/encode. url decode(text) / url encode(text) percent-encoding decode/encode. hash(algo, text) / hmac(algo, key, message) hex digest / HMAC; algo ∈ sha256, sha1, sha512, md5.",
-    "url": "custom-active-checks/#builtins"
-  },
-  {
-    "title": "Example",
-    "text": "More ready-to-copy examples ship in examples/active-checks/.",
-    "url": "custom-active-checks/#example"
-  },
-  {
-    "title": "Limits \u0026 safety",
-    "text": "- Sandboxed: no file/network/clock access, no load(), no imports. The only network egress is the probe() callback, which is mediated by the engine. - Budgeted: every probe() call counts against the run's request budget, so a runaway script can't infinite-loop the target. (The in-UI Test path is capped at ~6 probes.) - Step-bounded: each check() call is also capped at a few million execution steps, so a pure compute loop aborts that one check instead of hanging the scan. - Isolated failures: a check that fails to compile or errors at runtime is logged and skipped — it never aborts the scan or the other checks. - Scope-enforced: probes are sent through the same sender as the built-in probes, so they obey your target scope, the circuit breaker, and the \"never attack our own listeners\" guard. - One finding per point: a custom active check currently surfaces its highest-severity finding per injection point (the engine's Hit model is one-per-point). That covers the vast majority of real checks (confirm-one-vuln); if you later want a single check to emit multiple distinct findings per point, that's a small engine extension.",
-    "url": "custom-active-checks/#limits--safety"
-  },
-  {
-    "title": "The contract",
-    "text": "An active check is a .star file that defines one function: The file name (without .star) is the check's id. check is called once per injection point of every in-scope target in the scan. Return a list of finding(...); return [] (or None) when there's nothing to report.",
-    "url": "custom-active-checks/#the-contract"
-  },
-  {
-    "title": "The point object",
-    "text": "Field Type Notes --- --- --- point.kind str query, form, json, path, cookie, header, or body (body is the whole XML body, for XXE-style checks). point.name str The parameter/cookie/header name (e.g. id). For path points, the segment index; for body points, xml. point.value str The parameter's original value.",
-    "url": "custom-active-checks/#the-point-object"
-  },
-  {
-    "title": "The response object (baseline and each probe result)",
-    "text": "Field Type Notes --- --- --- r.status int HTTP status (0 if the request never completed). r.body str response body (bounded). r.headers dict canonicalized header name → first value. r.duration ms int round-trip time in milliseconds. r.flow id int the History flow id of this request (probe results only — useful for evidence). Method: Call Returns --- --- r.header(name) header value (case-insensitive), or \"\" if absent. r.header all(name) all values for a header as a list (e.g. multiple Set-Cookie); [] if absent.",
-    "url": "custom-active-checks/#the-response-object-baseline-and-each-probe-result"
-  },
-  {
-    "title": "The three arguments",
-    "text": "Arg What it is --- --- point The injection point being tested (a query/form/json parameter, a path segment, a cookie, a request header, or the whole XML body). baseline The un-mutated response — what a normal request returns. Use it to suppress false positives (e.g. \"the marker was already in the body\"). probe A callback: probe(payload) sends one mutated request — with payload injected at point — and returns its response.",
-    "url": "custom-active-checks/#the-three-arguments"
-  },
-  {
     "title": "Custom checks",
     "text": "Writing custom scanner checks The control UI embeds internal/control/checks reference.md for the in-app Docs tab — keep both files in sync when editing this guide. Interseptor's passive scanner is extensible: drop a check written in Starlark (a small, Python-like language) into your checks folder and it runs on every scan, right alongside the built-in checks. This page is the standard every check is written against. - Where checks live: ~/.interseptor/checks/.star (global — shared across all projects, like the CA). - When they run: every time you Run scan (or POST /api/scanner/run). Files are re-read each run, so editing a check takes effect immediately — no restart. - Why Starlark: it's deterministic and sandboxed — a check cannot read files, open network connections, read the clock, or import anything. That makes checks safe to download and share.",
     "url": "custom-checks/"
@@ -208,11 +163,6 @@
     "title": "Limits \u0026 safety",
     "text": "- Sandboxed: no file/network/clock access, no load(), no imports. Checks are pure functions of the flow you pass in. - Bounded: each check() call is capped at a few million execution steps, so a runaway loop aborts that one check instead of hanging the scan. - Isolated failures: a check that fails to compile or errors at runtime is logged and skipped — it never aborts the scan or the other checks.",
     "url": "custom-checks/#limits--safety"
-  },
-  {
-    "title": "See also",
-    "text": "- Writing custom ACTIVE checks — the active twin of this page: send real mutated requests with probe(payload) to confirm a vulnerability (SQLi, XSS, …), gated behind arming an active scan.",
-    "url": "custom-checks/#see-also"
   },
   {
     "title": "The contract",
@@ -241,7 +191,7 @@
   },
   {
     "title": "3. Active work and external orchestration",
-    "text": "- [ ] Review deterministic active-scan results and external-agent activity in History - [ ] Reproduce important candidates with send request or Repeater - [ ] Attach evidence flows and record concrete verification steps - [ ] Confirm Critical/High with a human read of the PoC",
+    "text": "- [ ] Review external-agent activity and verification results in History - [ ] Reproduce important candidates with send request or Repeater - [ ] Attach evidence flows and record concrete verification steps - [ ] Confirm Critical/High with a human read of the PoC",
     "url": "engagement-closeout/#3-active-work-and-external-orchestration"
   },
   {
@@ -306,7 +256,7 @@
   },
   {
     "title": "Custom checks and rule packs",
-    "text": "Sandboxed Starlark passive and active checks extend scanner behavior without a fork, with official and community bundles.",
+    "text": "Sandboxed Starlark passive checks extend scanner behavior without a fork, with official and community bundles.",
     "url": "features/#checks"
   },
   {
@@ -385,14 +335,9 @@
     "url": "features/#repeater"
   },
   {
-    "title": "Active scanning",
-    "text": "Passive checks and deterministic active scanning inspect injection points and confirm hits with detectors. Active Starlark checks extend coverage.",
-    "url": "features/#scanner"
-  },
-  {
     "title": "Scanner",
     "text": "Built-in passive checks cover security headers, CORS, reflected parameters, secrets, cookies, authentication, and version disclosure.",
-    "url": "features/#scanner-passive"
+    "url": "features/#scanner"
   },
   {
     "title": "Target scope",
@@ -606,7 +551,7 @@
   },
   {
     "title": "Recipe 3 — Triage scanner findings and fuzz",
-    "text": "Goal: Turn passive hits into confirmed bugs. Safety: active scan sends real payloads — pass arm=true once per session and only on authorized targets.",
+    "text": "Goal: Turn passive hits into confirmed bugs. Safety: passive scanning does not send requests. For deliberate testing, use the lower-level send and verification tools only on targets you are authorized to test and stay within scope.",
     "url": "mcp-cookbook/#recipe-3--triage-scanner-findings-and-fuzz"
   },
   {
@@ -615,9 +560,9 @@
     "url": "mcp-cookbook/#recipe-4--close-out-findings-engagement-end"
   },
   {
-    "title": "Recipe 5 — External agent active testing",
-    "text": "Goal: Let an external agent sequence deterministic scans and human-reviewed evidence. Safety: Interseptor doesn't decide what to test. The external agent must follow scope and authorization constraints, while Interseptor records requests and results.",
-    "url": "mcp-cookbook/#recipe-5--external-agent-active-testing"
+    "title": "Recipe 5 — External agent testing workflow",
+    "text": "Goal: Let an external agent compose focused tests and human-reviewed evidence. Safety: Interseptor doesn't decide what to test. The external agent must follow scope and authorization constraints, while Interseptor records requests and results.",
+    "url": "mcp-cookbook/#recipe-5--external-agent-testing-workflow"
   },
   {
     "title": "Recipe 6 — Custom checks and rule packs",
@@ -781,22 +726,22 @@
   },
   {
     "title": "Upstream proxies",
-    "text": "Configure a second-hop proxy in Settings → Proxy \u0026 network → Upstream proxy. Select the connection type, then enter its host and port. The UI builds and validates the proxy URL; credentials stay in separate fields so percent-encoding and special characters are handled safely. The saved route applies consistently to captured browser/device traffic, Repeater, Intruder, login macros, active scans, and custom-check requests. A Repeater 502 should therefore be diagnosed against the same upstream endpoint, credentials, DNS mode, and HTTPS-proxy CA shown in Settings. Type Choose it when DNS behavior Typical port --- --- --- --- Direct Interseptor should connect to targets itself Local — HTTP Chaining through a corporate proxy, Burp, or another HTTP CONNECT proxy Proxy protocol carries target hostnames 80 or 8080 HTTPS The connection from Interseptor to the upstream proxy must itself use TLS Proxy protocol carries target hostnames 443 SOCKS5 A SOCKS service is available and target DNS should resolve on the Interseptor workstation Local DNS; the resolved IP is sent to SOCKS 1080 SOCKS5H Target names resolve only from the proxy network, or local DNS leakage must be avoided Remote DNS a",
+    "text": "Configure a second-hop proxy in Settings → Proxy \u0026 network → Upstream proxy. Select the connection type, then enter its host and port. The UI builds and validates the proxy URL; credentials stay in separate fields so percent-encoding and special characters are handled safely. The saved route applies consistently to captured browser/device traffic, Repeater, Intruder, login macros, and custom-check requests. A Repeater 502 should therefore be diagnosed against the same upstream endpoint, credentials, DNS mode, and HTTPS-proxy CA shown in Settings. Type Choose it when DNS behavior Typical port --- --- --- --- Direct Interseptor should connect to targets itself Local — HTTP Chaining through a corporate proxy, Burp, or another HTTP CONNECT proxy Proxy protocol carries target hostnames 80 or 8080 HTTPS The connection from Interseptor to the upstream proxy must itself use TLS Proxy protocol carries target hostnames 443 SOCKS5 A SOCKS service is available and target DNS should resolve on the Interseptor workstation Local DNS; the resolved IP is sent to SOCKS 1080 SOCKS5H Target names resolve only from the proxy network, or local DNS leakage must be avoided Remote DNS at the SOCKS pr",
     "url": "proxy-and-tls/#upstream-proxies"
   },
   {
     "title": "Rule packs",
-    "text": "Rule packs A rule pack is a shareable bundle of Starlark checks (passive and/or active) plus a manifest. It's how a community shares detection logic: build a pack from a folder of .star files, hand the .tar.gz to a teammate (or publish it), and they install it with one command — no fork, no copy-paste. Packs install checks that run on every scan, so install/remove are human-gated (CLI or the full-scope REST surface). The AI agent surface is read-only (list packs, pack info) — an agent can see what's installed and suggest checks, but can't install them unsupervised.",
+    "text": "Rule packs A rule pack is a shareable bundle of passive Starlark checks plus a manifest. It's how a community shares detection logic: build a pack from a folder of .star files, hand the .tar.gz to a teammate (or publish it), and they install it with one command — no fork, no copy-paste. Packs install checks that run on every scan, so install/remove are human-gated (CLI or the full-scope REST surface). The AI agent surface is read-only (list packs, pack info) — an agent can see what's installed and suggest checks, but can't install them unsupervised.",
     "url": "rule-packs/"
   },
   {
     "title": "Authoring checks for a pack",
-    "text": "A check in a pack is just a normal Starlark check (see custom checks / active checks), optionally with a key: value front-matter header for provenance: The front-matter is parsed and surfaced in list checks / list active checks so a pack listing can show what each check does without reading its source.",
+    "text": "A check in a pack is just a normal passive Starlark check (see custom checks), optionally with a key: value front-matter header for provenance: The front-matter is parsed and surfaced in list checks so a pack listing can show what each check does without reading its source.",
     "url": "rule-packs/#authoring-checks-for-a-pack"
   },
   {
     "title": "CLI",
-    "text": "Installed checks live in the same global ~/.interseptor/checks and ~/.interseptor/active-checks directories the engines already read, so they run immediately alongside your other checks and custom-built-ins — no restart.",
+    "text": "Installed checks live in the global ~/.interseptor/checks directory, so they run immediately alongside your other passive checks and built-ins — no restart.",
     "url": "rule-packs/#cli"
   },
   {
@@ -861,7 +806,7 @@
   },
   {
     "title": "Repeated 407 or upstream authentication errors",
-    "text": "A browser-visible 407 from Interseptor means listener credentials are missing or invalid. An Interseptor toast/log saying “upstream proxy authentication required” means the configured chained proxy rejected its credentials. These are different authentication layers. For upstream setup, select a mode instead of typing a URL: HTTP/HTTPS for an HTTP CONNECT proxy, SOCKS5 for local DNS, or SOCKS5H for proxy-side DNS. Verify host and port in the status summary. Private CA PEM applies only to HTTPS upstream proxies. If captured traffic works through the upstream but Repeater returns 502, confirm the saved summary, then reopen Settings and save once. Current releases apply one shared upstream route to capture, Repeater, Intruder, login macros, active scans, and custom-check sends. The Repeater flow's error field contains the upstream dial, DNS, TLS, or authentication failure.",
+    "text": "A browser-visible 407 from Interseptor means listener credentials are missing or invalid. An Interseptor toast/log saying “upstream proxy authentication required” means the configured chained proxy rejected its credentials. These are different authentication layers. For upstream setup, select a mode instead of typing a URL: HTTP/HTTPS for an HTTP CONNECT proxy, SOCKS5 for local DNS, or SOCKS5H for proxy-side DNS. Verify host and port in the status summary. Private CA PEM applies only to HTTPS upstream proxies. If captured traffic works through the upstream but Repeater returns 502, confirm the saved summary, then reopen Settings and save once. Current releases apply one shared upstream route to capture, Repeater, Intruder, login macros, and custom-check sends. The Repeater flow's error field contains the upstream dial, DNS, TLS, or authentication failure.",
     "url": "troubleshooting/#repeated-407-or-upstream-authentication-errors"
   },
   {

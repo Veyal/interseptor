@@ -1977,7 +1977,7 @@ func TestProxyInterceptUneditedHoldStillRoutesToOriginalHost(t *testing.T) {
 // findings, captured credentials, settings — all disguised as an ordinary
 // "forward this request" action. This is the same class of attack that
 // Repeater/Intruder/WS-repeater/the AI agent tool already refuse via
-// targetsOwnListener/isOwnListener (internal/control/activescan.go); this test
+// targetsOwnListener/isOwnListener (internal/control/own_listener.go); this test
 // asserts the Intercept-forward path gets the same protection, enforced against
 // the FINAL (post-edit) target rather than the pre-edit one.
 func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {

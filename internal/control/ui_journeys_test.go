@@ -275,7 +275,6 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 			t.Errorf("removed UI asset still exists: %s", asset)
 		}
 	}
-	requireUIContains(t, scanner, "'/api/readiness'", "in-scope")
 	requireUIContains(t, scanner,
 		"'/api/scanner/targets'",
 		"d.hosts",

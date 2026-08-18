@@ -30,9 +30,7 @@ type InstallOpts struct {
 
 // Registry tracks installed packs in <root>/packs/registry.json. It is the
 // source of truth for `rules list` / `rules remove` and for the REST/MCP pack
-// surfaces. Filesystem layout for installed checks: passive → <root>/checks,
-// active → <root>/active-checks (same dirs the engines already read), so an
-// installed pack's checks run immediately with everything else.
+// surfaces. Installed passive checks live under <root>/checks.
 type Registry struct {
 	path string
 }
@@ -99,7 +97,7 @@ func (r *Registry) Get(name string) (InstallRecord, bool, error) {
 
 // Remove deletes a pack's check files and drops its registry entry. Files a
 // user hand-edited are left in place (an entry only owns ids it recorded).
-func (r *Registry) Remove(name, checksDir, activeChecksDir string) (int, error) {
+func (r *Registry) Remove(name, checksDir string) (int, error) {
 	rf, err := r.load()
 	if err != nil {
 		return 0, err
@@ -117,13 +115,9 @@ func (r *Registry) Remove(name, checksDir, activeChecksDir string) (int, error) 
 	rec := rf.Packs[idx]
 	removed := 0
 	for _, id := range rec.IDs {
-		// remove from whichever dir holds it (passive or active); ignore "not found".
-		for _, dir := range []string{checksDir, activeChecksDir} {
-			p := filepath.Join(dir, id+".star")
-			if err := os.Remove(p); err == nil {
-				removed++
-				break
-			}
+		p := filepath.Join(checksDir, id+".star")
+		if err := os.Remove(p); err == nil {
+			removed++
 		}
 	}
 	rf.Packs = append(rf.Packs[:idx], rf.Packs[idx+1:]...)
@@ -135,21 +129,14 @@ func (r *Registry) Remove(name, checksDir, activeChecksDir string) (int, error) 
 
 // record installs (or upgrades) a pack's files on disk and records it. Existing
 // files with the same id are overwritten (an upgrade). Returns the count written.
-func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, source, signed string) (int, error) {
+func (r *Registry) record(m Manifest, files []File, checksDir, source, signed string) (int, error) {
 	if err := os.MkdirAll(checksDir, 0o755); err != nil {
-		return 0, err
-	}
-	if err := os.MkdirAll(activeChecksDir, 0o755); err != nil {
 		return 0, err
 	}
 	written := 0
 	ids := make([]string, 0, len(files))
 	for _, f := range files {
-		dir := checksDir
-		if f.Kind == KindActive {
-			dir = activeChecksDir
-		}
-		if err := os.WriteFile(filepath.Join(dir, f.ID+".star"), f.Data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(checksDir, f.ID+".star"), f.Data, 0o644); err != nil {
 			return written, err
 		}
 		ids = append(ids, f.ID)
@@ -186,12 +173,12 @@ func (r *Registry) record(m Manifest, files []File, checksDir, activeChecksDir, 
 // InstallStream reads a pack from r, verifies it, writes its checks to disk, and
 // records it in the registry. source is stored for provenance (e.g. a URL).
 // Unsigned community packs are refused unless opts.AllowUnsigned or opts.TrustBuiltin.
-func (r *Registry) InstallStream(rdr readSeekFree, checksDir, activeChecksDir, source string) (Manifest, int, error) {
-	return r.InstallStreamOpts(rdr, checksDir, activeChecksDir, source, InstallOpts{})
+func (r *Registry) InstallStream(rdr readSeekFree, checksDir, source string) (Manifest, int, error) {
+	return r.InstallStreamOpts(rdr, checksDir, source, InstallOpts{})
 }
 
 // InstallStreamOpts is InstallStream with signature policy.
-func (r *Registry) InstallStreamOpts(rdr readSeekFree, checksDir, activeChecksDir, source string, opts InstallOpts) (Manifest, int, error) {
+func (r *Registry) InstallStreamOpts(rdr readSeekFree, checksDir, source string, opts InstallOpts) (Manifest, int, error) {
 	m, files, err := ReadPack(rdr)
 	if err != nil {
 		return m, 0, err
@@ -214,7 +201,7 @@ func (r *Registry) InstallStreamOpts(rdr readSeekFree, checksDir, activeChecksDi
 	default:
 		return m, 0, fmt.Errorf("rules: unsigned pack (sign with `interseptor rules create --sign <seed>` or pass --allow-unsigned)")
 	}
-	n, err := r.record(m, files, checksDir, activeChecksDir, source, signed)
+	n, err := r.record(m, files, checksDir, source, signed)
 	return m, n, err
 }
 
@@ -224,18 +211,18 @@ func (r *Registry) globalDir() string {
 }
 
 // InstallFile installs a pack from a local .tar.gz path.
-func (r *Registry) InstallFile(path, checksDir, activeChecksDir string) (Manifest, int, error) {
-	return r.InstallFileOpts(path, checksDir, activeChecksDir, InstallOpts{})
+func (r *Registry) InstallFile(path, checksDir string) (Manifest, int, error) {
+	return r.InstallFileOpts(path, checksDir, InstallOpts{})
 }
 
 // InstallFileOpts is InstallFile with signature policy.
-func (r *Registry) InstallFileOpts(path, checksDir, activeChecksDir string, opts InstallOpts) (Manifest, int, error) {
+func (r *Registry) InstallFileOpts(path, checksDir string, opts InstallOpts) (Manifest, int, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Manifest{}, 0, err
 	}
 	defer f.Close()
-	return r.InstallStreamOpts(f, checksDir, activeChecksDir, path, opts)
+	return r.InstallStreamOpts(f, checksDir, path, opts)
 }
 
 // SignedLabel returns a short UI/CLI label for an install record.

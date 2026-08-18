@@ -52,7 +52,7 @@ Private CA PEM applies only to HTTPS upstream proxies.
 
 If captured traffic works through the upstream but Repeater returns `502`, confirm the saved summary,
 then reopen Settings and save once. Current releases apply one shared upstream route to capture,
-Repeater, Intruder, login macros, active scans, and custom-check sends. The Repeater flow's error field
+Repeater, Intruder, login macros, and custom-check sends. The Repeater flow's error field
 contains the upstream dial, DNS, TLS, or authentication failure.
 
 ## Send to Repeater does not look right

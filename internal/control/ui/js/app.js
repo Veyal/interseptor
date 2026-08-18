@@ -6,7 +6,7 @@ import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setSto
 import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
-import { loadIssues, runScan, loadScanTargets, openActive, openDecoder, openChecks, loadActive, loadChecksList, loadOob, renderAsScopePanel } from './scanner.js';
+import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
@@ -212,7 +212,7 @@ function resyncAfterStaleReconnect(){
                                panel is inactive instead of silently no-op'ing).
      - modal-gated nudge:     same idea as panel-gated, but gated on a modal's
                                open state instead of a tab (checks.update,
-                               activescan.update, oob.update — all three follow
+                               oob.update — both follow
                                the exact same shape: "reload this modal's list
                                if it's currently open, else do nothing since
                                there's no badge/affordance for these modals").
@@ -232,7 +232,7 @@ function resyncAfterStaleReconnect(){
    setNavDot/clearNavDot above) — for events with no badge affordance, "else"
    is simply a no-op instead of setting a dot. */
 // onModalUpdate: reload a modal's contents only while it's open — the shared
-// shape behind checks.update/activescan.update/oob.update below.
+// shape behind checks.update/oob.update below.
 function onModalUpdate(modalId,reloadFn){
   const m=$('#'+modalId);
   if(m&&m.style.display==='flex')reloadFn();
@@ -244,7 +244,6 @@ function onModalUpdate(modalId,reloadFn){
 const SSE_HANDLERS={
   'checks.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('checksModal',loadChecksList)},
   'codecs.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('codecsModal',loadCodecsList)},
-  'activescan.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('activeModal',loadActive)},
   'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
   'notes.update':{contract:'always-reload',run:loadNotes},
   'findings.update':{contract:'always-reload',run:loadFindings},
@@ -280,7 +279,7 @@ function connectEvents(){
     else if(m.type==='intruder.update')scheduleIntr();
     else if(m.type==='scanner.update')loadIssues();
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
-    else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#activeModal')&&$('#activeModal').style.display==='flex')renderAsScopePanel();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
+    else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
 
@@ -335,13 +334,12 @@ function cmdkCommands(){
     {t:'Go to Intercept',kw:'hold forward drop match replace rules',run:go('intercept')},
     {t:'Go to Repeater',kw:'resend craft edit request',run:go('repeater')},
     {t:'Go to Intruder',kw:'fuzz brute force payloads enumerate',run:go('intruder')},
-    {t:'Go to Scanner',kw:'passive active scan checks issues vulnerabilities report',run:go('scanner')},
+    {t:'Go to Scanner',kw:'passive checks issues vulnerabilities report',run:go('scanner')},
     {t:'Go to Findings',kw:'findings poc vulnerability record curated impact',run:go('findings')},
     {t:'Go to Map',kw:'endpoints attack surface graph tree headers body search',run:go('map')},
     {t:'Go to Notes',kw:'scratchpad markdown findings notebook',run:goToNotes},
     {t:'Edit custom scanner checks',kw:'starlark checks passive custom rules',run:openChecks},
     {t:'Edit message codecs',kw:'encrypt decrypt aes codec plaintext decoded',run:openCodecs},
-    {t:'Open active scan',kw:'active attack payloads consent arm fuzz',run:openActive},
     ...(state.oobEnabled?[{t:'Open OOB catcher',kw:'out of band blind ssrf callback collab',run:()=>{openModal($('#oobModal'));loadOob();}}]:[]),
     {t:'Open Authz test',kw:'authorization access control roles identity',run:()=>{const f=selectedFlow();if(f)openAuthz(f.id);else toast('select a flow in History first');}},
     {t:'Send selected flow to Repeater',kw:'resend craft edit request history',run:()=>{const f=selectedFlow();if(f)sendToRepeater(f);else toast('select a flow in History first');}},
@@ -359,7 +357,7 @@ function cmdkCommands(){
     {t:'Settings: Mobile devices — Android / iOS',kw:'android ios adb simulator device jailbreak ssh proxy install ca mobile phone',run:goSet('devices')},
     {t:'Settings: Target scope',kw:'include exclude host path in scope',run:goSet('scope')},
 
-    {t:'Settings: Scanner & OOB',kw:'scanner oob passive active checks enable',run:goSet('scanner')},
+    {t:'Settings: Scanner & OOB',kw:'scanner oob passive checks enable',run:goSet('scanner')},
     {t:'Settings: Session / auth headers',kw:'cookie token authorization bearer login macro',run:goSet('session')},
     {t:'Settings: Project & data — export, import, retention',kw:'export import har json switch project data retention delete purge gc reclaim space',run:goSet('project')},
     {t:'Settings: API & MCP',kw:'keys tokens rest mcp reference',run:goSet('api')},

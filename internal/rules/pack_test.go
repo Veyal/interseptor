@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -16,10 +17,8 @@ func writeCheckDir(t *testing.T, root string) {
 	mkdir := func(p string) { must(t, os.MkdirAll(p, 0o755)) }
 	mustWrite := func(p, body string) { must(t, os.WriteFile(p, []byte(body), 0o644)) }
 	mkdir(root + "/checks")
-	mkdir(root + "/active-checks")
 	mustWrite(root+"/checks/hsts.star", "# name: HSTS\ndef check(flow):\n    return []\n")
 	mustWrite(root+"/checks/jwt.star", "def check(flow):\n    return []\n")
-	mustWrite(root+"/active-checks/sqli.star", "def check(point, baseline, probe):\n    return []\n")
 }
 
 func TestBuildAndReadPackRoundTrip(t *testing.T) {
@@ -31,8 +30,8 @@ func TestBuildAndReadPackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPack: %v", err)
 	}
-	if len(m.Entries) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(m.Entries))
+	if len(m.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(m.Entries))
 	}
 
 	got, files, err := ReadPack(&buf)
@@ -42,8 +41,19 @@ func TestBuildAndReadPackRoundTrip(t *testing.T) {
 	if got.Name != "owasp-top" || got.Version != "1.0.0" {
 		t.Fatalf("manifest identity wrong: %+v", got)
 	}
-	if len(files) != 3 {
-		t.Fatalf("expected 3 files, got %d", len(files))
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+}
+
+func TestBuildPackRejectsActiveChecks(t *testing.T) {
+	src := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(src, "checks"), 0o755))
+	must(t, os.MkdirAll(filepath.Join(src, "active-checks"), 0o755))
+	must(t, os.WriteFile(filepath.Join(src, "active-checks", "sqli.star"), []byte("def check(point, baseline, probe):\n    return []\n"), 0o644))
+	var buf bytes.Buffer
+	if _, err := BuildPack(src, Manifest{Name: "p", Version: "1"}, &buf); err == nil || !strings.Contains(err.Error(), "active checks are no longer supported") {
+		t.Fatalf("BuildPack error = %v, want active-check rejection", err)
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Veyal/interseptor/internal/activescan"
-	"github.com/Veyal/interseptor/internal/activescript"
 	"github.com/Veyal/interseptor/internal/checkscript"
 	"github.com/Veyal/interseptor/internal/scanner"
 	"github.com/Veyal/interseptor/internal/store"
@@ -41,35 +39,12 @@ func (h *checksAPI) listChecks(w http.ResponseWriter, r *http.Request) {
 		}
 		builtin = append(builtin, m)
 	}
-	active := activeCheckList()
-	if h.ActiveChecksDir != "" {
-		for i := range active {
-			id, _ := active[i]["id"].(string)
-			if activescript.Exists(h.ActiveChecksDir, id) {
-				active[i]["overridden"] = true
-			}
-		}
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"checks":    checks,
-		"builtin":   builtin,
-		"active":    active,
-		"dir":       h.ChecksDir,
-		"activeDir": h.ActiveChecksDir,
-		"disabled":  h.checksDisabledList(),
+		"checks":   checks,
+		"builtin":  builtin,
+		"dir":      h.ChecksDir,
+		"disabled": h.checksDisabledList(),
 	})
-}
-
-// activeCheckList exposes the built-in active-scan probes for the Checks manager.
-func activeCheckList() []map[string]any {
-	out := make([]map[string]any, 0, len(activescan.Checks))
-	for _, c := range activescan.Checks {
-		out = append(out, map[string]any{
-			"id": c.ID, "class": c.Class, "severity": c.Severity, "title": c.Title, "fix": c.Fix,
-			"editable": true,
-		})
-	}
-	return out
 }
 
 func (h *Hub) checksDisabledList() []string {

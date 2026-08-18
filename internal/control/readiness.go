@@ -95,11 +95,6 @@ func (h *authzAPI) buildReadiness() readinessReport {
 	}
 	add("login_macro", loginOK, loginDetail, "set_login_macro_from_flow or set_login_macro")
 
-	h.as.mu.Lock()
-	armed := h.as.armed
-	h.as.mu.Unlock()
-	add("active_scan_armed", armed, armedStatus(armed), "active_scan with arm:true once authorized")
-
 	tlsDiag := h.buildTLSDiagnosis("")
 	// Only an intercepted HTTPS flow proves the CA/MITM path. HTTP-only traffic
 	// is useful evidence that the proxy is reachable, but TLS remains unverified.
@@ -131,13 +126,6 @@ func inScopeDetail(ok bool) string {
 		return "in-scope traffic present"
 	}
 	return "no in-scope traffic yet"
-}
-
-func armedStatus(armed bool) string {
-	if armed {
-		return "armed"
-	}
-	return "disarmed"
 }
 
 func itoa64(n int64) string {

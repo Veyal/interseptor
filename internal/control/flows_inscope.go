@@ -105,7 +105,7 @@ func (h *Hub) hasInScopeTraffic() bool {
 	matched, _, err := h.queryInScopeFlows(store.FlowFilter{
 		SortKey:      "id",
 		SortDir:      -1,
-		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
 	}, 1)
 	return err == nil && len(matched) > 0
 }

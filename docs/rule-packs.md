@@ -1,6 +1,6 @@
 # Rule packs
 
-A **rule pack** is a shareable bundle of Starlark checks (passive and/or active)
+A **rule pack** is a shareable bundle of passive Starlark checks
 plus a manifest. It's how a community shares detection logic: build a pack from
 a folder of `.star` files, hand the `.tar.gz` to a teammate (or publish it), and
 they install it with one command — no fork, no copy-paste.
@@ -18,7 +18,6 @@ A pack is a `.tar.gz` containing:
 manifest.json              name, version, author, entries[] (each: kind, id, sha256)
 signature.json             optional ed25519 publisher signature
 checks/<id>.star           passive checks
-active-checks/<id>.star    active checks
 ```
 
 Every check file's **sha256** is recorded in the manifest at build time and
@@ -38,7 +37,7 @@ covers the manifest digest (name, version, per-file hashes) so install can verif
 ## CLI
 
 ```bash
-# Build a pack from a folder that has checks/ and/or active-checks/ subdirs.
+# Build a pack from a folder that has a checks/ subdir.
 interseptor rules create --name owasp-top --version 1.0.0 --author Priya ./mychecks --out owasp.tar.gz
 
 # Sign while building (32-byte hex seed file or literal):
@@ -58,9 +57,8 @@ interseptor rules info owasp-top
 interseptor rules remove owasp-top
 ```
 
-Installed checks live in the same global `~/.interseptor/checks` and
-`~/.interseptor/active-checks` directories the engines already read, so they run
-immediately alongside your other checks and custom-built-ins — no restart.
+Installed checks live in the global `~/.interseptor/checks` directory, so they run
+immediately alongside your other passive checks and built-ins — no restart.
 
 ## REST + MCP
 
@@ -80,8 +78,8 @@ MCP tools: `list_packs`, `pack_info` (read-only — see the note above).
 
 ## Authoring checks for a pack
 
-A check in a pack is just a normal Starlark check (see
-[custom checks](custom-checks.md) / [active checks](custom-active-checks.md)),
+A check in a pack is just a normal passive Starlark check (see
+[custom checks](custom-checks.md)),
 optionally with a `# key: value` front-matter header for provenance:
 
 ```python
@@ -96,5 +94,5 @@ def check(flow):
     return []
 ```
 
-The front-matter is parsed and surfaced in `list_checks` / `list_active_checks`
+The front-matter is parsed and surfaced in `list_checks`
 so a pack listing can show what each check does without reading its source.

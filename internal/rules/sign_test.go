@@ -37,8 +37,7 @@ func TestSignAndInstallRejectsUnsignedAndBadSig(t *testing.T) {
 	}
 	reg := NewRegistry(root)
 	checksDir := filepath.Join(root, "checks")
-	activeDir := filepath.Join(root, "active-checks")
-	if _, _, err := reg.InstallStreamOpts(bytes.NewReader(unsigned.Bytes()), checksDir, activeDir, "t", InstallOpts{}); err == nil {
+	if _, _, err := reg.InstallStreamOpts(bytes.NewReader(unsigned.Bytes()), checksDir, "t", InstallOpts{}); err == nil {
 		t.Fatal("unsigned pack must be rejected by default")
 	}
 
@@ -50,7 +49,7 @@ func TestSignAndInstallRejectsUnsignedAndBadSig(t *testing.T) {
 	if m.Signature == nil || m.Signature.KeyID != "dev" {
 		t.Fatalf("expected signature, got %+v", m.Signature)
 	}
-	got, n, err := reg.InstallStreamOpts(bytes.NewReader(signed.Bytes()), checksDir, activeDir, "t", InstallOpts{Keys: kr})
+	got, n, err := reg.InstallStreamOpts(bytes.NewReader(signed.Bytes()), checksDir, "t", InstallOpts{Keys: kr})
 	if err != nil {
 		t.Fatalf("signed install: %v", err)
 	}
@@ -87,7 +86,7 @@ func TestCatalogInstallTrustBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()),
-		filepath.Join(root, "checks"), filepath.Join(root, "active-checks"), "catalog",
+		filepath.Join(root, "checks"), "catalog",
 		InstallOpts{TrustBuiltin: true})
 	if err != nil {
 		t.Fatal(err)

@@ -14,13 +14,11 @@ import (
 func TestSourceEndpointsRejectOversizedJSONAfterValidValue(t *testing.T) {
 	h, _, _ := newHub(t)
 	h.ChecksDir = t.TempDir()
-	h.ActiveChecksDir = t.TempDir()
 	h.ProjectDir = t.TempDir()
 	ts := httptest.NewServer(h.Handler())
 	t.Cleanup(ts.Close)
 
 	passive := `{"source":"def check(flow):\n    return []\n"}`
-	active := `{"source":"def check(point, baseline, probe):\n    return []\n"}`
 
 	tests := []struct {
 		name   string
@@ -31,8 +29,6 @@ func TestSourceEndpointsRejectOversizedJSONAfterValidValue(t *testing.T) {
 		{name: "checks disabled", method: http.MethodPut, path: "/api/checks/disabled", prefix: `{"disabled":[]}`},
 		{name: "save passive check", method: http.MethodPut, path: "/api/checks/limit-test", prefix: passive},
 		{name: "test passive check", method: http.MethodPost, path: "/api/checks/test", prefix: passive},
-		{name: "save active check", method: http.MethodPut, path: "/api/active-checks/limit-test", prefix: active},
-		{name: "test active check", method: http.MethodPost, path: "/api/active-checks/test", prefix: active},
 		{name: "save codec", method: http.MethodPut, path: "/api/codecs/limit-test", prefix: `{}`},
 		{name: "test codec", method: http.MethodPost, path: "/api/codecs/test", prefix: `{}`},
 		{name: "encode codec", method: http.MethodPost, path: "/api/codecs/encode", prefix: `{}`},

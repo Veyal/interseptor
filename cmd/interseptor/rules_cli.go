@@ -106,7 +106,7 @@ func rulesInstall(args []string) error {
 		return err
 	}
 	reg := rules.NewRegistry(root)
-	m, n, err := reg.InstallFileOpts(fs.Arg(0), filepath.Join(root, "checks"), filepath.Join(root, "active-checks"), rules.InstallOpts{
+	m, n, err := reg.InstallFileOpts(fs.Arg(0), filepath.Join(root, "checks"), rules.InstallOpts{
 		AllowUnsigned: *allowUnsigned,
 	})
 	if err != nil {
@@ -164,7 +164,7 @@ func rulesRemove(args []string) error {
 	if err != nil {
 		return err
 	}
-	n, err := rules.NewRegistry(root).Remove(args[0], filepath.Join(root, "checks"), filepath.Join(root, "active-checks"))
+	n, err := rules.NewRegistry(root).Remove(args[0], filepath.Join(root, "checks"))
 	if err != nil {
 		return err
 	}

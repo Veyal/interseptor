@@ -32,10 +32,22 @@ func TestToolRegistryExcludesBuiltInAIAndAutopwn(t *testing.T) {
 			t.Errorf("built-in AI/autopwn tool %q remains registered", name)
 		}
 	}
-	for _, name := range []string{"list_flows", "active_scan", "create_finding"} {
+	for _, name := range []string{"list_flows", "create_finding"} {
 		if !registered[name] {
 			t.Errorf("deterministic tool %q was removed", name)
 		}
+	}
+	for _, name := range []string{"active_scan", "active_scan_state", "active_scan_stop", "list_active_checks", "test_active_check", "save_active_check", "delete_active_check"} {
+		if registered[name] {
+			t.Errorf("removed active-scanning tool %q remains registered", name)
+		}
+	}
+}
+
+func TestRemovedActiveToolReturnsUnknownTool(t *testing.T) {
+	s := New("http://127.0.0.1:1")
+	if _, err := s.Call("active_scan", map[string]any{}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
+		t.Fatalf("active_scan call error = %v, want unknown tool", err)
 	}
 }
 
@@ -348,9 +360,6 @@ func TestActivitySummary(t *testing.T) {
 	if got := activitySummary("get_flow", map[string]any{"id": float64(42)}); got != "id=42" {
 		t.Fatalf("get_flow summary: %q", got)
 	}
-	if got := activitySummary("active_scan", map[string]any{"target": "https://x"}); got != "target=https://x" {
-		t.Fatalf("active_scan summary: %q", got)
-	}
 }
 
 // Every tool call must be reported so the human can watch the AI work.
@@ -656,8 +665,8 @@ func TestBoundJSON(t *testing.T) {
 }
 
 // TestListFlowsMCPDefaultsIncludeTools verifies list_flows always asks the
-// control API for tool traffic (includeTools=1) so agents see active-scan /
-// repeater rows that History hides by default.
+// control API for tool traffic (includeTools=1) so agents see repeater rows
+// that History hides by default.
 func TestListFlowsMCPDefaultsIncludeTools(t *testing.T) {
 	var gotInclude string
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

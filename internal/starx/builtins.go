@@ -1,5 +1,5 @@
 // Package starx holds the Starlark builtins shared by every script engine in
-// Interseptor (passive checks, active checks, and any future engine). Centralising
+// Interseptor's passive check and script tooling. Centralising
 // them here means a check author sees one consistent "standard library" and we
 // don't re-implement — and re-test — the same helpers in two packages.
 //
@@ -30,8 +30,7 @@ import (
 )
 
 // Predeclared returns the builtins every Interseptor script can call. Engines
-// merge this into their own predeclared dict (active scripts additionally bind
-// `probe` at run time).
+// merge this into their own predeclared dict.
 func Predeclared() starlark.StringDict {
 	return starlark.StringDict{
 		"finding":         starlark.NewBuiltin("finding", FindingBuiltin),

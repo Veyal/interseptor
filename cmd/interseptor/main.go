@@ -242,12 +242,9 @@ func run() error {
 	hub.SetControlRebinder(cm)
 	// User-authored Starlark scanner checks are global (shared across projects).
 	checksDir := filepath.Join(globalDir, "checks")
-	activeChecksDir := filepath.Join(globalDir, "active-checks")
 	migrateGlobalChecks(globalDir, filepath.Join(globalDir, "projects"))
 	_ = os.MkdirAll(checksDir, 0o755)
-	_ = os.MkdirAll(activeChecksDir, 0o755)
 	hub.ChecksDir = checksDir
-	hub.ActiveChecksDir = activeChecksDir
 	hub.ProjectName = projectName
 	hub.ProjectDir = dir
 	_ = os.MkdirAll(filepath.Join(dir, "codecs"), 0o755)

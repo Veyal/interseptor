@@ -61,6 +61,22 @@ func TestUIBootHasNoDeadBindings(t *testing.T) {
 	}
 }
 
+func TestRemovedActiveScanningUIIsAbsent(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	for name, src := range map[string]string{"index.html": index, "app.js": app, "scanner.js": scanner, "core.js": core} {
+		for _, removed := range []string{"activeModal", "activeBtn", "checkNewActive", "/api/activescan", "/api/active-checks", "activescan.update"} {
+			if strings.Contains(strings.ToLower(src), strings.ToLower(removed)) {
+				t.Errorf("%s still contains removed active-scanning UI surface %q", name, removed)
+			}
+		}
+	}
+	requireUIContains(t, index, `id="scanRun"`, `id="checksBtn"`, `id="oobBtn"`)
+	requireUIContains(t, scanner, "'/api/scanner/issues'", "'/api/checks'", "export async function runScan")
+}
+
 func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	requireUIContains(t, css,
@@ -117,8 +133,8 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 
 	re := regexp.MustCompile(`<div id="([^"]+(?:Modal|Lightbox))"`)
 	dialogs := re.FindAllStringSubmatch(index, -1)
-	if len(dialogs) != 18 {
-		t.Fatalf("found %d dialogs, want exactly 18 live dialogs", len(dialogs))
+	if len(dialogs) != 17 {
+		t.Fatalf("found %d dialogs, want exactly 17 live dialogs", len(dialogs))
 	}
 	for _, dialog := range dialogs {
 		if !strings.Contains(core, "'"+dialog[1]+"'") {

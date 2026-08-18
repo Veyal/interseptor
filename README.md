@@ -30,9 +30,9 @@ external agent owns reasoning and sequencing. Nothing phones home.
   CA, with match-&-replace rules.
 - **Repeater & Intruder** — resend and mutate requests by hand, or run Sniper/Pitchfork/Race attacks
   with grep-match/extract and anomaly flagging.
-- **Scanner** — passive checks out of the box, plus a deterministic **active-scan** engine. External
-  agents can orchestrate scans through MCP while Interseptor records requests, evidence, and findings.
-- **Extensible** — write your own passive/active checks in sandboxed Starlark, no fork required.
+- **Scanner** — passive checks out of the box. External agents compose Repeater, Intruder, Authz, OOB,
+  and verification workflows through MCP while Interseptor records requests, evidence, and findings.
+- **Extensible** — write your own passive checks in sandboxed Starlark, no fork required.
 - **Mobile-ready** — Android and iOS setup for HTTPS interception on real devices.
 - **MCP & API native** — a full MCP server and a REST/SSE API so an external agent or script drives
   the same core as the UI. Interseptor has no built-in model provider or autonomous decision loop.
@@ -90,7 +90,7 @@ several projects at once are all in **[Getting started](docs/getting-started.md)
 | **[Troubleshooting](docs/troubleshooting.md)** | No traffic, TLS, 407 auth, Repeater, UI, ports, disk use |
 | **[History search](docs/history-search.md)** | Anywhere filters and saved Starlark predicates |
 | **[Architecture](docs/architecture.md)** | Security model, package layout, UI structure |
-| **[Custom checks](docs/custom-checks.md)** · [active checks](docs/custom-active-checks.md) | Author your own Starlark checks |
+| **[Custom checks](docs/custom-checks.md)** | Author your own passive Starlark checks |
 | **[Rule packs](docs/rule-packs.md)** | Share, install, and manage bundles of checks |
 | **[Project vault](docs/vault.md)** | Always-on backup / import / merge (Tailscale Serve) |
 | **[Engagement close-out](docs/engagement-closeout.md)** | Checklist to leave a report-ready project |

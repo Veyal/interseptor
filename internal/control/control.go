@@ -102,12 +102,8 @@ type Hub struct {
 	// projects — typically ~/.interseptor/checks). Set by cmd.
 	ChecksDir string
 
-	// ActiveChecksDir holds user-authored Starlark ACTIVE checks (global, shared —
-	// typically ~/.interseptor/active-checks). Set by cmd.
-	ActiveChecksDir string
-
 	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
-	// cmd; the active scanner refuses to target it, so it never attacks its own API.
+	// cmd; request-generating tools refuse to target it.
 	selfAddr atomic.Pointer[string]
 
 	// ProjectName/ProjectDir identify the active project (Burp-style). Set by cmd;
@@ -131,8 +127,6 @@ type Hub struct {
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
 	tunnelCloseOnce sync.Once
-
-	as asState // active-scan state (armed/running/findings)
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
 	updLatest string
@@ -544,14 +538,14 @@ const maxEndpointList = 12000
 
 // listEndpoints returns the unique-endpoint map for the attack-surface view —
 // proxied/manual traffic aggregated by (host, method, path); bulk attack traffic
-// (Intruder / active scan) is excluded as noise.
+// (Intruder) is excluded as noise.
 func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := store.EndpointFilter{
 		Host:          q.Get("host"),
 		Search:        q.Get("search"),
 		SearchScope:   q.Get("searchScope"),
-		ExcludeFlags:  store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags:  store.FlagIntruder,
 		Tag:           q.Get("tag"),
 		HideNoiseOnly: q.Get("hideNoise") != "0", // on by default — ferox/discovery 403/404-only paths
 	}
@@ -639,11 +633,11 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		Search: q.Get("search"),
 		Scheme: q.Get("scheme"),
 	}
-	// History hides Repeater/Intruder/ActiveScan by default (they have their own
+	// History hides Repeater/Intruder by default (they have their own
 	// views). includeTools=1 is the escape hatch for MCP agents / triage that
 	// need to see tool-generated traffic alongside proxy captures.
 	if q.Get("includeTools") != "1" {
-		f.ExcludeFlags = store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan
+		f.ExcludeFlags = store.FlagRepeater | store.FlagIntruder
 	}
 	f.SortKey, f.SortDir = parseFlowSortQuery(q)
 	if curID := int64(atoiOr(q.Get("curId"), 0)); curID > 0 {

@@ -15,6 +15,8 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+const legacyActiveScanBit int64 = 1 << 9
+
 // Tag endpoints: set tags on a flow, see them on the flow + list filter, list
 // distinct tags with counts, and set a color.
 func TestTagEndpoints(t *testing.T) {
@@ -266,80 +268,32 @@ func TestImportHARInvalidatesEndpointsCache(t *testing.T) {
 	}
 }
 
-// A malformed JSON body is rejected with 400 rather than silently decoding to a
-// zero value and flipping state (e.g. disarming the scanner). An empty body is
-// still accepted (io.EOF tolerated) — that must not regress to 400.
-func TestMalformedJSONBodyRejected(t *testing.T) {
+func TestRemovedActiveRESTRoutesAreUnavailable(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
-	post := func(path, body string) int {
-		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/activescan"},
+		{http.MethodPost, "/api/activescan/start"},
+		{http.MethodGet, "/api/active-checks"},
+		{http.MethodPost, "/api/active-checks/test"},
+	} {
+		req, err := http.NewRequest(tc.method, ts.URL+tc.path, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			t.Fatalf("POST %s: %v", path, err)
+			t.Fatalf("%s %s: %v", tc.method, tc.path, err)
 		}
 		resp.Body.Close()
-		return resp.StatusCode
-	}
-
-	if c := post("/api/activescan/arm", "{not json"); c != http.StatusBadRequest {
-		t.Fatalf("malformed arm body: got %d, want 400", c)
-	}
-	if c := post("/api/activescan/arm", ""); c != http.StatusOK {
-		t.Fatalf("empty arm body should still work (io.EOF tolerated): got %d, want 200", c)
-	}
-}
-
-func TestActiveScanRejectsInvalidCompleteBodiesBeforeChangingConsent(t *testing.T) {
-	const activeScanRequestLimit = 4 << 10
-	h, _, _ := newHub(t)
-	ts := httptest.NewServer(h.Handler())
-	defer ts.Close()
-
-	post := func(path, body string) int {
-		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatalf("POST %s: %v", path, err)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s %s: status = %d, want 404", tc.method, tc.path, resp.StatusCode)
 		}
-		resp.Body.Close()
-		return resp.StatusCode
-	}
-	armed := func() bool {
-		h.as.mu.Lock()
-		defer h.as.mu.Unlock()
-		return h.as.armed
-	}
-
-	if got := post("/api/activescan/arm", `{"armed":true}`); got != http.StatusOK {
-		t.Fatalf("arm status = %d, want 200", got)
-	}
-	if got := post("/api/activescan/arm", `{"armed":false}{}`); got != http.StatusBadRequest {
-		t.Fatalf("trailing arm JSON status = %d, want 400", got)
-	}
-	if !armed() {
-		t.Fatal("trailing arm JSON changed consent state")
-	}
-	oversized := `{"armed":false,"padding":"` + strings.Repeat("x", activeScanRequestLimit) + `"}`
-	if got := post("/api/activescan/arm", oversized); got != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized arm JSON status = %d, want 413", got)
-	}
-	if !armed() {
-		t.Fatal("oversized arm JSON changed consent state")
-	}
-
-	if got := post("/api/activescan/arm", `{"armed":false}`); got != http.StatusOK {
-		t.Fatalf("disarm status = %d, want 200", got)
-	}
-	if got := post("/api/activescan/start", `{"flowId":999,"arm":true}{}`); got != http.StatusBadRequest {
-		t.Fatalf("trailing start JSON status = %d, want 400", got)
-	}
-	if armed() {
-		t.Fatal("trailing start JSON changed consent state")
 	}
 }
 
@@ -349,7 +303,7 @@ func TestEndpointsEndpoint(t *testing.T) {
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/x", Status: 200})
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/x", Status: 404})
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(3), Method: "POST", Host: "a.com", Path: "/y", Status: 201})
-	s.InsertFlow(&store.Flow{TS: time.UnixMilli(4), Method: "GET", Host: "a.com", Path: "/z", Status: 200, Flags: store.FlagActiveScan})
+	s.InsertFlow(&store.Flow{TS: time.UnixMilli(4), Method: "GET", Host: "a.com", Path: "/z", Status: 200, Flags: store.FlagIntruder})
 
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -368,7 +322,7 @@ func TestEndpointsEndpoint(t *testing.T) {
 	}
 	json.NewDecoder(resp.Body).Decode(&out)
 	if len(out.Endpoints) != 2 {
-		t.Fatalf("got %d endpoints, want 2 (scan traffic excluded, hits collapsed)", len(out.Endpoints))
+		t.Fatalf("got %d endpoints, want 2 (tool traffic excluded, hits collapsed)", len(out.Endpoints))
 	}
 }
 
@@ -520,12 +474,12 @@ func TestListFlowsBadLimit(t *testing.T) {
 	}
 }
 
-// TestListFlowsExcludesActiveScanByDefault verifies History-shaped GET /api/flows
-// hides FlagActiveScan (and Repeater/Intruder) rows while host_stats still counts them.
-func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
+// TestListFlowsPreservesLegacyActiveRows verifies old active-scan rows remain
+// readable after the active-scan flag loses its special interpretation.
+func TestListFlowsPreservesLegacyActiveRows(t *testing.T) {
 	h, s, _ := newHub(t)
 	proxyID, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/proxy", Status: 200})
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	legacyID, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -544,8 +498,8 @@ func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Flows) != 1 || out.Flows[0].ID != proxyID || out.Flows[0].Path != "/proxy" {
-		t.Fatalf("default list should return only proxy flow, got %+v", out.Flows)
+	if len(out.Flows) != 2 || out.Flows[0].ID != legacyID || out.Flows[0].Path != "/scan" || out.Flows[1].ID != proxyID {
+		t.Fatalf("default list should preserve both flows, got %+v", out.Flows)
 	}
 
 	statsResp, err := http.Get(ts.URL + "/api/hosts/stats")
@@ -564,12 +518,12 @@ func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
 	}
 }
 
-// TestListFlowsIncludeToolsQuery returns tool traffic (active-scan/repeater/intruder)
-// when includeTools=1 is set — the escape hatch MCP agents need after a scan.
+// TestListFlowsIncludeToolsQuery returns Repeater/Intruder traffic when
+// includeTools=1 is set — the escape hatch MCP agents need after a tool run.
 func TestListFlowsIncludeToolsQuery(t *testing.T) {
 	h, s, _ := newHub(t)
 	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/proxy", Status: 200})
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -591,12 +545,11 @@ func TestListFlowsIncludeToolsQuery(t *testing.T) {
 	}
 }
 
-// TestListFlowsEmptyWhenOnlyActiveScan documents issue #5: a session that is
-// only tool traffic yields an empty History list (truncated:false) unless
-// includeTools=1 is set.
-func TestListFlowsEmptyWhenOnlyActiveScan(t *testing.T) {
+// TestListFlowsShowsLegacyActiveRowByDefault verifies a legacy active-scan row
+// is treated as ordinary history after active-scan filtering is removed.
+func TestListFlowsShowsLegacyActiveRowByDefault(t *testing.T) {
 	h, s, _ := newHub(t)
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -612,8 +565,8 @@ func TestListFlowsEmptyWhenOnlyActiveScan(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Flows) != 0 || out.Truncated {
-		t.Fatalf("default list of only active-scan flows should be empty truncated=false, got %+v", out)
+	if len(out.Flows) != 1 || out.Truncated {
+		t.Fatalf("default list should preserve the legacy row with truncated=false, got %+v", out)
 	}
 
 	resp2, err := http.Get(ts.URL + "/api/flows?includeTools=1")

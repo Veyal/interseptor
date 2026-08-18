@@ -78,7 +78,6 @@ const (
 	FlagRepeater       int64 = 1 << 6  // a request sent from the Repeater module
 	FlagIntruder       int64 = 1 << 7  // a request sent from the Intruder module
 	FlagImported       int64 = 1 << 8  // a flow imported from an external archive (not proxied)
-	FlagActiveScan     int64 = 1 << 9  // a probe sent by the active scanner
 	FlagAI             int64 = 1 << 10 // request originated from the AI assistant (over MCP)
 	FlagAuthz          int64 = 1 << 11 // a request replayed by the authorization (access-control) tester
 	FlagDiscovery      int64 = 1 << 12 // an endpoint found by the content-discovery (forced-browse) engine
