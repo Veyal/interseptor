@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"testing"
@@ -78,6 +79,45 @@ func TestAuthenticatedActivityListenerRejectsWrongToken(t *testing.T) {
 	}
 	if len(activities) != 0 {
 		t.Fatalf("wrong token recorded activities: %+v", activities)
+	}
+}
+
+func TestAuthenticatedActivityListenerRejectsOversizedCompleteMessage(t *testing.T) {
+	h, _, _ := newHub(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.startActivityListener(listener, "correct-token")
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := json.Marshal(activitySocketMessage{
+		Token:    "correct-token",
+		Activity: mcp.Activity{Tool: "list_flows", OK: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload = append(payload, bytes.Repeat([]byte(" "), maxActivitySocketMessage+1)...)
+	_, _ = conn.Write(payload)
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	var acknowledged [1]byte
+	n, _ := conn.Read(acknowledged[:])
+	_ = conn.Close()
+	h.closeActivitySocket()
+
+	if n != 0 {
+		t.Fatal("oversized activity message was acknowledged")
+	}
+	activities, err := (&metaAPI{h}).st.ListActivity(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(activities) != 0 {
+		t.Fatalf("oversized message recorded activities: %+v", activities)
 	}
 }
 

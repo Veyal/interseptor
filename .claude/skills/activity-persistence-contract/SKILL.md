@@ -12,5 +12,9 @@ The authenticated activity socket's one-byte response is a durability acknowledg
 after persistence and broadcast succeed; on storage failure, close the connection without the byte so
 the producer cannot mistake a transient UI event for a durable audit record.
 
+Socket reporters use `json.Encoder`, so the wire format is one newline-terminated JSON value. Read at
+most `max+1` bytes through that newline before unmarshalling. A decoder over `LimitReader(max)` can
+accept a small valid object immediately and acknowledge it while oversized padding remains unread.
+
 The MCP reporter callback cannot return errors. Log persistence failure there, but keep the shared
 checked helper so transports that support acknowledgements can return truthful outcomes.
