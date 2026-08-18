@@ -226,6 +226,32 @@ func TestStartRejectsNoPositions(t *testing.T) {
 	}
 }
 
+func TestStartRejectsUnknownAttackType(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target:     "http://example.com",
+		Template:   "GET /§id§ HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "snipre",
+		Payloads:   [][]string{{"1"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "attack type") {
+		t.Fatalf("unknown attack type error = %v", err)
+	}
+}
+
+func TestClusterBombRejectsEmptyPayloadList(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target:     "http://example.com",
+		Template:   "GET /§user§/§id§ HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "cluster",
+		Payloads:   [][]string{{"alice"}, {}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "payload list 2") {
+		t.Fatalf("empty cluster payload list error = %v", err)
+	}
+}
+
 func TestRepeatModeSendsTemplateNTimesConcurrently(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0

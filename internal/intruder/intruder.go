@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -176,10 +177,18 @@ type job struct {
 // normalizeAttackType maps UI/API aliases to engine attack types.
 func normalizeAttackType(t string) string {
 	switch strings.ToLower(strings.TrimSpace(t)) {
-	case "null":
+	case "null", "repeat":
 		return "repeat"
+	case "sniper":
+		return "sniper"
+	case "pitchfork":
+		return "pitchfork"
+	case "battering", "batteringram":
+		return "battering"
+	case "cluster", "clusterbomb":
+		return "cluster"
 	default:
-		return t
+		return ""
 	}
 }
 
@@ -193,7 +202,11 @@ func (e *Engine) Start(spec Spec) error {
 		return ErrClosed
 	}
 
-	spec.AttackType = normalizeAttackType(spec.AttackType)
+	rawAttackType := spec.AttackType
+	spec.AttackType = normalizeAttackType(rawAttackType)
+	if spec.AttackType == "" {
+		return fmt.Errorf("unsupported attack type %q", strings.TrimSpace(rawAttackType))
+	}
 	positions := marker.FindAllString(spec.Template, -1)
 	if spec.AttackType == "repeat" {
 		// Null/repeat mode: send the template verbatim N times — no markers or
@@ -207,6 +220,13 @@ func (e *Engine) Start(spec Spec) error {
 		}
 		if len(spec.Payloads) == 0 || len(spec.Payloads[0]) == 0 {
 			return errors.New("no payloads provided")
+		}
+		if spec.AttackType == "pitchfork" || spec.AttackType == "cluster" {
+			for i := 0; i < len(spec.Payloads) && i < len(positions); i++ {
+				if len(spec.Payloads[i]) == 0 {
+					return fmt.Errorf("payload list %d is empty", i+1)
+				}
+			}
 		}
 	}
 	if spec.Target == "" {
@@ -270,8 +290,12 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 			}
 		}
 	case "pitchfork":
-		n := len(spec.Payloads[0])
-		for _, list := range spec.Payloads {
+		lists := spec.Payloads
+		if len(lists) > nPositions {
+			lists = lists[:nPositions]
+		}
+		n := len(lists[0])
+		for _, list := range lists {
 			if len(list) < n {
 				n = len(list)
 			}
@@ -280,8 +304,8 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 			payloads := make([]string, nPositions)
 			labels := make([]string, 0, nPositions)
 			for i := 0; i < nPositions; i++ {
-				if i < len(spec.Payloads) {
-					orig := spec.Payloads[i][k]
+				if i < len(lists) {
+					orig := lists[i][k]
 					payloads[i] = processPayload(orig, spec.ProcessRules) // sent value (transformed)
 					labels = append(labels, orig)                         // label shows the original
 				} else {
@@ -512,7 +536,12 @@ func (e *Engine) flagAnomalies() {
 
 	// Collect valid (successfully-sent) results only. Parse/transport failures
 	// (Status 0) must not skew the modal status or median length.
-	type valid struct{ idx int; st int; length int64; matched bool }
+	type valid struct {
+		idx     int
+		st      int
+		length  int64
+		matched bool
+	}
 	var valids []valid
 	for i, r := range e.results {
 		if r.Status > 0 {
