@@ -32,6 +32,19 @@ func TestExtractAuthHeaders(t *testing.T) {
 	}
 }
 
+func TestGetAuthzSurfacesStoreFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/authz", nil)
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).getAuthz(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%q, want 500", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAuthzPromoteFromFlowRejectsTrailingJSONBeforePersistence(t *testing.T) {
 	h, st, _ := newHub(t)
 	flowID, err := st.InsertFlow(&store.Flow{

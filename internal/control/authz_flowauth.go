@@ -87,7 +87,10 @@ func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]
 		return nil, fmt.Errorf("flow #%d has no Cookie/Authorization headers to promote", flowID)
 	}
 	newID := identity{Name: name, Headers: headers}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		return nil, err
+	}
 	if merge {
 		updated := false
 		for i, id := range ids {

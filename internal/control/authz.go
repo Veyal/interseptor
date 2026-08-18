@@ -119,16 +119,30 @@ const (
 )
 
 func (h *authzAPI) authzIdentities() []identity {
-	raw, _, _ := h.st.GetSetting("authz.identities")
-	var ids []identity
-	if raw != "" {
-		_ = json.Unmarshal([]byte(raw), &ids)
-	}
+	ids, _ := h.authzIdentitiesResult()
 	return ids
 }
 
+func (h *authzAPI) authzIdentitiesResult() ([]identity, error) {
+	raw, _, err := h.st.GetSetting("authz.identities")
+	if err != nil {
+		return nil, err
+	}
+	var ids []identity
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			return nil, fmt.Errorf("decode authz identities: %w", err)
+		}
+	}
+	return ids, nil
+}
+
 func (h *authzAPI) getAuthz(w http.ResponseWriter, r *http.Request) {
-	identities := h.authzIdentities()
+	identities, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if requestScope(r) == store.ScopeRead {
 		for i := range identities {
 			identities[i].Headers = ""
@@ -186,7 +200,11 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if len(ids) == 0 {
 		httpErr(w, http.StatusBadRequest, "no identities configured")
 		return
@@ -241,7 +259,11 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "define a target-scope include rule before an “all in-scope” authz run — with no scope it would replay every captured endpoint")
 		return
 	}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if len(ids) == 0 {
 		httpErr(w, http.StatusBadRequest, "no identities configured — add at least one (name + auth headers) first")
 		return
