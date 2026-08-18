@@ -297,6 +297,34 @@ func TestAuthzReplayDoesNotSendMissingRequestBody(t *testing.T) {
 	}
 }
 
+func TestAuthzCrossHostReplayRejectsMissingRequestBody(t *testing.T) {
+	var requests atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "POST", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/authz/cross-host-replay", strings.NewReader(`{"flowId":`+itoa(flowID)+`,"jwt":"a.b.c"}`))
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).authzCrossHostReplay(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("sent %d outbound request(s) despite missing body", got)
+	}
+}
+
 func TestAuthzTargetsInScope(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "in.test", Enabled: true})

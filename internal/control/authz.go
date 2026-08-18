@@ -620,6 +620,11 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		httpErr(w, http.StatusBadRequest, "mode must be auto, bearer, or path")
 		return
 	}
+	refBody, err := h.bodyBytesResult(ref.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
 
 	type hostKey struct {
 		host, scheme string
@@ -683,7 +688,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			Method:    ref.Method,
 			URL:       targetURL,
 			Headers:   hdrs,
-			Body:      h.bodyBytes(ref.ReqBodyHash),
+			Body:      refBody,
 			Flags:     store.FlagAuthz,
 			NoSession: true,
 		})
