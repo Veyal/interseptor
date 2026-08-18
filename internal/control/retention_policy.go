@@ -63,11 +63,11 @@ func (h *Hub) runRetentionOnce() (int64, error) {
 	if deleted > 0 {
 		h.epsCache.invalidate()
 		h.broadcast(map[string]any{"type": "flow.new"})
-		go func() {
-			if _, _, err := h.st.GCBodies(); err != nil {
+		h.startMaintenance(func() {
+			if _, _, err := h.gcBodiesFn(); err != nil {
 				log.Printf("retention GC: %v", err)
 			}
-		}()
+		})
 	}
 	return deleted, nil
 }

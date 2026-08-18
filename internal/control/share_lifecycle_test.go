@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
 
@@ -171,6 +172,44 @@ func TestHubCloseWaitsForPurgeGC(t *testing.T) {
 	}
 	close(release)
 	awaitControlLifecycle(t, closeReturned, "Hub.Close after purge GC completion")
+}
+
+func TestHubCloseWaitsForRetentionGC(t *testing.T) {
+	h, st, _ := newHub(t)
+	for i := int64(0); i < 2; i++ {
+		if _, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(i + 1), Method: "GET", Host: "example.com", Path: "/"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetSetting(retentionMaxFlowsKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h.gcBodiesFn = func() (int64, int64, error) {
+		close(started)
+		<-release
+		return 0, 0, nil
+	}
+
+	deleted, err := h.runRetentionOnce()
+	if err != nil || deleted != 1 {
+		t.Fatalf("runRetentionOnce() = (%d, %v), want (1, nil)", deleted, err)
+	}
+	awaitControlLifecycle(t, started, "retention GC start")
+
+	closeReturned := make(chan struct{})
+	go func() {
+		h.Close()
+		close(closeReturned)
+	}()
+	select {
+	case <-closeReturned:
+		t.Fatal("Hub.Close returned while retention GC was still running")
+	default:
+	}
+	close(release)
+	awaitControlLifecycle(t, closeReturned, "Hub.Close after retention GC completion")
 }
 
 func TestIntruderStartAfterHubCloseReturnsServiceUnavailable(t *testing.T) {
