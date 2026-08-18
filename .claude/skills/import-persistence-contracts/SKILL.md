@@ -15,6 +15,9 @@ Use this when adding or changing HAR, Burp, or portable project imports.
   errors. Do not silently turn malformed data into a zero-item success.
 - Validate imported numeric values before narrowing or unit conversion. HAR elapsed milliseconds, for
   example, must be non-negative and small enough to multiply into `time.Duration` without wrapping.
+- For a streaming format whose callback mutates the store, spool the bounded upload to a temporary
+  file and run a validation-only parser pass first. Rewind and import only after the entire document
+  is valid, so a malformed later item cannot leave earlier items committed behind a `400` response.
 - Check every database mutation and stop on failure. Increment response counts only after the row is
   committed, and use a scrubbed `500` for persistence failures.
 

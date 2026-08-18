@@ -89,6 +89,26 @@ func TestImportBurpRejectsNativeProjectWithGuidance(t *testing.T) {
 	}
 }
 
+func TestImportBurpMalformedLaterItemDoesNotPartiallyImport(t *testing.T) {
+	h, st, _ := newHub(t)
+	valid := strings.TrimSuffix(strings.TrimPrefix(string(burpSavedItemsXML()), `<items burpVersion="2026.7">`), `</items>`)
+	doc := `<items burpVersion="2026.7">` + valid +
+		`<item><url>https://example.com/bad</url><request base64="true">!!!</request></item></items>`
+	req := httptest.NewRequest(http.MethodPost, "/api/import/burp", strings.NewReader(doc))
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).importBurp(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	flows, err := st.QueryFlows(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 0 {
+		t.Fatalf("malformed Burp XML partially imported %d flow(s)", len(flows))
+	}
+}
+
 func TestImportBurpInvalidatesEndpointsCache(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())

@@ -2,8 +2,10 @@ package control
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -15,9 +17,27 @@ import (
 // Native .burp project files are intentionally rejected by burpx because
 // PortSwigger does not publish that persistence format as an interchange API.
 func (h *projectAPI) importBurp(w http.ResponseWriter, r *http.Request) {
+	upload, ok := spoolBurpXML(w, r)
+	if !ok {
+		return
+	}
+	defer func() {
+		name := upload.Name()
+		_ = upload.Close()
+		_ = os.Remove(name)
+	}()
+	if _, err := burpx.Parse(upload, nil); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := upload.Seek(0, io.SeekStart); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+
 	imported, skipped := 0, 0
 	var importFailure error
-	_, err := burpx.Parse(r.Body, func(e burpx.Entry) error {
+	_, err := burpx.Parse(upload, func(e burpx.Entry) error {
 		u, err := url.Parse(e.URL)
 		if err != nil || !u.IsAbs() || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			skipped++
@@ -67,6 +87,35 @@ func (h *projectAPI) importBurp(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "flow.new"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "skipped": skipped})
+}
+
+func spoolBurpXML(w http.ResponseWriter, r *http.Request) (*os.File, bool) {
+	tmp, err := os.CreateTemp("", "interseptor-burp-*.xml")
+	if err != nil {
+		httpInternalErr(w, err)
+		return nil, false
+	}
+	cleanup := func() {
+		name := tmp.Name()
+		_ = tmp.Close()
+		_ = os.Remove(name)
+	}
+	if _, err := io.Copy(tmp, http.MaxBytesReader(w, r.Body, maxRequestBody)); err != nil {
+		cleanup()
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "Burp XML import exceeds the upload limit")
+		} else {
+			httpErr(w, http.StatusBadRequest, "could not read Burp XML import")
+		}
+		return nil, false
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		httpInternalErr(w, err)
+		return nil, false
+	}
+	return tmp, true
 }
 
 // stageImportedBody protects a finalized body from concurrent garbage
