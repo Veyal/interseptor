@@ -870,6 +870,55 @@ func TestScopeFiltersHistoryAndScanner(t *testing.T) {
 	}
 }
 
+func TestScopeMutationsRejectTrailingJSONBeforeChangingRules(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+		resp, err := http.Post(ts.URL+"/api/scope", "application/json",
+			strings.NewReader(`{"action":"include","host":"example.com","enabled":true}{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
+		rules, err := st.ListScopeRules()
+		if err != nil || len(rules) != 0 || h.sc.HasIncludes() {
+			t.Fatalf("rejected create changed scope: rules=%v liveIncludes=%v err=%v", rules, h.sc.HasIncludes(), err)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "old.example.com", Enabled: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.refreshScope()
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+		req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/scope/"+itoa(id),
+			strings.NewReader(`{"action":"include","host":"new.example.com","enabled":true}{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
+		rules, err := st.ListScopeRules()
+		if err != nil || len(rules) != 1 || rules[0].Host != "old.example.com" {
+			t.Fatalf("rejected update changed scope: rules=%v err=%v", rules, err)
+		}
+	})
+}
+
 func flowCount(t *testing.T, url string) int {
 	t.Helper()
 	resp, err := http.Get(url)
