@@ -2,9 +2,11 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -80,6 +82,52 @@ func TestTagEndpoints(t *testing.T) {
 	}
 	if rc := put("/api/tags/recon/color", `{"color":"javascript:alert(1)"}`); rc.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad color should be rejected, got %d", rc.StatusCode)
+	}
+}
+
+func TestBulkFlowTagsRollBackWholeSelectionOnFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	first, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "one.example.com", Path: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "two.example.com", Path: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_second_bulk_tag BEFORE INSERT ON flow_tags
+		WHEN NEW.flow_id = ` + itoa(second) + ` AND NEW.tag = 'batch'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/flows/tags", "application/json",
+		strings.NewReader(`{"flowIds":[`+itoa(first)+`,`+itoa(second)+`],"add":["batch"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	for _, id := range []int64{first, second} {
+		tags, err := st.FlowTags(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tags) != 0 {
+			t.Errorf("flow %d retained partial tags %v", id, tags)
+		}
 	}
 }
 

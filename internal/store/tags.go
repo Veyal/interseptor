@@ -121,6 +121,31 @@ func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
 	return out, nil
 }
 
+// MutateFlowTags applies one add/remove command to every selected flow in one
+// transaction. Remove wins when the same normalized tag appears in both sets.
+func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
+	add = NormalizeTags(add)
+	remove = NormalizeTags(remove)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, flowID := range flowIDs {
+		for _, tag := range add {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, tag); err != nil {
+				return err
+			}
+		}
+		for _, tag := range remove {
+			if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, tag); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
 // RemoveFlowTag detaches a single tag from a flow.
 func (s *Store) RemoveFlowTag(flowID int64, tag string) error {
 	_, err := s.db.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, normalizeTag(tag))

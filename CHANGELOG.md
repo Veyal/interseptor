@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Atomic multi-flow tagging.** Bulk History tagging now validates one complete bounded command and applies every selected flow's add/remove mutations in one transaction, broadcasting only after commit so a later-flow failure cannot leave or announce a partial selection.
 - **Atomic additive tag batches.** Adding multiple tags to a flow now inserts and reads the resulting tag set in one transaction, so a late insert or scan failure rolls the entire batch back instead of returning an error with partial tags applied.
 - **Atomic flow-note search updates.** Flow notes and their FTS projection now update in one transaction, so an index failure rolls the note back instead of returning an error with changed metadata that has disappeared from search.
 - **Atomic bounded-log inserts.** Activity records and WebSocket frames now insert and prune their bounded tables in one transaction, publishing IDs only after commit; a pruning failure rolls the new row back instead of returning an error for an unannounced record that still consumes storage.

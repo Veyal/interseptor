@@ -441,8 +441,7 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		Add     []string `json:"add"`
 		Remove  []string `json:"remove"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
 		return
 	}
 	if len(in.FlowIDs) == 0 {
@@ -457,19 +456,11 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "too many flows")
 		return
 	}
+	if err := h.st.MutateFlowTags(in.FlowIDs, in.Add, in.Remove); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	for _, id := range in.FlowIDs {
-		if len(in.Add) > 0 {
-			if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
-				httpInternalErr(w, err)
-				return
-			}
-		}
-		for _, t := range store.NormalizeTags(in.Remove) {
-			if err := h.st.RemoveFlowTag(id, t); err != nil {
-				httpInternalErr(w, err)
-				return
-			}
-		}
 		h.broadcastFlowTags(id)
 	}
 	h.broadcast(map[string]any{"type": "tags.update"})

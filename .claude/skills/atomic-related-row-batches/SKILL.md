@@ -15,3 +15,7 @@ error after commit is still a misleading partial-success contract.
 
 Test with a trigger that rejects a late item in deterministic sort order, then assert the target
 contains none of the earlier items after the error.
+
+Multi-selection handlers need a store method whose transaction spans every selected object, not one
+transaction per object. Broadcast refreshed objects only after that outer transaction commits; a
+later-object failure must neither retain nor announce mutations to earlier selections.
