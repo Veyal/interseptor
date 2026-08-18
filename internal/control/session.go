@@ -157,9 +157,14 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 		LoginMacro  *sender.LoginMacro `json:"loginMacro"`
 		HostHeaders map[string]string  `json:"hostHeaders"` // hostname → "Key: Value\n..." lines
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
+	}
+	if in.LoginMacro != nil {
+		if err := sender.ValidateLoginMacro(*in.LoginMacro); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	en := ""
 	if in.Enabled {
@@ -204,7 +209,7 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 		h.snd.SetMacro(*in.Macro)
 	}
 	if in.LoginMacro != nil {
-		h.snd.SetLoginMacro(*in.LoginMacro)
+		_ = h.snd.SetLoginMacro(*in.LoginMacro)
 	}
 	h.broadcast(map[string]any{"type": "session.update"})
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -215,7 +220,10 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 
 // runLoginMacro executes the recorded login request now and refreshes session headers.
 func (h *sessionAPI) runLoginMacro(w http.ResponseWriter, r *http.Request) {
-	h.snd.SetLoginMacro(h.loadLoginMacro())
+	if err := h.snd.SetLoginMacro(h.loadLoginMacro()); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	hdrs, err := h.snd.RunLoginMacroNow()
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, err.Error())
@@ -260,7 +268,9 @@ func (h *sessionAPI) loginMacroFromFlow(w http.ResponseWriter, r *http.Request) 
 		RefreshSecs *int  `json:"refreshSecs"`
 		ReauthOn401 *bool `json:"reauthOn401"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&in)
+	if !decodeOptionalLimitedJSON(w, r, 16<<10, &in) {
+		return
+	}
 	def := (f.Scheme == "https" && f.Port == 443) || (f.Scheme == "http" && f.Port == 80)
 	target := fmt.Sprintf("%s://%s", f.Scheme, f.Host)
 	if !def {
@@ -281,9 +291,20 @@ func (h *sessionAPI) loginMacroFromFlow(w http.ResponseWriter, r *http.Request) 
 	if in.RefreshSecs != nil {
 		m.RefreshSecs = *in.RefreshSecs
 	}
-	b, _ := json.Marshal(m)
-	_ = h.st.SetSetting("session.loginMacro", string(b))
-	h.snd.SetLoginMacro(m)
+	if err := sender.ValidateLoginMacro(m); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := h.st.SetSetting("session.loginMacro", string(b)); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	_ = h.snd.SetLoginMacro(m)
 	h.broadcast(map[string]any{"type": "session.update"})
 	writeJSON(w, http.StatusOK, map[string]any{"loginMacro": m})
 }

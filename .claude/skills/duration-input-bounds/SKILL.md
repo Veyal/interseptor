@@ -20,4 +20,6 @@ data. Also test that the write API rejects it with `400`.
 
 Validate at reusable engine boundaries too. For example, Intruder rejects negative or overflowing
 millisecond delays in `Engine.Start` so direct callers cannot bypass the REST/UI contract and turn a
-requested throttle into an immediate dispatch.
+requested throttle into an immediate dispatch. Login-macro refresh seconds follow the same rule in
+`sender.SetLoginMacro`; otherwise the seconds-to-duration multiplication can wrap and make every send
+look overdue for refresh.

@@ -2,6 +2,7 @@ package sender
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -20,6 +21,21 @@ type LoginMacro struct {
 	Request     string `json:"request"`     // raw HTTP request
 	RefreshSecs int    `json:"refreshSecs"` // auto-refresh interval; 0 = manual / 401 only
 	ReauthOn401 bool   `json:"reauthOn401"` // retry the original send once after re-login
+}
+
+const maxLoginMacroRefreshSecs = int64(^uint64(0)>>1) / int64(time.Second)
+
+// ValidateLoginMacro rejects refresh intervals that cannot be represented as a
+// time.Duration. Keep this at the sender boundary so stored configuration and
+// direct package callers cannot bypass the REST validation path.
+func ValidateLoginMacro(m LoginMacro) error {
+	if m.RefreshSecs < 0 {
+		return fmt.Errorf("login macro refreshSecs must not be negative")
+	}
+	if int64(m.RefreshSecs) > maxLoginMacroRefreshSecs {
+		return fmt.Errorf("login macro refreshSecs exceeds the supported duration")
+	}
+	return nil
 }
 
 // ExtractSessionHeaders pulls auth headers from a login response.
@@ -130,7 +146,13 @@ func (ls *loginState) markRefreshed() {
 	ls.mu.Unlock()
 }
 
-func (s *Sender) SetLoginMacro(m LoginMacro) { s.login.set(m) }
+func (s *Sender) SetLoginMacro(m LoginMacro) error {
+	if err := ValidateLoginMacro(m); err != nil {
+		return err
+	}
+	s.login.set(m)
+	return nil
+}
 
 // SetSessionRefresh registers a callback invoked when a login macro produces new
 // session headers (auto-refresh, manual run, or 401 re-auth).

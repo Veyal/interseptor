@@ -76,6 +76,21 @@ func TestExtractSessionHeaders(t *testing.T) {
 	}
 }
 
+func TestSetLoginMacroRejectsUnsafeRefreshIntervals(t *testing.T) {
+	snd := &Sender{}
+	invalid := []int{-1}
+	maxInt := int(^uint(0) >> 1)
+	maxSafe := int64(^uint64(0)>>1) / int64(time.Second)
+	if uint64(maxInt) > uint64(maxSafe) {
+		invalid = append(invalid, maxInt)
+	}
+	for _, refreshSecs := range invalid {
+		if err := snd.SetLoginMacro(LoginMacro{RefreshSecs: refreshSecs}); err == nil {
+			t.Fatalf("SetLoginMacro(%d) succeeded, want validation error", refreshSecs)
+		}
+	}
+}
+
 func TestRunLoginMacroExtractsSession(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/login" {
