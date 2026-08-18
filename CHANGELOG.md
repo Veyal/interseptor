@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Bounded decode utilities.** General and selection decode endpoints now require one complete body through endpoint-specific caps before allocating inputs or running codecs, rejecting trailing JSON instead of transforming its valid prefix.
 - **Strict finding-preview attachments.** Flow-preview evidence now validates one complete bounded command before rendering or storing a PNG, so trailing data cannot alter a finding or consume body storage.
 - **Owned human-input shutdown.** `Hub.Close` now releases pending handoff requests and cancels tracked cleanup timers, instead of leaving requests blocked for up to 40 seconds and one goroutine sleeping per resolved prompt.
 - **Strict human-input handoffs.** Prompt creation and response now validate one complete bounded command before enqueueing or unblocking a prompt, so trailing data cannot alter an agent/human approval handoff.

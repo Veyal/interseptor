@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	selectionDecodeMin = 4
-	selectionDecodeMax = 8192
+	selectionDecodeMin                   = 4
+	selectionDecodeMax                   = 8192
+	maxSelectionDecodeRequestBytes int64 = 64 << 10
 )
 
 var jwtKindRe = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$`)
@@ -25,8 +26,7 @@ func (h *toolsAPI) selectionDecode(w http.ResponseWriter, r *http.Request) {
 		FlowID int64  `json:"flowId"`
 		Side   string `json:"side"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxSelectionDecodeRequestBytes, &in) {
 		return
 	}
 	input := strings.TrimSpace(in.Input)
