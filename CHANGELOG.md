@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Complete offensive-tool commands.** Repeater and Intruder now validate that their entire JSON command is one value before sending or launching traffic, preventing a valid command prefix with trailing data from bypassing request validation.
 - **Bounded active-scan commands.** Arm and start endpoints now consume exactly one complete body through a 4 KiB cap before changing consent or launching work, rejecting trailing JSON and oversized commands without mutating scanner state.
 - **Strict replay options.** Repeater replay now rejects malformed, multiple-value, oversized, and unknown session options before issuing any outbound request instead of silently falling back to the captured session.
 - **Durable external-project registry.** External-path switches now serialize and atomically replace their MRU registry, return `500` on persistence failure, and never schedule a re-exec that would disappear from the switcher after restart.

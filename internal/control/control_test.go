@@ -620,6 +620,32 @@ func TestRepeaterSendAndHistory(t *testing.T) {
 	}
 }
 
+func TestRepeaterRejectsTrailingJSONBeforeSending(t *testing.T) {
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		io.WriteString(w, "unexpected")
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	body := `{"method":"GET","url":"` + target.URL + `","headers":"","body":""}{}`
+	resp, err := http.Post(ts.URL+"/api/repeater/send", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("repeater send: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if hits != 0 {
+		t.Fatalf("target received %d requests, want 0", hits)
+	}
+}
+
 func TestRepeaterHostHeaderKeepsConnectionURL(t *testing.T) {
 	var gotHost, gotPath string
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
