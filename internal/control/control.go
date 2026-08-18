@@ -37,6 +37,7 @@ import (
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/sysproxy"
 	"github.com/Veyal/interseptor/internal/tlsca"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
@@ -78,6 +79,10 @@ type Hub struct {
 	// SetUpstreamProxyCA applies PEM trust roots for the chained upstream proxy. Set by cmd.
 	SetUpstreamProxyCA func([]byte) error
 	setSetting         func(string, string) error
+	sysProxyEnable     func(string, int) error
+	sysProxyDisable    func() error
+	sysProxyStatus     func() (bool, error)
+	sysProxySupported  func() bool
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
@@ -159,17 +164,21 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sc = scope.New()
 	}
 	h := &Hub{
-		st:              st,
-		eng:             eng,
-		ca:              ca,
-		rebind:          rebind,
-		sc:              sc,
-		snd:             sender.New(st, capture.New(st)),
-		mux:             http.NewServeMux(),
-		clients:         map[chan string]struct{}{},
-		iosTCPReachable: ios.TCPReachable,
-		setSetting:      st.SetSetting,
-		gcBodiesFn:      st.GCBodies,
+		st:                st,
+		eng:               eng,
+		ca:                ca,
+		rebind:            rebind,
+		sc:                sc,
+		snd:               sender.New(st, capture.New(st)),
+		mux:               http.NewServeMux(),
+		clients:           map[chan string]struct{}{},
+		iosTCPReachable:   ios.TCPReachable,
+		setSetting:        st.SetSetting,
+		sysProxyEnable:    sysproxy.Enable,
+		sysProxyDisable:   sysproxy.Disable,
+		sysProxyStatus:    sysproxy.Status,
+		sysProxySupported: sysproxy.Supported,
+		gcBodiesFn:        st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
