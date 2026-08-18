@@ -764,7 +764,11 @@ func (h *Hub) loadFlow(w http.ResponseWriter, r *http.Request) (*store.Flow, boo
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "flow not found")
+		} else {
+			httpInternalErr(w, err)
+		}
 		return nil, false
 	}
 	return f, true

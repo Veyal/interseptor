@@ -35,6 +35,27 @@ func newHub(t *testing.T) (*Hub, *store.Store, *intercept.Engine) {
 	return h, s, eng
 }
 
+func TestLoadFlowClassifiesLookupFailures(t *testing.T) {
+	h, st, _ := newHub(t)
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/flows/1", nil)
+	missingReq.SetPathValue("id", "1")
+	missingRec := httptest.NewRecorder()
+	if _, ok := h.loadFlow(missingRec, missingReq); ok || missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing lookup: ok=%v status=%d, want false/404", ok, missingRec.Code)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	failureReq := httptest.NewRequest(http.MethodGet, "/api/flows/1", nil)
+	failureReq.SetPathValue("id", "1")
+	failureRec := httptest.NewRecorder()
+	if _, ok := h.loadFlow(failureRec, failureReq); ok || failureRec.Code != http.StatusInternalServerError || !strings.Contains(failureRec.Body.String(), "internal server error") {
+		t.Fatalf("storage failure: ok=%v status=%d body=%q, want false/scrubbed 500", ok, failureRec.Code, failureRec.Body.String())
+	}
+}
+
 // A loopback request must not be able to relocate the process to an arbitrary
 // path via /api/project/switch — only plain project names are accepted.
 func TestSwitchProjectRejectsPaths(t *testing.T) {
