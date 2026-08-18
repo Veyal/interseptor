@@ -23,6 +23,10 @@ runtime dependencies.
   running state changed.
 - Replace delayed one-off `go sleep; callback` work with one owner-held timer. Stop the timer on close,
   guard callback admission with a closed flag, and join any callback that already passed that gate.
+- For in-memory registries that expose waiter channels, owner shutdown must close every unresolved
+  waiter and stop every delayed cleanup timer. Do not launch one sleeping cleanup goroutine per item;
+  a request can otherwise remain blocked after the control plane closes and a client can amplify
+  short-lived state into thousands of unowned goroutines.
 - For short on-demand maintenance jobs that cannot usefully be canceled, guard `WaitGroup.Add` and a
   closed flag with the same mutex. Shutdown sets the flag under that mutex before calling `Wait`, so
   no new job can race the wait; every admitted job calls `Done` and finishes before dependencies close.

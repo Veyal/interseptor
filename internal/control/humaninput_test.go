@@ -52,6 +52,49 @@ func TestHumanInputMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) 
 	})
 }
 
+func TestHubCloseUnblocksHumanInputHandoff(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/api/human-input",
+		strings.NewReader(`{"message":"question"}`))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		done <- err
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(h.hi.pending()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(h.hi.pending()) == 0 {
+		cancel()
+		<-done
+		t.Fatal("human-input request did not register")
+	}
+	h.Close()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("handoff returned an error during shutdown: %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		cancel()
+		<-done
+		t.Fatal("Hub.Close left human-input request blocked")
+	}
+}
+
 // The AI's request_human_input call blocks until the human answers; the answer
 // flows back, and the prompt leaves the pending list.
 func TestHumanInputHandoff(t *testing.T) {

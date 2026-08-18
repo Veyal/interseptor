@@ -44,11 +44,13 @@ type humanInput struct {
 	mu      sync.Mutex
 	seq     int64
 	prompts map[int64]*humanPrompt
+	timers  map[int64]*time.Timer
+	closed  bool
 	now     func() time.Time // overridden in tests
 }
 
 func newHumanInput() *humanInput {
-	return &humanInput{prompts: map[int64]*humanPrompt{}, now: time.Now}
+	return &humanInput{prompts: map[int64]*humanPrompt{}, timers: map[int64]*time.Timer{}, now: time.Now}
 }
 
 func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
@@ -141,12 +143,41 @@ func (hi *humanInput) answer(id int64, ans string) bool {
 // map after a short delay, giving the UI/poller time to observe the final
 // state before it disappears.
 func (hi *humanInput) scheduleCleanup(id int64) {
-	go func(pid int64) {
-		time.Sleep(time.Minute)
+	hi.mu.Lock()
+	defer hi.mu.Unlock()
+	if hi.closed || hi.timers[id] != nil {
+		return
+	}
+	hi.timers[id] = time.AfterFunc(time.Minute, func() {
 		hi.mu.Lock()
-		delete(hi.prompts, pid)
+		delete(hi.prompts, id)
+		delete(hi.timers, id)
 		hi.mu.Unlock()
-	}(id)
+	})
+}
+
+// close releases every blocked handoff and cancels delayed cleanup callbacks.
+// It is idempotent so Hub.Close can safely be called more than once.
+func (hi *humanInput) close() {
+	hi.mu.Lock()
+	defer hi.mu.Unlock()
+	if hi.closed {
+		return
+	}
+	hi.closed = true
+	for id, timer := range hi.timers {
+		timer.Stop()
+		delete(hi.timers, id)
+	}
+	for _, p := range hi.prompts {
+		if p.Answered {
+			continue
+		}
+		p.Answer = "closed — control plane is shutting down"
+		p.Answered = true
+		p.Expired = true
+		close(p.done)
+	}
 }
 
 // createHumanInput (POST /api/human-input) registers a prompt and blocks up to
