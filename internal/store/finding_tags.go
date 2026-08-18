@@ -13,6 +13,10 @@ func (s *Store) SetFindingTags(findingID int64, tags []string) ([]string, error)
 		return nil, err
 	}
 	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, findingID).Scan(&exists); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(`DELETE FROM finding_tags WHERE finding_id=?`, findingID); err != nil {
 		return nil, err
 	}

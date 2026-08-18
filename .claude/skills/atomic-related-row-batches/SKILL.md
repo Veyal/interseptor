@@ -20,6 +20,6 @@ Multi-selection handlers need a store method whose transaction spans every selec
 transaction per object. Broadcast refreshed objects only after that outer transaction commits; a
 later-object failure must neither retain nor announce mutations to earlier selections.
 
-When related-row tables intentionally lack foreign keys, verify each target primary row through the
-same transaction before inserting metadata. Otherwise stale API IDs can create orphan rows that
-surface in aggregate counts even though the target object does not exist.
+When related-row tables intentionally lack foreign keys, verify each target primary row (flow or
+finding) through the same transaction before inserting metadata. Otherwise stale API IDs can create
+orphan rows that surface in aggregate counts even though the target object does not exist.
