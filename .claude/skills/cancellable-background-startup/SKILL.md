@@ -17,6 +17,10 @@ runtime dependencies.
 - For on-demand workers, publish `cancel` and `done` under the same state lock before launching the
   goroutine, reject new starts after owner shutdown, then cancel and join the published worker in
   `Close` before its project store is allowed to close.
+- After claiming an on-demand worker, every target-loading or dependency error must call the same
+  release path before responding. Distinguish a genuinely missing row from a database failure; an
+  ignored query error often becomes a misleading empty-target response while leaving consent or
+  running state changed.
 - Replace delayed one-off `go sleep; callback` work with one owner-held timer. Stop the timer on close,
   guard callback admission with a closed flag, and join any callback that already passed that gate.
 

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Truthful active-scan startup failures.** Target-history database failures now release the claimed scan and return `500` instead of masquerading as “no injectable targets”; single-flow lookup failures distinguish missing rows from storage faults.
 - **Strict activity-socket framing.** Authenticated MCP activity ingestion now requires one newline-framed JSON message within its 64 KiB cap, rejecting an oversized valid prefix instead of recording and acknowledging it before unread padding.
 - **Untruncated portable-project history.** Portable JSON export now paginates through the complete eligible flow history instead of silently dropping every flow older than the newest 10,000.
 - **Truthful MCP activity writes.** Activity records now broadcast and acknowledge only after SQLite persistence succeeds; internal HTTP writes return a scrubbed `500`, and socket ingestion withholds its success byte instead of claiming an event that will disappear on reload.

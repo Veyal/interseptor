@@ -6,12 +6,33 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/activescan"
 	"github.com/Veyal/interseptor/internal/activescan/breaker"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+func TestActiveScanStartSurfacesTargetQueryFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	h.sc.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "example.com"}})
+	h.as.mu.Lock()
+	h.as.armed = true
+	h.as.mu.Unlock()
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, body := range []string{`{"inScope":true}`, `{"flowId":999}`} {
+		req := httptest.NewRequest(http.MethodPost, "/api/activescan/start", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		(&activescanAPI{Hub: h}).asStart(rec, req)
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("body %s: status = %d, want 500; response = %s", body, rec.Code, rec.Body.String())
+		}
+	}
+}
 
 // Every active-scan probe is logged and persisted as a FlagActiveScan flow, even
 // when no vulnerability is confirmed.

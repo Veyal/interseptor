@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -152,17 +154,29 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "activescan.update"})
 	}
 
-	var flows []*store.Flow
+	var (
+		flows []*store.Flow
+		err   error
+	)
 	if in.FlowID > 0 {
 		f, err := h.st.GetFlow(in.FlowID)
 		if err != nil {
 			release()
-			httpErr(w, http.StatusNotFound, "flow not found")
+			if errors.Is(err, sql.ErrNoRows) {
+				httpErr(w, http.StatusNotFound, "flow not found")
+			} else {
+				httpInternalErr(w, err)
+			}
 			return
 		}
 		flows = []*store.Flow{f}
 	} else {
-		flows, _ = h.st.QueryFlowsFilter(store.FlowFilter{Limit: 500, ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan})
+		flows, err = h.st.QueryFlowsFilter(store.FlowFilter{Limit: 500, ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan})
+		if err != nil {
+			release()
+			httpInternalErr(w, err)
+			return
+		}
 	}
 	targets := h.asTargets(flows)
 	if len(targets) == 0 {
