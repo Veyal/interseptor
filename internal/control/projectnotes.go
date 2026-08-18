@@ -1,13 +1,14 @@
 package control
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxProjectNotesRequestBytes int64 = 16 << 20
 
 // getNotes returns the project's markdown notebook — a per-project scratchpad for
 // credentials, findings, scope notes and to-dos, editable in the UI and by the AI.
@@ -27,8 +28,7 @@ func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Notes string `json:"notes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	if _, err := h.st.PersistNotes(in.Notes); err != nil {
@@ -49,8 +49,7 @@ func (h *projectAPI) patchNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		AppendText string `json:"appendText"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	if strings.TrimSpace(in.AppendText) == "" {
@@ -71,8 +70,7 @@ func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 		Mime string `json:"mime"`
 		Data string `json:"data"` // raw base64 or a data: URL
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	mime, raw, err := store.DecodeNotesImagePayload(in.Mime, in.Data)
