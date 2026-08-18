@@ -45,6 +45,30 @@ func TestNormalizeTags(t *testing.T) {
 	}
 }
 
+func TestAddFlowTagsRollsBackWholeBatchOnFailure(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	flowID := tagFlow(t, s, "example.com", "/")
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_late_flow_tag BEFORE INSERT ON flow_tags
+		WHEN NEW.tag = 'z-blocked' BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.AddFlowTags(flowID, []string{"a-added", "z-blocked"}); err == nil {
+		t.Fatal("AddFlowTags succeeded after a tag insert failed")
+	}
+	tags, err := s.FlowTags(flowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 0 {
+		t.Fatalf("failed tag batch left partial tags %v", tags)
+	}
+}
+
 func TestSetAndQueryTags(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

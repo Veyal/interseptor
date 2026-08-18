@@ -85,12 +85,40 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 
 // AddFlowTags adds tags to a flow (union) and returns the flow's full tag set.
 func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 	for _, t := range NormalizeTags(tags) {
-		if _, err := s.db.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
 			return nil, err
 		}
 	}
-	return s.FlowTags(flowID)
+	rows, err := tx.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, tag)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // RemoveFlowTag detaches a single tag from a flow.
