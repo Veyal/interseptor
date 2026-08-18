@@ -179,14 +179,26 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
-	} else if flows, _ := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1}); len(flows) > 0 {
-		f = flows[0]
+	} else {
+		flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1})
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if len(flows) > 0 {
+			f = flows[0]
+		}
 	}
 	if f == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"findings": []store.Issue{}, "note": "no captured flow to test against yet"})
 		return
 	}
-	issues, rerr := c.Run(h.flowForCheck(f))
+	checkFlow, err := h.flowForCheck(f)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
+		return
+	}
+	issues, rerr := c.Run(checkFlow)
 	if rerr != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"error": rerr.Error()})
 		return
@@ -197,11 +209,19 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "flowId": f.ID})
 }
 
-func (h *checksAPI) flowForCheck(f *store.Flow) checkscript.Flow {
+func (h *checksAPI) flowForCheck(f *store.Flow) (checkscript.Flow, error) {
+	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		return checkscript.Flow{}, err
+	}
+	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	if err != nil {
+		return checkscript.Flow{}, err
+	}
 	return checkscript.Flow{
 		ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
 		Path: f.Path, Status: f.Status, Mime: f.Mime,
 		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
-		ReqBody: string(h.bodyBytes(f.ReqBodyHash)), ResBody: string(h.bodyBytes(f.ResBodyHash)),
-	}
+		ReqBody: string(reqBody), ResBody: string(resBody),
+	}, nil
 }
