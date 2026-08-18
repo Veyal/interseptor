@@ -1,11 +1,11 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 )
+
+const maxAllowlistRequestBytes = 16 << 10
 
 func (h *metaAPI) listAllowlist(w http.ResponseWriter, r *http.Request) {
 	entries, err := h.st.ListIPAllowlist()
@@ -24,8 +24,7 @@ func (h *metaAPI) createAllowlist(w http.ResponseWriter, r *http.Request) {
 		CIDR  string `json:"cidr"`
 		Label string `json:"label"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAllowlistRequestBytes, &in) {
 		return
 	}
 	e, err := h.st.AddIPAllowlist(in.CIDR, in.Label)

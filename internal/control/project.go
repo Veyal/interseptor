@@ -27,6 +27,8 @@ type projectBundle struct {
 	Notes    string            `json:"notes,omitempty"`
 }
 
+const maxPortableProjectImportBytes = 128 << 20
+
 func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
@@ -58,9 +60,8 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 // rules, and scope; applies the upstream-proxy setting). It does not rebind the
 // proxy listener.
 func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(io.LimitReader(r.Body, 128<<20))
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	data, ok := readLimitedBody(w, r, maxPortableProjectImportBytes)
+	if !ok {
 		return
 	}
 	var bundle projectBundle

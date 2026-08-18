@@ -12,8 +12,26 @@ import (
 // trailing whitespace, detects extra JSON values, and forces MaxBytesReader to
 // report padding that extends beyond the limit after an otherwise-valid value.
 func decodeLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, false)
+}
+
+func decodeLimitedJSONDisallowUnknownFields(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, true, false)
+}
+
+func decodeOptionalLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
+	return decodeLimitedJSONWithOptions(w, r, limit, dst, false, true)
+}
+
+func decodeLimitedJSONWithOptions(w http.ResponseWriter, r *http.Request, limit int64, dst any, disallowUnknown, allowEmpty bool) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	if disallowUnknown {
+		dec.DisallowUnknownFields()
+	}
 	if err := dec.Decode(dst); err != nil {
+		if allowEmpty && err == io.EOF {
+			return true
+		}
 		writeJSONDecodeError(w, err)
 		return false
 	}
@@ -37,4 +55,18 @@ func writeJSONDecodeError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpErr(w, http.StatusBadRequest, "bad json")
+}
+
+func readLimitedBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, bool) {
+	data, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: limit + 1})
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) || int64(len(data)) > limit {
+		httpErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return nil, false
+	}
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, "bad body")
+		return nil, false
+	}
+	return data, true
 }

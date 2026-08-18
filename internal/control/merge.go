@@ -13,6 +13,8 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+const maxMergeRequestBytes = 64 << 10
+
 // Project merge = additive union of a peer's flows + findings into the active
 // project (the "pull/push" of a git-like collaboration). Three entry points:
 //   - mergeFile: receive an uploaded full-project archive and merge it (also the
@@ -119,8 +121,7 @@ func (h *Hub) mergePull(w http.ResponseWriter, r *http.Request) {
 		Label   string `json:"label"`
 		DryRun  bool   `json:"dryRun"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxMergeRequestBytes, &in) {
 		return
 	}
 	base := strings.TrimRight(strings.TrimSpace(in.PeerURL), "/")
@@ -171,8 +172,7 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 		Label   string `json:"label"`
 		DryRun  bool   `json:"dryRun"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxMergeRequestBytes, &in) {
 		return
 	}
 	base := strings.TrimRight(strings.TrimSpace(in.PeerURL), "/")

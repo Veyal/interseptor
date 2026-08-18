@@ -1,7 +1,6 @@
 package control
 
 import (
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -9,6 +8,8 @@ import (
 	"github.com/Veyal/interseptor/internal/harx"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxHARImportBytes = 64 << 20
 
 // exportHAR streams the (optionally in-scope) history as a HAR 1.2 document.
 func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
@@ -37,9 +38,8 @@ func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 
 // importHAR ingests a HAR document, recording each entry as a flow (FlagImported).
 func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	data, ok := readLimitedBody(w, r, maxHARImportBytes)
+	if !ok {
 		return
 	}
 	entries, err := harx.Parse(data)
@@ -71,7 +71,7 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if n > 0 {
-		h.epsCache.invalidate() // imported flows add endpoints — drop the stale Map/endpoints aggregate
+		h.epsCache.invalidate()                         // imported flows add endpoints — drop the stale Map/endpoints aggregate
 		h.broadcast(map[string]any{"type": "flow.new"}) // nudge the UI to refresh history
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
