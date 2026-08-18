@@ -77,23 +77,24 @@ func (r *Registry) All() []Instance {
 // Upsert records/replaces inst and persists the registry.
 func (r *Registry) Upsert(inst Instance) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.byProject[inst.Project] = inst
-	r.mu.Unlock()
-	return r.save()
+	return r.saveLocked()
 }
 
 // Remove drops project's entry (a no-op if absent) and persists the registry.
 func (r *Registry) Remove(project string) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	delete(r.byProject, project)
-	r.mu.Unlock()
-	return r.save()
+	return r.saveLocked()
 }
 
 // Reconcile drops entries whose process is no longer alive, as judged by
 // isAlive (injected so tests don't depend on real OS process state).
 func (r *Registry) Reconcile(isAlive func(pid int) bool) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	changed := false
 	for name, inst := range r.byProject {
 		if !isAlive(inst.PID) {
@@ -101,22 +102,21 @@ func (r *Registry) Reconcile(isAlive func(pid int) bool) error {
 			changed = true
 		}
 	}
-	r.mu.Unlock()
 	if !changed {
 		return nil
 	}
-	return r.save()
+	return r.saveLocked()
 }
 
-// save persists the registry to disk, writing to a temp file first so a
-// crash mid-write can't leave a truncated/corrupt registry behind.
-func (r *Registry) save() error {
-	r.mu.Lock()
+// saveLocked persists the registry to disk while the caller holds r.mu. Keeping
+// the lock through the atomic rename makes a completed Get/All observation a
+// barrier for the corresponding disk write and prevents concurrent mutations
+// from racing on the shared .tmp path.
+func (r *Registry) saveLocked() error {
 	list := make([]Instance, 0, len(r.byProject))
 	for _, inst := range r.byProject {
 		list = append(list, inst)
 	}
-	r.mu.Unlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].Project < list[j].Project })
 
 	b, err := json.MarshalIndent(list, "", "  ")
