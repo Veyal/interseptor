@@ -37,8 +37,9 @@ external agent owns reasoning and sequencing. Nothing phones home.
 - **MCP & API native** — a full MCP server and a REST/SSE API so an external agent or script drives
   the same core as the UI. Interseptor has no built-in model provider or autonomous decision loop.
 
-That's the highlight reel — the **[full feature list](docs/FEATURES.md)** covers WebSockets, HAR
-import/export, project bundles, collaboration/remote access, session & login macros, and more.
+That's the highlight reel — the **[full feature list](docs/FEATURES.md)** covers WebSockets, HAR and
+Burp Suite traffic import, project bundles, collaboration/remote access, session & login macros,
+and more.
 
 ## Get it running
 

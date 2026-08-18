@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
+
 ### Fixed
+- **Initial flow annotations.** `InsertFlow` now persists a caller-supplied note in both the flow row and its search index instead of indexing text that disappears when the flow is reloaded.
 - **Strict custom-source request limits.** Passive-check, active-check, and message-codec endpoints now reject oversized JSON bodies with `413` even when a valid first value is followed by padding or another value, instead of accepting a truncated prefix or hiding `MaxBytesReader` errors.
 - **Intruder attack validation.** Unknown attack types now fail instead of silently running as Sniper; Cluster Bomb and Pitchfork reject empty payload lists without panicking, and Pitchfork ignores surplus lists that have no matching insertion point.
 - **Quick-tunnel log lifecycle.** The `cloudflared` stderr pipe now stays drained after its public URL is discovered, preventing sustained child logging from filling the pipe and stalling a live tunnel.

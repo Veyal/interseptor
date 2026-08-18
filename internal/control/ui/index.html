@@ -1040,6 +1040,11 @@ Content-Type: application/json
               <button class="btn" id="importHARBtn" type="button">Import HAR</button>
               <input type="file" id="importHARFile" accept=".har,application/json" aria-label="Import HAR file" style="display:none">
             </div>
+			<p class="hint" style="margin:16px 0 10px">Burp Suite migration — select traffic in Burp, choose <b>Save items</b>, then import the XML export here. Native .burp project files use Burp's private persistence format and are not directly portable.</p>
+			<div class="row" style="gap:8px">
+			  <button class="btn" id="importBurpBtn" type="button">Import Burp XML</button>
+			  <input type="file" id="importBurpFile" accept=".xml,application/xml,text/xml" aria-label="Import Burp saved-items XML file" style="display:none">
+			</div>
             <p class="hint" style="margin:16px 0 10px">Full project archive (.zip) — a <b>lossless</b> copy of the whole project (database + captured bodies) to move an engagement to another machine intact. Import creates a <b>new</b> project you can switch to. The global CA &amp; custom checks aren't included.</p>
             <div class="row" style="gap:8px">
               <a class="btn btn-primary" id="exportFull" href="/api/export/full" download style="text-decoration:none">Export full project</a>

@@ -204,6 +204,7 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("GET /api/notes/images/{id}", proj.getNotesImage)
 	h.mux.HandleFunc("GET /api/export/har", proj.exportHAR)
 	h.mux.HandleFunc("POST /api/import/har", proj.importHAR)
+	h.mux.HandleFunc("POST /api/import/burp", proj.importBurp)
 	h.mux.HandleFunc("GET /api/export/project", proj.exportProject)
 	h.mux.HandleFunc("POST /api/import/project", proj.importProject)
 	h.mux.HandleFunc("GET /api/export/full", proj.exportFull)

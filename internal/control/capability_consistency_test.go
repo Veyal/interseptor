@@ -29,6 +29,7 @@ func TestParityRESTRoutesAreRegisteredAndIndexed(t *testing.T) {
 		"POST /api/intruder/start",
 		"GET /api/export/har",
 		"POST /api/import/har",
+		"POST /api/import/burp",
 	}
 	indexed := make(map[string]bool, len(apiRoutes))
 	for _, route := range apiRoutes {
@@ -90,6 +91,30 @@ func TestSettingsHARImportExportJourney(t *testing.T) {
 		"toast('HAR import:",
 	)
 	requireUIRegex(t, settings, `(?s)importHARFile.*?uiConfirm\(.*?api\('/api/import/har'.*?loadFlows\(\)`)
+}
+
+func TestSettingsBurpImportJourney(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`id="importBurpBtn"`,
+		`id="importBurpFile"`,
+		`accept=".xml,application/xml,text/xml"`,
+		`aria-label="Import Burp saved-items XML file"`,
+		`Save items`,
+		`Native .burp`,
+	)
+	requireUIContains(t, settings,
+		"importBurpBtn",
+		"importBurpFile",
+		"uiConfirm(",
+		"'/api/import/burp'",
+		"method:'POST'",
+		"body:f",
+		"loadFlows()",
+		"toast('Burp import:",
+	)
+	requireUIRegex(t, settings, `(?s)importBurpFile.*?uiConfirm\(.*?api\('/api/import/burp'.*?loadFlows\(\)`)
 }
 
 func TestOriginTLSVerifySettingsJourney(t *testing.T) {

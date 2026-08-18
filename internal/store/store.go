@@ -77,7 +77,7 @@ const (
 	FlagWebSocket      int64 = 1 << 5  // a protocol-upgrade (WebSocket) handshake, tunneled transparently
 	FlagRepeater       int64 = 1 << 6  // a request sent from the Repeater module
 	FlagIntruder       int64 = 1 << 7  // a request sent from the Intruder module
-	FlagImported       int64 = 1 << 8  // a flow imported from a HAR file (not proxied)
+	FlagImported       int64 = 1 << 8  // a flow imported from an external archive (not proxied)
 	FlagActiveScan     int64 = 1 << 9  // a probe sent by the active scanner
 	FlagAI             int64 = 1 << 10 // request originated from the AI assistant (over MCP)
 	FlagAuthz          int64 = 1 << 11 // a request replayed by the authorization (access-control) tester
@@ -371,12 +371,12 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 			 (ts, method, scheme, host, port, path, http_version, status,
 			  req_headers, res_headers, original_req_headers, original_res_headers,
 			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
-			  req_len, res_len, mime, duration_ms, client_addr, error, flags)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
 		string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
-		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags)
+		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
 	if err != nil {
 		return 0, err
 	}
