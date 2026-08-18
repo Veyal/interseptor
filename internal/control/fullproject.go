@@ -585,17 +585,27 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
-	out, err := os.Create(dest)
+	if info, err := os.Stat(dest); err == nil && info.IsDir() {
+		httpErr(w, http.StatusBadRequest, "destination is a directory")
+		return
+	}
+	out, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+"-*.tmp")
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "create: "+err.Error())
 		return
 	}
+	tmpPath := out.Name()
+	defer os.Remove(tmpPath)
 	if err := buildFullArchive(out, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
-		out.Close()
+		_ = out.Close()
 		httpInternalErr(w, err)
 		return
 	}
 	if err := out.Close(); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := replaceArchiveFile(tmpPath, dest); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
@@ -605,6 +615,44 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		size = fi.Size()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": dest, "bytes": size})
+}
+
+func replaceArchiveFile(tmpPath, dest string) error {
+	backup := ""
+	if info, err := os.Stat(dest); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("destination is a directory")
+		}
+		placeholder, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+"-backup-*.tmp")
+		if err != nil {
+			return err
+		}
+		backup = placeholder.Name()
+		if err := placeholder.Close(); err != nil {
+			_ = os.Remove(backup)
+			return err
+		}
+		if err := os.Remove(backup); err != nil {
+			return err
+		}
+		if err := os.Rename(dest, backup); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(tmpPath, dest); err != nil {
+		if backup != "" {
+			if restoreErr := os.Rename(backup, dest); restoreErr != nil {
+				return fmt.Errorf("publish archive: %v; restore previous destination: %w", err, restoreErr)
+			}
+		}
+		return err
+	}
+	if backup != "" {
+		_ = os.Remove(backup)
+	}
+	return nil
 }
 
 // importFullFile restores a project archive from a server-side path into a new

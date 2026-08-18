@@ -18,3 +18,7 @@ invalid path or injected walk/read failure propagates an error.
 For browser downloads, build the archive completely in a temporary file before setting ZIP response
 headers. Streaming directly to `ResponseWriter` commits `200 OK` before a late source-file error is
 known and turns a server failure into a corrupt download that looks successful.
+
+Server-side path exports must also build into a same-directory temporary file. Close the complete ZIP
+before publishing it, preserve any existing destination until the build succeeds, and use a
+backup/restore replacement sequence so Windows does not require deleting the known-good file first.

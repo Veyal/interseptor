@@ -3,6 +3,7 @@ package control
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -43,6 +44,57 @@ func TestExportFullReportsArchiveFailureBeforeSendingZip(t *testing.T) {
 	}
 	if strings.Contains(rec.Header().Get("Content-Type"), "application/zip") {
 		t.Fatalf("failed export was presented as ZIP: headers = %#v", rec.Header())
+	}
+}
+
+func TestExportFullFilePreservesDestinationOnArchiveFailure(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = string([]byte{0})
+	dest := filepath.Join(t.TempDir(), "known-good.zip")
+	if err := os.WriteFile(dest, []byte("known-good-backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", bytes.NewReader(body)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "known-good-backup" {
+		t.Fatalf("failed export replaced existing destination with %q", got)
+	}
+}
+
+func TestExportFullFileReplacesDestinationAfterSuccess(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = t.TempDir()
+	dest := filepath.Join(t.TempDir(), "project.zip")
+	if err := os.WriteFile(dest, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	zr, err := zip.OpenReader(dest)
+	if err != nil {
+		t.Fatalf("replacement is not a ZIP: %v", err)
+	}
+	defer zr.Close()
+	if len(zr.File) == 0 || zr.File[0].Name != archiveDBName {
+		t.Fatalf("replacement archive entries = %+v", zr.File)
 	}
 }
 
