@@ -26,6 +26,19 @@ var oobFallbackSeq atomic.Uint64
 
 const maxInteractions = 500
 
+// The OOB catcher is intentionally unauthenticated and may be exposed through a
+// public tunnel. Bound every retained attacker-controlled field so the ring's
+// entry-count cap also provides a real memory bound.
+const (
+	oobTokenHexBytes               = 16
+	maxInteractionPathBytes        = 4096
+	maxInteractionQueryBytes       = 4096
+	maxInteractionUserAgentBytes   = 1024
+	maxInteractionHostBytes        = 512
+	maxInteractionRemoteAddrBytes  = 256
+	maxInteractionBodyPreviewBytes = 512
+)
+
 // Interaction is one recorded inbound hit.
 type Interaction struct {
 	ID         int64  `json:"id"`
@@ -79,14 +92,37 @@ func (c *Catcher) Token() string {
 
 // TokenFromPath extracts the token from a /oob/<token>[/...] request path, or "".
 func TokenFromPath(p string) string {
-	p = strings.TrimPrefix(p, "/oob/")
-	if p == "" || strings.HasPrefix(p, "/oob") {
+	const prefix = "/oob/"
+	if !strings.HasPrefix(p, prefix) {
 		return ""
 	}
+	p = strings.TrimPrefix(p, prefix)
 	if i := strings.IndexAny(p, "/?"); i >= 0 {
 		p = p[:i]
 	}
+	if !validToken(p) {
+		return ""
+	}
 	return p
+}
+
+func validToken(token string) bool {
+	if len(token) != oobTokenHexBytes {
+		return false
+	}
+	for _, c := range token {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func truncateInteractionField(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	return s[:maxBytes]
 }
 
 // Record stores an interaction for the request (token taken from its path).
@@ -99,12 +135,12 @@ func (c *Catcher) Record(r *http.Request, bodyPreview string) {
 	it := Interaction{
 		Token:      tok,
 		Method:     r.Method,
-		Path:       r.URL.Path,
-		RemoteAddr: r.RemoteAddr,
-		Host:       r.Host,
-		UserAgent:  r.UserAgent(),
-		Query:      r.URL.RawQuery,
-		BodyPrev:   bodyPreview,
+		Path:       truncateInteractionField(r.URL.Path, maxInteractionPathBytes),
+		RemoteAddr: truncateInteractionField(r.RemoteAddr, maxInteractionRemoteAddrBytes),
+		Host:       truncateInteractionField(r.Host, maxInteractionHostBytes),
+		UserAgent:  truncateInteractionField(r.UserAgent(), maxInteractionUserAgentBytes),
+		Query:      truncateInteractionField(r.URL.RawQuery, maxInteractionQueryBytes),
+		BodyPrev:   truncateInteractionField(bodyPreview, maxInteractionBodyPreviewBytes),
 		TS:         time.Now().UnixMilli(),
 	}
 	c.mu.Lock()

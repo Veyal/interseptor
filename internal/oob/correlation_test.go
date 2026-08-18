@@ -136,9 +136,9 @@ func TestCorrelationConcurrent(t *testing.T) {
 		}(i)
 		go func(n int) {
 			defer wg.Done()
-			c.Record(httptest.NewRequest("GET", "/oob/tok/x", nil), "")
+			c.Record(httptest.NewRequest("GET", "/oob/0123456789abcdef/x", nil), "")
 		}(i)
-		go func() { defer wg.Done(); c.InteractionsForToken("tok") }()
+		go func() { defer wg.Done(); c.InteractionsForToken("0123456789abcdef") }()
 	}
 	wg.Wait()
 }
