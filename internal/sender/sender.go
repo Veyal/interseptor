@@ -30,7 +30,8 @@ import (
 // Request describes a request to send.
 type Request struct {
 	Method     string
-	URL        string
+	URL        string // connection target; never changed by the wire Host header
+	Host       string // optional wire Host override, kept separate from URL
 	Headers    map[string][]string
 	Body       []byte
 	Flags      int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
@@ -420,16 +421,24 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 	if r.Context != nil {
 		req = req.WithContext(r.Context) // lets a caller (active-scan kill switch) abort in-flight
 	}
+	// Host is deliberately kept off req.Header. In net/http, req.Host controls
+	// the wire-level Host header while req.URL remains the connection target.
+	// Keep accepting a Host entry in Headers for existing callers, but prefer the
+	// explicit field so callers cannot accidentally conflate the two values.
+	host := r.Host
 	for k, vs := range r.Headers {
 		if http.CanonicalHeaderKey(k) == "Host" {
-			if len(vs) > 0 {
-				req.Host = vs[0]
+			if host == "" && len(vs) > 0 {
+				host = vs[0]
 			}
 			continue
 		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
+	}
+	if host != "" {
+		req.Host = host
 	}
 	if scopeOK {
 		s.applySession(req) // force session/auth headers (recorded on the flow below)

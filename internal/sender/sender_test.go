@@ -340,6 +340,48 @@ func TestSendCapturesAsFlow(t *testing.T) {
 	}
 }
 
+func TestSendHostOverridePreservesTargetURL(t *testing.T) {
+	var gotHost, gotURI string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		gotURI = r.URL.RequestURI()
+		io.WriteString(w, "ok")
+	}))
+	defer target.Close()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	snd := New(s, capture.New(s))
+
+	flow, err := snd.Send(Request{
+		Method: http.MethodGet,
+		URL:    target.URL + "/original?probe=1",
+		Host:   "injection.example",
+		Flags:  store.FlagRepeater,
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if flow.Status != http.StatusOK {
+		t.Fatalf("flow status=%d error=%q", flow.Status, flow.Error)
+	}
+	if gotHost != "injection.example" {
+		t.Fatalf("wire Host=%q, want injection.example", gotHost)
+	}
+	if gotURI != "/original?probe=1" {
+		t.Fatalf("target URI=%q, want /original?probe=1", gotURI)
+	}
+	if flow.Host != "127.0.0.1" || flow.Path != "/original?probe=1" {
+		t.Fatalf("recorded target=%s%s, want original target URL", flow.Host, flow.Path)
+	}
+	if got := flow.ReqHeaders["Host"]; len(got) != 1 || got[0] != "injection.example" {
+		t.Fatalf("recorded Host header=%v, want injection.example", got)
+	}
+}
+
 func TestSessionHeadersInjected(t *testing.T) {
 	var gotAuth, gotCookie, gotHost string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

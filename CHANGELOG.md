@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-18
+
 ### Fixed
 - **GitHub Pages search deployment.** Jekyll no longer excludes every JSON file, allowing the explicitly included `website/data/search.json` index to publish, pass built-site validation, and power documentation search.
+- **Repeater Host-header overrides.** Changing the `Host` header now changes only the wire value; the Repeater keeps its connection URL and request path unchanged for Host-header injection and virtual-host testing.
 
 ## [1.8.0] - 2026-08-14
 

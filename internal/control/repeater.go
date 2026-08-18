@@ -47,6 +47,7 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	host, hdr := splitHostHeader(hdr)
 	body := in.Body
 	if strings.EqualFold(in.BodyMode, "decoded") {
 		if in.CodecID == "" {
@@ -63,6 +64,7 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 	flow, err := h.snd.Send(sender.Request{
 		Method:  in.Method,
 		URL:     in.URL,
+		Host:    host,
 		Headers: hdr,
 		Body:    []byte(body),
 		Flags:   store.FlagRepeater | aiSourceFlag(r),
@@ -72,6 +74,27 @@ func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.flowDetail(flow))
+}
+
+// splitHostHeader keeps the Repeater's connection URL independent from the
+// wire-level Host header. A Host override is useful for vhost and Host-header
+// injection testing, but it must not retarget the request connection.
+func splitHostHeader(headers map[string][]string) (string, map[string][]string) {
+	if len(headers) == 0 {
+		return "", headers
+	}
+	host := ""
+	out := make(map[string][]string, len(headers))
+	for key, values := range headers {
+		if strings.EqualFold(key, "Host") {
+			if host == "" && len(values) > 0 {
+				host = values[0]
+			}
+			continue
+		}
+		out[key] = append([]string(nil), values...)
+	}
+	return host, out
 }
 
 func (h *toolsAPI) repeaterHistory(w http.ResponseWriter, r *http.Request) {

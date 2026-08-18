@@ -620,6 +620,44 @@ func TestRepeaterSendAndHistory(t *testing.T) {
 	}
 }
 
+func TestRepeaterHostHeaderKeepsConnectionURL(t *testing.T) {
+	var gotHost, gotPath string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		gotPath = r.URL.RequestURI()
+		io.WriteString(w, "ok")
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	body := `{"method":"GET","url":"` + target.URL + `/original?probe=1","headers":"Host: injection.example","body":""}`
+	resp, err := http.Post(ts.URL+"/api/repeater/send", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("repeater send: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("repeater send status=%d", resp.StatusCode)
+	}
+
+	var sent map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&sent); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if gotHost != "injection.example" {
+		t.Fatalf("wire Host=%q, want injection.example", gotHost)
+	}
+	if gotPath != "/original?probe=1" {
+		t.Fatalf("target URI=%q, want /original?probe=1", gotPath)
+	}
+	if sent["path"] != "/original?probe=1" {
+		t.Fatalf("recorded path=%v, want original path", sent["path"])
+	}
+}
+
 func TestRepeaterUsesConfiguredUpstreamProxy(t *testing.T) {
 	seen := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
