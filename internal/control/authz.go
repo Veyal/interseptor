@@ -346,9 +346,9 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 		rr.Name = id.Name
 		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth, rr.resHeaders)
 		rr.AccessDenied = accessDenied(rr.Status, hasAuth)
-		if !haveBase {
+		if !haveBase && rr.Error == "" {
 			ro.BaselineStatus, baseLen, baseHash, baseMime, haveBase = rr.Status, rr.Length, rr.BodyHash, rr.Mime, true
-		} else {
+		} else if haveBase {
 			rr.Same = authzSameAccess(ro.BaselineStatus, baseLen, baseHash, baseMime, rr)
 		}
 		ro.Results = append(ro.Results, rr)

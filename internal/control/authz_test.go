@@ -184,6 +184,39 @@ func TestAuthzReplayReportsIncompleteResponseCapture(t *testing.T) {
 	}
 }
 
+func TestAuthzRunDoesNotUseErroredReplayAsBaseline(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Authorization"), "broken") {
+			w.Header().Set("Content-Length", "10")
+			_, _ = w.Write([]byte("short"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _, _ := newHub(t)
+	ro := (&authzAPI{h}).authzRunOne(&store.Flow{
+		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+	}, []identity{
+		{Name: "broken", Headers: "Authorization: Bearer broken"},
+		{Name: "valid", Headers: "Authorization: Bearer valid"},
+	})
+	if len(ro.Results) != 2 || ro.Results[0].Error == "" {
+		t.Fatalf("results = %+v, want errored first replay", ro.Results)
+	}
+	if ro.Results[1].Same {
+		t.Fatalf("valid replay matched errored baseline: %+v", ro.Results)
+	}
+}
+
 func TestAuthzRunRequiresScopeForBulk(t *testing.T) {
 	h, s, _ := newHub(t)
 	_ = s.SetSetting("authz.identities", `[{"name":"admin","headers":"Cookie: a=1"}]`)
