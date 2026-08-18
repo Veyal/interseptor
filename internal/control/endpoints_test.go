@@ -149,6 +149,56 @@ func TestMalformedJSONBodyRejected(t *testing.T) {
 	}
 }
 
+func TestActiveScanRejectsInvalidCompleteBodiesBeforeChangingConsent(t *testing.T) {
+	const activeScanRequestLimit = 4 << 10
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	post := func(path, body string) int {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	armed := func() bool {
+		h.as.mu.Lock()
+		defer h.as.mu.Unlock()
+		return h.as.armed
+	}
+
+	if got := post("/api/activescan/arm", `{"armed":true}`); got != http.StatusOK {
+		t.Fatalf("arm status = %d, want 200", got)
+	}
+	if got := post("/api/activescan/arm", `{"armed":false}{}`); got != http.StatusBadRequest {
+		t.Fatalf("trailing arm JSON status = %d, want 400", got)
+	}
+	if !armed() {
+		t.Fatal("trailing arm JSON changed consent state")
+	}
+	oversized := `{"armed":false,"padding":"` + strings.Repeat("x", activeScanRequestLimit) + `"}`
+	if got := post("/api/activescan/arm", oversized); got != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized arm JSON status = %d, want 413", got)
+	}
+	if !armed() {
+		t.Fatal("oversized arm JSON changed consent state")
+	}
+
+	if got := post("/api/activescan/arm", `{"armed":false}`); got != http.StatusOK {
+		t.Fatalf("disarm status = %d, want 200", got)
+	}
+	if got := post("/api/activescan/start", `{"flowId":999,"arm":true}{}`); got != http.StatusBadRequest {
+		t.Fatalf("trailing start JSON status = %d, want 400", got)
+	}
+	if armed() {
+		t.Fatal("trailing start JSON changed consent state")
+	}
+}
+
 // GET /api/endpoints returns unique endpoints aggregated from history.
 func TestEndpointsEndpoint(t *testing.T) {
 	h, s, _ := newHub(t)

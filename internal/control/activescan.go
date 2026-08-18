@@ -2,8 +2,6 @@ package control
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,6 +16,8 @@ import (
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxActiveScanRequestBytes = 4 << 10
 
 // asProbeLog is one active-scan probe (saved as a FlagActiveScan flow when sent).
 type asProbeLog struct {
@@ -71,8 +71,7 @@ func (h *activescanAPI) asArm(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Armed bool `json:"armed"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxActiveScanRequestBytes, &in) {
 		return
 	}
 	h.as.mu.Lock()
@@ -99,8 +98,7 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 		MaxRequests int   `json:"maxRequests"`
 		CSRFAware   *bool `json:"csrfAware"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxActiveScanRequestBytes, &in) {
 		return
 	}
 
