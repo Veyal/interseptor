@@ -636,6 +636,47 @@ func TestMergePreviewMatchesFirstMergeCounts(t *testing.T) {
 	}
 }
 
+func TestMergePreviewAccountsForDuplicatesWithinPeer(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	seedFlow(t, peer, "example.com", "/same", "same body", 1000)
+	seedFlow(t, peer, "example.com", "/same", "same body", 1000)
+	for range 2 {
+		if _, err := peer.CreateFinding(&Finding{
+			Severity: "High", Source: "human", Title: "Duplicate", Target: "https://example.com/same", Detail: "same detail",
+		}); err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	preview, err := local.MergePreview(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergePreview: %v", err)
+	}
+	if preview.FlowsAdded != 1 || preview.FlowsSkipped != 1 || preview.FindingsAdded != 1 || preview.FindingsSkipped != 1 {
+		t.Fatalf("preview = %+v, want one add and one skip for each duplicate kind", preview)
+	}
+	merged, err := local.MergeFrom(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+	if preview.FlowsAdded != merged.FlowsAdded || preview.FlowsSkipped != merged.FlowsSkipped ||
+		preview.FindingsAdded != merged.FindingsAdded || preview.FindingsSkipped != merged.FindingsSkipped {
+		t.Fatalf("preview %+v does not match merge %+v", preview, merged)
+	}
+}
+
 func TestMergePreviewDoesNotRecountExistingBodies(t *testing.T) {
 	peerDir := t.TempDir()
 	peer, err := Open(peerDir)

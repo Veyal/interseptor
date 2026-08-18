@@ -102,10 +102,12 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 				return stats, fmt.Errorf("missing body %s referenced by peer flow %d", bodyHash, f.ID)
 			}
 		}
-		if _, ok := seenFlows[flowSig(f)]; ok {
+		sig := flowSig(f)
+		if _, ok := seenFlows[sig]; ok {
 			stats.FlowsSkipped++
 		} else {
 			stats.FlowsAdded++
+			seenFlows[sig] = f.ID
 		}
 	}
 	rows.Close()
@@ -154,10 +156,12 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 				return stats, fmt.Errorf("missing image body %s referenced by peer finding %d", block.Hash, f.ID)
 			}
 		}
-		if seenFindings[findingSig(f)] {
+		sig := findingSig(f)
+		if seenFindings[sig] {
 			stats.FindingsSkipped++
 		} else {
 			stats.FindingsAdded++
+			seenFindings[sig] = true
 		}
 	}
 	frows.Close()

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Accurate duplicate merge previews.** Preview seen-sets now advance as peer rows are counted, so duplicate flows and findings within one peer archive are reported with the same add/skip counts as the real merge.
 - **Merge-preview reference validation.** Project previews now reject invalid or missing flow bodies, malformed finding narratives, and missing finding images using the same availability rules as a real merge, instead of approving an archive that would fail during import.
 - **Fail-closed project merge iteration.** Project union now checks terminal SQLite errors after reading peer flows and findings, preventing a mid-query failure from importing a valid-looking prefix and returning a false success.
 - **Bounded mobile automation commands.** Android proxy/CA/setup and iOS simulator/profile commands now parse capped, exact-one-value optional JSON before checking or invoking ADB, simctl, or connected devices, yielding deterministic `413` responses for oversized input.
