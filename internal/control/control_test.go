@@ -570,6 +570,51 @@ func TestInterceptToggle(t *testing.T) {
 	}
 }
 
+func TestInterceptTogglesRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	h, _, eng := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, path := range []string{"/api/intercept/toggle", "/api/intercept/response/toggle"} {
+		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(`{"enabled":true}{}`))
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("POST %s status = %d, want 400", path, resp.StatusCode)
+		}
+	}
+	if eng.Enabled() {
+		t.Fatal("trailing JSON enabled request interception")
+	}
+	if eng.ResponseEnabled() {
+		t.Fatal("trailing JSON enabled response interception")
+	}
+}
+
+func TestInterceptFilterPersistenceFailureKeepsLiveState(t *testing.T) {
+	h, st, eng := newHub(t)
+	if err := eng.SetInterceptFilter(true, "header", "old-value"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/intercept/filter",
+		strings.NewReader(`{"enabled":true,"target":"url","pattern":"new-value"}`))
+	rec := httptest.NewRecorder()
+	(&interceptAPI{h}).setInterceptFilter(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	enabled, target, pattern := eng.InterceptFilter()
+	if !enabled || target != "header" || pattern != "old-value" {
+		t.Fatalf("live filter changed after persistence failure: enabled=%v target=%q pattern=%q", enabled, target, pattern)
+	}
+}
+
 func TestRepeaterSendAndHistory(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "pong")

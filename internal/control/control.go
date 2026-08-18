@@ -1003,7 +1003,10 @@ func (h *flowAPI) deleteRule(w http.ResponseWriter, r *http.Request) {
 // maxRulePattern bounds a user-supplied match/intercept regex. Go's RE2 is linear
 // (no catastrophic ReDoS), but a very long pattern run against large bodies on
 // every proxied request is still costly; real patterns are short.
-const maxRulePattern = 4096
+const (
+	maxRulePattern          = 4096
+	maxInterceptConfigBytes = 16 << 10
+)
 
 func validRule(w http.ResponseWriter, in ruleJSON) bool {
 	switch in.Type {
@@ -1124,8 +1127,7 @@ func (h *interceptAPI) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	h.eng.SetEnabled(in.Enabled)
@@ -1144,26 +1146,34 @@ func (h *interceptAPI) setInterceptFilter(w http.ResponseWriter, r *http.Request
 		Target  string `json:"target"`
 		Pattern string `json:"pattern"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	if len(in.Pattern) > maxRulePattern {
 		httpErr(w, http.StatusBadRequest, "pattern too long")
 		return
 	}
-	if err := h.eng.SetInterceptFilter(in.Enabled, in.Target, in.Pattern); err != nil {
+	target := in.Target
+	if target == "" {
+		target = "any"
+	}
+	enabled := in.Enabled && in.Pattern != ""
+	if enabled {
+		if _, err := regexp.Compile(in.Pattern); err != nil {
+			httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
+			return
+		}
+	}
+	if err := h.st.SetSettings(map[string]string{
+		"intercept.filter.enabled": boolToFlag(enabled),
+		"intercept.filter.target":  target,
+		"intercept.filter.pattern": in.Pattern,
+	}); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := h.eng.SetInterceptFilter(enabled, target, in.Pattern); err != nil {
 		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
-		return
-	}
-	enabled, target, pattern := h.eng.InterceptFilter()
-	if !h.persistSetting(w, "intercept.filter.enabled", boolToFlag(enabled)) {
-		return
-	}
-	if !h.persistSetting(w, "intercept.filter.target", target) {
-		return
-	}
-	if !h.persistSetting(w, "intercept.filter.pattern", pattern) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.interceptState())
@@ -1182,8 +1192,7 @@ func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) 
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if err := h.eng.Forward(id, []byte(in.Raw)); err != nil {
@@ -1218,8 +1227,7 @@ func (h *interceptAPI) toggleResponseIntercept(w http.ResponseWriter, r *http.Re
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	h.eng.SetResponseEnabled(in.Enabled)
@@ -1239,8 +1247,7 @@ func (h *interceptAPI) forwardResponse(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if err := h.eng.ForwardResponse(id, []byte(in.Raw)); err != nil {
