@@ -23,3 +23,8 @@ later-object failure must neither retain nor announce mutations to earlier selec
 When related-row tables intentionally lack foreign keys, verify each target primary row (flow or
 finding) through the same transaction before inserting metadata. Otherwise stale API IDs can create
 orphan rows that surface in aggregate counts even though the target object does not exist.
+
+Do the same for body-derived association rows. Before syncing `finding_flows`, verify the parent
+finding inside the transaction; checking only the referenced flow still allows a stale finding ID to
+create orphan evidence. For simple updates, inspect `RowsAffected` and return `sql.ErrNoRows` when
+the target disappeared.

@@ -616,6 +616,10 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 			return err
 		}
 		defer tx.Rollback()
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, id).Scan(&exists); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
 			return err
 		}
@@ -625,8 +629,18 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 		return tx.Commit()
 	}
 
-	_, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
-	return err
+	res, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // syncFindingFlowsFromBody replaces finding_flows rows for a finding from the
@@ -703,6 +717,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 	defer tx.Rollback()
 
 	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, findingID).Scan(&exists); err != nil {
+		return err
+	}
 	if err := tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %d", ErrFlowNotFound, flowID)
