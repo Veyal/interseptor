@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
+- **Wire-evidence analysis guidance.** A repository skill now documents how to preserve encoded HTTP bytes while providing bounded decoded bodies to scanners and excluding incomplete evidence from decisions.
 
 ### Fixed
 - **Semantic authorization body comparison.** Authorization replays now compare bounded decoded response content, so identical gzip bodies with different wire metadata are not misclassified as different access.
