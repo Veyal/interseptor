@@ -17,3 +17,7 @@ imports, or manual edits can contain values that bypassed current validation.
 
 For destructive jobs, test a persisted `math.MaxInt64` value and assert both an error and unchanged
 data. Also test that the write API rejects it with `400`.
+
+Validate at reusable engine boundaries too. For example, Intruder rejects negative or overflowing
+millisecond delays in `Engine.Start` so direct callers cannot bypass the REST/UI contract and turn a
+requested throttle into an immediate dispatch.

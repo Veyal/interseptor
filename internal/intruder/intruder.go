@@ -24,6 +24,8 @@ import (
 // maxRequests bounds a single attack so a huge payload list cannot run away.
 const maxRequests = 2000
 
+const maxDispatchDelayMs = int64(1<<63-1) / int64(time.Millisecond)
+
 var marker = regexp.MustCompile(`§[^§]*§`)
 
 // ErrClosed is returned when an attack is started after engine shutdown.
@@ -231,6 +233,9 @@ func (e *Engine) Start(spec Spec) error {
 	}
 	if spec.Target == "" {
 		return errors.New("no target")
+	}
+	if spec.DelayMs < 0 || int64(spec.DelayMs) > maxDispatchDelayMs {
+		return fmt.Errorf("delay must be between 0 and %d milliseconds", maxDispatchDelayMs)
 	}
 
 	baselines := make([]string, len(positions))

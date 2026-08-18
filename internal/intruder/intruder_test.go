@@ -252,6 +252,24 @@ func TestClusterBombRejectsEmptyPayloadList(t *testing.T) {
 	}
 }
 
+func TestStartRejectsInvalidDispatchDelay(t *testing.T) {
+	delays := []int{-1}
+	maxInt := int(^uint(0) >> 1)
+	if uint64(maxInt) > uint64(int64(1<<63-1)/int64(time.Millisecond)) {
+		delays = append(delays, maxInt)
+	}
+	for _, delay := range delays {
+		e := newEngine(t)
+		err := e.Start(Spec{
+			Target: "http://example.com", Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+			AttackType: "repeat", Repeat: 1, Threads: 1, DelayMs: delay,
+		})
+		if err == nil || !strings.Contains(err.Error(), "delay") {
+			t.Fatalf("DelayMs %d error = %v", delay, err)
+		}
+	}
+}
+
 func TestRepeatModeSendsTemplateNTimesConcurrently(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0
