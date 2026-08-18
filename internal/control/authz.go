@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/auth/jwtextract"
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -666,12 +667,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 	var results []hostResult
 	for _, t := range targets {
-		hostport := t.host
-		def := (t.scheme == "https" && t.port == 443) || (t.scheme == "http" && t.port == 80)
-		if t.port != 0 && !def {
-			hostport += ":" + strconv.Itoa(t.port)
-		}
-		targetURL := t.scheme + "://" + hostport + path
+		targetURL := t.scheme + "://" + netutil.URLAuthority(t.scheme, t.host, t.port) + path
 
 		hdrs := cloneHeaders(ref.ReqHeaders)
 		if mode == "bearer" {
@@ -718,16 +714,11 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 // flowURLStr reconstructs the absolute URL of a captured flow.
 func flowURLStr(f *store.Flow) string {
-	hostport := f.Host
-	def := (f.Scheme == "https" && f.Port == 443) || (f.Scheme == "http" && f.Port == 80)
-	if f.Port != 0 && !def {
-		hostport += ":" + strconv.Itoa(f.Port)
-	}
 	path := f.Path
 	if path == "" {
 		path = "/"
 	}
-	return f.Scheme + "://" + hostport + path
+	return f.Scheme + "://" + netutil.URLAuthority(f.Scheme, f.Host, f.Port) + path
 }
 
 func cloneHeaders(h map[string][]string) map[string][]string {

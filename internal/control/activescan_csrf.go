@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/activescan/csrf"
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -30,10 +31,7 @@ func (h *Hub) csrfHeadersForHost(host string) csrf.Headers {
 			break
 		}
 	}
-	base := scheme + "://" + host
-	if (scheme == "https" && port != 443) || (scheme == "http" && port != 80) {
-		base += ":" + itoa64(int64(port))
-	}
+	base := scheme + "://" + netutil.URLAuthority(scheme, host, port)
 	for _, path := range []string{"/register", "/login", "/"} {
 		flow, err := h.snd.Send(sender.Request{
 			Method: "GET", URL: base + path, NoSession: true, Flags: store.FlagActiveScan,

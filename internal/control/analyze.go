@@ -3,8 +3,8 @@ package control
 import (
 	"net/http"
 	"net/url"
-	"strconv"
 
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/scanner"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -43,11 +43,7 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 }
 
 func analyzeURL(f *store.Flow) string {
-	host := f.Host
-	if !((f.Scheme == "https" && f.Port == 443) || (f.Scheme == "http" && f.Port == 80) || f.Port == 0) {
-		host += ":" + strconv.Itoa(f.Port)
-	}
-	return f.Scheme + "://" + host + orVal(f.Path, "/")
+	return f.Scheme + "://" + netutil.URLAuthority(f.Scheme, f.Host, f.Port) + orVal(f.Path, "/")
 }
 
 func queryParamNames(path string) []string {

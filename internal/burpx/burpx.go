@@ -10,13 +10,14 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/netutil"
 )
 
 // Entry is one Burp request/response pair normalized for import.
@@ -277,10 +278,7 @@ func buildURL(scheme, host string, port int, path string) string {
 	if host == "" {
 		return ""
 	}
-	if port > 0 && !((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) {
-		host = net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(port))
-	}
-	u := url.URL{Scheme: scheme, Host: host, Path: "/"}
+	u := url.URL{Scheme: scheme, Host: netutil.URLAuthority(scheme, host, port), Path: "/"}
 	if parsed, err := url.ParseRequestURI(path); err == nil {
 		u.Path, u.RawPath, u.RawQuery = parsed.Path, parsed.RawPath, parsed.RawQuery
 	}

@@ -82,6 +82,15 @@ func TestParseSavedItemsXMLDecodesChunkedBodies(t *testing.T) {
 	}
 }
 
+func TestBuildURLFormatsIPv6Authority(t *testing.T) {
+	if got := buildURL("https", "2001:db8::1", 443, "/v1?q=1"); got != "https://[2001:db8::1]/v1?q=1" {
+		t.Fatalf("default-port URL = %q", got)
+	}
+	if got := buildURL("https", "2001:db8::1", 8443, "/v1"); got != "https://[2001:db8::1]:8443/v1" {
+		t.Fatalf("custom-port URL = %q", got)
+	}
+}
+
 func TestParsePlainSavedItemAndReconstructURL(t *testing.T) {
 	xmlDoc := `<items><item><host>example.com</host><port>8080</port><protocol>http</protocol>` +
 		`<request base64="false">GET /plain HTTP/1.0&#10;Host: example.com:8080&#10;&#10;</request>` +

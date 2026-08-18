@@ -137,3 +137,14 @@ func TestBuildOmitsDefaultPort(t *testing.T) {
 		t.Fatalf("default port should be omitted, got %q", entries[0].URL)
 	}
 }
+
+func TestBuildFormatsIPv6URLAuthority(t *testing.T) {
+	flows := []*store.Flow{{Method: "GET", Scheme: "https", Host: "2001:db8::1", Port: 8443, Path: "/v1", HTTPVersion: "HTTP/1.1", Status: 200}}
+	entries, err := Parse(Build(flows, func(string) []byte { return nil }))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if entries[0].URL != "https://[2001:db8::1]:8443/v1" {
+		t.Fatalf("IPv6 URL = %q", entries[0].URL)
+	}
+}
