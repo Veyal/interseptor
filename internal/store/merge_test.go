@@ -595,6 +595,38 @@ func TestMergePreviewRejectsMalformedFindingBody(t *testing.T) {
 	}
 }
 
+func TestMergeFromValidatesNormalizedFindingImageBlocks(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{Title: "Evidence", Target: "https://example.com"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	missingHash := strings.Repeat("f", 64)
+	body := `[{"type":"IMAGE","hash":"` + missingHash + `","mime":"image/png"}]`
+	if _, err := peer.db.Exec(`UPDATE findings SET body=? WHERE id=?`, body, findingID); err != nil {
+		t.Fatalf("set noncanonical image body: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing image body") {
+		t.Fatalf("MergeFrom error=%v, want missing normalized image body", err)
+	}
+	if findings, err := local.ListFindings("", "", ""); err != nil || len(findings) != 0 {
+		t.Fatalf("invalid image merge imported findings=%d err=%v", len(findings), err)
+	}
+}
+
 func TestMergePreviewMatchesFirstMergeCounts(t *testing.T) {
 	peerDir := t.TempDir()
 	peer, err := Open(peerDir)

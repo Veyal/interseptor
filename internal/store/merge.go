@@ -243,9 +243,13 @@ func (s *Store) validatePeerFindingImages(peer *sql.DB) error {
 		if err := rows.Scan(&findingID, &bodyJSON); err != nil {
 			return err
 		}
+		normalized, err := NormalizeFindingBody(bodyJSON)
+		if err != nil {
+			return fmt.Errorf("invalid body referenced by peer finding %d: %w", findingID, err)
+		}
 		var blocks []blockRecord
-		if err := json.Unmarshal([]byte(bodyJSON), &blocks); err != nil {
-			continue
+		if err := json.Unmarshal([]byte(normalized), &blocks); err != nil {
+			return fmt.Errorf("decode peer finding %d body: %w", findingID, err)
 		}
 		for _, block := range blocks {
 			if block.Type != "image" {
