@@ -176,7 +176,7 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	var f *store.Flow
 	if in.FlowID > 0 {
 		if f, err = h.st.GetFlow(in.FlowID); err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
 	} else if flows, _ := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1}); len(flows) > 0 {

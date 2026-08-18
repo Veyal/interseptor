@@ -38,8 +38,12 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 	useCurrent := in.Session == "current"
 
 	f, err := h.st.GetFlow(id)
-	if err != nil || f == nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+	if err != nil {
+		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpInternalErr(w, fmt.Errorf("flow %d lookup returned nil without error", id))
 		return
 	}
 	if f.Method == "" {

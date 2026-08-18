@@ -764,11 +764,7 @@ func (h *Hub) loadFlow(w http.ResponseWriter, r *http.Request) (*store.Flow, boo
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			httpErr(w, http.StatusNotFound, "flow not found")
-		} else {
-			httpInternalErr(w, err)
-		}
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return nil, false
 	}
 	return f, true
@@ -1737,6 +1733,16 @@ func httpErr(w http.ResponseWriter, code int, msg string) {
 func httpInternalErr(w http.ResponseWriter, err error) {
 	log.Printf("control: 500: %v", err)
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+}
+
+// httpNotFoundOrInternal reserves 404 for an absent SQLite row. Operational
+// failures are logged and scrubbed instead of masquerading as missing data.
+func httpNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, sql.ErrNoRows) {
+		httpErr(w, http.StatusNotFound, notFound)
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {

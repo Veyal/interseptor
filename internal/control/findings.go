@@ -1,7 +1,6 @@
 package control
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -403,11 +402,7 @@ func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	f, err := h.st.GetFinding(id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			httpErr(w, http.StatusNotFound, "finding not found")
-		} else {
-			httpInternalErr(w, err)
-		}
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, findingAPIResponse(f, nil))
@@ -419,11 +414,7 @@ func (h *findingsAPI) requireFinding(w http.ResponseWriter, id int64) bool {
 		return false
 	}
 	if _, err := h.st.GetFinding(id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			httpErr(w, http.StatusNotFound, "finding not found")
-			return false
-		}
-		httpInternalErr(w, err)
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return false
 	}
 	return true
@@ -489,7 +480,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "finding not found")
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
@@ -592,7 +583,7 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "finding not found")
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -17,7 +17,7 @@ func (h *flowAPI) flowCurl(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	cmd := curlgen.Build(f.Method, analyzeURL(f), http.Header(f.ReqHeaders), h.bodyBytes(f.ReqBodyHash))

@@ -57,8 +57,12 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	f, err := h.st.GetFlow(in.FlowID)
-	if err != nil || f == nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+	if err != nil {
+		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpInternalErr(w, fmt.Errorf("flow %d lookup returned nil without error", in.FlowID))
 		return
 	}
 	opts := preview.Options{
@@ -97,7 +101,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(findingID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "finding not found")
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

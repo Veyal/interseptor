@@ -162,7 +162,7 @@ func (h *authzAPI) authzFlowAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, flowAuthPayload(f))
@@ -183,7 +183,7 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.st.GetFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	ids := h.authzIdentities()
@@ -255,7 +255,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	if in.FlowID > 0 {
 		f, err := h.st.GetFlow(in.FlowID)
 		if err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
 		flows = []*store.Flow{f}
@@ -560,7 +560,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 	ref, err := h.st.GetFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 
@@ -577,7 +577,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		} else {
 			srcFlow, err = h.st.GetFlow(srcID)
 			if err != nil {
-				httpErr(w, http.StatusNotFound, "jwtFlowId flow not found")
+				httpNotFoundOrInternal(w, err, "jwtFlowId flow not found")
 				return
 			}
 		}

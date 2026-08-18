@@ -259,12 +259,12 @@ func (h *flowAPI) diffFlows(w http.ResponseWriter, r *http.Request) {
 	}
 	fa, err := h.st.GetFlow(aID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow a not found")
+		httpNotFoundOrInternal(w, err, "flow a not found")
 		return
 	}
 	fb, err := h.st.GetFlow(bID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow b not found")
+		httpNotFoundOrInternal(w, err, "flow b not found")
 		return
 	}
 

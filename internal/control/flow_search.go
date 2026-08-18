@@ -113,7 +113,7 @@ func (h *flowAPI) testFlowSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	flow, err := h.st.GetFlow(input.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	budget := int64(maxFlowScriptTotalBodyBytes)

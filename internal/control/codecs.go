@@ -136,7 +136,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		if in.FlowID > 0 || (in.Host == "" && in.RawBody == "") {
 			f, err := h.resolveFlow(in.FlowID)
 			if err != nil {
-				httpErr(w, http.StatusNotFound, "flow not found")
+				httpNotFoundOrInternal(w, err, "flow not found")
 				return
 			}
 			if f == nil {
@@ -202,7 +202,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 	var flowID int64
 	f, err := h.resolveFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	if f != nil {
@@ -343,7 +343,7 @@ func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 	if in.FlowID > 0 {
 		f, err := h.st.GetFlow(in.FlowID)
 		if err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
 		flow = h.flowForCodec(f)
