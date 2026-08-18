@@ -133,6 +133,30 @@ func TestAuthzRunRequiresScopeForBulk(t *testing.T) {
 	}
 }
 
+func TestSetAuthzRejectsUnsupportedHeaderShapeWithoutPersisting(t *testing.T) {
+	h, st, _ := newHub(t)
+	previous := `[{"name":"admin","headers":"Authorization: Bearer preserved"}]`
+	if err := st.SetSetting("authz.identities", previous); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/authz", "application/json",
+		strings.NewReader(`{"identities":[{"name":"admin","headers":123}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	stored, ok, err := st.GetSetting("authz.identities")
+	if err != nil || !ok || stored != previous {
+		t.Fatalf("stored identities = %q, ok=%v, err=%v; want prior value", stored, ok, err)
+	}
+}
+
 func TestAuthzCrossHostReplayRejectsUnknownModeBeforeSending(t *testing.T) {
 	var requests atomic.Int64
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

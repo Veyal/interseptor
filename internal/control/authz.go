@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -41,23 +42,27 @@ func (id *identity) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*id = identity(raw.alias)
-	id.Headers = normalizeHeaderLines(raw.Headers)
+	headers, err := normalizeHeaderLines(raw.Headers)
+	if err != nil {
+		return err
+	}
+	id.Headers = headers
 	return nil
 }
 
 // normalizeHeaderLines coerces a headers field (string, []string, or
 // map[string]string) into canonical "Key: Value\n..." lines.
-func normalizeHeaderLines(raw json.RawMessage) string {
+func normalizeHeaderLines(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 {
-		return ""
+		return "", nil
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
+		return s, nil
 	}
 	var arr []string
 	if err := json.Unmarshal(raw, &arr); err == nil {
-		return strings.Join(arr, "\n")
+		return strings.Join(arr, "\n"), nil
 	}
 	var m map[string]string
 	if err := json.Unmarshal(raw, &m); err == nil {
@@ -70,9 +75,9 @@ func normalizeHeaderLines(raw json.RawMessage) string {
 		for _, k := range keys {
 			lines = append(lines, k+": "+m[k])
 		}
-		return strings.Join(lines, "\n")
+		return strings.Join(lines, "\n"), nil
 	}
-	return ""
+	return "", fmt.Errorf("headers must be a string, string array, or string-valued object")
 }
 
 type authzResult struct {
@@ -107,7 +112,10 @@ type authzRunOut struct {
 	Results        []authzResult `json:"results"`
 }
 
-const maxAuthzReplayRequestBytes int64 = 64 << 10
+const (
+	maxAuthzConfigRequestBytes int64 = 1 << 20
+	maxAuthzReplayRequestBytes int64 = 64 << 10
+)
 
 func (h *authzAPI) authzIdentities() []identity {
 	raw, _, _ := h.st.GetSetting("authz.identities")
@@ -132,8 +140,7 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Identities []identity `json:"identities"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json: "+err.Error())
+	if !decodeLimitedJSON(w, r, maxAuthzConfigRequestBytes, &in) {
 		return
 	}
 	b, _ := json.Marshal(in.Identities)
