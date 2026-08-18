@@ -158,3 +158,21 @@ func TestSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("GetSetting = %q, %v, %v", v, ok, err)
 	}
 }
+
+func TestSetSettingsRollsBackWholeBatch(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_bad_setting BEFORE INSERT ON settings
+		WHEN NEW.key = 'z.bad' BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSettings(map[string]string{"a.good": "would-be-partial", "z.bad": "rejected"}); err == nil {
+		t.Fatal("SetSettings succeeded despite rejecting trigger")
+	}
+	if value, found, err := s.GetSetting("a.good"); err != nil || found {
+		t.Fatalf("first setting survived failed batch: value=%q found=%v err=%v", value, found, err)
+	}
+}

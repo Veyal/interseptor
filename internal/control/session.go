@@ -110,6 +110,7 @@ func (h *Hub) applySessionFromStore() {
 	h.snd.SetMacro(h.loadMacro())
 	h.snd.SetLoginMacro(h.loadLoginMacro())
 }
+
 // wireSessionRefresh connects login-macro output to persisted session headers.
 func (h *Hub) wireSessionRefresh() {
 	h.snd.SetSessionRefresh(func(hdrs []sender.Header) {
@@ -168,21 +169,41 @@ func (h *sessionAPI) setSession(w http.ResponseWriter, r *http.Request) {
 	if in.Unscoped {
 		un = "1"
 	}
-	_ = h.st.SetSetting("session.enabled", en)
-	_ = h.st.SetSetting("session.headers", in.Headers)
-	_ = h.st.SetSetting("session.unscoped", un)
-	hhRaw, _ := json.Marshal(in.HostHeaders)
-	_ = h.st.SetSetting("session.hostHeaders", string(hhRaw))
+	hhRaw, err := json.Marshal(in.HostHeaders)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	settings := map[string]string{
+		"session.enabled": en, "session.headers": in.Headers,
+		"session.unscoped": un, "session.hostHeaders": string(hhRaw),
+	}
+	if in.Macro != nil {
+		b, err := json.Marshal(*in.Macro)
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		settings["session.macro"] = string(b)
+	}
+	if in.LoginMacro != nil {
+		b, err := json.Marshal(*in.LoginMacro)
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		settings["session.loginMacro"] = string(b)
+	}
+	if err := h.st.SetSettings(settings); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	h.snd.SetSession(in.Enabled, parseSessionHeaders(in.Headers))
 	h.snd.SetSessionHostHeaders(parseHostHeaders(in.HostHeaders))
 	if in.Macro != nil {
-		b, _ := json.Marshal(*in.Macro)
-		_ = h.st.SetSetting("session.macro", string(b))
 		h.snd.SetMacro(*in.Macro)
 	}
 	if in.LoginMacro != nil {
-		b, _ := json.Marshal(*in.LoginMacro)
-		_ = h.st.SetSetting("session.loginMacro", string(b))
 		h.snd.SetLoginMacro(*in.LoginMacro)
 	}
 	h.broadcast(map[string]any{"type": "session.update"})

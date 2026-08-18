@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -550,6 +551,30 @@ func (s *Store) SetSetting(key, value string) error {
 		`INSERT INTO settings(key, value) VALUES(?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// SetSettings atomically upserts a group of related settings. Callers that
+// apply the same configuration to live components should do so only after this
+// returns successfully, preventing partially persisted/runtime-divergent state.
+func (s *Store) SetSettings(values map[string]string) error {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, key := range keys {
+		if _, err := tx.Exec(
+			`INSERT INTO settings(key, value) VALUES(?, ?)
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, values[key]); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetSetting returns the value and whether it was present.
