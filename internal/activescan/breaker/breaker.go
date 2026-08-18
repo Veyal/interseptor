@@ -22,8 +22,11 @@ type Skipped struct {
 
 // Tracker skips endpoints after repeated failure statuses or transport errors.
 type Tracker struct {
-	mu      sync.Mutex
-	streak  map[string]struct{ status int; n int }
+	mu     sync.Mutex
+	streak map[string]struct {
+		status int
+		n      int
+	}
 	errs    map[string]int
 	skipped map[string]Skipped
 }
@@ -31,7 +34,10 @@ type Tracker struct {
 // New returns a fresh per-run tracker.
 func New() *Tracker {
 	return &Tracker{
-		streak:  map[string]struct{ status int; n int }{},
+		streak: map[string]struct {
+			status int
+			n      int
+		}{},
 		errs:    map[string]int{},
 		skipped: map[string]Skipped{},
 	}
@@ -68,14 +74,20 @@ func (t *Tracker) Record(key, method, host, path string, status int, transportEr
 	}
 	t.errs[key] = 0
 	if !skipStatuses[status] {
-		t.streak[key] = struct{ status int; n int }{status, 0}
+		t.streak[key] = struct {
+			status int
+			n      int
+		}{status, 0}
 		return
 	}
 	st := t.streak[key]
 	if st.status == status {
 		st.n++
 	} else {
-		st = struct{ status int; n int }{status, 1}
+		st = struct {
+			status int
+			n      int
+		}{status, 1}
 	}
 	t.streak[key] = st
 	if st.n >= SkipThreshold {

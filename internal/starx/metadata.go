@@ -10,13 +10,13 @@ import (
 // rule-pack installer can pin versions and show what a check does without reading
 // its source. Unknown keys are kept in Extra for forward compatibility.
 type Metadata struct {
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Severity    string `json:"severity,omitempty"`
-	Author      string `json:"author,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Homepage    string `json:"homepage,omitempty"`
-	License     string `json:"license,omitempty"`
+	Name        string            `json:"name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Severity    string            `json:"severity,omitempty"`
+	Author      string            `json:"author,omitempty"`
+	Version     string            `json:"version,omitempty"`
+	Homepage    string            `json:"homepage,omitempty"`
+	License     string            `json:"license,omitempty"`
 	Extra       map[string]string `json:"extra,omitempty"`
 }
 

@@ -67,9 +67,9 @@ type Hit struct {
 // Check is one active vulnerability check. Run is given the point, the unmutated
 // baseline response, and a probe to fire payloads; it returns a Hit or nil.
 type Check struct {
-	ID                         string
+	ID                          string
 	Class, Severity, Title, Fix string
-	Run                        func(p Point, baseline Response, probe Prober) *Hit
+	Run                         func(p Point, baseline Response, probe Prober) *Hit
 }
 
 // Finding is a confirmed active-scan result (shaped like a scanner issue).
@@ -86,8 +86,8 @@ type Finding struct {
 
 // Options bound a run.
 type Options struct {
-	MaxRequests int            // hard cap on probes (default 800)
-	Concurrency int            // parallel point×check tasks (default 6)
+	MaxRequests int // hard cap on probes (default 800)
+	Concurrency int // parallel point×check tasks (default 6)
 	Disabled    map[string]bool
 	Custom      []Check // user-authored (Starlark) active checks, in addition to Checks
 }

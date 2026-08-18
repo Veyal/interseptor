@@ -12,11 +12,11 @@ import (
 
 // Server is the HTTP vault API.
 type Server struct {
-	Store  *Store
-	Auth   *Auth
-	Addr   string // listen address (set after Listen)
-	ln     net.Listener
-	mux    *http.ServeMux
+	Store *Store
+	Auth  *Auth
+	Addr  string // listen address (set after Listen)
+	ln    net.Listener
+	mux   *http.ServeMux
 }
 
 // NewServer builds handlers.

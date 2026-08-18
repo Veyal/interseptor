@@ -68,8 +68,8 @@ func TestAnnotateGetFlowError(t *testing.T) {
 
 func TestEnableGuards(t *testing.T) {
 	plugin.Reset()
-	Enable(nil, Config{HostContains: []string{"x"}}) // nil store → no-op
-	Enable(&fakeStore{}, Config{})                   // empty match → no-op
+	Enable(nil, Config{HostContains: []string{"x"}})           // nil store → no-op
+	Enable(&fakeStore{}, Config{})                             // empty match → no-op
 	Enable(&fakeStore{}, Config{HostContains: []string{"  "}}) // blank needle → no-op
 	// None of the above should have registered a hook.
 	fired := false

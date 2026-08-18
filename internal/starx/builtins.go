@@ -34,18 +34,18 @@ import (
 // `probe` at run time).
 func Predeclared() starlark.StringDict {
 	return starlark.StringDict{
-		"finding":    starlark.NewBuiltin("finding", FindingBuiltin),
-		"re_search":  starlark.NewBuiltin("re_search", ReSearchBuiltin),
-		"json_decode": starlark.NewBuiltin("json_decode", JSONDecodeBuiltin),
-		"json_encode": starlark.NewBuiltin("json_encode", JSONEncodeBuiltin),
-		"b64decode":  starlark.NewBuiltin("b64decode", B64DecodeBuiltin),
-		"b64encode":  starlark.NewBuiltin("b64encode", B64EncodeBuiltin),
-		"url_decode": starlark.NewBuiltin("url_decode", URLDecodeBuiltin),
-		"url_encode": starlark.NewBuiltin("url_encode", URLEncodeBuiltin),
-		"hash":             starlark.NewBuiltin("hash", HashBuiltin),
-		"hmac":             starlark.NewBuiltin("hmac", HMACBuiltin),
-		"aes_ecb_encrypt":  starlark.NewBuiltin("aes_ecb_encrypt", AESECBEncryptBuiltin),
-		"aes_ecb_decrypt":  starlark.NewBuiltin("aes_ecb_decrypt", AESECBDecryptBuiltin),
+		"finding":         starlark.NewBuiltin("finding", FindingBuiltin),
+		"re_search":       starlark.NewBuiltin("re_search", ReSearchBuiltin),
+		"json_decode":     starlark.NewBuiltin("json_decode", JSONDecodeBuiltin),
+		"json_encode":     starlark.NewBuiltin("json_encode", JSONEncodeBuiltin),
+		"b64decode":       starlark.NewBuiltin("b64decode", B64DecodeBuiltin),
+		"b64encode":       starlark.NewBuiltin("b64encode", B64EncodeBuiltin),
+		"url_decode":      starlark.NewBuiltin("url_decode", URLDecodeBuiltin),
+		"url_encode":      starlark.NewBuiltin("url_encode", URLEncodeBuiltin),
+		"hash":            starlark.NewBuiltin("hash", HashBuiltin),
+		"hmac":            starlark.NewBuiltin("hmac", HMACBuiltin),
+		"aes_ecb_encrypt": starlark.NewBuiltin("aes_ecb_encrypt", AESECBEncryptBuiltin),
+		"aes_ecb_decrypt": starlark.NewBuiltin("aes_ecb_decrypt", AESECBDecryptBuiltin),
 	}
 }
 
@@ -62,6 +62,7 @@ func ScriptError(label string, err error) error {
 	}
 	return fmt.Errorf("%s: %w", label, err)
 }
+
 // rest are optional and default to "".
 func FindingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var severity, title, detail, evidence, fix string

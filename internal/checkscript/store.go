@@ -21,10 +21,10 @@ func ValidID(id string) bool { return validID.MatchString(id) }
 // Source is a stored check: its id, raw source, parsed metadata, and compile
 // error (if any).
 type Source struct {
-	ID     string           `json:"id"`
-	Source string           `json:"source"`
-	Meta   starx.Metadata   `json:"meta,omitempty"`
-	Error  string           `json:"error,omitempty"`
+	ID     string         `json:"id"`
+	Source string         `json:"source"`
+	Meta   starx.Metadata `json:"meta,omitempty"`
+	Error  string         `json:"error,omitempty"`
 }
 
 // List returns every `*.star` check in dir (sorted), each with its source,

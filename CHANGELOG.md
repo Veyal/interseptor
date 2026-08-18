@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Wire-evidence analysis guidance.** A repository skill now documents how to preserve encoded HTTP bytes while providing bounded decoded bodies to scanners and excluding incomplete evidence from decisions.
 
 ### Fixed
+- **Canonical Go formatting.** The remaining non-`gofmt` source and test files now use consistent standard Go layout, reducing formatting noise in future changes.
 - **Semantic authorization body comparison.** Authorization replays now compare bounded decoded response content, so identical gzip bodies with different wire metadata are not misclassified as different access.
 - **Decoded active-probe analysis.** Active-scan detectors now explicitly decode preserved `Content-Encoding` bodies before inspection, keeping capture bytes wire-accurate without losing compressed-response detections.
 - **Truthful Intruder body failures.** Intruder grep now reports a referenced response body that cannot be read instead of turning the missing evidence into a silent non-match.

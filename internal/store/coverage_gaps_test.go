@@ -103,8 +103,8 @@ func TestGCBodies_BodyReferencedAsReqAndResHash(t *testing.T) {
 	defer s.Close()
 
 	h := writeBody(t, s, "dual-role body")
-	id1 := mustInsertFlow(t, s, "req.com", h, "", int64(len("dual-role body")), 0)   // req body
-	_ = mustInsertFlow(t, s, "res.com", "", h, 0, int64(len("dual-role body")))       // res body
+	id1 := mustInsertFlow(t, s, "req.com", h, "", int64(len("dual-role body")), 0) // req body
+	_ = mustInsertFlow(t, s, "res.com", "", h, 0, int64(len("dual-role body")))    // res body
 
 	// Delete the flow that uses it as req body.
 	if _, err := s.DeleteFlows([]int64{id1}); err != nil {

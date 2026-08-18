@@ -251,4 +251,6 @@ func SignedLabel(rec InstallRecord) string {
 }
 
 // readSeekFree is io.Reader, named to document that ReadPack only needs reading.
-type readSeekFree = interface{ Read(p []byte) (n int, err error) }
+type readSeekFree = interface {
+	Read(p []byte) (n int, err error)
+}

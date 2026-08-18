@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	jwtRe      = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{4,}`)
-	passwordRe = regexp.MustCompile(`(?i)"?password"?\s*[:=]\s*"?[^"&\s,}]{3,}`)
-	tokenRe    = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
-	versionRe  = regexp.MustCompile(`\d+\.\d+`)
+	jwtRe          = regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{4,}`)
+	passwordRe     = regexp.MustCompile(`(?i)"?password"?\s*[:=]\s*"?[^"&\s,}]{3,}`)
+	tokenRe        = regexp.MustCompile(`(?i)"(access_?token|token|session|secret|api_?key)"\s*:\s*"[^"]{8,}"`)
+	versionRe      = regexp.MustCompile(`\d+\.\d+`)
 	urlSensitiveRe = regexp.MustCompile(`(?i)[?&](access_?token|api_?key|token|session|password|secret|passwd|auth)=([^&\s]{6,})`)
 
 	// mixedContentRe matches http:// scheme references inside common HTML resource-loading attributes.

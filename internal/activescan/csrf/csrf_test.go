@@ -11,8 +11,8 @@ func TestXSRFFromCookieJSON(t *testing.T) {
 
 func TestFromFlowRequest(t *testing.T) {
 	h := FromFlowRequest(map[string][]string{
-		"Cookie":        {"XSRF-TOKEN=eyJ0; app_session=abc"},
-		"X-Xsrf-Token":  {"decoded-token"},
+		"Cookie":       {"XSRF-TOKEN=eyJ0; app_session=abc"},
+		"X-Xsrf-Token": {"decoded-token"},
 	})
 	if h.XSRFToken != "decoded-token" {
 		t.Fatalf("xsrf %q", h.XSRFToken)

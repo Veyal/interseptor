@@ -14,8 +14,8 @@ func TestIsAuthPath(t *testing.T) {
 	}{
 		// -- true cases (auth endpoints) --
 		{"/login", true},
-		{"/Login", true},     // case-insensitive
-		{"/LOGIN", true},     // fully uppercase
+		{"/Login", true}, // case-insensitive
+		{"/LOGIN", true}, // fully uppercase
 		{"/logout", true},
 		{"/signin", true},
 		{"/signout", true},
@@ -41,7 +41,7 @@ func TestIsAuthPath(t *testing.T) {
 		{"/user/password/reset", true},
 		{"/account/mfa/setup", true},
 		{"/api/sso/init", true},
-		{"/login?redirect=/dashboard", true},  // query string after segment
+		{"/login?redirect=/dashboard", true}, // query string after segment
 		{"/auth/refresh", true},
 		{"/v1/register", true},
 
@@ -57,8 +57,8 @@ func TestIsAuthPath(t *testing.T) {
 		{"/search", false},
 		{"/settings", false},
 		{"/admin", false},
-		{"/logview", false},        // "log" is a segment but not "login"/"logout"
-		{"/blogpost", false},       // no auth segment
+		{"/logview", false},  // "log" is a segment but not "login"/"logout"
+		{"/blogpost", false}, // no auth segment
 		{"/catalog/item", false},
 		{"", false},
 		{"/", false},
