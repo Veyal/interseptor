@@ -47,6 +47,50 @@ func TestPurgeFlowsByHostDelete(t *testing.T) {
 	}
 }
 
+func TestPurgeFlowsRejectsTrailingJSONBeforeMutation(t *testing.T) {
+	h, s, _ := newHub(t)
+	if _, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/flows/purge", "application/json", strings.NewReader(`{"hosts":["example.com"],"mode":"delete"}{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if n := flowCount(t, ts.URL+"/api/flows"); n != 1 {
+		t.Fatalf("flows after rejected purge = %d, want 1", n)
+	}
+}
+
+func TestPurgeFlowsRejectsUnknownModeBeforeMutation(t *testing.T) {
+	h, s, _ := newHub(t)
+	for _, host := range []string{"keep.example.com", "other.example.com"} {
+		if _, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: host, Path: "/"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/flows/purge", "application/json", strings.NewReader(`{"hosts":["keep.example.com"],"mode":"keep-only"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if n := flowCount(t, ts.URL+"/api/flows"); n != 2 {
+		t.Fatalf("flows after rejected mode = %d, want 2", n)
+	}
+}
+
 // POST /api/flows/purge with mode=keepOnly keeps the listed hosts, deletes everything else.
 func TestPurgeFlowsKeepOnly(t *testing.T) {
 	h, s, _ := newHub(t)

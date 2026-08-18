@@ -1,13 +1,16 @@
 package control
 
 import (
-	"encoding/json"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/Veyal/interseptor/internal/scope"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxScopeRequestBytes int64 = 64 << 10
 
 // refreshScope reloads the live scope matcher from the store and announces it.
 func (h *Hub) refreshScope() {
@@ -48,8 +51,7 @@ func validScope(w http.ResponseWriter, r store.ScopeRule) bool {
 
 func (h *scopeAPI) createScope(w http.ResponseWriter, r *http.Request) {
 	var in store.ScopeRule
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxScopeRequestBytes, &in) {
 		return
 	}
 	if !validScope(w, in) {
@@ -70,8 +72,7 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in store.ScopeRule
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxScopeRequestBytes, &in) {
 		return
 	}
 	in.ID = id
@@ -79,6 +80,10 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateScopeRule(&in); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "scope rule not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}

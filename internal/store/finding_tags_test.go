@@ -89,3 +89,21 @@ func TestFindingTagsRoundTripAndListFilter(t *testing.T) {
 		t.Fatalf("tag rows should be gone with finding, got %+v", apiOnly)
 	}
 }
+
+func TestSetFindingTagsRejectsMissingFinding(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.SetFindingTags(999, []string{"phantom"}); err == nil {
+		t.Fatal("missing finding tag mutation succeeded")
+	}
+	tags, err := s.DistinctFindingTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 0 {
+		t.Fatalf("missing finding created phantom tags %+v", tags)
+	}
+}

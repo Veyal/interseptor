@@ -13,6 +13,8 @@ import (
 	"github.com/Veyal/interseptor/internal/vault"
 )
 
+const maxVaultClientRequestBytes = 64 << 10
+
 // Machine-wide vault client config (shared across projects on this host).
 type vaultClientConfig struct {
 	URL string `json:"url"`
@@ -69,8 +71,7 @@ func (h *Hub) putVaultConfig(w http.ResponseWriter, r *http.Request) {
 		URL *string `json:"url"`
 		Key *string `json:"key"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxVaultClientRequestBytes, &in) {
 		return
 	}
 	c := h.loadVaultClient()
@@ -135,7 +136,9 @@ func (h *Hub) vaultBackup(w http.ResponseWriter, r *http.Request) {
 		ID    string `json:"id"`
 		Label string `json:"label"`
 	}
-	_ = json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in)
+	if !decodeOptionalLimitedJSON(w, r, maxVaultClientRequestBytes, &in) {
+		return
+	}
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
 		id = h.ProjectName
@@ -224,8 +227,7 @@ func (h *Hub) vaultImport(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 		Overwrite bool   `json:"overwrite"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxVaultClientRequestBytes, &in) {
 		return
 	}
 	if !vault.ValidSlug(in.ID) {
@@ -277,8 +279,7 @@ func (h *Hub) vaultMerge(w http.ResponseWriter, r *http.Request) {
 		Label  string `json:"label"`
 		DryRun bool   `json:"dryRun"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxVaultClientRequestBytes, &in) {
 		return
 	}
 	if !vault.ValidSlug(in.ID) {

@@ -56,8 +56,6 @@ independently tested.
 | `internal/sender` | One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater & Intruder |
 | `internal/intruder` | Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) |
 | `internal/scanner` | Passive security checks over captured flows |
-| `internal/activescan` | Deterministic active-scan engine; external agents can invoke it through MCP or REST |
-| `internal/activescript` | Runs user-authored **active** scanner checks in Starlark — the active twin of `internal/checkscript` |
 | `internal/oob` | Out-of-band interaction catcher (blind SSRF/XXE/SQLi/RCE callbacks) |
 | `internal/checkscript` | Runs user-authored Starlark scanner checks (sandboxed, bounded) |
 | `internal/msgcodec` | Project-scoped Starlark message codecs (app-layer encrypt/decrypt for History/Repeater; never on the proxy hot path) |

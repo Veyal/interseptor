@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
 
@@ -99,6 +101,76 @@ func TestHubCloseCancelsAndWaitsForActiveIntruder(t *testing.T) {
 	if st := h.intr.State(); st.Running {
 		t.Fatalf("Intruder still running after Hub.Close: %+v", st)
 	}
+}
+
+func TestHubCloseWaitsForPurgeGC(t *testing.T) {
+	h, _, _ := newHub(t)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h.gcBodiesFn = func() (int64, int64, error) {
+		close(started)
+		<-release
+		return 0, 0, nil
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/flows/purge", strings.NewReader(`{"hosts":[],"mode":"delete"}`))
+	(&flowAPI{h}).purgeFlows(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("purge status = %d, want 200", rec.Code)
+	}
+	awaitControlLifecycle(t, started, "purge GC start")
+
+	closeReturned := make(chan struct{})
+	go func() {
+		h.Close()
+		close(closeReturned)
+	}()
+	select {
+	case <-closeReturned:
+		t.Fatal("Hub.Close returned while purge GC was still running")
+	default:
+	}
+	close(release)
+	awaitControlLifecycle(t, closeReturned, "Hub.Close after purge GC completion")
+}
+
+func TestHubCloseWaitsForRetentionGC(t *testing.T) {
+	h, st, _ := newHub(t)
+	for i := int64(0); i < 2; i++ {
+		if _, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(i + 1), Method: "GET", Host: "example.com", Path: "/"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetSetting(retentionMaxFlowsKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h.gcBodiesFn = func() (int64, int64, error) {
+		close(started)
+		<-release
+		return 0, 0, nil
+	}
+
+	deleted, err := h.runRetentionOnce()
+	if err != nil || deleted != 1 {
+		t.Fatalf("runRetentionOnce() = (%d, %v), want (1, nil)", deleted, err)
+	}
+	awaitControlLifecycle(t, started, "retention GC start")
+
+	closeReturned := make(chan struct{})
+	go func() {
+		h.Close()
+		close(closeReturned)
+	}()
+	select {
+	case <-closeReturned:
+		t.Fatal("Hub.Close returned while retention GC was still running")
+	default:
+	}
+	close(release)
+	awaitControlLifecycle(t, closeReturned, "Hub.Close after retention GC completion")
 }
 
 func TestIntruderStartAfterHubCloseReturnsServiceUnavailable(t *testing.T) {

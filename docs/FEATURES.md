@@ -17,11 +17,8 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Authorization testing** — replay a request as each saved identity (role) and diff for broken
   access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner when you have a tunnel or public URL).
 - **External agent orchestration** — MCP exposes deterministic capture, replay, mutation, scope,
-  scanning, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
+  passive scanning, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
   Interseptor records every request and result in History, Activity, and findings.
-- **Active scanning** — a deterministic active-scan engine (`active_scan`) fires per-class payloads
-  at a request's injection points and confirms hits with detectors, independent of external orchestration; extend
-  it with your own **active** Starlark checks the same way as passive ones.
 - **Mobile device support** — Android (adb-based CA install + proxy config) and iOS (profile-based,
   including jailbroken-device SSH automation) setup for HTTPS interception on real devices.
 - **Collaboration & remote access** — scoped/expiring API keys, a key-authorized remote-access mode,
@@ -34,7 +31,7 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Scanner** — built-in passive checks (missing CSP/HSTS/`nosniff`/clickjacking headers, wildcard CORS,
   reflected parameters, secrets in bodies, insecure cookies, Basic-auth & version disclosure, …),
   exportable as a **Markdown findings report**.
-- **Custom checks & rule packs** — extend the scanner with sandboxed **Starlark** checks
+- **Custom checks & rule packs** — extend the passive scanner with sandboxed **Starlark** checks
   (drop a `.star` in `~/.interseptor/checks/`), install **official packs** from Scanner → Checks
   (or upload a `.tar.gz`), and share community packs. See
   [custom checks](custom-checks.md), [rule packs](rule-packs.md), and [`examples/checks/`](../examples/checks/).
@@ -51,8 +48,8 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Session / auth injection** — auto-apply an `Authorization`/`Cookie` to every Repeater & Intruder
   send, plus a **token macro** (CSRF/re-auth: fetch a value from a refresh request, inject per send)
   and a **login macro** (record a login flow, refresh session headers, auto re-auth on 401).
-- **Import / export** — HAR in and out, plus portable **project** bundles (flows + rules + scope +
-  settings).
+- **Import / export** — HAR in and out, Burp Suite **Save items** XML migration, plus portable
+  **project** bundles (flows + rules + scope + settings).
 - **Project vault** — always-on archive store (`interseptor vault`) for multi-device backup / import /
   merge (Tailscale Serve). See [vault](vault.md).
 - **Model-free core** — no provider keys, built-in chat, or autonomous pentest loop. Use any

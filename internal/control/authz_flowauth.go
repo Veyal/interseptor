@@ -3,14 +3,15 @@ package control
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/Veyal/interseptor/internal/activescan/csrf"
+	"github.com/Veyal/interseptor/internal/csrf"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxAuthzFlowPromotionRequestBytes int64 = 64 << 10
 
 // flowAuthPayload is the structured auth material MCP agents consume.
 func flowAuthPayload(f *store.Flow) map[string]any {
@@ -56,8 +57,7 @@ func (h *authzAPI) authzPromoteFromFlow(w http.ResponseWriter, r *http.Request) 
 		Name  string `json:"name"`
 		Merge *bool  `json:"merge"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxAuthzFlowPromotionRequestBytes, &in) {
 		return
 	}
 	name := strings.TrimSpace(in.Name)
@@ -87,7 +87,10 @@ func (h *authzAPI) promoteFlowToAuthz(flowID int64, name string, merge bool) ([]
 		return nil, fmt.Errorf("flow #%d has no Cookie/Authorization headers to promote", flowID)
 	}
 	newID := identity{Name: name, Headers: headers}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		return nil, err
+	}
 	if merge {
 		updated := false
 		for i, id := range ids {

@@ -1,14 +1,18 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/version"
+)
+
+const (
+	maxAPIKeyRequestBytes = 4 << 10
+	maxAPIKeyLabelBytes   = 256
 )
 
 // ---- API keys ----
@@ -31,8 +35,19 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 		Scope     string `json:"scope"`     // "full" (default) | "read"
 		ExpiresIn int64  `json:"expiresIn"` // seconds from now; 0 = never
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxAPIKeyRequestBytes, &in) {
+		return
+	}
+	if len(in.Label) > maxAPIKeyLabelBytes {
+		httpErr(w, http.StatusBadRequest, "label too long")
+		return
+	}
+	if in.Scope != "" && in.Scope != store.ScopeFull && in.Scope != store.ScopeRead {
+		httpErr(w, http.StatusBadRequest, "scope must be full or read")
+		return
+	}
+	if in.ExpiresIn < 0 {
+		httpErr(w, http.StatusBadRequest, "expiresIn must not be negative")
 		return
 	}
 	if in.Label == "" {
@@ -40,7 +55,12 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	}
 	var expires int64
 	if in.ExpiresIn > 0 {
-		expires = time.Now().UnixMilli() + in.ExpiresIn*1000
+		now := time.Now().UnixMilli()
+		if in.ExpiresIn > (math.MaxInt64-now)/1000 {
+			httpErr(w, http.StatusBadRequest, "expiresIn is too large")
+			return
+		}
+		expires = now + in.ExpiresIn*1000
 	}
 	token, key, err := h.st.CreateAPIKey(in.Label, store.NormalizeScope(in.Scope), expires)
 	if err != nil {
@@ -73,7 +93,7 @@ type apiRoute struct {
 }
 
 var apiRoutes = []apiRoute{
-	{"GET", "/api/flows", "List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host, search, searchScope=anywhere|body|id, savedSearch, hasNote=1, scheme, status, before, limit, inScope=1, includeTools=1. By default excludes Repeater/Intruder/ActiveScan (History-shaped); includeTools=1 returns all sources"},
+	{"GET", "/api/flows", "List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host, search, searchScope=anywhere|body|id, savedSearch, hasNote=1, scheme, status, before, limit, inScope=1, includeTools=1. By default excludes Repeater/Intruder (History-shaped); includeTools=1 returns all sources"},
 	{"GET", "/api/flow-searches", "List project-scoped saved flow searches without source"},
 	{"POST", "/api/flow-searches", "Compile and save a project-scoped Starlark flow search. Body: {name,scope,script}"},
 	{"POST", "/api/flow-searches/test", "Compile a Starlark flow search without saving. Body: {name,scope,script}"},
@@ -115,22 +135,12 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/scanner/issues", "List scanner findings"},
 	{"DELETE", "/api/scanner/issues", "Clear passive scanner issues only; curated Findings are unchanged"},
 	{"GET", "/api/scanner/report", "Download scanner findings as a Markdown report"},
-	{"GET", "/api/activescan", "Active-scan state (armed/running/findings/probe log)"},
-	{"GET", "/api/activescan/history", "Active-scan probe history (all FlagActiveScan flows)"},
-	{"POST", "/api/activescan/arm", "Arm/disarm active scanning (consent gate). Body: {armed}"},
-	{"POST", "/api/activescan/start", "Start an active scan (sends attack payloads). Body: {flowId?, inScope?, arm?, maxRequests?, csrfAware?} — one of flowId/inScope required; inScope:true needs a scope include rule first"},
-	{"POST", "/api/activescan/stop", "Stop the running active scan"},
 	{"GET", "/api/checks", "List custom Starlark scanner checks (id, source, compile error)"},
 	{"GET", "/api/checks/reference", "Custom-check authoring reference (Starlark API, markdown)"},
 	{"POST", "/api/checks/test", "Compile + run a check without saving. Body: {source, flowId?} — flowId omitted uses the most recent captured flow. Response: {findings} or {error}"},
 	{"GET", "/api/checks/{id}", "Read a custom check's source"},
 	{"PUT", "/api/checks/{id}", "Create/update a custom check (rejected if it doesn't compile). Body: {source}"},
 	{"DELETE", "/api/checks/{id}", "Delete a custom check"},
-	{"GET", "/api/active-checks", "List custom active (Starlark) checks, their source dir, and disabled builtin ids"},
-	{"GET", "/api/active-checks/{id}", "Read one active check's source (builtin template or user override)"},
-	{"PUT", "/api/active-checks/{id}", "Save/upsert an active check's Starlark source"},
-	{"DELETE", "/api/active-checks/{id}", "Delete a saved active check"},
-	{"POST", "/api/active-checks/test", "Compile + dry-run an active check against a flow's injection points (sends real, bounded probes). Response: {finding} or {note}"},
 	{"GET", "/api/codecs", "List project-scoped Starlark message codecs (id, source, meta, compile error)"},
 	{"GET", "/api/codecs/reference", "Message-codec authoring reference (Starlark API, markdown)"},
 	{"POST", "/api/codecs/test", "Compile + match/decode a codec against a flow without saving. Body: {source?, id?, flowId?, side?}"},
@@ -232,6 +242,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/packs/catalog/{name}/install", "Install an official bundled rule pack"},
 	{"GET", "/api/export/har", "Export history as HAR (optional ?inScope=1)"},
 	{"POST", "/api/import/har", "Import a HAR file as flows. Body: raw HAR 1.2 JSON document (not wrapped). Response: {imported: n}"},
+	{"POST", "/api/import/burp", "Import Burp Suite Save-items XML as flows. Body: raw XML export (not native .burp). Response: {imported: n, skipped: n}"},
 	{"GET", "/api/export/project", "Export a portable project (flows + rules + scope + settings)"},
 	{"POST", "/api/import/project", "Import (merge) a project bundle. Body: {version, har, rules, scope, settings, notes?} — the JSON produced by GET /api/export/project. Response: {importedFlows, importedRules, importedScope}"},
 	{"GET", "/api/export/full", "Download the active project as a lossless zip archive (DB + captured bodies)"},
@@ -337,17 +348,10 @@ var mcpDescriptor = map[string]any{
 		{"name": "run_scanner", "desc": "Passive scan of captured flows"},
 		{"name": "list_issues", "desc": "Scanner findings"},
 		{"name": "scan_report", "desc": "Findings as a Markdown report (grouped by severity)"},
-		{"name": "active_scan", "desc": "Active scan (sends attack payloads; arm to consent)"},
-		{"name": "active_scan_state", "desc": "Active-scan progress + findings"},
-		{"name": "active_scan_stop", "desc": "Stop the running active scan"},
 		{"name": "list_checks", "desc": "List custom Starlark scanner checks"},
 		{"name": "test_check", "desc": "Compile + run a check against a flow (no save)"},
 		{"name": "save_check", "desc": "Create/update a validated custom scanner check"},
 		{"name": "delete_check", "desc": "Delete a custom scanner check"},
-		{"name": "list_active_checks", "desc": "List custom ACTIVE Starlark checks"},
-		{"name": "test_active_check", "desc": "Compile + run an ACTIVE check against an injection point (real probes, no save)"},
-		{"name": "save_active_check", "desc": "Create/update a validated custom ACTIVE check"},
-		{"name": "delete_active_check", "desc": "Delete a custom ACTIVE check"},
 		{"name": "list_codecs", "desc": "List project message codecs (encrypt/decrypt transforms)"},
 		{"name": "test_codec", "desc": "Compile + match/decode a codec against a flow (no save)"},
 		{"name": "save_codec", "desc": "Create/update a project message codec"},

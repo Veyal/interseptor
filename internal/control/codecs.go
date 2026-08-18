@@ -1,8 +1,6 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"path/filepath"
 
@@ -20,15 +18,23 @@ func (h *Hub) CodecsDir() string {
 	return filepath.Join(h.ProjectDir, "codecs")
 }
 
-func (h *Hub) flowForCodec(f *store.Flow) msgcodec.Flow {
-	_, reqBody := decodeForDisplay(f.ReqHeaders, h.bodyBytes(f.ReqBodyHash))
-	_, resBody := decodeForDisplay(f.ResHeaders, h.bodyBytes(f.ResBodyHash))
+func (h *Hub) flowForCodec(f *store.Flow) (msgcodec.Flow, error) {
+	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		return msgcodec.Flow{}, err
+	}
+	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	if err != nil {
+		return msgcodec.Flow{}, err
+	}
+	_, reqBody = decodeForDisplay(f.ReqHeaders, reqBody)
+	_, resBody = decodeForDisplay(f.ResHeaders, resBody)
 	return msgcodec.Flow{
 		Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
 		Path: f.Path, Status: f.Status, Mime: f.Mime,
 		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
 		ReqBody: string(reqBody), ResBody: string(resBody),
-	}
+	}, nil
 }
 
 func (h *Hub) loadCodecs() []*msgcodec.Codec {
@@ -85,8 +91,7 @@ func (h *checksAPI) saveCodec(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	id := r.PathValue("id")
@@ -125,8 +130,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		Method  string `json:"method"`
 		Path    string `json:"path"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	side := in.Side
@@ -140,14 +144,18 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		if in.FlowID > 0 || (in.Host == "" && in.RawBody == "") {
 			f, err := h.resolveFlow(in.FlowID)
 			if err != nil {
-				httpErr(w, http.StatusNotFound, "flow not found")
+				httpNotFoundOrInternal(w, err, "flow not found")
 				return
 			}
 			if f == nil {
 				writeJSON(w, http.StatusOK, map[string]any{"note": "no captured flow to test against yet"})
 				return
 			}
-			flow = h.flowForCodec(f)
+			flow, err = h.flowForCodec(f)
+			if err != nil {
+				httpFileNotFoundOrInternal(w, err, "flow body not found")
+				return
+			}
 			in.FlowID = f.ID
 		}
 		if in.RawBody != "" {
@@ -206,11 +214,15 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 	var flowID int64
 	f, err := h.resolveFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	if f != nil {
-		flow = h.flowForCodec(f)
+		flow, err = h.flowForCodec(f)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "flow body not found")
+			return
+		}
 		flowID = f.ID
 	}
 	if in.RawBody != "" {
@@ -277,7 +289,12 @@ func (h *flowAPI) getFlowDecoded(w http.ResponseWriter, r *http.Request) {
 	if side == "" {
 		side = "req"
 	}
-	res, matched := msgcodec.TryDecode(h.loadCodecs(), h.flowForCodec(f), side)
+	flow, err := h.flowForCodec(f)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
+		return
+	}
+	res, matched := msgcodec.TryDecode(h.loadCodecs(), flow, side)
 	if !matched {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"matched": false, "flowId": f.ID, "side": side,
@@ -314,8 +331,7 @@ func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 		Plaintext string `json:"plaintext"`
 		RawBody   string `json:"rawBody"` // optional wire body override for encode context
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	src := in.Source
@@ -348,10 +364,14 @@ func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 	if in.FlowID > 0 {
 		f, err := h.st.GetFlow(in.FlowID)
 		if err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
-		flow = h.flowForCodec(f)
+		flow, err = h.flowForCodec(f)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "flow body not found")
+			return
+		}
 	}
 	if in.RawBody != "" {
 		if side == "res" {
@@ -382,8 +402,13 @@ func (h *Hub) encodeWithCodec(codecID string, flowID int64, side, plaintext, raw
 	}
 	var flow msgcodec.Flow
 	if flowID > 0 {
-		if f, err := h.st.GetFlow(flowID); err == nil {
-			flow = h.flowForCodec(f)
+		f, err := h.st.GetFlow(flowID)
+		if err != nil {
+			return "", err
+		}
+		flow, err = h.flowForCodec(f)
+		if err != nil {
+			return "", err
 		}
 	}
 	if rawBody != "" {

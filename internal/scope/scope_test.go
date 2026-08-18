@@ -18,13 +18,13 @@ func TestScopeMatchingEdgeCases(t *testing.T) {
 	e := New()
 	e.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: "*.acme.com"}})
 	wildcard := map[string]bool{
-		"acme.com":           true,  // base
-		"api.acme.com":       true,  // real subdomain
-		"a.b.acme.com":       true,  // deep subdomain
-		"evil-acme.com":      false, // NOT a subdomain — must not match
-		"acme.com.evil.com":  false, // base as a left-suffix — must not match
-		"notacme.com":        false,
-		"xacme.com":          false,
+		"acme.com":          true,  // base
+		"api.acme.com":      true,  // real subdomain
+		"a.b.acme.com":      true,  // deep subdomain
+		"evil-acme.com":     false, // NOT a subdomain — must not match
+		"acme.com.evil.com": false, // base as a left-suffix — must not match
+		"notacme.com":       false,
+		"xacme.com":         false,
 	}
 	for host, want := range wildcard {
 		if got := e.InScope(flow(host, "/", "https", 443)); got != want {

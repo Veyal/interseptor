@@ -43,10 +43,14 @@ func (h *Hub) installPack(w http.ResponseWriter, r *http.Request) {
 	allowUnsigned := r.URL.Query().Get("allowUnsigned") == "1" || r.URL.Query().Get("allowUnsigned") == "true"
 	m, n, err := h.packsRegistry().InstallStreamOpts(
 		io.LimitReader(r.Body, maxArchiveBytes),
-		h.ChecksDir, h.ActiveChecksDir, "upload",
+		h.ChecksDir, "upload",
 		rules.InstallOpts{AllowUnsigned: allowUnsigned},
 	)
 	if err != nil {
+		if isBodyTooLarge(err) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "rule-pack archive exceeds compressed size limit")
+			return
+		}
 		httpErr(w, http.StatusBadRequest, "install failed: "+err.Error())
 		return
 	}
@@ -58,7 +62,7 @@ func (h *Hub) installPack(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) removePack(w http.ResponseWriter, r *http.Request) {
-	n, err := h.packsRegistry().Remove(r.PathValue("name"), h.ChecksDir, h.ActiveChecksDir)
+	n, err := h.packsRegistry().Remove(r.PathValue("name"), h.ChecksDir)
 	if err != nil {
 		httpErr(w, http.StatusNotFound, err.Error())
 		return
@@ -103,7 +107,7 @@ func (h *Hub) installCatalogPack(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusNotFound, err.Error())
 		return
 	}
-	got, n, err := h.packsRegistry().InstallStreamOpts(bytes.NewReader(buf.Bytes()), h.ChecksDir, h.ActiveChecksDir, "catalog",
+	got, n, err := h.packsRegistry().InstallStreamOpts(bytes.NewReader(buf.Bytes()), h.ChecksDir, "catalog",
 		rules.InstallOpts{TrustBuiltin: true})
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "install failed: "+err.Error())

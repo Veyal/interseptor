@@ -68,6 +68,24 @@ func TestDiffBodyLinesBounded(t *testing.T) {
 	}
 }
 
+func TestDiffFlowsRejectsMissingResponseEvidence(t *testing.T) {
+	h, st, _ := newHub(t)
+	aID, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/a", ResBodyHash: strings.Repeat("a", 64), ResLen: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bID, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "example.com", Path: "/b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/diff?a="+itoa(aID)+"&b="+itoa(bID), nil)
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).diffFlows(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+}
+
 // The REST endpoint diffs two real stored flows and 404s on a missing id.
 func TestDiffFlowsEndpoint(t *testing.T) {
 	h, s, _ := newHub(t)

@@ -1,8 +1,6 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +8,8 @@ import (
 	"github.com/Veyal/interseptor/internal/bind"
 	"github.com/Veyal/interseptor/internal/ios"
 )
+
+const maxMobileCommandRequestBytes int64 = 64 << 10
 
 type iosSSHRequest struct {
 	Host      string `json:"host"`
@@ -77,8 +77,7 @@ func (h *iosAPI) getIOSSSHStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *iosAPI) postIOSSSHStatus(w http.ResponseWriter, r *http.Request) {
 	var in iosSSHRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
 	res, err := ios.SSHStatus(in.sshOpts())
@@ -105,8 +104,7 @@ func (h *iosAPI) postIOSSSHInstallCA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in iosSSHRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
 	_, port := h.deviceProxyHostPort("")
@@ -134,8 +132,7 @@ func (h *iosAPI) postIOSSSHSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in iosSSHRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
 	_, port := h.deviceProxyHostPort("")

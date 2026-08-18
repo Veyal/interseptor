@@ -10,7 +10,6 @@ import (
 func TestRegistryInstallListRemove(t *testing.T) {
 	root := t.TempDir()
 	checksDir := filepath.Join(root, "checks")
-	activeDir := filepath.Join(root, "active-checks")
 
 	// Build a pack from a source dir, then install it via the registry.
 	src := t.TempDir()
@@ -20,19 +19,16 @@ func TestRegistryInstallListRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := NewRegistry(root)
-	m, n, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test", InstallOpts{AllowUnsigned: true})
+	m, n, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, "test", InstallOpts{AllowUnsigned: true})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if m.Name != "owasp" || n != 3 {
+	if m.Name != "owasp" || n != 2 {
 		t.Fatalf("install returned %s/%d", m.Name, n)
 	}
 	// Checks landed on disk in the right dirs.
 	if _, err := os.Stat(filepath.Join(checksDir, "hsts.star")); err != nil {
 		t.Fatalf("passive check not installed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(activeDir, "sqli.star")); err != nil {
-		t.Fatalf("active check not installed: %v", err)
 	}
 
 	packs, err := reg.List()
@@ -40,12 +36,12 @@ func TestRegistryInstallListRemove(t *testing.T) {
 		t.Fatalf("list wrong: %v %v", packs, err)
 	}
 
-	removed, err := reg.Remove("owasp", checksDir, activeDir)
+	removed, err := reg.Remove("owasp", checksDir)
 	if err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	if removed != 3 {
-		t.Fatalf("expected 3 files removed, got %d", removed)
+	if removed != 2 {
+		t.Fatalf("expected 2 files removed, got %d", removed)
 	}
 	if _, err := os.Stat(filepath.Join(checksDir, "hsts.star")); !os.IsNotExist(err) {
 		t.Fatalf("passive check should be gone after remove")
@@ -59,7 +55,6 @@ func TestRegistryInstallListRemove(t *testing.T) {
 func TestRegistryUpgradeReplacesEntry(t *testing.T) {
 	root := t.TempDir()
 	checksDir := filepath.Join(root, "checks")
-	activeDir := filepath.Join(root, "active-checks")
 	src := t.TempDir()
 	must(t, os.MkdirAll(filepath.Join(src, "checks"), 0o755))
 	must(t, os.WriteFile(filepath.Join(src, "checks", "a.star"), []byte("def check(flow):\n    return []\n"), 0o644))
@@ -70,7 +65,7 @@ func TestRegistryUpgradeReplacesEntry(t *testing.T) {
 		if _, err := BuildPack(src, Manifest{Name: "p", Version: v}, &buf); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, activeDir, "test", InstallOpts{AllowUnsigned: true}); err != nil {
+		if _, _, err := reg.InstallStreamOpts(bytes.NewReader(buf.Bytes()), checksDir, "test", InstallOpts{AllowUnsigned: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

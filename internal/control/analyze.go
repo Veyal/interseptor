@@ -3,8 +3,8 @@ package control
 import (
 	"net/http"
 	"net/url"
-	"strconv"
 
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/scanner"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -21,7 +21,17 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	issues := scanner.AnalyzeWithDisabled(f, h.bodyBytes(f.ReqBodyHash), h.bodyBytes(f.ResBodyHash), h.checksDisabledSet())
+	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
+	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "response body not found")
+		return
+	}
+	issues := scanner.AnalyzeWithDisabled(f, reqBody, resBody, h.checksDisabledSet())
 	findings := make([]map[string]string, 0, len(issues))
 	for _, is := range issues {
 		findings = append(findings, map[string]string{"severity": is.Severity, "title": is.Title})
@@ -43,11 +53,7 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 }
 
 func analyzeURL(f *store.Flow) string {
-	host := f.Host
-	if !((f.Scheme == "https" && f.Port == 443) || (f.Scheme == "http" && f.Port == 80) || f.Port == 0) {
-		host += ":" + strconv.Itoa(f.Port)
-	}
-	return f.Scheme + "://" + host + orVal(f.Path, "/")
+	return f.Scheme + "://" + netutil.URLAuthority(f.Scheme, f.Host, f.Port) + orVal(f.Path, "/")
 }
 
 func queryParamNames(path string) []string {

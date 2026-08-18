@@ -21,3 +21,16 @@ func TestBuildJobsCapsDuringAccumulation(t *testing.T) {
 		t.Fatalf("small repeat: got %d jobs capped=%v, want 3/false", len(jobs), capped)
 	}
 }
+
+func TestPitchforkIgnoresPayloadListsWithoutMatchingPositions(t *testing.T) {
+	jobs, capped := buildJobs(Spec{
+		AttackType: "pitchfork",
+		Payloads:   [][]string{{"one", "two"}, {}},
+	}, 1, []string{"base"})
+	if capped {
+		t.Fatal("two pitchfork jobs should not hit the request cap")
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("jobs = %d, want 2; an extra unmatched list must not suppress valid positions", len(jobs))
+	}
+}

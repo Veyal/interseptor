@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,93 @@ func seedFlow(t *testing.T, s *Store, host, path, body string, tsMs int64) int64
 
 func peerBodiesDir(s *Store) string { return s.BodiesDir() }
 
+func TestMergeFromRejectsPeerFlowIterationErrorBeforeImport(t *testing.T) {
+	peerPath := filepath.Join(t.TempDir(), "peer.db")
+	peer, err := sql.Open("sqlite", peerPath)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	statements := []string{
+		`CREATE TABLE source (id INTEGER PRIMARY KEY)`,
+		`INSERT INTO source(id) VALUES (1), (2)`,
+		`CREATE VIEW flows AS SELECT id, id AS ts, 'GET' AS method, 'https' AS scheme,
+			'example.com' AS host, 443 AS port, '/item/' || id AS path, 'HTTP/1.1' AS http_version,
+			CASE WHEN id=2 THEN json_extract('invalid json', '$') ELSE 200 END AS status,
+			'{}' AS req_headers, '{}' AS res_headers, '' AS req_body_hash, '' AS res_body_hash,
+			0 AS req_len, 0 AS res_len, 'text/plain' AS mime, 0 AS duration_ms,
+			'' AS client_addr, '' AS error, 0 AS flags, '' AS note FROM source ORDER BY id`,
+		`CREATE TABLE findings (id INTEGER, severity TEXT, status TEXT, source TEXT, title TEXT,
+			target TEXT, detail TEXT, evidence TEXT, fix TEXT, body TEXT, impact TEXT, why TEXT,
+			cwe TEXT, environment TEXT, cvss TEXT, verification_instructions TEXT)`,
+	}
+	for _, statement := range statements {
+		if _, err := peer.Exec(statement); err != nil {
+			peer.Close()
+			t.Fatalf("prepare peer: %v", err)
+		}
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerPath, "", "peer"); err == nil || !strings.Contains(err.Error(), "iterate peer flows") {
+		t.Fatalf("MergeFrom error = %v, want peer flow iteration error", err)
+	}
+	if flows, err := local.QueryFlows(10); err != nil || len(flows) != 0 {
+		t.Fatalf("iteration failure partially imported flows=%d err=%v", len(flows), err)
+	}
+}
+
+func TestMergeFromRejectsPeerFindingIterationErrorBeforeImport(t *testing.T) {
+	peerPath := filepath.Join(t.TempDir(), "peer.db")
+	peer, err := sql.Open("sqlite", peerPath)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	statements := []string{
+		`CREATE TABLE source (id INTEGER PRIMARY KEY)`,
+		`INSERT INTO source(id) VALUES (1), (2)`,
+		`CREATE TABLE flows (id INTEGER, ts INTEGER, method TEXT, scheme TEXT, host TEXT, port INTEGER,
+			path TEXT, http_version TEXT, status INTEGER, req_headers TEXT, res_headers TEXT,
+			req_body_hash TEXT, res_body_hash TEXT, req_len INTEGER, res_len INTEGER, mime TEXT,
+			duration_ms INTEGER, client_addr TEXT, error TEXT, flags INTEGER, note TEXT)`,
+		`CREATE VIEW findings AS SELECT id,
+			CASE WHEN id=2 THEN json_extract('invalid json', '$') ELSE 'High' END AS severity,
+			'open' AS status, 'human' AS source, 'finding-' || id AS title, 'https://example.com' AS target,
+			'' AS detail, '' AS evidence, '' AS fix, '' AS body, '' AS impact, '' AS why,
+			'' AS cwe, '' AS environment, '' AS cvss, '' AS verification_instructions
+			FROM source ORDER BY id`,
+		`CREATE TABLE finding_flows (finding_id INTEGER, flow_id INTEGER, ord INTEGER, note TEXT)`,
+		`CREATE TABLE finding_tags (finding_id INTEGER, tag TEXT)`,
+	}
+	for _, statement := range statements {
+		if _, err := peer.Exec(statement); err != nil {
+			peer.Close()
+			t.Fatalf("prepare peer: %v", err)
+		}
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerPath, "", "peer"); err == nil || !strings.Contains(err.Error(), "iterate peer findings") {
+		t.Fatalf("MergeFrom error = %v, want peer finding iteration error", err)
+	}
+	if findings, err := local.ListFindings("", "", ""); err != nil || len(findings) != 0 {
+		t.Fatalf("iteration failure partially imported findings=%d err=%v", len(findings), err)
+	}
+}
+
 func TestMergeFromRejectsBodyWhoseContentDoesNotMatchFilename(t *testing.T) {
 	peerDir := t.TempDir()
 	peer, err := Open(peerDir)
@@ -70,6 +158,99 @@ func TestMergeFromRejectsBodyWhoseContentDoesNotMatchFilename(t *testing.T) {
 	}
 	if flows, _ := local.QueryFlows(10); len(flows) != 0 {
 		t.Fatalf("corrupt merge mutated flows: %d", len(flows))
+	}
+}
+
+func TestMergeFromRollsBackFlowWhenProvenanceTagFails(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerID := seedFlow(t, peer, "example.com", "/", "", 1000)
+	if err := peer.SetFlowNote(peerID, "peer note"); err != nil {
+		peer.Close()
+		t.Fatal(err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.db.Exec(`CREATE TRIGGER reject_merge_tag BEFORE INSERT ON flow_tags
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err == nil {
+		t.Fatal("MergeFrom reported success after provenance tag failure")
+	}
+	flows, err := local.QueryFlows(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 0 {
+		t.Fatalf("failed merge left %d flow(s), want transactional rollback", len(flows))
+	}
+	if _, err := local.db.Exec(`DROP TRIGGER reject_merge_tag`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err != nil {
+		t.Fatalf("retry after removing failure: %v", err)
+	}
+	flows, err = local.QueryFlows(10)
+	if err != nil || len(flows) != 1 {
+		t.Fatalf("retry flows = %d, err = %v", len(flows), err)
+	}
+	if err := local.AttachTags(flows); err != nil {
+		t.Fatal(err)
+	}
+	if flows[0].Note != "peer note" || len(flows[0].Tags) != 1 || flows[0].Tags[0] != "peer-alice" {
+		t.Fatalf("merged metadata = note %q, tags %v", flows[0].Note, flows[0].Tags)
+	}
+}
+
+func TestMergeFromRollsBackFindingWhenTagInsertFails(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peer.CreateFinding(&Finding{Title: "peer finding", Tags: []string{"api"}}); err != nil {
+		peer.Close()
+		t.Fatal(err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.db.Exec(`CREATE TRIGGER reject_merged_finding_tag BEFORE INSERT ON finding_tags
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err == nil {
+		t.Fatal("MergeFrom reported success after finding-tag failure")
+	}
+	findings, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("failed merge left %d finding(s), want transactional rollback", len(findings))
 	}
 }
 
@@ -164,6 +345,9 @@ func TestMergeFromRejectsFlowReferencingMissingBody(t *testing.T) {
 		t.Fatalf("open local: %v", err)
 	}
 	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing body") {
+		t.Fatalf("MergePreview error=%v, want missing body", err)
+	}
 	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing body") {
 		t.Fatalf("MergeFrom error=%v, want missing body", err)
 	}
@@ -369,6 +553,9 @@ func TestMergeFromRejectsFindingReferencingMissingImageBody(t *testing.T) {
 		t.Fatalf("open local: %v", err)
 	}
 	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("MergePreview error=%v, want missing image body", err)
+	}
 	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("MergeFrom error=%v, want missing image body", err)
 	}
@@ -378,6 +565,65 @@ func TestMergeFromRejectsFindingReferencingMissingImageBody(t *testing.T) {
 	}
 	if len(findings) != 0 {
 		t.Fatalf("missing-image merge inserted %d finding(s)", len(findings))
+	}
+}
+
+func TestMergePreviewRejectsMalformedFindingBody(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{Title: "Malformed", Target: "https://example.com"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	if _, err := peer.db.Exec(`UPDATE findings SET body='{bad json' WHERE id=?`, findingID); err != nil {
+		t.Fatalf("corrupt finding body: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "invalid body") {
+		t.Fatalf("MergePreview error=%v, want invalid finding body", err)
+	}
+}
+
+func TestMergeFromValidatesNormalizedFindingImageBlocks(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{Title: "Evidence", Target: "https://example.com"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	missingHash := strings.Repeat("f", 64)
+	body := `[{"type":"IMAGE","hash":"` + missingHash + `","mime":"image/png"}]`
+	if _, err := peer.db.Exec(`UPDATE findings SET body=? WHERE id=?`, body, findingID); err != nil {
+		t.Fatalf("set noncanonical image body: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing image body") {
+		t.Fatalf("MergeFrom error=%v, want missing normalized image body", err)
+	}
+	if findings, err := local.ListFindings("", "", ""); err != nil || len(findings) != 0 {
+		t.Fatalf("invalid image merge imported findings=%d err=%v", len(findings), err)
 	}
 }
 
@@ -419,6 +665,104 @@ func TestMergePreviewMatchesFirstMergeCounts(t *testing.T) {
 	}
 	if stats.FlowsAdded != prev.FlowsAdded || stats.FindingsAdded != prev.FindingsAdded {
 		t.Fatalf("merge %+v != preview %+v", stats, prev)
+	}
+}
+
+func TestMergePreviewAccountsForDuplicatesWithinPeer(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	seedFlow(t, peer, "example.com", "/same", "same body", 1000)
+	seedFlow(t, peer, "example.com", "/same", "same body", 1000)
+	for range 2 {
+		if _, err := peer.CreateFinding(&Finding{
+			Severity: "High", Source: "human", Title: "Duplicate", Target: "https://example.com/same", Detail: "same detail",
+		}); err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	preview, err := local.MergePreview(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergePreview: %v", err)
+	}
+	if preview.FlowsAdded != 1 || preview.FlowsSkipped != 1 || preview.FindingsAdded != 1 || preview.FindingsSkipped != 1 {
+		t.Fatalf("preview = %+v, want one add and one skip for each duplicate kind", preview)
+	}
+	merged, err := local.MergeFrom(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+	if preview.FlowsAdded != merged.FlowsAdded || preview.FlowsSkipped != merged.FlowsSkipped ||
+		preview.FindingsAdded != merged.FindingsAdded || preview.FindingsSkipped != merged.FindingsSkipped {
+		t.Fatalf("preview %+v does not match merge %+v", preview, merged)
+	}
+}
+
+func TestMergePreviewDoesNotRecountExistingBodies(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	seedFlow(t, peer, "example.com", "/body", "shared response", 1000)
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peerBodiesDir(peer)
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+
+	preview, err := local.MergePreview(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergePreview: %v", err)
+	}
+	if preview.BodiesAdded != 0 {
+		t.Fatalf("BodiesAdded = %d, want 0 for content already present", preview.BodiesAdded)
+	}
+}
+
+func TestMergePreviewRejectsInvalidBodyArchiveEntry(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peer.Close()
+	peerBodies := filepath.Join(peerDir, "bodies")
+	invalid := strings.Repeat("z", 64)
+	invalidPath := filepath.Join(peerBodies, invalid[:2], invalid[2:4], invalid)
+	if err := os.MkdirAll(filepath.Dir(invalidPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(invalidPath, []byte("not a body hash"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "invalid body archive entry") {
+		t.Fatalf("MergePreview error = %v, want invalid body archive entry", err)
 	}
 }
 

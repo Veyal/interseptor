@@ -27,7 +27,7 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 	// captured traffic (host is a substring match; search matches path/host/method).
 	host := r.URL.Query().Get("host")
 	search := r.URL.Query().Get("search")
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit, Host: host, Search: search, ExcludeFlags: store.FlagIntruder | store.FlagActiveScan})
+	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: limit, Host: host, Search: search, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -59,7 +59,16 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		if !h.sc.InScope(f) { // focus the scanner on in-scope traffic only
 			continue
 		}
-		req, res := h.bodyBytes(f.ReqBodyHash), h.bodyBytes(f.ResBodyHash)
+		req, err := h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "request body not found")
+			return
+		}
+		res, err := h.bodyBytesResult(f.ResBodyHash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "response body not found")
+			return
+		}
 		all = append(all, scanner.AnalyzeWithDisabled(f, req, res, disabled)...)
 
 		if len(checks) > 0 {
@@ -162,7 +171,7 @@ func (h *scannerAPI) scannerTargetsWithBatch(w http.ResponseWriter, _ *http.Requ
 		Limit:        batch + 1,
 		SortKey:      "id",
 		SortDir:      -1,
-		ExcludeFlags: store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags: store.FlagIntruder,
 	}
 	counts := make(map[string]int64)
 	for {

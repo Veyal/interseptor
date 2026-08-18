@@ -35,6 +35,27 @@ func newHub(t *testing.T) (*Hub, *store.Store, *intercept.Engine) {
 	return h, s, eng
 }
 
+func TestLoadFlowClassifiesLookupFailures(t *testing.T) {
+	h, st, _ := newHub(t)
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/flows/1", nil)
+	missingReq.SetPathValue("id", "1")
+	missingRec := httptest.NewRecorder()
+	if _, ok := h.loadFlow(missingRec, missingReq); ok || missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing lookup: ok=%v status=%d, want false/404", ok, missingRec.Code)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	failureReq := httptest.NewRequest(http.MethodGet, "/api/flows/1", nil)
+	failureReq.SetPathValue("id", "1")
+	failureRec := httptest.NewRecorder()
+	if _, ok := h.loadFlow(failureRec, failureReq); ok || failureRec.Code != http.StatusInternalServerError || !strings.Contains(failureRec.Body.String(), "internal server error") {
+		t.Fatalf("storage failure: ok=%v status=%d body=%q, want false/scrubbed 500", ok, failureRec.Code, failureRec.Body.String())
+	}
+}
+
 // A loopback request must not be able to relocate the process to an arbitrary
 // path via /api/project/switch — only plain project names are accepted.
 func TestSwitchProjectRejectsPaths(t *testing.T) {
@@ -114,6 +135,32 @@ func TestSwitchProjectAcceptsExplicitPath(t *testing.T) {
 	}
 	if code, msg := postPath(root); code != http.StatusBadRequest {
 		t.Fatalf("drive root %q: expected 400, got %d (%s)", root, code, msg)
+	}
+}
+
+func TestSwitchProjectRejectsTrailingJSONBeforeScheduling(t *testing.T) {
+	h, _, _ := newHub(t)
+	fired := make(chan string, 1)
+	h.SwitchProject = func(target string) error {
+		fired <- target
+		return nil
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/project/switch", "application/json",
+		strings.NewReader(`{"target":"client-a"}{}`))
+	if err != nil {
+		t.Fatalf("POST project switch: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	select {
+	case target := <-fired:
+		t.Fatalf("project switch scheduled after rejected command: %q", target)
+	case <-time.After(350 * time.Millisecond):
 	}
 }
 
@@ -340,7 +387,7 @@ func TestActivityFeed(t *testing.T) {
 		h.recordMCPActivity(mcp.Activity{Tool: tool, Summary: summary, OK: ok, Result: "r", Ms: 12})
 	}
 	record("send_request", "method=POST url=/login", true)
-	record("active_scan", "target=https://x", true)
+	record("start_intruder", "target=https://x", true)
 
 	resp, err := http.Get(ts.URL + "/api/activity")
 	if err != nil {
@@ -354,7 +401,7 @@ func TestActivityFeed(t *testing.T) {
 	if len(out.Activity) != 2 {
 		t.Fatalf("expected 2 activity items, got %d", len(out.Activity))
 	}
-	if out.Activity[0].Tool != "active_scan" { // newest first
+	if out.Activity[0].Tool != "start_intruder" { // newest first
 		t.Fatalf("expected newest-first, got %q", out.Activity[0].Tool)
 	}
 	if out.Activity[0].ID == 0 || out.Activity[0].TS == 0 {
@@ -464,6 +511,24 @@ func TestFlowRawRequest(t *testing.T) {
 	}
 }
 
+func TestFlowRawRejectsMissingBodyEvidence(t *testing.T) {
+	h, st, _ := newHub(t)
+	id, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com", Path: "/submit",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/raw?side=req", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).getFlowRaw(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+}
+
 func TestFlowBodyDownload(t *testing.T) {
 	h, s, _ := newHub(t)
 	payload := `{"large":true}`
@@ -494,6 +559,111 @@ func TestFlowBodyDownload(t *testing.T) {
 	disp := resp.Header.Get("Content-Disposition")
 	if !strings.Contains(disp, "flow-"+itoa(id)+"-req.json") {
 		t.Fatalf("content-disposition = %q", disp)
+	}
+}
+
+type chunkTrackingWriter struct {
+	header   http.Header
+	writes   int
+	maxWrite int
+	total    int
+}
+
+func (w *chunkTrackingWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (*chunkTrackingWriter) WriteHeader(int) {}
+
+func (w *chunkTrackingWriter) Write(p []byte) (int, error) {
+	w.writes++
+	w.total += len(p)
+	if len(p) > w.maxWrite {
+		w.maxWrite = len(p)
+	}
+	return len(p), nil
+}
+
+func TestFlowBodyDownloadStreamsIdentityBodies(t *testing.T) {
+	h, s, _ := newHub(t)
+	payload := bytes.Repeat([]byte("x"), 256<<10)
+	hash, n := (&projectAPI{h}).storeBody(payload)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Host: "example.com", Path: "/upload",
+		ReqBodyHash: hash, ReqLen: n,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=req", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := &chunkTrackingWriter{}
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.total != len(payload) {
+		t.Fatalf("wrote %d bytes, want %d", rec.total, len(payload))
+	}
+	if rec.writes <= 1 || rec.maxWrite > 64<<10 {
+		t.Fatalf("writes=%d maxWrite=%d, want chunked streaming writes", rec.writes, rec.maxWrite)
+	}
+}
+
+func TestFlowBodyDownloadStreamsUnsupportedEncodings(t *testing.T) {
+	h, s, _ := newHub(t)
+	payload := bytes.Repeat([]byte("x"), 256<<10)
+	hash, n := (&projectAPI{h}).storeBody(payload)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/archive",
+		ResHeaders:  map[string][]string{"Content-Encoding": {"custom"}},
+		ResBodyHash: hash, ResLen: n,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=res", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := &chunkTrackingWriter{}
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.total != len(payload) {
+		t.Fatalf("wrote %d bytes, want %d", rec.total, len(payload))
+	}
+	if rec.writes <= 1 || rec.maxWrite > 64<<10 {
+		t.Fatalf("writes=%d maxWrite=%d, want chunked streaming writes", rec.writes, rec.maxWrite)
+	}
+}
+
+func TestBodyBytesUpToReportsOverflowWithoutReturningPrefix(t *testing.T) {
+	h, _, _ := newHub(t)
+	hash, _ := (&projectAPI{h}).storeBody(bytes.Repeat([]byte("x"), 32))
+	body, overflow, err := h.bodyBytesUpTo(hash, 16)
+	if err != nil {
+		t.Fatalf("bodyBytesUpTo: %v", err)
+	}
+	if !overflow || body != nil {
+		t.Fatalf("overflow=%v body=%q, want true/nil", overflow, body)
+	}
+}
+
+func TestFlowBodyMissingBlobDoesNotSetDownloadHeaders(t *testing.T) {
+	h, s, _ := newHub(t)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/missing",
+		ResBodyHash: strings.Repeat("a", 64), Mime: "application/json",
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=res", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "" {
+		t.Fatalf("Content-Disposition=%q on error response", got)
 	}
 }
 
@@ -550,6 +720,89 @@ func TestRejectBadRuleRegex(t *testing.T) {
 	}
 }
 
+func TestRuleMutationsRejectTrailingJSONBeforeChangingRules(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	t.Run("create", func(t *testing.T) {
+		body := `{"type":"req-header","match":"X-Test: .*","replace":"X-Test: new","enabled":true}{}`
+		resp, err := http.Post(ts.URL+"/api/rules", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST rule: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		rules, err := st.ListRules()
+		if err != nil {
+			t.Fatalf("ListRules: %v", err)
+		}
+		if len(rules) != 0 {
+			t.Fatalf("rules changed after rejected create: %+v", rules)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		id, err := st.CreateRule(&store.Rule{Enabled: true, Type: "req-header", Match: "X-Test: old", Replace: "X-Test: old"})
+		if err != nil {
+			t.Fatalf("CreateRule: %v", err)
+		}
+		body := `{"type":"req-header","match":"X-Test: new","replace":"X-Test: new","enabled":true}{}`
+		req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/rules/"+itoa(id), strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT rule: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		rules, err := st.ListRules()
+		if err != nil {
+			t.Fatalf("ListRules: %v", err)
+		}
+		if len(rules) != 1 || rules[0].ID != id || rules[0].Match != "X-Test: old" || rules[0].Replace != "X-Test: old" {
+			t.Fatalf("rule changed after rejected update: %+v", rules)
+		}
+	})
+}
+
+func TestRuleAndScopeUpdatesRejectMissingIDs(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "rewrite rule", path: "/api/rules/999", body: `{"type":"req-header","match":"X-Test: .*","replace":"X-Test: value","enabled":true}`},
+		{name: "scope rule", path: "/api/scope/999", body: `{"action":"include","host":"example.com","enabled":true}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPut, ts.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("PUT: %v", err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+			}
+		})
+	}
+}
+
 func TestInterceptToggle(t *testing.T) {
 	h, st, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())
@@ -567,6 +820,79 @@ func TestInterceptToggle(t *testing.T) {
 		t.Fatal(err)
 	} else if ok {
 		t.Fatal("intercept enabled state must be session-only")
+	}
+}
+
+func TestInterceptTogglesRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	h, _, eng := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, path := range []string{"/api/intercept/toggle", "/api/intercept/response/toggle"} {
+		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(`{"enabled":true}{}`))
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("POST %s status = %d, want 400", path, resp.StatusCode)
+		}
+	}
+	if eng.Enabled() {
+		t.Fatal("trailing JSON enabled request interception")
+	}
+	if eng.ResponseEnabled() {
+		t.Fatal("trailing JSON enabled response interception")
+	}
+}
+
+func TestInterceptFilterPersistenceFailureKeepsLiveState(t *testing.T) {
+	h, st, eng := newHub(t)
+	if err := eng.SetInterceptFilter(true, "header", "old-value"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/intercept/filter",
+		strings.NewReader(`{"enabled":true,"target":"url","pattern":"new-value"}`))
+	rec := httptest.NewRecorder()
+	(&interceptAPI{h}).setInterceptFilter(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	enabled, target, pattern := eng.InterceptFilter()
+	if !enabled || target != "header" || pattern != "old-value" {
+		t.Fatalf("live filter changed after persistence failure: enabled=%v target=%q pattern=%q", enabled, target, pattern)
+	}
+}
+
+func TestSettingsRejectTrailingJSONBeforeApplyingRuntimeChanges(t *testing.T) {
+	h, st, _ := newHub(t)
+	var applied int
+	h.SetCaptureScopeOnly = func(bool) { applied++ }
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings",
+		strings.NewReader(`{"captureScopeOnly":true}{}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if applied != 0 {
+		t.Fatalf("runtime settings callback called %d times, want 0", applied)
+	}
+	if _, ok, err := st.GetSetting("capture.scopeOnly"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("trailing JSON persisted capture.scopeOnly")
 	}
 }
 
@@ -617,6 +943,32 @@ func TestRepeaterSendAndHistory(t *testing.T) {
 	json.NewDecoder(pr.Body).Decode(&prox)
 	if len(prox.Flows) != 0 {
 		t.Fatalf("repeater flow should be excluded from proxy history, got %d", len(prox.Flows))
+	}
+}
+
+func TestRepeaterRejectsTrailingJSONBeforeSending(t *testing.T) {
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		io.WriteString(w, "unexpected")
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	body := `{"method":"GET","url":"` + target.URL + `","headers":"","body":""}{}`
+	resp, err := http.Post(ts.URL+"/api/repeater/send", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("repeater send: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if hits != 0 {
+		t.Fatalf("target received %d requests, want 0", hits)
 	}
 }
 
@@ -769,6 +1121,55 @@ func TestScopeFiltersHistoryAndScanner(t *testing.T) {
 	if n := flowCount(t, ts.URL+"/api/flows"); n != 2 {
 		t.Fatalf("unfiltered history should still show all 2, got %d", n)
 	}
+}
+
+func TestScopeMutationsRejectTrailingJSONBeforeChangingRules(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+		resp, err := http.Post(ts.URL+"/api/scope", "application/json",
+			strings.NewReader(`{"action":"include","host":"example.com","enabled":true}{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
+		rules, err := st.ListScopeRules()
+		if err != nil || len(rules) != 0 || h.sc.HasIncludes() {
+			t.Fatalf("rejected create changed scope: rules=%v liveIncludes=%v err=%v", rules, h.sc.HasIncludes(), err)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "old.example.com", Enabled: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.refreshScope()
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+		req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/scope/"+itoa(id),
+			strings.NewReader(`{"action":"include","host":"new.example.com","enabled":true}{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
+		rules, err := st.ListScopeRules()
+		if err != nil || len(rules) != 1 || rules[0].Host != "old.example.com" {
+			t.Fatalf("rejected update changed scope: rules=%v err=%v", rules, err)
+		}
+	})
 }
 
 func flowCount(t *testing.T, url string) int {

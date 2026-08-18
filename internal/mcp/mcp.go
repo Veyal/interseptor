@@ -171,11 +171,11 @@ func mcpInstructions() string {
 		"SETUP: check_readiness (structured JSON blockers: OOB, scope, auth identities, login macro) → fix blockers → scope_from_url → ca_info + route traffic through proxy. Re-run check_readiness if list_flows/scans come back empty.\n\n" +
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
 		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
-		"SCAN: run_scanner (passive) → active_scan arm:true inScope:true csrfAware:true → cross_host_token_replay mode:auto for SSO/JWT apps → oob_* for blind callbacks.\n\n" +
+		"SCAN: run_scanner (passive) → inspect list_issues and relevant flows → use send_request, start_intruder, authz_run, cross_host_token_replay, and oob_* deliberately for confirmation and blind callbacks.\n\n" +
 		"RECORD: write findings point-first — create_finding with title (+ impact/why/target when known; tags for report scope e.g. cms|website|app|api|out-of-scope) → add_finding_poc for Before/Action/After flows → render_flow_preview for HTTP PNG evidence → add_finding_image only for real browser/device screenshots. Keep body as a short PoC timeline (text → flow → text → image), never a wall of prose. Prefer attaching flows/images over pasting raw HTTP into detail/evidence.\n\n" +
 		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
-		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, active scan arm, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
+		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
 		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text) and render_flow_preview to attach HTTP PNG screenshots for report-ready evidence. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
 		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
 }
@@ -796,7 +796,7 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 // registerTools wires every tool to a control-API endpoint.
 func (s *Server) registerTools() {
 	s.add("list_flows",
-		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder/ActiveScan traffic is visible (History UI hides those by default). Pass includeTools:false for History-shaped results only.",
+		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
 			"host":         p("string", "substring"),
 			"method":       pt("string"),
@@ -805,7 +805,7 @@ func (s *Server) registerTools() {
 			"status":       p("integer", "class 1-5 (4=4xx)"),
 			"tag":          p("string", "filter by tag (exact, case-insensitive)"),
 			"tlsFailed":    p("boolean", "only flows where TLS MITM failed (SSL pinning / untrusted CA)"),
-			"includeTools": p("boolean", "include Repeater/Intruder/ActiveScan flows (default true for agents; false = History UI filter)"),
+			"includeTools": p("boolean", "include Repeater/Intruder and other tool-generated flows (default true for agents; false = History UI filter)"),
 			"limit":        p("integer", "default 50"),
 		}),
 		func(a map[string]any) (string, error) {
@@ -1630,38 +1630,6 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodDelete, "/api/checks/"+url.PathEscape(argStr(a, "id")), nil)
 		})
 
-	// Active twin of the passive check tools: these confirm a vuln with real probes.
-	s.add("list_active_checks",
-		"List custom ACTIVE Starlark checks (id, source, disabled). They fire only when you arm & run an active scan.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.apiGet("/api/active-checks") })
-
-	s.add("test_active_check",
-		"Compile+run an ACTIVE Starlark check against one injection point of a flow WITHOUT saving — sends a few real, scope-enforced probes. Returns a finding or a note. Omit flowId for the latest in-scope flow. Shape: def check(point, baseline, probe): ... r = probe(payload); return [finding(...)] if ... else []. point has kind/name/value; r has status/body/headers/header(n); baseline is the un-mutated response. Builtins: probe, finding, re_search, json_decode/encode, b64decode/encode, url_decode/encode, hash, hmac.",
-		obj(map[string]any{
-			"source": p("string", "Starlark source"),
-			"flowId": p("integer", "default latest in-scope"),
-		}, "source"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/active-checks/test", map[string]any{"source": argStr(a, "source"), "flowId": argInt(a, "flowId", 0)})
-		})
-
-	s.add("save_active_check",
-		"Save an ACTIVE Starlark check by id (letters/digits/-/_); must compile. Fires on armed active scans. test_active_check first.",
-		obj(map[string]any{
-			"id":     pt("string"),
-			"source": p("string", "Starlark source"),
-		}, "id", "source"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPut, "/api/active-checks/"+url.PathEscape(argStr(a, "id")), map[string]any{"source": argStr(a, "source")})
-		})
-
-	s.add("delete_active_check", "Delete a custom ACTIVE check by id.",
-		obj(map[string]any{"id": pt("string")}, "id"),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodDelete, "/api/active-checks/"+url.PathEscape(argStr(a, "id")), nil)
-		})
-
 	// Project-scoped message codecs: app-layer encrypt/decrypt for History/Repeater.
 	s.add("list_codecs",
 		"List project Starlark message codecs (id, source, meta, compile error). Used to decrypt/encrypt app payloads in History/Repeater — not Content-Encoding and not the one-shot Decoder tool.",
@@ -1906,34 +1874,6 @@ func (s *Server) registerTools() {
 			})
 		})
 
-	s.add("active_scan",
-		"ACTIVE scan — sends real attack payloads (reflected XSS, SQLi, SSTI, open redirect, path traversal, timing OS-cmd-injection) to an in-scope target. Authorized targets only. arm=true confirms authorization (session gate, required once). Target one flowId, or inScope=true for all in-scope endpoints. Async — poll active_scan_state.",
-		obj(map[string]any{
-			"arm":         p("boolean", "confirm authorization + enable"),
-			"flowId":      p("integer", "scan one flow's endpoint"),
-			"inScope":     p("boolean", "scan all in-scope endpoints"),
-			"maxRequests": p("integer", "probe budget (default 2000)"),
-			"csrfAware":   p("boolean", "Laravel CSRF bootstrap + skip endpoints after 419 storms (default true)"),
-		}),
-		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/activescan/start", map[string]any{
-				"arm": argBool(a, "arm", false), "flowId": argInt(a, "flowId", 0),
-				"inScope": argBool(a, "inScope", false), "maxRequests": argInt(a, "maxRequests", 0),
-				"csrfAware": argBool(a, "csrfAware", true),
-			})
-		})
-
-	s.add("active_scan_state", "Active-scan progress + confirmed findings.",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) {
-			out, err := s.apiGet("/api/activescan")
-			return boundJSON(out, 200), err
-		})
-
-	s.add("active_scan_stop", "Stop the running active scan (kill switch).",
-		obj(map[string]any{}),
-		func(a map[string]any) (string, error) { return s.api(http.MethodPost, "/api/activescan/stop", nil) })
-
 	s.add("decode",
 		"Encode/decode a string. op: base64encode/base64decode, urlencode/urldecode, hexencode/hexdecode, htmlencode/htmldecode, jwtdecode, smart (auto-detect one layer).",
 		obj(map[string]any{
@@ -2131,7 +2071,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("check_readiness",
-		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, tls_intercept (pinning/CA detection), OOB, auth identities, login macro, active-scan arm state. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
+		"Pre-flight setup checklist (structured JSON): proxy, scope, traffic, tls_intercept (pinning/CA detection), OOB, auth identities, and login macro. Returns ready + blockers with fix hints. Run at session start or when list_flows/scans are empty.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			raw, err := s.apiGet("/api/readiness")
@@ -2455,7 +2395,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("set_login_macro_from_flow",
-		"Capture a flow's request as the login macro (CSRF/session refresh before active scan).",
+		"Capture a flow's request as the login macro for refreshing CSRF/session state before authenticated testing.",
 		obj(map[string]any{
 			"flowId":      pt("integer"),
 			"enabled":     p("boolean", "default true"),

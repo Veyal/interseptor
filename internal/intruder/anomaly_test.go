@@ -235,8 +235,8 @@ func TestMedianHelper(t *testing.T) {
 		{nil, 0},
 		{[]int64{}, 0},
 		{[]int64{7}, 7},
-		{[]int64{3, 1, 2}, 2},        // odd: middle of sorted [1,2,3]
-		{[]int64{4, 2, 3, 1}, 2},     // even: (2+3)/2=2
+		{[]int64{3, 1, 2}, 2},              // odd: middle of sorted [1,2,3]
+		{[]int64{4, 2, 3, 1}, 2},           // even: (2+3)/2=2
 		{[]int64{100, 200, 300, 400}, 250}, // even average
 	}
 	for _, tc := range cases {

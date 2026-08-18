@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// AI-originated sends carry FlagAI on top of their Repeater/Intruder/ActiveScan
+// AI-originated sends carry FlagAI on top of their Repeater/Intruder
 // flag. History excludes those flags but must still show AI traffic, so
 // IncludeFlags overrides ExcludeFlags: a row with any IncludeFlags bit is kept
 // even when an ExcludeFlags bit also matches.

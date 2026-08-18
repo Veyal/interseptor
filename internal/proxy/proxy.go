@@ -821,11 +821,9 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		(!s.suppressAndroidTelemetry.Load() || !isAndroidTelemetry(flow.Host)) {
 		raw, truncated := dumpRequest(out)
 		if truncated {
-			// The body exceeds the editor buffer, so the raw dump is truncated and a
-			// round-tripped edit would forward a truncated body. Skip the hold and
-			// forward the full original stream unedited rather than silently corrupt
-			// it — a >64 MB body can't be meaningfully hand-edited anyway.
-			log.Printf("proxy: intercept bypassed for %s %s%s — body too large to edit (> %d bytes)",
+			// The body is too large or could not be read completely, so a round-tripped
+			// edit could forward a truncated body. Skip the hold and preserve the stream.
+			log.Printf("proxy: intercept bypassed for %s %s%s — body unavailable for safe editing (limit %d bytes)",
 				out.Method, flow.Host, flow.Path, maxTransformBody)
 		} else {
 			d := s.eng.HoldContext(out.Context(), flow, out, raw)
@@ -1384,15 +1382,16 @@ func headerWithHost(r *http.Request) map[string][]string {
 
 // dumpRequest renders an origin-form raw request (request line + headers + body)
 // for the intercept UI to edit. It reads and restores the body. truncated is true
-// when the body exceeded the editor buffer, in which case the returned dump holds
-// only the first maxTransformBody bytes (the full stream is restored to r.Body).
+// when the body exceeded the editor buffer or could not be read completely, in
+// which case the partial stream is restored to r.Body and interception is bypassed.
 func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
 	var body []byte
 	if r.Body != nil {
-		body, _ = io.ReadAll(io.LimitReader(r.Body, maxTransformBody+1))
-		if int64(len(body)) > maxTransformBody {
+		var readErr error
+		body, readErr = io.ReadAll(io.LimitReader(r.Body, maxTransformBody+1))
+		if readErr != nil || int64(len(body)) > maxTransformBody {
 			// Body too large to buffer for the intercept editor — restore the full
-			// stream so forwarding isn't broken; the editable dump is truncated.
+			// or unread portion so forwarding isn't replaced by an editable partial dump.
 			r.Body = restoreBody(body, r.Body)
 			truncated = true
 		} else {

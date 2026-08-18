@@ -14,7 +14,6 @@ func (h *Hub) routes() {
 	iosH := &iosAPI{h}
 	oob := &oobAPI{h}
 	az := &authzAPI{h}
-	as := &activescanAPI{h}
 	sess := &sessionAPI{h}
 	meta := &metaAPI{h}
 
@@ -25,7 +24,7 @@ func (h *Hub) routes() {
 	h.registerFindingsRoutes(fd)
 	h.registerToolsRoutes(tools)
 	h.registerScannerRoutes(scan)
-	h.registerChecksRoutes(chk, as)
+	h.registerChecksRoutes(chk)
 	h.registerProjectRoutes(proj)
 	h.registerOobRoutes(oob)
 	h.registerAuthzRoutes(az)
@@ -160,7 +159,7 @@ func (h *Hub) registerScannerRoutes(scan *scannerAPI) {
 	h.mux.HandleFunc("GET /api/scanner/report", scan.scannerReport)
 }
 
-func (h *Hub) registerChecksRoutes(chk *checksAPI, as *activescanAPI) {
+func (h *Hub) registerChecksRoutes(chk *checksAPI) {
 	h.mux.HandleFunc("GET /api/checks", chk.listChecks)
 	h.mux.HandleFunc("PUT /api/checks/disabled", chk.setChecksDisabled)
 	h.mux.HandleFunc("GET /api/checks/reference", chk.checksReference)
@@ -168,11 +167,6 @@ func (h *Hub) registerChecksRoutes(chk *checksAPI, as *activescanAPI) {
 	h.mux.HandleFunc("GET /api/checks/{id}", chk.getCheck)
 	h.mux.HandleFunc("PUT /api/checks/{id}", chk.saveCheck)
 	h.mux.HandleFunc("DELETE /api/checks/{id}", chk.deleteCheck)
-	h.mux.HandleFunc("GET /api/active-checks", chk.listActiveChecks)
-	h.mux.HandleFunc("POST /api/active-checks/test", chk.testActiveCheck)
-	h.mux.HandleFunc("GET /api/active-checks/{id}", chk.getActiveCheck)
-	h.mux.HandleFunc("PUT /api/active-checks/{id}", chk.saveActiveCheck)
-	h.mux.HandleFunc("DELETE /api/active-checks/{id}", chk.deleteActiveCheck)
 	h.mux.HandleFunc("GET /api/codecs", chk.listCodecs)
 	h.mux.HandleFunc("GET /api/codecs/reference", chk.codecsReference)
 	h.mux.HandleFunc("POST /api/codecs/test", chk.testCodec)
@@ -180,11 +174,6 @@ func (h *Hub) registerChecksRoutes(chk *checksAPI, as *activescanAPI) {
 	h.mux.HandleFunc("GET /api/codecs/{id}", chk.getCodec)
 	h.mux.HandleFunc("PUT /api/codecs/{id}", chk.saveCodec)
 	h.mux.HandleFunc("DELETE /api/codecs/{id}", chk.deleteCodec)
-	h.mux.HandleFunc("GET /api/activescan", as.asGet)
-	h.mux.HandleFunc("GET /api/activescan/history", as.activescanHistory)
-	h.mux.HandleFunc("POST /api/activescan/arm", as.asArm)
-	h.mux.HandleFunc("POST /api/activescan/start", as.asStart)
-	h.mux.HandleFunc("POST /api/activescan/stop", as.asStop)
 }
 
 func (h *Hub) registerPacksRoutes() {
@@ -204,6 +193,7 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("GET /api/notes/images/{id}", proj.getNotesImage)
 	h.mux.HandleFunc("GET /api/export/har", proj.exportHAR)
 	h.mux.HandleFunc("POST /api/import/har", proj.importHAR)
+	h.mux.HandleFunc("POST /api/import/burp", proj.importBurp)
 	h.mux.HandleFunc("GET /api/export/project", proj.exportProject)
 	h.mux.HandleFunc("POST /api/import/project", proj.importProject)
 	h.mux.HandleFunc("GET /api/export/full", proj.exportFull)

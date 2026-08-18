@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -19,21 +20,50 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 	}
 	defer peer.Close()
 
+	peerBodies := map[string]struct{}{}
 	if peerBodiesDir != "" {
-		_ = filepath.WalkDir(peerBodiesDir, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+		err := filepath.WalkDir(peerBodiesDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
 				return nil
 			}
 			name := d.Name()
-			if len(name) != 64 {
+			if strings.HasPrefix(name, ".tmp-") {
 				return nil
 			}
-			local := filepath.Join(s.BodiesDir(), name)
+			if !isContentHash(name) {
+				return fmt.Errorf("invalid body archive entry %q", p)
+			}
+			rel, relErr := filepath.Rel(peerBodiesDir, p)
+			if relErr != nil || filepath.Clean(rel) != filepath.Join(name[:2], name[2:4], name) {
+				return fmt.Errorf("invalid body archive layout %q", rel)
+			}
+			actual, digestErr := bodyFileDigest(p)
+			if digestErr != nil {
+				return digestErr
+			}
+			if actual != name {
+				return fmt.Errorf("body hash mismatch for %s: got %s", name, actual)
+			}
+			peerBodies[name] = struct{}{}
+			local := s.bodyPath(name)
 			if _, err := os.Stat(local); err != nil {
 				stats.BodiesAdded++
 			}
 			return nil
 		})
+		if err != nil {
+			return stats, err
+		}
+	}
+	bodyAvailable := func(hash string) bool {
+		if info, err := os.Stat(s.bodyPath(hash)); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+		_, ok := peerBodies[hash]
+		return ok
 	}
 
 	seenFlows, err := s.flowSignatures(s.db)
@@ -59,10 +89,25 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 		f.TS = time.UnixMilli(tsMs)
 		_ = json.Unmarshal([]byte(reqH), &f.ReqHeaders)
 		_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
-		if _, ok := seenFlows[flowSig(f)]; ok {
+		for _, bodyHash := range []string{f.ReqBodyHash, f.ResBodyHash} {
+			if bodyHash == "" {
+				continue
+			}
+			if !isContentHash(bodyHash) {
+				rows.Close()
+				return stats, fmt.Errorf("invalid body hash %q referenced by peer flow %d", bodyHash, f.ID)
+			}
+			if !bodyAvailable(bodyHash) {
+				rows.Close()
+				return stats, fmt.Errorf("missing body %s referenced by peer flow %d", bodyHash, f.ID)
+			}
+		}
+		sig := flowSig(f)
+		if _, ok := seenFlows[sig]; ok {
 			stats.FlowsSkipped++
 		} else {
 			stats.FlowsAdded++
+			seenFlows[sig] = f.ID
 		}
 	}
 	rows.Close()
@@ -86,10 +131,37 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 			frows.Close()
 			return stats, err
 		}
-		if seenFindings[findingSig(f)] {
+		normalizedBody, err := NormalizeFindingBody(f.Body)
+		if err != nil {
+			frows.Close()
+			return stats, fmt.Errorf("invalid body referenced by peer finding %d: %w", f.ID, err)
+		}
+		var blocks []blockRecord
+		if normalizedBody != "" {
+			if err := json.Unmarshal([]byte(normalizedBody), &blocks); err != nil {
+				frows.Close()
+				return stats, fmt.Errorf("decode peer finding %d body: %w", f.ID, err)
+			}
+		}
+		for _, block := range blocks {
+			if block.Type != "image" {
+				continue
+			}
+			if !isContentHash(block.Hash) {
+				frows.Close()
+				return stats, fmt.Errorf("invalid image body hash %q referenced by peer finding %d", block.Hash, f.ID)
+			}
+			if !bodyAvailable(block.Hash) {
+				frows.Close()
+				return stats, fmt.Errorf("missing image body %s referenced by peer finding %d", block.Hash, f.ID)
+			}
+		}
+		sig := findingSig(f)
+		if seenFindings[sig] {
 			stats.FindingsSkipped++
 		} else {
 			stats.FindingsAdded++
+			seenFindings[sig] = true
 		}
 	}
 	frows.Close()

@@ -91,6 +91,29 @@ func TestParseBase64EncodedBody(t *testing.T) {
 	}
 }
 
+func TestParseRejectsJSONThatIsNotHAR(t *testing.T) {
+	for _, doc := range []string{`{}`, `{"not":"har"}`, `{"log":{"version":"1.2"}}`} {
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Fatalf("Parse(%s) succeeded, want missing HAR structure error", doc)
+		}
+	}
+	if entries, err := Parse([]byte(`{"log":{"version":"1.2","entries":[]}}`)); err != nil || len(entries) != 0 {
+		t.Fatalf("valid empty HAR: entries=%v err=%v", entries, err)
+	}
+}
+
+func TestParseRejectsUnsafeEntryDurations(t *testing.T) {
+	for _, elapsed := range []string{"-1", "9223372036855", "1e300"} {
+		doc := `{"log":{"version":"1.2","entries":[{` +
+			`"startedDateTime":"2020-01-01T00:00:00Z","time":` + elapsed + `,` +
+			`"request":{"method":"GET","url":"https://example.com/","httpVersion":"HTTP/1.1","headers":[]},` +
+			`"response":{"status":200,"httpVersion":"HTTP/1.1","headers":[],"content":{"size":0,"mimeType":"text/plain","text":""}}}]}}`
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Fatalf("Parse accepted unsafe entry time %s", elapsed)
+		}
+	}
+}
+
 // A flow that errored before its scheme was known (Scheme == "") must still
 // produce a valid absolute URL, not "://host".
 func TestBuildDefaultsEmptyScheme(t *testing.T) {
@@ -112,5 +135,16 @@ func TestBuildOmitsDefaultPort(t *testing.T) {
 	}
 	if entries[0].URL != "http://x.com/" {
 		t.Fatalf("default port should be omitted, got %q", entries[0].URL)
+	}
+}
+
+func TestBuildFormatsIPv6URLAuthority(t *testing.T) {
+	flows := []*store.Flow{{Method: "GET", Scheme: "https", Host: "2001:db8::1", Port: 8443, Path: "/v1", HTTPVersion: "HTTP/1.1", Status: 200}}
+	entries, err := Parse(Build(flows, func(string) []byte { return nil }))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if entries[0].URL != "https://[2001:db8::1]:8443/v1" {
+		t.Fatalf("IPv6 URL = %q", entries[0].URL)
 	}
 }

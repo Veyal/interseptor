@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +172,38 @@ func TestControlBodySizeCapped(t *testing.T) {
 	}
 }
 
+func TestArchiveUploadPathsUseStreamingArchiveCap(t *testing.T) {
+	old := maxRequestBody
+	maxRequestBody = 32
+	defer func() { maxRequestBody = old }()
+
+	h, _, _ := newHub(t)
+	drain := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			httpErr(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	guarded := h.securityGuard(drain)
+
+	for _, path := range []string{"/api/import/full", "/api/merge/file", "/api/packs/install"} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1"+path, strings.NewReader(strings.Repeat("a", 64)))
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("%s status = %d, want archive body to bypass %d-byte generic cap", path, rec.Code, maxRequestBody)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/notes", strings.NewReader(strings.Repeat("a", 64)))
+	rec := httptest.NewRecorder()
+	guarded.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("normal route status = %d, want generic body cap", rec.Code)
+	}
+}
+
 // Repeater/Intruder/WS must refuse a target that points at Interseptor's own
 // control listener, so the tool can't be coerced into attacking its own API.
 func TestSendRefusesOwnListener(t *testing.T) {
@@ -193,6 +226,9 @@ func TestSendRefusesOwnListener(t *testing.T) {
 	}
 	if c := post("/api/ws/send", `{"url":"ws://127.0.0.1:9966/api/events"}`); c != http.StatusForbidden {
 		t.Fatalf("ws → own listener: got %d, want 403", c)
+	}
+	if c := post("/api/ws/send", `{"url":"ws://127.0.0.1:9966/api/events"}{}`); c != http.StatusBadRequest {
+		t.Fatalf("ws trailing JSON: got %d, want 400 before opening a socket", c)
 	}
 	if c := post("/api/intruder/start", `{"target":"http://localhost:9966/x","template":"GET / HTTP/1.1\r\nHost: x\r\n\r\n","attackType":"null","repeat":1}`); c != http.StatusForbidden {
 		t.Fatalf("intruder → own listener: got %d, want 403", c)

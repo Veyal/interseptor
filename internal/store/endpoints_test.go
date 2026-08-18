@@ -37,7 +37,7 @@ func TestEndpointsAggregate(t *testing.T) {
 	s.InsertFlow(&Flow{TS: time.UnixMilli(4), Method: "POST", Host: "a.com", Path: "/y", Status: 201})
 	s.InsertFlow(&Flow{TS: time.UnixMilli(5), Method: "GET", Host: "b.com", Path: "/z", Status: 500, Flags: FlagIntruder})
 
-	eps, _, err := s.Endpoints(EndpointFilter{ExcludeFlags: FlagIntruder | FlagActiveScan})
+	eps, _, err := s.Endpoints(EndpointFilter{ExcludeFlags: FlagIntruder})
 	if err != nil {
 		t.Fatalf("Endpoints: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestEndpointsHideNoiseOnly(t *testing.T) {
 	s.InsertFlow(&Flow{TS: time.UnixMilli(4), Method: "GET", Host: "app.test", Path: "/mixed", Status: 404})
 	s.InsertFlow(&Flow{TS: time.UnixMilli(5), Method: "GET", Host: "app.test", Path: "/mixed", Status: 200})
 
-	all, _, err := s.Endpoints(EndpointFilter{ExcludeFlags: FlagIntruder | FlagActiveScan})
+	all, _, err := s.Endpoints(EndpointFilter{ExcludeFlags: FlagIntruder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestEndpointsHideNoiseOnly(t *testing.T) {
 	}
 
 	filtered, _, err := s.Endpoints(EndpointFilter{
-		ExcludeFlags:  FlagIntruder | FlagActiveScan,
+		ExcludeFlags:  FlagIntruder,
 		HideNoiseOnly: true,
 	})
 	if err != nil {

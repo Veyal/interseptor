@@ -32,11 +32,23 @@ session-header reuse, and report contamination.
 |---|---|---|
 | Portable project JSON | Sharing selected operational state with another Interseptor instance | Imports additively into the current project; duplicate data is skipped. |
 | HAR | Interchange with browser and proxy tooling | Imports flows into History; some Interseptor-only metadata is not represented. |
+| Burp saved-items XML | Migrating Proxy history or Target traffic from Burp Suite | Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. |
 | Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project. |
 | Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
 
 The full archive intentionally excludes the global CA and custom checks. Transfer those separately
 only when authorized and necessary.
+
+### Migrate traffic from Burp Suite
+
+In Burp, select the HTTP items to migrate in Proxy history or the Target tool, use **Save items**, and
+save the XML export. In Interseptor, open **Settings → Project & Data → Import Burp XML**. The import
+merges valid HTTP/HTTPS items into the current project's History and keeps existing flows.
+
+Native `.burp` project files are not accepted. PortSwigger documents project-file management but does
+not publish the native persistence format as an interchange format; exporting selected items as XML
+is the supported migration boundary. Keep exports protected as engagement evidence, and review the
+reported imported/skipped counts before deleting the Burp project.
 
 ## Retention and deletion
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,9 +23,8 @@ type Store struct {
 	// projects). When nil, API-key ops use db (project-local, legacy/tests).
 	keys *sql.DB
 
-	// notesMu guards the read-modify-write in AppendNote so concurrent callers
-	// (two AI agents, or an agent + a human editing in the UI) can't race between
-	// reading the current notes and writing the appended result — see AppendNote.
+	// notesMu serializes full notebook replacement and AppendNote's read-modify-write
+	// so an append cannot overwrite a replacement from a stale snapshot.
 	notesMu sync.Mutex
 
 	// bodyMu coordinates finalized flow bodies with GCBodies until their hashes
@@ -77,8 +77,7 @@ const (
 	FlagWebSocket      int64 = 1 << 5  // a protocol-upgrade (WebSocket) handshake, tunneled transparently
 	FlagRepeater       int64 = 1 << 6  // a request sent from the Repeater module
 	FlagIntruder       int64 = 1 << 7  // a request sent from the Intruder module
-	FlagImported       int64 = 1 << 8  // a flow imported from a HAR file (not proxied)
-	FlagActiveScan     int64 = 1 << 9  // a probe sent by the active scanner
+	FlagImported       int64 = 1 << 8  // a flow imported from an external archive (not proxied)
 	FlagAI             int64 = 1 << 10 // request originated from the AI assistant (over MCP)
 	FlagAuthz          int64 = 1 << 11 // a request replayed by the authorization (access-control) tester
 	FlagDiscovery      int64 = 1 << 12 // an endpoint found by the content-discovery (forced-browse) engine
@@ -354,6 +353,12 @@ func (s *Store) Close() error {
 
 // InsertFlow stores a new flow and sets f.ID to the assigned row id.
 func (s *Store) InsertFlow(f *Flow) (int64, error) {
+	return s.insertFlow(f, nil)
+}
+
+// insertFlow stores a flow and any initial tags in one transaction. Importers
+// use this so mandatory provenance cannot be lost after the row is published.
+func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
@@ -371,12 +376,12 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 			 (ts, method, scheme, host, port, path, http_version, status,
 			  req_headers, res_headers, original_req_headers, original_res_headers,
 			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
-			  req_len, res_len, mime, duration_ms, client_addr, error, flags)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
 		string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
-		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags)
+		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
 	if err != nil {
 		return 0, err
 	}
@@ -388,6 +393,11 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
 		id, f.Host, f.Path, f.Method, f.Note); err != nil {
 		return 0, err
+	}
+	for _, tag := range NormalizeTags(tags) {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, id, tag); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
@@ -413,7 +423,7 @@ func (s *Store) UpdateFlow(f *Flow) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(
+	res, err := tx.Exec(
 		`UPDATE flows SET
 		   method=?, path=?, status=?, req_headers=?, res_headers=?,
 		   original_req_headers=?, original_res_headers=?,
@@ -423,8 +433,16 @@ func (s *Store) UpdateFlow(f *Flow) error {
 		 WHERE id=?`,
 		f.Method, f.Path, f.Status, string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash, f.ReqLen, f.ResLen,
-		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID); err != nil {
+		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID)
+	if err != nil {
 		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	if _, err := tx.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
 		return err
@@ -437,14 +455,27 @@ func (s *Store) UpdateFlow(f *Flow) error {
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.
 func (s *Store) SetFlowNote(id int64, note string) error {
-	var host, path, method, oldNote string
-	if err := s.db.QueryRow(`SELECT host, path, method, note FROM flows WHERE id=?`, id).Scan(&host, &path, &method, &oldNote); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`UPDATE flows SET note=? WHERE id=?`, note, id); err != nil {
+	defer tx.Rollback()
+	var host, path, method string
+	if err := tx.QueryRow(`SELECT host, path, method FROM flows WHERE id=?`, id).Scan(&host, &path, &method); err != nil {
 		return err
 	}
-	return s.replaceFlowFTS(id, host, path, method, oldNote, host, path, method, note)
+	if _, err := tx.Exec(`UPDATE flows SET note=? WHERE id=?`, note, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
+		id, host, path, method, note); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // DeleteFlows removes the given flows and returns how many rows were deleted.
@@ -550,6 +581,30 @@ func (s *Store) SetSetting(key, value string) error {
 		`INSERT INTO settings(key, value) VALUES(?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// SetSettings atomically upserts a group of related settings. Callers that
+// apply the same configuration to live components should do so only after this
+// returns successfully, preventing partially persisted/runtime-divergent state.
+func (s *Store) SetSettings(values map[string]string) error {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, key := range keys {
+		if _, err := tx.Exec(
+			`INSERT INTO settings(key, value) VALUES(?, ?)
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, values[key]); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetSetting returns the value and whether it was present.

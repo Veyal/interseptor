@@ -2,9 +2,11 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,8 @@ import (
 	"github.com/Veyal/interseptor/internal/harx"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const legacyActiveScanBit int64 = 1 << 9
 
 // Tag endpoints: set tags on a flow, see them on the flow + list filter, list
 // distinct tags with counts, and set a color.
@@ -83,6 +87,148 @@ func TestTagEndpoints(t *testing.T) {
 	}
 }
 
+func TestFlowMetadataMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	put := func(t *testing.T, url, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT: %v", err)
+		}
+		return resp
+	}
+
+	t.Run("note", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if err := st.SetFlowNote(id, "old note"); err != nil {
+			t.Fatalf("SetFlowNote: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/flows/"+itoa(id)+"/note", `{"note":"new note"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		flow, err := st.GetFlow(id)
+		if err != nil {
+			t.Fatalf("GetFlow: %v", err)
+		}
+		if flow.Note != "old note" {
+			t.Fatalf("note = %q, want old note", flow.Note)
+		}
+	})
+
+	t.Run("flow tags", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if _, err := st.SetFlowTags(id, []string{"old"}); err != nil {
+			t.Fatalf("SetFlowTags: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/flows/"+itoa(id)+"/tags", `{"tags":["new"]}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		tags, err := st.FlowTags(id)
+		if err != nil {
+			t.Fatalf("FlowTags: %v", err)
+		}
+		if len(tags) != 1 || tags[0] != "old" {
+			t.Fatalf("tags = %v, want [old]", tags)
+		}
+	})
+
+	t.Run("tag color", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if _, err := st.SetFlowTags(id, []string{"recon"}); err != nil {
+			t.Fatalf("SetFlowTags: %v", err)
+		}
+		if err := st.SetTagColor("recon", "#112233"); err != nil {
+			t.Fatalf("SetTagColor: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/tags/recon/color", `{"color":"#445566"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		tags, err := st.DistinctTags()
+		if err != nil {
+			t.Fatalf("DistinctTags: %v", err)
+		}
+		if len(tags) != 1 || tags[0].Tag != "recon" || tags[0].Color != "#112233" {
+			t.Fatalf("tag state changed after rejected color update: %+v", tags)
+		}
+	})
+}
+
+func TestBulkFlowTagsRollBackWholeSelectionOnFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	first, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "one.example.com", Path: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "two.example.com", Path: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_second_bulk_tag BEFORE INSERT ON flow_tags
+		WHEN NEW.flow_id = ` + itoa(second) + ` AND NEW.tag = 'batch'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/flows/tags", "application/json",
+		strings.NewReader(`{"flowIds":[`+itoa(first)+`,`+itoa(second)+`],"add":["batch"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	for _, id := range []int64{first, second} {
+		tags, err := st.FlowTags(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tags) != 0 {
+			t.Errorf("flow %d retained partial tags %v", id, tags)
+		}
+	}
+}
+
 // Importing a HAR must invalidate the endpoints cache, otherwise the Map tab
 // keeps showing the pre-import aggregate until the next live capture.
 func TestImportHARInvalidatesEndpointsCache(t *testing.T) {
@@ -122,30 +268,32 @@ func TestImportHARInvalidatesEndpointsCache(t *testing.T) {
 	}
 }
 
-// A malformed JSON body is rejected with 400 rather than silently decoding to a
-// zero value and flipping state (e.g. disarming the scanner). An empty body is
-// still accepted (io.EOF tolerated) — that must not regress to 400.
-func TestMalformedJSONBodyRejected(t *testing.T) {
+func TestRemovedActiveRESTRoutesAreUnavailable(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
-	post := func(path, body string) int {
-		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/activescan"},
+		{http.MethodPost, "/api/activescan/start"},
+		{http.MethodGet, "/api/active-checks"},
+		{http.MethodPost, "/api/active-checks/test"},
+	} {
+		req, err := http.NewRequest(tc.method, ts.URL+tc.path, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			t.Fatalf("POST %s: %v", path, err)
+			t.Fatalf("%s %s: %v", tc.method, tc.path, err)
 		}
 		resp.Body.Close()
-		return resp.StatusCode
-	}
-
-	if c := post("/api/activescan/arm", "{not json"); c != http.StatusBadRequest {
-		t.Fatalf("malformed arm body: got %d, want 400", c)
-	}
-	if c := post("/api/activescan/arm", ""); c != http.StatusOK {
-		t.Fatalf("empty arm body should still work (io.EOF tolerated): got %d, want 200", c)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s %s: status = %d, want 404", tc.method, tc.path, resp.StatusCode)
+		}
 	}
 }
 
@@ -155,7 +303,7 @@ func TestEndpointsEndpoint(t *testing.T) {
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/x", Status: 200})
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/x", Status: 404})
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(3), Method: "POST", Host: "a.com", Path: "/y", Status: 201})
-	s.InsertFlow(&store.Flow{TS: time.UnixMilli(4), Method: "GET", Host: "a.com", Path: "/z", Status: 200, Flags: store.FlagActiveScan})
+	s.InsertFlow(&store.Flow{TS: time.UnixMilli(4), Method: "GET", Host: "a.com", Path: "/z", Status: 200, Flags: store.FlagIntruder})
 
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
@@ -174,7 +322,7 @@ func TestEndpointsEndpoint(t *testing.T) {
 	}
 	json.NewDecoder(resp.Body).Decode(&out)
 	if len(out.Endpoints) != 2 {
-		t.Fatalf("got %d endpoints, want 2 (scan traffic excluded, hits collapsed)", len(out.Endpoints))
+		t.Fatalf("got %d endpoints, want 2 (tool traffic excluded, hits collapsed)", len(out.Endpoints))
 	}
 }
 
@@ -326,12 +474,12 @@ func TestListFlowsBadLimit(t *testing.T) {
 	}
 }
 
-// TestListFlowsExcludesActiveScanByDefault verifies History-shaped GET /api/flows
-// hides FlagActiveScan (and Repeater/Intruder) rows while host_stats still counts them.
-func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
+// TestListFlowsPreservesLegacyActiveRows verifies old active-scan rows remain
+// readable after the active-scan flag loses its special interpretation.
+func TestListFlowsPreservesLegacyActiveRows(t *testing.T) {
 	h, s, _ := newHub(t)
 	proxyID, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/proxy", Status: 200})
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	legacyID, _ := s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -350,8 +498,8 @@ func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Flows) != 1 || out.Flows[0].ID != proxyID || out.Flows[0].Path != "/proxy" {
-		t.Fatalf("default list should return only proxy flow, got %+v", out.Flows)
+	if len(out.Flows) != 2 || out.Flows[0].ID != legacyID || out.Flows[0].Path != "/scan" || out.Flows[1].ID != proxyID {
+		t.Fatalf("default list should preserve both flows, got %+v", out.Flows)
 	}
 
 	statsResp, err := http.Get(ts.URL + "/api/hosts/stats")
@@ -370,12 +518,12 @@ func TestListFlowsExcludesActiveScanByDefault(t *testing.T) {
 	}
 }
 
-// TestListFlowsIncludeToolsQuery returns tool traffic (active-scan/repeater/intruder)
-// when includeTools=1 is set — the escape hatch MCP agents need after a scan.
+// TestListFlowsIncludeToolsQuery returns Repeater/Intruder traffic when
+// includeTools=1 is set — the escape hatch MCP agents need after a tool run.
 func TestListFlowsIncludeToolsQuery(t *testing.T) {
 	h, s, _ := newHub(t)
 	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/proxy", Status: 200})
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(2), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -397,12 +545,11 @@ func TestListFlowsIncludeToolsQuery(t *testing.T) {
 	}
 }
 
-// TestListFlowsEmptyWhenOnlyActiveScan documents issue #5: a session that is
-// only tool traffic yields an empty History list (truncated:false) unless
-// includeTools=1 is set.
-func TestListFlowsEmptyWhenOnlyActiveScan(t *testing.T) {
+// TestListFlowsShowsLegacyActiveRowByDefault verifies a legacy active-scan row
+// is treated as ordinary history after active-scan filtering is removed.
+func TestListFlowsShowsLegacyActiveRowByDefault(t *testing.T) {
 	h, s, _ := newHub(t)
-	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: store.FlagActiveScan})
+	_, _ = s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "a.com", Path: "/scan", Status: 200, Flags: legacyActiveScanBit})
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 
@@ -418,8 +565,8 @@ func TestListFlowsEmptyWhenOnlyActiveScan(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Flows) != 0 || out.Truncated {
-		t.Fatalf("default list of only active-scan flows should be empty truncated=false, got %+v", out)
+	if len(out.Flows) != 1 || out.Truncated {
+		t.Fatalf("default list should preserve the legacy row with truncated=false, got %+v", out)
 	}
 
 	resp2, err := http.Get(ts.URL + "/api/flows?includeTools=1")

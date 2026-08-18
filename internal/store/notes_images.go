@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -10,7 +11,15 @@ import (
 	"time"
 )
 
-const maxNotesImageBytes = 5 << 20 // 5 MiB per pasted screenshot
+const (
+	maxNotesImageBytes    = 5 << 20 // 5 MiB per pasted screenshot
+	notesImageUploadGrace = 5 * time.Minute
+)
+
+// ErrInvalidNotes marks caller-authored notebook/image content errors. Storage
+// failures deliberately do not wrap it, allowing the control plane to scrub
+// database details behind a 500 response.
+var ErrInvalidNotes = errors.New("invalid notes content")
 
 // allowedNotesImageMIME is the raster-image allowlist for stored notebook
 // images. Anything outside it (text/html, image/svg+xml, …) is coerced to an
@@ -47,14 +56,23 @@ var (
 
 // InsertNotesImage stores one embedded notebook image and returns its row id.
 func (s *Store) InsertNotesImage(mime string, data []byte) (int64, error) {
+	return insertNotesImage(s.db, mime, data)
+}
+
+type notesImageExecutor interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+func insertNotesImage(db notesImageExecutor, mime string, data []byte) (int64, error) {
 	if len(data) == 0 {
-		return 0, fmt.Errorf("empty image")
+		return 0, fmt.Errorf("%w: empty image", ErrInvalidNotes)
 	}
 	if len(data) > maxNotesImageBytes {
-		return 0, fmt.Errorf("image too large (max %d bytes)", maxNotesImageBytes)
+		return 0, fmt.Errorf("%w: image too large (max %d bytes)", ErrInvalidNotes, maxNotesImageBytes)
 	}
 	mime = SanitizeNotesImageMIME(mime)
-	res, err := s.db.Exec(
+	res, err := db.Exec(
 		`INSERT INTO notes_images (ts, mime, data) VALUES (?, ?, ?)`,
 		time.Now().UnixMilli(), mime, data)
 	if err != nil {
@@ -72,6 +90,10 @@ func (s *Store) GetNotesImage(id int64) (mime string, data []byte, err error) {
 // NormalizeNotesMarkdown replaces inline data-URL images with /api/notes/images/{id}
 // references backed by SQLite blobs, so the markdown stays small.
 func (s *Store) NormalizeNotesMarkdown(notes string) (string, error) {
+	return normalizeNotesMarkdown(notes, s.InsertNotesImage)
+}
+
+func normalizeNotesMarkdown(notes string, insert func(string, []byte) (int64, error)) (string, error) {
 	if !strings.Contains(notes, "data:image/") {
 		return notes, nil
 	}
@@ -88,10 +110,10 @@ func (s *Store) NormalizeNotesMarkdown(notes string) (string, error) {
 		raw = strings.ReplaceAll(raw, "\r", "")
 		data, err := base64.StdEncoding.DecodeString(raw)
 		if err != nil {
-			firstErr = fmt.Errorf("invalid pasted image data: %w", err)
+			firstErr = fmt.Errorf("%w: invalid pasted image data: %v", ErrInvalidNotes, err)
 			return match
 		}
-		id, err := s.InsertNotesImage(subs[2], data)
+		id, err := insert(subs[2], data)
 		if err != nil {
 			firstErr = err
 			return match
@@ -103,6 +125,14 @@ func (s *Store) NormalizeNotesMarkdown(notes string) (string, error) {
 
 // GCNotesImages deletes notebook images no longer referenced in the markdown.
 func (s *Store) GCNotesImages(notes string) error {
+	return gcNotesImages(s.db, notes)
+}
+
+func gcNotesImages(db notesImageExecutor, notes string) error {
+	return gcNotesImagesBefore(db, notes, int64(^uint64(0)>>1))
+}
+
+func gcNotesImagesBefore(db notesImageExecutor, notes string, cutoffMillis int64) error {
 	used := map[int64]bool{}
 	for _, m := range notesImgRefRE.FindAllStringSubmatch(notes, -1) {
 		if len(m) != 2 {
@@ -114,7 +144,7 @@ func (s *Store) GCNotesImages(notes string) error {
 		}
 		used[id] = true
 	}
-	rows, err := s.db.Query(`SELECT id FROM notes_images`)
+	rows, err := db.Query(`SELECT id FROM notes_images WHERE ts <= ?`, cutoffMillis)
 	if err != nil {
 		return err
 	}
@@ -133,7 +163,7 @@ func (s *Store) GCNotesImages(notes string) error {
 		return err
 	}
 	for _, id := range orphans {
-		if _, err := s.db.Exec(`DELETE FROM notes_images WHERE id = ?`, id); err != nil {
+		if _, err := db.Exec(`DELETE FROM notes_images WHERE id = ?`, id); err != nil {
 			return err
 		}
 	}
@@ -142,14 +172,31 @@ func (s *Store) GCNotesImages(notes string) error {
 
 // PersistNotes saves normalized markdown and drops orphaned images.
 func (s *Store) PersistNotes(notes string) (string, error) {
-	normalized, err := s.NormalizeNotesMarkdown(notes)
+	s.notesMu.Lock()
+	defer s.notesMu.Unlock()
+	return s.persistNotes(notes)
+}
+
+func (s *Store) persistNotes(notes string) (string, error) {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return "", err
 	}
-	if err := s.GCNotesImages(normalized); err != nil {
+	defer tx.Rollback()
+	normalized, err := normalizeNotesMarkdown(notes, func(mime string, data []byte) (int64, error) {
+		return insertNotesImage(tx, mime, data)
+	})
+	if err != nil {
 		return "", err
 	}
-	if err := s.SetSetting("project.notes", normalized); err != nil {
+	if err := gcNotesImagesBefore(tx, normalized, time.Now().Add(-notesImageUploadGrace).UnixMilli()); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(`INSERT INTO settings(key, value) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "project.notes", normalized); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	return normalized, nil
@@ -185,7 +232,7 @@ func (s *Store) AppendNote(text string) error {
 	if notes != "" {
 		joined = notes + "\n\n" + text
 	}
-	_, err = s.PersistNotes(joined)
+	_, err = s.persistNotes(joined)
 	return err
 }
 

@@ -43,7 +43,7 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 		Host:         host,
 		SortKey:      "id",
 		SortDir:      -1,
-		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
 	}
 
 	var flows []*store.Flow
@@ -70,7 +70,11 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 		for _, n := range queryParamNames(fl.Path) {
 			h.noteParam(agg, fl, n, "query")
 		}
-		reqBody := h.bodyBytes(fl.ReqBodyHash)
+		reqBody, err := h.bodyBytesResult(fl.ReqBodyHash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "request body not found")
+			return
+		}
 		ct := strings.ToLower(http.Header(fl.ReqHeaders).Get("Content-Type"))
 		if strings.Contains(ct, "application/x-www-form-urlencoded") {
 			if vals, perr := url.ParseQuery(string(reqBody)); perr == nil {
@@ -105,7 +109,7 @@ func (h *flowAPI) listParams(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Host < out[j].Host })
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"hosts": out,
+		"hosts":        out,
 		"flowsScanned": len(flows),
 	})
 }

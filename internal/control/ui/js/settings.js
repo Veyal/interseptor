@@ -812,6 +812,21 @@ if(importHARFile)importHARFile.onchange=async e=>{
   }catch(err){toast('HAR import: '+err.message);}
   e.target.value='';
 };
+const importBurpBtn=$('#importBurpBtn');if(importBurpBtn)importBurpBtn.onclick=()=>$('#importBurpFile').click();
+const importBurpFile=$('#importBurpFile');
+if(importBurpFile)importBurpFile.onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const confirmed=await uiConfirm('Import Burp XML',
+    'Merge traffic from <b style="color:var(--accent)">'+esc(f.name||'this Burp export')+'</b> into this project\'s History? Existing flows are kept.','Import','btn accent','');
+  if(!confirmed){e.target.value='';return;}
+  try{
+    const r=await api('/api/import/burp',{method:'POST',headers:{'content-type':'application/xml'},body:f});
+    const n=r.imported||0,skipped=r.skipped||0;
+    toast('Burp import: '+n+' entr'+(n===1?'y':'ies')+' merged'+(skipped?' · '+skipped+' skipped':''));
+    loadFlows();
+  }catch(err){toast('Burp import: '+err.message);}
+  e.target.value='';
+};
 // ---- project switching (close current, open another / a new path) ----
 // Each project entry is {name, path}: path is empty for a named project under
 // GlobalDir/projects (switch via {target: name}), or set for an external

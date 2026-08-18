@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,30 @@ import (
 
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+func TestGetFindingClassifiesLookupFailures(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &findingsAPI{h}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/findings/1", nil)
+	missingReq.SetPathValue("id", "1")
+	missingRec := httptest.NewRecorder()
+	api.getFinding(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing status=%d, want 404", missingRec.Code)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	failureReq := httptest.NewRequest(http.MethodGet, "/api/findings/1", nil)
+	failureReq.SetPathValue("id", "1")
+	failureRec := httptest.NewRecorder()
+	api.getFinding(failureRec, failureReq)
+	if failureRec.Code != http.StatusInternalServerError || !strings.Contains(failureRec.Body.String(), "internal server error") {
+		t.Fatalf("storage failure status=%d body=%q, want scrubbed 500", failureRec.Code, failureRec.Body.String())
+	}
+}
 
 func TestFindingsEndpoints(t *testing.T) {
 	h, s, _ := newHub(t)
@@ -128,6 +153,134 @@ func TestFindingsEndpoints(t *testing.T) {
 	r6.Body.Close()
 	if r6.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: got %d, want 204", r6.StatusCode)
+	}
+}
+
+func TestFindingMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	request := func(t *testing.T, method, url, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		return resp
+	}
+
+	t.Run("create", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings", `{"title":"new finding"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		findings, err := st.ListFindings("", "", "")
+		if err != nil {
+			t.Fatalf("ListFindings: %v", err)
+		}
+		if len(findings) != 0 {
+			t.Fatalf("findings changed after rejected create: %+v", findings)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.CreateFinding(&store.Finding{Title: "old title"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPatch, ts.URL+"/api/findings/"+strconv.FormatInt(id, 10), `{"title":"new title"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(id)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if got.Title != "old title" {
+			t.Fatalf("title = %q, want old title", got.Title)
+		}
+	})
+
+	t.Run("flow evidence", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		flowID, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/flows", fmt.Sprintf(`{"flowId":%d}{}`, flowID))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(findingID)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if len(got.Flows) != 0 || len(got.Blocks) != 0 {
+			t.Fatalf("evidence changed after rejected attach: flows=%+v blocks=%+v", got.Flows, got.Blocks)
+		}
+	})
+
+	t.Run("image evidence", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/images", `{"mime":"image/png","data":"aGVsbG8="}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(findingID)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if len(got.Blocks) != 0 {
+			t.Fatalf("image evidence changed after rejected attach: %+v", got.Blocks)
+		}
+	})
+}
+
+func TestAttachFindingImageRejectsMissingFindingBeforeStoringBlob(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/findings/999/images", "application/json",
+		strings.NewReader(`{"mime":"image/png","data":"aGVsbG8="}`))
+	if err != nil {
+		t.Fatalf("POST image: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("hello")))
+	if st.BodyExists(hash) {
+		t.Fatalf("missing-finding upload left orphan image body %s", hash)
 	}
 }
 

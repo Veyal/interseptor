@@ -1,5 +1,7 @@
 package store
 
+import "database/sql"
+
 // ScopeRule is one target-scope rule. Action is "include" | "exclude". Empty
 // host/path/scheme and port 0 mean "any" for that field.
 type ScopeRule struct {
@@ -49,10 +51,20 @@ func (s *Store) CreateScopeRule(r *ScopeRule) (int64, error) {
 
 // UpdateScopeRule overwrites the rule identified by r.ID.
 func (s *Store) UpdateScopeRule(r *ScopeRule) error {
-	_, err := s.db.Exec(
+	res, err := s.db.Exec(
 		`UPDATE scope_rules SET ord=?, enabled=?, action=?, host=?, path=?, scheme=?, port=? WHERE id=?`,
 		r.Ord, r.Enabled, r.Action, r.Host, r.Path, r.Scheme, r.Port, r.ID)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // DeleteScopeRule removes a scope rule by id.

@@ -94,9 +94,3 @@ More ready-to-copy examples live in [`examples/checks/`](https://github.com/Veya
 - **Isolated failures:** a check that fails to compile or errors at runtime is logged and skipped —
   it never aborts the scan or the other checks.
 
-## See also
-
-- [Writing custom **ACTIVE** checks]({{ "/custom-active-checks/" | relative_url }}) — the active twin of this page: send
-  real mutated requests with `probe(payload)` to *confirm* a vulnerability (SQLi, XSS, …), gated
-  behind arming an active scan.
-

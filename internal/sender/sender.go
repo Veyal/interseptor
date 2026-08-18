@@ -35,7 +35,7 @@ type Request struct {
 	Headers    map[string][]string
 	Body       []byte
 	Flags      int64           // e.g. store.FlagRepeater / store.FlagIntruder, OR'd onto the flow
-	Context    context.Context // optional: cancel an in-flight send (e.g. an active-scan kill switch)
+	Context    context.Context // optional: cancel an in-flight send
 	NoSession  bool            // skip the global session headers + token macro (authz replays carry their own identity)
 	retried401 bool            // internal: prevents infinite 401 re-auth loops
 }
@@ -90,7 +90,7 @@ type Sender struct {
 	sessionScope   SessionScope
 
 	login       loginState
-	refreshSess func([]Header)
+	refreshSess func([]Header) error
 
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow
@@ -236,10 +236,11 @@ func (s *Sender) applySession(req *http.Request) {
 func New(st *store.Store, cap *capture.Capturer) *Sender {
 	s := &Sender{st: st, cap: cap}
 	s.tr = &http.Transport{
-		Proxy:           s.proxyForRequest,
-		DialContext:     s.dialContext,
-		DialTLSContext:  s.dialTLSContext,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // origin testing, by design
+		Proxy:              s.proxyForRequest,
+		DialContext:        s.dialContext,
+		DialTLSContext:     s.dialTLSContext,
+		DisableCompression: true,                                  // preserve wire evidence; display/grep decode explicitly
+		TLSClientConfig:    &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // origin testing, by design
 	}
 	s.cl = &http.Client{
 		// No overall / response-header timeout — Repeater waits as long as
@@ -259,7 +260,7 @@ func (s *Sender) proxyForRequest(*http.Request) (*url.URL, error) {
 }
 
 // SetUpstreamProxy applies the same second-hop route used by captured proxy
-// traffic to Repeater, Intruder, active checks, and other Sender consumers.
+// traffic to Repeater, Intruder, and other Sender consumers.
 func (s *Sender) SetUpstreamProxy(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		s.upstream.Store(nil)
@@ -419,7 +420,7 @@ func (s *Sender) Send(r Request) (*store.Flow, error) {
 		return nil, err
 	}
 	if r.Context != nil {
-		req = req.WithContext(r.Context) // lets a caller (active-scan kill switch) abort in-flight
+		req = req.WithContext(r.Context) // lets a caller abort an in-flight send
 	}
 	// Host is deliberately kept off req.Header. In net/http, req.Host controls
 	// the wire-level Host header while req.URL remains the connection target.

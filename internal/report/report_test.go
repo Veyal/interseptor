@@ -382,7 +382,7 @@ func TestProjectIncludesFlowRequestResponseBodies(t *testing.T) {
 			Blocks: []store.FindingBlock{
 				{Type: "text", MD: "Client credentials grant returns a bearer token."},
 				{Type: "flow", FlowID: 42, Method: "POST", Host: "connect.example.com", Path: "/auth/sign-in", Status: 200,
-					Note: "minted client_credentials token",
+					Note:   "minted client_credentials token",
 					ReqRaw: "POST /auth/sign-in HTTP/1.1\r\nHost: connect.example.com\r\nContent-Type: application/json\r\n\r\n{\"grant_type\":\"client_credentials\"}",
 					ResRaw: "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"access_token\":\"tok\"}"},
 			}},

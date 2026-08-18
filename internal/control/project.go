@@ -1,8 +1,9 @@
 package control
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,23 +28,69 @@ type projectBundle struct {
 	Notes    string            `json:"notes,omitempty"`
 }
 
+const maxPortableProjectImportBytes = 128 << 20
+
+const maxProjectSwitchRequestBytes int64 = 16 << 10
+
+const portableProjectFlowPageSize = 10000
+
 func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
+	flows, err := portableProjectFlows(h.st, portableProjectFlowPageSize)
 	if err != nil {
 		httpInternalErr(w, err)
 		return
 	}
-	rules, _ := h.st.ListRules()
-	scope, _ := h.st.ListScopeRules()
-	up, _, _ := h.st.GetSetting("upstream.proxy")
-	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
-	authz, _, _ := h.st.GetSetting("authz.identities")
-	originVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
+	if err := validatePortableProjectBodies(h.st, flows); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	rules, err := h.st.ListRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	scope, err := h.st.ListScopeRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	readSetting := func(key string) (string, error) {
+		value, _, err := h.st.GetSetting(key)
+		return value, err
+	}
+	up, err := readSetting("upstream.proxy")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	upCA, err := readSetting("upstream.proxyCA")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	authz, err := readSetting("authz.identities")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	originVerify, err := readSetting(originTLSVerifySettingKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if originVerify != "1" {
 		originVerify = "0"
 	}
-	originBypass, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
-	notes, _ := h.st.LoadNotes()
+	originBypass, err := readSetting(originTLSVerifyBypassSettingKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	notes, err := h.st.LoadNotes()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	bundle := projectBundle{
 		Version: "1", HAR: json.RawMessage(harx.Build(flows, h.bodyBytes)), Rules: rules, Scope: scope, Notes: notes,
 		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz,
@@ -54,13 +101,55 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(bundle)
 }
 
+func portableProjectFlows(st *store.Store, pageSize int) ([]*store.Flow, error) {
+	var flows []*store.Flow
+	var beforeID int64
+	for {
+		page, err := st.QueryFlowsFilter(store.FlowFilter{
+			Limit:        pageSize,
+			BeforeID:     beforeID,
+			ExcludeFlags: store.FlagIntruder,
+		})
+		if err != nil {
+			return nil, err
+		}
+		flows = append(flows, page...)
+		if len(page) < pageSize {
+			return flows, nil
+		}
+		beforeID = page[len(page)-1].ID
+	}
+}
+
+func validatePortableProjectBodies(st *store.Store, flows []*store.Flow) error {
+	seen := make(map[string]struct{})
+	for _, flow := range flows {
+		for _, hash := range []string{flow.ReqBodyHash, flow.ResBodyHash} {
+			if hash == "" {
+				continue
+			}
+			if _, ok := seen[hash]; ok {
+				continue
+			}
+			seen[hash] = struct{}{}
+			rc, err := st.OpenBody(hash)
+			if err != nil {
+				return fmt.Errorf("open flow body %s: %w", hash, err)
+			}
+			if err := rc.Close(); err != nil {
+				return fmt.Errorf("close flow body %s: %w", hash, err)
+			}
+		}
+	}
+	return nil
+}
+
 // importProject merges a project into the current session (additive for flows,
 // rules, and scope; applies the upstream-proxy setting). It does not rebind the
 // proxy listener.
 func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(io.LimitReader(r.Body, 128<<20))
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	data, ok := readLimitedBody(w, r, maxPortableProjectImportBytes)
+	if !ok {
 		return
 	}
 	var bundle projectBundle
@@ -70,39 +159,52 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	flows := 0
-	if len(bundle.HAR) > 0 {
-		if entries, perr := harx.Parse(bundle.HAR); perr == nil {
-			for _, e := range entries {
-				u, err := url.Parse(e.URL)
-				if err != nil || !u.IsAbs() || u.Host == "" {
-					continue
-				}
-				ts := e.TS
-				if ts.IsZero() {
-					ts = time.Now()
-				}
-				fl := &store.Flow{
-					TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
-					Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
-					HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
-					ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
-					DurationMs: e.DurationMs, Flags: store.FlagImported,
-				}
-				fl.ReqBodyHash, fl.ReqLen = h.storeBody(e.ReqBody)
-				fl.ResBodyHash, fl.ResLen = h.storeBody(e.ResBody)
-				if _, err := h.st.InsertFlow(fl); err == nil {
-					flows++
-				}
+	if harData := bytes.TrimSpace(bundle.HAR); len(harData) > 0 && !bytes.Equal(harData, []byte("null")) {
+		entries, err := harx.Parse(harData)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, "project contains an invalid HAR: "+err.Error())
+			return
+		}
+		for _, e := range entries {
+			u, err := url.Parse(e.URL)
+			if err != nil || !u.IsAbs() || u.Host == "" {
+				continue
 			}
+			ts := e.TS
+			if ts.IsZero() {
+				ts = time.Now()
+			}
+			fl := &store.Flow{
+				TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
+				Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
+				HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
+				ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
+				DurationMs: e.DurationMs, Flags: store.FlagImported,
+			}
+			if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
+				httpInternalErr(w, err)
+				return
+			}
+			flows++
 		}
 	}
+	rulesImported := 0
 	for i := range bundle.Rules {
 		bundle.Rules[i].ID = 0
-		h.st.CreateRule(&bundle.Rules[i])
+		if _, err := h.st.CreateRule(&bundle.Rules[i]); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		rulesImported++
 	}
+	scopeImported := 0
 	for i := range bundle.Scope {
 		bundle.Scope[i].ID = 0
-		h.st.CreateScopeRule(&bundle.Scope[i])
+		if _, err := h.st.CreateScopeRule(&bundle.Scope[i]); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		scopeImported++
 	}
 	upCA, hasUpCA := bundle.Settings["upstream.proxyCA"]
 	previousUp, _, _ := h.st.GetSetting("upstream.proxy")
@@ -165,7 +267,10 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
-		_ = h.st.SetSetting("authz.identities", authz)
+		if err := h.st.SetSetting("authz.identities", authz); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
 	}
 	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok {
 		if raw != "0" && raw != "1" {
@@ -193,9 +298,11 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if strings.TrimSpace(bundle.Notes) != "" {
-		if _, err := h.st.PersistNotes(bundle.Notes); err == nil {
-			h.broadcast(map[string]any{"type": "notes.update"})
+		if _, err := h.st.PersistNotes(bundle.Notes); err != nil {
+			httpInternalErr(w, err)
+			return
 		}
+		h.broadcast(map[string]any{"type": "notes.update"})
 	}
 
 	h.refreshRules()
@@ -205,7 +312,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "flow.new"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"importedFlows": flows, "importedRules": len(bundle.Rules), "importedScope": len(bundle.Scope),
+		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
 	})
 }
 
@@ -296,8 +403,7 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 		Target string `json:"target"`
 		Path   string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxProjectSwitchRequestBytes, &in) {
 		return
 	}
 	if path := strings.TrimSpace(in.Path); path != "" {
@@ -307,14 +413,12 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		name := filepath.Base(abs)
-		rememberExternalProject(h.GlobalDir, name, abs)
+		if err := rememberExternalProject(h.GlobalDir, name, abs); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name})
-		go func() {
-			time.Sleep(300 * time.Millisecond)
-			if err := h.SwitchProject(abs); err != nil {
-				log.Printf("control: project switch to %q failed: %v", abs, err)
-			}
-		}()
+		h.scheduleProjectSwitch(abs, 300*time.Millisecond)
 		return
 	}
 	target := strings.TrimSpace(in.Target)
@@ -336,12 +440,38 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) scheduleProjectSwitch(target string, d time.Duration) {
 	h.switchMu.Lock()
 	defer h.switchMu.Unlock()
+	if h.switchClosed {
+		return
+	}
 	if h.switchTimer != nil {
 		h.switchTimer.Stop()
 	}
 	h.switchTimer = time.AfterFunc(d, func() {
-		if err := h.SwitchProject(target); err != nil {
-			log.Printf("control: project switch to %q failed: %v", target, err)
+		h.switchMu.Lock()
+		if h.switchClosed {
+			h.switchMu.Unlock()
+			return
+		}
+		h.switchTimer = nil
+		switchProject := h.SwitchProject
+		h.switchWG.Add(1)
+		h.switchMu.Unlock()
+		defer h.switchWG.Done()
+		if switchProject != nil {
+			if err := switchProject(target); err != nil {
+				log.Printf("control: project switch to %q failed: %v", target, err)
+			}
 		}
 	})
+}
+
+func (h *Hub) stopProjectSwitch() {
+	h.switchMu.Lock()
+	h.switchClosed = true
+	if h.switchTimer != nil {
+		h.switchTimer.Stop()
+		h.switchTimer = nil
+	}
+	h.switchMu.Unlock()
+	h.switchWG.Wait()
 }

@@ -114,7 +114,7 @@ type, then enter its host and port. The UI builds and validates the proxy URL; c
 separate fields so percent-encoding and special characters are handled safely.
 
 The saved route applies consistently to captured browser/device traffic, Repeater, Intruder, login
-macros, active scans, and custom-check requests. A Repeater `502` should therefore be diagnosed against
+macros, and custom-check requests. A Repeater `502` should therefore be diagnosed against
 the same upstream endpoint, credentials, DNS mode, and HTTPS-proxy CA shown in Settings.
 
 | Type | Choose it when | DNS behavior | Typical port |

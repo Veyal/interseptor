@@ -1,11 +1,12 @@
 package control
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 )
+
+const maxOOBConfigRequestBytes int64 = 16 << 10
 
 // oobBase returns the configured public base URL for OOB payloads, falling back
 // to this request's own origin (loopback — fine for local self-testing only).
@@ -63,8 +64,7 @@ func (h *oobAPI) oobSetBase(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		BaseURL string `json:"baseUrl"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxOOBConfigRequestBytes, &in) {
 		return
 	}
 	if err := h.st.SetSetting("oob.baseUrl", strings.TrimSpace(in.BaseURL)); err != nil {

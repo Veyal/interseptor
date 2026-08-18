@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,90 @@ import (
 	"testing"
 	"time"
 )
+
+func TestHumanInputMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		h, _, _ := newHub(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		req := httptest.NewRequest(http.MethodPost, "/api/human-input",
+			strings.NewReader(`{"message":"question"}{}`)).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		(&metaAPI{h}).createHumanInput(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+		if prompts := h.hi.pending(); len(prompts) != 0 {
+			t.Fatalf("prompt created after rejected command: %+v", prompts)
+		}
+	})
+
+	t.Run("respond", func(t *testing.T) {
+		h, _, _ := newHub(t)
+		prompt := h.hi.create("question", nil)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp, err := http.Post(ts.URL+"/api/human-input/"+strconv.FormatInt(prompt.ID, 10)+"/respond",
+			"application/json", strings.NewReader(`{"answer":"yes"}{}`))
+		if err != nil {
+			t.Fatalf("POST response: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got := h.hi.get(prompt.ID)
+		if got == nil || got.Answered {
+			t.Fatalf("prompt answered after rejected command: %+v", got)
+		}
+	})
+}
+
+func TestHubCloseUnblocksHumanInputHandoff(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/api/human-input",
+		strings.NewReader(`{"message":"question"}`))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		resp, err := http.DefaultClient.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		done <- err
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(h.hi.pending()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(h.hi.pending()) == 0 {
+		cancel()
+		<-done
+		t.Fatal("human-input request did not register")
+	}
+	h.Close()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("handoff returned an error during shutdown: %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		cancel()
+		<-done
+		t.Fatal("Hub.Close left human-input request blocked")
+	}
+}
 
 // The AI's request_human_input call blocks until the human answers; the answer
 // flows back, and the prompt leaves the pending list.
@@ -173,5 +258,21 @@ func TestHumanInputExpiryDoesNotClobberAnAnsweredPrompt(t *testing.T) {
 	}
 	if got.Answer != "yes" {
 		t.Fatalf("answer should be preserved, got %q", got.Answer)
+	}
+}
+
+func TestHumanInputGetReturnsStableSnapshot(t *testing.T) {
+	hi := newHumanInput()
+	p := hi.create("question", []string{"yes", "no"})
+
+	snapshot := hi.get(p.ID)
+	if snapshot == nil {
+		t.Fatal("missing prompt snapshot")
+	}
+	if !hi.answer(p.ID, "yes") {
+		t.Fatal("answer should succeed")
+	}
+	if snapshot.Answered || snapshot.Answer != "" {
+		t.Fatalf("snapshot changed after lock release: %+v", snapshot)
 	}
 }

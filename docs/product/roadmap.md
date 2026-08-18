@@ -16,7 +16,7 @@ table-stakes proxy depth**, then **(D) reach / packaging**. See [improvements.md
 
 ## ✅ Shipped (through v1.5.0)
 
-MCP (tool registry), scope, Repeater/Intruder, scanner + deterministic active scan, findings
+MCP (tool registry), scope, Repeater/Intruder, passive scanner, findings
 redesign, rule packs + check CLI + Starlark stdlib, project-scoped + project-DB UI tabs,
 Intruder Numbers / result viewer, retention, OpenAPI, mobile helpers,
 remote/tunnel pieces, HAR + full project export.

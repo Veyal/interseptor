@@ -290,10 +290,10 @@ func TestCORSCredentialsWildcard(t *testing.T) {
 		Scheme: "https", Method: "GET", Host: "api.example.com", Path: "/data", Status: 200,
 		ReqHeaders: map[string][]string(http.Header{"Origin": {"https://attacker.example"}}),
 		ResHeaders: map[string][]string(http.Header{
-			"Content-Type":                       {"application/json"},
-			"Strict-Transport-Security":          {"max-age=1"},
-			"Access-Control-Allow-Origin":        {"*"},
-			"Access-Control-Allow-Credentials":   {"true"},
+			"Content-Type":                     {"application/json"},
+			"Strict-Transport-Security":        {"max-age=1"},
+			"Access-Control-Allow-Origin":      {"*"},
+			"Access-Control-Allow-Credentials": {"true"},
 		}),
 	}
 	got := Analyze(flow, nil, []byte(`{"data":"secret"}`))
@@ -613,7 +613,7 @@ func TestMixedContentNegativeHTTPPage(t *testing.T) {
 	flow := &store.Flow{
 		Scheme: "http", Method: "GET", Host: "insecure.example.com", Path: "/page", Status: 200, Mime: "text/html",
 		ResHeaders: map[string][]string(http.Header{
-			"Content-Type": {"text/html; charset=utf-8"},
+			"Content-Type":    {"text/html; charset=utf-8"},
 			"Referrer-Policy": {"no-referrer"},
 		}),
 	}
@@ -628,9 +628,9 @@ func TestMixedContentNegativeHTTPPage(t *testing.T) {
 
 func TestOpenRedirectDetected(t *testing.T) {
 	cases := []struct {
-		name   string
-		path   string
-		loc    string
+		name string
+		path string
+		loc  string
 	}{
 		{
 			"next param with full URL",

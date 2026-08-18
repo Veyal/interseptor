@@ -1,9 +1,7 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,13 +110,12 @@ func (h *iosAPI) profileBaseURL(r *http.Request) string {
 }
 
 func (h *iosAPI) postIOSSetup(w http.ResponseWriter, r *http.Request) {
-	if h.ca == nil {
-		httpErr(w, http.StatusNotFound, "no CA")
+	var in iosRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
-	var in iosRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if h.ca == nil {
+		httpErr(w, http.StatusNotFound, "no CA")
 		return
 	}
 	dev, port, err := h.iosDeviceAndPort(in)
@@ -189,17 +186,16 @@ func (h *iosAPI) postIOSSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *iosAPI) postIOSInstallCA(w http.ResponseWriter, r *http.Request) {
+	var in iosRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
+		return
+	}
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return
 	}
 	if !ios.SimctlAvailable() {
 		httpErr(w, http.StatusBadRequest, "Xcode simctl not available — install Xcode on macOS for simulator CA automation")
-		return
-	}
-	var in iosRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
 	dev, _, err := h.iosDeviceAndPort(in)
@@ -223,8 +219,7 @@ func (h *iosAPI) postIOSInstallCA(w http.ResponseWriter, r *http.Request) {
 
 func (h *iosAPI) postIOSOpenProfile(w http.ResponseWriter, r *http.Request) {
 	var in iosRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
 	dev, port, err := h.iosDeviceAndPort(in)

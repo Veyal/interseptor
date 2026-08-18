@@ -2,7 +2,6 @@ package control
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 )
@@ -14,6 +13,7 @@ const (
 	uiRepeaterTabsKey    = "ui.repeaterTabs"
 	uiIntruderTabsKey    = "ui.intruderTabs"
 	uiIntruderPresetsKey = "ui.intruderPresets"
+	maxUIStateBytes      = 4 << 20
 )
 
 func uiStateKey(panel string) (string, bool) {
@@ -59,9 +59,8 @@ func (h *Hub) putUIState(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "unknown panel (repeater|intruder|intruder-presets)")
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20)) // 4 MiB cap
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, "bad body")
+	body, ok := readLimitedBody(w, r, maxUIStateBytes)
+	if !ok {
 		return
 	}
 	if len(strings.TrimSpace(string(body))) == 0 {

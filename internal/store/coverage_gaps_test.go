@@ -103,8 +103,8 @@ func TestGCBodies_BodyReferencedAsReqAndResHash(t *testing.T) {
 	defer s.Close()
 
 	h := writeBody(t, s, "dual-role body")
-	id1 := mustInsertFlow(t, s, "req.com", h, "", int64(len("dual-role body")), 0)   // req body
-	_ = mustInsertFlow(t, s, "res.com", "", h, 0, int64(len("dual-role body")))       // res body
+	id1 := mustInsertFlow(t, s, "req.com", h, "", int64(len("dual-role body")), 0) // req body
+	_ = mustInsertFlow(t, s, "res.com", "", h, 0, int64(len("dual-role body")))    // res body
 
 	// Delete the flow that uses it as req body.
 	if _, err := s.DeleteFlows([]int64{id1}); err != nil {
@@ -216,8 +216,9 @@ func TestQueryFlowsFilter_RequireFlags(t *testing.T) {
 	defer s.Close()
 
 	mustInsertFlow(t, s, "h", "", "", 0, 0) // flags = 0
+	const legacyActiveScanBit int64 = 1 << 9
 	if _, err := s.InsertFlow(&Flow{TS: time.UnixMilli(2), Method: "GET", Host: "h", Path: "/scan",
-		Flags: FlagActiveScan}); err != nil {
+		Flags: legacyActiveScanBit}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.InsertFlow(&Flow{TS: time.UnixMilli(3), Method: "GET", Host: "h", Path: "/repeat",
@@ -226,16 +227,16 @@ func TestQueryFlowsFilter_RequireFlags(t *testing.T) {
 	}
 
 	// RequireFlags: only rows that have at least one of these bits.
-	got, err := s.QueryFlowsFilter(FlowFilter{Limit: 10, RequireFlags: FlagActiveScan})
+	got, err := s.QueryFlowsFilter(FlowFilter{Limit: 10, RequireFlags: legacyActiveScanBit})
 	if err != nil {
 		t.Fatalf("QueryFlowsFilter: %v", err)
 	}
 	if len(got) != 1 || got[0].Path != "/scan" {
-		t.Fatalf("RequireFlags=FlagActiveScan: want 1 scan row, got %d", len(got))
+		t.Fatalf("RequireFlags=legacy active bit: want 1 scan row, got %d", len(got))
 	}
 
 	// RequireFlags with multiple bits: any match is enough.
-	got2, err := s.QueryFlowsFilter(FlowFilter{Limit: 10, RequireFlags: FlagActiveScan | FlagRepeater})
+	got2, err := s.QueryFlowsFilter(FlowFilter{Limit: 10, RequireFlags: legacyActiveScanBit | FlagRepeater})
 	if err != nil {
 		t.Fatalf("QueryFlowsFilter: %v", err)
 	}

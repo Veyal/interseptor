@@ -1,11 +1,12 @@
 package control
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/Veyal/interseptor/internal/codec"
 )
+
+const maxDecodeRequestBytes int64 = 8 << 20
 
 // decode runs one encode/decode transform over the input. A bad input returns
 // 200 with an {error} field (not 500) so the UI can show it inline.
@@ -14,8 +15,7 @@ func (h *toolsAPI) decode(w http.ResponseWriter, r *http.Request) {
 		Op    string `json:"op"`
 		Input string `json:"input"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxDecodeRequestBytes, &in) {
 		return
 	}
 	out, err := codec.Apply(in.Op, in.Input)

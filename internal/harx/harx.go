@@ -5,12 +5,13 @@ package harx
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -135,8 +136,15 @@ func Parse(data []byte) ([]Entry, error) {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(doc.Log.Version) == "" || doc.Log.Entries == nil {
+		return nil, fmt.Errorf("missing required HAR log.version or log.entries")
+	}
 	out := make([]Entry, 0, len(doc.Log.Entries))
-	for _, e := range doc.Log.Entries {
+	maxDurationMillis := float64(int64(^uint64(0)>>1) / int64(time.Millisecond))
+	for i, e := range doc.Log.Entries {
+		if e.Time < 0 || e.Time > maxDurationMillis {
+			return nil, fmt.Errorf("HAR entry %d has an unsupported elapsed time", i+1)
+		}
 		ts, _ := time.Parse(time.RFC3339Nano, e.StartedDateTime)
 		en := Entry{
 			Method: e.Request.Method, URL: e.Request.URL, HTTPVersion: e.Request.HTTPVersion,
@@ -180,11 +188,7 @@ func decodeBody(text, encoding string) []byte {
 
 func flowURL(f *store.Flow) string {
 	scheme := orVal(f.Scheme, "http") // a flow errored before the scheme is known would otherwise yield "://host"
-	host := f.Host
-	if !((scheme == "https" && f.Port == 443) || (scheme == "http" && f.Port == 80) || f.Port == 0) {
-		host = host + ":" + strconv.Itoa(f.Port)
-	}
-	return scheme + "://" + host + orVal(f.Path, "/")
+	return scheme + "://" + netutil.URLAuthority(scheme, f.Host, f.Port) + orVal(f.Path, "/")
 }
 
 func headers(h map[string][]string) []harHeader {

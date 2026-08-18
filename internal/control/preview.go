@@ -1,8 +1,9 @@
 package control
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/Veyal/interseptor/internal/preview"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxFlowPreviewRequestBytes int64 = 64 << 10
 
 // getFlowPreviewPNG renders an Interseptor-styled request/response PNG for a flow.
 // Query: side=both|req|res, pretty=0|1, layout=vertical|horizontal, theme=dark|light.
@@ -21,7 +24,7 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 	opts := previewOptsFromQuery(r)
 	pngBytes, err := h.renderFlowPreview(f, opts)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		writePreviewError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
@@ -36,6 +39,9 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 // Body: {flowId, side?, pretty?, layout?, theme?, caption?, position?}.
 func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Request) {
 	findingID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, findingID) {
+		return
+	}
 	var in struct {
 		FlowID   int64  `json:"flowId"`
 		Side     string `json:"side"`
@@ -45,8 +51,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		Caption  string `json:"caption"`
 		Position *int   `json:"position"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowPreviewRequestBytes, &in) {
 		return
 	}
 	if in.FlowID <= 0 {
@@ -54,8 +59,12 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	f, err := h.st.GetFlow(in.FlowID)
-	if err != nil || f == nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+	if err != nil {
+		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpInternalErr(w, fmt.Errorf("flow %d lookup returned nil without error", in.FlowID))
 		return
 	}
 	opts := preview.Options{
@@ -71,7 +80,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	opts.Pretty = preview.Bool(pretty)
 	pngBytes, err := h.renderFlowPreview(f, opts)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		writePreviewError(w, err)
 		return
 	}
 	hash, _, err := h.st.PutImageBytes("image/png", pngBytes)
@@ -94,7 +103,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(findingID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "finding not found")
+		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -117,15 +126,31 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 		side = preview.SideBoth
 	}
 	if side == preview.SideBoth || side == preview.SideReq {
-		req = h.rawRequest(f)
+		var err error
+		req, err = h.rawRequestVariantResult(f, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if side == preview.SideBoth || side == preview.SideRes {
-		res = h.rawResponse(f)
+		var err error
+		res, err = h.rawResponseVariantResult(f, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if opts.Title == "" {
 		opts.Title = flowPreviewTitle(f)
 	}
 	return preview.Render(req, res, opts)
+}
+
+func writePreviewError(w http.ResponseWriter, err error) {
+	if errors.Is(err, fs.ErrNotExist) {
+		httpErr(w, http.StatusNotFound, "flow body not found")
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func flowPreviewTitle(f *store.Flow) string {

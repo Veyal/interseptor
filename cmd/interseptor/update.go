@@ -84,11 +84,10 @@ Stop flags:
   --timeout 6s             grace period before force-kill (default 6s)
 
 Check flags (interseptor check <action>):
-  new <id> [--active]      scaffold a check template into ~/.interseptor/checks
+  new <id>                  scaffold a check template into ~/.interseptor/checks
   validate [files...]      compile every check; exit 1 on any error (CI gate)
   lint     [files...]      alias of validate
   test <file> --flow-json f compile + run a passive check against a flow JSON
-  --active                 target the active-checks folder / engine
 
 Examples:
   interseptor update

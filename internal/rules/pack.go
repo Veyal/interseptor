@@ -1,5 +1,5 @@
 // Package rules implements Interseptor's rule-pack format: a signed-intent
-// tarball of Starlark checks (passive and active) plus a manifest, so a
+// tarball of passive Starlark checks plus a manifest, so a
 // community can author, share, install, and remove whole bundles of checks —
 // the "OhMy" ecosystem layer over the per-check authoring API.
 //
@@ -7,7 +7,6 @@
 //
 //	manifest.json              — name, version, author, entries[] with per-file sha256
 //	checks/<id>.star           — passive checks
-//	active-checks/<id>.star    — active checks
 //
 // Integrity: every file's sha256 is recorded in the manifest at build time and
 // verified on read, so a corrupted or tampered pack is rejected before any
@@ -24,16 +23,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
 
-// KindPassive / KindActive are the two check categories a pack can carry.
-const (
-	KindPassive = "passive"
-	KindActive  = "active"
-)
+// KindPassive is the only check category a pack can carry.
+const KindPassive = "passive"
 
 // Entry is one check in a pack manifest: its category, id, and the sha256 of
 // the file bytes — verified before install so a tampered file aborts the pack.
@@ -87,7 +85,7 @@ type BuildOpts struct {
 }
 
 // BuildPack writes a pack tarball to w from the checks found under srcDir
-// (expected layout: srcDir/checks/*.star and srcDir/active-checks/*.star). The
+// (expected layout: srcDir/checks/*.star). The
 // supplied meta fills the manifest's descriptive fields; entries + hashes are
 // computed from the files. Files are written in a stable (sorted) order so two
 // builds of the same source are byte-identical.
@@ -100,12 +98,17 @@ func BuildPackOpts(srcDir string, meta Manifest, w io.Writer, opts BuildOpts) (M
 	if strings.TrimSpace(meta.Name) == "" {
 		return Manifest{}, fmt.Errorf("rules: pack name is required")
 	}
+	if _, err := os.Stat(filepath.Join(srcDir, "active-checks")); err == nil {
+		return Manifest{}, fmt.Errorf("rules: active checks are no longer supported")
+	} else if !os.IsNotExist(err) {
+		return Manifest{}, fmt.Errorf("rules: inspect active-checks: %w", err)
+	}
 	collected, err := collect(srcDir)
 	if err != nil {
 		return Manifest{}, err
 	}
 	if len(collected) == 0 {
-		return Manifest{}, fmt.Errorf("rules: no .star checks found under %s (expected checks/ and/or active-checks/)", srcDir)
+		return Manifest{}, fmt.Errorf("rules: no .star checks found under %s/checks", srcDir)
 	}
 	sort.Slice(collected, func(i, j int) bool {
 		if collected[i].Kind != collected[j].Kind {
@@ -177,22 +180,17 @@ type collected struct {
 }
 
 func (c collected) archivePath() string {
-	if c.Kind == KindActive {
-		return "active-checks/" + c.ID + ".star"
-	}
 	return "checks/" + c.ID + ".star"
 }
 
 func collect(srcDir string) ([]collected, error) {
-	var out []collected
-	for _, sub := range []struct{ dir, kind string }{{"checks", KindPassive}, {"active-checks", KindActive}} {
-		names, files, err := readStarDir(srcDir + "/" + sub.dir)
-		if err != nil {
-			return nil, fmt.Errorf("rules: read %s: %w", sub.dir, err)
-		}
-		for i, name := range names {
-			out = append(out, collected{Kind: sub.kind, ID: name, Data: files[i]})
-		}
+	names, files, err := readStarDir(filepath.Join(srcDir, "checks"))
+	if err != nil {
+		return nil, fmt.Errorf("rules: read checks: %w", err)
+	}
+	out := make([]collected, 0, len(names))
+	for i, name := range names {
+		out = append(out, collected{Kind: KindPassive, ID: name, Data: files[i]})
 	}
 	return out, nil
 }
@@ -292,7 +290,10 @@ func readPackWithLimits(r io.Reader, limits packReadLimits) (Manifest, []File, e
 	}
 	out := make([]File, 0, len(manifest.Entries))
 	for _, e := range manifest.Entries {
-		path := entryPath(e)
+		path, err := entryPath(e)
+		if err != nil {
+			return Manifest{}, nil, err
+		}
 		data, ok := files[path]
 		if !ok {
 			return Manifest{}, nil, fmt.Errorf("rules: manifest lists %s but the pack is missing it", path)
@@ -305,9 +306,9 @@ func readPackWithLimits(r io.Reader, limits packReadLimits) (Manifest, []File, e
 	return *manifest, out, nil
 }
 
-func entryPath(e Entry) string {
-	if e.Kind == KindActive {
-		return "active-checks/" + e.ID + ".star"
+func entryPath(e Entry) (string, error) {
+	if e.Kind != KindPassive {
+		return "", fmt.Errorf("rules: active checks are no longer supported")
 	}
-	return "checks/" + e.ID + ".star"
+	return "checks/" + e.ID + ".star", nil
 }

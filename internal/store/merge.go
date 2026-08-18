@@ -97,6 +97,10 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
 		pending = append(pending, pflow{f: f, peer: f.ID, note: note})
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return stats, fmt.Errorf("iterate peer flows: %w", err)
+	}
 	rows.Close()
 	for _, pf := range pending {
 		for _, bodyHash := range []string{pf.f.ReqBodyHash, pf.f.ResBodyHash} {
@@ -122,14 +126,11 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		}
 		f := pf.f
 		f.ID = 0
-		newID, err := s.InsertFlow(&f)
+		f.Note = pf.note
+		newID, err := s.insertFlow(&f, []string{tag})
 		if err != nil {
 			return stats, fmt.Errorf("insert merged flow: %w", err)
 		}
-		if pf.note != "" {
-			_ = s.SetFlowNote(newID, pf.note)
-		}
-		_, _ = s.AddFlowTags(newID, []string{tag})
 		peerToLocal[pf.peer] = newID
 		seenFlows[sig] = newID
 		stats.FlowsAdded++
@@ -159,6 +160,10 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		}
 		pendingF = append(pendingF, pfind{f: f, peerID: f.ID})
 	}
+	if err := frows.Err(); err != nil {
+		frows.Close()
+		return stats, fmt.Errorf("iterate peer findings: %w", err)
+	}
 	frows.Close()
 
 	for _, pf := range pendingF {
@@ -170,38 +175,54 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		f := pf.f
 		f.ID = 0
 		f.Body = remapBodyFlowIDs(f.Body, peerToLocal)
-		newID, err := s.CreateFinding(&f)
+		// Fold legacy/table-only PoC attachments into the body before creation;
+		// CreateFinding persists the row and body-derived attachments together.
+		ffrows, err := peer.Query(`SELECT flow_id, ord, note FROM finding_flows WHERE finding_id=? ORDER BY ord`, pf.peerID)
+		if err != nil {
+			return stats, fmt.Errorf("read peer finding flows: %w", err)
+		}
+		for ffrows.Next() {
+			var peerFlowID int64
+			var ord int
+			var note string
+			if err := ffrows.Scan(&peerFlowID, &ord, &note); err != nil {
+				ffrows.Close()
+				return stats, fmt.Errorf("scan peer finding flow: %w", err)
+			}
+			if localID, ok := peerToLocal[peerFlowID]; ok {
+				f.Body = insertFlowIntoBody(f.Body, localID, note, -1)
+			}
+		}
+		if err := ffrows.Err(); err != nil {
+			ffrows.Close()
+			return stats, fmt.Errorf("iterate peer finding flows: %w", err)
+		}
+		ffrows.Close()
+
+		// Copy finding tags (same slug model as flow tags).
+		trows, err := peer.Query(`SELECT tag FROM finding_tags WHERE finding_id=?`, pf.peerID)
+		if err != nil {
+			return stats, fmt.Errorf("read peer finding tags: %w", err)
+		}
+		for trows.Next() {
+			var tag string
+			if err := trows.Scan(&tag); err != nil {
+				trows.Close()
+				return stats, fmt.Errorf("scan peer finding tag: %w", err)
+			}
+			if tag != "" {
+				f.Tags = append(f.Tags, tag)
+			}
+		}
+		if err := trows.Err(); err != nil {
+			trows.Close()
+			return stats, fmt.Errorf("iterate peer finding tags: %w", err)
+		}
+		trows.Close()
+
+		_, err = s.CreateFinding(&f)
 		if err != nil {
 			return stats, fmt.Errorf("insert merged finding: %w", err)
-		}
-		// Re-attach PoC flows from peer finding_flows, remapped.
-		ffrows, err := peer.Query(`SELECT flow_id, ord, note FROM finding_flows WHERE finding_id=? ORDER BY ord`, pf.peerID)
-		if err == nil {
-			for ffrows.Next() {
-				var peerFlowID int64
-				var ord int
-				var note string
-				if err := ffrows.Scan(&peerFlowID, &ord, &note); err == nil {
-					if localID, ok := peerToLocal[peerFlowID]; ok {
-						_ = s.AttachFlow(newID, localID, note, -1)
-					}
-				}
-			}
-			ffrows.Close()
-		}
-		// Copy finding tags (same slug model as flow tags).
-		if trows, err := peer.Query(`SELECT tag FROM finding_tags WHERE finding_id=?`, pf.peerID); err == nil {
-			var tags []string
-			for trows.Next() {
-				var tag string
-				if err := trows.Scan(&tag); err == nil && tag != "" {
-					tags = append(tags, tag)
-				}
-			}
-			trows.Close()
-			if len(tags) > 0 {
-				_, _ = s.SetFindingTags(newID, tags)
-			}
 		}
 		seenFindings[sig] = true
 		stats.FindingsAdded++
@@ -222,9 +243,13 @@ func (s *Store) validatePeerFindingImages(peer *sql.DB) error {
 		if err := rows.Scan(&findingID, &bodyJSON); err != nil {
 			return err
 		}
+		normalized, err := NormalizeFindingBody(bodyJSON)
+		if err != nil {
+			return fmt.Errorf("invalid body referenced by peer finding %d: %w", findingID, err)
+		}
 		var blocks []blockRecord
-		if err := json.Unmarshal([]byte(bodyJSON), &blocks); err != nil {
-			continue
+		if err := json.Unmarshal([]byte(normalized), &blocks); err != nil {
+			return fmt.Errorf("decode peer finding %d body: %w", findingID, err)
 		}
 		for _, block := range blocks {
 			if block.Type != "image" {

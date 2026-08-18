@@ -96,6 +96,135 @@ func TestProjectNotesImageUploadAndServe(t *testing.T) {
 	}
 }
 
+func TestProjectNotesStorageFailuresReturnScrubbed500(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*projectAPI, http.ResponseWriter, *http.Request)
+		body string
+	}{
+		{"replace", (*projectAPI).putNotes, `{"notes":"replacement"}`},
+		{"append", (*projectAPI).patchNotes, `{"appendText":"addition"}`},
+		{"image", (*projectAPI).postNotesImage, `{"mime":"image/png","data":"aGVsbG8="}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, st, _ := newHub(t)
+			if err := st.Close(); err != nil {
+				t.Fatalf("close store: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/notes", strings.NewReader(tt.body))
+			rec := httptest.NewRecorder()
+			tt.call(&projectAPI{h}, rec, req)
+			if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "internal server error") {
+				t.Fatalf("status=%d body=%q, want scrubbed 500", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestProjectNotesImageReadStorageFailureReturnsScrubbed500(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/notes/images/1", nil)
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).getNotesImage(rec, req)
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "internal server error") {
+		t.Fatalf("status=%d body=%q, want scrubbed 500", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProjectNotesInvalidInlineImageRemainsClientError(t *testing.T) {
+	h, _, _ := newHub(t)
+	req := httptest.NewRequest(http.MethodPut, "/api/notes", strings.NewReader(`{"notes":"![bad](data:image/png;base64,A)"}`))
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).putNotes(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid pasted image") {
+		t.Fatalf("status=%d body=%q, want descriptive 400", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProjectNotesMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	request := func(t *testing.T, method, url, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		return resp
+	}
+
+	t.Run("replace", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		if _, err := st.PersistNotes("old notes"); err != nil {
+			t.Fatalf("PersistNotes: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPut, ts.URL+"/api/notes", `{"notes":"new notes"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		notes, err := st.LoadNotes()
+		if err != nil {
+			t.Fatalf("LoadNotes: %v", err)
+		}
+		if notes != "old notes" {
+			t.Fatalf("notes = %q, want old notes", notes)
+		}
+	})
+
+	t.Run("append", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		if _, err := st.PersistNotes("old notes"); err != nil {
+			t.Fatalf("PersistNotes: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPatch, ts.URL+"/api/notes", `{"appendText":"new notes"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		notes, err := st.LoadNotes()
+		if err != nil {
+			t.Fatalf("LoadNotes: %v", err)
+		}
+		if notes != "old notes" {
+			t.Fatalf("notes = %q, want old notes", notes)
+		}
+	})
+
+	t.Run("image", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/notes/images", `{"mime":"image/png","data":"aGVsbG8="}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		exists, err := st.NotesImageExists(1)
+		if err != nil {
+			t.Fatalf("NotesImageExists: %v", err)
+		}
+		if exists {
+			t.Fatal("image was stored after rejected upload")
+		}
+	})
+}
+
 func TestProjectNotesMigratesInlineDataURL(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())

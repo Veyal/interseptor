@@ -53,22 +53,22 @@ func NormalizeFindingBody(body string) (string, error) {
 // sequence of text blocks (markdown) and flow-reference blocks (clickable PoC
 // request/response), freely interleaved.
 type Finding struct {
-	ID        int64  `json:"id"`
-	TS        int64  `json:"ts"`        // created, unix millis
-	UpdatedTS int64  `json:"updatedTs"` // last modified, unix millis
-	Severity  string `json:"severity"`  // Critical | High | Medium | Low | Info
-	Status    string `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
-	Source    string `json:"source"`    // human | ai | scanner
-	Title     string `json:"title"`
-	Target    string `json:"target"`
-	Detail    string `json:"detail"`         // legacy / MCP compat: first text block synced here
-	Evidence  string `json:"evidence"`       // legacy only
-	Fix       string `json:"fix"`            // back-compat: kept but superseded by Impact
-	Impact    string `json:"impact"`         // security impact — what an attacker gains / business consequence
-	Why       string `json:"why"`            // why this is a vulnerability (broken security property)
-	Cwe       string `json:"cwe,omitempty"`  // CWE id or short class, e.g. CWE-639 / IDOR
+	ID          int64  `json:"id"`
+	TS          int64  `json:"ts"`        // created, unix millis
+	UpdatedTS   int64  `json:"updatedTs"` // last modified, unix millis
+	Severity    string `json:"severity"`  // Critical | High | Medium | Low | Info
+	Status      string `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
+	Source      string `json:"source"`    // human | ai | scanner
+	Title       string `json:"title"`
+	Target      string `json:"target"`
+	Detail      string `json:"detail"`                // legacy / MCP compat: first text block synced here
+	Evidence    string `json:"evidence"`              // legacy only
+	Fix         string `json:"fix"`                   // back-compat: kept but superseded by Impact
+	Impact      string `json:"impact"`                // security impact — what an attacker gains / business consequence
+	Why         string `json:"why"`                   // why this is a vulnerability (broken security property)
+	Cwe         string `json:"cwe,omitempty"`         // CWE id or short class, e.g. CWE-639 / IDOR
 	Environment string `json:"environment,omitempty"` // prod | staging | local | ""
-	Cvss      string `json:"cvss,omitempty"` // CVSS score or vector string, e.g. "7.5" or "CVSS:3.1/AV:N/..."
+	Cvss        string `json:"cvss,omitempty"`        // CVSS score or vector string, e.g. "7.5" or "CVSS:3.1/AV:N/..."
 	// VerificationInstructions tells a human reviewer exactly what to check when
 	// Status is needs_verification (e.g. "download X and run file on it").
 	VerificationInstructions string         `json:"verificationInstructions,omitempty"`
@@ -485,6 +485,7 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if f.Detail == "" && f.Body != "" {
 		f.Detail = firstTextMD(f.Body)
 	}
+	normTags := NormalizeTags(f.Tags)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -498,20 +499,20 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
-	f.ID = id
 	if err := syncFindingFlowsFromBody(tx, id, f.Body); err != nil {
 		return 0, err
+	}
+	for _, tag := range normTags {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO finding_tags (finding_id, tag) VALUES (?,?)`, id, tag); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	if len(f.Tags) > 0 {
-		norm, err := s.SetFindingTags(id, f.Tags)
-		if err != nil {
-			return 0, err
-		}
-		f.Tags = norm
-	} else if f.Tags == nil {
+	f.ID = id
+	f.Tags = normTags
+	if f.Tags == nil {
 		f.Tags = []string{}
 	}
 	return id, nil
@@ -524,10 +525,26 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 // When body is set, detail is synced from its first text block so MCP list_findings
 // still shows meaningful text.
 func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string) error {
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, nil)
+}
+
+// UpdateFindingWithTags applies field, body/flow, and optional tag changes in one
+// transaction. A nil tags pointer preserves tags; a non-nil pointer replaces them.
+func (s *Store) UpdateFindingWithTags(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, tags)
+}
+
+func (s *Store) updateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	// If detail changes and there is an existing body, sync the first text block.
 	if detail != nil && body == nil {
 		var existBody string
-		_ = s.db.QueryRow(`SELECT body FROM findings WHERE id=?`, id).Scan(&existBody)
+		_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, id).Scan(&existBody)
 		if existBody != "" {
 			newBody := updateFirstTextInBody(existBody, *detail)
 			body = &newBody
@@ -608,24 +625,34 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 	}
 	args = append(args, id)
 
+	res, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
 	// Body rewrite must keep finding_flows in sync (UI enrichment joins that table).
 	if body != nil {
-		tx, err := s.db.Begin()
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-		if _, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
-			return err
-		}
 		if err := syncFindingFlowsFromBody(tx, id, *body); err != nil {
 			return err
 		}
-		return tx.Commit()
 	}
-
-	_, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
-	return err
+	if tags != nil {
+		if _, err := tx.Exec(`DELETE FROM finding_tags WHERE finding_id=?`, id); err != nil {
+			return err
+		}
+		for _, tag := range NormalizeTags(*tags) {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO finding_tags (finding_id, tag) VALUES (?,?)`, id, tag); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // syncFindingFlowsFromBody replaces finding_flows rows for a finding from the
@@ -702,6 +729,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 	defer tx.Rollback()
 
 	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, findingID).Scan(&exists); err != nil {
+		return err
+	}
 	if err := tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %d", ErrFlowNotFound, flowID)
@@ -710,7 +740,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 	}
 
 	var nextOrd int
-	_ = tx.QueryRow(`SELECT COALESCE(MAX(ord)+1, 0) FROM finding_flows WHERE finding_id=?`, findingID).Scan(&nextOrd)
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(ord)+1, 0) FROM finding_flows WHERE finding_id=?`, findingID).Scan(&nextOrd); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
 		`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)
 		 ON CONFLICT(finding_id, flow_id) DO UPDATE SET note=excluded.note`,
@@ -720,7 +752,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 
 	// Sync flow block into the body at the requested position.
 	var bodyJSON string
-	_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON)
+	if err := tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON); err != nil {
+		return err
+	}
 	newBody := insertFlowIntoBody(bodyJSON, flowID, note, pos)
 	// Also update detail from first text block if needed.
 	detailSync := firstTextMD(newBody)
@@ -743,7 +777,9 @@ func (s *Store) DetachFlow(findingID, flowID int64) error {
 		return err
 	}
 	var bodyJSON string
-	_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON)
+	if err := tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON); err != nil {
+		return err
+	}
 	newBody := removeFlowFromBody(bodyJSON, flowID)
 	if _, err := tx.Exec(`UPDATE findings SET body=?, updated_ts=? WHERE id=?`, newBody, time.Now().UnixMilli(), findingID); err != nil {
 		return err

@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 // call holds the state); the UI lists pending ones so an SSE reconnect recovers.
 
 const humanInputWait = 40 * time.Second
+
+const maxHumanInputRequestBytes int64 = 64 << 10
 
 // humanInputExpiry bounds how long an unanswered prompt lives. Without this,
 // an abandoned AI question (operator never responds) stays in the prompts
@@ -43,11 +44,13 @@ type humanInput struct {
 	mu      sync.Mutex
 	seq     int64
 	prompts map[int64]*humanPrompt
+	timers  map[int64]*time.Timer
+	closed  bool
 	now     func() time.Time // overridden in tests
 }
 
 func newHumanInput() *humanInput {
-	return &humanInput{prompts: map[int64]*humanPrompt{}, now: time.Now}
+	return &humanInput{prompts: map[int64]*humanPrompt{}, timers: map[int64]*time.Timer{}, now: time.Now}
 }
 
 func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
@@ -64,11 +67,17 @@ func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
 func (hi *humanInput) get(id int64) *humanPrompt {
 	hi.mu.Lock()
 	p, expired := hi.expireLocked(id)
+	var snapshot *humanPrompt
+	if p != nil {
+		copy := *p
+		copy.Options = append([]string(nil), p.Options...)
+		snapshot = &copy
+	}
 	hi.mu.Unlock()
 	if expired {
 		hi.scheduleCleanup(id)
 	}
-	return p
+	return snapshot
 }
 
 func (hi *humanInput) pending() []humanPrompt {
@@ -134,12 +143,41 @@ func (hi *humanInput) answer(id int64, ans string) bool {
 // map after a short delay, giving the UI/poller time to observe the final
 // state before it disappears.
 func (hi *humanInput) scheduleCleanup(id int64) {
-	go func(pid int64) {
-		time.Sleep(time.Minute)
+	hi.mu.Lock()
+	defer hi.mu.Unlock()
+	if hi.closed || hi.timers[id] != nil {
+		return
+	}
+	hi.timers[id] = time.AfterFunc(time.Minute, func() {
 		hi.mu.Lock()
-		delete(hi.prompts, pid)
+		delete(hi.prompts, id)
+		delete(hi.timers, id)
 		hi.mu.Unlock()
-	}(id)
+	})
+}
+
+// close releases every blocked handoff and cancels delayed cleanup callbacks.
+// It is idempotent so Hub.Close can safely be called more than once.
+func (hi *humanInput) close() {
+	hi.mu.Lock()
+	defer hi.mu.Unlock()
+	if hi.closed {
+		return
+	}
+	hi.closed = true
+	for id, timer := range hi.timers {
+		timer.Stop()
+		delete(hi.timers, id)
+	}
+	for _, p := range hi.prompts {
+		if p.Answered {
+			continue
+		}
+		p.Answer = "closed — control plane is shutting down"
+		p.Answered = true
+		p.Expired = true
+		close(p.done)
+	}
 }
 
 // createHumanInput (POST /api/human-input) registers a prompt and blocks up to
@@ -150,7 +188,10 @@ func (h *metaAPI) createHumanInput(w http.ResponseWriter, r *http.Request) {
 		Message string   `json:"message"`
 		Options []string `json:"options"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Message == "" {
+	if !decodeLimitedJSON(w, r, maxHumanInputRequestBytes, &in) {
+		return
+	}
+	if in.Message == "" {
 		httpErr(w, http.StatusBadRequest, "message required")
 		return
 	}
@@ -188,8 +229,7 @@ func (h *metaAPI) respondHumanInput(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Answer string `json:"answer"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxHumanInputRequestBytes, &in) {
 		return
 	}
 	if !h.hi.answer(id, in.Answer) {

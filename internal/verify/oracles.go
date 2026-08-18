@@ -18,7 +18,7 @@ const (
 
 // timingSlowMs is how slow (in ms) a timing payload's response must be to count
 // as a delay; timingFastMs is the ceiling below which the baseline and zero-delay
-// control must fall. Mirrors the active-scan timing check (payload ≥5s, control
+// control must fall. Uses a deliberately conservative timing threshold (payload
 // <3s), which uses a distinct injected sleep well above natural jitter.
 const (
 	timingSlowMs = 5000
@@ -26,8 +26,8 @@ const (
 )
 
 // dbErrRe matches common DB/interpreter error signatures across engines. Kept in
-// sync with the active-scan sqli error check so the verifier and the scanner
-// agree on what counts as an error signature.
+// shared by the verifier and the passive scanner so they agree on what counts
+// as an error signature.
 var dbErrRe = regexp.MustCompile(`(?i)(SQL syntax|mysql_fetch|valid MySQL result|ORA-\d{5}|PostgreSQL.{0,40}ERROR|SQLite[/.].{0,20}error|Unclosed quotation mark|quoted string not properly terminated|SQLSTATE\[|near ".{0,30}": syntax error|System\.Data\.SqlClient|Warning.{0,20}(mysqli|pg_|mysql_)|Microsoft OLE DB Provider|ODBC.{0,20}Driver|Fatal error|Traceback \(most recent call last\)|Unclosed.{0,20}mark)`)
 
 // ReflectedMarkerHeld reports whether a unique marker is present in the payload
@@ -58,7 +58,7 @@ func ErrorSignatureHeld(baseline, payload Exchange) bool {
 //
 //   - baseline must be non-trivial (>= booleanBaselineFloor bytes) — on tiny
 //     bodies natural variation reads as a large relative divergence (false
-//     positives), the same floor the active-scan boolean check applies;
+//     positives), the same floor used by the boolean check;
 //   - all three exchanges must have completed;
 //   - true ≈ baseline within a small tolerance, AND false differs from true
 //     beyond a larger floor.

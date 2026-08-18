@@ -1,5 +1,5 @@
 // Package starx holds the Starlark builtins shared by every script engine in
-// Interseptor (passive checks, active checks, and any future engine). Centralising
+// Interseptor's passive check and script tooling. Centralising
 // them here means a check author sees one consistent "standard library" and we
 // don't re-implement — and re-test — the same helpers in two packages.
 //
@@ -30,22 +30,21 @@ import (
 )
 
 // Predeclared returns the builtins every Interseptor script can call. Engines
-// merge this into their own predeclared dict (active scripts additionally bind
-// `probe` at run time).
+// merge this into their own predeclared dict.
 func Predeclared() starlark.StringDict {
 	return starlark.StringDict{
-		"finding":    starlark.NewBuiltin("finding", FindingBuiltin),
-		"re_search":  starlark.NewBuiltin("re_search", ReSearchBuiltin),
-		"json_decode": starlark.NewBuiltin("json_decode", JSONDecodeBuiltin),
-		"json_encode": starlark.NewBuiltin("json_encode", JSONEncodeBuiltin),
-		"b64decode":  starlark.NewBuiltin("b64decode", B64DecodeBuiltin),
-		"b64encode":  starlark.NewBuiltin("b64encode", B64EncodeBuiltin),
-		"url_decode": starlark.NewBuiltin("url_decode", URLDecodeBuiltin),
-		"url_encode": starlark.NewBuiltin("url_encode", URLEncodeBuiltin),
-		"hash":             starlark.NewBuiltin("hash", HashBuiltin),
-		"hmac":             starlark.NewBuiltin("hmac", HMACBuiltin),
-		"aes_ecb_encrypt":  starlark.NewBuiltin("aes_ecb_encrypt", AESECBEncryptBuiltin),
-		"aes_ecb_decrypt":  starlark.NewBuiltin("aes_ecb_decrypt", AESECBDecryptBuiltin),
+		"finding":         starlark.NewBuiltin("finding", FindingBuiltin),
+		"re_search":       starlark.NewBuiltin("re_search", ReSearchBuiltin),
+		"json_decode":     starlark.NewBuiltin("json_decode", JSONDecodeBuiltin),
+		"json_encode":     starlark.NewBuiltin("json_encode", JSONEncodeBuiltin),
+		"b64decode":       starlark.NewBuiltin("b64decode", B64DecodeBuiltin),
+		"b64encode":       starlark.NewBuiltin("b64encode", B64EncodeBuiltin),
+		"url_decode":      starlark.NewBuiltin("url_decode", URLDecodeBuiltin),
+		"url_encode":      starlark.NewBuiltin("url_encode", URLEncodeBuiltin),
+		"hash":            starlark.NewBuiltin("hash", HashBuiltin),
+		"hmac":            starlark.NewBuiltin("hmac", HMACBuiltin),
+		"aes_ecb_encrypt": starlark.NewBuiltin("aes_ecb_encrypt", AESECBEncryptBuiltin),
+		"aes_ecb_decrypt": starlark.NewBuiltin("aes_ecb_decrypt", AESECBDecryptBuiltin),
 	}
 }
 
@@ -62,6 +61,7 @@ func ScriptError(label string, err error) error {
 	}
 	return fmt.Errorf("%s: %w", label, err)
 }
+
 // rest are optional and default to "".
 func FindingBuiltin(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var severity, title, detail, evidence, fix string

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,33 @@ func TestIntruderStartAcceptsValidThreads(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntruderStartRejectsTrailingJSONBeforeLaunching(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]any{
+		"target":     target.URL,
+		"template":   "GET /?id=§1§ HTTP/1.1\r\nHost: example.com\r\n\r\n",
+		"attackType": "sniper",
+		"payloads":   [][]string{{"a"}},
+		"threads":    1,
+	})
+	resp, err := http.Post(ts.URL+"/api/intruder/start", "application/json", strings.NewReader(string(body)+`{}`))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if state := h.intr.State(); state.Running {
+		t.Fatal("trailing JSON launched an Intruder attack")
 	}
 }

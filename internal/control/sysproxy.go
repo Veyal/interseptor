@@ -1,18 +1,26 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 
 	"github.com/Veyal/interseptor/internal/sysproxy"
 )
 
+const maxSystemProxyRequestBytes int64 = 4 << 10
+
 func (h *settingsAPI) getSysProxy(w http.ResponseWriter, r *http.Request) {
-	enabled, _ := sysproxy.Status()
+	status := h.sysProxyStatus
+	if status == nil {
+		status = sysproxy.Status
+	}
+	supported := h.sysProxySupported
+	if supported == nil {
+		supported = sysproxy.Supported
+	}
+	enabled, _ := status()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"supported": sysproxy.Supported(),
+		"supported": supported(),
 		"enabled":   enabled,
 		"proxy":     h.currentProxyAddr(),
 	})
@@ -22,19 +30,28 @@ func (h *settingsAPI) setSysProxy(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxSystemProxyRequestBytes, &in) {
 		return
 	}
 	if in.Enabled {
 		host, port := proxyHostPort(h.currentProxyAddr())
-		if err := sysproxy.Enable(host, port); err != nil {
+		enable := h.sysProxyEnable
+		if enable == nil {
+			enable = sysproxy.Enable
+		}
+		if err := enable(host, port); err != nil {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-	} else if err := sysproxy.Disable(); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
-		return
+	} else {
+		disable := h.sysProxyDisable
+		if disable == nil {
+			disable = sysproxy.Disable
+		}
+		if err := disable(); err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	h.getSysProxy(w, r)
 }

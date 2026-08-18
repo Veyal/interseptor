@@ -52,6 +52,74 @@ func TestFindingImpactRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCreateFindingRollsBackWhenTagInsertFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_finding_tag BEFORE INSERT ON finding_tags
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	finding := &Finding{Title: "should roll back", Tags: []string{"api"}}
+	if _, err := s.CreateFinding(finding); err == nil {
+		t.Fatal("CreateFinding succeeded after tag failure")
+	}
+	if finding.ID != 0 {
+		t.Fatalf("failed create published nonexistent finding id %d", finding.ID)
+	}
+	findings, err := s.ListFindings("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("failed create left %d finding(s), want transactional rollback", len(findings))
+	}
+}
+
+func TestFindingFlowMutationsRejectMissingFinding(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*Store, int64) error
+	}{
+		{name: "attach", run: func(s *Store, flowID int64) error {
+			return s.AttachFlow(999, flowID, "orphan", -1)
+		}},
+		{name: "detach", run: func(s *Store, flowID int64) error {
+			return s.DetachFlow(999, flowID)
+		}},
+		{name: "body update", run: func(s *Store, flowID int64) error {
+			body := marshalBody([]FindingBlock{{Type: "flow", FlowID: flowID, Note: "orphan"}})
+			return s.UpdateFinding(999, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			flowID, err := s.InsertFlow(&Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tt.run(s, flowID); err == nil {
+				t.Fatal("missing finding mutation succeeded")
+			}
+			var count int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM finding_flows`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("missing finding created %d orphan PoC rows", count)
+			}
+		})
+	}
+}
+
 func TestFindingsCRUDAndPoCFlows(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -503,10 +571,10 @@ func TestFindingVerificationInstructionsRoundTrip(t *testing.T) {
 	defer s.Close()
 
 	id, err := s.CreateFinding(&Finding{
-		Severity:                  "Medium",
-		Status:                    "needs_verification",
-		Title:                     "OBS UUID files may contain PII",
-		VerificationInstructions:  "Download the object and run `file` on it.",
+		Severity:                 "Medium",
+		Status:                   "needs_verification",
+		Title:                    "OBS UUID files may contain PII",
+		VerificationInstructions: "Download the object and run `file` on it.",
 	})
 	if err != nil {
 		t.Fatalf("CreateFinding: %v", err)

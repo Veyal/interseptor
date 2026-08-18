@@ -37,6 +37,7 @@ import (
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/strutil"
+	"github.com/Veyal/interseptor/internal/sysproxy"
 	"github.com/Veyal/interseptor/internal/tlsca"
 	"github.com/Veyal/interseptor/internal/tunnel"
 )
@@ -78,6 +79,10 @@ type Hub struct {
 	// SetUpstreamProxyCA applies PEM trust roots for the chained upstream proxy. Set by cmd.
 	SetUpstreamProxyCA func([]byte) error
 	setSetting         func(string, string) error
+	sysProxyEnable     func(string, int) error
+	sysProxyDisable    func() error
+	sysProxyStatus     func() (bool, error)
+	sysProxySupported  func() bool
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
 	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
@@ -97,12 +102,8 @@ type Hub struct {
 	// projects — typically ~/.interseptor/checks). Set by cmd.
 	ChecksDir string
 
-	// ActiveChecksDir holds user-authored Starlark ACTIVE checks (global, shared —
-	// typically ~/.interseptor/active-checks). Set by cmd.
-	ActiveChecksDir string
-
 	// selfAddr is this control plane's own host:port (e.g. 127.0.0.1:9966). Set by
-	// cmd; the active scanner refuses to target it, so it never attacks its own API.
+	// cmd; request-generating tools refuse to target it.
 	selfAddr atomic.Pointer[string]
 
 	// ProjectName/ProjectDir identify the active project (Burp-style). Set by cmd;
@@ -114,8 +115,10 @@ type Hub struct {
 	GlobalDir     string
 	SwitchProject func(target string) error
 
-	switchMu    sync.Mutex  // guards switchTimer
-	switchTimer *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	switchMu     sync.Mutex  // guards the delayed project-switch lifecycle
+	switchTimer  *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	switchClosed bool
+	switchWG     sync.WaitGroup
 
 	mcpMu           sync.Mutex
 	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
@@ -124,8 +127,6 @@ type Hub struct {
 
 	tun             tunnelManager // Cloudflare quick-tunnel manager (remote sharing)
 	tunnelCloseOnce sync.Once
-
-	as asState // active-scan state (armed/running/findings)
 
 	updMu     sync.Mutex // update-check result (set by cmd's background check)
 	updLatest string
@@ -143,6 +144,11 @@ type Hub struct {
 	activitySocketPath  string
 	activitySocketToken string
 	activitySocketWG    sync.WaitGroup
+
+	maintenanceMu     sync.Mutex
+	maintenanceClosed bool
+	maintenanceWG     sync.WaitGroup
+	gcBodiesFn        func() (int64, int64, error)
 }
 
 // New builds a Hub. eng, ca, and rebind may be nil. If eng is non-nil, the
@@ -152,19 +158,24 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		sc = scope.New()
 	}
 	h := &Hub{
-		st:              st,
-		eng:             eng,
-		ca:              ca,
-		rebind:          rebind,
-		sc:              sc,
-		snd:             sender.New(st, capture.New(st)),
-		mux:             http.NewServeMux(),
-		clients:         map[chan string]struct{}{},
-		iosTCPReachable: ios.TCPReachable,
-		setSetting:      st.SetSetting,
+		st:                st,
+		eng:               eng,
+		ca:                ca,
+		rebind:            rebind,
+		sc:                sc,
+		snd:               sender.New(st, capture.New(st)),
+		mux:               http.NewServeMux(),
+		clients:           map[chan string]struct{}{},
+		iosTCPReachable:   ios.TCPReachable,
+		setSetting:        st.SetSetting,
+		sysProxyEnable:    sysproxy.Enable,
+		sysProxyDisable:   sysproxy.Disable,
+		sysProxyStatus:    sysproxy.Status,
+		sysProxySupported: sysproxy.Supported,
+		gcBodiesFn:        st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
-	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
+	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.oob = oob.New()
 	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })
@@ -211,10 +222,20 @@ func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) recordMCPActivity(a mcp.Activity) {
-	it := (&metaAPI{h}).recordActivity(store.Activity{
+	if err := h.recordMCPActivityChecked(a); err != nil {
+		log.Printf("control: persist MCP activity: %v", err)
+	}
+}
+
+func (h *Hub) recordMCPActivityChecked(a mcp.Activity) error {
+	it, err := (&metaAPI{h}).recordActivity(store.Activity{
 		Tool: a.Tool, Summary: a.Summary, OK: a.OK, Result: a.Result, Ms: a.Ms, Intent: a.Intent,
 	})
+	if err != nil {
+		return err
+	}
 	h.broadcast(map[string]any{"type": "activity", "item": it})
+	return nil
 }
 
 // loopbackControlBase returns an http://127.0.0.1:<port> base URL for the control
@@ -360,8 +381,7 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Note string `json:"note"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	if err := h.st.SetFlowNote(id, in.Note); err != nil {
@@ -380,6 +400,8 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 
 // reTagColor restricts tag colors to a hex value (safe to interpolate into CSS).
 var reTagColor = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
+
+const maxFlowMetadataRequestBytes int64 = 64 << 10
 
 // broadcastFlowTags reloads a flow (with tags) and pushes it to clients so the row
 // chips update live.
@@ -401,8 +423,7 @@ func (h *flowAPI) setFlowTags(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Tags []string `json:"tags"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	tags, err := h.st.SetFlowTags(id, in.Tags)
@@ -423,8 +444,7 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		Add     []string `json:"add"`
 		Remove  []string `json:"remove"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
 		return
 	}
 	if len(in.FlowIDs) == 0 {
@@ -439,19 +459,11 @@ func (h *flowAPI) addFlowTagsBulk(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "too many flows")
 		return
 	}
+	if err := h.st.MutateFlowTags(in.FlowIDs, in.Add, in.Remove); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	for _, id := range in.FlowIDs {
-		if len(in.Add) > 0 {
-			if _, err := h.st.AddFlowTags(id, in.Add); err != nil {
-				httpInternalErr(w, err)
-				return
-			}
-		}
-		for _, t := range store.NormalizeTags(in.Remove) {
-			if err := h.st.RemoveFlowTag(id, t); err != nil {
-				httpInternalErr(w, err)
-				return
-			}
-		}
 		h.broadcastFlowTags(id)
 	}
 	h.broadcast(map[string]any{"type": "tags.update"})
@@ -474,8 +486,7 @@ func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Color string `json:"color"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	if in.Color != "" && !reTagColor.MatchString(in.Color) {
@@ -496,13 +507,13 @@ func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 // 128 MiB body cap, a giant array amplifies ~10× via make([]any, len) and the
 // SQL placeholder string; no legitimate UI action targets this many at once.
 const maxBulkItems = 100000
+const maxBulkRequestBytes int64 = 8 << 20
 
 func (h *flowAPI) deleteFlows(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		IDs []int64 `json:"ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
 		return
 	}
 	if len(in.IDs) > maxBulkItems {
@@ -527,14 +538,14 @@ const maxEndpointList = 12000
 
 // listEndpoints returns the unique-endpoint map for the attack-surface view —
 // proxied/manual traffic aggregated by (host, method, path); bulk attack traffic
-// (Intruder / active scan) is excluded as noise.
+// (Intruder) is excluded as noise.
 func (h *flowAPI) listEndpoints(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := store.EndpointFilter{
 		Host:          q.Get("host"),
 		Search:        q.Get("search"),
 		SearchScope:   q.Get("searchScope"),
-		ExcludeFlags:  store.FlagIntruder | store.FlagActiveScan,
+		ExcludeFlags:  store.FlagIntruder,
 		Tag:           q.Get("tag"),
 		HideNoiseOnly: q.Get("hideNoise") != "0", // on by default — ferox/discovery 403/404-only paths
 	}
@@ -622,11 +633,11 @@ func (h *flowAPI) listFlows(w http.ResponseWriter, r *http.Request) {
 		Search: q.Get("search"),
 		Scheme: q.Get("scheme"),
 	}
-	// History hides Repeater/Intruder/ActiveScan by default (they have their own
+	// History hides Repeater/Intruder by default (they have their own
 	// views). includeTools=1 is the escape hatch for MCP agents / triage that
 	// need to see tool-generated traffic alongside proxy captures.
 	if q.Get("includeTools") != "1" {
-		f.ExcludeFlags = store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan
+		f.ExcludeFlags = store.FlagRepeater | store.FlagIntruder
 	}
 	f.SortKey, f.SortDir = parseFlowSortQuery(q)
 	if curID := int64(atoiOr(q.Get("curId"), 0)); curID > 0 {
@@ -747,7 +758,7 @@ func (h *Hub) loadFlow(w http.ResponseWriter, r *http.Request) (*store.Flow, boo
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return nil, false
 	}
 	return f, true
@@ -774,21 +785,20 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	original := r.URL.Query().Get("variant") == "original"
+	var raw []byte
+	var err error
 	if r.URL.Query().Get("side") == "res" {
-		if original {
-			w.Write(h.rawResponseVariant(f, true))
-			return
-		}
-		w.Write(h.rawResponse(f))
+		raw, err = h.rawResponseVariantResult(f, original)
+	} else {
+		raw, err = h.rawRequestVariantResult(f, original)
+	}
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
 		return
 	}
-	if original {
-		w.Write(h.rawRequestVariant(f, true))
-		return
-	}
-	w.Write(h.rawRequest(f))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(raw)
 }
 
 // getFlowBody streams just the (decoded) body bytes with Content-Type and a
@@ -801,13 +811,35 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	side := r.URL.Query().Get("side")
 	var mimeType string
-	var body []byte
+	var headers map[string][]string
+	var hash string
 	if side == "res" {
 		mimeType = f.Mime
-		_, body = decodeForDisplay(f.ResHeaders, h.bodyBytes(f.ResBodyHash))
+		headers = f.ResHeaders
+		hash = f.ResBodyHash
 	} else {
-		_, body = decodeForDisplay(f.ReqHeaders, h.bodyBytes(f.ReqBodyHash))
+		headers = f.ReqHeaders
+		hash = f.ReqBodyHash
 		mimeType = headerContentType(f.ReqHeaders)
+	}
+	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
+	var stream io.ReadCloser
+	var body []byte
+	var err error
+	if !supportsDisplayEncoding(enc) {
+		stream, err = h.st.OpenBody(hash)
+	} else {
+		var overflow bool
+		body, overflow, err = h.bodyBytesUpTo(hash, decodeMax)
+		if err == nil && overflow {
+			stream, err = h.st.OpenBody(hash)
+		} else if err == nil {
+			_, body = decodeForDisplay(headers, body)
+		}
+	}
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "body not found")
+		return
 	}
 	if mimeType == "" {
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -820,6 +852,13 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
+	if stream != nil {
+		defer stream.Close()
+		if _, err := io.Copy(w, stream); err != nil {
+			log.Printf("control: stream flow body: %v", err)
+		}
+		return
+	}
 	_, _ = w.Write(body)
 }
 
@@ -855,6 +894,11 @@ func (h *Hub) rawRequest(f *store.Flow) []byte {
 }
 
 func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
+	raw, _ := h.rawRequestVariantResult(f, original)
+	return raw
+}
+
+func (h *Hub) rawRequestVariantResult(f *store.Flow, original bool) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
 	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
@@ -866,14 +910,23 @@ func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
 			hash = f.OriginalReqBodyHash
 		}
 	}
-	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
+	body, err := h.bodyBytesResult(hash)
+	if err != nil {
+		return nil, err
+	}
+	hdr, body := decodeForDisplay(hdrs, body)
 	writeHeaders(&b, hdr, f.Host)
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 
 func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
+	raw, _ := h.rawResponseVariantResult(f, original)
+	return raw
+}
+
+func (h *Hub) rawResponseVariantResult(f *store.Flow, original bool) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
 	hdrs, hash := f.ResHeaders, f.ResBodyHash
@@ -885,11 +938,15 @@ func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
 			hash = f.OriginalResBodyHash
 		}
 	}
-	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
+	body, err := h.bodyBytesResult(hash)
+	if err != nil {
+		return nil, err
+	}
+	hdr, body := decodeForDisplay(hdrs, body)
 	writeHeaders(&b, hdr, "")
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 func (h *Hub) rawResponse(f *store.Flow) []byte {
 	return h.rawResponseVariant(f, false)
@@ -913,16 +970,39 @@ func (h *flowAPI) flowWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) bodyBytes(hash string) []byte {
+	b, _ := h.bodyBytesResult(hash)
+	return b
+}
+
+func (h *Hub) bodyBytesResult(hash string) ([]byte, error) {
 	if hash == "" {
-		return nil
+		return nil, nil
 	}
 	rc, err := h.st.OpenBody(hash)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rc.Close()
-	b, _ := io.ReadAll(rc)
-	return b
+	return io.ReadAll(rc)
+}
+
+func (h *Hub) bodyBytesUpTo(hash string, limit int64) ([]byte, bool, error) {
+	if hash == "" {
+		return nil, false, nil
+	}
+	rc, err := h.st.OpenBody(hash)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > limit {
+		return nil, true, nil
+	}
+	return b, false, nil
 }
 
 // ---- Rules ----
@@ -942,8 +1022,7 @@ func (h *flowAPI) listRules(w http.ResponseWriter, r *http.Request) {
 
 func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	var in ruleJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRuleRequestBytes, &in) {
 		return
 	}
 	if !validRule(w, in) {
@@ -967,8 +1046,7 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in ruleJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRuleRequestBytes, &in) {
 		return
 	}
 	in.ID = id
@@ -976,6 +1054,10 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "rule not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}
@@ -1001,7 +1083,11 @@ func (h *flowAPI) deleteRule(w http.ResponseWriter, r *http.Request) {
 // maxRulePattern bounds a user-supplied match/intercept regex. Go's RE2 is linear
 // (no catastrophic ReDoS), but a very long pattern run against large bodies on
 // every proxied request is still costly; real patterns are short.
-const maxRulePattern = 4096
+const (
+	maxRulePattern          = 4096
+	maxRuleRequestBytes     = 16 << 10
+	maxInterceptConfigBytes = 16 << 10
+)
 
 func validRule(w http.ResponseWriter, in ruleJSON) bool {
 	switch in.Type {
@@ -1122,8 +1208,7 @@ func (h *interceptAPI) toggleIntercept(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	h.eng.SetEnabled(in.Enabled)
@@ -1142,26 +1227,34 @@ func (h *interceptAPI) setInterceptFilter(w http.ResponseWriter, r *http.Request
 		Target  string `json:"target"`
 		Pattern string `json:"pattern"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	if len(in.Pattern) > maxRulePattern {
 		httpErr(w, http.StatusBadRequest, "pattern too long")
 		return
 	}
-	if err := h.eng.SetInterceptFilter(in.Enabled, in.Target, in.Pattern); err != nil {
+	target := in.Target
+	if target == "" {
+		target = "any"
+	}
+	enabled := in.Enabled && in.Pattern != ""
+	if enabled {
+		if _, err := regexp.Compile(in.Pattern); err != nil {
+			httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
+			return
+		}
+	}
+	if err := h.st.SetSettings(map[string]string{
+		"intercept.filter.enabled": boolToFlag(enabled),
+		"intercept.filter.target":  target,
+		"intercept.filter.pattern": in.Pattern,
+	}); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := h.eng.SetInterceptFilter(enabled, target, in.Pattern); err != nil {
 		httpErr(w, http.StatusBadRequest, "invalid regex: "+err.Error())
-		return
-	}
-	enabled, target, pattern := h.eng.InterceptFilter()
-	if !h.persistSetting(w, "intercept.filter.enabled", boolToFlag(enabled)) {
-		return
-	}
-	if !h.persistSetting(w, "intercept.filter.target", target) {
-		return
-	}
-	if !h.persistSetting(w, "intercept.filter.pattern", pattern) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.interceptState())
@@ -1180,8 +1273,7 @@ func (h *interceptAPI) forwardIntercept(w http.ResponseWriter, r *http.Request) 
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if err := h.eng.Forward(id, []byte(in.Raw)); err != nil {
@@ -1216,8 +1308,7 @@ func (h *interceptAPI) toggleResponseIntercept(w http.ResponseWriter, r *http.Re
 	var in struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxInterceptConfigBytes, &in) {
 		return
 	}
 	h.eng.SetResponseEnabled(in.Enabled)
@@ -1237,8 +1328,7 @@ func (h *interceptAPI) forwardResponse(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Raw string `json:"raw"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if err := h.eng.ForwardResponse(id, []byte(in.Raw)); err != nil {
@@ -1421,8 +1511,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
 		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if in.OobEnabled != nil {
@@ -1707,6 +1796,33 @@ func httpErr(w http.ResponseWriter, code int, msg string) {
 func httpInternalErr(w http.ResponseWriter, err error) {
 	log.Printf("control: 500: %v", err)
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+}
+
+// httpNotFoundOrInternal reserves 404 for an absent SQLite row. Operational
+// failures are logged and scrubbed instead of masquerading as missing data.
+func httpNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, sql.ErrNoRows) {
+		httpErr(w, http.StatusNotFound, notFound)
+		return
+	}
+	httpInternalErr(w, err)
+}
+
+func httpTextNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, notFound, http.StatusNotFound)
+		return
+	}
+	log.Printf("control: 500: %v", err)
+	http.Error(w, "internal server error", http.StatusInternalServerError)
+}
+
+func httpFileNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, fs.ErrNotExist) {
+		httpErr(w, http.StatusNotFound, notFound)
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {

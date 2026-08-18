@@ -1,13 +1,13 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 )
+
+const maxSessionLoginRequestBytes = 4096
 
 // Browser session auth. A remote collaborator opens /login, submits an API key,
 // and receives an httpOnly session cookie so subsequent same-origin fetches and
@@ -64,8 +64,7 @@ func (h *Hub) sessionLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxSessionLoginRequestBytes, &in) {
 		return
 	}
 	in.Token = strings.TrimSpace(in.Token)

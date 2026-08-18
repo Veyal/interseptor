@@ -12,7 +12,7 @@ import (
 var dbFilenames = []string{"", "-wal", "-shm", "-journal"}
 
 const (
-	legacyDBName = "interceptor.db"
+	legacyDBName  = "interceptor.db"
 	currentDBName = "interseptor.db"
 )
 

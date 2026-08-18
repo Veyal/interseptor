@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,6 +53,29 @@ func TestFlowPreviewPNG(t *testing.T) {
 	}
 	if len(raw) < 200 {
 		t.Fatalf("PNG too small: %d", len(raw))
+	}
+}
+
+func TestFlowPreviewPNGRejectsMissingBodyEvidence(t *testing.T) {
+	h, s, _ := newHub(t)
+	flowID, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Host: "example.com", Path: "/api/user", Status: 200,
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/flows/" + strconv.FormatInt(flowID, 10) + "/preview.png?side=req")
+	if err != nil {
+		t.Fatalf("GET preview: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
 	}
 }
 
@@ -133,6 +158,79 @@ func TestAttachFindingFlowPreviewWithOptions(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("no image block: %+v", out.Blocks)
+	}
+}
+
+func TestAttachFindingFlowPreviewRejectsTrailingJSONBeforeAttachment(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/account", Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	payload := fmt.Sprintf(`{"flowId":%d,"caption":"preview"}{}`, flowID)
+	resp, err := http.Post(ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/flow-preview",
+		"application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("POST flow preview: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	got, err := st.GetFinding(findingID)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	for _, block := range got.Blocks {
+		if block.Type == "image" {
+			t.Fatalf("preview attached after rejected command: %+v", block)
+		}
+	}
+}
+
+func TestAttachFlowPreviewRejectsMissingFindingBeforeStoringBlob(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/account", Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	payload := fmt.Sprintf(`{"flowId":%d}`, flowID)
+	resp, err := http.Post(ts.URL+"/api/findings/999/flow-preview", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("POST flow preview: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	var bodies int
+	if err := filepath.WalkDir(st.BodiesDir(), func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && len(entry.Name()) == 64 {
+			bodies++
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk bodies: %v", err)
+	}
+	if bodies != 0 {
+		t.Fatalf("missing-finding preview left %d orphan image body", bodies)
 	}
 }
 

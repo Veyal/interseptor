@@ -34,8 +34,7 @@ func aiSourceFlag(r *http.Request) int64 {
 
 func (h *toolsAPI) repeaterSend(w http.ResponseWriter, r *http.Request) {
 	var in repeaterSendJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if h.targetsOwnListener(in.URL) {

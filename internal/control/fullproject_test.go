@@ -3,6 +3,7 @@ package control
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +17,160 @@ import (
 
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+func TestAddArchiveFilesReportsWalkErrors(t *testing.T) {
+	badArchive := zip.NewWriter(io.Discard)
+	if err := addArchiveFiles(badArchive, string([]byte{0}), archiveBodyRoot, true); err == nil {
+		t.Fatal("addArchiveFiles swallowed an invalid source-path walk error")
+	}
+	_ = badArchive.Close()
+
+	missingArchive := zip.NewWriter(io.Discard)
+	if err := addArchiveFiles(missingArchive, filepath.Join(t.TempDir(), "optional-missing"), archiveCodecRoot, false); err != nil {
+		t.Fatalf("optional missing archive directory should be allowed: %v", err)
+	}
+	if err := missingArchive.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddArchiveFilesRejectsSymlinks(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside-secret.txt")
+	if err := os.WriteFile(outside, []byte("must not enter project archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codecs := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(codecs, "linked.star")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	zw := zip.NewWriter(io.Discard)
+	err := addArchiveFiles(zw, codecs, archiveCodecRoot, false)
+	_ = zw.Close()
+	if err == nil {
+		t.Fatal("codec symlink was followed into the project archive")
+	}
+}
+
+func TestProjectImportDirRejectsReservedDefault(t *testing.T) {
+	h := &Hub{GlobalDir: t.TempDir()}
+	for _, name := range []string{"default", "Default", "DEFAULT"} {
+		if dir, err := h.projectImportDir(name); err == nil {
+			t.Errorf("projectImportDir(%q) = %q, want reserved-name error", name, dir)
+		}
+	}
+}
+
+func TestExportFullReportsArchiveFailureBeforeSendingZip(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = string([]byte{0})
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFull(rec, httptest.NewRequest(http.MethodGet, "/api/export/full", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; content-type = %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if strings.Contains(rec.Header().Get("Content-Type"), "application/zip") {
+		t.Fatalf("failed export was presented as ZIP: headers = %#v", rec.Header())
+	}
+}
+
+func TestExportFullFilePreservesDestinationOnArchiveFailure(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = string([]byte{0})
+	dest := filepath.Join(t.TempDir(), "known-good.zip")
+	if err := os.WriteFile(dest, []byte("known-good-backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", bytes.NewReader(body)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "known-good-backup" {
+		t.Fatalf("failed export replaced existing destination with %q", got)
+	}
+}
+
+func TestExportFullFileReplacesDestinationAfterSuccess(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = t.TempDir()
+	dest := filepath.Join(t.TempDir(), "project.zip")
+	if err := os.WriteFile(dest, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	zr, err := zip.OpenReader(dest)
+	if err != nil {
+		t.Fatalf("replacement is not a ZIP: %v", err)
+	}
+	defer zr.Close()
+	if len(zr.File) == 0 || zr.File[0].Name != archiveDBName {
+		t.Fatalf("replacement archive entries = %+v", zr.File)
+	}
+}
+
+func TestExportFullFileRejectsTrailingJSONBeforeCreatingDestination(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = t.TempDir()
+	dest := filepath.Join(t.TempDir(), "project.zip")
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", io.MultiReader(bytes.NewReader(body), strings.NewReader(`{}`))))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected export created destination: %v", err)
+	}
+}
+
+func TestImportFullFileRejectsTrailingJSONBeforeInstallingProject(t *testing.T) {
+	source, _, _ := newHub(t)
+	source.ProjectDir = t.TempDir()
+	exported := httptest.NewRecorder()
+	(&projectAPI{source}).exportFull(exported, httptest.NewRequest(http.MethodGet, "/api/export/full", nil))
+	if exported.Code != http.StatusOK {
+		t.Fatalf("source export status = %d, body = %s", exported.Code, exported.Body.String())
+	}
+	archive := filepath.Join(t.TempDir(), "source.zip")
+	if err := os.WriteFile(archive, exported.Body.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	target, _, _ := newHub(t)
+	target.GlobalDir = t.TempDir()
+	body, err := json.Marshal(map[string]any{"path": archive, "name": "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{target}).importFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/import/full/file", io.MultiReader(bytes.NewReader(body), strings.NewReader(`{}`))))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if dirHasProject(filepath.Join(target.GlobalDir, "projects", "acme")) {
+		t.Fatal("rejected import installed the project")
+	}
+}
 
 func TestDestinationImportLockNormalizesCaseAliases(t *testing.T) {
 	root := t.TempDir()
@@ -481,6 +636,31 @@ func TestFullProjectImportRejectsDatabaseBodyReferenceMissingFromArchive(t *test
 	}
 	if dirHasProject(filepath.Join(target.GlobalDir, "projects", "missing")) {
 		t.Fatal("invalid project was installed")
+	}
+}
+
+func TestValidateImportedProjectRejectsMissingOriginalBody(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com",
+		Path: "/edited", Status: 200, OriginalReqBodyHash: strings.Repeat("a", 64),
+	}); err != nil {
+		st.Close()
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "interseptor.db"), filepath.Join(dir, archiveDBName)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := validateImportedProject(dir); err == nil {
+		t.Fatal("project with a missing original request body passed validation")
 	}
 }
 

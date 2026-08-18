@@ -179,10 +179,11 @@ func (m *Manager) scanForURL(cmd *exec.Cmd, generation uint64, r io.Reader) {
 	for sc.Scan() {
 		if u := quickTunnelURL.FindString(sc.Text()); u != "" {
 			m.publishURL(cmd, generation, u)
-			return
 		}
 	}
-	// Drain the rest so the pipe doesn't block the child on a full buffer.
+	// Scanner normally drains through EOF. If it stops early (for example on an
+	// oversized log line), keep consuming raw bytes so the child never blocks on
+	// a full stderr pipe.
 	_, _ = io.Copy(io.Discard, r)
 }
 

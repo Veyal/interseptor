@@ -1,10 +1,25 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestUpdateFlowRejectsMissingPendingRow(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	err = s.UpdateFlow(&Flow{ID: 999, Method: "GET", Host: "example.com", Path: "/"})
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}
 
 // TestConcurrentWritesNoBusy stresses the DB with many concurrent writers,
 // readers, and settings updates — it must not surface "database is locked"
@@ -156,5 +171,23 @@ func TestSettingsRoundTrip(t *testing.T) {
 	v, ok, err := s.GetSetting("proxy.addr")
 	if err != nil || !ok || v != "127.0.0.1:8080" {
 		t.Fatalf("GetSetting = %q, %v, %v", v, ok, err)
+	}
+}
+
+func TestSetSettingsRollsBackWholeBatch(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_bad_setting BEFORE INSERT ON settings
+		WHEN NEW.key = 'z.bad' BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSettings(map[string]string{"a.good": "would-be-partial", "z.bad": "rejected"}); err == nil {
+		t.Fatal("SetSettings succeeded despite rejecting trigger")
+	}
+	if value, found, err := s.GetSetting("a.good"); err != nil || found {
+		t.Fatalf("first setting survived failed batch: value=%q found=%v err=%v", value, found, err)
 	}
 }

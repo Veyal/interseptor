@@ -1,13 +1,15 @@
 package control
 
 import (
-	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxProjectNotesRequestBytes int64 = 16 << 20
 
 // getNotes returns the project's markdown notebook — a per-project scratchpad for
 // credentials, findings, scope notes and to-dos, editable in the UI and by the AI.
@@ -27,12 +29,11 @@ func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Notes string `json:"notes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	if _, err := h.st.PersistNotes(in.Notes); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "notes.update"})
@@ -49,8 +50,7 @@ func (h *projectAPI) patchNotes(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		AppendText string `json:"appendText"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	if strings.TrimSpace(in.AppendText) == "" {
@@ -58,7 +58,7 @@ func (h *projectAPI) patchNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.AppendNote(in.AppendText); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "notes.update"})
@@ -71,8 +71,7 @@ func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 		Mime string `json:"mime"`
 		Data string `json:"data"` // raw base64 or a data: URL
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxProjectNotesRequestBytes, &in) {
 		return
 	}
 	mime, raw, err := store.DecodeNotesImagePayload(in.Mime, in.Data)
@@ -82,10 +81,18 @@ func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.st.InsertNotesImage(mime, raw)
 	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func writeNotesMutationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrInvalidNotes) {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 // getNotesImage serves a stored notebook image for preview rendering.
@@ -97,7 +104,7 @@ func (h *projectAPI) getNotesImage(w http.ResponseWriter, r *http.Request) {
 	}
 	mime, data, err := h.st.GetNotesImage(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "image not found")
+		httpNotFoundOrInternal(w, err, "image not found")
 		return
 	}
 	// Coerce to an allowlisted raster type and forbid MIME sniffing so a stored

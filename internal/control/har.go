@@ -1,7 +1,7 @@
 package control
 
 import (
-	"io"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -9,6 +9,8 @@ import (
 	"github.com/Veyal/interseptor/internal/harx"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxHARImportBytes = 64 << 20
 
 // exportHAR streams the (optionally in-scope) history as a HAR 1.2 document.
 func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
@@ -37,9 +39,8 @@ func (h *projectAPI) exportHAR(w http.ResponseWriter, r *http.Request) {
 
 // importHAR ingests a HAR document, recording each entry as a flow (FlagImported).
 func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+	data, ok := readLimitedBody(w, r, maxHARImportBytes)
+	if !ok {
 		return
 	}
 	entries, err := harx.Parse(data)
@@ -64,17 +65,37 @@ func (h *projectAPI) importHAR(w http.ResponseWriter, r *http.Request) {
 			ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
 			DurationMs: e.DurationMs, Flags: store.FlagImported,
 		}
-		fl.ReqBodyHash, fl.ReqLen = h.storeBody(e.ReqBody)
-		fl.ResBodyHash, fl.ResLen = h.storeBody(e.ResBody)
-		if _, err := h.st.InsertFlow(fl); err == nil {
-			n++
+		if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
+			httpInternalErr(w, err)
+			return
 		}
+		n++
 	}
 	if n > 0 {
-		h.epsCache.invalidate() // imported flows add endpoints — drop the stale Map/endpoints aggregate
+		h.epsCache.invalidate()                         // imported flows add endpoints — drop the stale Map/endpoints aggregate
 		h.broadcast(map[string]any{"type": "flow.new"}) // nudge the UI to refresh history
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"imported": n})
+}
+
+func (h *projectAPI) insertImportedFlow(flow *store.Flow, reqBody, resBody []byte) error {
+	reqWriter, reqHash, reqLen, err := stageImportedBody(h.st, reqBody)
+	if err != nil {
+		return fmt.Errorf("store imported request body: %w", err)
+	}
+	flow.ReqBodyHash, flow.ReqLen = reqHash, reqLen
+	_, resHash, resLen, err := stageImportedBody(h.st, resBody)
+	if err != nil {
+		if reqWriter != nil {
+			reqWriter.Abort()
+		}
+		return fmt.Errorf("store imported response body: %w", err)
+	}
+	flow.ResBodyHash, flow.ResLen = resHash, resLen
+	if _, err := h.st.InsertFlow(flow); err != nil {
+		return fmt.Errorf("insert imported flow: %w", err)
+	}
+	return nil
 }
 
 func (h *projectAPI) storeBody(b []byte) (string, int64) {

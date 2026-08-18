@@ -29,7 +29,7 @@ The goal is a **report-ready project**, not just a pile of History rows.
 
 ## 3. Active work and external orchestration
 
-- [ ] Review deterministic active-scan results and external-agent activity in History
+- [ ] Review external-agent activity and verification results in History
 - [ ] Reproduce important candidates with `send_request` or Repeater
 - [ ] Attach evidence flows and record concrete verification steps
 - [ ] Confirm Critical/High with a human read of the PoC

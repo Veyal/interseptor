@@ -44,6 +44,61 @@ func TestFlowNoteSetGetSearch(t *testing.T) {
 	}
 }
 
+func TestSetFlowNoteRollsBackWhenFTSUpdateFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	id, err := s.InsertFlow(&Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/", Note: "original note",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`DROP TABLE flows_fts`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetFlowNote(id, "unindexed replacement"); err == nil {
+		t.Fatal("SetFlowNote succeeded without its FTS table")
+	}
+	flow, err := s.GetFlow(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flow.Note != "original note" {
+		t.Fatalf("failed note update persisted %q, want original note", flow.Note)
+	}
+}
+
+func TestInsertFlowPersistsInitialNote(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.InsertFlow(&Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/annotated",
+		Note: "imported evidence note",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFlow(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Note != "imported evidence note" {
+		t.Fatalf("note = %q, want initial note to survive insertion", got.Note)
+	}
+	matched, err := s.QueryFlowsFilter(FlowFilter{Search: "evidence"})
+	if err != nil || len(matched) != 1 || matched[0].ID != id {
+		t.Fatalf("search initial note = %+v, err = %v", matched, err)
+	}
+}
+
 // Open runs its column migration on every call; reopening the same database must
 // not error (the ALTER TABLE ADD COLUMN is ignored once the column exists).
 func TestOpenMigrationIdempotent(t *testing.T) {

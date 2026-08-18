@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -22,6 +23,8 @@ import (
 
 // maxRequests bounds a single attack so a huge payload list cannot run away.
 const maxRequests = 2000
+
+const maxDispatchDelayMs = int64(1<<63-1) / int64(time.Millisecond)
 
 var marker = regexp.MustCompile(`§[^§]*§`)
 
@@ -72,7 +75,7 @@ type State struct {
 // Engine runs one attack at a time.
 type Engine struct {
 	snd  *sender.Sender
-	body func(hash string) []byte // reads a stored response body (for grep); may be nil
+	body func(hash string) ([]byte, error) // reads a stored response body (for grep); may be nil
 
 	mu      sync.Mutex
 	running bool
@@ -104,9 +107,19 @@ func New(snd *sender.Sender) *Engine {
 	return &Engine{snd: snd, doneCh: done}
 }
 
-// SetBodyReader wires a response-body reader so grep-match/extract can inspect
-// response contents (the engine itself has no store access).
-func (e *Engine) SetBodyReader(fn func(hash string) []byte) { e.body = fn }
+// SetBodyReader wires a simple response-body reader so grep-match/extract can
+// inspect response contents. Use SetBodyReaderResult when read failures matter.
+func (e *Engine) SetBodyReader(fn func(hash string) []byte) {
+	if fn == nil {
+		e.body = nil
+		return
+	}
+	e.body = func(hash string) ([]byte, error) { return fn(hash), nil }
+}
+
+// SetBodyReaderResult wires an error-aware response-body reader. The engine has
+// no store dependency, so the control plane supplies this adapter.
+func (e *Engine) SetBodyReaderResult(fn func(hash string) ([]byte, error)) { e.body = fn }
 
 // processPayload applies the configured transforms to a payload value, in order.
 func processPayload(pl string, rules []string) string {
@@ -176,10 +189,18 @@ type job struct {
 // normalizeAttackType maps UI/API aliases to engine attack types.
 func normalizeAttackType(t string) string {
 	switch strings.ToLower(strings.TrimSpace(t)) {
-	case "null":
+	case "null", "repeat":
 		return "repeat"
+	case "sniper":
+		return "sniper"
+	case "pitchfork":
+		return "pitchfork"
+	case "battering", "batteringram":
+		return "battering"
+	case "cluster", "clusterbomb":
+		return "cluster"
 	default:
-		return t
+		return ""
 	}
 }
 
@@ -193,7 +214,11 @@ func (e *Engine) Start(spec Spec) error {
 		return ErrClosed
 	}
 
-	spec.AttackType = normalizeAttackType(spec.AttackType)
+	rawAttackType := spec.AttackType
+	spec.AttackType = normalizeAttackType(rawAttackType)
+	if spec.AttackType == "" {
+		return fmt.Errorf("unsupported attack type %q", strings.TrimSpace(rawAttackType))
+	}
 	positions := marker.FindAllString(spec.Template, -1)
 	if spec.AttackType == "repeat" {
 		// Null/repeat mode: send the template verbatim N times — no markers or
@@ -208,9 +233,19 @@ func (e *Engine) Start(spec Spec) error {
 		if len(spec.Payloads) == 0 || len(spec.Payloads[0]) == 0 {
 			return errors.New("no payloads provided")
 		}
+		if spec.AttackType == "pitchfork" || spec.AttackType == "cluster" {
+			for i := 0; i < len(spec.Payloads) && i < len(positions); i++ {
+				if len(spec.Payloads[i]) == 0 {
+					return fmt.Errorf("payload list %d is empty", i+1)
+				}
+			}
+		}
 	}
 	if spec.Target == "" {
 		return errors.New("no target")
+	}
+	if spec.DelayMs < 0 || int64(spec.DelayMs) > maxDispatchDelayMs {
+		return fmt.Errorf("delay must be between 0 and %d milliseconds", maxDispatchDelayMs)
 	}
 
 	baselines := make([]string, len(positions))
@@ -270,8 +305,12 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 			}
 		}
 	case "pitchfork":
-		n := len(spec.Payloads[0])
-		for _, list := range spec.Payloads {
+		lists := spec.Payloads
+		if len(lists) > nPositions {
+			lists = lists[:nPositions]
+		}
+		n := len(lists[0])
+		for _, list := range lists {
 			if len(list) < n {
 				n = len(list)
 			}
@@ -280,8 +319,8 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 			payloads := make([]string, nPositions)
 			labels := make([]string, 0, nPositions)
 			for i := 0; i < nPositions; i++ {
-				if i < len(spec.Payloads) {
-					orig := spec.Payloads[i][k]
+				if i < len(lists) {
+					orig := lists[i][k]
 					payloads[i] = processPayload(orig, spec.ProcessRules) // sent value (transformed)
 					labels = append(labels, orig)                         // label shows the original
 				} else {
@@ -396,7 +435,11 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 		if (grepM == nil && grepMLit == "" && grepX == nil) || e.body == nil || hash == "" {
 			return
 		}
-		raw := e.body(hash)
+		raw, err := e.body(hash)
+		if err != nil {
+			res.Error = "response body unavailable"
+			return
+		}
 
 		// Skip grep on known-binary content types; flag the result so the UI can
 		// show an informational badge rather than a silent non-match.
@@ -463,7 +506,7 @@ dispatch:
 				return
 			}
 			start := time.Now()
-			flow, _ := e.snd.Send(sender.Request{
+			flow, sendErr := e.snd.Send(sender.Request{
 				Method:  method,
 				URL:     base + path,
 				Headers: headers,
@@ -472,14 +515,22 @@ dispatch:
 				Context: ctx,
 			})
 			res.TimeMs = time.Since(start).Milliseconds()
+			if sendErr != nil {
+				res.Error = "send failed"
+			}
 			if flow != nil {
 				res.Status = flow.Status
 				res.Length = flow.ResLen
-				if res.Error == "" {
+				if flow.Error != "" {
 					res.Error = flow.Error
 				}
+				if res.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+					res.Error = "response capture incomplete"
+				}
 				res.FlowID = flow.ID
-				doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
+				if res.Error == "" {
+					doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
+				}
 			}
 			e.appendResult(res)
 		}(i, j)
@@ -512,10 +563,15 @@ func (e *Engine) flagAnomalies() {
 
 	// Collect valid (successfully-sent) results only. Parse/transport failures
 	// (Status 0) must not skew the modal status or median length.
-	type valid struct{ idx int; st int; length int64; matched bool }
+	type valid struct {
+		idx     int
+		st      int
+		length  int64
+		matched bool
+	}
 	var valids []valid
 	for i, r := range e.results {
-		if r.Status > 0 {
+		if r.Status > 0 && r.Error == "" {
 			valids = append(valids, valid{i, r.Status, r.Length, r.Matched})
 		}
 	}

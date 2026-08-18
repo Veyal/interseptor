@@ -59,15 +59,14 @@ Streamable HTTP at `/mcp`. See [API and MCP](api-and-mcp.md).
 ## Check authoring
 
 ```text
-interseptor check new <id> [--active]
-interseptor check validate [files...] [--active]
-interseptor check lint [files...] [--active]
+interseptor check new <id>
+interseptor check validate [files...]
+interseptor check lint [files...]
 interseptor check test <file> --flow-json <file|->
 ```
 
-Passive checks live under the data directory's `checks/`; `--active` selects `active-checks/`.
-Validation compiles checks without starting the server. Test consumes the documented flow JSON shape
-from a file or standard input.
+Checks live under the data directory's `checks/`. Validation compiles passive checks without starting
+the server. Test consumes the documented flow JSON shape from a file or standard input.
 
 ## Rule packs
 

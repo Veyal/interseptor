@@ -44,21 +44,26 @@ func (h *Hub) readActivitySocket(conn net.Conn) {
 	defer h.activitySocketWG.Done()
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(activitySocketReadTimeout))
-	decoder := json.NewDecoder(bufio.NewReader(io.LimitReader(conn, maxActivitySocketMessage)))
+	line, err := bufio.NewReader(io.LimitReader(conn, maxActivitySocketMessage+1)).ReadBytes('\n')
+	if err != nil || len(line) > maxActivitySocketMessage {
+		return
+	}
 	activity := mcp.Activity{}
 	if h.activitySocketToken == "" {
-		if decoder.Decode(&activity) != nil {
+		if json.Unmarshal(line, &activity) != nil {
 			return
 		}
 	} else {
 		var message activitySocketMessage
-		if decoder.Decode(&message) != nil || subtle.ConstantTimeCompare([]byte(message.Token), []byte(h.activitySocketToken)) != 1 {
+		if json.Unmarshal(line, &message) != nil || subtle.ConstantTimeCompare([]byte(message.Token), []byte(h.activitySocketToken)) != 1 {
 			return
 		}
 		activity = message.Activity
 	}
 	if activity.Tool != "" {
-		h.recordMCPActivity(activity)
+		if err := h.recordMCPActivityChecked(activity); err != nil {
+			return
+		}
 		_, _ = conn.Write([]byte{1})
 	}
 }

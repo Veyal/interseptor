@@ -8,6 +8,8 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+const maxSavedViewRequestBytes int64 = 64 << 10
+
 func (h *projectAPI) listViews(w http.ResponseWriter, r *http.Request) {
 	views, err := h.st.ListViews()
 	if err != nil {
@@ -25,8 +27,7 @@ func (h *projectAPI) createView(w http.ResponseWriter, r *http.Request) {
 		Name string          `json:"name"`
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxSavedViewRequestBytes, &in) {
 		return
 	}
 	if in.Name == "" {

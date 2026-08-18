@@ -6,10 +6,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -31,6 +31,7 @@ const (
 	maxArchiveEntries       = 1_000_000
 	maxArchiveFileBytes     = 4 << 30
 	maxArchiveExpandedBytes = 32 << 30
+	maxArchivePathJSONBytes = 16 << 10
 )
 
 type archiveReadLimits struct {
@@ -134,12 +135,28 @@ func buildFullArchive(w io.Writer, snapshotPath, bodiesDir, codecsDir string) er
 
 func addArchiveFiles(zw *zip.Writer, sourceDir, archiveRoot string, skipTemporary bool) error {
 	return filepath.WalkDir(sourceDir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
+		if err != nil {
+			if p == sourceDir && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
 			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing symlink in project archive: %q", p)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing non-regular file in project archive: %q", p)
 		}
 		rel, err := filepath.Rel(sourceDir, p)
 		if err != nil {
-			return nil
+			return fmt.Errorf("archive relative path for %q: %w", p, err)
 		}
 		return addFileToZip(zw, p, archiveRoot+"/"+filepath.ToSlash(rel))
 	})
@@ -323,6 +340,9 @@ func (h *Hub) projectImportDir(name string) (string, error) {
 	if !safeProjectTarget(name) {
 		return "", fmt.Errorf("invalid project name: use a plain name, not a path")
 	}
+	if strings.EqualFold(name, "default") {
+		return "", fmt.Errorf("project name %q is reserved for the root project", name)
+	}
 	if h.GlobalDir == "" {
 		return "", fmt.Errorf("project storage location is not configured")
 	}
@@ -405,6 +425,10 @@ func validateImportedProject(dir string) error {
 		SELECT req_body_hash AS body_hash FROM flows WHERE req_body_hash != ''
 		UNION
 		SELECT res_body_hash AS body_hash FROM flows WHERE res_body_hash != ''
+		UNION
+		SELECT original_req_body_hash AS body_hash FROM flows WHERE original_req_body_hash != ''
+		UNION
+		SELECT original_res_body_hash AS body_hash FROM flows WHERE original_res_body_hash != ''
 	)`)
 	if err != nil {
 		return fmt.Errorf("validate imported body references: %w", err)
@@ -486,12 +510,27 @@ func (h *projectAPI) exportFull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
+	archive, err := os.CreateTemp("", "interseptor-export-*.zip")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	defer func() {
+		name := archive.Name()
+		_ = archive.Close()
+		_ = os.Remove(name)
+	}()
+	if err := buildFullArchive(archive, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+archiveFilename(h.ProjectName)+`"`)
-	if err := buildFullArchive(w, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
-		// Headers are already sent; log-and-abort is all we can do mid-stream.
-		log.Printf("control: full export failed: %v", err)
-	}
+	_, _ = io.Copy(w, archive)
 }
 
 // importFull ingests an uploaded project zip as a new named project under
@@ -518,6 +557,10 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 	written, copyErr := io.Copy(tmp, &io.LimitedReader{R: r.Body, N: maxArchiveBytes + 1})
 	closeErr := tmp.Close()
 	if copyErr != nil {
+		if isBodyTooLarge(copyErr) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "project archive exceeds compressed size limit")
+			return
+		}
 		httpErr(w, http.StatusBadRequest, copyErr.Error())
 		return
 	}
@@ -545,8 +588,7 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
 	dest := strings.TrimSpace(in.Path)
@@ -560,17 +602,27 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
-	out, err := os.Create(dest)
+	if info, err := os.Stat(dest); err == nil && info.IsDir() {
+		httpErr(w, http.StatusBadRequest, "destination is a directory")
+		return
+	}
+	out, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+"-*.tmp")
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, "create: "+err.Error())
 		return
 	}
+	tmpPath := out.Name()
+	defer os.Remove(tmpPath)
 	if err := buildFullArchive(out, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
-		out.Close()
+		_ = out.Close()
 		httpInternalErr(w, err)
 		return
 	}
 	if err := out.Close(); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := replaceFilePreservingDestination(tmpPath, dest); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
@@ -590,8 +642,7 @@ func (h *projectAPI) importFullFile(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 		Overwrite bool   `json:"overwrite"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
 	if strings.TrimSpace(in.Path) == "" {

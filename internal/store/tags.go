@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"sort"
 	"strings"
 )
@@ -69,6 +70,9 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := requireFlowForTags(tx, flowID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id=?`, flowID); err != nil {
 		return nil, err
 	}
@@ -85,12 +89,76 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 
 // AddFlowTags adds tags to a flow (union) and returns the flow's full tag set.
 func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := requireFlowForTags(tx, flowID); err != nil {
+		return nil, err
+	}
 	for _, t := range NormalizeTags(tags) {
-		if _, err := s.db.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
 			return nil, err
 		}
 	}
-	return s.FlowTags(flowID)
+	rows, err := tx.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, tag)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// MutateFlowTags applies one add/remove command to every selected flow in one
+// transaction. Remove wins when the same normalized tag appears in both sets.
+func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
+	add = NormalizeTags(add)
+	remove = NormalizeTags(remove)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, flowID := range flowIDs {
+		if err := requireFlowForTags(tx, flowID); err != nil {
+			return err
+		}
+		for _, tag := range add {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, tag); err != nil {
+				return err
+			}
+		}
+		for _, tag := range remove {
+			if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, tag); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+func requireFlowForTags(tx *sql.Tx, flowID int64) error {
+	var exists int
+	return tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
 }
 
 // RemoveFlowTag detaches a single tag from a flow.

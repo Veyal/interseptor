@@ -178,6 +178,42 @@ func TestIOSSSHStatusProbeRejectsInvalidPortBeforeDial(t *testing.T) {
 	}
 }
 
+func TestIOSSSHCommandsRejectTrailingJSON(t *testing.T) {
+	hub, _, _ := newHub(t)
+	ca, err := tlsca.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadOrCreate CA: %v", err)
+	}
+	hub.ca = ca
+	api := &iosAPI{hub}
+	tests := []struct {
+		name string
+		call http.HandlerFunc
+	}{
+		{"status", api.postIOSSSHStatus},
+		{"install CA", api.postIOSSSHInstallCA},
+		{"setup", api.postIOSSSHSetup},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/ios/ssh", strings.NewReader(`{} {}`))
+			rec := httptest.NewRecorder()
+			tt.call(rec, req)
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "bad json") {
+				t.Fatalf("status=%d body=%q, want 400 bad json", rec.Code, rec.Body.String())
+			}
+
+			oversized := `{"padding":"` + strings.Repeat("x", int(maxMobileCommandRequestBytes)) + `"}`
+			req = httptest.NewRequest(http.MethodPost, "/api/ios/ssh", strings.NewReader(oversized))
+			rec = httptest.NewRecorder()
+			tt.call(rec, req)
+			if rec.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("oversized status=%d body=%q, want 413", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestIOSStatusEndpoint(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {

@@ -144,10 +144,10 @@ func newPayloadUUID() string {
 
 // SetupOpts configures one-click iOS intercept setup.
 type SetupOpts struct {
-	Target    string // simulator | physical | auto
-	ProxyMode string // localhost (simulator) | wifi (physical, default)
-	WiFiHost  string
-	Port      int
+	Target     string // simulator | physical | auto
+	ProxyMode  string // localhost (simulator) | wifi (physical, default)
+	WiFiHost   string
+	Port       int
 	ProfileURL string // control plane URL prefix for profile download
 }
 

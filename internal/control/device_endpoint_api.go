@@ -1,12 +1,12 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"strings"
 )
+
+const maxDeviceEndpointRequestBytes int64 = 16 << 10
 
 func (h *settingsAPI) getDeviceProxyEndpoint(w http.ResponseWriter, r *http.Request) {
 	ep := h.resolveDeviceEndpoint()
@@ -27,8 +27,7 @@ func (h *settingsAPI) setDeviceProxyEndpoint(w http.ResponseWriter, r *http.Requ
 		Mode string `json:"mode"`
 		Host string `json:"host"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxDeviceEndpointRequestBytes, &in) {
 		return
 	}
 	mode := strings.ToLower(strings.TrimSpace(in.Mode))
@@ -48,10 +47,11 @@ func (h *settingsAPI) setDeviceProxyEndpoint(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	if !h.persistSetting(w, settingDeviceProxyMode, mode) {
-		return
-	}
-	if !h.persistSetting(w, settingDeviceProxyHost, host) {
+	if err := h.st.SetSettings(map[string]string{
+		settingDeviceProxyMode: mode,
+		settingDeviceProxyHost: host,
+	}); err != nil {
+		httpInternalErr(w, err)
 		return
 	}
 	h.getDeviceProxyEndpoint(w, r)

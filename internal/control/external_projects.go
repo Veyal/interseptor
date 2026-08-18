@@ -2,9 +2,11 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // externalProject is a project whose data directory lives outside
@@ -18,6 +20,8 @@ type externalProject struct {
 }
 
 const maxExternalProjects = 50
+
+var externalProjectsMu sync.Mutex
 
 func externalProjectsPath(globalDir string) string {
 	return filepath.Join(globalDir, "external-projects.json")
@@ -43,10 +47,12 @@ func readExternalProjects(globalDir string) []externalProject {
 // rememberExternalProject records path as the most-recently-used external
 // project (moving it to the front if already known), capped at
 // maxExternalProjects entries so the file can't grow unbounded.
-func rememberExternalProject(globalDir, name, path string) {
+func rememberExternalProject(globalDir, name, path string) error {
 	if globalDir == "" {
-		return
+		return fmt.Errorf("project storage location is not configured")
 	}
+	externalProjectsMu.Lock()
+	defer externalProjectsMu.Unlock()
 	existing := readExternalProjects(globalDir)
 	out := []externalProject{{Name: name, Path: path}}
 	for _, e := range existing {
@@ -60,10 +66,9 @@ func rememberExternalProject(globalDir, name, path string) {
 	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	_ = os.MkdirAll(globalDir, 0o755)
-	_ = os.WriteFile(externalProjectsPath(globalDir), b, 0o644)
+	return writeFileAtomic(externalProjectsPath(globalDir), b, 0o644)
 }
 
 // isSafeExternalPath reports whether abs (already made absolute) is a

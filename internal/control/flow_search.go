@@ -19,6 +19,7 @@ const (
 	maxFlowSearches             = 100
 	maxFlowSearchNameBytes      = 128
 	maxFlowAnywhereCandidates   = 8000
+	maxFlowSearchRequestBytes   = 128 << 10
 )
 
 type savedFlowSearch struct {
@@ -112,7 +113,7 @@ func (h *flowAPI) testFlowSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	flow, err := h.st.GetFlow(input.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	budget := int64(maxFlowScriptTotalBodyBytes)
@@ -171,10 +172,7 @@ func (h *flowAPI) saveFlowSearch(w http.ResponseWriter, r *http.Request, status 
 
 func decodeFlowSearch(w http.ResponseWriter, r *http.Request) (flowSearchInput, *searchscript.Script, bool) {
 	var input flowSearchInput
-	decoder := json.NewDecoder(io.LimitReader(r.Body, 128<<10))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
-		httpErr(w, http.StatusBadRequest, "invalid flow search")
+	if !decodeLimitedJSONDisallowUnknownFields(w, r, maxFlowSearchRequestBytes, &input) {
 		return flowSearchInput{}, nil, false
 	}
 	input.Name = strings.TrimSpace(input.Name)

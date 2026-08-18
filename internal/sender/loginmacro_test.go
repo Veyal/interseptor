@@ -1,6 +1,7 @@
 package sender
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -73,6 +74,48 @@ func TestExtractSessionHeaders(t *testing.T) {
 	}
 	if cookie != "sid=abc; csrf=xyz" {
 		t.Fatalf("cookie: %q", cookie)
+	}
+}
+
+func TestSetLoginMacroRejectsUnsafeRefreshIntervals(t *testing.T) {
+	snd := &Sender{}
+	invalid := []int{-1}
+	maxInt := int(^uint(0) >> 1)
+	maxSafe := int64(^uint64(0)>>1) / int64(time.Second)
+	if uint64(maxInt) > uint64(maxSafe) {
+		invalid = append(invalid, maxInt)
+	}
+	for _, refreshSecs := range invalid {
+		if err := snd.SetLoginMacro(LoginMacro{RefreshSecs: refreshSecs}); err == nil {
+			t.Fatalf("SetLoginMacro(%d) succeeded, want validation error", refreshSecs)
+		}
+	}
+}
+
+func TestLoginRefreshPersistenceFailureKeepsExistingSession(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "sid=fresh; Path=/")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	snd := &Sender{cl: upstream.Client()}
+	snd.SetSession(true, []Header{{Key: "Cookie", Value: "sid=old"}})
+	if err := snd.SetLoginMacro(LoginMacro{
+		Enabled: true, Target: upstream.URL,
+		Request: "GET /login HTTP/1.1\r\nHost: example.com\r\n\r\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snd.SetSessionRefresh(func([]Header) error { return errors.New("persistence failed") })
+
+	if _, err := snd.RunLoginMacroNow(); err == nil {
+		t.Fatal("RunLoginMacroNow succeeded, want persistence error")
+	}
+	snd.sess.mu.RLock()
+	defer snd.sess.mu.RUnlock()
+	if got := snd.sess.headers; len(got) != 1 || got[0].Value != "sid=old" {
+		t.Fatalf("live session changed after persistence failure: %+v", got)
 	}
 }
 

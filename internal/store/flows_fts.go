@@ -86,22 +86,3 @@ func appendFTSSearch(where []string, args []any, term string) ([]string, []any) 
 	args = append(args, q)
 	return where, args
 }
-
-func (s *Store) indexFlowFTS(id int64, host, path, method, note string) error {
-	_, err := s.db.Exec(
-		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
-		id, host, path, method, note)
-	return err
-}
-
-func (s *Store) unindexFlowFTS(id int64, host, path, method, note string) error {
-	_, err := s.db.Exec(`DELETE FROM flows_fts WHERE rowid=?`, id)
-	return err
-}
-
-func (s *Store) replaceFlowFTS(id int64, oldHost, oldPath, oldMethod, oldNote, newHost, newPath, newMethod, newNote string) error {
-	if err := s.unindexFlowFTS(id, oldHost, oldPath, oldMethod, oldNote); err != nil {
-		return err
-	}
-	return s.indexFlowFTS(id, newHost, newPath, newMethod, newNote)
-}

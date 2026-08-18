@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -23,8 +22,7 @@ type intruderStartJSON struct {
 
 func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 	var in intruderStartJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if h.targetsOwnListener(in.Target) {

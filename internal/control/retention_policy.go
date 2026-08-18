@@ -1,7 +1,7 @@
 package control
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,9 +13,12 @@ import (
 // ticker (so a long engagement can't fill the disk silently) and on demand via
 // POST /api/flows/retention/run.
 const (
-	retentionMaxAgeHoursKey = "retention.maxAgeHours"
-	retentionMaxFlowsKey    = "retention.maxFlows"
-	retentionInterval       = 30 * time.Minute
+	retentionMaxAgeHoursKey        = "retention.maxAgeHours"
+	retentionMaxFlowsKey           = "retention.maxFlows"
+	retentionInterval              = 30 * time.Minute
+	retentionInitialDelay          = 10 * time.Second
+	maxRetentionRequestBytes int64 = 4 << 10
+	maxRetentionAgeHours           = int64(1<<63-1) / int64(time.Hour)
 )
 
 type retentionPolicy struct {
@@ -38,6 +41,9 @@ func (h *Hub) loadRetentionPolicy() retentionPolicy {
 // bodies. Returns the number of flows deleted. Safe to call from a goroutine.
 func (h *Hub) runRetentionOnce() (int64, error) {
 	p := h.loadRetentionPolicy()
+	if err := validateRetentionPolicy(p); err != nil {
+		return 0, err
+	}
 	var deleted int64
 	if p.MaxAgeHours > 0 {
 		cutoff := time.Now().Add(-time.Duration(p.MaxAgeHours) * time.Hour).UnixMilli()
@@ -57,23 +63,42 @@ func (h *Hub) runRetentionOnce() (int64, error) {
 	if deleted > 0 {
 		h.epsCache.invalidate()
 		h.broadcast(map[string]any{"type": "flow.new"})
-		go func() {
-			if _, _, err := h.st.GCBodies(); err != nil {
+		h.startMaintenance(func() {
+			if _, _, err := h.gcBodiesFn(); err != nil {
 				log.Printf("retention GC: %v", err)
 			}
-		}()
+		})
 	}
 	return deleted, nil
 }
 
+func validateRetentionPolicy(p retentionPolicy) error {
+	if p.MaxAgeHours < 0 || p.MaxFlows < 0 {
+		return fmt.Errorf("maxAgeHours and maxFlows must be >= 0 (0 = off)")
+	}
+	if p.MaxAgeHours > maxRetentionAgeHours {
+		return fmt.Errorf("maxAgeHours exceeds the safe duration limit of %d", maxRetentionAgeHours)
+	}
+	return nil
+}
+
 // StartRetentionLoop runs runRetentionOnce on a ticker until stop is closed.
-// Non-blocking; logs failures and keeps ticking.
-func (h *Hub) StartRetentionLoop(stop <-chan struct{}) {
+// Non-blocking; logs failures and keeps ticking. The returned channel closes
+// after the goroutine exits so shutdown can wait before closing the store.
+func (h *Hub) StartRetentionLoop(stop <-chan struct{}) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		t := time.NewTicker(retentionInterval)
 		defer t.Stop()
 		// One run shortly after start so a long-idle install cleans up on launch.
-		time.Sleep(10 * time.Second)
+		initial := time.NewTimer(retentionInitialDelay)
+		defer initial.Stop()
+		select {
+		case <-initial.C:
+		case <-stop:
+			return
+		}
 		h.runRetentionTick()
 		for {
 			select {
@@ -84,6 +109,7 @@ func (h *Hub) StartRetentionLoop(stop <-chan struct{}) {
 			}
 		}
 	}()
+	return done
 }
 
 func (h *Hub) runRetentionTick() {
@@ -98,18 +124,18 @@ func (h *flowAPI) getRetention(w http.ResponseWriter, r *http.Request) {
 
 func (h *flowAPI) putRetention(w http.ResponseWriter, r *http.Request) {
 	var in retentionPolicy
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRetentionRequestBytes, &in) {
 		return
 	}
-	if in.MaxAgeHours < 0 || in.MaxFlows < 0 {
-		httpErr(w, http.StatusBadRequest, "maxAgeHours and maxFlows must be >= 0 (0 = off)")
+	if err := validateRetentionPolicy(in); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !h.persistSetting(w, retentionMaxAgeHoursKey, strconv.FormatInt(in.MaxAgeHours, 10)) {
-		return
-	}
-	if !h.persistSetting(w, retentionMaxFlowsKey, strconv.FormatInt(in.MaxFlows, 10)) {
+	if err := h.st.SetSettings(map[string]string{
+		retentionMaxAgeHoursKey: strconv.FormatInt(in.MaxAgeHours, 10),
+		retentionMaxFlowsKey:    strconv.FormatInt(in.MaxFlows, 10),
+	}); err != nil {
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, h.loadRetentionPolicy())

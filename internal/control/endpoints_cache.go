@@ -13,10 +13,10 @@ import (
 // GROUP BY aggregation because only one entry was cached. The cache is
 // invalidated (cleared) whenever flows change.
 type endpointsCache struct {
-	mu              sync.Mutex
-	items           map[string]endpointsCacheEntry
-	order           []string // LRU order, oldest first
-	debounceTimer   *time.Timer
+	mu            sync.Mutex
+	items         map[string]endpointsCacheEntry
+	order         []string // LRU order, oldest first
+	debounceTimer *time.Timer
 }
 
 type endpointsCacheEntry struct {

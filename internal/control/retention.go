@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 )
@@ -20,15 +19,22 @@ type purgeRequest struct {
 // Response: {"deleted":<int>,"removedFiles":<int>,"freedBytes":<int>}
 func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 	var in purgeRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
 		return
 	}
 	if len(in.Hosts) > maxBulkItems {
 		httpErr(w, http.StatusBadRequest, "too many hosts")
 		return
 	}
-	keepOnly := in.Mode == "keepOnly"
+	var keepOnly bool
+	switch in.Mode {
+	case "delete":
+	case "keepOnly":
+		keepOnly = true
+	default:
+		httpErr(w, http.StatusBadRequest, "mode must be delete or keepOnly")
+		return
+	}
 
 	deleted, err := h.st.DeleteFlowsByHost(in.Hosts, keepOnly)
 	if err != nil {
@@ -44,13 +50,35 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 	// Reclaim orphaned body files in the background: a large bodies directory can
 	// take seconds to walk (worse on Windows), and the user-visible delete is
 	// already done. (The explicit "Reclaim space" button — gcBodies — stays sync.)
-	go func() {
-		if _, _, err := h.st.GCBodies(); err != nil {
+	h.startMaintenance(func() {
+		if _, _, err := h.gcBodiesFn(); err != nil {
 			log.Printf("purge GC: %v", err)
 		}
-	}()
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
+func (h *Hub) startMaintenance(run func()) bool {
+	h.maintenanceMu.Lock()
+	if h.maintenanceClosed {
+		h.maintenanceMu.Unlock()
+		return false
+	}
+	h.maintenanceWG.Add(1)
+	h.maintenanceMu.Unlock()
+	go func() {
+		defer h.maintenanceWG.Done()
+		run()
+	}()
+	return true
+}
+
+func (h *Hub) stopMaintenance() {
+	h.maintenanceMu.Lock()
+	h.maintenanceClosed = true
+	h.maintenanceMu.Unlock()
+	h.maintenanceWG.Wait()
 }
 
 // gcBodies reclaims orphaned body files without deleting any flows.

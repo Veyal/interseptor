@@ -1,7 +1,6 @@
 # Writing custom scanner checks
 
-> Want to *confirm* a vuln by sending real traffic instead of inspecting passively? See
-> [Writing custom ACTIVE checks](custom-active-checks.md). This page covers the **passive** scanner.
+This page covers the **passive** scanner: checks inspect captured flows and never send requests.
 
 Interseptor's passive scanner is extensible: drop a check written in **Starlark** (a small,
 Python-like language) into your checks folder and it runs on every scan, right alongside the

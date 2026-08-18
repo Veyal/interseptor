@@ -9,12 +9,37 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+func TestReplayPageClassifiesLookupFailures(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &toolsAPI{h}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/replay/1", nil)
+	missingReq.SetPathValue("id", "1")
+	missingRec := httptest.NewRecorder()
+	api.replayPage(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing status=%d, want 404", missingRec.Code)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	failureReq := httptest.NewRequest(http.MethodGet, "/replay/1", nil)
+	failureReq.SetPathValue("id", "1")
+	failureRec := httptest.NewRecorder()
+	api.replayPage(failureRec, failureReq)
+	if failureRec.Code != http.StatusInternalServerError || !bytes.Contains(failureRec.Body.Bytes(), []byte("internal server error")) {
+		t.Fatalf("storage failure status=%d body=%q, want scrubbed 500", failureRec.Code, failureRec.Body.String())
+	}
+}
 
 // A replay link re-sends a captured flow's request. session="flow" replays it
 // exactly as captured; session="current" lets the configured session headers
@@ -94,6 +119,94 @@ func TestReplayFlowSessionModes(t *testing.T) {
 	}
 	if got[1].auth != "current" {
 		t.Fatalf("current-session replay must override X-Auth with the session value, got %q", got[1].auth)
+	}
+}
+
+func TestReplayFlowRejectsMissingRequestBody(t *testing.T) {
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+
+	h, s, _ := newHub(t)
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	id, err := s.InsertFlow(&store.Flow{
+		Method: "POST", Scheme: "http", Host: u.Hostname(), Port: port, Path: "/submit",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/flows/1/replay", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&toolsAPI{h}).replayFlow(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if hits != 0 {
+		t.Fatalf("target received %d requests despite missing body", hits)
+	}
+}
+
+func TestReplayFlowRejectsInvalidOptionsBeforeSending(t *testing.T) {
+	var mu sync.Mutex
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		io.WriteString(w, "ok")
+	}))
+	defer target.Close()
+
+	h, s, _ := newHub(t)
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	id, err := s.InsertFlow(&store.Flow{
+		Method: "GET", Host: u.Hostname(), Path: "/replay-target", Scheme: "http", Port: port,
+		Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "malformed JSON", body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "unknown session", body: `{"session":"currnet"}`, wantStatus: http.StatusBadRequest},
+		{name: "trailing JSON", body: `{"session":"flow"}{}`, wantStatus: http.StatusBadRequest},
+		{name: "oversized JSON", body: `{"session":"flow","padding":"` + string(bytes.Repeat([]byte("x"), maxReplayRequestBytes)) + `"}`, wantStatus: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Post(
+				fmt.Sprintf("%s/api/flows/%d/replay", ts.URL, id),
+				"application/json",
+				bytes.NewBufferString(tc.body),
+			)
+			if err != nil {
+				t.Fatalf("POST replay: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+		})
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 0 {
+		t.Fatalf("invalid replay options sent %d requests, want 0", hits)
 	}
 }
 

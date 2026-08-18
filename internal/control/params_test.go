@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,23 @@ func writeParamTestBody(t *testing.T, s *store.Store, content string) string {
 		t.Fatal(err)
 	}
 	return hash
+}
+
+func TestListParamsRejectsMissingBodyEvidence(t *testing.T) {
+	h, st, _ := newHub(t)
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com", Path: "/submit",
+		ReqHeaders:  map[string][]string{"Content-Type": {"application/x-www-form-urlencoded"}},
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/params", nil)
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).listParams(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
 }
 
 func TestListParamsAggregatesQueryAndForm(t *testing.T) {

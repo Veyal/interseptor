@@ -49,6 +49,10 @@ and path. Live updates stream over Server-Sent Events at `GET /api/events`. High
 `/api/flows`, `/api/repeater/send`, `/api/intruder/start`, `/api/scanner/run`, `/api/scope`,
 `/api/session`, `/api/ws/send`, `/api/export/{har,project}`, `/api/settings`.
 
+Burp Suite migration uses `POST /api/import/burp` with a raw **Save items** XML export. The endpoint
+streams entries into History and returns `{imported, skipped}`. Native `.burp` project files are not
+an accepted interchange format.
+
 ### History search API
 
 `GET /api/flows` supports `searchScope=anywhere|body|id` and `savedSearch=<name>`. Anywhere search checks flow metadata, headers, tags, and bodies, with an 8,000-candidate cap and 256 KiB per-body read cap. Responses expose `searchNote` when a search reaches its scan limit and `truncated` when the result page exceeds `limit`.

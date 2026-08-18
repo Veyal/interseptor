@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,7 +14,75 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
+
+func TestPortableProjectExportFailsWhenMetadataCannotBeRead(t *testing.T) {
+	h, st, _ := newHub(t)
+	dbPath := filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE rules`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(rec, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 instead of an incomplete export", rec.Code)
+	}
+}
+
+func TestPortableProjectExportFailsWhenFlowBodyIsMissing(t *testing.T) {
+	h, st, _ := newHub(t)
+	_, err := st.InsertFlow(&store.Flow{
+		TS:          time.UnixMilli(1),
+		Method:      "POST",
+		Scheme:      "https",
+		Host:        "example.com",
+		Port:        443,
+		Path:        "/upload",
+		Status:      200,
+		ReqBodyHash: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(rec, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 instead of an export with an empty request body", rec.Code)
+	}
+}
+
+func TestPortableProjectExportDoesNotTruncateLargeHistory(t *testing.T) {
+	_, st, _ := newHub(t)
+	const flowCount = 3
+	for i := 0; i < flowCount; i++ {
+		if _, err := st.InsertFlow(&store.Flow{
+			TS: time.UnixMilli(int64(i + 1)), Method: "GET", Scheme: "https",
+			Host: "example.com", Port: 443, Path: "/history", Status: 200,
+		}); err != nil {
+			t.Fatalf("InsertFlow %d: %v", i, err)
+		}
+	}
+
+	flows, err := portableProjectFlows(st, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != flowCount {
+		t.Fatalf("export query returned %d flows, want %d", len(flows), flowCount)
+	}
+}
 
 // A stray projects/default directory must not duplicate the reserved "default"
 // entry (the root project) that availableProjects always lists first.
@@ -239,5 +308,72 @@ func TestScheduleProjectSwitchDedups(t *testing.T) {
 	}
 	if fired[0] != "c" {
 		t.Fatalf("expected only the latest target 'c' to fire, got %q", fired[0])
+	}
+}
+
+func TestExternalProjectSwitchDedups(t *testing.T) {
+	var mu sync.Mutex
+	var fired []string
+	h := &Hub{GlobalDir: t.TempDir()}
+	h.SwitchProject = func(target string) error {
+		mu.Lock()
+		fired = append(fired, target)
+		mu.Unlock()
+		return nil
+	}
+	api := &projectAPI{h}
+	for _, path := range []string{filepath.Join(t.TempDir(), "first"), filepath.Join(t.TempDir(), "second")} {
+		body, err := json.Marshal(map[string]string{"path": path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		api.switchProject(rec, httptest.NewRequest(http.MethodPost, "/api/project/switch", bytes.NewReader(body)))
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("switch %q status = %d; body = %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(fired) != 1 || filepath.Base(fired[0]) != "second" {
+		t.Fatalf("external switches fired %v, want only the latest path", fired)
+	}
+}
+
+func TestHubCloseCancelsPendingProjectSwitch(t *testing.T) {
+	fired := make(chan struct{}, 1)
+	h := &Hub{SwitchProject: func(string) error { fired <- struct{}{}; return nil }}
+	h.scheduleProjectSwitch("later", 100*time.Millisecond)
+	h.Close()
+	select {
+	case <-fired:
+		t.Fatal("project switch fired after Hub.Close")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestExternalProjectSwitchRejectsRegistryPersistenceFailure(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fired := make(chan string, 1)
+	h := &Hub{GlobalDir: blocked, SwitchProject: func(target string) error { fired <- target; return nil }}
+	defer h.Close()
+	external := filepath.Join(t.TempDir(), "engagement")
+	body, err := json.Marshal(map[string]string{"path": external})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).switchProject(rec, httptest.NewRequest(http.MethodPost, "/api/project/switch", bytes.NewReader(body)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case target := <-fired:
+		t.Fatalf("project switch fired despite registry failure: %q", target)
+	case <-time.After(350 * time.Millisecond):
 	}
 }

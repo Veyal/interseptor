@@ -2,12 +2,9 @@ package control
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 
-	"github.com/Veyal/interseptor/internal/activescan"
-	"github.com/Veyal/interseptor/internal/activescript"
 	"github.com/Veyal/interseptor/internal/checkscript"
 	"github.com/Veyal/interseptor/internal/scanner"
 	"github.com/Veyal/interseptor/internal/store"
@@ -42,35 +39,12 @@ func (h *checksAPI) listChecks(w http.ResponseWriter, r *http.Request) {
 		}
 		builtin = append(builtin, m)
 	}
-	active := activeCheckList()
-	if h.ActiveChecksDir != "" {
-		for i := range active {
-			id, _ := active[i]["id"].(string)
-			if activescript.Exists(h.ActiveChecksDir, id) {
-				active[i]["overridden"] = true
-			}
-		}
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"checks":    checks,
-		"builtin":   builtin,
-		"active":    active,
-		"dir":       h.ChecksDir,
-		"activeDir": h.ActiveChecksDir,
-		"disabled":  h.checksDisabledList(),
+		"checks":   checks,
+		"builtin":  builtin,
+		"dir":      h.ChecksDir,
+		"disabled": h.checksDisabledList(),
 	})
-}
-
-// activeCheckList exposes the built-in active-scan probes for the Checks manager.
-func activeCheckList() []map[string]any {
-	out := make([]map[string]any, 0, len(activescan.Checks))
-	for _, c := range activescan.Checks {
-		out = append(out, map[string]any{
-			"id": c.ID, "class": c.Class, "severity": c.Severity, "title": c.Title, "fix": c.Fix,
-			"editable": true,
-		})
-	}
-	return out
 }
 
 func (h *Hub) checksDisabledList() []string {
@@ -95,8 +69,7 @@ func (h *checksAPI) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Disabled []string `json:"disabled"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	b, _ := json.Marshal(in.Disabled)
@@ -138,8 +111,7 @@ func (h *checksAPI) saveCheck(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	if err := checkscript.Save(h.ChecksDir, r.PathValue("id"), in.Source); err != nil {
@@ -168,8 +140,7 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 		Source string `json:"source"`
 		FlowID int64  `json:"flowId"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	c, err := checkscript.Compile("test", in.Source)
@@ -180,17 +151,29 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	var f *store.Flow
 	if in.FlowID > 0 {
 		if f, err = h.st.GetFlow(in.FlowID); err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
-	} else if flows, _ := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1}); len(flows) > 0 {
-		f = flows[0]
+	} else {
+		flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 1})
+		if err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		if len(flows) > 0 {
+			f = flows[0]
+		}
 	}
 	if f == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"findings": []store.Issue{}, "note": "no captured flow to test against yet"})
 		return
 	}
-	issues, rerr := c.Run(h.flowForCheck(f))
+	checkFlow, err := h.flowForCheck(f)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
+		return
+	}
+	issues, rerr := c.Run(checkFlow)
 	if rerr != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"error": rerr.Error()})
 		return
@@ -201,11 +184,19 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"findings": issues, "flowId": f.ID})
 }
 
-func (h *checksAPI) flowForCheck(f *store.Flow) checkscript.Flow {
+func (h *checksAPI) flowForCheck(f *store.Flow) (checkscript.Flow, error) {
+	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		return checkscript.Flow{}, err
+	}
+	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	if err != nil {
+		return checkscript.Flow{}, err
+	}
 	return checkscript.Flow{
 		ID: f.ID, Method: f.Method, Scheme: f.Scheme, Host: f.Host, Port: f.Port,
 		Path: f.Path, Status: f.Status, Mime: f.Mime,
 		ReqHeaders: f.ReqHeaders, ResHeaders: f.ResHeaders,
-		ReqBody: string(h.bodyBytes(f.ReqBodyHash)), ResBody: string(h.bodyBytes(f.ResBodyHash)),
-	}
+		ReqBody: string(reqBody), ResBody: string(resBody),
+	}, nil
 }

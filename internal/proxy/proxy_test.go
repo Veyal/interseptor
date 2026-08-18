@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -35,6 +36,27 @@ func TestProxyTransportHasNoResponseHeaderTimeout(t *testing.T) {
 	srv := New(s, capture.New(s), nil, nil, nil)
 	if srv.tr.ResponseHeaderTimeout != 0 {
 		t.Fatalf("ResponseHeaderTimeout=%v; want 0 (no limit) so slow upstreams are not cut off", srv.tr.ResponseHeaderTimeout)
+	}
+}
+
+type failingRequestBody struct{ read bool }
+
+func (b *failingRequestBody) Read(p []byte) (int, error) {
+	if b.read {
+		return 0, errors.New("request body read failed")
+	}
+	b.read = true
+	return copy(p, "partial"), errors.New("request body read failed")
+}
+
+func (*failingRequestBody) Close() error { return nil }
+
+func TestDumpRequestBypassesInterceptOnBodyReadError(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/upload", nil)
+	req.Body = &failingRequestBody{}
+	raw, bypass := dumpRequest(req)
+	if !bypass {
+		t.Fatalf("bypass = false; raw=%q", raw)
 	}
 }
 
@@ -1955,7 +1977,7 @@ func TestProxyInterceptUneditedHoldStillRoutesToOriginalHost(t *testing.T) {
 // findings, captured credentials, settings — all disguised as an ordinary
 // "forward this request" action. This is the same class of attack that
 // Repeater/Intruder/WS-repeater/the AI agent tool already refuse via
-// targetsOwnListener/isOwnListener (internal/control/activescan.go); this test
+// targetsOwnListener/isOwnListener (internal/control/own_listener.go); this test
 // asserts the Intercept-forward path gets the same protection, enforced against
 // the FINAL (post-edit) target rather than the pre-edit one.
 func TestProxyInterceptEditedHostToOwnListenerIsRefused(t *testing.T) {

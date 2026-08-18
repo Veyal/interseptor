@@ -58,7 +58,8 @@ captured flows, no separate Discover tab.
 5. set_session if sends need auth; run_login_macro after a 401
 ```
 
-**Safety:** `active_scan` sends real payloads — pass `arm=true` once per session and only on authorized targets.
+**Safety:** passive scanning does not send requests. For deliberate testing, use the lower-level
+send and verification tools only on targets you are authorized to test and stay within scope.
 
 ## Recipe 4 — Close out findings (engagement end)
 
@@ -75,16 +76,16 @@ captured flows, no separate Discover tab.
 
 **Human checklist:** [engagement-closeout.md]({{ "/engagement-closeout/" | relative_url }})
 
-## Recipe 5 — External agent active testing
+## Recipe 5 — External agent testing workflow
 
-**Goal:** Let an external agent sequence deterministic scans and human-reviewed evidence.
+**Goal:** Let an external agent compose focused tests and human-reviewed evidence.
 
 ```
-1. list_scope — confirm include rules before any active request
+1. list_scope — confirm include rules before any request
 2. check_readiness — fix blockers (auth, traffic, OOB when needed)
-3. run active_scan with arm=true on authorized targets
-4. Review Activity and History while requests run
-5. Reproduce important candidates with send_request or Repeater
+3. get_flow or analyze_flow — choose a focused hypothesis and injection point
+4. Compose the test with send_request, start_intruder, authz_run, cross_host_token_replay, or oob_* as appropriate
+5. Review Activity and History while requests run; verify important candidates with send_request
 6. create_finding and add_finding_poc only after evidence review
 ```
 
@@ -96,9 +97,9 @@ authorization constraints, while Interseptor records requests and results.
 **Goal:** Encode a finding as a reusable check, or install an official pack.
 
 ```
-1. list_checks / list_active_checks — see what's loaded
+1. list_checks — see passive checks available
 2. Author offline: `interseptor check new` → validate → test
-3. save_check / save_active_check when ready (or drop into Checks UI)
+3. save_check when ready (or drop into Checks UI)
 4. list_packs / pack_info — see installed packs (install is human-gated)
 5. Human: Scanner → Checks → Install official pack, or
    `interseptor rules install pack.tar.gz`

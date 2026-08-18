@@ -1,9 +1,7 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -81,13 +79,12 @@ func (h *androidAPI) validateWiFiProxy(port int) error {
 }
 
 func (h *androidAPI) postAndroidProxy(w http.ResponseWriter, r *http.Request) {
-	if !android.Available() {
-		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
+	var in androidRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
-	var in androidRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !android.Available() {
+		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
 		return
 	}
 	dev, port, err := h.androidDeviceAndPort(in)
@@ -137,13 +134,12 @@ func (h *androidAPI) postAndroidProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *androidAPI) postAndroidUnproxy(w http.ResponseWriter, r *http.Request) {
-	if !android.Available() {
-		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
+	var in androidRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
 		return
 	}
-	var in androidRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !android.Available() {
+		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
 		return
 	}
 	dev, port, err := h.androidDeviceAndPort(in)
@@ -171,17 +167,16 @@ func (h *androidAPI) postAndroidUnproxy(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *androidAPI) postAndroidInstallCA(w http.ResponseWriter, r *http.Request) {
+	var in androidRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
+		return
+	}
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return
 	}
 	if !android.Available() {
 		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
-		return
-	}
-	var in androidRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
 	mode := in.Mode
@@ -231,17 +226,16 @@ func (h *androidAPI) postAndroidInstallCA(w http.ResponseWriter, r *http.Request
 }
 
 func (h *androidAPI) postAndroidSetup(w http.ResponseWriter, r *http.Request) {
+	var in androidRequest
+	if !decodeOptionalLimitedJSON(w, r, maxMobileCommandRequestBytes, &in) {
+		return
+	}
 	if h.ca == nil {
 		httpErr(w, http.StatusNotFound, "no CA")
 		return
 	}
 	if !android.Available() {
 		httpErr(w, http.StatusBadRequest, "adb not found on PATH — install Android platform-tools")
-		return
-	}
-	var in androidRequest
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
 	dev, port, err := h.androidDeviceAndPort(in)

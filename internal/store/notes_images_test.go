@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Dangerous MIME types must never survive insert or serve; only the raster
@@ -125,6 +126,99 @@ func TestPersistNotesRoundTrip(t *testing.T) {
 	}
 	if got != out || strings.Contains(got, "data:image/") {
 		t.Fatalf("persisted notes = %q", got)
+	}
+}
+
+func TestPersistNotesPreservesRecentUploadUntilMarkdownReferencesIt(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.InsertNotesImage("image/png", []byte("pending upload"))
+	if err != nil {
+		t.Fatalf("InsertNotesImage: %v", err)
+	}
+	if _, err := s.PersistNotes("unrelated autosave"); err != nil {
+		t.Fatalf("PersistNotes: %v", err)
+	}
+	if exists, err := s.NotesImageExists(id); err != nil || !exists {
+		t.Fatalf("recent upload was collected before attachment: exists=%v err=%v", exists, err)
+	}
+
+	if _, err := s.db.Exec(`UPDATE notes_images SET ts=? WHERE id=?`, time.Now().Add(-notesImageUploadGrace-time.Second).UnixMilli(), id); err != nil {
+		t.Fatalf("age image: %v", err)
+	}
+	if _, err := s.PersistNotes("later autosave"); err != nil {
+		t.Fatalf("PersistNotes after grace: %v", err)
+	}
+	if exists, err := s.NotesImageExists(id); err != nil || exists {
+		t.Fatalf("expired orphan survived: exists=%v err=%v", exists, err)
+	}
+}
+
+func TestPersistNotesRollsBackImagesWhenSettingWriteFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	oldID, err := s.InsertNotesImage("image/png", []byte("old image"))
+	if err != nil {
+		t.Fatalf("InsertNotesImage: %v", err)
+	}
+	oldNotes := "![old](/api/notes/images/" + itoa(oldID) + ")"
+	if err := s.SetSetting("project.notes", oldNotes); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_project_notes BEFORE INSERT ON settings
+		WHEN NEW.key = 'project.notes'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+	inline := "![new](data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("new image")) + ")"
+	if _, err := s.PersistNotes(inline); err == nil {
+		t.Fatal("PersistNotes succeeded despite rejected setting write")
+	}
+	got, _, err := s.GetSetting("project.notes")
+	if err != nil {
+		t.Fatalf("GetSetting: %v", err)
+	}
+	if got != oldNotes {
+		t.Fatalf("notes = %q, want old notes", got)
+	}
+	if exists, err := s.NotesImageExists(oldID); err != nil || !exists {
+		t.Fatalf("old referenced image was lost: exists=%v err=%v", exists, err)
+	}
+	if exists, err := s.NotesImageExists(oldID + 1); err != nil || exists {
+		t.Fatalf("new image survived failed notes write: exists=%v err=%v", exists, err)
+	}
+}
+
+func TestPersistNotesSharesAppendLock(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	s.notesMu.Lock()
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.PersistNotes("replacement")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		s.notesMu.Unlock()
+		t.Fatalf("PersistNotes bypassed append lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	s.notesMu.Unlock()
+	if err := <-done; err != nil {
+		t.Fatalf("PersistNotes after unlock: %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package intruder
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -226,6 +227,50 @@ func TestStartRejectsNoPositions(t *testing.T) {
 	}
 }
 
+func TestStartRejectsUnknownAttackType(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target:     "http://example.com",
+		Template:   "GET /§id§ HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "snipre",
+		Payloads:   [][]string{{"1"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "attack type") {
+		t.Fatalf("unknown attack type error = %v", err)
+	}
+}
+
+func TestClusterBombRejectsEmptyPayloadList(t *testing.T) {
+	e := newEngine(t)
+	err := e.Start(Spec{
+		Target:     "http://example.com",
+		Template:   "GET /§user§/§id§ HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "cluster",
+		Payloads:   [][]string{{"alice"}, {}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "payload list 2") {
+		t.Fatalf("empty cluster payload list error = %v", err)
+	}
+}
+
+func TestStartRejectsInvalidDispatchDelay(t *testing.T) {
+	delays := []int{-1}
+	maxInt := int(^uint(0) >> 1)
+	if uint64(maxInt) > uint64(int64(1<<63-1)/int64(time.Millisecond)) {
+		delays = append(delays, maxInt)
+	}
+	for _, delay := range delays {
+		e := newEngine(t)
+		err := e.Start(Spec{
+			Target: "http://example.com", Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+			AttackType: "repeat", Repeat: 1, Threads: 1, DelayMs: delay,
+		})
+		if err == nil || !strings.Contains(err.Error(), "delay") {
+			t.Fatalf("DelayMs %d error = %v", delay, err)
+		}
+	}
+}
+
 func TestRepeatModeSendsTemplateNTimesConcurrently(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0
@@ -364,5 +409,47 @@ func TestGrepAndPayloadProcessing(t *testing.T) {
 	}
 	if adminRes.Extracted != "ABC123" {
 		t.Fatalf("expected extracted token ABC123, got %q", adminRes.Extracted)
+	}
+}
+
+func TestIncompleteResponseCaptureIsNotAValidResult(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	if err := e.Start(Spec{
+		Target: upstream.URL, Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "repeat", Repeat: 1, Threads: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := waitDone(t, e)
+	if len(state.Results) != 1 || state.Results[0].Error != "response capture incomplete" {
+		t.Fatalf("results = %+v, want incomplete-capture error", state.Results)
+	}
+}
+
+func TestUnavailableResponseBodyIsNotAGrepNonMatch(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "needle")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	e.SetBodyReaderResult(func(string) ([]byte, error) {
+		return nil, errors.New("body disappeared")
+	})
+	if err := e.Start(Spec{
+		Target: upstream.URL, Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "repeat", Repeat: 1, Threads: 1, GrepMatch: "needle",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := waitDone(t, e)
+	if len(state.Results) != 1 || state.Results[0].Error != "response body unavailable" {
+		t.Fatalf("results = %+v, want unavailable-body error", state.Results)
 	}
 }

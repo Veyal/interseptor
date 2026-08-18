@@ -31,9 +31,8 @@ func TestSaveWSFrameCapsPerFlow(t *testing.T) {
 	}
 }
 
-// SaveWSFrame propagates a failed retention DELETE instead of silently
-// swallowing it — otherwise ws_frames could grow without bound undetected. A
-// BEFORE DELETE trigger forces the prune to fail while the INSERT still commits.
+// SaveWSFrame rolls its insert back when retention fails, so an error cannot
+// leave an unannounced frame behind or let the per-flow cap grow.
 func TestSaveWSFramePropagatesPruneError(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -56,7 +55,15 @@ func TestSaveWSFramePropagatesPruneError(t *testing.T) {
 		t.Fatalf("first frame should not prune: %v", err)
 	}
 	// Second frame trips the retention DELETE, which the trigger fails.
-	if err := s.SaveWSFrame(&WSFrame{FlowID: 1, Dir: "send", Opcode: 1, Length: 1, Preview: "b"}); err == nil {
+	failed := &WSFrame{FlowID: 1, Dir: "send", Opcode: 1, Length: 1, Preview: "b"}
+	if err := s.SaveWSFrame(failed); err == nil {
 		t.Fatal("expected retention DELETE error to propagate, got nil")
+	}
+	if failed.ID != 0 {
+		t.Fatalf("failed frame published id %d", failed.ID)
+	}
+	frames, err := s.QueryWSFrames(1, 10)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames after failed bounded insert = %d, err=%v; want 1", len(frames), err)
 	}
 }

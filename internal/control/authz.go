@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/auth/jwtextract"
+	"github.com/Veyal/interseptor/internal/netutil"
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -41,23 +43,27 @@ func (id *identity) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*id = identity(raw.alias)
-	id.Headers = normalizeHeaderLines(raw.Headers)
+	headers, err := normalizeHeaderLines(raw.Headers)
+	if err != nil {
+		return err
+	}
+	id.Headers = headers
 	return nil
 }
 
 // normalizeHeaderLines coerces a headers field (string, []string, or
 // map[string]string) into canonical "Key: Value\n..." lines.
-func normalizeHeaderLines(raw json.RawMessage) string {
+func normalizeHeaderLines(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 {
-		return ""
+		return "", nil
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
+		return s, nil
 	}
 	var arr []string
 	if err := json.Unmarshal(raw, &arr); err == nil {
-		return strings.Join(arr, "\n")
+		return strings.Join(arr, "\n"), nil
 	}
 	var m map[string]string
 	if err := json.Unmarshal(raw, &m); err == nil {
@@ -70,9 +76,9 @@ func normalizeHeaderLines(raw json.RawMessage) string {
 		for _, k := range keys {
 			lines = append(lines, k+": "+m[k])
 		}
-		return strings.Join(lines, "\n")
+		return strings.Join(lines, "\n"), nil
 	}
-	return ""
+	return "", fmt.Errorf("headers must be a string, string array, or string-valued object")
 }
 
 type authzResult struct {
@@ -107,17 +113,36 @@ type authzRunOut struct {
 	Results        []authzResult `json:"results"`
 }
 
+const (
+	maxAuthzConfigRequestBytes int64 = 1 << 20
+	maxAuthzReplayRequestBytes int64 = 64 << 10
+)
+
 func (h *authzAPI) authzIdentities() []identity {
-	raw, _, _ := h.st.GetSetting("authz.identities")
-	var ids []identity
-	if raw != "" {
-		_ = json.Unmarshal([]byte(raw), &ids)
-	}
+	ids, _ := h.authzIdentitiesResult()
 	return ids
 }
 
+func (h *authzAPI) authzIdentitiesResult() ([]identity, error) {
+	raw, _, err := h.st.GetSetting("authz.identities")
+	if err != nil {
+		return nil, err
+	}
+	var ids []identity
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			return nil, fmt.Errorf("decode authz identities: %w", err)
+		}
+	}
+	return ids, nil
+}
+
 func (h *authzAPI) getAuthz(w http.ResponseWriter, r *http.Request) {
-	identities := h.authzIdentities()
+	identities, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if requestScope(r) == store.ScopeRead {
 		for i := range identities {
 			identities[i].Headers = ""
@@ -130,8 +155,7 @@ func (h *authzAPI) setAuthz(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Identities []identity `json:"identities"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json: "+err.Error())
+	if !decodeLimitedJSON(w, r, maxAuthzConfigRequestBytes, &in) {
 		return
 	}
 	b, _ := json.Marshal(in.Identities)
@@ -152,7 +176,7 @@ func (h *authzAPI) authzFlowAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.st.GetFlow(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, flowAuthPayload(f))
@@ -164,8 +188,7 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID int64 `json:"flowId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 {
@@ -174,10 +197,14 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.st.GetFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if len(ids) == 0 {
 		httpErr(w, http.StatusBadRequest, "no identities configured")
 		return
@@ -216,13 +243,12 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 // authzRun replays flow(s) under each identity and reports per-identity diffs.
 func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		FlowID      int64 `json:"flowId"`
-		InScope     bool  `json:"inScope"`
-		MaxFlows    int   `json:"maxFlows"`
-		SkipStatic  *bool `json:"skipStatic"`
+		FlowID     int64 `json:"flowId"`
+		InScope    bool  `json:"inScope"`
+		MaxFlows   int   `json:"maxFlows"`
+		SkipStatic *bool `json:"skipStatic"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 && !in.InScope {
@@ -233,7 +259,11 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "define a target-scope include rule before an “all in-scope” authz run — with no scope it would replay every captured endpoint")
 		return
 	}
-	ids := h.authzIdentities()
+	ids, err := h.authzIdentitiesResult()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if len(ids) == 0 {
 		httpErr(w, http.StatusBadRequest, "no identities configured — add at least one (name + auth headers) first")
 		return
@@ -247,7 +277,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	if in.FlowID > 0 {
 		f, err := h.st.GetFlow(in.FlowID)
 		if err != nil {
-			httpErr(w, http.StatusNotFound, "flow not found")
+			httpNotFoundOrInternal(w, err, "flow not found")
 			return
 		}
 		flows = []*store.Flow{f}
@@ -261,7 +291,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		}
 		raw, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 			Limit:        limit * 5, // over-fetch; authzTargets dedupes + static filter
-			ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan,
+			ExcludeFlags: store.FlagRepeater | store.FlagIntruder,
 		})
 		flows = h.authzTargets(raw, skipStatic)
 		if len(flows) > limit {
@@ -316,9 +346,9 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 		rr.Name = id.Name
 		rr.SessionInvalid = sessionLooksInvalid(rr.Status, hasAuth, rr.resHeaders)
 		rr.AccessDenied = accessDenied(rr.Status, hasAuth)
-		if !haveBase {
+		if !haveBase && rr.Error == "" {
 			ro.BaselineStatus, baseLen, baseHash, baseMime, haveBase = rr.Status, rr.Length, rr.BodyHash, rr.Mime, true
-		} else {
+		} else if haveBase {
 			rr.Same = authzSameAccess(ro.BaselineStatus, baseLen, baseHash, baseMime, rr)
 		}
 		ro.Results = append(ro.Results, rr)
@@ -328,16 +358,33 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 
 func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	url := flowURLStr(f)
-	body := h.bodyBytes(f.ReqBodyHash)
+	if h.targetsOwnListener(url) {
+		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
+	}
+	body, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		return authzResult{Name: id.Name, Error: "request body unavailable"}
+	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
-	flow, _ := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
+	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
 	rr := authzResult{Name: id.Name}
+	if sendErr != nil {
+		rr.Error = "send failed"
+	}
 	if flow != nil {
 		rr.Status, rr.Length, rr.Mime, rr.Error, rr.FlowID = flow.Status, flow.ResLen, flow.Mime, flow.Error, flow.ID
 		rr.resHeaders = flow.ResHeaders
+		if rr.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+			rr.Error = "response capture incomplete"
+		}
 		if flow.ResBodyHash != "" {
-			resBody := h.bodyBytes(flow.ResBodyHash)
-			rr.BodyHash = bodySHA256(resBody)
+			resBody, err := h.bodyBytesResult(flow.ResBodyHash)
+			if err != nil {
+				rr.Error = "response body unavailable"
+			} else {
+				_, comparableBody := decodeForDisplay(flow.ResHeaders, resBody)
+				rr.BodyHash = bodySHA256(comparableBody)
+			}
 		}
 	}
 	return rr
@@ -539,11 +586,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	var in struct {
 		FlowID    int64  `json:"flowId"`    // reference endpoint (path to replay)
 		JWTFlowID int64  `json:"jwtFlowId"` // source of JWT; defaults to flowId
-		JWT       string `json:"jwt"`        // raw JWT (alternative to jwtFlowId)
-		Mode      string `json:"mode"`       // auto | bearer | path (default auto)
+		JWT       string `json:"jwt"`       // raw JWT (alternative to jwtFlowId)
+		Mode      string `json:"mode"`      // auto | bearer | path (default auto)
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 {
@@ -553,7 +599,11 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 	ref, err := h.st.GetFlow(in.FlowID)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if h.isOwnListener(ref) {
+		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
 
@@ -570,7 +620,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		} else {
 			srcFlow, err = h.st.GetFlow(srcID)
 			if err != nil {
-				httpErr(w, http.StatusNotFound, "jwtFlowId flow not found")
+				httpNotFoundOrInternal(w, err, "jwtFlowId flow not found")
 				return
 			}
 		}
@@ -582,13 +632,25 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		if i := strings.Index(pathOnly, "?"); i >= 0 {
 			pathOnly = pathOnly[:i]
 		}
+		reqBody, reqBodyErr := h.bodyBytesResult(srcFlow.ReqBodyHash)
+		resBody, resBodyErr := h.bodyBytesResult(srcFlow.ResBodyHash)
 		jwt, jwtSource = jwtextract.Extract(jwtextract.Input{
 			ReqHeaders: srcFlow.ReqHeaders,
 			Path:       pathOnly,
 			RawQuery:   rawQuery,
-			ReqBody:    h.bodyBytes(srcFlow.ReqBodyHash),
-			ResBody:    h.bodyBytes(srcFlow.ResBodyHash),
+			ReqBody:    reqBody,
+			ResBody:    resBody,
 		})
+		if jwt == "" {
+			if reqBodyErr != nil {
+				httpFileNotFoundOrInternal(w, reqBodyErr, "JWT source body not found")
+				return
+			}
+			if resBodyErr != nil {
+				httpFileNotFoundOrInternal(w, resBodyErr, "JWT source body not found")
+				return
+			}
+		}
 	}
 	if jwt == "" {
 		httpErr(w, http.StatusBadRequest, "no JWT found — provide jwt directly or pick a flow with Bearer/path/JSON token")
@@ -606,6 +668,15 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			mode = "bearer"
 		}
 	}
+	if mode != "bearer" && mode != "path" {
+		httpErr(w, http.StatusBadRequest, "mode must be auto, bearer, or path")
+		return
+	}
+	refBody, err := h.bodyBytesResult(ref.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
 
 	type hostKey struct {
 		host, scheme string
@@ -613,7 +684,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	}
 	allFlows, _ := h.st.QueryFlowsFilter(store.FlowFilter{
 		Limit:        5000,
-		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagActiveScan | store.FlagAuthz,
+		ExcludeFlags: store.FlagRepeater | store.FlagIntruder | store.FlagAuthz,
 	})
 	seen := map[hostKey]bool{}
 	var targets []hostKey
@@ -656,12 +727,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 	var results []hostResult
 	for _, t := range targets {
-		hostport := t.host
-		def := (t.scheme == "https" && t.port == 443) || (t.scheme == "http" && t.port == 80)
-		if t.port != 0 && !def {
-			hostport += ":" + strconv.Itoa(t.port)
-		}
-		targetURL := t.scheme + "://" + hostport + path
+		targetURL := t.scheme + "://" + netutil.URLAuthority(t.scheme, t.host, t.port) + path
 
 		hdrs := cloneHeaders(ref.ReqHeaders)
 		if mode == "bearer" {
@@ -670,22 +736,28 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			delete(hdrs, "Authorization")
 		}
 
-		flow, _ := h.snd.Send(sender.Request{
+		flow, sendErr := h.snd.Send(sender.Request{
 			Method:    ref.Method,
 			URL:       targetURL,
 			Headers:   hdrs,
-			Body:      h.bodyBytes(ref.ReqBodyHash),
+			Body:      refBody,
 			Flags:     store.FlagAuthz,
 			NoSession: true,
 		})
 
 		hr := hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}
+		if sendErr != nil {
+			hr.Error = "send failed"
+		}
 		if flow != nil {
 			hr.Status = flow.Status
 			hr.Length = flow.ResLen
 			hr.FlowID = flow.ID
 			hr.Error = flow.Error
-			hr.Accepted = flow.Status >= 200 && flow.Status < 300
+			if hr.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+				hr.Error = "response capture incomplete"
+			}
+			hr.Accepted = hr.Error == "" && flow.Status >= 200 && flow.Status < 300
 		}
 		results = append(results, hr)
 	}
@@ -708,16 +780,11 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 
 // flowURLStr reconstructs the absolute URL of a captured flow.
 func flowURLStr(f *store.Flow) string {
-	hostport := f.Host
-	def := (f.Scheme == "https" && f.Port == 443) || (f.Scheme == "http" && f.Port == 80)
-	if f.Port != 0 && !def {
-		hostport += ":" + strconv.Itoa(f.Port)
-	}
 	path := f.Path
 	if path == "" {
 		path = "/"
 	}
-	return f.Scheme + "://" + hostport + path
+	return f.Scheme + "://" + netutil.URLAuthority(f.Scheme, f.Host, f.Port) + path
 }
 
 func cloneHeaders(h map[string][]string) map[string][]string {

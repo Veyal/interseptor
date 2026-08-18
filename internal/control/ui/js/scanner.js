@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, methodColor, statusColor, renderLoadError, icon } from './core.js';
+import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 
@@ -34,13 +34,9 @@ $('#oobModalTunnelCopy')&&($('#oobModalTunnelCopy').onclick=()=>copyText(oobTunn
 
 /* ---- custom checks editor ---- */
 let checkMode='code',checkDocsLoaded=false;
-let checkSelId=null,checkSelKind='passive';
-// checkKind tracks which kind of check the editor is editing: 'passive' (inspects
-// a captured flow) or 'active' (sends probes via /api/active-checks). Drives the
-// Save/Test/Delete endpoint and the New template.
-let checkKind='passive';
+let checkSelId=null;
 let checkBuiltin=false,checkOverridden=false;
-const checkEndpoint=()=>checkKind==='active'?'/api/active-checks':'/api/checks';
+const checkEndpoint='/api/checks';
 function checkSetEditorReadonly(on){const el=$('#checkId');if(el)el.readOnly=!!on;}
 function checkSetMode(mode){
   checkMode=mode;
@@ -70,31 +66,27 @@ function updateCheckFlowHint(){
 function markChecksSelected(box){
   if(!box)return;
   box.querySelectorAll('.checks-pick[data-id]').forEach(el=>{
-    const kind=el.dataset.active==='1'?'active':'passive';
-    el.classList.toggle('sel',!!checkSelId&&el.dataset.id===checkSelId&&kind===checkSelKind);
+    el.classList.toggle('sel',!!checkSelId&&el.dataset.id===checkSelId);
   });
 }
 export async function loadChecksList(){
   try{
     const d=await api('/api/checks');const box=$('#checksList');if(!box)return;
     const cs=d.checks||[];const dis=new Set(d.disabled||[]);
-    const builtin=d.builtin||[];const active=d.active||[];
+    const builtin=d.builtin||[];
     const sevBadge=s=>`<span class="sev ${escAttr(s)}" style="font-size:var(--fs-xs)">${esc(s)}</span>`;
     const catBadge=c=>c?`<span class="checks-cat">${esc(c)}</span>`:'';
     const builtinIds=new Set(builtin.map(b=>b.id));
-    const activeIds=new Set(active.map(a=>a.id));
     const customPassive=cs.filter(c=>!builtinIds.has(c.id));
     const row=(opts)=>{
-      const enId=opts.customActive&&!builtinIds.has(opts.id)&&!activeIds.has(opts.id)?'custom-active:'+opts.id:opts.id;
-      const cb=opts.toggleable!==false?`<input type="checkbox" class="check-en" data-id="${escAttr(enId)}" ${dis.has(enId)?'':'checked'} aria-label="enable ${escAttr(opts.title)}">`:'';
-      const bolt=opts.activeKind==='active'?'<span style="width:14px;flex:none;color:var(--amber);margin-top:2px" title="sends traffic"><svg class="icon" role="img" aria-label="sends real traffic" focusable="false"><use href="#i-bolt"/></svg></span>':'';
+      const cb=opts.toggleable!==false?`<input type="checkbox" class="check-en" data-id="${escAttr(opts.id)}" ${dis.has(opts.id)?'':'checked'} aria-label="enable ${escAttr(opts.title)}">`:'';
       const pick=opts.pickable?' checks-pick':'';
       const cls=['checks-row',opts.rowClass||'',pick].filter(Boolean).join(' ');
-      const data=opts.id?` data-id="${escAttr(opts.id)}"${opts.activeKind==='active'?' data-active="1"':''}`:'';
+      const data=opts.id?` data-id="${escAttr(opts.id)}"`:'';
       const titleColor=opts.error?'var(--red)':'var(--fg)';
       const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
       return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
-        ${cb}${bolt}<div class="checks-body">
+        ${cb}<div class="checks-body">
         <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>':''}</span>
         <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
         </div></div>`;
@@ -105,33 +97,19 @@ export async function loadChecksList(){
     if(!customPassive.length){
       customBody='<div class="hint" style="padding:8px 12px;line-height:1.5">No extra passive checks — customize a <b>built-in</b> (click it) or <b>+ New passive</b>.</div>';
     }else{
-      customBody=customPassive.map(c=>row({id:c.id,title:c.id,pickable:true,activeKind:'passive',rowClass:'checks-custom',category:'custom',error:c.error,hint:'click to edit',aria:'custom check '+c.id})).join('');
+      customBody=customPassive.map(c=>row({id:c.id,title:c.id,pickable:true,rowClass:'checks-custom',category:'custom',error:c.error,hint:'click to edit',aria:'custom check '+c.id})).join('');
     }
     html+=group(`CUSTOM · PASSIVE (${customPassive.length})`,true,customBody);
-    let csA=[];
-    try{csA=(await api('/api/active-checks')).checks||[];}catch(e){}
-    const customActive=csA.filter(c=>!activeIds.has(c.id));
-    let customActiveBody='';
-    if(!customActive.length){
-      customActiveBody='<div class="hint" style="padding:8px 12px;line-height:1.5">No extra active checks — customize a <b>built-in probe</b> or <b>+ New active</b>.</div>';
-    }else{
-      customActiveBody=customActive.map(c=>row({id:c.id,title:c.id,pickable:true,customActive:true,activeKind:'active',rowClass:'checks-custom checks-custom-active',category:'active',error:c.error,hint:'click to edit',aria:'custom active check '+c.id})).join('');
-    }
-    html+=group(`CUSTOM · ACTIVE (${customActive.length})`,true,customActiveBody);
     if(builtin.length){
       const builtinBody=builtin.map(b=>row({id:b.id,title:b.title,pickable:true,rowClass:'checks-builtin',severity:b.severity,category:b.category,overridden:!!b.overridden,hint:(b.description||'')+' — click to edit Starlark override',aria:'built-in check '+b.title,toggleable:true})).join('');
       html+=group(`BUILT-IN · PASSIVE (${builtin.length}) — click to edit`,false,builtinBody);
     }
-    if(active.length){
-      const activeBody=active.map(a=>row({id:a.id,title:a.title,pickable:true,rowClass:'checks-active',activeKind:'active',severity:a.severity,category:a.class,overridden:!!a.overridden,hint:(a.fix||'')+' — click to edit Starlark override',aria:'active probe '+a.title,toggleable:true})).join('');
-      html+=group(`ACTIVE · PROBES (${active.length}) — click to edit`,false,activeBody);
-    }
     box.innerHTML=html;
     markChecksSelected(box);
     box.querySelectorAll('.checks-pick[data-id]').forEach(el=>{
-      const id=el.dataset.id,kind=el.dataset.active==='1'?'active':'passive';
-      const builtin=el.classList.contains('checks-builtin')||el.classList.contains('checks-active');
-      const open=()=>builtin?loadBuiltinCheck(id,kind):loadCheck(id,kind);
+      const id=el.dataset.id;
+      const builtin=el.classList.contains('checks-builtin');
+      const open=()=>builtin?loadBuiltinCheck(id):loadCheck(id);
       el.onclick=e=>{if(e.target.classList.contains('check-en'))return;open();};
       wireRowKey(el,open);
     });
@@ -162,20 +140,9 @@ function checksApplyFilter(){
     else{group.classList.remove('checks-group-empty');group.open=group.dataset.defaultOpen==='1';}
   });
 }
-const ACTIVE_CHECK_TEMPLATE=`# Active check: send probes at an injection point, confirm a vuln.
-# probe(payload) sends a real request — it counts against the run's budget.
-def check(point, baseline, probe):
-    r = probe("'")
-    if re_search("(?i)SQL syntax", r.body):
-        return [finding("High", "SQL injection (custom)", evidence=r.body[:80], fix="parameterize queries")]
-    return []
-`;
 function refreshCheckEditorMode(){
   const kh=$('#checkKindHint');
-  if(kh){
-    if(checkKind==='active'){kh.style.display='';kh.textContent='def check(point, baseline, probe): — probe() sends a real request';}
-    else{kh.style.display='none';kh.textContent='';}
-  }
+  if(kh){kh.style.display='none';kh.textContent='';}
 }
 // The single Delete/Revert button is dual-purpose: for a built-in check it
 // reverts a saved Starlark override (disabled when there's no override to
@@ -193,33 +160,33 @@ function updateCheckDeleteLabel(){
     btn.disabled=false;
   }
 }
-export async function loadBuiltinCheck(id,kind='passive'){
-  checkKind=kind;checkBuiltin=true;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
+export async function loadBuiltinCheck(id){
+  checkBuiltin=true;checkSelId=id;refreshCheckEditorMode();
   try{
-    const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));
+    const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
     checkOverridden=!!d.overridden;
     $('#checkId').value=id;checkSetEditorReadonly(true);
     $('#checkSrc').value=d.source||'';
-  const note=checkOverridden?'your Starlark override is active':'edit & Save to write ~/.interseptor/'+(kind==='active'?'active-checks/':'checks/')+id+'.star';
+    const note=checkOverridden?'your Starlark override is active':'edit & Save to write ~/.interseptor/checks/'+id+'.star';
     $('#checkOut').innerHTML='<div class="check-status check-status-pending">Built-in <b>'+esc(id)+'</b> — '+note+'</div>';
     updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));
   }catch(e){toast(e.message);}
 }
-export async function loadCheck(id,kind='passive'){
-  checkKind=kind;checkBuiltin=false;checkOverridden=false;checkSelId=id;checkSelKind=kind;refreshCheckEditorMode();
-  try{const d=await api(checkEndpoint()+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
+export async function loadCheck(id){
+  checkBuiltin=false;checkOverridden=false;checkSelId=id;refreshCheckEditorMode();
+  try{const d=await api(checkEndpoint+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
     $('#checkSrc').value=d.source||'';
-    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> ('+(kind==='active'?'active · sends traffic':'passive')+'). Edit on <b>Code</b>, then Save.</div>';
+    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> (passive). Edit on <b>Code</b>, then Save.</div>';
     updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));}catch(e){toast(e.message);}
 }
-export function checkNew(kind='passive'){
-  checkKind=kind;checkBuiltin=false;checkOverridden=false;checkSelId=null;checkSelKind=kind;refreshCheckEditorMode();
+export function checkNew(){
+  checkBuiltin=false;checkOverridden=false;checkSelId=null;refreshCheckEditorMode();
   checkSetEditorReadonly(false);
   $('#checkId').value='';
-  $('#checkSrc').value = kind==='active' ? ACTIVE_CHECK_TEMPLATE : "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
-  $('#checkOut').innerHTML='<div class="check-status check-status-pending">New '+(kind==='active'?'active':'passive')+' check — set an id, write Starlark on <b>Code</b>, Test, then Save.</div>';$('#checkId').focus();
+  $('#checkSrc').value = "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
+  $('#checkOut').innerHTML='<div class="check-status check-status-pending">New passive check — set an id, write Starlark on <b>Code</b>, Test, then Save.</div>';$('#checkId').focus();
   updateCheckDeleteLabel();
   markChecksSelected($('#checksList'));
 }
@@ -227,27 +194,16 @@ export async function checkTest(){
   const out=$('#checkOut');out.innerHTML='<div class="check-status check-status-pending">running…</div>';
   try{const r=await api(checkEndpoint()+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
     if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';return;}
-    const suffix=checkKind==='active'?' · sent real probes':'';
-    if(checkKind==='active'){
-      // Active checks return a single {finding} (or {note} when none) — the shape
-      // testActiveCheck (internal/control/active_checks.go) always emits.
-      const f=r.finding;
-      const note=r.note||(f?('finding on flow #'+(f.flowId||'?')):'no finding');
-      out.innerHTML=f
-        ?`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}${suffix}</div><div><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div></div>`
-        :`<div class="check-status check-status-ok"><div class="hint">${esc(note)}${suffix}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
-      return;
-    }
     // Passive checks return {findings:[...]} (testCheck in internal/control/checks.go)
     // — zero, one, or many findings on the tested flow.
     const findings=r.findings||[];
     if(!findings.length){
       const note=r.note||'no finding';
-      out.innerHTML=`<div class="check-status check-status-ok"><div class="hint">${esc(note)}${suffix}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
+      out.innerHTML=`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
       return;
     }
     const note='finding'+(findings.length===1?'':'s')+' on flow #'+(r.flowId||'?');
-    out.innerHTML=`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}${suffix}</div>`
+    out.innerHTML=`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}</div>`
       +findings.map(f=>`<div><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div>`).join('')
       +`</div>`;
   }catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>';}
@@ -258,7 +214,7 @@ export async function checkSave(){
   out.innerHTML='<div class="check-status check-status-pending">saving…</div>';
   try{await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
     checkOverridden=checkBuiltin||checkOverridden;
-    out.innerHTML='<div class="check-status check-status-ok">Saved ✓ — '+(checkKind==='active'?'runs on the next active scan':'runs on the next scan')+(checkBuiltin?' (replaces built-in)':'')+'.</div>';
+    out.innerHTML='<div class="check-status check-status-ok">Saved ✓ — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>';
     updateCheckDeleteLabel();
     loadChecksList();}
   catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>';}
@@ -267,11 +223,11 @@ export async function checkDelete(){
   const id=$('#checkId').value.trim();if(!id)return;
   if(checkBuiltin&&!checkOverridden){toast('no override saved — nothing to revert');return;}
   const label=checkBuiltin?'Revert override for built-in check':'Delete check';
-  const body=checkBuiltin?`Delete your Starlark override for <b>${esc(id)}</b>? The compiled built-in will run again.`:`Delete ${checkKind} check <b>${esc(id)}</b>? Its Starlark source will be removed.`;
+  const body=checkBuiltin?`Delete your Starlark override for <b>${esc(id)}</b>? The compiled built-in will run again.`:`Delete passive check <b>${esc(id)}</b>? Its Starlark source will be removed.`;
   if(!await uiConfirm(label,body,checkBuiltin?'Revert':'Delete','btn danger','var(--red)'))return;
   try{
-    await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'DELETE'});
-    if(checkBuiltin){await loadBuiltinCheck(id,checkKind);}else{checkNew(checkKind);}
+    await api(checkEndpoint+'/'+encodeURIComponent(id),{method:'DELETE'});
+    if(checkBuiltin){await loadBuiltinCheck(id);}else{checkNew();}
     loadChecksList();
     toast(checkBuiltin?'reverted to built-in':'deleted '+id);
   }catch(e){toast(e.message);}
@@ -334,8 +290,7 @@ export function openChecks(){openModal($('#checksModal'));const s=$('#checksSear
 if($('#checksBtn'))$('#checksBtn').onclick=openChecks;
 if($('#checksPackFile'))$('#checksPackFile').onchange=e=>{const f=e.target.files&&e.target.files[0]; if(f) installPackFile(f); e.target.value='';};
 if($('#checksClose'))$('#checksClose').onclick=()=>closeModal($('#checksModal'));
-if($('#checkNew'))$('#checkNew').onclick=()=>checkNew('passive');
-if($('#checkNewActive'))$('#checkNewActive').onclick=()=>checkNew('active');
+if($('#checkNew'))$('#checkNew').onclick=checkNew;
 if($('#checkTest'))$('#checkTest').onclick=checkTest;
 if($('#checkSave'))$('#checkSave').onclick=checkSave;
 if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
@@ -368,137 +323,6 @@ if($('#decLoad'))$('#decLoad').onclick=decLoadFile;
 if($('#decClose'))$('#decClose').onclick=()=>closeModal($('#decModal'));
 if($('#decUp'))$('#decUp').onclick=()=>{$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
 if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output copied');
-
-/* ---- active scan ---- */
-function openSettingsScope(){
-  closeModal($('#activeModal'));
-  document.querySelector('.tab[data-tab="settings"]')?.click();
-  document.querySelector('#setNav button[data-sec="scope"]')?.click();
-}
-function asScopeRuleLine(r){
-  const tag=r.action==='exclude'?'exclude':'include';
-  const color=tag==='exclude'?'var(--red)':'var(--accent)';
-  const host=r.host||'(any host)';
-  const extra=[r.path?'path:'+r.path:'',r.scheme?r.scheme:''].filter(Boolean).join(' · ');
-  return `<div style="font-family:var(--mono);font-size:var(--fs-xs);padding:3px 0"><span style="font-weight:700;color:${color}">${tag}</span> <span style="color:var(--fg)">${esc(host)}</span>${extra?` <span class="hint">${esc(extra)}</span>`:''}</div>`;
-}
-export async function renderAsScopePanel(){
-  const panel=$('#asScopePanel');if(!panel)return;
-  const scopeMode=$('#asTargetScope')?.checked;
-  panel.style.display=scopeMode?'':'none';
-  if(!scopeMode)return;
-  try{const d=await api('/api/scope');state.scope=d.rules||[];}catch(e){}
-  const enabled=(state.scope||[]).filter(r=>r.enabled);
-  const includes=enabled.filter(r=>r.action==='include');
-  const excludes=enabled.filter(r=>r.action==='exclude');
-  let html='';
-  if(!state.scope.length){
-    html=`<p class="hint" style="color:var(--amber);margin:0;line-height:1.55"><b>No scope rules.</b> Bulk active scan requires at least one <b>include</b> rule — without it, every captured host would be attacked. Define targets under <b>Settings → Target scope</b>.</p>`;
-  }else if(!includes.length){
-    html=`<p class="hint" style="color:var(--amber);margin:0 0 8px;line-height:1.55"><b>No include rules.</b> Add at least one enabled <b>include</b> rule before running bulk active scan.</p>`;
-    if(excludes.length)html+=`<div class="micro-label" style="margin:8px 0 4px">EXCLUDE RULES</div>`+excludes.map(asScopeRuleLine).join('');
-  }else{
-    html=`<div class="micro-label" style="margin:0 0 6px">IN-SCOPE (from Settings → Target scope)</div>`;
-    html+=includes.map(asScopeRuleLine).join('');
-    if(excludes.length)html+=`<div class="micro-label" style="margin:10px 0 4px">EXCLUDE (always wins)</div>`+excludes.map(asScopeRuleLine).join('');
-  }
-  html+=`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" id="asScopeEdit">Settings → Target scope</button><span class="hint" id="asScopeHosts">checking captured traffic…</span></div>`;
-  panel.innerHTML=html;
-  $('#asScopeEdit')?.addEventListener('click',openSettingsScope);
-  try{
-    const d=await api('/api/flows?limit=500&inScope=1');
-    const hosts=[...new Set((d.flows||[]).map(f=>f.host).filter(Boolean))].sort();
-    const el=$('#asScopeHosts');
-    if(!el)return;
-    if(!hosts.length)el.textContent='No in-scope traffic in history yet — browse the target through the proxy first.';
-    else el.textContent=`${hosts.length} host${hosts.length===1?'':'s'} in history: ${hosts.slice(0,10).join(', ')}${hosts.length>10?'…':''} (only endpoints with query/body params are scanned)`;
-  }catch(e){const el=$('#asScopeHosts');if(el)el.textContent='';}
-}
-export async function loadActive(){
-  const d=await apiTry('/api/activescan',{},{toastOnError:false,label:'Active scan'});
-  if(d)renderActive(d);
-}
-let asHistoryFlows=[];
-async function loadAsHistory(){
-  const d=await apiTry('/api/activescan/history?limit=200',{},{toastOnError:false,label:'Active scan history'});
-  if(!d)return;
-  asHistoryFlows=d.flows||[];
-  const st=await apiTry('/api/activescan',{},{toastOnError:false});
-  if(st)renderAsLogs(st);
-}
-function renderAsLogs(d){
-  const box=$('#asLogs'),cnt=$('#asLogCount');
-  if(!box)return;
-  const runLogs=(d&&d.logs)||[];
-  const items=runLogs.length?runLogs:asHistoryFlows.map(f=>({flowId:f.id,method:f.method,host:f.host,path:f.path,status:f.status,error:f.error||''}));
-  if(cnt)cnt.textContent=items.length?'('+items.length+')':'';
-  if(!items.length){box.innerHTML='<div class="hint">No probes yet — start a scan to record attack requests here.</div>';return;}
-  box.innerHTML=items.map(p=>{
-    const st=p.status||0;
-    const err=p.error?` <span style="color:var(--red)">${esc(p.error)}</span>`:'';
-    const flow=p.flowId?` <span style="color:var(--blue)">#${p.flowId}</span>`:'';
-    return `<div class="as-log-row${p.flowId?'':' muted'}"${p.flowId?` data-flow="${p.flowId}"`:''} style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);cursor:${p.flowId?'pointer':'default'};font-size:var(--fs-xs);font-family:var(--mono)">
-      <span style="width:44px;flex:none;color:${methodColor(p.method)}">${esc(p.method||'—')}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)">${esc(p.host||'')}${esc(p.path||'')}</span>
-      <span style="width:36px;flex:none;text-align:right;color:${statusColor(st)}">${st||'—'}</span>${flow}${err}</div>`;
-  }).join('');
-  box.querySelectorAll('[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
-}
-export function renderActive(d){
-  if($('#asArm'))$('#asArm').checked=!!d.armed;
-  const fs=d.findings||[];
-  if($('#asStart'))$('#asStart').disabled=d.running||!d.armed;
-  if($('#asStop'))$('#asStop').disabled=!d.running;
-  const prog=$('#asProgress');
-  if(prog){
-    if(d.running)prog.innerHTML='<span style="color:var(--accent)">⟳ running…</span> '+d.scanned+'/'+d.targets+' targets · '+d.requests+' requests';
-    else if(d.scanned)prog.textContent='done · '+d.scanned+' targets · '+d.requests+' requests · '+fs.length+' findings';
-    else prog.textContent='';
-  }
-  renderAsLogs(d);
-  const box=$('#asFindings');if(!box)return;
-  box.innerHTML=fs.length?fs.map(f=>`<div data-flow="${f.flowId}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer">
-    <span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b>
-    <div class="hint" style="margin-top:2px">${esc(f.class)}${f.point?` · ${esc(f.point.kind)}:${esc(f.point.name)}`:''} — ${esc(f.evidence)}${f.flowId?` <span style="color:var(--blue)">· flow #${f.flowId}</span>`:''}</div></div>`).join('')
-    :'<div class="hint">No active findings yet.</div>';
-  box.querySelectorAll('[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
-}
-export async function asArmToggle(){
-  try{await api('/api/activescan/arm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({armed:$('#asArm').checked})});loadActive();}
-  catch(e){toast(e.message);}
-}
-export async function asStartScan(){
-  const body={arm:$('#asArm').checked,maxRequests:parseInt($('#asMax').value,10)||0};
-  if($('#asTargetFlow').checked){
-    if(state.selId==null){toast('select a flow first, or choose "all in-scope"');return;}
-    body.flowId=state.selId;
-  }else body.inScope=true;
-  try{
-    const readiness=await api('/api/readiness');
-    const checks=readiness.checks||[];
-    const scope=checks.find(c=>c.id==='scope');
-    const traffic=checks.find(c=>c.id==='in_scope_traffic')||checks.find(c=>c.id==='traffic');
-    const blocker=body.inScope&&[scope,traffic].find(c=>c&&!c.ok);
-    if(blocker){toast('Active scan blocked: '+blocker.detail+(blocker.fix?' — '+blocker.fix:''));return;}
-    await api('/api/activescan/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});loadActive();
-  }
-  catch(e){toast(e.message);}
-}
-export async function asStopScan(){try{await api('/api/activescan/stop',{method:'POST'});loadActive();toast('active scan stopped');}catch(e){toast(e.message);}}
-export function openActive(){
-  openModal($('#activeModal'));
-  $('#asFlowLabel').textContent=state.selId!=null?('#'+state.selId):'(none selected)';
-  loadActive();
-  loadAsHistory();
-  renderAsScopePanel();
-}
-if($('#activeBtn'))$('#activeBtn').onclick=openActive;
-if($('#asClose'))$('#asClose').onclick=()=>closeModal($('#activeModal'));
-if($('#asArm'))$('#asArm').onchange=asArmToggle;
-if($('#asStart'))$('#asStart').onclick=asStartScan;
-if($('#asStop'))$('#asStop').onclick=asStopScan;
-if($('#asTargetFlow'))$('#asTargetFlow').onchange=renderAsScopePanel;
-if($('#asTargetScope'))$('#asTargetScope').onchange=renderAsScopePanel;
 
 /* ---- scanner ---- */
 export const scanState={sel:null,issues:[]};

@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"github.com/Veyal/interseptor/internal/sender"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxReplayRequestBytes = 4 << 10
 
 type replayJSON struct {
 	Session string `json:"session"` // "current" | "flow" (default: flow)
@@ -27,12 +28,22 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in replayJSON
-	_ = json.NewDecoder(r.Body).Decode(&in) // body optional; default is "flow"
+	if !decodeOptionalLimitedJSON(w, r, maxReplayRequestBytes, &in) {
+		return
+	}
+	if in.Session != "" && in.Session != "flow" && in.Session != "current" {
+		httpErr(w, http.StatusBadRequest, "session must be flow or current")
+		return
+	}
 	useCurrent := in.Session == "current"
 
 	f, err := h.st.GetFlow(id)
-	if err != nil || f == nil {
-		httpErr(w, http.StatusNotFound, "flow not found")
+	if err != nil {
+		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpInternalErr(w, fmt.Errorf("flow %d lookup returned nil without error", id))
 		return
 	}
 	if f.Method == "" {
@@ -44,11 +55,16 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
+	body, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
 	flow, err := h.snd.Send(sender.Request{
 		Method:    f.Method,
 		URL:       url,
 		Headers:   f.ReqHeaders,
-		Body:      h.bodyBytes(f.ReqBodyHash),
+		Body:      body,
 		Flags:     store.FlagRepeater | aiSourceFlag(r),
 		NoSession: !useCurrent,
 	})
@@ -69,8 +85,12 @@ func (h *toolsAPI) replayPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.st.GetFlow(id)
-	if err != nil || f == nil {
-		http.Error(w, "flow not found", http.StatusNotFound)
+	if err != nil {
+		httpTextNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpTextNotFoundOrInternal(w, fmt.Errorf("flow %d lookup returned nil without error", id), "flow not found")
 		return
 	}
 	session := "flow"
