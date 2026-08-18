@@ -20,6 +20,11 @@ func (h *flowAPI) flowCurl(w http.ResponseWriter, r *http.Request) {
 		httpNotFoundOrInternal(w, err, "flow not found")
 		return
 	}
-	cmd := curlgen.Build(f.Method, analyzeURL(f), http.Header(f.ReqHeaders), h.bodyBytes(f.ReqBodyHash))
+	body, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
+	cmd := curlgen.Build(f.Method, analyzeURL(f), http.Header(f.ReqHeaders), body)
 	writeJSON(w, http.StatusOK, map[string]any{"curl": cmd})
 }
