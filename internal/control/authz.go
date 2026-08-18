@@ -346,9 +346,16 @@ func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	if flow != nil {
 		rr.Status, rr.Length, rr.Mime, rr.Error, rr.FlowID = flow.Status, flow.ResLen, flow.Mime, flow.Error, flow.ID
 		rr.resHeaders = flow.ResHeaders
+		if rr.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+			rr.Error = "response capture incomplete"
+		}
 		if flow.ResBodyHash != "" {
-			resBody := h.bodyBytes(flow.ResBodyHash)
-			rr.BodyHash = bodySHA256(resBody)
+			resBody, err := h.bodyBytesResult(flow.ResBodyHash)
+			if err != nil {
+				rr.Error = "response body unavailable"
+			} else {
+				rr.BodyHash = bodySHA256(resBody)
+			}
 		}
 	}
 	return rr

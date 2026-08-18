@@ -94,7 +94,7 @@ func bodySHA256(b []byte) string {
 }
 
 func authzSameAccess(baseStatus int, baseLen int64, baseHash, baseMime string, rr authzResult) bool {
-	if rr.Status == 0 || rr.Status != baseStatus {
+	if rr.Error != "" || rr.Status == 0 || rr.Status != baseStatus {
 		return false
 	}
 	if rr.Status >= 400 {

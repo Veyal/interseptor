@@ -141,6 +141,34 @@ func TestAuthzSameAccessBodyHash(t *testing.T) {
 	if authzSameAccess(200, 100, "abc", "application/json", diff) {
 		t.Fatal("different hash should not match")
 	}
+	failed := base
+	failed.Error = "response body unavailable"
+	if authzSameAccess(200, 100, "abc", "application/json", failed) {
+		t.Fatal("errored replay should not match baseline")
+	}
+}
+
+func TestAuthzReplayReportsIncompleteResponseCapture(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _, _ := newHub(t)
+	rr := (&authzAPI{h}).authzReplay(&store.Flow{
+		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+	}, identity{Name: "user"})
+	if rr.Error != "response capture incomplete" {
+		t.Fatalf("error = %q, want response capture incomplete", rr.Error)
+	}
 }
 
 func TestAuthzRunRequiresScopeForBulk(t *testing.T) {
