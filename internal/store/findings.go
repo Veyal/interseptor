@@ -53,22 +53,22 @@ func NormalizeFindingBody(body string) (string, error) {
 // sequence of text blocks (markdown) and flow-reference blocks (clickable PoC
 // request/response), freely interleaved.
 type Finding struct {
-	ID        int64  `json:"id"`
-	TS        int64  `json:"ts"`        // created, unix millis
-	UpdatedTS int64  `json:"updatedTs"` // last modified, unix millis
-	Severity  string `json:"severity"`  // Critical | High | Medium | Low | Info
-	Status    string `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
-	Source    string `json:"source"`    // human | ai | scanner
-	Title     string `json:"title"`
-	Target    string `json:"target"`
-	Detail    string `json:"detail"`         // legacy / MCP compat: first text block synced here
-	Evidence  string `json:"evidence"`       // legacy only
-	Fix       string `json:"fix"`            // back-compat: kept but superseded by Impact
-	Impact    string `json:"impact"`         // security impact — what an attacker gains / business consequence
-	Why       string `json:"why"`            // why this is a vulnerability (broken security property)
-	Cwe       string `json:"cwe,omitempty"`  // CWE id or short class, e.g. CWE-639 / IDOR
+	ID          int64  `json:"id"`
+	TS          int64  `json:"ts"`        // created, unix millis
+	UpdatedTS   int64  `json:"updatedTs"` // last modified, unix millis
+	Severity    string `json:"severity"`  // Critical | High | Medium | Low | Info
+	Status      string `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
+	Source      string `json:"source"`    // human | ai | scanner
+	Title       string `json:"title"`
+	Target      string `json:"target"`
+	Detail      string `json:"detail"`                // legacy / MCP compat: first text block synced here
+	Evidence    string `json:"evidence"`              // legacy only
+	Fix         string `json:"fix"`                   // back-compat: kept but superseded by Impact
+	Impact      string `json:"impact"`                // security impact — what an attacker gains / business consequence
+	Why         string `json:"why"`                   // why this is a vulnerability (broken security property)
+	Cwe         string `json:"cwe,omitempty"`         // CWE id or short class, e.g. CWE-639 / IDOR
 	Environment string `json:"environment,omitempty"` // prod | staging | local | ""
-	Cvss      string `json:"cvss,omitempty"` // CVSS score or vector string, e.g. "7.5" or "CVSS:3.1/AV:N/..."
+	Cvss        string `json:"cvss,omitempty"`        // CVSS score or vector string, e.g. "7.5" or "CVSS:3.1/AV:N/..."
 	// VerificationInstructions tells a human reviewer exactly what to check when
 	// Status is needs_verification (e.g. "download X and run file on it").
 	VerificationInstructions string         `json:"verificationInstructions,omitempty"`
@@ -485,6 +485,7 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if f.Detail == "" && f.Body != "" {
 		f.Detail = firstTextMD(f.Body)
 	}
+	normTags := NormalizeTags(f.Tags)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -502,16 +503,16 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if err := syncFindingFlowsFromBody(tx, id, f.Body); err != nil {
 		return 0, err
 	}
+	for _, tag := range normTags {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO finding_tags (finding_id, tag) VALUES (?,?)`, id, tag); err != nil {
+			return 0, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	if len(f.Tags) > 0 {
-		norm, err := s.SetFindingTags(id, f.Tags)
-		if err != nil {
-			return 0, err
-		}
-		f.Tags = norm
-	} else if f.Tags == nil {
+	f.Tags = normTags
+	if f.Tags == nil {
 		f.Tags = []string{}
 	}
 	return id, nil

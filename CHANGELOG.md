@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Atomic finding creation.** New findings now commit their row, body-derived PoC attachments, and normalized tags in one transaction, so a tag persistence failure cannot return an error while leaving a ghost finding behind.
 - **Transactional merged-flow metadata.** Collaboration merge now inserts each new flow, its note/FTS text, and mandatory peer-provenance tag in one SQLite transaction, returning an error with no orphan flow when metadata persistence fails.
 - **Strict full-project path commands.** Server-side full-project export and import now validate one complete JSON command through a 16 KiB cap before creating an archive destination or installing a named project.
 - **Atomic retention configuration.** Retention age and flow-count limits now validate one complete bounded command and persist in a single transaction, so a second-key database failure cannot leave a half-applied policy behind a `500` response.

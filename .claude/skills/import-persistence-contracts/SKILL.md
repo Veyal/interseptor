@@ -23,5 +23,8 @@ Use this when adding or changing HAR, Burp, or portable project imports.
 - When imported metadata is mandatory (for example merge provenance tags), insert the primary row,
   its FTS projection, and that metadata in one transaction. A later best-effort metadata call can
   report a successful import whose origin or operator notes have silently disappeared.
+- Apply the same rule at reusable store boundaries: `CreateFinding` owns its body-derived flow
+  attachments and tags, so all three must commit together rather than returning an error after the
+  primary finding row is already durable.
 
 Test with a closed store to make ignored errors deterministic, and use only generic traffic fixtures.
