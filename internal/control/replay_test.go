@@ -16,6 +16,30 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+func TestReplayPageClassifiesLookupFailures(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &toolsAPI{h}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/replay/1", nil)
+	missingReq.SetPathValue("id", "1")
+	missingRec := httptest.NewRecorder()
+	api.replayPage(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing status=%d, want 404", missingRec.Code)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	failureReq := httptest.NewRequest(http.MethodGet, "/replay/1", nil)
+	failureReq.SetPathValue("id", "1")
+	failureRec := httptest.NewRecorder()
+	api.replayPage(failureRec, failureReq)
+	if failureRec.Code != http.StatusInternalServerError || !bytes.Contains(failureRec.Body.Bytes(), []byte("internal server error")) {
+		t.Fatalf("storage failure status=%d body=%q, want scrubbed 500", failureRec.Code, failureRec.Body.String())
+	}
+}
+
 // A replay link re-sends a captured flow's request. session="flow" replays it
 // exactly as captured; session="current" lets the configured session headers
 // override the captured ones.

@@ -1745,6 +1745,15 @@ func httpNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
 	httpInternalErr(w, err)
 }
 
+func httpTextNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, notFound, http.StatusNotFound)
+		return
+	}
+	log.Printf("control: 500: %v", err)
+	http.Error(w, "internal server error", http.StatusInternalServerError)
+}
+
 func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {
 	if host != "" && len(h["Host"]) == 0 {
 		fmt.Fprintf(b, "Host: %s\r\n", host)

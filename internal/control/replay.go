@@ -80,8 +80,12 @@ func (h *toolsAPI) replayPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := h.st.GetFlow(id)
-	if err != nil || f == nil {
-		http.Error(w, "flow not found", http.StatusNotFound)
+	if err != nil {
+		httpTextNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if f == nil {
+		httpTextNotFoundOrInternal(w, fmt.Errorf("flow %d lookup returned nil without error", id), "flow not found")
 		return
 	}
 	session := "flow"
