@@ -23,6 +23,9 @@ runtime dependencies.
   running state changed.
 - Replace delayed one-off `go sleep; callback` work with one owner-held timer. Stop the timer on close,
   guard callback admission with a closed flag, and join any callback that already passed that gate.
+- For short on-demand maintenance jobs that cannot usefully be canceled, guard `WaitGroup.Add` and a
+  closed flag with the same mutex. Shutdown sets the flag under that mutex before calling `Wait`, so
+  no new job can race the wait; every admitted job calls `Done` and finishes before dependencies close.
 
 Test cancellation during the initial delay with a short timeout; do not sleep for the production
 delay or infer completion from some state the worker mutates before it actually returns.

@@ -145,6 +145,11 @@ type Hub struct {
 	activitySocketPath  string
 	activitySocketToken string
 	activitySocketWG    sync.WaitGroup
+
+	maintenanceMu     sync.Mutex
+	maintenanceClosed bool
+	maintenanceWG     sync.WaitGroup
+	gcBodiesFn        func() (int64, int64, error)
 }
 
 // New builds a Hub. eng, ca, and rebind may be nil. If eng is non-nil, the
@@ -164,6 +169,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		clients:         map[chan string]struct{}{},
 		iosTCPReachable: ios.TCPReachable,
 		setSetting:      st.SetSetting,
+		gcBodiesFn:      st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
 	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies

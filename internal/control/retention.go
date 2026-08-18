@@ -50,13 +50,35 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 	// Reclaim orphaned body files in the background: a large bodies directory can
 	// take seconds to walk (worse on Windows), and the user-visible delete is
 	// already done. (The explicit "Reclaim space" button — gcBodies — stays sync.)
-	go func() {
-		if _, _, err := h.st.GCBodies(); err != nil {
+	h.startMaintenance(func() {
+		if _, _, err := h.gcBodiesFn(); err != nil {
 			log.Printf("purge GC: %v", err)
 		}
-	}()
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
+func (h *Hub) startMaintenance(run func()) bool {
+	h.maintenanceMu.Lock()
+	if h.maintenanceClosed {
+		h.maintenanceMu.Unlock()
+		return false
+	}
+	h.maintenanceWG.Add(1)
+	h.maintenanceMu.Unlock()
+	go func() {
+		defer h.maintenanceWG.Done()
+		run()
+	}()
+	return true
+}
+
+func (h *Hub) stopMaintenance() {
+	h.maintenanceMu.Lock()
+	h.maintenanceClosed = true
+	h.maintenanceMu.Unlock()
+	h.maintenanceWG.Wait()
 }
 
 // gcBodies reclaims orphaned body files without deleting any flows.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -138,6 +139,38 @@ func TestHubCloseCancelsAndWaitsForActiveScan(t *testing.T) {
 	}
 	releaseOnce.Do(func() { close(release) })
 	awaitControlLifecycle(t, closeReturned, "Hub.Close after active scan completion")
+}
+
+func TestHubCloseWaitsForPurgeGC(t *testing.T) {
+	h, _, _ := newHub(t)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	h.gcBodiesFn = func() (int64, int64, error) {
+		close(started)
+		<-release
+		return 0, 0, nil
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/flows/purge", strings.NewReader(`{"hosts":[],"mode":"delete"}`))
+	(&flowAPI{h}).purgeFlows(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("purge status = %d, want 200", rec.Code)
+	}
+	awaitControlLifecycle(t, started, "purge GC start")
+
+	closeReturned := make(chan struct{})
+	go func() {
+		h.Close()
+		close(closeReturned)
+	}()
+	select {
+	case <-closeReturned:
+		t.Fatal("Hub.Close returned while purge GC was still running")
+	default:
+	}
+	close(release)
+	awaitControlLifecycle(t, closeReturned, "Hub.Close after purge GC completion")
 }
 
 func TestIntruderStartAfterHubCloseReturnsServiceUnavailable(t *testing.T) {

@@ -83,6 +83,7 @@ func (h *Hub) Close() {
 		h.StopTunnel()
 		h.closeActivitySocket()
 		h.stopActiveScan()
+		h.stopMaintenance()
 		if h.intr != nil {
 			h.intr.Close()
 		}
