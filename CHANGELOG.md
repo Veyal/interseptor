@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Complete active-probe evidence.** Active scans now discard truncated or unavailable probe captures from vulnerability detectors and record the evidence failure in the probe log instead of analyzing a plausible empty response.
 - **Truthful JWT source failures.** Cross-host authorization replay now returns `404` when JWT extraction depends on a referenced request/response body that is missing instead of misreporting that the flow contains no token.
 - **Complete authorization replay evidence.** Authorization comparisons now flag truncated, missing, or unreadable replay responses and never classify an errored replay as equivalent access.
 - **Complete raw and preview evidence.** Raw flow views and PNG previews now return `404` when a referenced body blob is missing instead of rendering a plausible header-only exchange; unexpected renderer failures are scrubbed rather than leaked.

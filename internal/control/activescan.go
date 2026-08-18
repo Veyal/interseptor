@@ -384,12 +384,29 @@ func (h *Hub) activeSender(ctx context.Context, extraFlags int64, csrfAware bool
 		if flow.Error != "" {
 			entry.Error = flow.Error
 		}
+		body, bodyErr := h.bodyBytesResult(flow.ResBodyHash)
+		evidenceErr := ""
+		if flow.Flags&store.FlagCaptureError != 0 {
+			evidenceErr = "response capture incomplete"
+		} else if bodyErr != nil {
+			evidenceErr = "response body unavailable"
+		}
+		if evidenceErr != "" {
+			entry.Error = evidenceErr
+		}
 		h.asAppendLog(entry)
+		if evidenceErr != "" {
+			return activescan.Response{
+				FlowID:   flow.ID,
+				Headers:  http.Header(flow.ResHeaders),
+				Duration: time.Duration(flow.DurationMs) * time.Millisecond,
+			}
+		}
 		return activescan.Response{
 			FlowID:   flow.ID,
 			Status:   flow.Status,
 			Headers:  http.Header(flow.ResHeaders),
-			Body:     string(h.bodyBytes(flow.ResBodyHash)),
+			Body:     string(body),
 			Duration: time.Duration(flow.DurationMs) * time.Millisecond,
 		}
 	}

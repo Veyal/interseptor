@@ -141,3 +141,23 @@ func TestActiveScanLogsTransportError(t *testing.T) {
 		t.Fatalf("expected 1 errored flow in store, got %d", len(flows))
 	}
 }
+
+func TestActiveScanRejectsIncompleteProbeEvidence(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	send := h.activeSender(context.Background(), 0, false, breaker.New())
+	got := send(activescan.Target{Method: http.MethodGet, URL: target.URL + "/probe"})
+	if got.Status != 0 {
+		t.Fatalf("status = %d, want 0 for incomplete evidence", got.Status)
+	}
+	h.as.mu.Lock()
+	defer h.as.mu.Unlock()
+	if len(h.as.logs) != 1 || h.as.logs[0].Error != "response capture incomplete" {
+		t.Fatalf("probe log = %+v, want incomplete-capture error", h.as.logs)
+	}
+}
