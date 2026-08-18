@@ -26,7 +26,15 @@ func (h *flowAPI) purgeFlows(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "too many hosts")
 		return
 	}
-	keepOnly := in.Mode == "keepOnly"
+	var keepOnly bool
+	switch in.Mode {
+	case "delete":
+	case "keepOnly":
+		keepOnly = true
+	default:
+		httpErr(w, http.StatusBadRequest, "mode must be delete or keepOnly")
+		return
+	}
 
 	deleted, err := h.st.DeleteFlowsByHost(in.Hosts, keepOnly)
 	if err != nil {
