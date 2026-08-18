@@ -353,6 +353,23 @@ func TestAuthzCrossHostReplayRejectsMissingRequestBody(t *testing.T) {
 	}
 }
 
+func TestAuthzCrossHostReplayClassifiesMissingJWTSourceBody(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "GET", Scheme: "https", Host: "example.com", Port: 443, Path: "/probe",
+		ResBodyHash: strings.Repeat("a", 64), ResLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/authz/cross-host-replay", strings.NewReader(`{"flowId":`+itoa(flowID)+`}`))
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).authzCrossHostReplay(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAuthzTargetsInScope(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "in.test", Enabled: true})

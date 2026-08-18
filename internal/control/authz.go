@@ -599,13 +599,25 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		if i := strings.Index(pathOnly, "?"); i >= 0 {
 			pathOnly = pathOnly[:i]
 		}
+		reqBody, reqBodyErr := h.bodyBytesResult(srcFlow.ReqBodyHash)
+		resBody, resBodyErr := h.bodyBytesResult(srcFlow.ResBodyHash)
 		jwt, jwtSource = jwtextract.Extract(jwtextract.Input{
 			ReqHeaders: srcFlow.ReqHeaders,
 			Path:       pathOnly,
 			RawQuery:   rawQuery,
-			ReqBody:    h.bodyBytes(srcFlow.ReqBodyHash),
-			ResBody:    h.bodyBytes(srcFlow.ResBodyHash),
+			ReqBody:    reqBody,
+			ResBody:    resBody,
 		})
+		if jwt == "" {
+			if reqBodyErr != nil {
+				httpFileNotFoundOrInternal(w, reqBodyErr, "JWT source body not found")
+				return
+			}
+			if resBodyErr != nil {
+				httpFileNotFoundOrInternal(w, resBodyErr, "JWT source body not found")
+				return
+			}
+		}
 	}
 	if jwt == "" {
 		httpErr(w, http.StatusBadRequest, "no JWT found — provide jwt directly or pick a flow with Bearer/path/JSON token")
