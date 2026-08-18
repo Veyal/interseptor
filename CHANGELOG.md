@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Complete raw and preview evidence.** Raw flow views and PNG previews now return `404` when a referenced body blob is missing instead of rendering a plausible header-only exchange; unexpected renderer failures are scrubbed rather than leaked.
 - **Complete parameter mining.** Parameter aggregation now returns `404` for a missing referenced request body instead of counting the flow while silently omitting its form or JSON fields.
 - **Complete bulk-scan evidence.** Passive scanner runs now stop with `404` when an in-scope flow references a missing request/response blob instead of persisting findings derived from empty substitutes.
 - **Complete codec evidence.** Flow codec decode/test/encode endpoints and decoded Repeater sends now propagate missing flow/body errors instead of reporting “not matched” or encoding with silently empty flow context.

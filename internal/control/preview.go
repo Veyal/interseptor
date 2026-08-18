@@ -1,7 +1,9 @@
 package control
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +24,7 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 	opts := previewOptsFromQuery(r)
 	pngBytes, err := h.renderFlowPreview(f, opts)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		writePreviewError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
@@ -78,7 +80,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	opts.Pretty = preview.Bool(pretty)
 	pngBytes, err := h.renderFlowPreview(f, opts)
 	if err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+		writePreviewError(w, err)
 		return
 	}
 	hash, _, err := h.st.PutImageBytes("image/png", pngBytes)
@@ -124,15 +126,31 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 		side = preview.SideBoth
 	}
 	if side == preview.SideBoth || side == preview.SideReq {
-		req = h.rawRequest(f)
+		var err error
+		req, err = h.rawRequestVariantResult(f, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if side == preview.SideBoth || side == preview.SideRes {
-		res = h.rawResponse(f)
+		var err error
+		res, err = h.rawResponseVariantResult(f, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if opts.Title == "" {
 		opts.Title = flowPreviewTitle(f)
 	}
 	return preview.Render(req, res, opts)
+}
+
+func writePreviewError(w http.ResponseWriter, err error) {
+	if errors.Is(err, fs.ErrNotExist) {
+		httpErr(w, http.StatusNotFound, "flow body not found")
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func flowPreviewTitle(f *store.Flow) string {

@@ -791,21 +791,20 @@ func (h *flowAPI) getFlowRaw(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	original := r.URL.Query().Get("variant") == "original"
+	var raw []byte
+	var err error
 	if r.URL.Query().Get("side") == "res" {
-		if original {
-			w.Write(h.rawResponseVariant(f, true))
-			return
-		}
-		w.Write(h.rawResponse(f))
+		raw, err = h.rawResponseVariantResult(f, original)
+	} else {
+		raw, err = h.rawRequestVariantResult(f, original)
+	}
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "flow body not found")
 		return
 	}
-	if original {
-		w.Write(h.rawRequestVariant(f, true))
-		return
-	}
-	w.Write(h.rawRequest(f))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(raw)
 }
 
 // getFlowBody streams just the (decoded) body bytes with Content-Type and a
@@ -901,6 +900,11 @@ func (h *Hub) rawRequest(f *store.Flow) []byte {
 }
 
 func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
+	raw, _ := h.rawRequestVariantResult(f, original)
+	return raw
+}
+
+func (h *Hub) rawRequestVariantResult(f *store.Flow, original bool) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
 	hdrs, hash := f.ReqHeaders, f.ReqBodyHash
@@ -912,14 +916,23 @@ func (h *Hub) rawRequestVariant(f *store.Flow, original bool) []byte {
 			hash = f.OriginalReqBodyHash
 		}
 	}
-	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
+	body, err := h.bodyBytesResult(hash)
+	if err != nil {
+		return nil, err
+	}
+	hdr, body := decodeForDisplay(hdrs, body)
 	writeHeaders(&b, hdr, f.Host)
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 
 func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
+	raw, _ := h.rawResponseVariantResult(f, original)
+	return raw
+}
+
+func (h *Hub) rawResponseVariantResult(f *store.Flow, original bool) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
 	hdrs, hash := f.ResHeaders, f.ResBodyHash
@@ -931,11 +944,15 @@ func (h *Hub) rawResponseVariant(f *store.Flow, original bool) []byte {
 			hash = f.OriginalResBodyHash
 		}
 	}
-	hdr, body := decodeForDisplay(hdrs, h.bodyBytes(hash))
+	body, err := h.bodyBytesResult(hash)
+	if err != nil {
+		return nil, err
+	}
+	hdr, body := decodeForDisplay(hdrs, body)
 	writeHeaders(&b, hdr, "")
 	b.WriteString("\r\n")
 	b.Write(body)
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 func (h *Hub) rawResponse(f *store.Flow) []byte {
 	return h.rawResponseVariant(f, false)

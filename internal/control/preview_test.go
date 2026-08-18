@@ -56,6 +56,29 @@ func TestFlowPreviewPNG(t *testing.T) {
 	}
 }
 
+func TestFlowPreviewPNGRejectsMissingBodyEvidence(t *testing.T) {
+	h, s, _ := newHub(t)
+	flowID, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Host: "example.com", Path: "/api/user", Status: 200,
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/flows/" + strconv.FormatInt(flowID, 10) + "/preview.png?side=req")
+	if err != nil {
+		t.Fatalf("GET preview: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+}
+
 func TestFlowPreviewPNGOptions(t *testing.T) {
 	h, s, _ := newHub(t)
 	flowID, err := s.InsertFlow(&store.Flow{

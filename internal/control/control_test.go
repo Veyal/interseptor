@@ -511,6 +511,24 @@ func TestFlowRawRequest(t *testing.T) {
 	}
 }
 
+func TestFlowRawRejectsMissingBodyEvidence(t *testing.T) {
+	h, st, _ := newHub(t)
+	id, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com", Path: "/submit",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/raw?side=req", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).getFlowRaw(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+}
+
 func TestFlowBodyDownload(t *testing.T) {
 	h, s, _ := newHub(t)
 	payload := `{"large":true}`
