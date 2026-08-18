@@ -402,11 +402,12 @@ func (h *Hub) activeSender(ctx context.Context, extraFlags int64, csrfAware bool
 				Duration: time.Duration(flow.DurationMs) * time.Millisecond,
 			}
 		}
+		_, detectorBody := decodeForDisplay(flow.ResHeaders, body)
 		return activescan.Response{
 			FlowID:   flow.ID,
 			Status:   flow.Status,
 			Headers:  http.Header(flow.ResHeaders),
-			Body:     string(body),
+			Body:     string(detectorBody),
 			Duration: time.Duration(flow.DurationMs) * time.Millisecond,
 		}
 	}

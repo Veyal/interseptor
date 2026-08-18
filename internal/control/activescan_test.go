@@ -1,6 +1,8 @@
 package control
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -159,5 +161,28 @@ func TestActiveScanRejectsIncompleteProbeEvidence(t *testing.T) {
 	defer h.as.mu.Unlock()
 	if len(h.as.logs) != 1 || h.as.logs[0].Error != "response capture incomplete" {
 		t.Fatalf("probe log = %+v, want incomplete-capture error", h.as.logs)
+	}
+}
+
+func TestActiveScanDecodesEncodedProbeBodies(t *testing.T) {
+	var encoded bytes.Buffer
+	zw := gzip.NewWriter(&encoded)
+	if _, err := zw.Write([]byte("decoded probe evidence")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(encoded.Bytes())
+	}))
+	defer target.Close()
+
+	h, _, _ := newHub(t)
+	send := h.activeSender(context.Background(), 0, false, breaker.New())
+	got := send(activescan.Target{Method: http.MethodGet, URL: target.URL + "/probe"})
+	if got.Body != "decoded probe evidence" {
+		t.Fatalf("body = %q, want decoded evidence", got.Body)
 	}
 }
