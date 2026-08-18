@@ -32,6 +32,32 @@ func TestExtractAuthHeaders(t *testing.T) {
 	}
 }
 
+func TestAuthzPromoteFromFlowRejectsTrailingJSONBeforePersistence(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "GET", Scheme: "https", Host: "example.com", Path: "/account",
+		ReqHeaders: map[string][]string{"Cookie": {"session=example"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/authz/from-flow/"+strconv.FormatInt(flowID, 10), "application/json",
+		strings.NewReader(`{"name":"Admin","merge":true}{}`))
+	if err != nil {
+		t.Fatalf("POST promote auth: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	if value, ok, err := st.GetSetting("authz.identities"); err != nil || ok {
+		t.Fatalf("authz identities changed after rejected command: value=%q ok=%v err=%v", value, ok, err)
+	}
+}
+
 func TestApplyIdentityHeadersAnonymousStripsAuth(t *testing.T) {
 	base := map[string][]string{
 		"Cookie":        {"admin=1"},
