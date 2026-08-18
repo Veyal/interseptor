@@ -90,7 +90,7 @@ type Sender struct {
 	sessionScope   SessionScope
 
 	login       loginState
-	refreshSess func([]Header)
+	refreshSess func([]Header) error
 
 	persistMu sync.Mutex
 	onPersist func(*store.Flow) // optional: live UI/MCP refresh after InsertFlow

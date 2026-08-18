@@ -17,3 +17,7 @@ partial batch. Preserve omitted optional fields by leaving their keys out of the
 
 Test the handler with a closed store: it must return a scrubbed `500` and must not follow the old
 best-effort path that mutates runtime state after failed writes.
+
+Background callbacks need the same contract. Return persistence errors to the runtime owner and apply
+new in-memory state only after the callback succeeds; a `void` callback that discards `SetSetting`
+errors silently creates a session that works until restart and then vanishes.

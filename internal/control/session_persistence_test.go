@@ -71,3 +71,24 @@ func TestLoginMacroFromFlowRejectsMalformedJSON(t *testing.T) {
 		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestLoginRefreshReportsPersistenceFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "sid=fresh; Path=/")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	if err := h.snd.SetLoginMacro(sender.LoginMacro{
+		Enabled: true, Target: upstream.URL,
+		Request: "GET /login HTTP/1.1\r\nHost: example.com\r\n\r\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.snd.RunLoginMacroNow(); err == nil {
+		t.Fatal("RunLoginMacroNow succeeded after session store was closed")
+	}
+}

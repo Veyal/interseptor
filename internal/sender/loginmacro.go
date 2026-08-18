@@ -156,7 +156,7 @@ func (s *Sender) SetLoginMacro(m LoginMacro) error {
 
 // SetSessionRefresh registers a callback invoked when a login macro produces new
 // session headers (auto-refresh, manual run, or 401 re-auth).
-func (s *Sender) SetSessionRefresh(fn func([]Header)) { s.refreshSess = fn }
+func (s *Sender) SetSessionRefresh(fn func([]Header) error) { s.refreshSess = fn }
 
 func (s *Sender) maybeRefreshLogin() {
 	if !s.login.tryBeginRefresh() {
@@ -172,10 +172,12 @@ func (s *Sender) runLoginMacro() ([]Header, error) {
 	if err != nil || len(hdrs) == 0 {
 		return hdrs, err
 	}
-	s.applySessionHeaders(hdrs)
 	if s.refreshSess != nil {
-		s.refreshSess(hdrs)
+		if err := s.refreshSess(hdrs); err != nil {
+			return nil, err
+		}
 	}
+	s.applySessionHeaders(hdrs)
 	s.login.markRefreshed()
 	return hdrs, nil
 }

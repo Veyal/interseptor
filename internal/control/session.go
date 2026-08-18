@@ -113,12 +113,16 @@ func (h *Hub) applySessionFromStore() {
 
 // wireSessionRefresh connects login-macro output to persisted session headers.
 func (h *Hub) wireSessionRefresh() {
-	h.snd.SetSessionRefresh(func(hdrs []sender.Header) {
+	h.snd.SetSessionRefresh(func(hdrs []sender.Header) error {
 		text := persistSessionHeaders(hdrs)
-		_ = h.st.SetSetting("session.enabled", "1")
-		_ = h.st.SetSetting("session.headers", text)
-		h.snd.SetSession(true, hdrs)
+		if err := h.st.SetSettings(map[string]string{
+			"session.enabled": "1",
+			"session.headers": text,
+		}); err != nil {
+			return err
+		}
 		h.broadcast(map[string]any{"type": "session.update"})
+		return nil
 	})
 }
 
