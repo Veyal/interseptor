@@ -91,6 +91,17 @@ func TestParseBase64EncodedBody(t *testing.T) {
 	}
 }
 
+func TestParseRejectsJSONThatIsNotHAR(t *testing.T) {
+	for _, doc := range []string{`{}`, `{"not":"har"}`, `{"log":{"version":"1.2"}}`} {
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Fatalf("Parse(%s) succeeded, want missing HAR structure error", doc)
+		}
+	}
+	if entries, err := Parse([]byte(`{"log":{"version":"1.2","entries":[]}}`)); err != nil || len(entries) != 0 {
+		t.Fatalf("valid empty HAR: entries=%v err=%v", entries, err)
+	}
+}
+
 // A flow that errored before its scheme was known (Scheme == "") must still
 // produce a valid absolute URL, not "://host".
 func TestBuildDefaultsEmptyScheme(t *testing.T) {

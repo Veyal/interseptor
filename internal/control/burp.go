@@ -2,7 +2,6 @@ package control
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,23 +42,8 @@ func (h *projectAPI) importBurp(w http.ResponseWriter, r *http.Request) {
 			Flags:       store.FlagImported,
 			Note:        e.Comment,
 		}
-		reqWriter, reqHash, reqLen, err := stageImportedBody(h.st, e.ReqBody)
-		if err != nil {
-			importFailure = fmt.Errorf("store imported request body: %w", err)
-			return importFailure
-		}
-		flow.ReqBodyHash, flow.ReqLen = reqHash, reqLen
-		_, resHash, resLen, err := stageImportedBody(h.st, e.ResBody)
-		if err != nil {
-			if reqWriter != nil {
-				reqWriter.Abort()
-			}
-			importFailure = fmt.Errorf("store imported response body: %w", err)
-			return importFailure
-		}
-		flow.ResBodyHash, flow.ResLen = resHash, resLen
-		if _, err := h.st.InsertFlow(flow); err != nil {
-			importFailure = fmt.Errorf("insert imported flow: %w", err)
+		if err := h.insertImportedFlow(flow, e.ReqBody, e.ResBody); err != nil {
+			importFailure = err
 			return importFailure
 		}
 		imported++

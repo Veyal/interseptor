@@ -5,6 +5,7 @@ package harx
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -134,6 +135,9 @@ func Parse(data []byte) ([]Entry, error) {
 	var doc har
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(doc.Log.Version) == "" || doc.Log.Entries == nil {
+		return nil, fmt.Errorf("missing required HAR log.version or log.entries")
 	}
 	out := make([]Entry, 0, len(doc.Log.Entries))
 	for _, e := range doc.Log.Entries {

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -71,39 +72,52 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	flows := 0
-	if len(bundle.HAR) > 0 {
-		if entries, perr := harx.Parse(bundle.HAR); perr == nil {
-			for _, e := range entries {
-				u, err := url.Parse(e.URL)
-				if err != nil || !u.IsAbs() || u.Host == "" {
-					continue
-				}
-				ts := e.TS
-				if ts.IsZero() {
-					ts = time.Now()
-				}
-				fl := &store.Flow{
-					TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
-					Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
-					HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
-					ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
-					DurationMs: e.DurationMs, Flags: store.FlagImported,
-				}
-				fl.ReqBodyHash, fl.ReqLen = h.storeBody(e.ReqBody)
-				fl.ResBodyHash, fl.ResLen = h.storeBody(e.ResBody)
-				if _, err := h.st.InsertFlow(fl); err == nil {
-					flows++
-				}
+	if harData := bytes.TrimSpace(bundle.HAR); len(harData) > 0 && !bytes.Equal(harData, []byte("null")) {
+		entries, err := harx.Parse(harData)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, "project contains an invalid HAR: "+err.Error())
+			return
+		}
+		for _, e := range entries {
+			u, err := url.Parse(e.URL)
+			if err != nil || !u.IsAbs() || u.Host == "" {
+				continue
 			}
+			ts := e.TS
+			if ts.IsZero() {
+				ts = time.Now()
+			}
+			fl := &store.Flow{
+				TS: ts, Method: e.Method, Scheme: u.Scheme, Host: u.Hostname(),
+				Port: atoiOr(u.Port(), defaultPortFor(u.Scheme)), Path: u.RequestURI(),
+				HTTPVersion: orVal(e.HTTPVersion, "HTTP/1.1"), Status: e.Status,
+				ReqHeaders: e.ReqHeaders, ResHeaders: e.ResHeaders, Mime: e.Mime,
+				DurationMs: e.DurationMs, Flags: store.FlagImported,
+			}
+			if err := h.insertImportedFlow(fl, e.ReqBody, e.ResBody); err != nil {
+				httpInternalErr(w, err)
+				return
+			}
+			flows++
 		}
 	}
+	rulesImported := 0
 	for i := range bundle.Rules {
 		bundle.Rules[i].ID = 0
-		h.st.CreateRule(&bundle.Rules[i])
+		if _, err := h.st.CreateRule(&bundle.Rules[i]); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		rulesImported++
 	}
+	scopeImported := 0
 	for i := range bundle.Scope {
 		bundle.Scope[i].ID = 0
-		h.st.CreateScopeRule(&bundle.Scope[i])
+		if _, err := h.st.CreateScopeRule(&bundle.Scope[i]); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
+		scopeImported++
 	}
 	upCA, hasUpCA := bundle.Settings["upstream.proxyCA"]
 	previousUp, _, _ := h.st.GetSetting("upstream.proxy")
@@ -166,7 +180,10 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if authz, ok := bundle.Settings["authz.identities"]; ok && authz != "" {
-		_ = h.st.SetSetting("authz.identities", authz)
+		if err := h.st.SetSetting("authz.identities", authz); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
 	}
 	if raw, ok := bundle.Settings[originTLSVerifySettingKey]; ok {
 		if raw != "0" && raw != "1" {
@@ -194,9 +211,11 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}
 	if strings.TrimSpace(bundle.Notes) != "" {
-		if _, err := h.st.PersistNotes(bundle.Notes); err == nil {
-			h.broadcast(map[string]any{"type": "notes.update"})
+		if _, err := h.st.PersistNotes(bundle.Notes); err != nil {
+			httpInternalErr(w, err)
+			return
 		}
+		h.broadcast(map[string]any{"type": "notes.update"})
 	}
 
 	h.refreshRules()
@@ -206,7 +225,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 		h.broadcast(map[string]any{"type": "flow.new"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"importedFlows": flows, "importedRules": len(bundle.Rules), "importedScope": len(bundle.Scope),
+		"importedFlows": flows, "importedRules": rulesImported, "importedScope": scopeImported,
 	})
 }
 
