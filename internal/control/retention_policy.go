@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,6 +18,7 @@ const (
 	retentionMaxFlowsKey    = "retention.maxFlows"
 	retentionInterval       = 30 * time.Minute
 	retentionInitialDelay   = 10 * time.Second
+	maxRetentionAgeHours    = int64(1<<63-1) / int64(time.Hour)
 )
 
 type retentionPolicy struct {
@@ -39,6 +41,9 @@ func (h *Hub) loadRetentionPolicy() retentionPolicy {
 // bodies. Returns the number of flows deleted. Safe to call from a goroutine.
 func (h *Hub) runRetentionOnce() (int64, error) {
 	p := h.loadRetentionPolicy()
+	if err := validateRetentionPolicy(p); err != nil {
+		return 0, err
+	}
 	var deleted int64
 	if p.MaxAgeHours > 0 {
 		cutoff := time.Now().Add(-time.Duration(p.MaxAgeHours) * time.Hour).UnixMilli()
@@ -65,6 +70,16 @@ func (h *Hub) runRetentionOnce() (int64, error) {
 		}()
 	}
 	return deleted, nil
+}
+
+func validateRetentionPolicy(p retentionPolicy) error {
+	if p.MaxAgeHours < 0 || p.MaxFlows < 0 {
+		return fmt.Errorf("maxAgeHours and maxFlows must be >= 0 (0 = off)")
+	}
+	if p.MaxAgeHours > maxRetentionAgeHours {
+		return fmt.Errorf("maxAgeHours exceeds the safe duration limit of %d", maxRetentionAgeHours)
+	}
+	return nil
 }
 
 // StartRetentionLoop runs runRetentionOnce on a ticker until stop is closed.
@@ -113,8 +128,8 @@ func (h *flowAPI) putRetention(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "bad json")
 		return
 	}
-	if in.MaxAgeHours < 0 || in.MaxFlows < 0 {
-		httpErr(w, http.StatusBadRequest, "maxAgeHours and maxFlows must be >= 0 (0 = off)")
+	if err := validateRetentionPolicy(in); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !h.persistSetting(w, retentionMaxAgeHoursKey, strconv.FormatInt(in.MaxAgeHours, 10)) {
