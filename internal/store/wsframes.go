@@ -22,22 +22,31 @@ var wsFramesPerFlow int64 = 5000
 // SaveWSFrame records a captured frame, trimming the flow to the most recent
 // wsFramesPerFlow frames.
 func (s *Store) SaveWSFrame(f *WSFrame) error {
-	res, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`INSERT INTO ws_frames (flow_id, ts, dir, opcode, length, preview) VALUES (?,?,?,?,?,?)`,
 		f.FlowID, f.TS.UnixMilli(), f.Dir, f.Opcode, f.Length, f.Preview)
 	if err != nil {
 		return err
 	}
-	f.ID, _ = res.LastInsertId()
-	// Propagate a failed retention DELETE: silently swallowing it lets ws_frames
-	// grow without bound if pruning starts failing. The insert already committed,
-	// so f.ID stays set alongside the error.
-	if _, err := s.db.Exec(
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
 		`DELETE FROM ws_frames WHERE flow_id=? AND id NOT IN (
 		   SELECT id FROM ws_frames WHERE flow_id=? ORDER BY id DESC LIMIT ?)`,
 		f.FlowID, f.FlowID, wsFramesPerFlow); err != nil {
 		return err
 	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	f.ID = id
 	return nil
 }
 

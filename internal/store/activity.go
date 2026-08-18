@@ -21,20 +21,28 @@ var activityKeep int64 = 5000
 // sets a.ID. Rows older than the most recent activityKeep are pruned so the log
 // can't grow without bound.
 func (s *Store) InsertActivity(a *Activity) (int64, error) {
-	res, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`INSERT INTO activity (ts, tool, summary, ok, result, ms, intent) VALUES (?,?,?,?,?,?,?)`,
 		a.TS, a.Tool, a.Summary, a.OK, a.Result, a.Ms, a.Intent)
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	a.ID = id
-	// Propagate a failed retention DELETE: silently swallowing it lets the table
-	// grow without bound if pruning starts failing. The insert already committed,
-	// so the caller still sees the assigned id alongside the error.
-	if _, err := s.db.Exec(`DELETE FROM activity WHERE id <= ?`, id-activityKeep); err != nil {
-		return id, err
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
 	}
+	if _, err := tx.Exec(`DELETE FROM activity WHERE id <= ?`, id-activityKeep); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	a.ID = id
 	return id, nil
 }
 

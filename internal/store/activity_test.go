@@ -61,9 +61,8 @@ func TestDeleteActivity(t *testing.T) {
 	}
 }
 
-// InsertActivity propagates a failed retention DELETE instead of swallowing it
-// (silent swallow would let the activity table grow without bound). A BEFORE
-// DELETE trigger forces the prune to fail while the INSERT still commits.
+// InsertActivity rolls its insert back when retention fails, so an error cannot
+// leave an unannounced row behind or let the bounded table grow.
 func TestInsertActivityPropagatesPruneError(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -88,11 +87,15 @@ func TestInsertActivityPropagatesPruneError(t *testing.T) {
 		t.Fatalf("create trigger: %v", err)
 	}
 
-	id, err := s.InsertActivity(&Activity{TS: 99, Tool: "x", OK: true})
+	a := &Activity{TS: 99, Tool: "x", OK: true}
+	id, err := s.InsertActivity(a)
 	if err == nil {
 		t.Fatal("expected retention DELETE error to propagate, got nil")
 	}
-	if id == 0 {
-		t.Fatal("id should still be set: the INSERT committed before the failed prune")
+	if id != 0 || a.ID != 0 {
+		t.Fatalf("failed insert published ids return=%d struct=%d", id, a.ID)
+	}
+	if got, err := s.ListActivity(50); err != nil || len(got) != 1 {
+		t.Fatalf("rows after failed bounded insert = %d, err=%v; want 1", len(got), err)
 	}
 }
