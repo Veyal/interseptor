@@ -194,6 +194,17 @@ func TestAuthzReplaySurfacesSendFailure(t *testing.T) {
 	}
 }
 
+func TestAuthzReplayRefusesOwnListener(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.SetSelfAddr("127.0.0.1:9966")
+	rr := (&authzAPI{h}).authzReplay(&store.Flow{
+		Method: "GET", Scheme: "http", Host: "localhost", Port: 9966, Path: "/api/authz",
+	}, identity{Name: "user", Headers: "Authorization: Bearer example"})
+	if rr.Error != "refusing to send to Interseptor's own listener" {
+		t.Fatalf("error = %q, want own-listener refusal", rr.Error)
+	}
+}
+
 func TestAuthzRunDoesNotUseErroredReplayAsBaseline(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Authorization"), "broken") {
@@ -464,6 +475,23 @@ func TestAuthzCrossHostReplayRejectsIncompleteAcceptanceEvidence(t *testing.T) {
 	}
 	if len(out.Results) != 1 || out.Results[0].Accepted || out.Results[0].Error != "response capture incomplete" {
 		t.Fatalf("results=%+v, want rejected incomplete response", out.Results)
+	}
+}
+
+func TestAuthzCrossHostReplayRefusesOwnListenerReference(t *testing.T) {
+	h, st, _ := newHub(t)
+	h.SetSelfAddr("127.0.0.1:9966")
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "GET", Scheme: "http", Host: "127.0.0.1", Port: 9966, Path: "/api/authz",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/authz/cross-host-replay", strings.NewReader(`{"flowId":`+itoa(flowID)+`,"jwt":"a.b.c"}`))
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).authzCrossHostReplay(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%q, want 403", rec.Code, rec.Body.String())
 	}
 }
 

@@ -358,6 +358,9 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 
 func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	url := flowURLStr(f)
+	if h.targetsOwnListener(url) {
+		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
+	}
 	body, err := h.bodyBytesResult(f.ReqBodyHash)
 	if err != nil {
 		return authzResult{Name: id.Name, Error: "request body unavailable"}
@@ -596,6 +599,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	ref, err := h.st.GetFlow(in.FlowID)
 	if err != nil {
 		httpNotFoundOrInternal(w, err, "flow not found")
+		return
+	}
+	if h.isOwnListener(ref) {
+		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
 
