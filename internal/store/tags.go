@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"sort"
 	"strings"
 )
@@ -69,6 +70,9 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := requireFlowForTags(tx, flowID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id=?`, flowID); err != nil {
 		return nil, err
 	}
@@ -90,6 +94,9 @@ func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := requireFlowForTags(tx, flowID); err != nil {
+		return nil, err
+	}
 	for _, t := range NormalizeTags(tags) {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, t); err != nil {
 			return nil, err
@@ -132,6 +139,9 @@ func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
 	}
 	defer tx.Rollback()
 	for _, flowID := range flowIDs {
+		if err := requireFlowForTags(tx, flowID); err != nil {
+			return err
+		}
 		for _, tag := range add {
 			if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, flowID, tag); err != nil {
 				return err
@@ -144,6 +154,11 @@ func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func requireFlowForTags(tx *sql.Tx, flowID int64) error {
+	var exists int
+	return tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists)
 }
 
 // RemoveFlowTag detaches a single tag from a flow.

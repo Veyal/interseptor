@@ -69,6 +69,36 @@ func TestAddFlowTagsRollsBackWholeBatchOnFailure(t *testing.T) {
 	}
 }
 
+func TestFlowTagMutationsRejectMissingFlows(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*Store) error
+	}{
+		{name: "replace", run: func(s *Store) error { _, err := s.SetFlowTags(999, []string{"phantom"}); return err }},
+		{name: "add", run: func(s *Store) error { _, err := s.AddFlowTags(999, []string{"phantom"}); return err }},
+		{name: "bulk", run: func(s *Store) error { return s.MutateFlowTags([]int64{999}, []string{"phantom"}, nil) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if err := tt.run(s); err == nil {
+				t.Fatal("missing flow mutation succeeded")
+			}
+			tags, err := s.DistinctTags()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tags) != 0 {
+				t.Fatalf("missing flow created phantom tags %+v", tags)
+			}
+		})
+	}
+}
+
 func TestSetAndQueryTags(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
