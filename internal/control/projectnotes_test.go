@@ -96,6 +96,42 @@ func TestProjectNotesImageUploadAndServe(t *testing.T) {
 	}
 }
 
+func TestProjectNotesStorageFailuresReturnScrubbed500(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*projectAPI, http.ResponseWriter, *http.Request)
+		body string
+	}{
+		{"replace", (*projectAPI).putNotes, `{"notes":"replacement"}`},
+		{"append", (*projectAPI).patchNotes, `{"appendText":"addition"}`},
+		{"image", (*projectAPI).postNotesImage, `{"mime":"image/png","data":"aGVsbG8="}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, st, _ := newHub(t)
+			if err := st.Close(); err != nil {
+				t.Fatalf("close store: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/notes", strings.NewReader(tt.body))
+			rec := httptest.NewRecorder()
+			tt.call(&projectAPI{h}, rec, req)
+			if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "internal server error") {
+				t.Fatalf("status=%d body=%q, want scrubbed 500", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestProjectNotesInvalidInlineImageRemainsClientError(t *testing.T) {
+	h, _, _ := newHub(t)
+	req := httptest.NewRequest(http.MethodPut, "/api/notes", strings.NewReader(`{"notes":"![bad](data:image/png;base64,A)"}`))
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).putNotes(rec, req)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid pasted image") {
+		t.Fatalf("status=%d body=%q, want descriptive 400", rec.Code, rec.Body.String())
+	}
+}
+
 func TestProjectNotesMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
 	request := func(t *testing.T, method, url, body string) *http.Response {
 		t.Helper()

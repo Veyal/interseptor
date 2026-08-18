@@ -1,6 +1,7 @@
 package control
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,7 +33,7 @@ func (h *projectAPI) putNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.st.PersistNotes(in.Notes); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "notes.update"})
@@ -57,7 +58,7 @@ func (h *projectAPI) patchNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.AppendNote(in.AppendText); err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "notes.update"})
@@ -80,10 +81,18 @@ func (h *projectAPI) postNotesImage(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.st.InsertNotesImage(mime, raw)
 	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
+		writeNotesMutationError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func writeNotesMutationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrInvalidNotes) {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 // getNotesImage serves a stored notebook image for preview rendering.

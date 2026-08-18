@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -11,6 +12,11 @@ import (
 )
 
 const maxNotesImageBytes = 5 << 20 // 5 MiB per pasted screenshot
+
+// ErrInvalidNotes marks caller-authored notebook/image content errors. Storage
+// failures deliberately do not wrap it, allowing the control plane to scrub
+// database details behind a 500 response.
+var ErrInvalidNotes = errors.New("invalid notes content")
 
 // allowedNotesImageMIME is the raster-image allowlist for stored notebook
 // images. Anything outside it (text/html, image/svg+xml, …) is coerced to an
@@ -57,10 +63,10 @@ type notesImageExecutor interface {
 
 func insertNotesImage(db notesImageExecutor, mime string, data []byte) (int64, error) {
 	if len(data) == 0 {
-		return 0, fmt.Errorf("empty image")
+		return 0, fmt.Errorf("%w: empty image", ErrInvalidNotes)
 	}
 	if len(data) > maxNotesImageBytes {
-		return 0, fmt.Errorf("image too large (max %d bytes)", maxNotesImageBytes)
+		return 0, fmt.Errorf("%w: image too large (max %d bytes)", ErrInvalidNotes, maxNotesImageBytes)
 	}
 	mime = SanitizeNotesImageMIME(mime)
 	res, err := db.Exec(
@@ -101,7 +107,7 @@ func normalizeNotesMarkdown(notes string, insert func(string, []byte) (int64, er
 		raw = strings.ReplaceAll(raw, "\r", "")
 		data, err := base64.StdEncoding.DecodeString(raw)
 		if err != nil {
-			firstErr = fmt.Errorf("invalid pasted image data: %w", err)
+			firstErr = fmt.Errorf("%w: invalid pasted image data: %v", ErrInvalidNotes, err)
 			return match
 		}
 		id, err := insert(subs[2], data)
