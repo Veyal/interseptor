@@ -85,6 +85,102 @@ func TestTagEndpoints(t *testing.T) {
 	}
 }
 
+func TestFlowMetadataMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	put := func(t *testing.T, url, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT: %v", err)
+		}
+		return resp
+	}
+
+	t.Run("note", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if err := st.SetFlowNote(id, "old note"); err != nil {
+			t.Fatalf("SetFlowNote: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/flows/"+itoa(id)+"/note", `{"note":"new note"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		flow, err := st.GetFlow(id)
+		if err != nil {
+			t.Fatalf("GetFlow: %v", err)
+		}
+		if flow.Note != "old note" {
+			t.Fatalf("note = %q, want old note", flow.Note)
+		}
+	})
+
+	t.Run("flow tags", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if _, err := st.SetFlowTags(id, []string{"old"}); err != nil {
+			t.Fatalf("SetFlowTags: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/flows/"+itoa(id)+"/tags", `{"tags":["new"]}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		tags, err := st.FlowTags(id)
+		if err != nil {
+			t.Fatalf("FlowTags: %v", err)
+		}
+		if len(tags) != 1 || tags[0] != "old" {
+			t.Fatalf("tags = %v, want [old]", tags)
+		}
+	})
+
+	t.Run("tag color", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		if _, err := st.SetFlowTags(id, []string{"recon"}); err != nil {
+			t.Fatalf("SetFlowTags: %v", err)
+		}
+		if err := st.SetTagColor("recon", "#112233"); err != nil {
+			t.Fatalf("SetTagColor: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := put(t, ts.URL+"/api/tags/recon/color", `{"color":"#445566"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		tags, err := st.DistinctTags()
+		if err != nil {
+			t.Fatalf("DistinctTags: %v", err)
+		}
+		if len(tags) != 1 || tags[0].Tag != "recon" || tags[0].Color != "#112233" {
+			t.Fatalf("tag state changed after rejected color update: %+v", tags)
+		}
+	})
+}
+
 func TestBulkFlowTagsRollBackWholeSelectionOnFailure(t *testing.T) {
 	h, st, _ := newHub(t)
 	first, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "one.example.com", Path: "/"})

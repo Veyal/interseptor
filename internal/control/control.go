@@ -378,8 +378,7 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Note string `json:"note"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	if err := h.st.SetFlowNote(id, in.Note); err != nil {
@@ -398,6 +397,8 @@ func (h *flowAPI) setFlowNote(w http.ResponseWriter, r *http.Request) {
 
 // reTagColor restricts tag colors to a hex value (safe to interpolate into CSS).
 var reTagColor = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
+
+const maxFlowMetadataRequestBytes int64 = 64 << 10
 
 // broadcastFlowTags reloads a flow (with tags) and pushes it to clients so the row
 // chips update live.
@@ -419,8 +420,7 @@ func (h *flowAPI) setFlowTags(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Tags []string `json:"tags"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	tags, err := h.st.SetFlowTags(id, in.Tags)
@@ -483,8 +483,7 @@ func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Color string `json:"color"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowMetadataRequestBytes, &in) {
 		return
 	}
 	if in.Color != "" && !reTagColor.MatchString(in.Color) {
