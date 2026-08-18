@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Bounded mobile automation commands.** Android proxy/CA/setup and iOS simulator/profile commands now parse capped, exact-one-value optional JSON before checking or invoking ADB, simctl, or connected devices, yielding deterministic `413` responses for oversized input.
 - **Bounded iOS SSH commands.** SSH status, CA-install, and full-setup endpoints now cap optional JSON payloads and reject trailing values instead of accepting the first object while leaving unlimited or ambiguous input unread.
 - **IPv6-safe target URLs.** HAR exports, Burp fallback URLs, flow analysis, authorization replays, and active-scan CSRF probes now share canonical URL-authority formatting, including brackets around IPv6 literals and correct custom ports.
 - **Correct Burp chunked-body migration.** Burp Save-items imports now decode HTTP chunk framing into entity bytes and replace transfer framing with the canonical content length, preventing reconstructed requests and responses from exposing chunk markers as payload.

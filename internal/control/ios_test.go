@@ -203,7 +203,7 @@ func TestIOSSSHCommandsRejectTrailingJSON(t *testing.T) {
 				t.Fatalf("status=%d body=%q, want 400 bad json", rec.Code, rec.Body.String())
 			}
 
-			oversized := `{"padding":"` + strings.Repeat("x", int(maxIOSSSHCommandRequestBytes)) + `"}`
+			oversized := `{"padding":"` + strings.Repeat("x", int(maxMobileCommandRequestBytes)) + `"}`
 			req = httptest.NewRequest(http.MethodPost, "/api/ios/ssh", strings.NewReader(oversized))
 			rec = httptest.NewRecorder()
 			tt.call(rec, req)
