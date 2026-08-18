@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Fail-closed authorization replay modes.** Cross-host JWT replay now validates one complete bounded command and rejects unknown modes before network traffic, instead of stripping Authorization and sending anonymous live requests for a typo.
 - **No orphan finding evidence.** Finding body updates and PoC attachment mutations now verify the parent finding inside their transaction, rejecting stale IDs instead of creating `finding_flows` rows with no finding; non-body updates also report missing targets.
 - **No phantom tags.** Flow and finding tag mutations now verify every target object inside their transaction, rejecting stale or fabricated IDs instead of creating orphan tag rows that pollute global tag counts.
 - **Atomic multi-flow tagging.** Bulk History tagging now validates one complete bounded command and applies every selected flow's add/remove mutations in one transaction, broadcasting only after commit so a later-flow failure cannot leave or announce a partial selection.

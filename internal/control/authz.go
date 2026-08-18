@@ -107,6 +107,8 @@ type authzRunOut struct {
 	Results        []authzResult `json:"results"`
 }
 
+const maxAuthzReplayRequestBytes int64 = 64 << 10
+
 func (h *authzAPI) authzIdentities() []identity {
 	raw, _, _ := h.st.GetSetting("authz.identities")
 	var ids []identity
@@ -216,10 +218,10 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 // authzRun replays flow(s) under each identity and reports per-identity diffs.
 func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		FlowID      int64 `json:"flowId"`
-		InScope     bool  `json:"inScope"`
-		MaxFlows    int   `json:"maxFlows"`
-		SkipStatic  *bool `json:"skipStatic"`
+		FlowID     int64 `json:"flowId"`
+		InScope    bool  `json:"inScope"`
+		MaxFlows   int   `json:"maxFlows"`
+		SkipStatic *bool `json:"skipStatic"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		httpErr(w, http.StatusBadRequest, "bad json")
@@ -539,11 +541,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 	var in struct {
 		FlowID    int64  `json:"flowId"`    // reference endpoint (path to replay)
 		JWTFlowID int64  `json:"jwtFlowId"` // source of JWT; defaults to flowId
-		JWT       string `json:"jwt"`        // raw JWT (alternative to jwtFlowId)
-		Mode      string `json:"mode"`       // auto | bearer | path (default auto)
+		JWT       string `json:"jwt"`       // raw JWT (alternative to jwtFlowId)
+		Mode      string `json:"mode"`      // auto | bearer | path (default auto)
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 {
@@ -605,6 +606,10 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		} else {
 			mode = "bearer"
 		}
+	}
+	if mode != "bearer" && mode != "path" {
+		httpErr(w, http.StatusBadRequest, "mode must be auto, bearer, or path")
+		return
 	}
 
 	type hostKey struct {

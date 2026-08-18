@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Veyal/interseptor/internal/store"
@@ -127,6 +130,46 @@ func TestAuthzRunRequiresScopeForBulk(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bulk without include rules: status %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestAuthzCrossHostReplayRejectsUnknownModeBeforeSending(t *testing.T) {
+	var requests atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+		ReqHeaders: map[string][]string{"Authorization": {"Bearer captured"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/authz/cross-host-replay", "application/json",
+		strings.NewReader(`{"flowId":`+itoa(flowID)+`,"jwt":"header.payload.signature","mode":"barer"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("unknown mode sent %d outbound request(s)", got)
 	}
 }
 
