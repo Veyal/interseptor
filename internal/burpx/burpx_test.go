@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseSavedItemsXML(t *testing.T) {
@@ -91,6 +92,21 @@ func TestBuildURLFormatsIPv6Authority(t *testing.T) {
 	}
 	if got := buildURL("http", "fe80::1%en0", 8080, "/"); got != "http://[fe80::1%25en0]:8080/" {
 		t.Fatalf("scoped URL = %q", got)
+	}
+}
+
+func TestParseBurpTimeAppliesNamedZoneOffset(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want time.Time
+	}{
+		{"Tue Aug 18 09:30:00 WIB 2026", time.Date(2026, 8, 18, 2, 30, 0, 0, time.UTC)},
+		{"Tue Aug 18 09:30:00 EDT 2026", time.Date(2026, 8, 18, 13, 30, 0, 0, time.UTC)},
+	}
+	for _, tt := range tests {
+		if got := parseBurpTime(tt.raw); !got.Equal(tt.want) {
+			t.Errorf("parseBurpTime(%q) = %s, want %s", tt.raw, got, tt.want)
+		}
 	}
 }
 

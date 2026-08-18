@@ -287,14 +287,35 @@ func buildURL(scheme, host string, port int, path string) string {
 
 func parseBurpTime(raw string) time.Time {
 	raw = strings.TrimSpace(raw)
-	for _, layout := range []string{
-		time.RFC3339Nano,
-		"Mon Jan 02 15:04:05 MST 2006",
-		"Mon Jan 2 15:04:05 MST 2006",
-	} {
+	if ts, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return ts
+	}
+	for _, layout := range []string{"Mon Jan 02 15:04:05 MST 2006", "Mon Jan 2 15:04:05 MST 2006"} {
+		fields := strings.Fields(raw)
+		if len(fields) >= 2 {
+			zone := fields[len(fields)-2]
+			if offset, ok := burpZoneOffsets[zone]; ok {
+				if ts, err := time.ParseInLocation(layout, raw, time.FixedZone(zone, offset)); err == nil {
+					return ts
+				}
+			}
+		}
 		if ts, err := time.Parse(layout, raw); err == nil {
 			return ts
 		}
 	}
 	return time.Time{}
+}
+
+var burpZoneOffsets = map[string]int{
+	"UTC": 0, "GMT": 0,
+	"EST": -5 * 3600, "EDT": -4 * 3600,
+	"PST": -8 * 3600, "PDT": -7 * 3600,
+	"CET": 1 * 3600, "CEST": 2 * 3600,
+	"EET": 2 * 3600, "EEST": 3 * 3600,
+	"WIB": 7 * 3600, "WITA": 8 * 3600, "WIT": 9 * 3600,
+	"SGT": 8 * 3600, "HKT": 8 * 3600, "JST": 9 * 3600, "KST": 9 * 3600,
+	"AEST": 10 * 3600, "AEDT": 11 * 3600,
+	"ACST": 9*3600 + 30*60, "ACDT": 10*3600 + 30*60,
+	"AWST": 8 * 3600, "NZST": 12 * 3600, "NZDT": 13 * 3600,
 }
