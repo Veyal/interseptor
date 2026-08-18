@@ -1430,8 +1430,7 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
 		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if in.OobEnabled != nil {

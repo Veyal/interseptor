@@ -615,6 +615,34 @@ func TestInterceptFilterPersistenceFailureKeepsLiveState(t *testing.T) {
 	}
 }
 
+func TestSettingsRejectTrailingJSONBeforeApplyingRuntimeChanges(t *testing.T) {
+	h, st, _ := newHub(t)
+	var applied int
+	h.SetCaptureScopeOnly = func(bool) { applied++ }
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings",
+		strings.NewReader(`{"captureScopeOnly":true}{}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if applied != 0 {
+		t.Fatalf("runtime settings callback called %d times, want 0", applied)
+	}
+	if _, ok, err := st.GetSetting("capture.scopeOnly"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("trailing JSON persisted capture.scopeOnly")
+	}
+}
+
 func TestRepeaterSendAndHistory(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "pong")
