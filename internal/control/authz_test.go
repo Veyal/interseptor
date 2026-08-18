@@ -184,6 +184,16 @@ func TestAuthzReplayReportsIncompleteResponseCapture(t *testing.T) {
 	}
 }
 
+func TestAuthzReplaySurfacesSendFailure(t *testing.T) {
+	h, _, _ := newHub(t)
+	rr := (&authzAPI{h}).authzReplay(&store.Flow{
+		Method: "GET\nInvalid", Scheme: "https", Host: "example.com", Port: 443, Path: "/probe",
+	}, identity{Name: "user"})
+	if rr.Error != "send failed" {
+		t.Fatalf("error = %q, want send failed", rr.Error)
+	}
+}
+
 func TestAuthzRunDoesNotUseErroredReplayAsBaseline(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Authorization"), "broken") {

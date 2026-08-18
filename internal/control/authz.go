@@ -363,8 +363,11 @@ func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 		return authzResult{Name: id.Name, Error: "request body unavailable"}
 	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
-	flow, _ := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
+	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
 	rr := authzResult{Name: id.Name}
+	if sendErr != nil {
+		rr.Error = "send failed"
+	}
 	if flow != nil {
 		rr.Status, rr.Length, rr.Mime, rr.Error, rr.FlowID = flow.Status, flow.ResLen, flow.Mime, flow.Error, flow.ID
 		rr.resHeaders = flow.ResHeaders
