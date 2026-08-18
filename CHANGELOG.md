@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Strict custom-source request limits.** Passive-check, active-check, and message-codec endpoints now reject oversized JSON bodies with `413` even when a valid first value is followed by padding or another value, instead of accepting a truncated prefix or hiding `MaxBytesReader` errors.
 - **Intruder attack validation.** Unknown attack types now fail instead of silently running as Sniper; Cluster Bomb and Pitchfork reject empty payload lists without panicking, and Pitchfork ignores surplus lists that have no matching insertion point.
+- **Quick-tunnel log lifecycle.** The `cloudflared` stderr pipe now stays drained after its public URL is discovered, preventing sustained child logging from filling the pipe and stalling a live tunnel.
 
 ## [1.8.1] - 2026-08-18
 

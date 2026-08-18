@@ -71,6 +71,44 @@ func TestScanForURLSetsURLAndNotifies(t *testing.T) {
 	}
 }
 
+type chunkReader struct {
+	chunks []string
+	reads  int
+}
+
+func (r *chunkReader) Read(p []byte) (int, error) {
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+	r.reads++
+	n := copy(p, r.chunks[0])
+	r.chunks = r.chunks[1:]
+	return n, nil
+}
+
+func TestScanForURLKeepsDrainingStderrAfterPublishing(t *testing.T) {
+	m := newTestManager(t)
+	cmd := new(exec.Cmd)
+	m.mu.Lock()
+	m.cmd = cmd
+	m.generation = 1
+	m.running = true
+	m.mu.Unlock()
+
+	r := &chunkReader{chunks: []string{
+		"https://live.trycloudflare.com\n",
+		"2026 INF tunnel connection healthy\n",
+	}}
+	m.scanForURL(cmd, 1, r)
+
+	if r.reads != 2 {
+		t.Fatalf("stderr reads = %d, want 2; stopping after the URL can fill the child pipe", r.reads)
+	}
+	if st := m.Status(); st.URL != "https://live.trycloudflare.com" {
+		t.Fatalf("Status.URL = %q", st.URL)
+	}
+}
+
 func TestScanForURLFromStoppedProcessCannotPublishAfterRestart(t *testing.T) {
 	m := newTestManager(t)
 	got := make(chan string, 2)
