@@ -21,7 +21,17 @@ func (h *flowAPI) analyzeFlow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	issues := scanner.AnalyzeWithDisabled(f, h.bodyBytes(f.ReqBodyHash), h.bodyBytes(f.ResBodyHash), h.checksDisabledSet())
+	reqBody, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
+	resBody, err := h.bodyBytesResult(f.ResBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "response body not found")
+		return
+	}
+	issues := scanner.AnalyzeWithDisabled(f, reqBody, resBody, h.checksDisabledSet())
 	findings := make([]map[string]string, 0, len(issues))
 	for _, is := range issues {
 		findings = append(findings, map[string]string{"severity": is.Severity, "title": is.Title})
