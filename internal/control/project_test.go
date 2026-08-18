@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,6 +15,28 @@ import (
 	"testing"
 	"time"
 )
+
+func TestPortableProjectExportFailsWhenMetadataCannotBeRead(t *testing.T) {
+	h, st, _ := newHub(t)
+	dbPath := filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE rules`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(rec, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 instead of an incomplete export", rec.Code)
+	}
+}
 
 // A stray projects/default directory must not duplicate the reserved "default"
 // entry (the root project) that availableProjects always lists first.

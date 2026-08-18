@@ -36,17 +36,53 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 		httpInternalErr(w, err)
 		return
 	}
-	rules, _ := h.st.ListRules()
-	scope, _ := h.st.ListScopeRules()
-	up, _, _ := h.st.GetSetting("upstream.proxy")
-	upCA, _, _ := h.st.GetSetting("upstream.proxyCA")
-	authz, _, _ := h.st.GetSetting("authz.identities")
-	originVerify, _, _ := h.st.GetSetting(originTLSVerifySettingKey)
+	rules, err := h.st.ListRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	scope, err := h.st.ListScopeRules()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	readSetting := func(key string) (string, error) {
+		value, _, err := h.st.GetSetting(key)
+		return value, err
+	}
+	up, err := readSetting("upstream.proxy")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	upCA, err := readSetting("upstream.proxyCA")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	authz, err := readSetting("authz.identities")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	originVerify, err := readSetting(originTLSVerifySettingKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	if originVerify != "1" {
 		originVerify = "0"
 	}
-	originBypass, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
-	notes, _ := h.st.LoadNotes()
+	originBypass, err := readSetting(originTLSVerifyBypassSettingKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	notes, err := h.st.LoadNotes()
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	bundle := projectBundle{
 		Version: "1", HAR: json.RawMessage(harx.Build(flows, h.bodyBytes)), Rules: rules, Scope: scope, Notes: notes,
 		Settings: map[string]string{"upstream.proxy": up, "upstream.proxyCA": upCA, "authz.identities": authz,
