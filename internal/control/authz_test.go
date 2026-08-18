@@ -197,6 +197,49 @@ func TestAuthzCrossHostReplayRejectsUnknownModeBeforeSending(t *testing.T) {
 	}
 }
 
+func TestAuthzReplayCommandsRejectTrailingJSONBeforeSending(t *testing.T) {
+	var requests atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, st, _ := newHub(t)
+	if err := st.SetSetting("authz.identities", `[{"name":"user","headers":"Authorization: Bearer user"}]`); err != nil {
+		t.Fatal(err)
+	}
+	flowID, err := st.InsertFlow(&store.Flow{Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, path := range []string{"/api/authz/check-sessions", "/api/authz/run"} {
+		requests.Store(0)
+		resp, err := http.Post(ts.URL+path, "application/json",
+			strings.NewReader(`{"flowId":`+itoa(flowID)+`}{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s status = %d, want 400", path, resp.StatusCode)
+		}
+		if got := requests.Load(); got != 0 {
+			t.Errorf("%s sent %d outbound request(s)", path, got)
+		}
+	}
+}
+
 func TestAuthzTargetsInScope(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "in.test", Enabled: true})

@@ -173,8 +173,7 @@ func (h *authzAPI) authzCheckSessions(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		FlowID int64 `json:"flowId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 {
@@ -230,8 +229,7 @@ func (h *authzAPI) authzRun(w http.ResponseWriter, r *http.Request) {
 		MaxFlows   int   `json:"maxFlows"`
 		SkipStatic *bool `json:"skipStatic"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxAuthzReplayRequestBytes, &in) {
 		return
 	}
 	if in.FlowID == 0 && !in.InScope {
