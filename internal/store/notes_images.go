@@ -159,6 +159,12 @@ func gcNotesImages(db notesImageExecutor, notes string) error {
 
 // PersistNotes saves normalized markdown and drops orphaned images.
 func (s *Store) PersistNotes(notes string) (string, error) {
+	s.notesMu.Lock()
+	defer s.notesMu.Unlock()
+	return s.persistNotes(notes)
+}
+
+func (s *Store) persistNotes(notes string) (string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return "", err
@@ -213,7 +219,7 @@ func (s *Store) AppendNote(text string) error {
 	if notes != "" {
 		joined = notes + "\n\n" + text
 	}
-	_, err = s.PersistNotes(joined)
+	_, err = s.persistNotes(joined)
 	return err
 }
 

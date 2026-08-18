@@ -23,9 +23,8 @@ type Store struct {
 	// projects). When nil, API-key ops use db (project-local, legacy/tests).
 	keys *sql.DB
 
-	// notesMu guards the read-modify-write in AppendNote so concurrent callers
-	// (two AI agents, or an agent + a human editing in the UI) can't race between
-	// reading the current notes and writing the appended result — see AppendNote.
+	// notesMu serializes full notebook replacement and AppendNote's read-modify-write
+	// so an append cannot overwrite a replacement from a stale snapshot.
 	notesMu sync.Mutex
 
 	// bodyMu coordinates finalized flow bodies with GCBodies until their hashes

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Dangerous MIME types must never survive insert or serve; only the raster
@@ -164,6 +165,31 @@ func TestPersistNotesRollsBackImagesWhenSettingWriteFails(t *testing.T) {
 	}
 	if exists, err := s.NotesImageExists(oldID + 1); err != nil || exists {
 		t.Fatalf("new image survived failed notes write: exists=%v err=%v", exists, err)
+	}
+}
+
+func TestPersistNotesSharesAppendLock(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	s.notesMu.Lock()
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.PersistNotes("replacement")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		s.notesMu.Unlock()
+		t.Fatalf("PersistNotes bypassed append lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	s.notesMu.Unlock()
+	if err := <-done; err != nil {
+		t.Fatalf("PersistNotes after unlock: %v", err)
 	}
 }
 
