@@ -39,3 +39,7 @@ original hashes break comparison evidence even when the current message still op
 During export, reject symlinks and any other non-regular filesystem entry before `os.Open`. Opening a
 symlink follows it, so a link planted in a project codec/body directory can copy an outside file into
 an archive that an operator later shares.
+
+Named full-project restores must reject `default` case-insensitively. That name is reserved for the
+root project and deliberately omitted from named-project discovery, so accepting it installs a
+successful archive into a hidden directory that the project picker cannot select.

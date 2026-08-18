@@ -52,6 +52,15 @@ func TestAddArchiveFilesRejectsSymlinks(t *testing.T) {
 	}
 }
 
+func TestProjectImportDirRejectsReservedDefault(t *testing.T) {
+	h := &Hub{GlobalDir: t.TempDir()}
+	for _, name := range []string{"default", "Default", "DEFAULT"} {
+		if dir, err := h.projectImportDir(name); err == nil {
+			t.Errorf("projectImportDir(%q) = %q, want reserved-name error", name, dir)
+		}
+	}
+}
+
 func TestExportFullReportsArchiveFailureBeforeSendingZip(t *testing.T) {
 	h, _, _ := newHub(t)
 	h.ProjectDir = string([]byte{0})

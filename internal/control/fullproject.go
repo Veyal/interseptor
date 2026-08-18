@@ -339,6 +339,9 @@ func (h *Hub) projectImportDir(name string) (string, error) {
 	if !safeProjectTarget(name) {
 		return "", fmt.Errorf("invalid project name: use a plain name, not a path")
 	}
+	if strings.EqualFold(name, "default") {
+		return "", fmt.Errorf("project name %q is reserved for the root project", name)
+	}
 	if h.GlobalDir == "" {
 		return "", fmt.Errorf("project storage location is not configured")
 	}
