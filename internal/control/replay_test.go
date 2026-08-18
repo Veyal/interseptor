@@ -97,6 +97,64 @@ func TestReplayFlowSessionModes(t *testing.T) {
 	}
 }
 
+func TestReplayFlowRejectsInvalidOptionsBeforeSending(t *testing.T) {
+	var mu sync.Mutex
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		io.WriteString(w, "ok")
+	}))
+	defer target.Close()
+
+	h, s, _ := newHub(t)
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	id, err := s.InsertFlow(&store.Flow{
+		Method: "GET", Host: u.Hostname(), Path: "/replay-target", Scheme: "http", Port: port,
+		Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "malformed JSON", body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "unknown session", body: `{"session":"currnet"}`, wantStatus: http.StatusBadRequest},
+		{name: "trailing JSON", body: `{"session":"flow"}{}`, wantStatus: http.StatusBadRequest},
+		{name: "oversized JSON", body: `{"session":"flow","padding":"` + string(bytes.Repeat([]byte("x"), maxReplayRequestBytes)) + `"}`, wantStatus: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Post(
+				fmt.Sprintf("%s/api/flows/%d/replay", ts.URL, id),
+				"application/json",
+				bytes.NewBufferString(tc.body),
+			)
+			if err != nil {
+				t.Fatalf("POST replay: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+		})
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 0 {
+		t.Fatalf("invalid replay options sent %d requests, want 0", hits)
+	}
+}
+
 // The confirm page (GET /replay/{id}) is a safe, side-effect-free preview: it
 // renders without sending anything and references the flow.
 func TestReplayPageIsSideEffectFree(t *testing.T) {

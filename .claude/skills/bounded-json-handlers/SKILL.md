@@ -28,6 +28,10 @@ Use `decodeOptionalLimitedJSON` only when an empty body has defined default sema
 rejects malformed, multiple-value, and oversized non-empty bodies instead of silently applying the
 default action.
 
+For side-effecting optional-body endpoints, validate every decoded enum or mode before performing
+the action. Ignoring a decode error or treating an unknown value as the default can send traffic or
+mutate state under the wrong security context.
+
 For bounded non-streaming formats that are validated after reading (for example HAR or raw UI-state
 JSON), use `readLimitedBody`. It reads `limit+1` bytes so a valid document prefix plus truncated
 padding returns `413` instead of being accepted at exactly the cap.
