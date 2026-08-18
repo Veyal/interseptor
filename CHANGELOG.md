@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Complete WebSocket sends.** WebSocket Repeater now validates its complete bounded JSON command before target checks or socket creation, rejecting valid prefixes followed by trailing data.
 - **Complete settings updates.** The main Settings endpoint now validates its entire bounded JSON body before persisting or invoking runtime callbacks, so trailing commands cannot apply a valid prefix while bypassing validation.
 - **Strict, durable intercept commands.** Request/response intercept toggles and filters now reject empty, trailing, and oversized configuration bodies before changing live state; filter settings commit atomically before live application, and optional forward edits still support an empty body while rejecting malformed or multiple JSON values.
 - **Complete offensive-tool commands.** Repeater and Intruder now validate that their entire JSON command is one value before sending or launching traffic, preventing a valid command prefix with trailing data from bypassing request validation.

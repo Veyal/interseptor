@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/Veyal/interseptor/internal/wsrepeater"
@@ -17,8 +16,7 @@ func (h *toolsAPI) wsSend(w http.ResponseWriter, r *http.Request) {
 		Binary  bool   `json:"binary"`
 		Headers string `json:"headers"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
 	}
 	if in.URL == "" {

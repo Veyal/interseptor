@@ -227,6 +227,9 @@ func TestSendRefusesOwnListener(t *testing.T) {
 	if c := post("/api/ws/send", `{"url":"ws://127.0.0.1:9966/api/events"}`); c != http.StatusForbidden {
 		t.Fatalf("ws → own listener: got %d, want 403", c)
 	}
+	if c := post("/api/ws/send", `{"url":"ws://127.0.0.1:9966/api/events"}{}`); c != http.StatusBadRequest {
+		t.Fatalf("ws trailing JSON: got %d, want 400 before opening a socket", c)
+	}
 	if c := post("/api/intruder/start", `{"target":"http://localhost:9966/x","template":"GET / HTTP/1.1\r\nHost: x\r\n\r\n","attackType":"null","repeat":1}`); c != http.StatusForbidden {
 		t.Fatalf("intruder → own listener: got %d, want 403", c)
 	}
