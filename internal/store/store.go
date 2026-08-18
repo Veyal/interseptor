@@ -425,7 +425,7 @@ func (s *Store) UpdateFlow(f *Flow) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(
+	res, err := tx.Exec(
 		`UPDATE flows SET
 		   method=?, path=?, status=?, req_headers=?, res_headers=?,
 		   original_req_headers=?, original_res_headers=?,
@@ -435,8 +435,16 @@ func (s *Store) UpdateFlow(f *Flow) error {
 		 WHERE id=?`,
 		f.Method, f.Path, f.Status, string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash, f.ReqLen, f.ResLen,
-		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID); err != nil {
+		f.Mime, f.DurationMs, f.Error, f.Flags, f.ID)
+	if err != nil {
 		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	if _, err := tx.Exec(`UPDATE flows_fts SET path=?, method=? WHERE rowid=?`, f.Path, f.Method, f.ID); err != nil {
 		return err

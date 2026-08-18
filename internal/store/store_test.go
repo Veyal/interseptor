@@ -1,10 +1,25 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestUpdateFlowRejectsMissingPendingRow(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	err = s.UpdateFlow(&Flow{ID: 999, Method: "GET", Host: "example.com", Path: "/"})
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}
 
 // TestConcurrentWritesNoBusy stresses the DB with many concurrent writers,
 // readers, and settings updates — it must not surface "database is locked"
