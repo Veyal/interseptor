@@ -122,6 +122,20 @@ func TestProjectNotesStorageFailuresReturnScrubbed500(t *testing.T) {
 	}
 }
 
+func TestProjectNotesImageReadStorageFailureReturnsScrubbed500(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/notes/images/1", nil)
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).getNotesImage(rec, req)
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "internal server error") {
+		t.Fatalf("status=%d body=%q, want scrubbed 500", rec.Code, rec.Body.String())
+	}
+}
+
 func TestProjectNotesInvalidInlineImageRemainsClientError(t *testing.T) {
 	h, _, _ := newHub(t)
 	req := httptest.NewRequest(http.MethodPut, "/api/notes", strings.NewReader(`{"notes":"![bad](data:image/png;base64,A)"}`))

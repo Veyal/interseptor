@@ -1,6 +1,7 @@
 package control
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -104,7 +105,11 @@ func (h *projectAPI) getNotesImage(w http.ResponseWriter, r *http.Request) {
 	}
 	mime, data, err := h.st.GetNotesImage(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "image not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "image not found")
+		} else {
+			httpInternalErr(w, err)
+		}
 		return
 	}
 	// Coerce to an allowlisted raster type and forbid MIME sniffing so a stored
