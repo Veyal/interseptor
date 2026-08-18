@@ -63,8 +63,12 @@ func TestCreateFindingRollsBackWhenTagInsertFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.CreateFinding(&Finding{Title: "should roll back", Tags: []string{"api"}}); err == nil {
+	finding := &Finding{Title: "should roll back", Tags: []string{"api"}}
+	if _, err := s.CreateFinding(finding); err == nil {
 		t.Fatal("CreateFinding succeeded after tag failure")
+	}
+	if finding.ID != 0 {
+		t.Fatalf("failed create published nonexistent finding id %d", finding.ID)
 	}
 	findings, err := s.ListFindings("", "", "")
 	if err != nil {

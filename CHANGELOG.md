@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - **Transactional merged findings.** Collaboration merge now validates and collects peer tags and legacy PoC attachments before creating a finding, then commits them with the finding row; query, scan, iteration, and tag-write failures no longer produce a successful incomplete merge.
-- **Atomic finding creation.** New findings now commit their row, body-derived PoC attachments, and normalized tags in one transaction, so a tag persistence failure cannot return an error while leaving a ghost finding behind.
+- **Atomic finding creation.** New findings now commit their row, body-derived PoC attachments, and normalized tags in one transaction, and publish the assigned ID only after commit, so a tag persistence failure cannot leave either a ghost row or a caller-visible nonexistent ID.
 - **Transactional merged-flow metadata.** Collaboration merge now inserts each new flow, its note/FTS text, and mandatory peer-provenance tag in one SQLite transaction, returning an error with no orphan flow when metadata persistence fails.
 - **Strict full-project path commands.** Server-side full-project export and import now validate one complete JSON command through a 16 KiB cap before creating an archive destination or installing a named project.
 - **Atomic retention configuration.** Retention age and flow-count limits now validate one complete bounded command and persist in a single transaction, so a second-key database failure cannot leave a half-applied policy behind a `500` response.

@@ -499,7 +499,6 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
-	f.ID = id
 	if err := syncFindingFlowsFromBody(tx, id, f.Body); err != nil {
 		return 0, err
 	}
@@ -511,6 +510,7 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	f.ID = id
 	f.Tags = normTags
 	if f.Tags == nil {
 		f.Tags = []string{}
