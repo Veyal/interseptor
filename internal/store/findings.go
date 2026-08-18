@@ -740,7 +740,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 	}
 
 	var nextOrd int
-	_ = tx.QueryRow(`SELECT COALESCE(MAX(ord)+1, 0) FROM finding_flows WHERE finding_id=?`, findingID).Scan(&nextOrd)
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(ord)+1, 0) FROM finding_flows WHERE finding_id=?`, findingID).Scan(&nextOrd); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
 		`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)
 		 ON CONFLICT(finding_id, flow_id) DO UPDATE SET note=excluded.note`,
@@ -750,7 +752,9 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 
 	// Sync flow block into the body at the requested position.
 	var bodyJSON string
-	_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON)
+	if err := tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON); err != nil {
+		return err
+	}
 	newBody := insertFlowIntoBody(bodyJSON, flowID, note, pos)
 	// Also update detail from first text block if needed.
 	detailSync := firstTextMD(newBody)
@@ -773,7 +777,9 @@ func (s *Store) DetachFlow(findingID, flowID int64) error {
 		return err
 	}
 	var bodyJSON string
-	_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON)
+	if err := tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON); err != nil {
+		return err
+	}
 	newBody := removeFlowFromBody(bodyJSON, flowID)
 	if _, err := tx.Exec(`UPDATE findings SET body=?, updated_ts=? WHERE id=?`, newBody, time.Now().UnixMilli(), findingID); err != nil {
 		return err

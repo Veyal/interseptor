@@ -87,6 +87,9 @@ func TestFindingFlowMutationsRejectMissingFinding(t *testing.T) {
 		{name: "attach", run: func(s *Store, flowID int64) error {
 			return s.AttachFlow(999, flowID, "orphan", -1)
 		}},
+		{name: "detach", run: func(s *Store, flowID int64) error {
+			return s.DetachFlow(999, flowID)
+		}},
 		{name: "body update", run: func(s *Store, flowID int64) error {
 			body := marshalBody([]FindingBlock{{Type: "flow", FlowID: flowID, Note: "orphan"}})
 			return s.UpdateFinding(999, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil)
