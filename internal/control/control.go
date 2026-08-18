@@ -959,16 +959,20 @@ func (h *flowAPI) flowWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) bodyBytes(hash string) []byte {
+	b, _ := h.bodyBytesResult(hash)
+	return b
+}
+
+func (h *Hub) bodyBytesResult(hash string) ([]byte, error) {
 	if hash == "" {
-		return nil
+		return nil, nil
 	}
 	rc, err := h.st.OpenBody(hash)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rc.Close()
-	b, _ := io.ReadAll(rc)
-	return b
+	return io.ReadAll(rc)
 }
 
 func (h *Hub) bodyBytesUpTo(hash string, limit int64) ([]byte, bool, error) {

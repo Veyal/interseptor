@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -118,6 +119,36 @@ func TestReplayFlowSessionModes(t *testing.T) {
 	}
 	if got[1].auth != "current" {
 		t.Fatalf("current-session replay must override X-Auth with the session value, got %q", got[1].auth)
+	}
+}
+
+func TestReplayFlowRejectsMissingRequestBody(t *testing.T) {
+	var hits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+
+	h, s, _ := newHub(t)
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	id, err := s.InsertFlow(&store.Flow{
+		Method: "POST", Scheme: "http", Host: u.Hostname(), Port: port, Path: "/submit",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/flows/1/replay", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&toolsAPI{h}).replayFlow(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if hits != 0 {
+		t.Fatalf("target received %d requests despite missing body", hits)
 	}
 }
 

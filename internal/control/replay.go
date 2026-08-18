@@ -55,11 +55,16 @@ func (h *toolsAPI) replayFlow(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusForbidden, "refusing to send to Interseptor's own listener")
 		return
 	}
+	body, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
 	flow, err := h.snd.Send(sender.Request{
 		Method:    f.Method,
 		URL:       url,
 		Headers:   f.ReqHeaders,
-		Body:      h.bodyBytes(f.ReqBodyHash),
+		Body:      body,
 		Flags:     store.FlagRepeater | aiSourceFlag(r),
 		NoSession: !useCurrent,
 	})
