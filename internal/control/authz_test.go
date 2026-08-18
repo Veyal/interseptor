@@ -266,6 +266,37 @@ func TestAuthzReplayCommandsRejectTrailingJSONBeforeSending(t *testing.T) {
 	}
 }
 
+func TestAuthzReplayDoesNotSendMissingRequestBody(t *testing.T) {
+	var requests atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	h, st, _ := newHub(t)
+	if err := st.SetSetting("authz.identities", `[{"name":"user","headers":"Authorization: Bearer user"}]`); err != nil {
+		t.Fatal(err)
+	}
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "POST", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/authz/check-sessions", strings.NewReader(`{"flowId":`+itoa(flowID)+`}`))
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).authzCheckSessions(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "request body unavailable") {
+		t.Fatalf("status=%d body=%q, want per-result body error", rec.Code, rec.Body.String())
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("sent %d outbound request(s) despite missing body", got)
+	}
+}
+
 func TestAuthzTargetsInScope(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "in.test", Enabled: true})

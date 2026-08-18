@@ -336,7 +336,10 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 
 func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 	url := flowURLStr(f)
-	body := h.bodyBytes(f.ReqBodyHash)
+	body, err := h.bodyBytesResult(f.ReqBodyHash)
+	if err != nil {
+		return authzResult{Name: id.Name, Error: "request body unavailable"}
+	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
 	flow, _ := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})
 	rr := authzResult{Name: id.Name}

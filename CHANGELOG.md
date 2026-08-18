@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Exact authorization replays.** Role/session checks now report a per-result body error and skip outbound traffic when a captured request-body blob is missing, instead of testing a silently modified empty-body request.
 - **Exact curl reproductions.** Curl export now rejects flows whose referenced request-body blob is missing or unreadable instead of emitting a command that silently omits the payload.
 - **Exact replay bodies.** Repeater now rejects a captured flow whose referenced request-body blob is missing or unreadable instead of silently resending the request with an empty body.
 - **Clean body-download errors.** Flow downloads now wait to set attachment headers until the referenced blob has opened successfully, so missing-body `404` responses remain JSON errors instead of being mislabeled as downloadable payloads.
