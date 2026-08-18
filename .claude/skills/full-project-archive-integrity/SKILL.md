@@ -43,3 +43,7 @@ an archive that an operator later shares.
 Named full-project restores must reject `default` case-insensitively. That name is reserved for the
 root project and deliberately omitted from named-project discovery, so accepting it installs a
 successful archive into a hidden directory that the project picker cannot select.
+
+The server-side path export/import handlers are filesystem mutation commands. Decode one complete,
+bounded JSON value before taking a snapshot, creating a destination, or installing a staged archive;
+a valid path object followed by extra JSON must leave both destination and project directory absent.

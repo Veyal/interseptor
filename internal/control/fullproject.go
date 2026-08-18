@@ -31,6 +31,7 @@ const (
 	maxArchiveEntries       = 1_000_000
 	maxArchiveFileBytes     = 4 << 30
 	maxArchiveExpandedBytes = 32 << 30
+	maxArchivePathJSONBytes = 16 << 10
 )
 
 type archiveReadLimits struct {
@@ -587,8 +588,7 @@ func (h *projectAPI) exportFullFile(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
 	dest := strings.TrimSpace(in.Path)
@@ -642,8 +642,7 @@ func (h *projectAPI) importFullFile(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 		Overwrite bool   `json:"overwrite"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxArchivePathJSONBytes, &in) {
 		return
 	}
 	if strings.TrimSpace(in.Path) == "" {

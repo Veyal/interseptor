@@ -125,6 +125,53 @@ func TestExportFullFileReplacesDestinationAfterSuccess(t *testing.T) {
 	}
 }
 
+func TestExportFullFileRejectsTrailingJSONBeforeCreatingDestination(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = t.TempDir()
+	dest := filepath.Join(t.TempDir(), "project.zip")
+	body, err := json.Marshal(map[string]string{"path": dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/export/full/file", io.MultiReader(bytes.NewReader(body), strings.NewReader(`{}`))))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected export created destination: %v", err)
+	}
+}
+
+func TestImportFullFileRejectsTrailingJSONBeforeInstallingProject(t *testing.T) {
+	source, _, _ := newHub(t)
+	source.ProjectDir = t.TempDir()
+	exported := httptest.NewRecorder()
+	(&projectAPI{source}).exportFull(exported, httptest.NewRequest(http.MethodGet, "/api/export/full", nil))
+	if exported.Code != http.StatusOK {
+		t.Fatalf("source export status = %d, body = %s", exported.Code, exported.Body.String())
+	}
+	archive := filepath.Join(t.TempDir(), "source.zip")
+	if err := os.WriteFile(archive, exported.Body.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	target, _, _ := newHub(t)
+	target.GlobalDir = t.TempDir()
+	body, err := json.Marshal(map[string]any{"path": archive, "name": "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{target}).importFullFile(rec, httptest.NewRequest(http.MethodPost, "/api/import/full/file", io.MultiReader(bytes.NewReader(body), strings.NewReader(`{}`))))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if dirHasProject(filepath.Join(target.GlobalDir, "projects", "acme")) {
+		t.Fatal("rejected import installed the project")
+	}
+}
+
 func TestDestinationImportLockNormalizesCaseAliases(t *testing.T) {
 	root := t.TempDir()
 	upper := filepath.Join(root, "projects", "..", "projects", "Acme")
