@@ -131,6 +131,114 @@ func TestFindingsEndpoints(t *testing.T) {
 	}
 }
 
+func TestFindingMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	request := func(t *testing.T, method, url, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		return resp
+	}
+
+	t.Run("create", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings", `{"title":"new finding"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		findings, err := st.ListFindings("", "", "")
+		if err != nil {
+			t.Fatalf("ListFindings: %v", err)
+		}
+		if len(findings) != 0 {
+			t.Fatalf("findings changed after rejected create: %+v", findings)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		id, err := st.CreateFinding(&store.Finding{Title: "old title"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPatch, ts.URL+"/api/findings/"+strconv.FormatInt(id, 10), `{"title":"new title"}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(id)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if got.Title != "old title" {
+			t.Fatalf("title = %q, want old title", got.Title)
+		}
+	})
+
+	t.Run("flow evidence", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		flowID, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+		if err != nil {
+			t.Fatalf("InsertFlow: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/flows", fmt.Sprintf(`{"flowId":%d}{}`, flowID))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(findingID)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if len(got.Flows) != 0 || len(got.Blocks) != 0 {
+			t.Fatalf("evidence changed after rejected attach: flows=%+v blocks=%+v", got.Flows, got.Blocks)
+		}
+	})
+
+	t.Run("image evidence", func(t *testing.T) {
+		h, st, _ := newHub(t)
+		findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+		if err != nil {
+			t.Fatalf("CreateFinding: %v", err)
+		}
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp := request(t, http.MethodPost, ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/images", `{"mime":"image/png","data":"aGVsbG8="}{}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got, err := st.GetFinding(findingID)
+		if err != nil {
+			t.Fatalf("GetFinding: %v", err)
+		}
+		if len(got.Blocks) != 0 {
+			t.Fatalf("image evidence changed after rejected attach: %+v", got.Blocks)
+		}
+	})
+}
+
 func TestFindingReportStatusDefaultsAndExplicitAll(t *testing.T) {
 	h, s, _ := newHub(t)
 	for _, f := range []store.Finding{

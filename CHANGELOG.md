@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Strict finding mutations.** Finding create/update and flow/image evidence attachment now validate one complete bounded command before durable report changes, so trailing data cannot alter security findings.
 - **Strict project-notebook mutations.** Notebook replace, append, and image-upload endpoints now validate one complete bounded command before persistence, so malformed suffixes cannot overwrite notes or create orphan image blobs.
 - **Strict History metadata commands.** Flow notes, flow tags, and tag colors now validate one complete bounded command before persistence or broadcasts, so trailing data cannot overwrite prior annotations.
 - **Strict rewrite-rule mutations.** Rewrite create/update now validate one complete bounded command before persistence or live-engine refresh, so trailing data cannot change proxied request or response rewriting.
