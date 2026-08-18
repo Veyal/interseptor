@@ -16,6 +16,7 @@ const (
 	retentionMaxAgeHoursKey = "retention.maxAgeHours"
 	retentionMaxFlowsKey    = "retention.maxFlows"
 	retentionInterval       = 30 * time.Minute
+	retentionInitialDelay   = 10 * time.Second
 )
 
 type retentionPolicy struct {
@@ -67,13 +68,22 @@ func (h *Hub) runRetentionOnce() (int64, error) {
 }
 
 // StartRetentionLoop runs runRetentionOnce on a ticker until stop is closed.
-// Non-blocking; logs failures and keeps ticking.
-func (h *Hub) StartRetentionLoop(stop <-chan struct{}) {
+// Non-blocking; logs failures and keeps ticking. The returned channel closes
+// after the goroutine exits so shutdown can wait before closing the store.
+func (h *Hub) StartRetentionLoop(stop <-chan struct{}) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		t := time.NewTicker(retentionInterval)
 		defer t.Stop()
 		// One run shortly after start so a long-idle install cleans up on launch.
-		time.Sleep(10 * time.Second)
+		initial := time.NewTimer(retentionInitialDelay)
+		defer initial.Stop()
+		select {
+		case <-initial.C:
+		case <-stop:
+			return
+		}
 		h.runRetentionTick()
 		for {
 			select {
@@ -84,6 +94,7 @@ func (h *Hub) StartRetentionLoop(stop <-chan struct{}) {
 			}
 		}
 	}()
+	return done
 }
 
 func (h *Hub) runRetentionTick() {

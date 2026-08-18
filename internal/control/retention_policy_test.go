@@ -13,6 +13,24 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 )
 
+func TestRetentionLoopStopsDuringInitialDelay(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	h := control.New(st, intercept.New(), nil, nil, nil)
+	defer h.Close()
+	stop := make(chan struct{})
+	done := h.StartRetentionLoop(stop)
+	close(stop)
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("retention loop did not observe stop during its initial delay")
+	}
+}
+
 func TestRetentionPolicyMaxFlows(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {

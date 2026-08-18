@@ -343,10 +343,6 @@ func run() error {
 		hub.SetSelfAddr(cm.Addr())
 	}
 
-	// Background retention ticker; off by default (no policy set).
-	retentionStop := make(chan struct{})
-	hub.StartRetentionLoop(retentionStop)
-
 	proxyAddrs := control.LoadProxyAddrs(st)
 	if v := os.Getenv("INTERSEPTOR_PROXY_ADDR"); v != "" {
 		proxyAddrs = []string{v} // env wins (lets you run a second instance / custom port without the UI)
@@ -374,6 +370,10 @@ func run() error {
 			log.Printf("activity socket unavailable: %v", err)
 		}
 	}
+	// Background retention ticker; off by default (no policy set). Start only
+	// after both listeners succeed, and join it before closing the store.
+	retentionStop := make(chan struct{})
+	retentionDone := hub.StartRetentionLoop(retentionStop)
 
 	uiURL := "http://" + cm.Addr()
 	log.Printf("Interseptor v%s · project %q: proxy on %s · UI on %s · data %s", version.String(), projectName, pm.Addr(), uiURL, dir)
@@ -407,6 +407,7 @@ func run() error {
 
 	log.Println("shutting down…")
 	close(retentionStop)
+	<-retentionDone
 	shutdownRuntime(5*time.Second, cm, hub, pm)
 	return nil
 }
