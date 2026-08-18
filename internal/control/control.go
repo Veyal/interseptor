@@ -951,8 +951,7 @@ func (h *flowAPI) listRules(w http.ResponseWriter, r *http.Request) {
 
 func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	var in ruleJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRuleRequestBytes, &in) {
 		return
 	}
 	if !validRule(w, in) {
@@ -976,8 +975,7 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in ruleJSON
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRuleRequestBytes, &in) {
 		return
 	}
 	in.ID = id
@@ -1012,6 +1010,7 @@ func (h *flowAPI) deleteRule(w http.ResponseWriter, r *http.Request) {
 // every proxied request is still costly; real patterns are short.
 const (
 	maxRulePattern          = 4096
+	maxRuleRequestBytes     = 16 << 10
 	maxInterceptConfigBytes = 16 << 10
 )
 

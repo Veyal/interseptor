@@ -550,6 +550,59 @@ func TestRejectBadRuleRegex(t *testing.T) {
 	}
 }
 
+func TestRuleMutationsRejectTrailingJSONBeforeChangingRules(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	t.Run("create", func(t *testing.T) {
+		body := `{"type":"req-header","match":"X-Test: .*","replace":"X-Test: new","enabled":true}{}`
+		resp, err := http.Post(ts.URL+"/api/rules", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST rule: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		rules, err := st.ListRules()
+		if err != nil {
+			t.Fatalf("ListRules: %v", err)
+		}
+		if len(rules) != 0 {
+			t.Fatalf("rules changed after rejected create: %+v", rules)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		id, err := st.CreateRule(&store.Rule{Enabled: true, Type: "req-header", Match: "X-Test: old", Replace: "X-Test: old"})
+		if err != nil {
+			t.Fatalf("CreateRule: %v", err)
+		}
+		body := `{"type":"req-header","match":"X-Test: new","replace":"X-Test: new","enabled":true}{}`
+		req, err := http.NewRequest(http.MethodPut, ts.URL+"/api/rules/"+itoa(id), strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("PUT rule: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		rules, err := st.ListRules()
+		if err != nil {
+			t.Fatalf("ListRules: %v", err)
+		}
+		if len(rules) != 1 || rules[0].ID != id || rules[0].Match != "X-Test: old" || rules[0].Replace != "X-Test: old" {
+			t.Fatalf("rule changed after rejected update: %+v", rules)
+		}
+	})
+}
+
 func TestInterceptToggle(t *testing.T) {
 	h, st, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())
