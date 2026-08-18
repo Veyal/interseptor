@@ -128,6 +128,44 @@ func TestMergeFromRollsBackFlowWhenProvenanceTagFails(t *testing.T) {
 	}
 }
 
+func TestMergeFromRollsBackFindingWhenTagInsertFails(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peer.CreateFinding(&Finding{Title: "peer finding", Tags: []string{"api"}}); err != nil {
+		peer.Close()
+		t.Fatal(err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.db.Exec(`CREATE TRIGGER reject_merged_finding_tag BEFORE INSERT ON finding_tags
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err == nil {
+		t.Fatal("MergeFrom reported success after finding-tag failure")
+	}
+	findings, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("failed merge left %d finding(s), want transactional rollback", len(findings))
+	}
+}
+
 func TestMergeFromDoesNotPublishBodiesBeforeAllCopiesValidate(t *testing.T) {
 	peerDir := t.TempDir()
 	peer, err := Open(peerDir)

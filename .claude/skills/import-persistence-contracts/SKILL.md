@@ -26,5 +26,8 @@ Use this when adding or changing HAR, Burp, or portable project imports.
 - Apply the same rule at reusable store boundaries: `CreateFinding` owns its body-derived flow
   attachments and tags, so all three must commit together rather than returning an error after the
   primary finding row is already durable.
+- A merge must collect and validate peer-side metadata before calling that boundary. Check query,
+  scan, and `rows.Err` failures; fold legacy table-only PoC rows into the remapped body and pass tags
+  on the `Finding`, rather than attaching either afterward with ignored errors.
 
 Test with a closed store to make ignored errors deterministic, and use only generic traffic fixtures.
