@@ -818,12 +818,15 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	side := r.URL.Query().Get("side")
 	var mimeType string
-	var body []byte
+	var headers map[string][]string
+	var hash string
 	if side == "res" {
 		mimeType = f.Mime
-		_, body = decodeForDisplay(f.ResHeaders, h.bodyBytes(f.ResBodyHash))
+		headers = f.ResHeaders
+		hash = f.ResBodyHash
 	} else {
-		_, body = decodeForDisplay(f.ReqHeaders, h.bodyBytes(f.ReqBodyHash))
+		headers = f.ReqHeaders
+		hash = f.ReqBodyHash
 		mimeType = headerContentType(f.ReqHeaders)
 	}
 	if mimeType == "" {
@@ -837,6 +840,20 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
+	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
+	if enc == "" || enc == "identity" {
+		rc, err := h.st.OpenBody(hash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "body not found")
+			return
+		}
+		defer rc.Close()
+		if _, err := io.Copy(w, rc); err != nil {
+			log.Printf("control: stream flow body: %v", err)
+		}
+		return
+	}
+	_, body := decodeForDisplay(headers, h.bodyBytes(hash))
 	_, _ = w.Write(body)
 }
 
@@ -1752,6 +1769,14 @@ func httpTextNotFoundOrInternal(w http.ResponseWriter, err error, notFound strin
 	}
 	log.Printf("control: 500: %v", err)
 	http.Error(w, "internal server error", http.StatusInternalServerError)
+}
+
+func httpFileNotFoundOrInternal(w http.ResponseWriter, err error, notFound string) {
+	if errors.Is(err, fs.ErrNotExist) {
+		httpErr(w, http.StatusNotFound, notFound)
+		return
+	}
+	httpInternalErr(w, err)
 }
 
 func writeHeaders(b *bytes.Buffer, h map[string][]string, host string) {

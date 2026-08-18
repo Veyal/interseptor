@@ -544,6 +544,54 @@ func TestFlowBodyDownload(t *testing.T) {
 	}
 }
 
+type chunkTrackingWriter struct {
+	header   http.Header
+	writes   int
+	maxWrite int
+	total    int
+}
+
+func (w *chunkTrackingWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (*chunkTrackingWriter) WriteHeader(int) {}
+
+func (w *chunkTrackingWriter) Write(p []byte) (int, error) {
+	w.writes++
+	w.total += len(p)
+	if len(p) > w.maxWrite {
+		w.maxWrite = len(p)
+	}
+	return len(p), nil
+}
+
+func TestFlowBodyDownloadStreamsIdentityBodies(t *testing.T) {
+	h, s, _ := newHub(t)
+	payload := bytes.Repeat([]byte("x"), 256<<10)
+	hash, n := (&projectAPI{h}).storeBody(payload)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Host: "example.com", Path: "/upload",
+		ReqBodyHash: hash, ReqLen: n,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=req", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := &chunkTrackingWriter{}
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.total != len(payload) {
+		t.Fatalf("wrote %d bytes, want %d", rec.total, len(payload))
+	}
+	if rec.writes <= 1 || rec.maxWrite > 64<<10 {
+		t.Fatalf("writes=%d maxWrite=%d, want chunked streaming writes", rec.writes, rec.maxWrite)
+	}
+}
+
 func TestRuleCreateAndList(t *testing.T) {
 	h, _, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())

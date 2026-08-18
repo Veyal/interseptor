@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Streaming flow-body downloads.** Unencoded request and response downloads now copy directly from content-addressed storage in bounded chunks instead of loading the entire body into memory, and missing body blobs return a truthful `404`.
 - **Truthful replay-page reads.** The side-effect-free replay confirmation page now keeps text `404` responses for absent flows but returns a scrubbed text `500` for storage failures.
 - **Consistent entity-read failures.** Curl, saved-search, replay, authorization, diff, codec, check, preview, finding-mutation, and shared flow/finding/image reads now use one SQL-aware boundary, preserving `404` for absent rows while exposing operational failures only as scrubbed `500` responses.
 - **Truthful finding detail reads.** Finding lookup now returns `404` only for a missing row and a scrubbed `500` for SQLite/storage failures.
