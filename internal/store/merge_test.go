@@ -345,6 +345,9 @@ func TestMergeFromRejectsFlowReferencingMissingBody(t *testing.T) {
 		t.Fatalf("open local: %v", err)
 	}
 	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing body") {
+		t.Fatalf("MergePreview error=%v, want missing body", err)
+	}
 	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing body") {
 		t.Fatalf("MergeFrom error=%v, want missing body", err)
 	}
@@ -550,6 +553,9 @@ func TestMergeFromRejectsFindingReferencingMissingImageBody(t *testing.T) {
 		t.Fatalf("open local: %v", err)
 	}
 	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("MergePreview error=%v, want missing image body", err)
+	}
 	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("MergeFrom error=%v, want missing image body", err)
 	}
@@ -559,6 +565,33 @@ func TestMergeFromRejectsFindingReferencingMissingImageBody(t *testing.T) {
 	}
 	if len(findings) != 0 {
 		t.Fatalf("missing-image merge inserted %d finding(s)", len(findings))
+	}
+}
+
+func TestMergePreviewRejectsMalformedFindingBody(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{Title: "Malformed", Target: "https://example.com"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	if _, err := peer.db.Exec(`UPDATE findings SET body='{bad json' WHERE id=?`, findingID); err != nil {
+		t.Fatalf("corrupt finding body: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "invalid body") {
+		t.Fatalf("MergePreview error=%v, want invalid finding body", err)
 	}
 }
 
