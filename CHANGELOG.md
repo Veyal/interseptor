@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Strict destructive History commands.** Bulk delete and host purge now validate exactly one complete JSON command through an 8 MiB cap before touching History, so trailing data or oversized input cannot authorize a valid prefix and then mutate stored traffic.
 - **Unambiguous full-project names.** Full-project restore now rejects the reserved `default` project name, including case variants, instead of installing an archive into a hidden named-project directory that cannot be selected from the project picker.
 - **Symlink-safe full-project exports.** Archive traversal now rejects symlinks and other non-regular entries instead of following a project-local codec/body link and copying an arbitrary outside file into a shared backup.
 - **Complete restored-body validation.** Full-project import now verifies original pre-edit request and response body references as well as current bodies, refusing an archive whose comparison evidence is missing.

@@ -508,13 +508,13 @@ func (h *flowAPI) setTagColor(w http.ResponseWriter, r *http.Request) {
 // 128 MiB body cap, a giant array amplifies ~10× via make([]any, len) and the
 // SQL placeholder string; no legitimate UI action targets this many at once.
 const maxBulkItems = 100000
+const maxBulkRequestBytes int64 = 8 << 20
 
 func (h *flowAPI) deleteFlows(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		IDs []int64 `json:"ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxBulkRequestBytes, &in) {
 		return
 	}
 	if len(in.IDs) > maxBulkItems {

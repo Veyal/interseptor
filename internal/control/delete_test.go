@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -54,5 +55,27 @@ func TestDeleteFlowsEndpoint(t *testing.T) {
 	json.NewDecoder(fresp.Body).Decode(&fl)
 	if len(fl.Flows) != 1 {
 		t.Fatalf("remaining flows = %d, want 1", len(fl.Flows))
+	}
+}
+
+func TestDeleteFlowsRejectsTrailingJSONBeforeMutation(t *testing.T) {
+	h, s, _ := newHub(t)
+	id, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/flows/delete", "application/json", strings.NewReader(`{"ids":[`+strconv.FormatInt(id, 10)+`]}{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if n := flowCount(t, ts.URL+"/api/flows"); n != 1 {
+		t.Fatalf("flows after rejected delete = %d, want 1", n)
 	}
 }
