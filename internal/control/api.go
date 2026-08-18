@@ -1,14 +1,18 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/version"
+)
+
+const (
+	maxAPIKeyRequestBytes = 4 << 10
+	maxAPIKeyLabelBytes   = 256
 )
 
 // ---- API keys ----
@@ -31,8 +35,19 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 		Scope     string `json:"scope"`     // "full" (default) | "read"
 		ExpiresIn int64  `json:"expiresIn"` // seconds from now; 0 = never
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxAPIKeyRequestBytes, &in) {
+		return
+	}
+	if len(in.Label) > maxAPIKeyLabelBytes {
+		httpErr(w, http.StatusBadRequest, "label too long")
+		return
+	}
+	if in.Scope != "" && in.Scope != store.ScopeFull && in.Scope != store.ScopeRead {
+		httpErr(w, http.StatusBadRequest, "scope must be full or read")
+		return
+	}
+	if in.ExpiresIn < 0 {
+		httpErr(w, http.StatusBadRequest, "expiresIn must not be negative")
 		return
 	}
 	if in.Label == "" {
@@ -40,7 +55,12 @@ func (h *metaAPI) createKey(w http.ResponseWriter, r *http.Request) {
 	}
 	var expires int64
 	if in.ExpiresIn > 0 {
-		expires = time.Now().UnixMilli() + in.ExpiresIn*1000
+		now := time.Now().UnixMilli()
+		if in.ExpiresIn > (math.MaxInt64-now)/1000 {
+			httpErr(w, http.StatusBadRequest, "expiresIn is too large")
+			return
+		}
+		expires = now + in.ExpiresIn*1000
 	}
 	token, key, err := h.st.CreateAPIKey(in.Label, store.NormalizeScope(in.Scope), expires)
 	if err != nil {

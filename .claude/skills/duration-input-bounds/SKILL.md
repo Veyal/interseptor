@@ -23,3 +23,7 @@ millisecond delays in `Engine.Start` so direct callers cannot bypass the REST/UI
 requested throttle into an immediate dispatch. Login-macro refresh seconds follow the same rule in
 `sender.SetLoginMacro`; otherwise the seconds-to-duration multiplication can wrap and make every send
 look overdue for refresh.
+
+Expiry timestamps need a wall-clock-aware bound: before calculating `nowMillis + seconds*1000`,
+reject negative seconds and require `seconds <= (math.MaxInt64-nowMillis)/1000`. Checking only the
+multiplication is insufficient because the final addition can still wrap into the past.

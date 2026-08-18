@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Safe API-key metadata.** Key creation now rejects unknown scopes instead of silently granting full access, rejects negative or overflowing expiry seconds instead of creating never-expiring/already-expired keys, and caps labels and the complete command body.
 - **Race-free human-input reads.** Prompt lookup now returns an immutable snapshot captured under the prompt lock, preventing a concurrent answer from mutating fields while an API response serializes them.
 - **Truthful active-scan startup failures.** Target-history database failures now release the claimed scan and return `500` instead of masquerading as “no injectable targets”; single-flow lookup failures distinguish missing rows from storage faults.
 - **Strict activity-socket framing.** Authenticated MCP activity ingestion now requires one newline-framed JSON message within its 64 KiB cap, rejecting an oversized valid prefix instead of recording and acknowledging it before unread padding.
