@@ -403,7 +403,11 @@ func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	f, err := h.st.GetFinding(id)
 	if err != nil {
-		httpErr(w, http.StatusNotFound, "finding not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "finding not found")
+		} else {
+			httpInternalErr(w, err)
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, findingAPIResponse(f, nil))
