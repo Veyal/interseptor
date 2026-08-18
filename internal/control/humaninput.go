@@ -64,11 +64,17 @@ func (hi *humanInput) create(msg string, opts []string) *humanPrompt {
 func (hi *humanInput) get(id int64) *humanPrompt {
 	hi.mu.Lock()
 	p, expired := hi.expireLocked(id)
+	var snapshot *humanPrompt
+	if p != nil {
+		copy := *p
+		copy.Options = append([]string(nil), p.Options...)
+		snapshot = &copy
+	}
 	hi.mu.Unlock()
 	if expired {
 		hi.scheduleCleanup(id)
 	}
-	return p
+	return snapshot
 }
 
 func (hi *humanInput) pending() []humanPrompt {

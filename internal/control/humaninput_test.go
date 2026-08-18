@@ -175,3 +175,19 @@ func TestHumanInputExpiryDoesNotClobberAnAnsweredPrompt(t *testing.T) {
 		t.Fatalf("answer should be preserved, got %q", got.Answer)
 	}
 }
+
+func TestHumanInputGetReturnsStableSnapshot(t *testing.T) {
+	hi := newHumanInput()
+	p := hi.create("question", []string{"yes", "no"})
+
+	snapshot := hi.get(p.ID)
+	if snapshot == nil {
+		t.Fatal("missing prompt snapshot")
+	}
+	if !hi.answer(p.ID, "yes") {
+		t.Fatal("answer should succeed")
+	}
+	if snapshot.Answered || snapshot.Answer != "" {
+		t.Fatalf("snapshot changed after lock release: %+v", snapshot)
+	}
+}
