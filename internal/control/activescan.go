@@ -178,7 +178,12 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	targets := h.asTargets(flows)
+	targets, err := h.asTargets(flows)
+	if err != nil {
+		release()
+		httpFileNotFoundOrInternal(w, err, "request body not found")
+		return
+	}
 	if len(targets) == 0 {
 		release()
 		httpErr(w, http.StatusBadRequest, "no in-scope targets with injectable (query/body) parameters")
@@ -247,7 +252,7 @@ func (h *activescanAPI) asRun(ctx context.Context, targets []activescan.Target, 
 }
 
 // asTargets keeps in-scope flows whose endpoint has injection points, deduped.
-func (h *activescanAPI) asTargets(flows []*store.Flow) []activescan.Target {
+func (h *activescanAPI) asTargets(flows []*store.Flow) ([]activescan.Target, error) {
 	seen := map[string]bool{}
 	var out []activescan.Target
 	for _, f := range flows {
@@ -263,11 +268,15 @@ func (h *activescanAPI) asTargets(flows []*store.Flow) []activescan.Target {
 		if seen[key] {
 			continue
 		}
+		body, err := h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			return nil, err
+		}
 		t := activescan.Target{
 			Method:  f.Method,
 			URL:     analyzeURL(f),
 			Headers: http.Header(f.ReqHeaders),
-			Body:    string(h.bodyBytes(f.ReqBodyHash)),
+			Body:    string(body),
 		}
 		if len(activescan.Points(t)) == 0 {
 			continue
@@ -275,7 +284,7 @@ func (h *activescanAPI) asTargets(flows []*store.Flow) []activescan.Target {
 		seen[key] = true
 		out = append(out, t)
 	}
-	return out
+	return out, nil
 }
 
 // targetsOwnListener reports whether rawURL points at one of our own loopback

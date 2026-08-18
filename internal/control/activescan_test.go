@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -31,6 +33,39 @@ func TestActiveScanStartSurfacesTargetQueryFailure(t *testing.T) {
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("body %s: status = %d, want 500; response = %s", body, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+func TestActiveScanStartRejectsMissingRequestBody(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+	u, _ := url.Parse(target.URL)
+	port, _ := strconv.Atoi(u.Port())
+	h, st, _ := newHub(t)
+	h.sc.SetRules([]store.ScopeRule{{Enabled: true, Action: "include", Host: u.Hostname()}})
+	h.as.mu.Lock()
+	h.as.armed = true
+	h.as.mu.Unlock()
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "POST", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe?q=1",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/activescan/start", strings.NewReader(`{"flowId":`+strconv.FormatInt(flowID, 10)+`}`))
+	rec := httptest.NewRecorder()
+	(&activescanAPI{Hub: h}).asStart(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	h.as.mu.Lock()
+	running := h.as.running
+	h.as.mu.Unlock()
+	if running {
+		t.Fatal("active scan remained claimed after missing body")
 	}
 }
 
