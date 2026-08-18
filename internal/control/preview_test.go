@@ -136,6 +136,42 @@ func TestAttachFindingFlowPreviewWithOptions(t *testing.T) {
 	}
 }
 
+func TestAttachFindingFlowPreviewRejectsTrailingJSONBeforeAttachment(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/account", Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	findingID, err := st.CreateFinding(&store.Finding{Title: "finding"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	payload := fmt.Sprintf(`{"flowId":%d,"caption":"preview"}{}`, flowID)
+	resp, err := http.Post(ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/flow-preview",
+		"application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("POST flow preview: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	got, err := st.GetFinding(findingID)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	for _, block := range got.Blocks {
+		if block.Type == "image" {
+			t.Fatalf("preview attached after rejected command: %+v", block)
+		}
+	}
+}
+
 func TestAttachFindingFlowPreview(t *testing.T) {
 	h, s, _ := newHub(t)
 	flowID, _ := s.InsertFlow(&store.Flow{

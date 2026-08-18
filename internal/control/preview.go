@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,6 +9,8 @@ import (
 	"github.com/Veyal/interseptor/internal/preview"
 	"github.com/Veyal/interseptor/internal/store"
 )
+
+const maxFlowPreviewRequestBytes int64 = 64 << 10
 
 // getFlowPreviewPNG renders an Interseptor-styled request/response PNG for a flow.
 // Query: side=both|req|res, pretty=0|1, layout=vertical|horizontal, theme=dark|light.
@@ -45,8 +46,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		Caption  string `json:"caption"`
 		Position *int   `json:"position"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxFlowPreviewRequestBytes, &in) {
 		return
 	}
 	if in.FlowID <= 0 {
