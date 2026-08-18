@@ -89,6 +89,9 @@ func TestBuildURLFormatsIPv6Authority(t *testing.T) {
 	if got := buildURL("https", "2001:db8::1", 8443, "/v1"); got != "https://[2001:db8::1]:8443/v1" {
 		t.Fatalf("custom-port URL = %q", got)
 	}
+	if got := buildURL("http", "fe80::1%en0", 8080, "/"); got != "http://[fe80::1%25en0]:8080/" {
+		t.Fatalf("scoped URL = %q", got)
+	}
 }
 
 func TestParsePlainSavedItemAndReconstructURL(t *testing.T) {
