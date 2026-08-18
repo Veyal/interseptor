@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -493,12 +492,27 @@ func (h *projectAPI) exportFull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.Remove(snap)
+	archive, err := os.CreateTemp("", "interseptor-export-*.zip")
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	defer func() {
+		name := archive.Name()
+		_ = archive.Close()
+		_ = os.Remove(name)
+	}()
+	if err := buildFullArchive(archive, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+archiveFilename(h.ProjectName)+`"`)
-	if err := buildFullArchive(w, snap, h.st.BodiesDir(), h.CodecsDir()); err != nil {
-		// Headers are already sent; log-and-abort is all we can do mid-stream.
-		log.Printf("control: full export failed: %v", err)
-	}
+	_, _ = io.Copy(w, archive)
 }
 
 // importFull ingests an uploaded project zip as a new named project under

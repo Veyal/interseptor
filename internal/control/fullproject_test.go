@@ -33,6 +33,19 @@ func TestAddArchiveFilesReportsWalkErrors(t *testing.T) {
 	}
 }
 
+func TestExportFullReportsArchiveFailureBeforeSendingZip(t *testing.T) {
+	h, _, _ := newHub(t)
+	h.ProjectDir = string([]byte{0})
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).exportFull(rec, httptest.NewRequest(http.MethodGet, "/api/export/full", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; content-type = %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if strings.Contains(rec.Header().Get("Content-Type"), "application/zip") {
+		t.Fatalf("failed export was presented as ZIP: headers = %#v", rec.Header())
+	}
+}
+
 func TestDestinationImportLockNormalizesCaseAliases(t *testing.T) {
 	root := t.TempDir()
 	upper := filepath.Join(root, "projects", "..", "projects", "Acme")

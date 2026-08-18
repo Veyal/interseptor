@@ -14,3 +14,7 @@ missing body or codec files after the source project is gone.
 
 Keep the distinction explicit in tests: a missing optional directory succeeds, while a deterministic
 invalid path or injected walk/read failure propagates an error.
+
+For browser downloads, build the archive completely in a temporary file before setting ZIP response
+headers. Streaming directly to `ResponseWriter` commits `200 OK` before a late source-file error is
+known and turns a server failure into a corrupt download that looks successful.
