@@ -457,19 +457,13 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFinding(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions); err != nil {
+	if err := h.st.UpdateFindingWithTags(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Tags); err != nil {
 		if errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		httpInternalErr(w, err)
 		return
-	}
-	if in.Tags != nil {
-		if _, err := h.st.SetFindingTags(id, *in.Tags); err != nil {
-			httpInternalErr(w, err)
-			return
-		}
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, err := h.st.GetFinding(id)

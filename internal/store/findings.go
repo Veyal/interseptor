@@ -525,10 +525,26 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 // When body is set, detail is synced from its first text block so MCP list_findings
 // still shows meaningful text.
 func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string) error {
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, nil)
+}
+
+// UpdateFindingWithTags applies field, body/flow, and optional tag changes in one
+// transaction. A nil tags pointer preserves tags; a non-nil pointer replaces them.
+func (s *Store) UpdateFindingWithTags(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, tags)
+}
+
+func (s *Store) updateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	// If detail changes and there is an existing body, sync the first text block.
 	if detail != nil && body == nil {
 		var existBody string
-		_ = s.db.QueryRow(`SELECT body FROM findings WHERE id=?`, id).Scan(&existBody)
+		_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, id).Scan(&existBody)
 		if existBody != "" {
 			newBody := updateFirstTextInBody(existBody, *detail)
 			body = &newBody
@@ -609,27 +625,7 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 	}
 	args = append(args, id)
 
-	// Body rewrite must keep finding_flows in sync (UI enrichment joins that table).
-	if body != nil {
-		tx, err := s.db.Begin()
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-		var exists int
-		if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, id).Scan(&exists); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...); err != nil {
-			return err
-		}
-		if err := syncFindingFlowsFromBody(tx, id, *body); err != nil {
-			return err
-		}
-		return tx.Commit()
-	}
-
-	res, err := s.db.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
+	res, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
 	if err != nil {
 		return err
 	}
@@ -640,7 +636,23 @@ func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail,
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	// Body rewrite must keep finding_flows in sync (UI enrichment joins that table).
+	if body != nil {
+		if err := syncFindingFlowsFromBody(tx, id, *body); err != nil {
+			return err
+		}
+	}
+	if tags != nil {
+		if _, err := tx.Exec(`DELETE FROM finding_tags WHERE finding_id=?`, id); err != nil {
+			return err
+		}
+		for _, tag := range NormalizeTags(*tags) {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO finding_tags (finding_id, tag) VALUES (?,?)`, id, tag); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // syncFindingFlowsFromBody replaces finding_flows rows for a finding from the

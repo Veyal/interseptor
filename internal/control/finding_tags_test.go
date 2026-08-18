@@ -1,13 +1,17 @@
 package control
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestFindingTagsAPIAndReport(t *testing.T) {
@@ -92,5 +96,53 @@ func TestFindingTagsAPIAndReport(t *testing.T) {
 	jt, _ := jrep.Findings[0]["tags"].([]any)
 	if len(jt) != 2 {
 		t.Fatalf("json report tags = %#v", jrep.Findings[0]["tags"])
+	}
+}
+
+func TestFindingUpdateRollsBackFieldsWhenTagPersistenceFails(t *testing.T) {
+	h, st, _ := newHub(t)
+	findingID, err := st.CreateFinding(&store.Finding{Title: "old title", Tags: []string{"old"}})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db"))
+	if err != nil {
+		t.Fatalf("open project db: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_finding_tag BEFORE INSERT ON finding_tags
+		WHEN NEW.tag = 'new'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		db.Close()
+		t.Fatalf("create trigger: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close project db: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodPatch, ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10),
+		strings.NewReader(`{"title":"new title","tags":["new"]}`))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH finding: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+	}
+	got, err := st.GetFinding(findingID)
+	if err != nil {
+		t.Fatalf("GetFinding: %v", err)
+	}
+	if got.Title != "old title" {
+		t.Fatalf("title = %q after failed tag persistence, want old title", got.Title)
+	}
+	if len(got.Tags) != 1 || got.Tags[0] != "old" {
+		t.Fatalf("tags = %v after failed tag persistence, want [old]", got.Tags)
 	}
 }
