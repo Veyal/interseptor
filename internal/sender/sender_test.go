@@ -2,6 +2,7 @@ package sender
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"encoding/pem"
 	"errors"
@@ -38,6 +39,47 @@ func TestSenderHasNoRequestTimeout(t *testing.T) {
 	}
 	if tr.ResponseHeaderTimeout != 0 {
 		t.Fatalf("ResponseHeaderTimeout=%v; want 0 (no limit)", tr.ResponseHeaderTimeout)
+	}
+}
+
+func TestSendPreservesEncodedResponseEvidence(t *testing.T) {
+	var encoded bytes.Buffer
+	zw := gzip.NewWriter(&encoded)
+	if _, err := zw.Write([]byte("encoded evidence")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(encoded.Bytes())
+	}))
+	defer upstream.Close()
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	flow, err := New(st, capture.New(st)).Send(Request{Method: http.MethodGet, URL: upstream.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := flow.ResHeaders["Content-Encoding"]; len(got) != 1 || got[0] != "gzip" {
+		t.Fatalf("Content-Encoding = %v, want gzip", got)
+	}
+	rc, err := st.OpenBody(flow.ResBodyHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	raw, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, encoded.Bytes()) {
+		t.Fatalf("stored response was transparently decoded: got %d bytes, want %d", len(raw), encoded.Len())
 	}
 }
 

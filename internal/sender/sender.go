@@ -236,10 +236,11 @@ func (s *Sender) applySession(req *http.Request) {
 func New(st *store.Store, cap *capture.Capturer) *Sender {
 	s := &Sender{st: st, cap: cap}
 	s.tr = &http.Transport{
-		Proxy:           s.proxyForRequest,
-		DialContext:     s.dialContext,
-		DialTLSContext:  s.dialTLSContext,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // origin testing, by design
+		Proxy:              s.proxyForRequest,
+		DialContext:        s.dialContext,
+		DialTLSContext:     s.dialTLSContext,
+		DisableCompression: true,                                  // preserve wire evidence; display/grep decode explicitly
+		TLSClientConfig:    &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // origin testing, by design
 	}
 	s.cl = &http.Client{
 		// No overall / response-header timeout — Repeater waits as long as

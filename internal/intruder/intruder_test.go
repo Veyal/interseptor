@@ -410,3 +410,23 @@ func TestGrepAndPayloadProcessing(t *testing.T) {
 		t.Fatalf("expected extracted token ABC123, got %q", adminRes.Extracted)
 	}
 }
+
+func TestIncompleteResponseCaptureIsNotAValidResult(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	if err := e.Start(Spec{
+		Target: upstream.URL, Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "repeat", Repeat: 1, Threads: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := waitDone(t, e)
+	if len(state.Results) != 1 || state.Results[0].Error != "response capture incomplete" {
+		t.Fatalf("results = %+v, want incomplete-capture error", state.Results)
+	}
+}

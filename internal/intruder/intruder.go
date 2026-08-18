@@ -492,7 +492,7 @@ dispatch:
 				return
 			}
 			start := time.Now()
-			flow, _ := e.snd.Send(sender.Request{
+			flow, sendErr := e.snd.Send(sender.Request{
 				Method:  method,
 				URL:     base + path,
 				Headers: headers,
@@ -501,14 +501,22 @@ dispatch:
 				Context: ctx,
 			})
 			res.TimeMs = time.Since(start).Milliseconds()
+			if sendErr != nil {
+				res.Error = "send failed"
+			}
 			if flow != nil {
 				res.Status = flow.Status
 				res.Length = flow.ResLen
-				if res.Error == "" {
+				if flow.Error != "" {
 					res.Error = flow.Error
 				}
+				if res.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+					res.Error = "response capture incomplete"
+				}
 				res.FlowID = flow.ID
-				doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
+				if res.Error == "" {
+					doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
+				}
 			}
 			e.appendResult(res)
 		}(i, j)
@@ -549,7 +557,7 @@ func (e *Engine) flagAnomalies() {
 	}
 	var valids []valid
 	for i, r := range e.results {
-		if r.Status > 0 {
+		if r.Status > 0 && r.Error == "" {
 			valids = append(valids, valid{i, r.Status, r.Length, r.Matched})
 		}
 	}
