@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Truthful merge body previews.** Project merge previews now resolve existing content-addressed bodies through their canonical nested paths and validate archive names, layout, and content hashes just like the real merge, instead of recounting existing blobs or accepting files the merge would reject.
 - **Atomic notebook image migration.** Inline-image insertion, orphan cleanup, and `project.notes` persistence now share one SQLite transaction, so a failed notes write cannot delete images still referenced by the old notebook or leave new orphan rows.
 - **No orphan finding-image uploads.** Direct and rendered-preview evidence now verify the parent finding before decoding or rendering a blob, returning `404` without consuming content-addressed storage for stale IDs; transactional attachment still rechecks the parent.
 - **Truthful pending-flow finalization.** Final capture updates now return `sql.ErrNoRows` when retention or a user purge removed the pending row, preventing the proxy from reporting and broadcasting a finalized flow that was never stored.

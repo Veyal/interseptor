@@ -515,6 +515,63 @@ func TestMergePreviewMatchesFirstMergeCounts(t *testing.T) {
 	}
 }
 
+func TestMergePreviewDoesNotRecountExistingBodies(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	seedFlow(t, peer, "example.com", "/body", "shared response", 1000)
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peerBodiesDir(peer)
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "peer"); err != nil {
+		t.Fatalf("MergeFrom: %v", err)
+	}
+
+	preview, err := local.MergePreview(peerDBPath, peerBodies, "peer")
+	if err != nil {
+		t.Fatalf("MergePreview: %v", err)
+	}
+	if preview.BodiesAdded != 0 {
+		t.Fatalf("BodiesAdded = %d, want 0 for content already present", preview.BodiesAdded)
+	}
+}
+
+func TestMergePreviewRejectsInvalidBodyArchiveEntry(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peer.Close()
+	peerBodies := filepath.Join(peerDir, "bodies")
+	invalid := strings.Repeat("z", 64)
+	invalidPath := filepath.Join(peerBodies, invalid[:2], invalid[2:4], invalid)
+	if err := os.MkdirAll(filepath.Dir(invalidPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(invalidPath, []byte("not a body hash"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "invalid body archive entry") {
+		t.Fatalf("MergePreview error = %v, want invalid body archive entry", err)
+	}
+}
+
 func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	// Peer project with 2 flows + 1 finding referencing a flow.
 	peerDir := t.TempDir()

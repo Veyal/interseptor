@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -20,20 +21,40 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 	defer peer.Close()
 
 	if peerBodiesDir != "" {
-		_ = filepath.WalkDir(peerBodiesDir, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+		err := filepath.WalkDir(peerBodiesDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
 				return nil
 			}
 			name := d.Name()
-			if len(name) != 64 {
+			if strings.HasPrefix(name, ".tmp-") {
 				return nil
 			}
-			local := filepath.Join(s.BodiesDir(), name)
+			if !isContentHash(name) {
+				return fmt.Errorf("invalid body archive entry %q", p)
+			}
+			rel, relErr := filepath.Rel(peerBodiesDir, p)
+			if relErr != nil || filepath.Clean(rel) != filepath.Join(name[:2], name[2:4], name) {
+				return fmt.Errorf("invalid body archive layout %q", rel)
+			}
+			actual, digestErr := bodyFileDigest(p)
+			if digestErr != nil {
+				return digestErr
+			}
+			if actual != name {
+				return fmt.Errorf("body hash mismatch for %s: got %s", name, actual)
+			}
+			local := s.bodyPath(name)
 			if _, err := os.Stat(local); err != nil {
 				stats.BodiesAdded++
 			}
 			return nil
 		})
+		if err != nil {
+			return stats, err
+		}
 	}
 
 	seenFlows, err := s.flowSignatures(s.db)
