@@ -40,6 +40,24 @@ def encode(flow, side, plaintext):
     return json_encode(obj)
 `
 
+func TestFlowDecodedRejectsMissingBodyEvidence(t *testing.T) {
+	h, st, _ := newHub(t)
+	id, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com", Path: "/encoded",
+		ReqBodyHash: strings.Repeat("a", 64), ReqLen: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/decoded?side=req", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).getFlowDecoded(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCodecsCRUDAndDecoded(t *testing.T) {
 	h, st, _ := newHub(t)
 	proj := t.TempDir()

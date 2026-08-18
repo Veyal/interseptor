@@ -68,7 +68,10 @@ func (h *toolsAPI) selectionDecodeCodec(input string, flowID int64, side string)
 	if err != nil || f == nil {
 		return nil, false
 	}
-	flow := h.flowForCodec(f)
+	flow, err := h.flowForCodec(f)
+	if err != nil {
+		return nil, false
+	}
 
 	// A. Try selection as the whole body (codecs that accept a bare payload).
 	bare := flow
