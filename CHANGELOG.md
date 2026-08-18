@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Truthful Intruder body failures.** Intruder grep now reports a referenced response body that cannot be read instead of turning the missing evidence into a silent non-match.
 - **Wire-accurate Sender responses.** Repeater/Intruder/active/authz sends now preserve encoded response bytes and `Content-Encoding` metadata instead of allowing Go's transport to transparently rewrite captured evidence; display and grep paths continue to decode explicitly.
 - **Complete Intruder evidence.** Intruder now marks send/capture failures, skips grep on incomplete responses, and excludes errored results from status, length, and grep anomaly baselines.
 - **Authorization self-target guard.** Single-flow session/comparison checks and cross-host JWT replay now refuse flows targeting Interseptor's own proxy or control listener, matching the existing Repeater, Intruder, and active-scan protections.

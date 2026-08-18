@@ -181,7 +181,7 @@ func New(st *store.Store, eng *intercept.Engine, ca *tlsca.CA, rebind Rebinder, 
 		gcBodiesFn:        st.GCBodies,
 	}
 	h.intr = intruder.New(h.snd)
-	h.intr.SetBodyReader(h.bodyBytes) // lets Intruder grep response bodies
+	h.intr.SetBodyReaderResult(h.bodyBytesResult) // lets Intruder grep response bodies
 	h.intr.SetNotifier(func() { h.broadcast(map[string]any{"type": "intruder.update"}) })
 	h.oob = oob.New()
 	h.oob.SetNotifier(func() { h.broadcast(map[string]any{"type": "oob.update"}) })

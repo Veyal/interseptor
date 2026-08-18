@@ -1,6 +1,7 @@
 package intruder
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -428,5 +429,27 @@ func TestIncompleteResponseCaptureIsNotAValidResult(t *testing.T) {
 	state := waitDone(t, e)
 	if len(state.Results) != 1 || state.Results[0].Error != "response capture incomplete" {
 		t.Fatalf("results = %+v, want incomplete-capture error", state.Results)
+	}
+}
+
+func TestUnavailableResponseBodyIsNotAGrepNonMatch(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "needle")
+	}))
+	defer upstream.Close()
+
+	e := newEngine(t)
+	e.SetBodyReaderResult(func(string) ([]byte, error) {
+		return nil, errors.New("body disappeared")
+	})
+	if err := e.Start(Spec{
+		Target: upstream.URL, Template: "GET / HTTP/1.1\nHost: example.com\n\n",
+		AttackType: "repeat", Repeat: 1, Threads: 1, GrepMatch: "needle",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := waitDone(t, e)
+	if len(state.Results) != 1 || state.Results[0].Error != "response body unavailable" {
+		t.Fatalf("results = %+v, want unavailable-body error", state.Results)
 	}
 }

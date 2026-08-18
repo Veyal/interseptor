@@ -75,7 +75,7 @@ type State struct {
 // Engine runs one attack at a time.
 type Engine struct {
 	snd  *sender.Sender
-	body func(hash string) []byte // reads a stored response body (for grep); may be nil
+	body func(hash string) ([]byte, error) // reads a stored response body (for grep); may be nil
 
 	mu      sync.Mutex
 	running bool
@@ -107,9 +107,19 @@ func New(snd *sender.Sender) *Engine {
 	return &Engine{snd: snd, doneCh: done}
 }
 
-// SetBodyReader wires a response-body reader so grep-match/extract can inspect
-// response contents (the engine itself has no store access).
-func (e *Engine) SetBodyReader(fn func(hash string) []byte) { e.body = fn }
+// SetBodyReader wires a simple response-body reader so grep-match/extract can
+// inspect response contents. Use SetBodyReaderResult when read failures matter.
+func (e *Engine) SetBodyReader(fn func(hash string) []byte) {
+	if fn == nil {
+		e.body = nil
+		return
+	}
+	e.body = func(hash string) ([]byte, error) { return fn(hash), nil }
+}
+
+// SetBodyReaderResult wires an error-aware response-body reader. The engine has
+// no store dependency, so the control plane supplies this adapter.
+func (e *Engine) SetBodyReaderResult(fn func(hash string) ([]byte, error)) { e.body = fn }
 
 // processPayload applies the configured transforms to a payload value, in order.
 func processPayload(pl string, rules []string) string {
@@ -425,7 +435,11 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 		if (grepM == nil && grepMLit == "" && grepX == nil) || e.body == nil || hash == "" {
 			return
 		}
-		raw := e.body(hash)
+		raw, err := e.body(hash)
+		if err != nil {
+			res.Error = "response body unavailable"
+			return
+		}
 
 		// Skip grep on known-binary content types; flag the result so the UI can
 		// show an informational badge rather than a silent non-match.
