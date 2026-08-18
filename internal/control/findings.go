@@ -1,6 +1,7 @@
 package control
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -408,6 +409,22 @@ func (h *findingsAPI) getFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, findingAPIResponse(f, nil))
 }
 
+func (h *findingsAPI) requireFinding(w http.ResponseWriter, id int64) bool {
+	if id <= 0 {
+		httpErr(w, http.StatusBadRequest, "bad id")
+		return false
+	}
+	if _, err := h.st.GetFinding(id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "finding not found")
+			return false
+		}
+		httpInternalErr(w, err)
+		return false
+	}
+	return true
+}
+
 func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
@@ -538,6 +555,9 @@ func (h *findingsAPI) detachFindingFlow(w http.ResponseWriter, r *http.Request) 
 // block into the finding narrative. Body: {data, mime?, caption?, position?}.
 func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, id) {
+		return
+	}
 	var in struct {
 		Mime     string `json:"mime"`
 		Data     string `json:"data"` // raw base64 or data: URL

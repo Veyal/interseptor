@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **No orphan finding-image uploads.** Direct and rendered-preview evidence now verify the parent finding before decoding or rendering a blob, returning `404` without consuming content-addressed storage for stale IDs; transactional attachment still rechecks the parent.
 - **Truthful pending-flow finalization.** Final capture updates now return `sql.ErrNoRows` when retention or a user purge removed the pending row, preventing the proxy from reporting and broadcasting a finalized flow that was never stored.
 - **Truthful live-rule updates.** Rewrite and target-scope updates now return `404` for stale IDs and skip live-engine refreshes, instead of reporting `200` and broadcasting a change when no rule existed.
 - **Truthful Autopilot run updates.** Updating a nonexistent pentest run now returns `sql.ErrNoRows` instead of reporting success, preventing stale workers from assuming status or summary state was persisted.

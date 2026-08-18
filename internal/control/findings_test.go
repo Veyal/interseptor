@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -237,6 +238,26 @@ func TestFindingMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
 			t.Fatalf("image evidence changed after rejected attach: %+v", got.Blocks)
 		}
 	})
+}
+
+func TestAttachFindingImageRejectsMissingFindingBeforeStoringBlob(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/findings/999/images", "application/json",
+		strings.NewReader(`{"mime":"image/png","data":"aGVsbG8="}`))
+	if err != nil {
+		t.Fatalf("POST image: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("hello")))
+	if st.BodyExists(hash) {
+		t.Fatalf("missing-finding upload left orphan image body %s", hash)
+	}
 }
 
 func TestFindingReportStatusDefaultsAndExplicitAll(t *testing.T) {

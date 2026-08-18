@@ -37,6 +37,9 @@ func (h *flowAPI) getFlowPreviewPNG(w http.ResponseWriter, r *http.Request) {
 // Body: {flowId, side?, pretty?, layout?, theme?, caption?, position?}.
 func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Request) {
 	findingID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, findingID) {
+		return
+	}
 	var in struct {
 		FlowID   int64  `json:"flowId"`
 		Side     string `json:"side"`

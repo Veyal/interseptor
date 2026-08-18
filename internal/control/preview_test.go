@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -169,6 +171,43 @@ func TestAttachFindingFlowPreviewRejectsTrailingJSONBeforeAttachment(t *testing.
 		if block.Type == "image" {
 			t.Fatalf("preview attached after rejected command: %+v", block)
 		}
+	}
+}
+
+func TestAttachFlowPreviewRejectsMissingFindingBeforeStoringBlob(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/account", Status: 200,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	payload := fmt.Sprintf(`{"flowId":%d}`, flowID)
+	resp, err := http.Post(ts.URL+"/api/findings/999/flow-preview", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("POST flow preview: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	var bodies int
+	if err := filepath.WalkDir(st.BodiesDir(), func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && len(entry.Name()) == 64 {
+			bodies++
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk bodies: %v", err)
+	}
+	if bodies != 0 {
+		t.Fatalf("missing-finding preview left %d orphan image body", bodies)
 	}
 }
 
