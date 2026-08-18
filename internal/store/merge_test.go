@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,93 @@ func seedFlow(t *testing.T, s *Store, host, path, body string, tsMs int64) int64
 }
 
 func peerBodiesDir(s *Store) string { return s.BodiesDir() }
+
+func TestMergeFromRejectsPeerFlowIterationErrorBeforeImport(t *testing.T) {
+	peerPath := filepath.Join(t.TempDir(), "peer.db")
+	peer, err := sql.Open("sqlite", peerPath)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	statements := []string{
+		`CREATE TABLE source (id INTEGER PRIMARY KEY)`,
+		`INSERT INTO source(id) VALUES (1), (2)`,
+		`CREATE VIEW flows AS SELECT id, id AS ts, 'GET' AS method, 'https' AS scheme,
+			'example.com' AS host, 443 AS port, '/item/' || id AS path, 'HTTP/1.1' AS http_version,
+			CASE WHEN id=2 THEN json_extract('invalid json', '$') ELSE 200 END AS status,
+			'{}' AS req_headers, '{}' AS res_headers, '' AS req_body_hash, '' AS res_body_hash,
+			0 AS req_len, 0 AS res_len, 'text/plain' AS mime, 0 AS duration_ms,
+			'' AS client_addr, '' AS error, 0 AS flags, '' AS note FROM source ORDER BY id`,
+		`CREATE TABLE findings (id INTEGER, severity TEXT, status TEXT, source TEXT, title TEXT,
+			target TEXT, detail TEXT, evidence TEXT, fix TEXT, body TEXT, impact TEXT, why TEXT,
+			cwe TEXT, environment TEXT, cvss TEXT, verification_instructions TEXT)`,
+	}
+	for _, statement := range statements {
+		if _, err := peer.Exec(statement); err != nil {
+			peer.Close()
+			t.Fatalf("prepare peer: %v", err)
+		}
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerPath, "", "peer"); err == nil || !strings.Contains(err.Error(), "iterate peer flows") {
+		t.Fatalf("MergeFrom error = %v, want peer flow iteration error", err)
+	}
+	if flows, err := local.QueryFlows(10); err != nil || len(flows) != 0 {
+		t.Fatalf("iteration failure partially imported flows=%d err=%v", len(flows), err)
+	}
+}
+
+func TestMergeFromRejectsPeerFindingIterationErrorBeforeImport(t *testing.T) {
+	peerPath := filepath.Join(t.TempDir(), "peer.db")
+	peer, err := sql.Open("sqlite", peerPath)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	statements := []string{
+		`CREATE TABLE source (id INTEGER PRIMARY KEY)`,
+		`INSERT INTO source(id) VALUES (1), (2)`,
+		`CREATE TABLE flows (id INTEGER, ts INTEGER, method TEXT, scheme TEXT, host TEXT, port INTEGER,
+			path TEXT, http_version TEXT, status INTEGER, req_headers TEXT, res_headers TEXT,
+			req_body_hash TEXT, res_body_hash TEXT, req_len INTEGER, res_len INTEGER, mime TEXT,
+			duration_ms INTEGER, client_addr TEXT, error TEXT, flags INTEGER, note TEXT)`,
+		`CREATE VIEW findings AS SELECT id,
+			CASE WHEN id=2 THEN json_extract('invalid json', '$') ELSE 'High' END AS severity,
+			'open' AS status, 'human' AS source, 'finding-' || id AS title, 'https://example.com' AS target,
+			'' AS detail, '' AS evidence, '' AS fix, '' AS body, '' AS impact, '' AS why,
+			'' AS cwe, '' AS environment, '' AS cvss, '' AS verification_instructions
+			FROM source ORDER BY id`,
+		`CREATE TABLE finding_flows (finding_id INTEGER, flow_id INTEGER, ord INTEGER, note TEXT)`,
+		`CREATE TABLE finding_tags (finding_id INTEGER, tag TEXT)`,
+	}
+	for _, statement := range statements {
+		if _, err := peer.Exec(statement); err != nil {
+			peer.Close()
+			t.Fatalf("prepare peer: %v", err)
+		}
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerPath, "", "peer"); err == nil || !strings.Contains(err.Error(), "iterate peer findings") {
+		t.Fatalf("MergeFrom error = %v, want peer finding iteration error", err)
+	}
+	if findings, err := local.ListFindings("", "", ""); err != nil || len(findings) != 0 {
+		t.Fatalf("iteration failure partially imported findings=%d err=%v", len(findings), err)
+	}
+}
 
 func TestMergeFromRejectsBodyWhoseContentDoesNotMatchFilename(t *testing.T) {
 	peerDir := t.TempDir()

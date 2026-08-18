@@ -97,6 +97,10 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		_ = json.Unmarshal([]byte(resH), &f.ResHeaders)
 		pending = append(pending, pflow{f: f, peer: f.ID, note: note})
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return stats, fmt.Errorf("iterate peer flows: %w", err)
+	}
 	rows.Close()
 	for _, pf := range pending {
 		for _, bodyHash := range []string{pf.f.ReqBodyHash, pf.f.ResBodyHash} {
@@ -155,6 +159,10 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 			return stats, err
 		}
 		pendingF = append(pendingF, pfind{f: f, peerID: f.ID})
+	}
+	if err := frows.Err(); err != nil {
+		frows.Close()
+		return stats, fmt.Errorf("iterate peer findings: %w", err)
 	}
 	frows.Close()
 
