@@ -20,5 +20,8 @@ Use this when adding or changing HAR, Burp, or portable project imports.
   is valid, so a malformed later item cannot leave earlier items committed behind a `400` response.
 - Check every database mutation and stop on failure. Increment response counts only after the row is
   committed, and use a scrubbed `500` for persistence failures.
+- When imported metadata is mandatory (for example merge provenance tags), insert the primary row,
+  its FTS projection, and that metadata in one transaction. A later best-effort metadata call can
+  report a successful import whose origin or operator notes have silently disappeared.
 
 Test with a closed store to make ignored errors deterministic, and use only generic traffic fixtures.

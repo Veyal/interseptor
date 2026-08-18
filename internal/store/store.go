@@ -355,6 +355,12 @@ func (s *Store) Close() error {
 
 // InsertFlow stores a new flow and sets f.ID to the assigned row id.
 func (s *Store) InsertFlow(f *Flow) (int64, error) {
+	return s.insertFlow(f, nil)
+}
+
+// insertFlow stores a flow and any initial tags in one transaction. Importers
+// use this so mandatory provenance cannot be lost after the row is published.
+func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
@@ -389,6 +395,11 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 		`INSERT INTO flows_fts(rowid, host, path, method, note) VALUES (?,?,?,?,?)`,
 		id, f.Host, f.Path, f.Method, f.Note); err != nil {
 		return 0, err
+	}
+	for _, tag := range NormalizeTags(tags) {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO flow_tags (flow_id, tag) VALUES (?,?)`, id, tag); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err

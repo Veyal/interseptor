@@ -73,6 +73,61 @@ func TestMergeFromRejectsBodyWhoseContentDoesNotMatchFilename(t *testing.T) {
 	}
 }
 
+func TestMergeFromRollsBackFlowWhenProvenanceTagFails(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerID := seedFlow(t, peer, "example.com", "/", "", 1000)
+	if err := peer.SetFlowNote(peerID, "peer note"); err != nil {
+		peer.Close()
+		t.Fatal(err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.db.Exec(`CREATE TRIGGER reject_merge_tag BEFORE INSERT ON flow_tags
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err == nil {
+		t.Fatal("MergeFrom reported success after provenance tag failure")
+	}
+	flows, err := local.QueryFlows(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 0 {
+		t.Fatalf("failed merge left %d flow(s), want transactional rollback", len(flows))
+	}
+	if _, err := local.db.Exec(`DROP TRIGGER reject_merge_tag`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "alice"); err != nil {
+		t.Fatalf("retry after removing failure: %v", err)
+	}
+	flows, err = local.QueryFlows(10)
+	if err != nil || len(flows) != 1 {
+		t.Fatalf("retry flows = %d, err = %v", len(flows), err)
+	}
+	if err := local.AttachTags(flows); err != nil {
+		t.Fatal(err)
+	}
+	if flows[0].Note != "peer note" || len(flows[0].Tags) != 1 || flows[0].Tags[0] != "peer-alice" {
+		t.Fatalf("merged metadata = note %q, tags %v", flows[0].Note, flows[0].Tags)
+	}
+}
+
 func TestMergeFromDoesNotPublishBodiesBeforeAllCopiesValidate(t *testing.T) {
 	peerDir := t.TempDir()
 	peer, err := Open(peerDir)

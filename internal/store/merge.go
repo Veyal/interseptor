@@ -122,14 +122,11 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		}
 		f := pf.f
 		f.ID = 0
-		newID, err := s.InsertFlow(&f)
+		f.Note = pf.note
+		newID, err := s.insertFlow(&f, []string{tag})
 		if err != nil {
 			return stats, fmt.Errorf("insert merged flow: %w", err)
 		}
-		if pf.note != "" {
-			_ = s.SetFlowNote(newID, pf.note)
-		}
-		_, _ = s.AddFlowTags(newID, []string{tag})
 		peerToLocal[pf.peer] = newID
 		seenFlows[sig] = newID
 		stats.FlowsAdded++
