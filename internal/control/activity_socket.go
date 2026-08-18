@@ -58,7 +58,9 @@ func (h *Hub) readActivitySocket(conn net.Conn) {
 		activity = message.Activity
 	}
 	if activity.Tool != "" {
-		h.recordMCPActivity(activity)
+		if err := h.recordMCPActivityChecked(activity); err != nil {
+			return
+		}
 		_, _ = conn.Write([]byte{1})
 	}
 }

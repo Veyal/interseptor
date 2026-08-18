@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Truthful MCP activity writes.** Activity records now broadcast and acknowledge only after SQLite persistence succeeds; internal HTTP writes return a scrubbed `500`, and socket ingestion withholds its success byte instead of claiming an event that will disappear on reload.
 - **Complete portable-project bodies.** Portable JSON export now verifies every referenced request and response body before returning `200`, refusing to turn a missing content-addressed file into an apparently valid archive with an empty payload.
 - **Truthful portable-project exports.** Portable JSON export now fails when rules, scope, selected settings, or notes cannot be read instead of returning a successful archive with silently missing project metadata.
 - **Complete WebSocket sends.** WebSocket Repeater now validates its complete bounded JSON command before target checks or socket creation, rejecting valid prefixes followed by trailing data.

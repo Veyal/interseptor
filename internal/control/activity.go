@@ -10,11 +10,11 @@ import (
 
 // recordActivity persists one AI (MCP) tool call (stamped with the server clock)
 // and returns it with its assigned id. Persisted per-project so the glass-box
-// feed survives restarts; the caller broadcasts it live.
-func (h *metaAPI) recordActivity(a store.Activity) store.Activity {
+// feed survives restarts; callers must broadcast only after persistence succeeds.
+func (h *metaAPI) recordActivity(a store.Activity) (store.Activity, error) {
 	a.TS = time.Now().UnixMilli()
-	_, _ = h.st.InsertActivity(&a)
-	return a
+	_, err := h.st.InsertActivity(&a)
+	return a, err
 }
 
 // postActivity records one AI tool call (POSTed by the MCP server after every
@@ -36,7 +36,11 @@ func (h *metaAPI) postActivity(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "tool required")
 		return
 	}
-	it := h.recordActivity(store.Activity{Tool: in.Tool, Summary: in.Summary, OK: in.OK, Result: in.Result, Ms: in.Ms, Intent: in.Intent})
+	it, err := h.recordActivity(store.Activity{Tool: in.Tool, Summary: in.Summary, OK: in.OK, Result: in.Result, Ms: in.Ms, Intent: in.Intent})
+	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
 	h.broadcast(map[string]any{"type": "activity", "item": it})
 	w.WriteHeader(http.StatusNoContent)
 }

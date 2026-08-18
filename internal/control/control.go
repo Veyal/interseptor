@@ -213,10 +213,20 @@ func (h *Hub) handleMCP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) recordMCPActivity(a mcp.Activity) {
-	it := (&metaAPI{h}).recordActivity(store.Activity{
+	if err := h.recordMCPActivityChecked(a); err != nil {
+		log.Printf("control: persist MCP activity: %v", err)
+	}
+}
+
+func (h *Hub) recordMCPActivityChecked(a mcp.Activity) error {
+	it, err := (&metaAPI{h}).recordActivity(store.Activity{
 		Tool: a.Tool, Summary: a.Summary, OK: a.OK, Result: a.Result, Ms: a.Ms, Intent: a.Intent,
 	})
+	if err != nil {
+		return err
+	}
 	h.broadcast(map[string]any{"type": "activity", "item": it})
+	return nil
 }
 
 // loopbackControlBase returns an http://127.0.0.1:<port> base URL for the control
