@@ -22,3 +22,8 @@ known and turns a server failure into a corrupt download that looks successful.
 Server-side path exports must also build into a same-directory temporary file. Close the complete ZIP
 before publishing it, preserve any existing destination until the build succeeds, and use a
 backup/restore replacement sequence so Windows does not require deleting the known-good file first.
+
+Portable JSON projects are backups too. Before encoding their HAR, open and close each referenced
+content-addressed request and response body; a resolver that maps an open failure to `nil` silently
+turns corruption into an empty exported payload. Read errors for rules, scope, settings, and notes
+must likewise abort before response headers are committed.

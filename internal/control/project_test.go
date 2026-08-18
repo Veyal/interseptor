@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestPortableProjectExportFailsWhenMetadataCannotBeRead(t *testing.T) {
@@ -35,6 +37,29 @@ func TestPortableProjectExportFailsWhenMetadataCannotBeRead(t *testing.T) {
 	(&projectAPI{Hub: h}).exportProject(rec, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500 instead of an incomplete export", rec.Code)
+	}
+}
+
+func TestPortableProjectExportFailsWhenFlowBodyIsMissing(t *testing.T) {
+	h, st, _ := newHub(t)
+	_, err := st.InsertFlow(&store.Flow{
+		TS:          time.UnixMilli(1),
+		Method:      "POST",
+		Scheme:      "https",
+		Host:        "example.com",
+		Port:        443,
+		Path:        "/upload",
+		Status:      200,
+		ReqBodyHash: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	(&projectAPI{Hub: h}).exportProject(rec, httptest.NewRequest(http.MethodGet, "/api/export/project", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 instead of an export with an empty request body", rec.Code)
 	}
 }
 

@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -33,6 +34,10 @@ const maxPortableProjectImportBytes = 128 << 20
 func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
 	if err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	if err := validatePortableProjectBodies(h.st, flows); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
@@ -91,6 +96,29 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-project.json"`)
 	json.NewEncoder(w).Encode(bundle)
+}
+
+func validatePortableProjectBodies(st *store.Store, flows []*store.Flow) error {
+	seen := make(map[string]struct{})
+	for _, flow := range flows {
+		for _, hash := range []string{flow.ReqBodyHash, flow.ResBodyHash} {
+			if hash == "" {
+				continue
+			}
+			if _, ok := seen[hash]; ok {
+				continue
+			}
+			seen[hash] = struct{}{}
+			rc, err := st.OpenBody(hash)
+			if err != nil {
+				return fmt.Errorf("open flow body %s: %w", hash, err)
+			}
+			if err := rc.Close(); err != nil {
+				return fmt.Errorf("close flow body %s: %w", hash, err)
+			}
+		}
+	}
+	return nil
 }
 
 // importProject merges a project into the current session (additive for flows,
