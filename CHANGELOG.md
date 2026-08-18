@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Safe HAR timing imports.** HAR entries with negative or duration-overflowing elapsed milliseconds are now rejected before any flow is inserted, preventing corrupted timing values from wrapping inside active-scan comparisons.
 - **Durable login refreshes.** Login-macro credentials are now saved as one settings transaction before replacing the live session; storage failures propagate to manual and 401 refresh paths instead of creating credentials that silently disappear after restart.
 - **Login-macro refresh validation.** Negative and duration-overflowing refresh intervals are now rejected at the sender boundary and session APIs, malformed capture options return `400`, and capture-from-flow persistence failures no longer report success.
 - **Intruder delay overflow.** The attack engine now rejects negative and duration-overflowing millisecond delays at its reusable boundary, preventing a wrapped timer from silently turning a requested throttle into immediate dispatch.

@@ -102,6 +102,18 @@ func TestParseRejectsJSONThatIsNotHAR(t *testing.T) {
 	}
 }
 
+func TestParseRejectsUnsafeEntryDurations(t *testing.T) {
+	for _, elapsed := range []string{"-1", "9223372036855", "1e300"} {
+		doc := `{"log":{"version":"1.2","entries":[{` +
+			`"startedDateTime":"2020-01-01T00:00:00Z","time":` + elapsed + `,` +
+			`"request":{"method":"GET","url":"https://example.com/","httpVersion":"HTTP/1.1","headers":[]},` +
+			`"response":{"status":200,"httpVersion":"HTTP/1.1","headers":[],"content":{"size":0,"mimeType":"text/plain","text":""}}}]}}`
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Fatalf("Parse accepted unsafe entry time %s", elapsed)
+		}
+	}
+}
+
 // A flow that errored before its scheme was known (Scheme == "") must still
 // produce a valid absolute URL, not "://host".
 func TestBuildDefaultsEmptyScheme(t *testing.T) {

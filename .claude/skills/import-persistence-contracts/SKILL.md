@@ -13,6 +13,8 @@ Use this when adding or changing HAR, Burp, or portable project imports.
   `InsertFlow` is called, its publication defer releases both pending hashes on success or failure.
 - Treat parser errors inside a container format (such as a project bundle's embedded HAR) as client
   errors. Do not silently turn malformed data into a zero-item success.
+- Validate imported numeric values before narrowing or unit conversion. HAR elapsed milliseconds, for
+  example, must be non-negative and small enough to multiply into `time.Duration` without wrapping.
 - Check every database mutation and stop on failure. Increment response counts only after the row is
   committed, and use a scrubbed `500` for persistence failures.
 

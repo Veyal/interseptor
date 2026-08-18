@@ -140,7 +140,11 @@ func Parse(data []byte) ([]Entry, error) {
 		return nil, fmt.Errorf("missing required HAR log.version or log.entries")
 	}
 	out := make([]Entry, 0, len(doc.Log.Entries))
-	for _, e := range doc.Log.Entries {
+	maxDurationMillis := float64(int64(^uint64(0)>>1) / int64(time.Millisecond))
+	for i, e := range doc.Log.Entries {
+		if e.Time < 0 || e.Time > maxDurationMillis {
+			return nil, fmt.Errorf("HAR entry %d has an unsupported elapsed time", i+1)
+		}
 		ts, _ := time.Parse(time.RFC3339Nano, e.StartedDateTime)
 		en := Entry{
 			Method: e.Request.Method, URL: e.Request.URL, HTTPVersion: e.Request.HTTPVersion,
