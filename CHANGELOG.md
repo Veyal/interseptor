@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Clean body-download errors.** Flow downloads now wait to set attachment headers until the referenced blob has opened successfully, so missing-body `404` responses remain JSON errors instead of being mislabeled as downloadable payloads.
 - **Correct chained response decoding.** Shared display and Intruder decompression now reverses every layer in `Content-Encoding` chains (for example `gzip, br`) instead of decoding only the outer layer and incorrectly marking the payload complete; over-limit expansions fail closed.
 - **Streaming unknown-encoding downloads.** Flow-body downloads with unsupported `Content-Encoding` values now stream the original bytes instead of buffering the whole body only to discover it cannot be decoded.
 - **Bounded encoded-body downloads.** Recognized compressed downloads now cap their in-memory encoded input at the display limit; larger blobs fall back to direct raw streaming rather than allocating the entire stored body.

@@ -829,6 +829,25 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 		hash = f.ReqBodyHash
 		mimeType = headerContentType(f.ReqHeaders)
 	}
+	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
+	var stream io.ReadCloser
+	var body []byte
+	var err error
+	if !supportsDisplayEncoding(enc) {
+		stream, err = h.st.OpenBody(hash)
+	} else {
+		var overflow bool
+		body, overflow, err = h.bodyBytesUpTo(hash, decodeMax)
+		if err == nil && overflow {
+			stream, err = h.st.OpenBody(hash)
+		} else if err == nil {
+			_, body = decodeForDisplay(headers, body)
+		}
+	}
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "body not found")
+		return
+	}
 	if mimeType == "" {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	} else {
@@ -840,37 +859,13 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	}
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
-	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
-	if !supportsDisplayEncoding(enc) {
-		rc, err := h.st.OpenBody(hash)
-		if err != nil {
-			httpFileNotFoundOrInternal(w, err, "body not found")
-			return
-		}
-		defer rc.Close()
-		if _, err := io.Copy(w, rc); err != nil {
+	if stream != nil {
+		defer stream.Close()
+		if _, err := io.Copy(w, stream); err != nil {
 			log.Printf("control: stream flow body: %v", err)
 		}
 		return
 	}
-	body, overflow, err := h.bodyBytesUpTo(hash, decodeMax)
-	if err != nil {
-		httpFileNotFoundOrInternal(w, err, "body not found")
-		return
-	}
-	if overflow {
-		rc, err := h.st.OpenBody(hash)
-		if err != nil {
-			httpFileNotFoundOrInternal(w, err, "body not found")
-			return
-		}
-		defer rc.Close()
-		if _, err := io.Copy(w, rc); err != nil {
-			log.Printf("control: stream encoded flow body: %v", err)
-		}
-		return
-	}
-	_, body = decodeForDisplay(headers, body)
 	_, _ = w.Write(body)
 }
 

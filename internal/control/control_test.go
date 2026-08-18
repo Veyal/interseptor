@@ -628,6 +628,27 @@ func TestBodyBytesUpToReportsOverflowWithoutReturningPrefix(t *testing.T) {
 	}
 }
 
+func TestFlowBodyMissingBlobDoesNotSetDownloadHeaders(t *testing.T) {
+	h, s, _ := newHub(t)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/missing",
+		ResBodyHash: strings.Repeat("a", 64), Mime: "application/json",
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=res", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := httptest.NewRecorder()
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "" {
+		t.Fatalf("Content-Disposition=%q on error response", got)
+	}
+}
+
 func TestRuleCreateAndList(t *testing.T) {
 	h, _, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())
