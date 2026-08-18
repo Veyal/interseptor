@@ -725,7 +725,7 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 			delete(hdrs, "Authorization")
 		}
 
-		flow, _ := h.snd.Send(sender.Request{
+		flow, sendErr := h.snd.Send(sender.Request{
 			Method:    ref.Method,
 			URL:       targetURL,
 			Headers:   hdrs,
@@ -735,12 +735,18 @@ func (h *authzAPI) authzCrossHostReplay(w http.ResponseWriter, r *http.Request) 
 		})
 
 		hr := hostResult{Host: t.host, Scheme: t.scheme, Port: t.port, URL: targetURL}
+		if sendErr != nil {
+			hr.Error = "send failed"
+		}
 		if flow != nil {
 			hr.Status = flow.Status
 			hr.Length = flow.ResLen
 			hr.FlowID = flow.ID
 			hr.Error = flow.Error
-			hr.Accepted = flow.Status >= 200 && flow.Status < 300
+			if hr.Error == "" && flow.Flags&store.FlagCaptureError != 0 {
+				hr.Error = "response capture incomplete"
+			}
+			hr.Accepted = hr.Error == "" && flow.Status >= 200 && flow.Status < 300
 		}
 		results = append(results, hr)
 	}

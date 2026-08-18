@@ -416,6 +416,47 @@ func TestAuthzCrossHostReplayClassifiesMissingJWTSourceBody(t *testing.T) {
 	}
 }
 
+func TestAuthzCrossHostReplayRejectsIncompleteAcceptanceEvidence(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/authz/cross-host-replay", strings.NewReader(`{"flowId":`+itoa(flowID)+`,"jwt":"a.b.c"}`))
+	rec := httptest.NewRecorder()
+	(&authzAPI{h}).authzCrossHostReplay(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Results []struct {
+			Accepted bool   `json:"accepted"`
+			Error    string `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Results) != 1 || out.Results[0].Accepted || out.Results[0].Error != "response capture incomplete" {
+		t.Fatalf("results=%+v, want rejected incomplete response", out.Results)
+	}
+}
+
 func TestAuthzTargetsInScope(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.CreateScopeRule(&store.ScopeRule{Action: "include", Host: "in.test", Enabled: true})
