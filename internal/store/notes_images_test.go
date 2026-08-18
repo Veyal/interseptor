@@ -128,6 +128,45 @@ func TestPersistNotesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPersistNotesRollsBackImagesWhenSettingWriteFails(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	oldID, err := s.InsertNotesImage("image/png", []byte("old image"))
+	if err != nil {
+		t.Fatalf("InsertNotesImage: %v", err)
+	}
+	oldNotes := "![old](/api/notes/images/" + itoa(oldID) + ")"
+	if err := s.SetSetting("project.notes", oldNotes); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_project_notes BEFORE INSERT ON settings
+		WHEN NEW.key = 'project.notes'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+	inline := "![new](data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("new image")) + ")"
+	if _, err := s.PersistNotes(inline); err == nil {
+		t.Fatal("PersistNotes succeeded despite rejected setting write")
+	}
+	got, _, err := s.GetSetting("project.notes")
+	if err != nil {
+		t.Fatalf("GetSetting: %v", err)
+	}
+	if got != oldNotes {
+		t.Fatalf("notes = %q, want old notes", got)
+	}
+	if exists, err := s.NotesImageExists(oldID); err != nil || !exists {
+		t.Fatalf("old referenced image was lost: exists=%v err=%v", exists, err)
+	}
+	if exists, err := s.NotesImageExists(oldID + 1); err != nil || exists {
+		t.Fatalf("new image survived failed notes write: exists=%v err=%v", exists, err)
+	}
+}
+
 // AppendNote must be atomic: N concurrent appends must all survive, even when
 // they race against each other, because it does its own read-modify-write
 // inside the store rather than relying on a client-side GET-then-PUT (which is
