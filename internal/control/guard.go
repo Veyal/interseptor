@@ -31,6 +31,15 @@ import (
 // maxRequestBody bounds every control request body as a DoS backstop (see below).
 var maxRequestBody int64 = 128 << 20
 
+func controlRequestBodyLimit(path string) int64 {
+	switch path {
+	case "/api/import/full", "/api/merge/file", "/api/packs/install":
+		return maxArchiveBytes
+	default:
+		return maxRequestBody
+	}
+}
+
 type requestScopeKey struct{}
 
 // sessionCookie is the name of the httpOnly cookie holding a browser session's
@@ -109,7 +118,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				httpErr(w, http.StatusForbidden, "a URL token is only valid for the event stream")
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r.Body = http.MaxBytesReader(w, r.Body, controlRequestBodyLimit(r.URL.Path))
 			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, scope))
 			next.ServeHTTP(w, r)
 			return
@@ -126,7 +135,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 				httpErr(w, http.StatusUnauthorized, "the MCP endpoint requires Authorization: Bearer <api key> — create a replacement key in the local API tab")
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r.Body = http.MaxBytesReader(w, r.Body, controlRequestBodyLimit(r.URL.Path))
 			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, store.ScopeFull))
 			next.ServeHTTP(w, r)
 			return
@@ -145,7 +154,7 @@ func (h *Hub) securityGuard(next http.Handler) http.Handler {
 					return
 				}
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+			r.Body = http.MaxBytesReader(w, r.Body, controlRequestBodyLimit(r.URL.Path))
 			r = r.WithContext(context.WithValue(r.Context(), requestScopeKey{}, store.ScopeFull))
 			next.ServeHTTP(w, r)
 			return

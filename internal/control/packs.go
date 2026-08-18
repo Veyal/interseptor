@@ -47,6 +47,10 @@ func (h *Hub) installPack(w http.ResponseWriter, r *http.Request) {
 		rules.InstallOpts{AllowUnsigned: allowUnsigned},
 	)
 	if err != nil {
+		if isBodyTooLarge(err) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "rule-pack archive exceeds compressed size limit")
+			return
+		}
 		httpErr(w, http.StatusBadRequest, "install failed: "+err.Error())
 		return
 	}

@@ -59,8 +59,7 @@ func writeJSONDecodeError(w http.ResponseWriter, err error) {
 
 func readLimitedBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, bool) {
 	data, err := io.ReadAll(&io.LimitedReader{R: r.Body, N: limit + 1})
-	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) || int64(len(data)) > limit {
+	if isBodyTooLarge(err) || int64(len(data)) > limit {
 		httpErr(w, http.StatusRequestEntityTooLarge, "request body too large")
 		return nil, false
 	}
@@ -69,4 +68,9 @@ func readLimitedBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byt
 		return nil, false
 	}
 	return data, true
+}
+
+func isBodyTooLarge(err error) bool {
+	var tooLarge *http.MaxBytesError
+	return errors.As(err, &tooLarge)
 }

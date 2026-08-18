@@ -518,6 +518,10 @@ func (h *projectAPI) importFull(w http.ResponseWriter, r *http.Request) {
 	written, copyErr := io.Copy(tmp, &io.LimitedReader{R: r.Body, N: maxArchiveBytes + 1})
 	closeErr := tmp.Close()
 	if copyErr != nil {
+		if isBodyTooLarge(copyErr) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "project archive exceeds compressed size limit")
+			return
+		}
 		httpErr(w, http.StatusBadRequest, copyErr.Error())
 		return
 	}

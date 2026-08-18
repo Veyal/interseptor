@@ -96,9 +96,19 @@ func (h *Hub) mergeFile(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-	if _, err := io.Copy(tmp, io.LimitReader(r.Body, maxArchiveBytes)); err != nil {
+	written, copyErr := io.Copy(tmp, &io.LimitedReader{R: r.Body, N: maxArchiveBytes + 1})
+	if copyErr != nil {
 		tmp.Close()
-		httpErr(w, http.StatusBadRequest, err.Error())
+		if isBodyTooLarge(copyErr) {
+			httpErr(w, http.StatusRequestEntityTooLarge, "project archive exceeds compressed size limit")
+			return
+		}
+		httpErr(w, http.StatusBadRequest, copyErr.Error())
+		return
+	}
+	if written > maxArchiveBytes {
+		tmp.Close()
+		httpErr(w, http.StatusRequestEntityTooLarge, "project archive exceeds compressed size limit")
 		return
 	}
 	tmp.Close()
@@ -249,12 +259,21 @@ func downloadPeerArchive(url, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(tmp, io.LimitReader(resp.Body, maxArchiveBytes)); err != nil {
+	written, copyErr := io.Copy(tmp, &io.LimitedReader{R: resp.Body, N: maxArchiveBytes + 1})
+	if copyErr != nil {
 		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", copyErr
+	}
+	if written > maxArchiveBytes {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("peer archive exceeds compressed size limit of %d bytes", maxArchiveBytes)
+	}
+	if err := tmp.Close(); err != nil {
 		os.Remove(tmp.Name())
 		return "", err
 	}
-	tmp.Close()
 	return tmp.Name(), nil
 }
 

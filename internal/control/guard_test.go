@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -168,6 +169,38 @@ func TestControlBodySizeCapped(t *testing.T) {
 	maxRequestBody = old // restore: a normal body succeeds (204)
 	if c := put(`{"notes":"hi"}`); c != http.StatusNoContent {
 		t.Fatalf("small body should succeed (204), got %d", c)
+	}
+}
+
+func TestArchiveUploadPathsUseStreamingArchiveCap(t *testing.T) {
+	old := maxRequestBody
+	maxRequestBody = 32
+	defer func() { maxRequestBody = old }()
+
+	h, _, _ := newHub(t)
+	drain := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			httpErr(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	guarded := h.securityGuard(drain)
+
+	for _, path := range []string{"/api/import/full", "/api/merge/file", "/api/packs/install"} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1"+path, strings.NewReader(strings.Repeat("a", 64)))
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("%s status = %d, want archive body to bypass %d-byte generic cap", path, rec.Code, maxRequestBody)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/notes", strings.NewReader(strings.Repeat("a", 64)))
+	rec := httptest.NewRecorder()
+	guarded.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("normal route status = %d, want generic body cap", rec.Code)
 	}
 }
 
