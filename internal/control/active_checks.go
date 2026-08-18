@@ -1,6 +1,8 @@
 package control
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"strconv"
@@ -95,12 +97,20 @@ func (h *checksAPI) testActiveCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve a target flow with at least one injectable point.
-	f := h.resolveActiveTestFlow(in.FlowID)
+	f, body, err := h.resolveActiveTestFlow(in.FlowID)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			httpFileNotFoundOrInternal(w, err, "request body not found")
+		} else {
+			httpNotFoundOrInternal(w, err, "flow not found")
+		}
+		return
+	}
 	if f == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"note": "no captured flow with an injectable parameter to test against yet"})
 		return
 	}
-	target := activescan.Target{Method: f.Method, URL: analyzeURL(f), Headers: http.Header(f.ReqHeaders), Body: string(h.bodyBytes(f.ReqBodyHash))}
+	target := activescan.Target{Method: f.Method, URL: analyzeURL(f), Headers: http.Header(f.ReqHeaders), Body: string(body)}
 	pts := activescan.Points(target)
 	if len(pts) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"note": "flow #" + strconv.FormatInt(f.ID, 10) + " has no query/form/json parameter to inject into"})
@@ -134,26 +144,32 @@ func (h *checksAPI) testActiveCheck(w http.ResponseWriter, r *http.Request) {
 
 // resolveActiveTestFlow returns the requested flow, else the latest in-scope flow
 // that has an injectable point; nil if none.
-func (h *checksAPI) resolveActiveTestFlow(id int64) *store.Flow {
+func (h *checksAPI) resolveActiveTestFlow(id int64) (*store.Flow, []byte, error) {
 	if id > 0 {
 		f, err := h.st.GetFlow(id)
-		if err == nil {
-			return f
+		if err != nil {
+			return nil, nil, err
 		}
+		body, err := h.bodyBytesResult(f.ReqBodyHash)
+		return f, body, err
 	}
 	d, err := h.st.QueryFlows(200)
 	if err != nil {
-		return nil
+		return nil, nil, err
 	}
 	for i := len(d) - 1; i >= 0; i-- { // latest first
 		f := d[i]
 		if !h.sc.InScope(f) || h.isOwnListener(f) {
 			continue
 		}
-		t := activescan.Target{Method: f.Method, URL: analyzeURL(f), Headers: http.Header(f.ReqHeaders), Body: string(h.bodyBytes(f.ReqBodyHash))}
+		body, err := h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			return nil, nil, err
+		}
+		t := activescan.Target{Method: f.Method, URL: analyzeURL(f), Headers: http.Header(f.ReqHeaders), Body: string(body)}
 		if len(activescan.Points(t)) > 0 {
-			return f
+			return f, body, nil
 		}
 	}
-	return nil
+	return nil, nil, nil
 }

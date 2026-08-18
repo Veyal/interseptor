@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -218,6 +219,29 @@ func TestActiveChecksTestEndpointFindsVuln(t *testing.T) {
 	}
 	if out.Finding.Severity != "High" || out.Finding.Title != "SQL injection (custom)" {
 		t.Fatalf("unexpected finding: %+v", out.Finding)
+	}
+}
+
+func TestActiveChecksExplicitMissingFlowDoesNotFallback(t *testing.T) {
+	var hits atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	h, st, _ := newHub(t)
+	insertScannableFlow(t, st, upstream, "/search?q=1")
+	const src = `def check(point, baseline, probe):
+    return []
+`
+	req := httptest.NewRequest(http.MethodPost, "/api/active-checks/test", strings.NewReader(`{"source":`+strconv.Quote(src)+`,"flowId":999999}`))
+	rec := httptest.NewRecorder()
+	(&checksAPI{Hub: h}).testActiveCheck(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%q, want 404", rec.Code, rec.Body.String())
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("fallback target received %d probe(s)", got)
 	}
 }
 
