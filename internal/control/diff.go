@@ -278,7 +278,11 @@ func (h *flowAPI) diffFlows(w http.ResponseWriter, r *http.Request) {
 		max = diffMaxBytesCeiling
 	}
 
-	d := h.buildFlowDiff(fa, fb, max)
+	d, err := h.buildFlowDiff(fa, fb, max)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "response body not found")
+		return
+	}
 	if q.Get("format") == "text" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(renderDiffText(d)))
@@ -289,9 +293,17 @@ func (h *flowAPI) diffFlows(w http.ResponseWriter, r *http.Request) {
 
 // buildFlowDiff loads + decodes both flows' response bodies (capped at max) and
 // returns their diff. Shared by the REST handler and any internal caller.
-func (h *flowAPI) buildFlowDiff(fa, fb *store.Flow, max int) flowDiff {
-	_, bodyA := decodeForDisplay(fa.ResHeaders, h.bodyBytes(fa.ResBodyHash))
-	_, bodyB := decodeForDisplay(fb.ResHeaders, h.bodyBytes(fb.ResBodyHash))
+func (h *flowAPI) buildFlowDiff(fa, fb *store.Flow, max int) (flowDiff, error) {
+	bodyA, err := h.bodyBytesResult(fa.ResBodyHash)
+	if err != nil {
+		return flowDiff{}, err
+	}
+	bodyB, err := h.bodyBytesResult(fb.ResBodyHash)
+	if err != nil {
+		return flowDiff{}, err
+	}
+	_, bodyA = decodeForDisplay(fa.ResHeaders, bodyA)
+	_, bodyB = decodeForDisplay(fb.ResHeaders, bodyB)
 	truncated := false
 	if len(bodyA) > max {
 		bodyA = bodyA[:max]
@@ -302,7 +314,7 @@ func (h *flowAPI) buildFlowDiff(fa, fb *store.Flow, max int) flowDiff {
 		truncated = true
 	}
 	return diffResponses(fa.ID, fb.ID, fa.Status, fb.Status, fa.ResLen, fb.ResLen,
-		fa.ResHeaders, fb.ResHeaders, bodyA, bodyB, truncated)
+		fa.ResHeaders, fb.ResHeaders, bodyA, bodyB, truncated), nil
 }
 
 // parseFlowIDParam parses a positive int64 flow id from a query value.
