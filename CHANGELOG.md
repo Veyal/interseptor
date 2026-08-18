@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Atomic device proxy configuration.** Device endpoint commands now validate one complete bounded body and persist mode plus manual host in one transaction, so malformed or failed updates cannot leave a mixed mobile-proxy configuration.
 - **Strict project switching.** Named and external-path switch commands now validate one complete bounded body before registry persistence or relaunch scheduling, so malformed suffixes cannot re-exec the process.
 - **Strict saved-view and OOB configuration.** Saved-view creation and OOB base-URL updates now validate one complete bounded command before persistence, so trailing data cannot change project metadata.
 - **Atomic finding updates.** Finding fields, narrative flow references, and replacement tags now commit in one transaction, so a tag-write failure cannot return `500` after silently changing the report body or metadata.
