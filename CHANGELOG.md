@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Protected pending notebook uploads.** Automatic notes persistence now gives freshly uploaded images a short attachment grace period, preventing an unrelated autosave from collecting the blob between upload and markdown insertion; explicit GC remains immediate and expired orphans are still removed.
 - **Normalized peer evidence validation.** Real project merges now normalize finding block types before validating image references and reject malformed narratives early, preventing uppercase/legacy image blocks from bypassing missing-blob checks.
 - **Scrubbed notebook storage failures.** Notes replacement, append, and image upload now distinguish caller-authored content errors (`400`) from SQLite/storage failures (`500`), preventing internal database details from leaking in client responses.
 - **Correct Burp named-zone timestamps.** Save-items imports now apply explicit offsets for common exported timezone abbreviations (including WIB/WITA/WIT, US daylight zones, Europe, and Asia-Pacific) instead of letting Go silently interpret unknown names as UTC.

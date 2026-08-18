@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const maxNotesImageBytes = 5 << 20 // 5 MiB per pasted screenshot
+const (
+	maxNotesImageBytes    = 5 << 20 // 5 MiB per pasted screenshot
+	notesImageUploadGrace = 5 * time.Minute
+)
 
 // ErrInvalidNotes marks caller-authored notebook/image content errors. Storage
 // failures deliberately do not wrap it, allowing the control plane to scrub
@@ -126,6 +129,10 @@ func (s *Store) GCNotesImages(notes string) error {
 }
 
 func gcNotesImages(db notesImageExecutor, notes string) error {
+	return gcNotesImagesBefore(db, notes, int64(^uint64(0)>>1))
+}
+
+func gcNotesImagesBefore(db notesImageExecutor, notes string, cutoffMillis int64) error {
 	used := map[int64]bool{}
 	for _, m := range notesImgRefRE.FindAllStringSubmatch(notes, -1) {
 		if len(m) != 2 {
@@ -137,7 +144,7 @@ func gcNotesImages(db notesImageExecutor, notes string) error {
 		}
 		used[id] = true
 	}
-	rows, err := db.Query(`SELECT id FROM notes_images`)
+	rows, err := db.Query(`SELECT id FROM notes_images WHERE ts <= ?`, cutoffMillis)
 	if err != nil {
 		return err
 	}
@@ -182,7 +189,7 @@ func (s *Store) persistNotes(notes string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := gcNotesImages(tx, normalized); err != nil {
+	if err := gcNotesImagesBefore(tx, normalized, time.Now().Add(-notesImageUploadGrace).UnixMilli()); err != nil {
 		return "", err
 	}
 	if _, err := tx.Exec(`INSERT INTO settings(key, value) VALUES(?, ?)

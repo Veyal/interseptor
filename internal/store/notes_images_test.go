@@ -129,6 +129,35 @@ func TestPersistNotesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPersistNotesPreservesRecentUploadUntilMarkdownReferencesIt(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	id, err := s.InsertNotesImage("image/png", []byte("pending upload"))
+	if err != nil {
+		t.Fatalf("InsertNotesImage: %v", err)
+	}
+	if _, err := s.PersistNotes("unrelated autosave"); err != nil {
+		t.Fatalf("PersistNotes: %v", err)
+	}
+	if exists, err := s.NotesImageExists(id); err != nil || !exists {
+		t.Fatalf("recent upload was collected before attachment: exists=%v err=%v", exists, err)
+	}
+
+	if _, err := s.db.Exec(`UPDATE notes_images SET ts=? WHERE id=?`, time.Now().Add(-notesImageUploadGrace-time.Second).UnixMilli(), id); err != nil {
+		t.Fatalf("age image: %v", err)
+	}
+	if _, err := s.PersistNotes("later autosave"); err != nil {
+		t.Fatalf("PersistNotes after grace: %v", err)
+	}
+	if exists, err := s.NotesImageExists(id); err != nil || exists {
+		t.Fatalf("expired orphan survived: exists=%v err=%v", exists, err)
+	}
+}
+
 func TestPersistNotesRollsBackImagesWhenSettingWriteFails(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
