@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"net"
-	"net/url"
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -36,7 +36,9 @@ type asState struct {
 	mu       sync.Mutex
 	armed    bool
 	running  bool
+	closed   bool
 	cancel   context.CancelFunc
+	done     <-chan struct{}
 	targets  int
 	scanned  int
 	requests int
@@ -117,6 +119,11 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 	// Claim the run under one lock acquisition (check arm + running, then set
 	// running) so two concurrent starts can't both launch or orphan the kill switch.
 	h.as.mu.Lock()
+	if h.as.closed {
+		h.as.mu.Unlock()
+		httpErr(w, http.StatusServiceUnavailable, "active scanner is closed")
+		return
+	}
 	if in.Arm {
 		h.as.armed = true
 	}
@@ -131,7 +138,9 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	h.as.running, h.as.cancel = true, cancel
+	h.as.done = done
 	h.as.targets, h.as.scanned, h.as.requests, h.as.findings, h.as.logs, h.as.skipped = 0, 0, 0, nil, nil, nil
 	h.as.mu.Unlock()
 
@@ -139,7 +148,8 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 	release := func() {
 		cancel()
 		h.as.mu.Lock()
-		h.as.running, h.as.cancel = false, nil
+		h.as.running, h.as.cancel, h.as.done = false, nil, nil
+		close(done)
 		h.as.mu.Unlock()
 		h.broadcast(map[string]any{"type": "activescan.update"})
 	}
@@ -172,14 +182,21 @@ func (h *activescanAPI) asStart(w http.ResponseWriter, r *http.Request) {
 		csrfAware = *in.CSRFAware
 	}
 
-	go h.asRun(ctx, targets, in.MaxRequests, aiSourceFlag(r), csrfAware)
+	go h.asRun(ctx, targets, in.MaxRequests, aiSourceFlag(r), csrfAware, done)
 	h.asWriteState(w)
 }
 
 // asRun executes the scan across targets within a shared request budget.
 // extraFlags is OR'd onto each probe (store.FlagAI when the run was kicked off
 // by the AI over MCP) so the traffic can be recognized in History.
-func (h *activescanAPI) asRun(ctx context.Context, targets []activescan.Target, budget int, extraFlags int64, csrfAware bool) {
+func (h *activescanAPI) asRun(ctx context.Context, targets []activescan.Target, budget int, extraFlags int64, csrfAware bool, done chan struct{}) {
+	defer func() {
+		h.as.mu.Lock()
+		h.as.running, h.as.cancel, h.as.done = false, nil, nil
+		close(done)
+		h.as.mu.Unlock()
+		h.broadcast(map[string]any{"type": "activescan.update"})
+	}()
 	if budget <= 0 {
 		budget = 2000
 	}
@@ -215,10 +232,6 @@ func (h *activescanAPI) asRun(ctx context.Context, targets []activescan.Target, 
 		}
 		h.broadcast(map[string]any{"type": "activescan.update"})
 	}
-	h.as.mu.Lock()
-	h.as.running, h.as.cancel = false, nil
-	h.as.mu.Unlock()
-	h.broadcast(map[string]any{"type": "activescan.update"})
 }
 
 // asTargets keeps in-scope flows whose endpoint has injection points, deduped.

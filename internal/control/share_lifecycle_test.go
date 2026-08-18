@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,6 +100,44 @@ func TestHubCloseCancelsAndWaitsForActiveIntruder(t *testing.T) {
 	if st := h.intr.State(); st.Running {
 		t.Fatalf("Intruder still running after Hub.Close: %+v", st)
 	}
+}
+
+func TestHubCloseCancelsAndWaitsForActiveScan(t *testing.T) {
+	h, _, _ := newHub(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	canceled := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		cancel()
+		releaseOnce.Do(func() { close(release) })
+	})
+	h.as.mu.Lock()
+	h.as.running = true
+	h.as.cancel = cancel
+	h.as.done = done
+	h.as.mu.Unlock()
+	go func() {
+		<-ctx.Done()
+		close(canceled)
+		<-release
+		close(done)
+	}()
+
+	closeReturned := make(chan struct{})
+	go func() {
+		h.Close()
+		close(closeReturned)
+	}()
+	awaitControlLifecycle(t, canceled, "active-scan cancellation")
+	select {
+	case <-closeReturned:
+		t.Fatal("Hub.Close returned before the active scan finished")
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
+	awaitControlLifecycle(t, closeReturned, "Hub.Close after active scan completion")
 }
 
 func TestIntruderStartAfterHubCloseReturnsServiceUnavailable(t *testing.T) {

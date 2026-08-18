@@ -81,6 +81,7 @@ func (h *Hub) Close() {
 	h.tunnelCloseOnce.Do(func() {
 		h.StopTunnel()
 		h.closeActivitySocket()
+		h.stopActiveScan()
 		if h.intr != nil {
 			h.intr.Close()
 		}
@@ -88,4 +89,17 @@ func (h *Hub) Close() {
 			h.tun.Close()
 		}
 	})
+}
+
+func (h *Hub) stopActiveScan() {
+	h.as.mu.Lock()
+	h.as.closed = true
+	cancel, done := h.as.cancel, h.as.done
+	if cancel != nil {
+		cancel()
+	}
+	h.as.mu.Unlock()
+	if done != nil {
+		<-done
+	}
 }
