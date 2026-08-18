@@ -56,6 +56,32 @@ func TestParseSavedItemsXML(t *testing.T) {
 	}
 }
 
+func TestParseSavedItemsXMLDecodesChunkedBodies(t *testing.T) {
+	req := "POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
+	res := "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r\nworld\r\n0\r\n\r\n"
+	doc := `<items><item><url>https://example.com/upload</url>` +
+		`<request base64="true">` + base64.StdEncoding.EncodeToString([]byte(req)) + `</request>` +
+		`<response base64="true">` + base64.StdEncoding.EncodeToString([]byte(res)) + `</response>` +
+		`</item></items>`
+
+	var got Entry
+	if _, err := Parse(strings.NewReader(doc), func(e Entry) error {
+		got = e
+		return nil
+	}); err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if string(got.ReqBody) != "hello" || string(got.ResBody) != "world" {
+		t.Fatalf("bodies = req %q res %q", got.ReqBody, got.ResBody)
+	}
+	if got.ReqHeaders.Get("Transfer-Encoding") != "" || got.ResHeaders.Get("Transfer-Encoding") != "" {
+		t.Fatalf("transfer encoding survived normalization: req=%v res=%v", got.ReqHeaders, got.ResHeaders)
+	}
+	if got.ReqHeaders.Get("Content-Length") != "5" || got.ResHeaders.Get("Content-Length") != "5" {
+		t.Fatalf("content lengths = req %q res %q", got.ReqHeaders.Get("Content-Length"), got.ResHeaders.Get("Content-Length"))
+	}
+}
+
 func TestParsePlainSavedItemAndReconstructURL(t *testing.T) {
 	xmlDoc := `<items><item><host>example.com</host><port>8080</port><protocol>http</protocol>` +
 		`<request base64="false">GET /plain HTTP/1.0&#10;Host: example.com:8080&#10;&#10;</request>` +

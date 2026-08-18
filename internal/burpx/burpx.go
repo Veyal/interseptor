@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -190,6 +191,11 @@ func parseRequest(raw []byte) (method, path, proto string, headers http.Header, 
 	if req.Host != "" {
 		headers.Set("Host", req.Host)
 	}
+	body, err = normalizeTransferBody(body, req.TransferEncoding)
+	if err != nil {
+		return "", "", "", nil, nil, err
+	}
+	setCanonicalContentLength(headers, body)
 	path = req.URL.RequestURI()
 	if path == "" {
 		path = "/"
@@ -207,7 +213,40 @@ func parseResponse(raw []byte) (status int, proto string, headers http.Header, b
 		return 0, "", nil, nil, err
 	}
 	_ = resp.Body.Close()
-	return resp.StatusCode, resp.Proto, resp.Header.Clone(), body, nil
+	headers = resp.Header.Clone()
+	body, err = normalizeTransferBody(body, resp.TransferEncoding)
+	if err != nil {
+		return 0, "", nil, nil, err
+	}
+	setCanonicalContentLength(headers, body)
+	return resp.StatusCode, resp.Proto, headers, body, nil
+}
+
+func normalizeTransferBody(body []byte, encodings []string) ([]byte, error) {
+	chunked := false
+	for _, encoding := range encodings {
+		if strings.EqualFold(strings.TrimSpace(encoding), "chunked") {
+			chunked = true
+			break
+		}
+	}
+	if !chunked {
+		return body, nil
+	}
+	decoded, err := io.ReadAll(httputil.NewChunkedReader(bytes.NewReader(body)))
+	if err != nil {
+		return nil, fmt.Errorf("decode chunked body: %w", err)
+	}
+	return decoded, nil
+}
+
+func setCanonicalContentLength(headers http.Header, body []byte) {
+	headers.Del("Transfer-Encoding")
+	if len(body) > 0 {
+		headers.Set("Content-Length", strconv.Itoa(len(body)))
+	} else {
+		headers.Del("Content-Length")
+	}
 }
 
 func splitMessage(raw []byte) (head, body []byte) {
