@@ -565,6 +565,31 @@ func TestFullProjectImportRejectsDatabaseBodyReferenceMissingFromArchive(t *test
 	}
 }
 
+func TestValidateImportedProjectRejectsMissingOriginalBody(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "POST", Scheme: "https", Host: "example.com",
+		Path: "/edited", Status: 200, OriginalReqBodyHash: strings.Repeat("a", 64),
+	}); err != nil {
+		st.Close()
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "interseptor.db"), filepath.Join(dir, archiveDBName)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := validateImportedProject(dir); err == nil {
+		t.Fatal("project with a missing original request body passed validation")
+	}
+}
+
 func TestUnpackFullArchiveRejectsExpandedFileOverLimitAndRemovesPartialFile(t *testing.T) {
 	// Given
 	archivePath := filepath.Join(t.TempDir(), "project.zip")

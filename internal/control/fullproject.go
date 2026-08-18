@@ -411,6 +411,10 @@ func validateImportedProject(dir string) error {
 		SELECT req_body_hash AS body_hash FROM flows WHERE req_body_hash != ''
 		UNION
 		SELECT res_body_hash AS body_hash FROM flows WHERE res_body_hash != ''
+		UNION
+		SELECT original_req_body_hash AS body_hash FROM flows WHERE original_req_body_hash != ''
+		UNION
+		SELECT original_res_body_hash AS body_hash FROM flows WHERE original_res_body_hash != ''
 	)`)
 	if err != nil {
 		return fmt.Errorf("validate imported body references: %w", err)

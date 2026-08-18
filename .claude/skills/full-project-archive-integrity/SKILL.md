@@ -31,3 +31,7 @@ must likewise abort before response headers are committed.
 Never use one limited history query for a portable export. Page newest-to-oldest with `BeforeID`
 until the page is short; otherwise projects with more than the page size produce valid-looking but
 silently truncated archives.
+
+Full-project restore validation must enumerate all database-backed body evidence: current request
+and response hashes, original pre-edit request and response hashes, and finding image blocks. Missing
+original hashes break comparison evidence even when the current message still opens normally.
