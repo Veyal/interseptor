@@ -629,6 +629,36 @@ func TestRuleMutationsRejectTrailingJSONBeforeChangingRules(t *testing.T) {
 	})
 }
 
+func TestRuleAndScopeUpdatesRejectMissingIDs(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "rewrite rule", path: "/api/rules/999", body: `{"type":"req-header","match":"X-Test: .*","replace":"X-Test: value","enabled":true}`},
+		{name: "scope rule", path: "/api/scope/999", body: `{"action":"include","host":"example.com","enabled":true}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPut, ts.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("PUT: %v", err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+			}
+		})
+	}
+}
+
 func TestInterceptToggle(t *testing.T) {
 	h, st, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())

@@ -991,6 +991,10 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "rule not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}

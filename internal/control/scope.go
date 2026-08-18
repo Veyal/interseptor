@@ -1,6 +1,8 @@
 package control
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -78,6 +80,10 @@ func (h *scopeAPI) updateScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.st.UpdateScopeRule(&in); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpErr(w, http.StatusNotFound, "scope rule not found")
+			return
+		}
 		httpInternalErr(w, err)
 		return
 	}

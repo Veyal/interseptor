@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"strconv"
 	"strings"
 )
@@ -52,10 +53,20 @@ func (s *Store) CreateRule(r *Rule) (int64, error) {
 
 // UpdateRule overwrites the rule identified by r.ID.
 func (s *Store) UpdateRule(r *Rule) error {
-	_, err := s.db.Exec(
+	res, err := s.db.Exec(
 		`UPDATE rules SET ord=?, enabled=?, type=?, match=?, replace=? WHERE id=?`,
 		r.Ord, r.Enabled, r.Type, r.Match, r.Replace, r.ID)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // DeleteRule removes a rule by id.
@@ -78,10 +89,10 @@ type FlowFilter struct {
 	SearchScope  string // path (default FTS), body (handled in control), id (exact flow id)
 	Scheme       string // exact scheme match ("http"/"https")
 	StatusClass  int    // 1..5 → 1xx..5xx; 0 = any
-	RequireFlags  int64 // only rows with any of these flag bits set
-	ExcludeFlags  int64 // only rows with none of these flag bits set
-	IncludeFlags  int64 // rows with any of these bits are kept even if ExcludeFlags also matches
-	WithoutFlags  int64 // only rows with none of these flag bits set (independent of ExcludeFlags)
+	RequireFlags int64  // only rows with any of these flag bits set
+	ExcludeFlags int64  // only rows with none of these flag bits set
+	IncludeFlags int64  // rows with any of these bits are kept even if ExcludeFlags also matches
+	WithoutFlags int64  // only rows with none of these flag bits set (independent of ExcludeFlags)
 
 	// Negative filters — each entry excludes matching rows; multiples are ANDed.
 	NotMethods  []string // exclude these exact methods
