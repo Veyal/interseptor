@@ -23,17 +23,38 @@ const decompressMax = 24 << 20 // 24 MiB
 // decompressed bytes and true. On any failure (unknown encoding, corrupt data,
 // empty result) it returns nil, false — callers must fall back to the raw body.
 //
-// For a comma-separated encoding chain the outermost (last) encoding is applied,
-// which is the common case for HTTP/1.1 responses.
+// Comma-separated encoding chains are decoded in reverse application order.
 func DecompressBody(contentEncoding string, body []byte) ([]byte, bool) {
 	if len(body) == 0 || contentEncoding == "" {
 		return nil, false
 	}
-	// Strip to the last token for chained encodings (e.g. "gzip, br").
 	parts := strings.Split(contentEncoding, ",")
-	enc := strings.ToLower(strings.TrimSpace(parts[len(parts)-1]))
+	current := body
+	decoded := false
+	for i := len(parts) - 1; i >= 0; i-- {
+		enc := strings.ToLower(strings.TrimSpace(parts[i]))
+		if enc == "identity" {
+			continue
+		}
+		if enc == "" {
+			return nil, false
+		}
+		var ok bool
+		current, ok = decompressOne(enc, current)
+		if !ok {
+			return nil, false
+		}
+		decoded = true
+	}
+	if !decoded {
+		return nil, false
+	}
+	return current, true
+}
 
+func decompressOne(enc string, body []byte) ([]byte, bool) {
 	var rc io.Reader
+	var closer io.Closer
 	switch enc {
 	case "gzip", "x-gzip":
 		zr, err := gzip.NewReader(bytes.NewReader(body))
@@ -41,6 +62,7 @@ func DecompressBody(contentEncoding string, body []byte) ([]byte, bool) {
 			return nil, false
 		}
 		rc = zr
+		closer = zr
 	case "br":
 		rc = brotli.NewReader(bytes.NewReader(body))
 	case "zstd":
@@ -48,21 +70,27 @@ func DecompressBody(contentEncoding string, body []byte) ([]byte, bool) {
 		if err != nil {
 			return nil, false
 		}
-		defer zr.Close()
 		rc = zr
+		closer = zr.IOReadCloser()
 	case "deflate":
 		// "deflate" is ambiguous: usually zlib-wrapped, sometimes raw DEFLATE.
 		if zr, err := zlib.NewReader(bytes.NewReader(body)); err == nil {
 			rc = zr
+			closer = zr
 		} else {
-			rc = flate.NewReader(bytes.NewReader(body))
+			fr := flate.NewReader(bytes.NewReader(body))
+			rc = fr
+			closer = fr
 		}
 	default:
 		return nil, false
 	}
 
-	out, err := io.ReadAll(io.LimitReader(rc, decompressMax))
-	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 {
+	out, err := io.ReadAll(io.LimitReader(rc, decompressMax+1))
+	if closer != nil {
+		_ = closer.Close()
+	}
+	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 || len(out) > decompressMax {
 		return nil, false
 	}
 	return out, true
