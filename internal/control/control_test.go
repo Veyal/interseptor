@@ -592,6 +592,42 @@ func TestFlowBodyDownloadStreamsIdentityBodies(t *testing.T) {
 	}
 }
 
+func TestFlowBodyDownloadStreamsUnsupportedEncodings(t *testing.T) {
+	h, s, _ := newHub(t)
+	payload := bytes.Repeat([]byte("x"), 256<<10)
+	hash, n := (&projectAPI{h}).storeBody(payload)
+	id, err := s.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/archive",
+		ResHeaders:  map[string][]string{"Content-Encoding": {"custom"}},
+		ResBodyHash: hash, ResLen: n,
+	})
+	if err != nil {
+		t.Fatalf("insert flow: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/flows/1/body?side=res", nil)
+	req.SetPathValue("id", strconv.FormatInt(id, 10))
+	rec := &chunkTrackingWriter{}
+	(&flowAPI{h}).getFlowBody(rec, req)
+	if rec.total != len(payload) {
+		t.Fatalf("wrote %d bytes, want %d", rec.total, len(payload))
+	}
+	if rec.writes <= 1 || rec.maxWrite > 64<<10 {
+		t.Fatalf("writes=%d maxWrite=%d, want chunked streaming writes", rec.writes, rec.maxWrite)
+	}
+}
+
+func TestBodyBytesUpToReportsOverflowWithoutReturningPrefix(t *testing.T) {
+	h, _, _ := newHub(t)
+	hash, _ := (&projectAPI{h}).storeBody(bytes.Repeat([]byte("x"), 32))
+	body, overflow, err := h.bodyBytesUpTo(hash, 16)
+	if err != nil {
+		t.Fatalf("bodyBytesUpTo: %v", err)
+	}
+	if !overflow || body != nil {
+		t.Fatalf("overflow=%v body=%q, want true/nil", overflow, body)
+	}
+}
+
 func TestRuleCreateAndList(t *testing.T) {
 	h, _, eng := newHub(t)
 	ts := httptest.NewServer(h.Handler())

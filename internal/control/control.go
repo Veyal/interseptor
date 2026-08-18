@@ -841,7 +841,7 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 	fn := flowBodyFilename(f.ID, sideLabel, mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+fn+`"`)
 	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
-	if enc == "" || enc == "identity" {
+	if !supportsDisplayEncoding(enc) {
 		rc, err := h.st.OpenBody(hash)
 		if err != nil {
 			httpFileNotFoundOrInternal(w, err, "body not found")
@@ -853,7 +853,24 @@ func (h *flowAPI) getFlowBody(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	_, body := decodeForDisplay(headers, h.bodyBytes(hash))
+	body, overflow, err := h.bodyBytesUpTo(hash, decodeMax)
+	if err != nil {
+		httpFileNotFoundOrInternal(w, err, "body not found")
+		return
+	}
+	if overflow {
+		rc, err := h.st.OpenBody(hash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "body not found")
+			return
+		}
+		defer rc.Close()
+		if _, err := io.Copy(w, rc); err != nil {
+			log.Printf("control: stream encoded flow body: %v", err)
+		}
+		return
+	}
+	_, body = decodeForDisplay(headers, body)
 	_, _ = w.Write(body)
 }
 
@@ -957,6 +974,25 @@ func (h *Hub) bodyBytes(hash string) []byte {
 	defer rc.Close()
 	b, _ := io.ReadAll(rc)
 	return b
+}
+
+func (h *Hub) bodyBytesUpTo(hash string, limit int64) ([]byte, bool, error) {
+	if hash == "" {
+		return nil, false, nil
+	}
+	rc, err := h.st.OpenBody(hash)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > limit {
+		return nil, true, nil
+	}
+	return b, false, nil
 }
 
 // ---- Rules ----

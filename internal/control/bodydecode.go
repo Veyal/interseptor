@@ -52,3 +52,18 @@ func firstHeader(h map[string][]string, key string) string {
 	}
 	return ""
 }
+
+func supportsDisplayEncoding(header string) bool {
+	seen := false
+	for _, part := range strings.Split(header, ",") {
+		switch strings.ToLower(strings.TrimSpace(part)) {
+		case "identity":
+			continue
+		case "gzip", "x-gzip", "deflate", "br", "zstd":
+			seen = true
+		default:
+			return false
+		}
+	}
+	return seen
+}

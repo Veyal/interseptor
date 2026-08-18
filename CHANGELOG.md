@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - **Correct chained response decoding.** Shared display and Intruder decompression now reverses every layer in `Content-Encoding` chains (for example `gzip, br`) instead of decoding only the outer layer and incorrectly marking the payload complete; over-limit expansions fail closed.
+- **Streaming unknown-encoding downloads.** Flow-body downloads with unsupported `Content-Encoding` values now stream the original bytes instead of buffering the whole body only to discover it cannot be decoded.
+- **Bounded encoded-body downloads.** Recognized compressed downloads now cap their in-memory encoded input at the display limit; larger blobs fall back to direct raw streaming rather than allocating the entire stored body.
 - **Streaming flow-body downloads.** Unencoded request and response downloads now copy directly from content-addressed storage in bounded chunks instead of loading the entire body into memory, and missing body blobs return a truthful `404`.
 - **Truthful replay-page reads.** The side-effect-free replay confirmation page now keeps text `404` responses for absent flows but returns a scrubbed text `500` for storage failures.
 - **Consistent entity-read failures.** Curl, saved-search, replay, authorization, diff, codec, check, preview, finding-mutation, and shared flow/finding/image reads now use one SQL-aware boundary, preserving `404` for absent rows while exposing operational failures only as scrubbed `500` responses.
