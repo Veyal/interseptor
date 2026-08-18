@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Strict custom-source request limits.** Passive-check, active-check, and message-codec endpoints now reject oversized JSON bodies with `413` even when a valid first value is followed by padding or another value, instead of accepting a truncated prefix or hiding `MaxBytesReader` errors.
+
 ## [1.8.1] - 2026-08-18
 
 ### Fixed

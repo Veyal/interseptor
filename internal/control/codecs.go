@@ -1,8 +1,6 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"path/filepath"
 
@@ -85,8 +83,7 @@ func (h *checksAPI) saveCodec(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	id := r.PathValue("id")
@@ -125,8 +122,7 @@ func (h *checksAPI) testCodec(w http.ResponseWriter, r *http.Request) {
 		Method  string `json:"method"`
 		Path    string `json:"path"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	side := in.Side
@@ -314,8 +310,7 @@ func (h *checksAPI) encodeCodec(w http.ResponseWriter, r *http.Request) {
 		Plaintext string `json:"plaintext"`
 		RawBody   string `json:"rawBody"` // optional wire body override for encode context
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCodecSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCodecSource, &in) {
 		return
 	}
 	src := in.Source

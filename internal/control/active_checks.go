@@ -1,8 +1,6 @@
 package control
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -56,10 +54,8 @@ func (h *checksAPI) readActiveCheckSource(id string) (src string, builtin, overr
 
 func (h *checksAPI) saveActiveCheck(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCheckSource))
 	var in struct{ Source string }
-	if err := json.Unmarshal(body, &in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	if err := activescript.Save(h.ActiveChecksDir, id, in.Source); err != nil {
@@ -85,13 +81,11 @@ func (h *checksAPI) deleteActiveCheck(w http.ResponseWriter, r *http.Request) {
 // probes (bounded to a handful) so the user can iterate before saving. A runtime
 // error is returned as 200 + {error} (never 500) to match the passive test path.
 func (h *checksAPI) testActiveCheck(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, maxCheckSource))
 	var in struct {
 		Source string `json:"source"`
 		FlowID int64  `json:"flowId"`
 	}
-	if err := json.Unmarshal(body, &in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	c, err := activescript.Compile("test", in.Source)

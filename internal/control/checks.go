@@ -2,7 +2,6 @@ package control
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 
@@ -95,8 +94,7 @@ func (h *checksAPI) setChecksDisabled(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Disabled []string `json:"disabled"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	b, _ := json.Marshal(in.Disabled)
@@ -138,8 +136,7 @@ func (h *checksAPI) saveCheck(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Source string `json:"source"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	if err := checkscript.Save(h.ChecksDir, r.PathValue("id"), in.Source); err != nil {
@@ -168,8 +165,7 @@ func (h *checksAPI) testCheck(w http.ResponseWriter, r *http.Request) {
 		Source string `json:"source"`
 		FlowID int64  `json:"flowId"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxCheckSource)).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxCheckSource, &in) {
 		return
 	}
 	c, err := checkscript.Compile("test", in.Source)
