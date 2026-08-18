@@ -59,7 +59,16 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		if !h.sc.InScope(f) { // focus the scanner on in-scope traffic only
 			continue
 		}
-		req, res := h.bodyBytes(f.ReqBodyHash), h.bodyBytes(f.ResBodyHash)
+		req, err := h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "request body not found")
+			return
+		}
+		res, err := h.bodyBytesResult(f.ResBodyHash)
+		if err != nil {
+			httpFileNotFoundOrInternal(w, err, "response body not found")
+			return
+		}
 		all = append(all, scanner.AnalyzeWithDisabled(f, req, res, disabled)...)
 
 		if len(checks) > 0 {
