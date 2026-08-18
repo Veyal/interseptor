@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,47 @@ import (
 	"testing"
 	"time"
 )
+
+func TestHumanInputMutationsRejectTrailingJSONBeforeChangingState(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		h, _, _ := newHub(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		req := httptest.NewRequest(http.MethodPost, "/api/human-input",
+			strings.NewReader(`{"message":"question"}{}`)).WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		(&metaAPI{h}).createHumanInput(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+		if prompts := h.hi.pending(); len(prompts) != 0 {
+			t.Fatalf("prompt created after rejected command: %+v", prompts)
+		}
+	})
+
+	t.Run("respond", func(t *testing.T) {
+		h, _, _ := newHub(t)
+		prompt := h.hi.create("question", nil)
+		ts := httptest.NewServer(h.Handler())
+		defer ts.Close()
+
+		resp, err := http.Post(ts.URL+"/api/human-input/"+strconv.FormatInt(prompt.ID, 10)+"/respond",
+			"application/json", strings.NewReader(`{"answer":"yes"}{}`))
+		if err != nil {
+			t.Fatalf("POST response: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+		got := h.hi.get(prompt.ID)
+		if got == nil || got.Answered {
+			t.Fatalf("prompt answered after rejected command: %+v", got)
+		}
+	})
+}
 
 // The AI's request_human_input call blocks until the human answers; the answer
 // flows back, and the prompt leaves the pending list.

@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 // call holds the state); the UI lists pending ones so an SSE reconnect recovers.
 
 const humanInputWait = 40 * time.Second
+
+const maxHumanInputRequestBytes int64 = 64 << 10
 
 // humanInputExpiry bounds how long an unanswered prompt lives. Without this,
 // an abandoned AI question (operator never responds) stays in the prompts
@@ -156,7 +157,10 @@ func (h *metaAPI) createHumanInput(w http.ResponseWriter, r *http.Request) {
 		Message string   `json:"message"`
 		Options []string `json:"options"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Message == "" {
+	if !decodeLimitedJSON(w, r, maxHumanInputRequestBytes, &in) {
+		return
+	}
+	if in.Message == "" {
 		httpErr(w, http.StatusBadRequest, "message required")
 		return
 	}
@@ -194,8 +198,7 @@ func (h *metaAPI) respondHumanInput(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Answer string `json:"answer"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxHumanInputRequestBytes, &in) {
 		return
 	}
 	if !h.hi.answer(id, in.Answer) {
