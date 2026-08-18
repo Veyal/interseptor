@@ -382,7 +382,8 @@ func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
 			if err != nil {
 				rr.Error = "response body unavailable"
 			} else {
-				rr.BodyHash = bodySHA256(resBody)
+				_, comparableBody := decodeForDisplay(flow.ResHeaders, resBody)
+				rr.BodyHash = bodySHA256(comparableBody)
 			}
 		}
 	}

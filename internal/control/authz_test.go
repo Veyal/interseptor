@@ -1,6 +1,7 @@
 package control
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -235,6 +236,35 @@ func TestAuthzRunDoesNotUseErroredReplayAsBaseline(t *testing.T) {
 	}
 	if ro.Results[1].Same {
 		t.Fatalf("valid replay matched errored baseline: %+v", ro.Results)
+	}
+}
+
+func TestAuthzRunComparesDecodedResponseBodies(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		zw.Name = r.Header.Get("Authorization")
+		_, _ = zw.Write([]byte("same access"))
+		_ = zw.Close()
+	}))
+	defer target.Close()
+	u, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _, _ := newHub(t)
+	ro := (&authzAPI{h}).authzRunOne(&store.Flow{
+		Method: "GET", Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: "/probe",
+	}, []identity{
+		{Name: "one", Headers: "Authorization: Bearer one"},
+		{Name: "two", Headers: "Authorization: Bearer two"},
+	})
+	if len(ro.Results) != 2 || !ro.Results[1].Same {
+		t.Fatalf("results = %+v, want decoded bodies to match", ro.Results)
 	}
 }
 

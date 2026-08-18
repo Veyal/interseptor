@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Semantic authorization body comparison.** Authorization replays now compare bounded decoded response content, so identical gzip bodies with different wire metadata are not misclassified as different access.
 - **Decoded active-probe analysis.** Active-scan detectors now explicitly decode preserved `Content-Encoding` bodies before inspection, keeping capture bytes wire-accurate without losing compressed-response detections.
 - **Truthful Intruder body failures.** Intruder grep now reports a referenced response body that cannot be read instead of turning the missing evidence into a silent non-match.
 - **Wire-accurate Sender responses.** Repeater/Intruder/active/authz sends now preserve encoded response bytes and `Content-Encoding` metadata instead of allowing Go's transport to transparently rewrite captured evidence; display and grep paths continue to decode explicitly.
