@@ -34,6 +34,24 @@ func TestAddArchiveFilesReportsWalkErrors(t *testing.T) {
 	}
 }
 
+func TestAddArchiveFilesRejectsSymlinks(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "outside-secret.txt")
+	if err := os.WriteFile(outside, []byte("must not enter project archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codecs := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(codecs, "linked.star")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	zw := zip.NewWriter(io.Discard)
+	err := addArchiveFiles(zw, codecs, archiveCodecRoot, false)
+	_ = zw.Close()
+	if err == nil {
+		t.Fatal("codec symlink was followed into the project archive")
+	}
+}
+
 func TestExportFullReportsArchiveFailureBeforeSendingZip(t *testing.T) {
 	h, _, _ := newHub(t)
 	h.ProjectDir = string([]byte{0})

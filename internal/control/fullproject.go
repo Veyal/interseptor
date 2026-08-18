@@ -143,6 +143,16 @@ func addArchiveFiles(zw *zip.Writer, sourceDir, archiveRoot string, skipTemporar
 		if d.IsDir() || (skipTemporary && strings.HasPrefix(d.Name(), ".tmp-")) {
 			return nil
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing symlink in project archive: %q", p)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing non-regular file in project archive: %q", p)
+		}
 		rel, err := filepath.Rel(sourceDir, p)
 		if err != nil {
 			return fmt.Errorf("archive relative path for %q: %w", p, err)

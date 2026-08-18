@@ -35,3 +35,7 @@ silently truncated archives.
 Full-project restore validation must enumerate all database-backed body evidence: current request
 and response hashes, original pre-edit request and response hashes, and finding image blocks. Missing
 original hashes break comparison evidence even when the current message still opens normally.
+
+During export, reject symlinks and any other non-regular filesystem entry before `os.Open`. Opening a
+symlink follows it, so a link planted in a project codec/body directory can copy an outside file into
+an archive that an operator later shares.
