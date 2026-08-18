@@ -117,6 +117,32 @@ func TestSwitchProjectAcceptsExplicitPath(t *testing.T) {
 	}
 }
 
+func TestSwitchProjectRejectsTrailingJSONBeforeScheduling(t *testing.T) {
+	h, _, _ := newHub(t)
+	fired := make(chan string, 1)
+	h.SwitchProject = func(target string) error {
+		fired <- target
+		return nil
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/project/switch", "application/json",
+		strings.NewReader(`{"target":"client-a"}{}`))
+	if err != nil {
+		t.Fatalf("POST project switch: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+	select {
+	case target := <-fired:
+		t.Fatalf("project switch scheduled after rejected command: %q", target)
+	case <-time.After(350 * time.Millisecond):
+	}
+}
+
 // Clearing the activity feed must delete the persisted rows, not just the client
 // copy — otherwise it reappears on reload now that the feed is stored.
 func TestClearActivityEndpoint(t *testing.T) {

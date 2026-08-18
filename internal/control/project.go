@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -30,6 +29,8 @@ type projectBundle struct {
 }
 
 const maxPortableProjectImportBytes = 128 << 20
+
+const maxProjectSwitchRequestBytes int64 = 16 << 10
 
 const portableProjectFlowPageSize = 10000
 
@@ -402,8 +403,7 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 		Target string `json:"target"`
 		Path   string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil && err != io.EOF {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeOptionalLimitedJSON(w, r, maxProjectSwitchRequestBytes, &in) {
 		return
 	}
 	if path := strings.TrimSpace(in.Path); path != "" {
