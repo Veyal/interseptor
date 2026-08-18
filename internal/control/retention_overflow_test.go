@@ -2,9 +2,11 @@ package control
 
 import (
 	"bytes"
+	"database/sql"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -20,6 +22,41 @@ func TestPutRetentionRejectsAgeThatOverflowsDuration(t *testing.T) {
 	(&flowAPI{h}).putRetention(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPutRetentionRollsBackBothSettingsOnFailure(t *testing.T) {
+	h, st, _ := newHub(t)
+	if err := st.SetSettings(map[string]string{
+		retentionMaxAgeHoursKey: "12",
+		retentionMaxFlowsKey:    "34",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(st.BodiesDir()), "interseptor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_retention_flows BEFORE INSERT ON settings
+		WHEN NEW.key = 'retention.maxFlows' BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/flows/retention", bytes.NewBufferString(`{"maxAgeHours":1,"maxFlows":2}`))
+	(&flowAPI{h}).putRetention(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rec.Code, rec.Body.String())
+	}
+	for key, want := range map[string]string{retentionMaxAgeHoursKey: "12", retentionMaxFlowsKey: "34"} {
+		got, ok, err := st.GetSetting(key)
+		if err != nil || !ok || got != want {
+			t.Errorf("%s = %q, ok=%v, err=%v; want %q", key, got, ok, err, want)
+		}
 	}
 }
 

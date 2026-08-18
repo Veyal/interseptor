@@ -15,8 +15,9 @@ broadcast. On failure, use `httpInternalErr`; never ignore a persistence error a
 Marshal/validate every setting before opening the transaction so serialization failures cannot leave a
 partial batch. Preserve omitted optional fields by leaving their keys out of the map.
 
-Test the handler with a closed store: it must return a scrubbed `500` and must not follow the old
-best-effort path that mutates runtime state after failed writes.
+Test the handler with a closed store, or install a SQLite trigger that rejects a later sorted key:
+it must return a scrubbed `500`, retain every prior value, and must not follow the old best-effort
+path that mutates runtime state after failed writes.
 
 Background callbacks need the same contract. Return persistence errors to the runtime owner and apply
 new in-memory state only after the callback succeeds; a `void` callback that discards `SetSetting`

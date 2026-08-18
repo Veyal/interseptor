@@ -1,7 +1,6 @@
 package control
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,11 +13,12 @@ import (
 // ticker (so a long engagement can't fill the disk silently) and on demand via
 // POST /api/flows/retention/run.
 const (
-	retentionMaxAgeHoursKey = "retention.maxAgeHours"
-	retentionMaxFlowsKey    = "retention.maxFlows"
-	retentionInterval       = 30 * time.Minute
-	retentionInitialDelay   = 10 * time.Second
-	maxRetentionAgeHours    = int64(1<<63-1) / int64(time.Hour)
+	retentionMaxAgeHoursKey        = "retention.maxAgeHours"
+	retentionMaxFlowsKey           = "retention.maxFlows"
+	retentionInterval              = 30 * time.Minute
+	retentionInitialDelay          = 10 * time.Second
+	maxRetentionRequestBytes int64 = 4 << 10
+	maxRetentionAgeHours           = int64(1<<63-1) / int64(time.Hour)
 )
 
 type retentionPolicy struct {
@@ -124,18 +124,18 @@ func (h *flowAPI) getRetention(w http.ResponseWriter, r *http.Request) {
 
 func (h *flowAPI) putRetention(w http.ResponseWriter, r *http.Request) {
 	var in retentionPolicy
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		httpErr(w, http.StatusBadRequest, "bad json")
+	if !decodeLimitedJSON(w, r, maxRetentionRequestBytes, &in) {
 		return
 	}
 	if err := validateRetentionPolicy(in); err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !h.persistSetting(w, retentionMaxAgeHoursKey, strconv.FormatInt(in.MaxAgeHours, 10)) {
-		return
-	}
-	if !h.persistSetting(w, retentionMaxFlowsKey, strconv.FormatInt(in.MaxFlows, 10)) {
+	if err := h.st.SetSettings(map[string]string{
+		retentionMaxAgeHoursKey: strconv.FormatInt(in.MaxAgeHours, 10),
+		retentionMaxFlowsKey:    strconv.FormatInt(in.MaxFlows, 10),
+	}); err != nil {
+		httpInternalErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, h.loadRetentionPolicy())

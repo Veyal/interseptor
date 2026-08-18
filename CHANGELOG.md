@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Burp Suite traffic migration.** Settings and `POST /api/import/burp` now stream Burp **Save items** XML exports into History, preserving request/response headers, binary bodies, timestamps, status, MIME type, and comments while reporting invalid-URL skips. Opaque native `.burp` files are rejected with guidance because PortSwigger does not document that persistence format as an interchange format.
 
 ### Fixed
+- **Atomic retention configuration.** Retention age and flow-count limits now validate one complete bounded command and persist in a single transaction, so a second-key database failure cannot leave a half-applied policy behind a `500` response.
 - **Joined body-GC maintenance.** Background body reclamation started by History purge or automatic retention is now admitted through a shutdown gate and joined by `Hub.Close`, preventing project SQLite from closing while a GC job is still querying it.
 - **Fail-closed History purge modes.** Host purge now rejects unknown mode strings before deletion instead of treating every typo other than `keepOnly` as the destructive `delete` mode.
 - **Strict destructive History commands.** Bulk delete and host purge now validate exactly one complete JSON command through an 8 MiB cap before touching History, so trailing data or oversized input cannot authorize a valid prefix and then mutate stored traffic.
