@@ -27,3 +27,7 @@ Portable JSON projects are backups too. Before encoding their HAR, open and clos
 content-addressed request and response body; a resolver that maps an open failure to `nil` silently
 turns corruption into an empty exported payload. Read errors for rules, scope, settings, and notes
 must likewise abort before response headers are committed.
+
+Never use one limited history query for a portable export. Page newest-to-oldest with `BeforeID`
+until the page is short; otherwise projects with more than the page size produce valid-looking but
+silently truncated archives.

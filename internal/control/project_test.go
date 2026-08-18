@@ -63,6 +63,27 @@ func TestPortableProjectExportFailsWhenFlowBodyIsMissing(t *testing.T) {
 	}
 }
 
+func TestPortableProjectExportDoesNotTruncateLargeHistory(t *testing.T) {
+	_, st, _ := newHub(t)
+	const flowCount = 3
+	for i := 0; i < flowCount; i++ {
+		if _, err := st.InsertFlow(&store.Flow{
+			TS: time.UnixMilli(int64(i + 1)), Method: "GET", Scheme: "https",
+			Host: "example.com", Port: 443, Path: "/history", Status: 200,
+		}); err != nil {
+			t.Fatalf("InsertFlow %d: %v", i, err)
+		}
+	}
+
+	flows, err := portableProjectFlows(st, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != flowCount {
+		t.Fatalf("export query returned %d flows, want %d", len(flows), flowCount)
+	}
+}
+
 // A stray projects/default directory must not duplicate the reserved "default"
 // entry (the root project) that availableProjects always lists first.
 func TestPortableProjectIncludesAndAppliesUpstreamProxyCA(t *testing.T) {

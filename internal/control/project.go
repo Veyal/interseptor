@@ -31,8 +31,10 @@ type projectBundle struct {
 
 const maxPortableProjectImportBytes = 128 << 20
 
+const portableProjectFlowPageSize = 10000
+
 func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
-	flows, err := h.st.QueryFlowsFilter(store.FlowFilter{Limit: 10000, ExcludeFlags: store.FlagIntruder})
+	flows, err := portableProjectFlows(h.st, portableProjectFlowPageSize)
 	if err != nil {
 		httpInternalErr(w, err)
 		return
@@ -96,6 +98,26 @@ func (h *projectAPI) exportProject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="interseptor-project.json"`)
 	json.NewEncoder(w).Encode(bundle)
+}
+
+func portableProjectFlows(st *store.Store, pageSize int) ([]*store.Flow, error) {
+	var flows []*store.Flow
+	var beforeID int64
+	for {
+		page, err := st.QueryFlowsFilter(store.FlowFilter{
+			Limit:        pageSize,
+			BeforeID:     beforeID,
+			ExcludeFlags: store.FlagIntruder,
+		})
+		if err != nil {
+			return nil, err
+		}
+		flows = append(flows, page...)
+		if len(page) < pageSize {
+			return flows, nil
+		}
+		beforeID = page[len(page)-1].ID
+	}
 }
 
 func validatePortableProjectBodies(st *store.Store, flows []*store.Flow) error {
