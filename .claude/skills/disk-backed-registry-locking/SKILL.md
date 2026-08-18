@@ -20,3 +20,8 @@ single serialized mutation; launcher liveness callbacks are local, bounded proce
 
 Run the launcher package repeatedly under `go test -race` because cleanup timing exposes this class
 of defect more reliably than a single non-race run.
+
+Apply the same rule to the external-project MRU file: serialize read-modify-write in-process, publish
+through a same-directory temporary file, and return persistence errors to the switch handler before it
+schedules re-exec. A registry update that silently fails is not best-effort—the selected project will
+disappear from the switcher after restart.

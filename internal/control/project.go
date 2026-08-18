@@ -327,7 +327,10 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		name := filepath.Base(abs)
-		rememberExternalProject(h.GlobalDir, name, abs)
+		if err := rememberExternalProject(h.GlobalDir, name, abs); err != nil {
+			httpInternalErr(w, err)
+			return
+		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name})
 		h.scheduleProjectSwitch(abs, 300*time.Millisecond)
 		return

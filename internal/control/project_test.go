@@ -283,3 +283,28 @@ func TestHubCloseCancelsPendingProjectSwitch(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+func TestExternalProjectSwitchRejectsRegistryPersistenceFailure(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fired := make(chan string, 1)
+	h := &Hub{GlobalDir: blocked, SwitchProject: func(target string) error { fired <- target; return nil }}
+	defer h.Close()
+	external := filepath.Join(t.TempDir(), "engagement")
+	body, err := json.Marshal(map[string]string{"path": external})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	(&projectAPI{h}).switchProject(rec, httptest.NewRequest(http.MethodPost, "/api/project/switch", bytes.NewReader(body)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body = %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case target := <-fired:
+		t.Fatalf("project switch fired despite registry failure: %q", target)
+	case <-time.After(350 * time.Millisecond):
+	}
+}

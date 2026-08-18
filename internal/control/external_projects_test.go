@@ -2,6 +2,7 @@ package control
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -22,6 +23,31 @@ func TestIsSafeExternalPath(t *testing.T) {
 	}
 	if !isSafeExternalPath(filepath.Join(t.TempDir(), "acme-engagement")) {
 		t.Fatal("an ordinary absolute directory must be accepted")
+	}
+}
+
+func TestRememberExternalProjectConcurrentUpdates(t *testing.T) {
+	dir := t.TempDir()
+	const projects = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, projects)
+	for i := 0; i < projects; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := string(rune('a' + i))
+			errs <- rememberExternalProject(dir, name, filepath.Join(dir, name))
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(readExternalProjects(dir)); got != projects {
+		t.Fatalf("concurrent updates retained %d projects, want %d", got, projects)
 	}
 }
 
