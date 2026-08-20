@@ -132,6 +132,15 @@ func TestRepeaterPostmanImportJourney(t *testing.T) {
 	)
 }
 
+func TestRepeaterPostmanImportPreservesWarningDetails(t *testing.T) {
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	requireUIContains(t, tools,
+		"tab.warnings=Array.isArray(request.warnings)?request.warnings.slice():[];",
+		"warnings:t.warnings||[]",
+		"warnings.join(' · ')",
+	)
+}
+
 func TestSettingsBurpImportJourney(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))

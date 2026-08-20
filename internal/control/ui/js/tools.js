@@ -27,7 +27,8 @@ function repStatusLine(f){
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:''};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' ⚠ '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
 function repReqContentType(){const h=$('#repHeaders');if(!h)return'';const m=(h.value||'').match(/^content-type:\s*(\S.*?)(?:\s*;|\s*$)/im);return m?m[1].trim():'';}
@@ -39,7 +40,7 @@ export function repRefreshHL(){
   if(h)h.innerHTML=highlightHeaderLines(($('#repHeaders').value)||'')+'\n';
   if(b)b.innerHTML=highlightBodyText(($('#repBody').value)||'',repReqContentType())+'\n';
 }
-export function repTitle(t){if(t.label)return t.label;if(!t.url)return 'new tab';try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname;}catch(e){return t.method+' '+t.url.slice(0,46);}}
+export function repTitle(t){const warning=repWarningSuffix(t);if(t.label)return t.label+warning;if(!t.url)return 'new tab'+warning;try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname+warning;}catch(e){return t.method+' '+t.url.slice(0,46)+warning;}}
 // Keep tab/flow identity in lockstep with the history API contract. URL.host
 // drops an explicit default port, while flow metadata always carries one, so
 // normalize both sides to scheme + hostname + port + queryless path first.
@@ -109,8 +110,8 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||''}),
-  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||''}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   onPersist:blob=>persistUIState('repeater',blob),
 });
@@ -414,6 +415,7 @@ async function importPostmanFiles(files){
     const tab=repBlank(repTabs.seq++);
     tab.label=((request.folder?request.folder+' / ':'')+(request.name||request.method+' '+request.url||('request '+(index+1))));
     tab.method=request.method||'GET';tab.url=request.url||'';tab.headers=request.headers||'';tab.body=request.body||'';
+    tab.warnings=Array.isArray(request.warnings)?request.warnings.slice():[];
     created.push(tab);repTabs.tabs.push(tab);
   });
   repTabs.active=created[0].tid;renderRepTabs();repLoadEditor();repPersist();

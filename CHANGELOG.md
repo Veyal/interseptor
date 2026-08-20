@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Postman import fidelity.** Preserve custom methods, disabled bodies, OAuth 2.0 token placement,
 	  prefixes, and query semantics, multipart part content types, and GraphQL operation fields when preparing Repeater tabs.
+- **Postman import review cues.** Preserve detailed per-request warnings in Repeater tabs so unsupported features remain visible for review.
 - **Dev-build fallback version advanced to published `2.0.1`.**
 
 ## [2.0.1] - 2026-08-20
