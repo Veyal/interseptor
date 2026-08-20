@@ -40,8 +40,27 @@ export function repRefreshHL(){
   if(b)b.innerHTML=highlightBodyText(($('#repBody').value)||'',repReqContentType())+'\n';
 }
 export function repTitle(t){if(!t.url)return 'new tab';try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname;}catch(e){return t.method+' '+t.url.slice(0,46);}}
-export function repTabEndpoint(t){if(!t||!t.url)return null;try{const u=new URL(t.url);return u.host+u.pathname;}catch(e){return null;}}
-export function repFlowEndpoint(f){return f.host+String(f.path||'').split('?')[0];}
+// Keep tab/flow identity in lockstep with the history API contract. URL.host
+// drops an explicit default port, while flow metadata always carries one, so
+// normalize both sides to scheme + hostname + port + queryless path first.
+function repEndpointParts(scheme,host,port,path){
+  const s=String(scheme||'').trim().toLowerCase().replace(/:$/,'');
+  const h=String(host||'').trim().toLowerCase().replace(/^\[|\]$/g,'');
+  if(!s||!h)return null;
+  const n=Number(port);
+  const p=n>0?n:(s==='https'?443:80);
+  let pathname=String(path||'').split(/[?#]/)[0];
+  if(!pathname)pathname='/';
+  if(pathname[0]!=='/')pathname='/'+pathname;
+  return {scheme:s,host:h,port:p,path:pathname};
+}
+function repEndpointKey(ep){return ep?ep.scheme+'|'+ep.host+'|'+ep.port+'|'+ep.path:null;}
+function repTabEndpointParts(t){
+  if(!t||!t.url)return null;
+  try{const u=new URL(t.url);return repEndpointParts(u.protocol,u.hostname,u.port,u.pathname);}catch(e){return null;}
+}
+export function repTabEndpoint(t){return repEndpointKey(repTabEndpointParts(t));}
+export function repFlowEndpoint(f){return repEndpointKey(repEndpointParts(f&&f.scheme,f&&f.host,f&&f.port,f&&f.path));}
 export function headersToText(h){if(!h)return'';const out=[];(h.Host||[]).forEach(v=>out.push('Host: '+v));Object.keys(h).sort().forEach(k=>{if(k==='Host')return;(h[k]||[]).forEach(v=>out.push(k+': '+v));});return out.join('\n');}
 
 function compactBody(s){
@@ -201,12 +220,14 @@ export async function renderRepResponse(){
   }catch(e){if(repCur()===t)$('#repResView').textContent='(error: '+e.message+')';}
 }
 export async function loadRepHistory(){
-  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpoint(t);
+  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpointParts(t);
   const setCount=n=>{const tg=$('#repHistToggle');if(tg)tg.textContent='⟲ History'+(n?' ('+n+')':'');};
+  if(!ep){setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';return;}
   try{
-    const d=await api('/api/repeater/history');
+    const params=new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path});
+    const d=await api('/api/repeater/history?'+params.toString());
     if(repCur()!==t)return; // tab switched mid-fetch — don't paint stale history
-    const flows=ep?(d.flows||[]).filter(f=>repFlowEndpoint(f)===ep):[];
+    const flows=d.flows||[];
     setCount(flows.length);
     if(!flows.length){box.innerHTML='<div class="hint" style="padding:10px">'+(ep?'No sends to this endpoint yet.':'Send a request to start this tab’s history.')+'</div>';return;}
     box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">

@@ -77,22 +77,26 @@ func (s *Store) DeleteRule(id int64) error {
 
 // FlowFilter selects and pages flows. Zero-valued fields are ignored.
 type FlowFilter struct {
-	Limit        int    // max rows (defaults to 200 when <= 0)
-	BeforeID     int64  // legacy cursor: id < BeforeID when sorting id DESC
-	CursorID     int64  // keyset cursor flow id (0 = first page)
-	CursorVal    string // sort value at the cursor row (required for non-id sorts)
-	SortKey      string // id|method|host|path|status|size|time|mime
-	SortDir      int    // +1 asc, -1 desc; 0 = default for the key
-	Method       string // exact method match
-	Host         string // case-insensitive substring of host
-	Search       string // FTS on host/path/method/note, or exact id when SearchScope=id / #id / id:N
-	SearchScope  string // path (default FTS), body (handled in control), id (exact flow id)
-	Scheme       string // exact scheme match ("http"/"https")
-	StatusClass  int    // 1..5 → 1xx..5xx; 0 = any
-	RequireFlags int64  // only rows with any of these flag bits set
-	ExcludeFlags int64  // only rows with none of these flag bits set
-	IncludeFlags int64  // rows with any of these bits are kept even if ExcludeFlags also matches
-	WithoutFlags int64  // only rows with none of these flag bits set (independent of ExcludeFlags)
+	Limit          int    // max rows (defaults to 200 when <= 0)
+	BeforeID       int64  // legacy cursor: id < BeforeID when sorting id DESC
+	CursorID       int64  // keyset cursor flow id (0 = first page)
+	CursorVal      string // sort value at the cursor row (required for non-id sorts)
+	SortKey        string // id|method|host|path|status|size|time|mime
+	SortDir        int    // +1 asc, -1 desc; 0 = default for the key
+	Method         string // exact method match
+	Host           string // case-insensitive substring of host
+	Search         string // FTS on host/path/method/note, or exact id when SearchScope=id / #id / id:N
+	SearchScope    string // path (default FTS), body (handled in control), id (exact flow id)
+	Scheme         string // exact scheme match ("http"/"https")
+	StatusClass    int    // 1..5 → 1xx..5xx; 0 = any
+	RequireFlags   int64  // only rows with any of these flag bits set
+	ExcludeFlags   int64  // only rows with none of these flag bits set
+	IncludeFlags   int64  // rows with any of these bits are kept even if ExcludeFlags also matches
+	WithoutFlags   int64  // only rows with none of these flag bits set (independent of ExcludeFlags)
+	EndpointScheme string // exact endpoint scheme; grouped with host, port, and queryless path
+	EndpointHost   string // case-insensitive exact endpoint host
+	EndpointPort   int    // exact endpoint destination port
+	EndpointPath   string // exact endpoint path while ignoring the stored query string
 
 	// Negative filters — each entry excludes matching rows; multiples are ANDed.
 	NotMethods  []string // exclude these exact methods
