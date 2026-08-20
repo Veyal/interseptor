@@ -58,8 +58,9 @@ contains the upstream dial, DNS, TLS, or authentication failure.
 ## Send to Repeater does not look right
 
 Use the action on the attached PoC flow, wait for “loaded #… into Repeater,” and verify method, complete
-URL, headers, and body before sending. Interseptor reuses a tab for the same host and path; query values
-remain in the loaded request. A deleted/missing evidence flow cannot be sent and must be recaptured.
+URL, headers, and body before sending. Interseptor reuses a tab for the same scheme, host, port, and
+queryless path; query values remain in the loaded request. A deleted/missing evidence flow cannot be
+sent and must be recaptured.
 
 ## Finding layout or evidence is incomplete
 

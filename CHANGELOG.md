@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Wire-evidence analysis guidance.** A repository skill now documents how to preserve encoded HTTP bytes while providing bounded decoded bodies to scanners and excluding incomplete evidence from decisions.
 
 ### Fixed
+- **Complete Repeater endpoint history.** Repeater now filters by canonical scheme, host, port, and queryless path in SQLite before applying the history limit, so unrelated recent sends cannot hide older responses such as `500`; default ports, IPv6 hosts, malformed filters, and oversized limits are handled consistently.
 - **Canonical Go formatting.** The remaining non-`gofmt` source and test files now use consistent standard Go layout, reducing formatting noise in future changes.
 - **Semantic authorization body comparison.** Authorization replays now compare bounded decoded response content, so identical gzip bodies with different wire metadata are not misclassified as different access.
 - **Decoded active-probe analysis.** Active-scan detectors now explicitly decode preserved `Content-Encoding` bodies before inspection, keeping capture bytes wire-accurate without losing compressed-response detections.
@@ -67,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Fail-closed project merge iteration.** Project union now checks terminal SQLite errors after reading peer flows and findings, preventing a mid-query failure from importing a valid-looking prefix and returning a false success.
 - **Bounded mobile automation commands.** Android proxy/CA/setup and iOS simulator/profile commands now parse capped, exact-one-value optional JSON before checking or invoking ADB, simctl, or connected devices, yielding deterministic `413` responses for oversized input.
 - **Bounded iOS SSH commands.** SSH status, CA-install, and full-setup endpoints now cap optional JSON payloads and reject trailing values instead of accepting the first object while leaving unlimited or ambiguous input unread.
-- **IPv6-safe target URLs.** HAR exports, Burp fallback URLs, flow analysis, authorization replays, and active-scan CSRF probes now share canonical URL-authority formatting, including brackets around IPv6 literals and correct custom ports.
+- **IPv6-safe target URLs.** HAR exports, Burp fallback URLs, flow analysis, Repeater flow loading, authorization replays, and active-scan CSRF probes now share canonical URL-authority formatting, including brackets around IPv6 literals and correct custom ports.
 - **Correct Burp chunked-body migration.** Burp Save-items imports now decode HTTP chunk framing into entity bytes and replace transfer framing with the canonical content length, preventing reconstructed requests and responses from exposing chunk markers as payload.
 - **Serialized notebook writes.** Full notebook replacements and atomic appends now share one critical section, closing the stale-read window where a concurrent append could overwrite a newly saved notebook.
 - **Truthful merge body previews.** Project merge previews now resolve existing content-addressed bodies through their canonical nested paths and validate archive names, layout, and content hashes just like the real merge, instead of recounting existing blobs or accepting files the merge would reject.

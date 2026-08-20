@@ -75,6 +75,22 @@ func buildFlowFilterWhere(f FlowFilter) ([]string, []any) {
 		where = append(where, "instr(lower(host), lower(?)) > 0")
 		args = append(args, f.Host)
 	}
+	if f.EndpointScheme != "" {
+		where = append(where, "scheme = ?")
+		args = append(args, f.EndpointScheme)
+	}
+	if f.EndpointHost != "" {
+		where = append(where, "lower(host) = lower(?)")
+		args = append(args, f.EndpointHost)
+	}
+	if f.EndpointPort > 0 {
+		where = append(where, "port = ?")
+		args = append(args, f.EndpointPort)
+	}
+	if f.EndpointPath != "" {
+		where = append(where, "CASE WHEN instr(path, '?') > 0 THEN substr(path, 1, instr(path, '?') - 1) ELSE path END = ?")
+		args = append(args, f.EndpointPath)
+	}
 	if f.Search != "" {
 		if id, ok := flowSearchAsID(f.Search, f.SearchScope); ok {
 			where = append(where, "id = ?")

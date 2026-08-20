@@ -229,6 +229,32 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	}
 }
 
+func TestUIJourneyRepeaterHistoryUsesFullEndpointIdentity(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+
+	// Repeater tabs must distinguish scheme, host, port, and queryless path.
+	// History is filtered by the API so an older request outside the global page
+	// cannot hide a matching send from the active tab.
+	requireUIContains(t, tools,
+		"function repEndpointParts(",
+		"function repEndpointAuthority(",
+		"authority.replace(/%/g,'%25')",
+		"export function repTabEndpoint(",
+		"export function repFlowEndpoint(",
+		"new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path})",
+		"'/api/repeater/history?'+params.toString()",
+	)
+	if strings.Contains(tools, "api('/api/repeater/history')") {
+		t.Error("Repeater history must not fetch the global unfiltered history page")
+	}
+	if strings.Contains(tools, ".filter(f=>repFlowEndpoint(f)===ep)") {
+		t.Error("Repeater history must rely on endpoint filtering from the API")
+	}
+	if strings.Count(tools, "repEndpointAuthority(d.scheme,d.host,d.port)") != 2 {
+		t.Error("Repeater flow-loading paths must use the shared endpoint authority formatter")
+	}
+}
+
 func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
