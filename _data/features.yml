@@ -88,7 +88,8 @@
 - number: "21"
   id: import-export
   title: Import and export
-  text: Import and export HAR files and portable project bundles containing flows, rules, scope, and settings.
+  text: See the canonical import and export details in the API and MCP guide.
+  link: /api-and-mcp/
 - number: "22"
   id: vault
   title: Project vault

@@ -49,10 +49,11 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   send, plus a **token macro** (CSRF/re-auth: fetch a value from a refresh request, inject per send)
   and a **login macro** (record a login flow, refresh session headers, auto re-auth on 401).
 - **Import / export** — HAR in and out, Burp Suite **Save items** XML migration, Postman Collection
-  v2.0/v2.1 JSON import into Repeater (with optional Postman environment resolution), plus portable
-  **project** bundles (flows + rules + scope + settings). Postman remains useful for authoring and
-  running collections; Interseptor is the easier place to inspect live traffic, replay with session
-  state, mutate with Intruder, and preserve pentest evidence.
+  v2.0/v2.1 JSON import into labeled Repeater tabs (with optional Postman environment resolution),
+  plus portable **project** bundles (flows + rules + scope + settings). Imports prepare editable
+  requests and warnings; they do not fabricate History evidence. Postman remains useful for
+  authoring and running collections; Interseptor is the easier place to inspect live traffic, replay
+  with session state, mutate with Intruder, and preserve pentest evidence.
 - **Project vault** — always-on archive store (`interseptor vault`) for multi-device backup / import /
   merge (Tailscale Serve). See [vault](vault.md).
 - **Model-free core** — no provider keys, built-in chat, or autonomous pentest loop. Use any

@@ -48,9 +48,13 @@ an accepted interchange format.
 
 Postman Collection v2.0/v2.1 JSON uses `POST /api/import/postman`. Send the raw collection, or
 `{collection, environment}` when an exported Postman environment should resolve `{{variables}}`.
-The response is a list of editable Repeater request templates; it intentionally creates no History
-flows because an imported collection is a plan, not captured evidence. Unresolved variables and
-unsupported body features are returned as warnings for review before sending.
+The response is `{name, requests, unresolved, warnings, skipped}`; each request includes its folder
+label, method, URL, headers, body, and any request-specific warnings. Folders are flattened into
+editable Repeater tabs. Common bearer, basic, API-key, and OAuth 2 auth plus raw, URL-encoded,
+multipart, and GraphQL bodies are prepared where possible; unresolved variables remain visible and
+unsupported features (such as local file bodies) are reported for review. Import intentionally
+creates no History flows because a collection is a plan, not captured evidence; sending a tab is
+what creates live replay evidence.
 
 ### History search API
 
