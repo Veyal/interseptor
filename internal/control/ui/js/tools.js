@@ -28,7 +28,7 @@ const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸<
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
 export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
-function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' ⚠ '+warnings.join(' · '):'';}
+function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
 function repReqContentType(){const h=$('#repHeaders');if(!h)return'';const m=(h.value||'').match(/^content-type:\s*(\S.*?)(?:\s*;|\s*$)/im);return m?m[1].trim():'';}
