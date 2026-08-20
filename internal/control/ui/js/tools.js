@@ -128,6 +128,14 @@ export function repSaveEditor(){
   else t.body=v;
   t.title=repTitle(t);
 }
+function repSetMethod(method){
+  const select=$('#repMethod');if(!select)return;
+  const value=String(method||'GET');
+  if(![...select.options].some(option=>option.value===value)){
+    const option=document.createElement('option');option.value=value;option.textContent=value;select.append(option);
+  }
+  select.value=value;
+}
 function repCodecBadge(t){
   const b=$('#repCodecBadge');if(!b)return;
   if((t.reqView||'')==='decoded'&&t.codecId){
@@ -138,7 +146,7 @@ function repCodecBadge(t){
 export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repTabs.tabs.push(t);repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
-  $('#repMethod').value=t.method||'GET';$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
+  repSetMethod(t.method);$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
   const rv=t.reqView||'raw';
   repSyncReqSeg(rv);
   if(rv==='decoded')$('#repBody').value=t.decodedPlain||'';

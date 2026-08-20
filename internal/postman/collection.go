@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"mime/multipart"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"sort"
@@ -138,6 +141,7 @@ type bodyDocument struct {
 	URLEncoded []bodyParameter `json:"urlencoded"`
 	FormData   []formParameter `json:"formdata"`
 	GraphQL    json.RawMessage `json:"graphql"`
+	Disabled   bool            `json:"disabled"`
 }
 
 type bodyParameter struct {
@@ -429,6 +433,9 @@ func parseBody(raw json.RawMessage, values map[string]string, p *parser) (string
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return "", "", []string{"request body could not be imported"}
 	}
+	if body.Disabled {
+		return "", "", nil
+	}
 	switch strings.ToLower(body.Mode) {
 	case "", "raw":
 		return p.resolve(body.Raw, values), "", nil
@@ -460,33 +467,44 @@ func graphqlBody(raw json.RawMessage, p *parser, values map[string]string) (stri
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return "", "application/json", []string{"GraphQL body could not be imported"}
 	}
-	query := ""
-	if q, ok := fields["query"]; ok {
-		_ = json.Unmarshal(q, &query)
-	}
-	out := map[string]any{"query": p.resolve(query, values)}
-	if vars, ok := fields["variables"]; ok {
-		var text string
-		if json.Unmarshal(vars, &text) == nil {
-			text = p.resolve(text, values)
-			var decoded any
-			if json.Unmarshal([]byte(text), &decoded) == nil {
-				out["variables"] = decoded
-			} else {
-				out["variables"] = text
-			}
-		} else {
-			var decoded any
-			if json.Unmarshal(vars, &decoded) == nil {
-				out["variables"] = decoded
+	out := make(map[string]any, len(fields))
+	for key, field := range fields {
+		var value any
+		if err := json.Unmarshal(field, &value); err != nil {
+			return "", "application/json", []string{"GraphQL body could not be imported"}
+		}
+		value = resolveJSONStructure(value, p, values)
+		if key == "variables" {
+			if text, ok := value.(string); ok {
+				var decoded any
+				if json.Unmarshal([]byte(text), &decoded) == nil {
+					value = resolveJSONStructure(decoded, p, values)
+				}
 			}
 		}
+		out[key] = value
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
 		return "", "application/json", []string{"GraphQL body could not be encoded"}
 	}
 	return string(b), "application/json", nil
+}
+
+func resolveJSONStructure(value any, p *parser, values map[string]string) any {
+	switch value := value.(type) {
+	case string:
+		return p.resolve(value, values)
+	case []any:
+		for i := range value {
+			value[i] = resolveJSONStructure(value[i], p, values)
+		}
+	case map[string]any:
+		for key := range value {
+			value[key] = resolveJSONStructure(value[key], p, values)
+		}
+	}
+	return value
 }
 
 func multipartBody(fields []formParameter, p *parser, values map[string]string) (string, string, []string) {
@@ -503,7 +521,22 @@ func multipartBody(fields []formParameter, p *parser, values map[string]string) 
 			continue
 		}
 		value := resolveJSONValue(field.Value, p, values)
-		part, err := w.CreateFormField(key)
+		var part io.Writer
+		var err error
+		if field.ContentType == "" {
+			part, err = w.CreateFormField(key)
+		} else {
+			contentType := p.resolve(field.ContentType, values)
+			if _, _, parseErr := mime.ParseMediaType(contentType); parseErr != nil {
+				warnings = append(warnings, "form field "+key+" has invalid content type and was imported without it")
+				part, err = w.CreateFormField(key)
+			} else {
+				header := make(textproto.MIMEHeader)
+				header.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q`, key))
+				header.Set("Content-Type", contentType)
+				part, err = w.CreatePart(header)
+			}
+		}
 		if err != nil {
 			warnings = append(warnings, "form field "+key+" was not imported")
 			continue
@@ -593,12 +626,45 @@ func applyAuth(rawURL string, headers []string, auth *authDefinition, values map
 		return rawURL, []string{key + ": " + secret}, nil
 	case "oauth2":
 		if token := value("accessToken", "token", "value"); token != "" {
-			return rawURL, []string{"Authorization: Bearer " + token}, nil
+			placement := strings.ToLower(strings.TrimSpace(value("addTokenTo")))
+			switch placement {
+			case "", "header":
+				prefix := strings.TrimSpace(value("headerPrefix"))
+				if prefix == "" {
+					prefix = "Bearer"
+				}
+				return rawURL, []string{"Authorization: " + prefix + " " + token}, nil
+			case "queryparams", "queryparam", "query", "url", "urlquery":
+				parameter := value("tokenName")
+				if parameter == "" {
+					parameter = "access_token"
+				}
+				return appendQueryParameter(rawURL, parameter, token), nil, nil
+			default:
+				return rawURL, nil, []string{"OAuth 2 auth token placement " + placement + " is not supported"}
+			}
 		}
 		return rawURL, nil, []string{"OAuth 2 auth has no access token value"}
 	default:
 		return rawURL, nil, []string{auth.Type + " auth was not converted to a Repeater header"}
 	}
+}
+
+func appendQueryParameter(rawURL, key, value string) string {
+	parameter := url.QueryEscape(key) + "=" + url.QueryEscape(value)
+	fragment := ""
+	if index := strings.IndexByte(rawURL, '#'); index >= 0 {
+		fragment = rawURL[index:]
+		rawURL = rawURL[:index]
+	}
+	separator := "?"
+	if strings.Contains(rawURL, "?") {
+		separator = "&"
+		if strings.HasSuffix(rawURL, "?") || strings.HasSuffix(rawURL, "&") {
+			separator = ""
+		}
+	}
+	return rawURL + separator + parameter + fragment
 }
 
 func (p *parser) resolve(text string, values map[string]string) string {

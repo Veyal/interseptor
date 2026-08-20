@@ -1,6 +1,8 @@
 package postman
 
 import (
+	"encoding/json"
+	"mime/multipart"
 	"strings"
 	"testing"
 )
@@ -129,5 +131,93 @@ func TestParseCollectionReportsUnresolvedVariablesAndUnsupportedBodies(t *testin
 func TestParseRejectsNonCollection(t *testing.T) {
 	if _, err := Parse([]byte(`{"name":"not a collection"}`)); err == nil {
 		t.Fatal("Parse accepted a non-collection document")
+	}
+}
+
+func TestParseHonorsDisabledBodyAndPreservesMultipartContentType(t *testing.T) {
+	collection := []byte(`{
+  "info": {"name": "Body API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "item": [{"name": "Disabled", "request": {"method": "POST", "url": "https://example.com/disabled", "body": {"mode": "raw", "raw": "ignored", "disabled": true}}},
+    {"name": "Multipart", "request": {"method": "POST", "url": "https://example.com/upload", "body": {"mode": "formdata", "formdata": [{"key": "metadata", "value": "{}", "type": "text", "contentType": "application/json"}]}}}]
+}`)
+
+	got, err := Parse(collection)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got.Requests[0].Body != "" {
+		t.Fatalf("disabled body = %q, want empty", got.Requests[0].Body)
+	}
+	contentType := ""
+	for _, line := range strings.Split(got.Requests[1].Headers, "\n") {
+		if strings.HasPrefix(strings.ToLower(line), "content-type:") {
+			contentType = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+		}
+	}
+	boundary := strings.SplitN(contentType, "boundary=", 2)
+	if len(boundary) != 2 {
+		t.Fatalf("multipart content type = %q", contentType)
+	}
+	reader := multipart.NewReader(strings.NewReader(got.Requests[1].Body), boundary[1])
+	part, err := reader.NextPart()
+	if err != nil {
+		t.Fatalf("read multipart part: %v", err)
+	}
+	if part.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("part content type = %q", part.Header.Get("Content-Type"))
+	}
+}
+
+func TestParsePreservesOAuth2PlacementAndPrefix(t *testing.T) {
+	collection := []byte(`{
+  "info": {"name": "OAuth API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "item": [
+    {"name": "Header token", "request": {"method": "GET", "url": "https://example.com/header", "auth": {"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "example-token"}, {"key": "headerPrefix", "value": "Token"}, {"key": "addTokenTo", "value": "header"}]}}},
+    {"name": "URL token", "request": {"method": "GET", "url": "https://example.com/items?limit=1#top", "auth": {"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "example-token"}, {"key": "addTokenTo", "value": "queryParams"}, {"key": "tokenName", "value": "oauth_token"}]}}}
+  ]
+}`)
+
+	got, err := Parse(collection)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got.Requests[0].Headers != "Authorization: Token example-token" {
+		t.Fatalf("header auth = %q", got.Requests[0].Headers)
+	}
+	if got.Requests[1].URL != "https://example.com/items?limit=1&oauth_token=example-token#top" {
+		t.Fatalf("URL auth = %q", got.Requests[1].URL)
+	}
+}
+
+func TestParsePreservesGraphQLOperationAndExtensions(t *testing.T) {
+	collection := []byte(`{
+  "info": {"name": "GraphQL API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "variable": [{"key": "requestId", "value": "example-request"}],
+  "item": [{"name": "Get user", "request": {"method": "POST", "url": "https://example.com/graphql", "body": {"mode": "graphql", "graphql": {
+    "query": "query GetUser { user { id } }",
+    "variables": "{\"requestId\":\"{{requestId}}\"}",
+    "operationName": "GetUser",
+    "extensions": {"persistedQuery": {"version": 1, "sha256Hash": "{{requestId}}"}}
+  }}}}]
+}`)
+
+	got, err := Parse(collection)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(got.Requests[0].Body), &body); err != nil {
+		t.Fatalf("decode GraphQL body: %v", err)
+	}
+	if body["operationName"] != "GetUser" {
+		t.Fatalf("operationName = %#v", body["operationName"])
+	}
+	extensions, ok := body["extensions"].(map[string]any)
+	if !ok || extensions["persistedQuery"] == nil {
+		t.Fatalf("extensions = %#v", body["extensions"])
+	}
+	variables, ok := body["variables"].(map[string]any)
+	if !ok || variables["requestId"] != "example-request" {
+		t.Fatalf("variables = %#v", body["variables"])
 	}
 }
