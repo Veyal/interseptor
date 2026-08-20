@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fake History evidence.
 
 ### Changed
-- **Postman import fidelity.** Preserve custom methods, disabled bodies, OAuth 2.0 token placement
-  and prefixes, multipart part content types, and GraphQL operation fields when preparing Repeater tabs.
+- **Postman import fidelity.** Preserve custom methods, disabled bodies, OAuth 2.0 token placement,
+	  prefixes, and query semantics, multipart part content types, and GraphQL operation fields when preparing Repeater tabs.
 - **Dev-build fallback version advanced to published `2.0.1`.**
 
 ## [2.0.1] - 2026-08-20

@@ -173,7 +173,7 @@ func TestParsePreservesOAuth2PlacementAndPrefix(t *testing.T) {
   "info": {"name": "OAuth API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
   "item": [
     {"name": "Header token", "request": {"method": "GET", "url": "https://example.com/header", "auth": {"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "example-token"}, {"key": "headerPrefix", "value": "Token"}, {"key": "addTokenTo", "value": "header"}]}}},
-    {"name": "URL token", "request": {"method": "GET", "url": "https://example.com/items?limit=1#top", "auth": {"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "example-token"}, {"key": "addTokenTo", "value": "queryParams"}, {"key": "tokenName", "value": "oauth_token"}]}}}
+	    {"name": "URL token", "request": {"method": "GET", "url": "https://example.com/items?limit=1#top", "auth": {"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "example-token"}, {"key": "addTokenTo", "value": "queryParams"}, {"key": "tokenName", "value": "Access Token"}]}}}
   ]
 }`)
 
@@ -184,7 +184,7 @@ func TestParsePreservesOAuth2PlacementAndPrefix(t *testing.T) {
 	if got.Requests[0].Headers != "Authorization: Token example-token" {
 		t.Fatalf("header auth = %q", got.Requests[0].Headers)
 	}
-	if got.Requests[1].URL != "https://example.com/items?limit=1&oauth_token=example-token#top" {
+	if got.Requests[1].URL != "https://example.com/items?limit=1&access_token=example-token#top" {
 		t.Fatalf("URL auth = %q", got.Requests[1].URL)
 	}
 }

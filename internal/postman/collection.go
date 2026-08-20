@@ -635,11 +635,7 @@ func applyAuth(rawURL string, headers []string, auth *authDefinition, values map
 				}
 				return rawURL, []string{"Authorization: " + prefix + " " + token}, nil
 			case "queryparams", "queryparam", "query", "url", "urlquery":
-				parameter := value("tokenName")
-				if parameter == "" {
-					parameter = "access_token"
-				}
-				return appendQueryParameter(rawURL, parameter, token), nil, nil
+				return appendQueryParameter(rawURL, "access_token", token), nil, nil
 			default:
 				return rawURL, nil, []string{"OAuth 2 auth token placement " + placement + " is not supported"}
 			}
