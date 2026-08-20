@@ -55,6 +55,14 @@ function repEndpointParts(scheme,host,port,path){
   return {scheme:s,host:h,port:p,path:pathname};
 }
 function repEndpointKey(ep){return ep?ep.scheme+'|'+ep.host+'|'+ep.port+'|'+ep.path:null;}
+function repEndpointAuthority(scheme,host,port){
+  const ep=repEndpointParts(scheme,host,port,'/');
+  if(!ep)return '';
+  let authority=ep.host;
+  if(authority.includes(':'))authority='['+authority.replace(/%/g,'%25')+']';
+  const def=(ep.scheme==='https'&&ep.port===443)||(ep.scheme==='http'&&ep.port===80);
+  return authority+(def?'':':'+ep.port);
+}
 function repTabEndpointParts(t){
   if(!t||!t.url)return null;
   try{const u=new URL(t.url);return repEndpointParts(u.protocol,u.hostname,u.port,u.pathname);}catch(e){return null;}
@@ -244,9 +252,8 @@ export async function repLoadSend(id){
     const d=await api('/api/flows/'+id);
     const raw=await api('/api/flows/'+id+'/raw?side=req');
     if(repCur()!==t)return; // user switched tabs while loading — keep their new tab intact
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     const i=raw.indexOf('\r\n\r\n');
-    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
+    t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
     t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
     t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
@@ -264,8 +271,7 @@ export async function sendToRepeater(f){
     let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
-    const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
-    t.method=d.method;t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;t.headers=headersToText(d.reqHeaders);
+    t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
     t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
     t.resId=null;t.status='';t.color='';t.title=repTitle(t);

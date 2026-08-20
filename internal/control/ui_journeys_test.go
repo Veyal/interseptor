@@ -237,6 +237,8 @@ func TestUIJourneyRepeaterHistoryUsesFullEndpointIdentity(t *testing.T) {
 	// cannot hide a matching send from the active tab.
 	requireUIContains(t, tools,
 		"function repEndpointParts(",
+		"function repEndpointAuthority(",
+		"authority.replace(/%/g,'%25')",
 		"export function repTabEndpoint(",
 		"export function repFlowEndpoint(",
 		"new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path})",
@@ -247,6 +249,9 @@ func TestUIJourneyRepeaterHistoryUsesFullEndpointIdentity(t *testing.T) {
 	}
 	if strings.Contains(tools, ".filter(f=>repFlowEndpoint(f)===ep)") {
 		t.Error("Repeater history must rely on endpoint filtering from the API")
+	}
+	if strings.Count(tools, "repEndpointAuthority(d.scheme,d.host,d.port)") != 2 {
+		t.Error("Repeater flow-loading paths must use the shared endpoint authority formatter")
 	}
 }
 
