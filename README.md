@@ -29,7 +29,9 @@ external agent owns reasoning and sequencing. Nothing phones home.
 - **Intercept & edit** HTTP/HTTPS live (hold, forward, drop — requests *and* responses) via a local
   CA, with match-&-replace rules.
 - **Repeater & Intruder** — resend and mutate requests by hand, or run Sniper/Pitchfork/Race attacks
-  with grep-match/extract and anomaly flagging.
+  with grep-match/extract and anomaly flagging. Import Postman Collection v2 JSON directly into
+  editable Repeater tabs (optionally with an exported environment) when a collection is the fastest
+  way to bring an API test plan into a pentest.
 - **Scanner** — passive checks out of the box. External agents compose Repeater, Intruder, Authz, OOB,
   and verification workflows through MCP while Interseptor records requests, evidence, and findings.
 - **Extensible** — write your own passive checks in sandboxed Starlark, no fork required.

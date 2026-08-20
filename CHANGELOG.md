@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Postman collection import.** Repeater can import Postman Collection v2.0/v2.1 JSON, flatten
+  folders into labeled request tabs, resolve an optional exported environment, carry common auth
+  helpers into headers, and report unresolved variables or unsupported body fields without creating
+  fake History evidence.
+
 ### Changed
 - **Dev-build fallback version advanced to published `2.0.1`.**
 

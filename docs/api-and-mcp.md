@@ -46,6 +46,12 @@ Burp Suite migration uses `POST /api/import/burp` with a raw **Save items** XML 
 streams entries into History and returns `{imported, skipped}`. Native `.burp` project files are not
 an accepted interchange format.
 
+Postman Collection v2.0/v2.1 JSON uses `POST /api/import/postman`. Send the raw collection, or
+`{collection, environment}` when an exported Postman environment should resolve `{{variables}}`.
+The response is a list of editable Repeater request templates; it intentionally creates no History
+flows because an imported collection is a plan, not captured evidence. Unresolved variables and
+unsupported body features are returned as warnings for review before sending.
+
 ### History search API
 
 `GET /api/flows` supports `searchScope=anywhere|body|id` and `savedSearch=<name>`. Anywhere search checks flow metadata, headers, tags, and bodies, with an 8,000-candidate cap and 256 KiB per-body read cap. Responses expose `searchNote` when a search reaches its scan limit and `truncated` when the result page exceeds `limit`.
