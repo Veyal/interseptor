@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-20
+
+### Fixed
+- **Complete Repeater endpoint history.** Repeater now filters by canonical scheme, host, port, and queryless path in SQLite before applying the history limit, so unrelated recent sends cannot hide older responses such as `500`; default ports, IPv6 hosts, malformed filters, and oversized limits are handled consistently.
+
+## [2.0.0] - 2026-08-19
+
 ### Breaking
 - **Removed built-in active scanning.** The active scanner, active Starlark checks, their REST routes,
   MCP tools, UI controls, CLI `--active` mode, and active rule-pack entries are removed. External AI
@@ -20,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Wire-evidence analysis guidance.** A repository skill now documents how to preserve encoded HTTP bytes while providing bounded decoded bodies to scanners and excluding incomplete evidence from decisions.
 
 ### Fixed
-- **Complete Repeater endpoint history.** Repeater now filters by canonical scheme, host, port, and queryless path in SQLite before applying the history limit, so unrelated recent sends cannot hide older responses such as `500`; default ports, IPv6 hosts, malformed filters, and oversized limits are handled consistently.
 - **Canonical Go formatting.** The remaining non-`gofmt` source and test files now use consistent standard Go layout, reducing formatting noise in future changes.
 - **Semantic authorization body comparison.** Authorization replays now compare bounded decoded response content, so identical gzip bodies with different wire metadata are not misclassified as different access.
 - **Decoded active-probe analysis.** Active-scan detectors now explicitly decode preserved `Content-Encoding` bodies before inspection, keeping capture bytes wire-accurate without losing compressed-response detections.
