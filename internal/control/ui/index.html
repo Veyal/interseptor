@@ -276,9 +276,11 @@
     <div class="rep-tabs" id="repTabs"></div>
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
-      <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select>
+      <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option><option>CONNECT</option><option>TRACE</option><option>COPY</option><option>LINK</option><option>UNLINK</option><option>PURGE</option><option>LOCK</option><option>UNLOCK</option><option>PROPFIND</option><option>VIEW</option></select>
       <input id="repUrl" class="repurl" aria-label="Request URL" placeholder="https://api.example.com/v1/resource" spellcheck="false">
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
+      <button class="btn" id="repPostmanImport" type="button" title="Select a Postman collection JSON, optionally with an environment JSON">Import Postman</button>
+      <input type="file" id="repPostmanFile" accept=".json,application/json" multiple aria-label="Import Postman collection or environment" style="display:none">
       <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)">Send ▸<span class="kbd">Ctrl/⌘+Space</span></button>
     </div>
     <div class="rep-work">

@@ -242,6 +242,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/packs/catalog/{name}/install", "Install an official bundled rule pack"},
 	{"GET", "/api/export/har", "Export history as HAR (optional ?inScope=1)"},
 	{"POST", "/api/import/har", "Import a HAR file as flows. Body: raw HAR 1.2 JSON document (not wrapped). Response: {imported: n}"},
+	{"POST", "/api/import/postman", "Prepare a Postman Collection v2 JSON for Repeater. Body: raw collection or {collection, environment}; response: {name, requests, unresolved, warnings, skipped}. No History flows are created."},
 	{"POST", "/api/import/burp", "Import Burp Suite Save-items XML as flows. Body: raw XML export (not native .burp). Response: {imported: n, skipped: n}"},
 	{"GET", "/api/export/project", "Export a portable project (flows + rules + scope + settings)"},
 	{"POST", "/api/import/project", "Import (merge) a project bundle. Body: {version, har, rules, scope, settings, notes?} — the JSON produced by GET /api/export/project. Response: {importedFlows, importedRules, importedScope}"},

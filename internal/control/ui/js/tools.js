@@ -27,7 +27,8 @@ function repStatusLine(f){
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:''};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
 function repReqContentType(){const h=$('#repHeaders');if(!h)return'';const m=(h.value||'').match(/^content-type:\s*(\S.*?)(?:\s*;|\s*$)/im);return m?m[1].trim():'';}
@@ -39,7 +40,7 @@ export function repRefreshHL(){
   if(h)h.innerHTML=highlightHeaderLines(($('#repHeaders').value)||'')+'\n';
   if(b)b.innerHTML=highlightBodyText(($('#repBody').value)||'',repReqContentType())+'\n';
 }
-export function repTitle(t){if(!t.url)return 'new tab';try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname;}catch(e){return t.method+' '+t.url.slice(0,46);}}
+export function repTitle(t){const warning=repWarningSuffix(t);if(t.label)return t.label+warning;if(!t.url)return 'new tab'+warning;try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname+warning;}catch(e){return t.method+' '+t.url.slice(0,46)+warning;}}
 // Keep tab/flow identity in lockstep with the history API contract. URL.host
 // drops an explicit default port, while flow metadata always carries one, so
 // normalize both sides to scheme + hostname + port + queryless path first.
@@ -109,8 +110,8 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||''}),
-  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||''}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   onPersist:blob=>persistUIState('repeater',blob),
 });
@@ -128,6 +129,14 @@ export function repSaveEditor(){
   else t.body=v;
   t.title=repTitle(t);
 }
+function repSetMethod(method){
+  const select=$('#repMethod');if(!select)return;
+  const value=String(method||'GET');
+  if(![...select.options].some(option=>option.value===value)){
+    const option=document.createElement('option');option.value=value;option.textContent=value;select.append(option);
+  }
+  select.value=value;
+}
 function repCodecBadge(t){
   const b=$('#repCodecBadge');if(!b)return;
   if((t.reqView||'')==='decoded'&&t.codecId){
@@ -138,7 +147,7 @@ function repCodecBadge(t){
 export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repTabs.tabs.push(t);repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
-  $('#repMethod').value=t.method||'GET';$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
+  repSetMethod(t.method);$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
   const rv=t.reqView||'raw';
   repSyncReqSeg(rv);
   if(rv==='decoded')$('#repBody').value=t.decodedPlain||'';
@@ -255,7 +264,7 @@ export async function repLoadSend(id){
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
+    t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
     t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){toast(e.message);}
@@ -273,7 +282,7 @@ export async function sendToRepeater(f){
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
+    t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
     t.resId=null;t.status='';t.color='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
@@ -307,7 +316,9 @@ export async function repInit(){
   });
   repRefreshHL();
   repWireEncodeCtx();
+  wirePostmanImport();
 }
+
 async function repEncodeSel(el,op){
   const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
   if(!s){toast('select text first');return;}
@@ -319,6 +330,7 @@ async function repEncodeSel(el,op){
     repSaveEditor();repRefreshHL();repPersistDebounced();
   }catch(e){toast(e.message);}
 }
+
 function repShowEncodeCtx(e,el){
   const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
   if(!s)return;
@@ -365,6 +377,66 @@ $('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
 });
 
 /* ---- intruder ---- */
+function postmanDocumentKind(doc){
+  if(doc&&doc.collection&&doc.collection.info&&Array.isArray(doc.collection.item))return 'wrapper';
+  if(doc&&doc.info&&Array.isArray(doc.item))return 'collection';
+  if(doc&&Array.isArray(doc.values))return 'environment';
+  return '';
+}
+async function importPostmanFiles(files){
+  const docs=[];
+  for(const file of files){
+    let doc;
+    try{doc=JSON.parse(await file.text());}
+    catch(e){throw new Error((file.name||'file')+' is not valid JSON');}
+    docs.push({file,doc,kind:postmanDocumentKind(doc)});
+  }
+  let collection=null,environment=null;
+  for(const entry of docs){
+    if(entry.kind==='wrapper'){
+      if(collection)throw new Error('select one Postman collection');
+      collection=entry.doc.collection;environment=entry.doc.environment||environment;
+    }else if(entry.kind==='collection'){
+      if(collection)throw new Error('select one Postman collection');
+      collection=entry.doc;
+    }else if(entry.kind==='environment'){
+      if(environment)throw new Error('select one Postman environment');
+      environment=entry.doc;
+    }else throw new Error((entry.file.name||'file')+' is not a Postman collection or environment');
+  }
+  if(!collection)throw new Error('select a Postman collection JSON');
+  const payload=environment?{collection,environment}:collection;
+  const result=await api('/api/import/postman',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const requests=Array.isArray(result.requests)?result.requests:[];
+  if(!requests.length)throw new Error('the collection has no importable HTTP requests');
+  repSaveEditor();
+  const created=[];
+  requests.forEach((request,index)=>{
+    const tab=repBlank(repTabs.seq++);
+    tab.label=((request.folder?request.folder+' / ':'')+(request.name||request.method+' '+request.url||('request '+(index+1))));
+    tab.method=request.method||'GET';tab.url=request.url||'';tab.headers=request.headers||'';tab.body=request.body||'';
+    tab.warnings=Array.isArray(request.warnings)?request.warnings.slice():[];
+    created.push(tab);repTabs.tabs.push(tab);
+  });
+  repTabs.active=created[0].tid;renderRepTabs();repLoadEditor();repPersist();
+  const unresolved=Array.isArray(result.unresolved)?result.unresolved:[];
+  const skipped=result.skipped?` · ${result.skipped} skipped`:'';
+  const warnings=Array.isArray(result.warnings)?result.warnings:[];
+  const caution=warnings.length?` · ${warnings.length} warning${warnings.length===1?'':'s'} — review imported tabs`:'';
+  const missing=unresolved.length?` · unresolved: ${unresolved.join(', ')} — review before Send`:'';
+  toast(`Postman: loaded ${requests.length} request${requests.length===1?'':'s'} from ${result.name||'collection'} into Repeater${skipped}${caution}${missing}`);
+}
+function wirePostmanImport(){
+  const button=$('#repPostmanImport'),input=$('#repPostmanFile');
+  if(!button||!input)return;
+  button.onclick=()=>input.click();
+  input.onchange=async e=>{
+    const files=[...e.target.files||[]];
+    if(!files.length)return;
+    try{await importPostmanFiles(files);}catch(err){toast('Postman import: '+err.message);}
+    e.target.value='';
+  };
+}
 // Per-position colours tie each §-marker to its payload list (cycle if > 6 markers).
 const POS_COLORS=['var(--accent)','var(--blue)','var(--amber)','var(--violet)','var(--cyan)','var(--red)'];
 const INTR_TPL='POST /login HTTP/1.1\nHost: example.com\nContent-Type: application/json\n\n{"user":"§admin§","pass":"§password§"}';

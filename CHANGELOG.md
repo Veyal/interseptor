@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Postman collection import.** Repeater can import Postman Collection v2.0/v2.1 JSON, flatten
+  folders into labeled request tabs, resolve an optional exported environment, carry common auth
+  helpers into headers, and report unresolved variables or unsupported body fields without creating
+  fake History evidence.
+
 ### Changed
+- **Postman import fidelity.** Preserve custom methods, disabled bodies, OAuth 2.0 token placement,
+	  prefixes, and query semantics, multipart part content types, and GraphQL operation fields when preparing Repeater tabs.
+- **Postman import review cues.** Preserve detailed per-request warnings in Repeater tabs so unsupported features remain visible for review.
+- **Cross-platform Postman warning labels.** Repeater tab warnings use a textual `[warning]` cue instead of an emoji that rendered inconsistently across platforms.
 - **Dev-build fallback version advanced to published `2.0.1`.**
 
 ## [2.0.1] - 2026-08-20

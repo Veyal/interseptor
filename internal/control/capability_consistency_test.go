@@ -29,6 +29,7 @@ func TestParityRESTRoutesAreRegisteredAndIndexed(t *testing.T) {
 		"POST /api/intruder/start",
 		"GET /api/export/har",
 		"POST /api/import/har",
+		"POST /api/import/postman",
 		"POST /api/import/burp",
 	}
 	indexed := make(map[string]bool, len(apiRoutes))
@@ -107,6 +108,37 @@ func TestSettingsHARImportExportJourney(t *testing.T) {
 		"toast('HAR import:",
 	)
 	requireUIRegex(t, settings, `(?s)importHARFile.*?uiConfirm\(.*?api\('/api/import/har'.*?loadFlows\(\)`)
+}
+
+func TestRepeaterPostmanImportJourney(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	requireUIContains(t, index,
+		`id="repPostmanImport"`,
+		`id="repPostmanFile"`,
+		`accept=".json,application/json"`,
+		`aria-label="Import Postman collection or environment"`,
+		"Postman",
+		"Repeater",
+	)
+	requireUIContains(t, tools,
+		"repPostmanImport",
+		"repPostmanFile",
+		"/api/import/postman",
+		"requests",
+		"unresolved",
+		"repTabs",
+		"repPersist",
+	)
+}
+
+func TestRepeaterPostmanImportPreservesWarningDetails(t *testing.T) {
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	requireUIContains(t, tools,
+		"tab.warnings=Array.isArray(request.warnings)?request.warnings.slice():[];",
+		"warnings:t.warnings||[]",
+		"warnings.join(' · ')",
+	)
 }
 
 func TestSettingsBurpImportJourney(t *testing.T) {
