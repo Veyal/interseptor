@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-08-21
+
 ### Changed
 - **Operator-first sign-in.** Redesigned the browser session gate with a responsive workspace introduction, clearer access-key guidance, show/hide control, loading feedback, and accessible error recovery.
 - **Technical console visual system.** Reframed the application shell, navigation, toolbars, panels, and data surfaces with matte layered surfaces, mono operational labels, technical grid framing, and restrained emerald signal accents.
