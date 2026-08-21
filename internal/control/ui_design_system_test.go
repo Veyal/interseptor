@@ -442,6 +442,18 @@ func TestUIStylesheetHasNoDuplicateSelectors(t *testing.T) {
 	}
 }
 
+func TestUIStylesheetUsesTechnicalConsoleVisualSystem(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	requireUIContains(t, css,
+		"--surface-frame:",
+		"--signal-grid:",
+		"background-image:linear-gradient(90deg,var(--signal-grid)",
+		"box-shadow:inset 2px 0 0 var(--accent)",
+		".nav-rail-group-label{font-family:var(--mono)",
+		".pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--mono)",
+	)
+}
+
 // TestUIFontRolesAreCorrect keeps the proportional/monospace split honest: chrome
 // and prose proportional, machine data monospace. The body default used to be
 // monospace, which rendered findings prose — the surface that ends up in client
