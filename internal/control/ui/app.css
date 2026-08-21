@@ -11,8 +11,8 @@
   /* Surfaces — an elevation ramp, not arbitrary greys. bg is the page; bg1/bg2/bg3
      are progressively raised. Every foreground token below is contrast-checked
      against all four by TestUIThemeContrastMeetsWCAGAA. */
-  --bg:#0b0f19;--bg1:rgba(18, 25, 43, 0.7);--bg2:rgba(22, 31, 51, 0.85);--bg3:rgba(30, 41, 59, 0.9);
-  --line:rgba(255, 255, 255, 0.08);--line2:rgba(255, 255, 255, 0.15);
+  --bg:#080c0b;--bg1:rgba(14, 22, 19, 0.82);--bg2:rgba(18, 29, 24, 0.92);--bg3:rgba(25, 39, 32, 0.94);
+  --line:rgba(255, 255, 255, 0.08);--line2:rgba(255, 255, 255, 0.15);--surface-frame:rgba(255, 255, 255, 0.12);--signal-grid:rgba(16, 185, 129, 0.07);
   --fg:#f8fafc;--fg2:#cbd5e1;--fg3:#94a3b8;
   /* Two accents, deliberately: --accent is the text-safe tint (AA on every
      surface); --accentSolid is the fill behind --onAccent labels. Using one
@@ -26,7 +26,7 @@
   --warnLine:#b45309;--warnFg:#fcd34d;--dangerLine:#c44;--dangerFg:#fca5a5;--pendingFill:#e0a020;
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
   --ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
-  --grad-bg:linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+  --grad-bg:linear-gradient(135deg, #080c0b 0%, #101a16 100%);
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
 
   /* Spacing (8px base, 4px half-step) */
@@ -34,7 +34,7 @@
   --sp-5:24px; --sp-6:32px; --sp-7:48px; --sp-8:64px;
   /* Radii — 5 steps. Previously 11, including --r-3/5/6/8/9/12, which were
      magic numbers that had merely been given names. */
-  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-pill:999px;
+  --r-sm:3px; --r-md:6px; --r-lg:9px; --r-xl:12px; --r-pill:999px;
   /* Type scale — 6 steps with an 11px floor. Previously 13 steps between 9px and
      20px (--fs-9, -9-5, -10-5, -11-5, -13-5 …), which is a continuum rather than
      a scale, and put label text below the legibility floor. Enforced by
@@ -54,8 +54,8 @@
   --state-pending:var(--amber); --state-danger:var(--red);
   --content-note:var(--violet);
   /* Layout constants */
-  --nav-rail-w:180px; --side-panel-w:280px;
-  --topbar-h:38px; --ctxbar-h:40px;
+  --nav-rail-w:188px; --side-panel-w:280px;
+  --topbar-h:44px; --ctxbar-h:40px;
 }
 /* Light theme. This is NOT a mechanical inversion of the dark palette — that is
    what it used to be, and it failed AA on all secondary text and every accent
@@ -63,8 +63,8 @@
    --bg3 in particular was slate-300, a mid-tone rather than a raised surface,
    which dragged every foreground toward black to compensate. */
 :root[data-theme="light"]{
-  --bg:#f8fafc;--bg1:rgba(241, 245, 249, 0.8);--bg2:rgba(226, 232, 240, 0.9);--bg3:#dde5ee;
-  --line:rgba(15, 23, 42, 0.1);--line2:rgba(15, 23, 42, 0.2);
+  --bg:#f7faf8;--bg1:rgba(241, 247, 244, 0.9);--bg2:rgba(226, 239, 232, 0.94);--bg3:#dce9e1;
+  --line:rgba(15, 23, 42, 0.1);--line2:rgba(15, 23, 42, 0.2);--surface-frame:rgba(15, 23, 42, 0.16);--signal-grid:rgba(6, 95, 70, 0.07);
   --fg:#0f172a;--fg2:#334155;--fg3:#475569;
   --accent:#065f46;--accentSolid:#047857;--onAccent:#ffffff;
   --sel:rgba(6, 95, 70, 0.1);--accentDim:rgba(6, 95, 70, 0.14);
@@ -72,7 +72,7 @@
   --red:#b91c1c;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(185, 28, 28, 0.08);
   --violet:#6d28d9;--cyan:#155e75;--focus-ring:#7c2d12;--scroll:rgba(0,0,0,0.15);--shadow:rgba(15, 23, 42, 0.1);--overlay:rgba(15, 23, 42, 0.5);
   --warnLine:#92400e;--warnFg:#78350f;--dangerLine:#b91c1c;--dangerFg:#991b1b;--pendingFill:#a16207;
-  --grad-bg:linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  --grad-bg:linear-gradient(135deg, #f7faf8 0%, #e2eee7 100%);
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -125,8 +125,8 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
 /* top bar */
-#bar{height:var(--topbar-h);flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 13px;user-select:none;z-index:10}
-#logo{width:15px;height:15px;border-radius:var(--r-sm);background:var(--accent);box-shadow:0 0 10px var(--accentDim)}
+#bar{height:var(--topbar-h);flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--surface-frame);display:flex;align-items:center;gap:16px;padding:0 18px;user-select:none;z-index:10;box-shadow:inset 0 -1px 0 var(--line)}
+#logo{width:19px;height:19px;border-radius:var(--r-sm);background:var(--accent);border:1px solid var(--accent);box-shadow:0 0 10px var(--accentDim)}
 .brand{font-weight:700;letter-spacing:.5px}
 .tag{font-size:var(--fs-xs);color:var(--fg3);letter-spacing:1.5px}
 .kv{font-size:var(--fs-xs);color:var(--fg2)}
@@ -159,14 +159,14 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
    (replaces the old flat #tabs horizontal strip). Same element id (#tabs,
    role=tablist) as before — only its layout/placement changed, so existing
    JS selectors ($('#tabs'), .tab, data-tab, aria-controls) keep working. */
-#tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-right:1px solid var(--line);border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:var(--sp-3) var(--sp-2);overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:4px 0 20px rgba(0,0,0,0.08)}
+#tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg1);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-right:1px solid var(--surface-frame);border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:var(--sp-4) var(--sp-2);overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:inset -1px 0 0 var(--line)}
 .nav-rail-group{display:flex;flex-direction:column;gap:2px}
 .nav-rail-group+.nav-rail-group{margin-top:var(--sp-3)}
-.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg3);padding:4px 10px 3px}
+.nav-rail-group-label{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--fg3);padding:5px 10px 4px}
 .nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:var(--sp-2)}
-.tab{position:relative;font-family:var(--ui);font-size:var(--fs-sm);font-weight:600;color:var(--fg2);padding:8px 12px;border-radius:var(--r-md);text-align:left;display:flex;align-items:center;width:100%}
+.tab{position:relative;font-family:var(--ui);font-size:var(--fs-sm);font-weight:600;color:var(--fg2);padding:9px 12px;border-radius:var(--r-sm);text-align:left;display:flex;align-items:center;width:100%;border-left:2px solid transparent;letter-spacing:.1px}
 .tab:hover{color:var(--fg);background:var(--bg3)}
-.tab.active{color:var(--accent);background:var(--accentDim)}
+.tab.active{color:var(--accent);background:var(--accentDim);box-shadow:inset 2px 0 0 var(--accent)}
 .badge{font-size:var(--fs-xs);font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:var(--r-md);padding:1px 6px;margin-left:auto}
 /* .nav-dot — lightweight off-screen-update indicator for rail items that don't
    have a numeric badge yet (Discover/Map). Mirrors .badge placement but as a
@@ -185,11 +185,11 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .flowtag:hover{border-color:var(--accent);color:var(--fg)}
 
 #main{flex:1;min-height:0;position:relative}
-.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg)}
+.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg);background-image:linear-gradient(90deg,var(--signal-grid) 1px,transparent 1px),linear-gradient(0deg,var(--signal-grid) 1px,transparent 1px);background-size:32px 32px}
 .panel.active{display:flex}
 
 /* toolbar — single desktop row; scroll horizontally if the window is tight */
-.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:7px;min-height:46px;padding:8px 16px;border-bottom:1px solid var(--line2);background:var(--bg2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:thin}
+.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;min-height:46px;padding:8px 16px;border-bottom:1px solid var(--surface-frame);background:var(--bg2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:thin;box-shadow:inset 0 1px 0 var(--line)}
 /* .toolbar-secondary — second tier of a 2-tier toolbar (secondary/less-frequent
    actions demoted below the primary action row). Slightly dimmer + smaller
    padding so it reads as lower visual weight, per the "toolbar max 2 tiers" rule. */
@@ -301,10 +301,10 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 
 /* inspector */
 #inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0;background:var(--bg1);box-shadow:0 -4px 12px rgba(0,0,0,0.2)}
-.pane{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg1);border-right:1px solid var(--line2)}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg1);border-right:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
 .pane:last-child{border-right:none}
-.pane-head{flex:none;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--line2)}
-.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--ui);font-size:var(--fs-xs);font-weight:700;letter-spacing:.9px;color:var(--fg3)}
+.pane-head{flex:none;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
+.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;color:var(--fg3)}
 /* .micro-label — standalone all-caps section header inside a modal (REQUEST LOG,
    CONFIRMED FINDINGS, QUICK TUNNEL, RESULTS, INTERACTIONS, etc.) and the
    "HOW TO TRUST IT" label in the TLS section. Replaces the recurring inline
@@ -391,7 +391,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .chk-row{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--fg2);font-size:var(--fs-sm)}
 .icpt-work{flex:1;display:flex;min-height:0;background:var(--bg)}
 .icpt-queue{width:288px;flex:none;border-right:1px solid var(--line2);display:flex;flex-direction:column;background:var(--bg1)}
-.icpt-queue-head{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--line2)}
+.icpt-queue-head{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--surface-frame)}
 .icpt-list{flex:1;overflow:auto;min-height:0}
 .icpt-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer;font-size:var(--fs-xs)}
 .icpt-item:hover{background:var(--bg3)}

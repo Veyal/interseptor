@@ -122,8 +122,32 @@ func TestUIFoundationResponsiveViewportContract(t *testing.T) {
 
 func TestUIFoundationLoginCardFitsViewport(t *testing.T) {
 	login := readUIAsset(t, "login.html")
-	if !strings.Contains(login, ".card{ width:min(100%,380px)") {
-		t.Error("login card must fit the padded mobile viewport")
+	if !strings.Contains(login, ".login-card{width:100%") {
+		t.Error("login card must fill, and therefore fit, the padded mobile viewport")
+	}
+}
+
+func TestUIFoundationLoginUsesOperatorFirstAuthFlow(t *testing.T) {
+	login := readUIAsset(t, "login.html")
+	requireUIContains(t, login,
+		`class="login-shell"`,
+		`class="login-hero"`,
+		`class="login-card"`,
+		`class="login-mark"`,
+		"Live interception",
+		"Repeater and Intruder",
+		"Evidence-first workflows",
+		`aria-describedby="tokenHelp loginError"`,
+		`id="revealToken"`,
+		`type="button"`,
+		`aria-label="Show access key"`,
+		`aria-live="polite"`,
+		"aria-busy",
+		"Checking access key",
+		"focus()",
+	)
+	if strings.Contains(login, `placeholder="ick_…"`) {
+		t.Error("login placeholder exposes an unexplained token prefix")
 	}
 }
 
