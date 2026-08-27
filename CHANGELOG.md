@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- **Dev-build fallback version advanced to published `2.0.4`.**
+- **Post-release maintenance.** Advanced the dev-build fallback to published `2.0.4` and documented the separate post-publication cleanup step.
 
 ## [2.0.4] - 2026-08-27
 
