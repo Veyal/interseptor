@@ -517,6 +517,50 @@ func TestUIResponsiveShellConstrainsNarrowViewport(t *testing.T) {
 	}
 }
 
+// TestUIDenseWorkspacesStackAtNarrowViewport protects the editors that need
+// enough horizontal room to remain usable. The shell already collapses at
+// 720px, but Repeater, Intruder, and the checks/codecs manager previously kept
+// their desktop split panes and squeezed each editor to roughly half a phone.
+func TestUIDenseWorkspacesStackAtNarrowViewport(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	narrow := strings.Index(css, "@media (max-width:720px){")
+	if narrow < 0 {
+		t.Fatal("narrow viewport media rule not found")
+	}
+	block := css[narrow:]
+	for _, contract := range []string{
+		".rep-work,.intr-work,.checks-work{flex-direction:column}",
+		".checks-sidebar{width:100%;min-width:0",
+		".rep-req,.rep-res,.intr-config,.intr-results{min-height:260px}",
+		".rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto",
+		"#repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}",
+		".intr-results .pane-head{overflow-x:auto",
+	} {
+		if !strings.Contains(block, contract) {
+			t.Errorf("narrow workspace rule missing %q", contract)
+		}
+	}
+}
+
+// TestUIIconSpriteContainsOnlySymbols catches malformed leftovers inside the
+// hidden SVG definition block. Browsers recover from an orphan <path> and
+// unmatched </symbol>, but the recovery is parser-dependent and can make later
+// sprite references silently disappear.
+func TestUIIconSpriteContainsOnlySymbols(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	start := strings.Index(index, "<defs>")
+	end := strings.Index(index, "</defs>")
+	if start < 0 || end <= start {
+		t.Fatal("icon sprite defs block not found")
+	}
+	body := index[start+len("<defs>") : end]
+	symbol := regexp.MustCompile(`(?s)<symbol\b[^>]*>.*?</symbol>`)
+	leftover := strings.TrimSpace(symbol.ReplaceAllString(body, ""))
+	if leftover != "" {
+		t.Errorf("icon sprite contains markup outside <symbol> definitions: %s", leftover)
+	}
+}
+
 // TestUIHoverStatesDoNotShiftLayout keeps dense list and toolbar rows stable
 // under the cursor. Transform-based hover makes rows jitter as the pointer
 // crosses them, which reads as a rendering bug in a data-dense tool.

@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, methodColor, statusColor } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, uiConfirm, methodColor, statusColor } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { sendToRepeater } from './tools.js';
 
@@ -479,7 +479,9 @@ function renderFindingDetail() {
   const verifBanner = (f.status === 'needs_verification' || f.verificationInstructions)
     ? `<div class="find-verif-banner" role="status">
         <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Needs human verification</div>
-        <textarea id="findVerifInstr" class="find-verif-text" rows="3" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>
+        ${edit
+          ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
+          : `<div class="find-verif-read">${f.verificationInstructions ? esc(f.verificationInstructions) : '<span class="hint">No verification instructions recorded.</span>'}</div>`}
       </div>` : '';
   const machineProof = (() => {
     const v = f.verification;
@@ -608,7 +610,7 @@ function renderFindingDetail() {
     blurPatch('#findCwe', 'cwe', el => el.value);
     blurPatch('#findFix', 'fix', el => el.value);
   }
-  blurPatch('#findVerifInstr', 'verificationInstructions', el => el.value);
+  if (edit) blurPatch('#findVerifInstr', 'verificationInstructions', el => el.value);
 
   const renameBtn = $('#findRename');
   if (renameBtn) renameBtn.onclick = async () => {
@@ -644,8 +646,22 @@ function renderFindingDetail() {
   };
   const deleteBtn = $('#findDelete');
   if (deleteBtn) deleteBtn.onclick = async () => {
-    try { await api('/api/findings/' + f.id, { method: 'DELETE' }); selFinding = null; toast('finding deleted'); loadFindings(); }
-    catch (err) { toast(err.message); }
+    const visible = visibleFindings();
+    const at = visible.findIndex(x => x.id === f.id);
+    const next = visible[at + 1] || visible[at - 1] || null;
+    if (!await uiConfirm('Delete finding', `Delete <b>${esc(f.title)}</b>? This cannot be undone.`, 'Delete', 'btn danger', 'var(--red)')) return;
+    deleteBtn.disabled = true;
+    deleteBtn.setAttribute('aria-busy', 'true');
+    try {
+      await api('/api/findings/' + f.id, { method: 'DELETE' });
+      selFinding = next?.id || null;
+      toast('finding deleted');
+      await loadFindings();
+    } catch (err) {
+      deleteBtn.disabled = false;
+      deleteBtn.setAttribute('aria-busy', 'false');
+      toast(err.message);
+    }
   };
   $('#findEditTags') && ($('#findEditTags').onclick = async () => {
     const cur = (f.tags || []).join(' ');
@@ -879,6 +895,44 @@ function openFindCreate() {
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
 $('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
+$('#fcSave') && ($('#fcSave').onclick = async () => {
+  const button = $('#fcSave');
+  const title = ($('#fcTitle')?.value || '').trim();
+  if (!title) {
+    toast('finding title is required', 'error');
+    $('#fcTitle')?.focus();
+    return;
+  }
+  if (button.disabled) return;
+  const label = button.textContent;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Creating…';
+  try {
+    const created = await api('/api/findings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        severity: $('#fcSeverity')?.value || 'Medium',
+        source: 'human',
+      }),
+    });
+    closeModal($('#findCreateModal'));
+    selFinding = Number(created.id) || null;
+    findEditMode = true;
+    await loadFindings();
+    toast('finding created');
+  } catch (err) {
+    toast(err.message || 'could not create finding', 'error');
+  } finally {
+    if (button.isConnected) {
+      button.disabled = false;
+      button.setAttribute('aria-busy', 'false');
+      button.textContent = label;
+    }
+  }
+});
 $('#findGuide') && ($('#findGuide').onclick = () => openModal($('#findGuideModal')));
 $('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
 

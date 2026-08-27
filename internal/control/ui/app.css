@@ -1108,6 +1108,14 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #panel-proxy.active #inspect .pane{flex:1;min-height:110px}
   .icpt-work{flex-direction:column}
   .icpt-queue{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
+  .rep-work,.intr-work,.checks-work{flex-direction:column}
+  .rep-req,.rep-res,.intr-config,.intr-results{min-height:260px}
+  .rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;overflow:visible}
+  #repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}
+  #repHistToggle{grid-column:1;grid-row:2}#repPostmanImport{grid-column:2/4;grid-row:2;justify-self:start}
+  #repSend .kbd{display:none}
+  .intr-results .pane-head{overflow-x:auto;scrollbar-width:thin}
+  .checks-sidebar{width:100%;min-width:0;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .sc-grid{grid-template-columns:repeat(2,1fr)!important}
   .find-guide-body{grid-template-columns:1fr}
   .find-guide-check{grid-column:1}

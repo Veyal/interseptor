@@ -397,3 +397,37 @@ func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
 	}
 	requireUIContains(t, css, ".codecs-list .codecs-row", ".codecs-dir-hint", "#codecOut")
 }
+
+func TestUIJourneyToolsAndScannerAsyncActionContracts(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	scanner := readUIAsset(t, "js/scanner.js")
+	index := readUIAsset(t, "index.html")
+
+	// The shortcut hint must survive Repeater's transient Send states.
+	requireUIContains(t, index, `id="repSendLabel"`)
+	requireUIContains(t, tools, "repSendLabel", "setRepSendState", "intrStartPending", "intrPollError", "data-intr-poll-retry")
+	if !strings.Contains(tools, "if(running&&!st.pollFailed)scheduleIntr()") {
+		t.Error("Intruder polling must pause after an explicit poll failure until Retry")
+	}
+
+	// Checks actions must call the string endpoint, expose pending state, and
+	// prevent a second Test/Save while the first request is in flight.
+	if strings.Contains(scanner, "checkEndpoint()") {
+		t.Error("Checks Test/Save must not call the string endpoint as a function")
+	}
+	requireUIContains(t, scanner, "setCheckActionState", "checkActionEpoch", "aria-busy")
+
+	// OOB clear/load and scanner promotion are destructive or duplicate-prone;
+	// their contracts require visible retry/pending state.
+	requireUIContains(t, index, `id="oobLoadState"`)
+	requireUIContains(t, scanner,
+		"data-oob-retry",
+		"oobClearEpoch",
+		"oobGenerateEpoch",
+		"promoteFindingPending",
+		"setPromoteFindingState",
+	)
+
+	// Scanner controls expose their selection and target to assistive tech.
+	requireUIContains(t, index, `aria-label="Scanner target host"`, `aria-selected="false"`)
+}

@@ -3,6 +3,29 @@ import { $, api, toast, renderMD, accordionize, createAutosave } from './core.js
 /* ---- project notes (auto-saved markdown notebook) ---- */
 export const notesState={loaded:'',mode:'edit'};
 
+function notesLoadState() {
+  let el=$('#notesLoadState');
+  if(el)return el;
+  const panel=$('#panel-notes'), edit=$('#notesEdit');
+  if(!panel||!edit)return null;
+  el=document.createElement('div');
+  el.id='notesLoadState';
+  el.className='tls-diag-banner';
+  el.setAttribute('role','status');
+  el.setAttribute('aria-live','polite');
+  panel.insertBefore(el,edit);
+  return el;
+}
+
+function showNotesLoadError(err) {
+  const el=notesLoadState();
+  if(!el)return;
+  el.innerHTML='<span class="state-error-msg">Couldn\'t load notes: '+
+    String(err?.message||'request failed').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+
+    '</span> <button type="button" class="btn xs" data-notes-retry>Retry</button>';
+  el.querySelector('[data-notes-retry]')?.addEventListener('click',loadNotes);
+}
+
 function setNotesStatus(kind){
   const s=$('#notesStatus');
   if(!s)return;
@@ -29,14 +52,26 @@ const notesAutosave=createAutosave({
 });
 
 export async function loadNotes(){
+  const loadState=notesLoadState();
+  if(loadState){loadState.textContent='Loading notes…';loadState.style.display='block';}
+  const ta=$('#notesEdit');
+  const active=document.activeElement===ta;
+  const current=ta?.value||'';
+  const dirty=active&&current!==notesState.loaded;
   try{
     const d=await api('/api/notes');
     notesState.loaded=d.notes||'';
     notesAutosave.setBaseline(notesState.loaded);
-    if(document.activeElement!==$('#notesEdit'))$('#notesEdit').value=notesState.loaded;
+    if(!active)ta.value=notesState.loaded;
+    else if(dirty)notesAutosave.schedule(current); // preserve unsaved typing during retry/reconnect
     setNotesStatus('');
+    if(loadState){loadState.textContent='';loadState.style.display='none';}
     if(notesState.mode==='preview')showNotesPreview();
-  }catch(e){}
+  }catch(e){
+    // Keep the current notebook visible; an error must never look like an empty
+    // notebook or overwrite unsaved notes. The Retry action is intentionally local.
+    showNotesLoadError(e);
+  }
 }
 
 export function scheduleNotesSave(){

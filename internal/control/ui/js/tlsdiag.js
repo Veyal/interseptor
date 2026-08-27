@@ -11,6 +11,17 @@ const VERDICT = {
 export const BANNER_HIDDEN_KEY = 'tlsDiagBannerHidden';
 let lastDiag = null;
 let bannerDismissedVerdict = null;
+let diagRefreshTimer=null;
+
+// Capture SSE can arrive in large bursts. Coalesce diagnosis refreshes so a
+// busy HTTP-only target does not turn one flow into one control-plane request.
+function scheduleTrafficDiagnosis(delay=180) {
+  if(diagRefreshTimer)return;
+  diagRefreshTimer=setTimeout(()=>{
+    diagRefreshTimer=null;
+    loadTrafficDiagnosis();
+  },delay);
+}
 
 function verdictMeta(v) {
   return VERDICT[v] || { label: v, color: 'var(--fg2)', icon: '·' };
@@ -176,13 +187,10 @@ export function getStartedDiagnosisHint() {
 
 export function onFlowMaybeTLS(f) {
   if (!f) return;
-  // A TLS-relevant flow (handshake failure/success) can always flip the
-  // verdict. But "no_traffic"/"no_https" are about traffic volume, not TLS
-  // specifically — any new flow (including plain HTTP) can move TotalFlows
-  // off zero and stale-out one of those two verdicts, so re-check on every
-  // flow while the banner is showing either, not just TLS-flagged ones.
-  // Otherwise a run of non-TLS traffic never clears an initial "no traffic
-  // reached the proxy yet" reading taken at page load.
-  const stalable = lastDiag && (lastDiag.verdict === 'no_traffic' || lastDiag.verdict === 'no_https');
-  if ((f.flags & 16) || stalable) loadTrafficDiagnosis();
+  // The first captured flow can move "no traffic" to another verdict. Once
+  // plain HTTP is already known, only HTTPS traffic or a TLS failure can change
+  // the diagnosis; more HTTP requests merely change the total count.
+  const stalable = lastDiag && lastDiag.verdict === 'no_traffic';
+  const tlsRelevant = (f.flags & 16) || f.scheme === 'https';
+  if (tlsRelevant || stalable) scheduleTrafficDiagnosis();
 }

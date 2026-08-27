@@ -11,6 +11,7 @@ let knownHeldKeys=new Set();
 let heldSignalWindowAt=0,heldSignalCount=0;
 let heldActionInFlight=null;
 let heldActionEpoch=0;
+let heldLoadingKey=null;
 function allowHeldSignal(){
   const now=performance.now();
   if(now-heldSignalWindowAt>800){heldSignalWindowAt=now;heldSignalCount=0;}
@@ -23,6 +24,51 @@ function setHeldModified(raw, original){
   const badge=$('#heldModified');
   const modified=raw!==original;
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
+}
+
+function setHeldControlsDisabled(disabled){
+  ['#heldRaw','#forwardBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn']
+    .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight;});
+}
+
+function clearHeldLoadMessage(){
+  const el=$('#heldLoadState');
+  if(el)el.remove();
+}
+
+function showHeldLoadState(h,text,retry){
+  clearHeldLoadMessage();
+  const main=document.querySelector('.icpt-main');
+  if(!main)return;
+  const el=document.createElement('div');
+  el.id='heldLoadState';el.className='hint';el.setAttribute('role',retry?'alert':'status');
+  el.style.cssText='padding:10px 14px;border-bottom:1px solid var(--line);color:'+(retry?'var(--red)':'var(--fg2)');
+  el.textContent=text;
+  if(retry){
+    const b=document.createElement('button');b.type='button';b.className='btn';b.style.marginLeft='10px';b.textContent='Retry loading held message';
+    b.onclick=()=>selectHeld(h.id,h.side);el.appendChild(b);
+  }
+  main.insertBefore(el,main.firstChild);
+}
+
+function showHeldLoading(h){
+  heldLoadingKey=heldKey(h.side,h.id);
+  clearHeldLoadMessage();
+  const head=$('#heldEditor'),empty=$('#heldEmpty'),ta=$('#heldRaw'),dec=$('#heldDecoded');
+  if(head)head.style.display='flex';
+  if(empty)empty.style.display='none';
+  if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
+  if(ta){ta.style.display='block';ta.value='';ta.placeholder='Loading held message…';ta.disabled=true;}
+  setHeldControlsDisabled(true);
+  showHeldLoadState(h,'Loading held message…',false);
+}
+
+function showHeldLoadError(h,error){
+  heldLoadingKey=null;
+  const ta=$('#heldRaw');
+  if(ta){ta.value='';ta.placeholder='Held message could not be loaded';ta.disabled=true;}
+  setHeldControlsDisabled(true);
+  showHeldLoadState(h,'Unable to load held message: '+(error?.message||'request failed'),true);
 }
 
 export function renderIntercept(){
@@ -84,12 +130,22 @@ function setSwitch(btnSel,stateSel,on){
 function heldItem(id,side){const q=side==='resp'?(state.intercept.responseQueue||[]):(state.intercept.queue||[]);return q.find(x=>x.id===id);}
 function showEditor(h){
   const head=$('#heldEditor'),ta=$('#heldRaw'),empty=$('#heldEmpty'),title=$('#heldTitle');
-  if(!h){if(head)head.style.display='none';if(ta)ta.style.display='none';if(empty)empty.style.display='flex';return;}
+  clearHeldLoadMessage();
+  if(!h){
+    heldLoadingKey=null;
+    if(head)head.style.display='none';
+    if(ta){ta.style.display='none';ta.disabled=false;ta.removeAttribute('placeholder');}
+    if(empty)empty.style.display='flex';
+    const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
+    setHeldControlsDisabled(false);
+    return;
+  }
   if(head)head.style.display='flex';
   if(empty)empty.style.display='none';
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
   const original=heldOriginal(h);
-  if(ta){ta.style.display='block';ta.value=h.raw||'';setHeldModified(ta.value,original);}
+  if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
+  setHeldControlsDisabled(false);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
@@ -102,12 +158,15 @@ export async function selectHeld(id,side,opts={}){
    let raw=h.raw;
    if(!heldOriginalCache.has(cacheKey))heldOriginalCache.set(cacheKey,heldOriginal(h));
 
+  if(heldLoadingKey===cacheKey&&opts.keepEditor)return;
+
   if(opts.keepEditor){
     const ta=$('#heldRaw');
     if(ta&&document.activeElement===ta)return;
     if(ta&&ta.value)raw=ta.value;
   }
   if(!raw&&h.len!=null){
+    showHeldLoading({...h,side});
     if(heldRawCache.has(cacheKey))raw=heldRawCache.get(cacheKey);
     else{
       try{
@@ -120,9 +179,13 @@ export async function selectHeld(id,side,opts={}){
         raw=d.raw||'';
         heldRawCache.set(cacheKey,raw);
         h.raw=raw;
-      }catch(e){raw='';}
+      }catch(e){
+        if(state.heldSel&&state.heldSel.id===id&&state.heldSel.side===side)showHeldLoadError({...h,side},e);
+        return;
+      }
     }
   }
+  heldLoadingKey=null;
   showEditor({...h,side,raw});
 }
 $('#respInterceptToggle').onclick=async()=>{

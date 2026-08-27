@@ -3,7 +3,7 @@
 // the command palette, global keyboard shortcuts, the live SSE event stream,
 // theme, the version badge, and the boot sequence that kicks everything off.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
-import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -58,6 +58,7 @@ function activateTab(t){
     $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
     try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
     updateCrumb(t);
+    if(t.dataset.tab==='proxy')renderRows();
     if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
     if(t.dataset.tab==='scanner')loadScanTargets();
     if(t.dataset.tab==='findings')loadFindings();
@@ -103,7 +104,15 @@ function restoreTab(){
     if(id==='discover'){id='map';localStorage.setItem('tab','map');}
     if(!id||id==='proxy')return;
     const b=document.querySelector('.tab[data-tab="'+id+'"]');if(b)b.click();
-    if(id==='settings'&&localStorage.getItem('setSec')==='api'){document.querySelector('#setNav button[data-sec="api"]')?.click();}
+    if(id==='settings'){
+      // Restore any valid settings subsection, while ignoring stale ids from
+      // older builds. The panel update above is synchronous even when the
+      // optional view transition is enabled, so this runs after Settings is
+      // active and keeps the saved subsection selection intact.
+      const sec=localStorage.getItem('setSec');
+      const b=sec&&document.querySelector('#setNav button[data-sec="'+sec+'"]');
+      if(b) b.click();
+    }
   }catch(e){}
 }
 

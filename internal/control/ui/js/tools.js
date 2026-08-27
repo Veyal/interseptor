@@ -35,7 +35,9 @@ function setRepSendState(stateName,label){
   button.dataset.state=stateName;
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
   button.disabled=stateName==='pending';
-  button.textContent=label;
+  const labelEl=$('#repSendLabel');
+  if(labelEl)labelEl.textContent=label;
+  else button.textContent=label;
 }
 function resetRepSend(delay,epoch){setTimeout(()=>{if(epoch===repSendEpoch)setRepSendState('idle','Send ▸');},delay);}
 
@@ -286,7 +288,7 @@ export async function repLoadSend(id){
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
     t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){toast(e.message);}
@@ -304,7 +306,7 @@ export async function sendToRepeater(f){
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
     t.resId=null;t.status='';t.color='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
@@ -649,6 +651,9 @@ export async function intrInit(){
 
 /* ---- intruder run history (this session) ---- */
 const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
+let intrStartPending=false;
+let intrPollError='';
+let intrLastRunning=false,intrLastTotal=0,intrLastDone=0;
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
@@ -901,7 +906,19 @@ function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 const INTR_MAX_REQUESTS=2000;
+function setIntrStartState(stateName,label){
+  const button=$('#intrStart');if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  button.textContent=label;
+}
+function resetIntrStart(delay,epoch){setTimeout(()=>{if(epoch===intrStartEpoch&&!intrLastRunning)setIntrStartState('idle','Start ▸');},delay);}
+let intrStartEpoch=0;
 export async function intrStart(){
+  if(intrStartPending)return;
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
   const threads=Math.max(1,parseInt($('#intrThreads').value,10)||1);
@@ -931,8 +948,20 @@ export async function intrStart(){
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg=intrReadEditor();       // snapshot for the history entry
   intrCapturePending=true;           // capture this run into history on completion
-  try{renderIntr(await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));}
-  catch(e){intrCapturePending=false;toast('attack: '+e.message);}
+  intrStartPending=true;
+  const epoch=++intrStartEpoch;
+  intrPollError='';
+  setIntrStartState('pending','Starting…');
+  try{
+    const started=await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    intrStartPending=false;
+    renderIntr(started);
+  }catch(e){
+    intrStartPending=false;intrCapturePending=false;
+    setIntrStartState('error','Start failed');
+    resetIntrStart(1000,epoch);
+    toast('attack: '+e.message,'error');
+  }
 }
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
@@ -982,11 +1011,34 @@ function intrApplyFilter(res){
   if(intrFilter==='error') return res.filter(r=>r.error);
   return res;
 }
-export function scheduleIntr(){clearTimeout(intrTimer);intrTimer=setTimeout(async()=>{try{renderIntr(await api('/api/intruder/state'));}catch(e){}},120);}
+export function scheduleIntr(){
+  clearTimeout(intrTimer);
+  intrTimer=setTimeout(async()=>{
+    try{
+      renderIntr(await api('/api/intruder/state'));
+    }catch(e){
+      // Keep the last result set visible while the state endpoint is unavailable.
+      // A retry affordance makes a long-running attack recoverable instead of
+      // silently freezing at its last progress value.
+      intrPollError=e&&e.message?e.message:'connection unavailable';
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true});
+    }
+  },120);
+}
 export function renderIntr(st){
   const running=!!st.running,total=st.total||0,done=st.done||0;
+  if(!st.pollFailed)intrPollError='';
+  if(!st.pollFailed){intrLastRunning=running;intrLastTotal=total;intrLastDone=done;}
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
-  $('#intrStart').disabled=running;$('#intrStart').textContent=running?'Running…':'Start ▸';
+  if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
+  const pollStatus=$('#intrPollStatus');
+  if(pollStatus){
+    if(intrPollError){
+      pollStatus.innerHTML='<span class="state-error-msg">Attack status unavailable: '+esc(intrPollError)+'</span> <button type="button" class="btn xs" data-intr-poll-retry>Retry</button>';
+      const retry=pollStatus.querySelector('[data-intr-poll-retry]');
+      if(retry)retry.onclick=()=>{intrPollError='';pollStatus.textContent='Retrying…';scheduleIntr();};
+    }else pollStatus.textContent='';
+  }
   // progress bar
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
@@ -1005,7 +1057,7 @@ export function renderIntr(st){
     if(intrHistory.length>30)intrHistory.length=30;
     renderIntrHistory();
   }
-  if(running)scheduleIntr(); // self-poll until the attack converges (robust to event/POST races)
+  if(running&&!st.pollFailed)scheduleIntr(); // pause on failure; Retry resumes polling
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!res.length){

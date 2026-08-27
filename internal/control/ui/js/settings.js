@@ -1001,10 +1001,11 @@ function androidProxyMode(){
   return on?.dataset.mode==='wifi'?'wifi':'usb';
 }
 
-function closeAndroidDeviceMenu(){
+function closeAndroidDeviceMenu(returnFocus=false){
   const menu=$('#androidDeviceMenu'),trigger=$('#androidDeviceTrigger');
   if(menu)menu.hidden=true;
   if(trigger)trigger.setAttribute('aria-expanded','false');
+  if(returnFocus&&trigger)trigger.focus(); // keyboard focus return to its combobox trigger
 }
 
 function toggleAndroidDeviceMenu(){
@@ -1036,11 +1037,50 @@ function renderAndroidDevicePicker(devs){
   menu.innerHTML=devs.map(d=>{
     const sel=d.serial===androidDeviceSerial;
     const dis=d.state!=='device';
-    return `<button type="button" role="option" class="ui-select-opt${sel?' sel':''}" data-serial="${escAttr(d.serial)}"${dis?' disabled':''} aria-selected="${sel?'true':'false'}"><span class="ui-select-opt-title">${esc(androidDeviceTitle(d))}${dis?' — '+esc(d.state):''}</span><span class="ui-select-opt-sub">${esc(androidDeviceMeta(d))}</span></button>`;
+    return `<button type="button" role="option" id="android-device-option-${escAttr(d.serial)}" class="ui-select-opt${sel?' sel':''}" data-device-option="${escAttr(d.serial)}" data-serial="${escAttr(d.serial)}"${dis?' disabled':''} aria-selected="${sel?'true':'false'}"><span class="ui-select-opt-title">${esc(androidDeviceTitle(d))}${dis?' — '+esc(d.state):''}</span><span class="ui-select-opt-sub">${esc(androidDeviceMeta(d))}</span></button>`;
   }).join('');
   const cur=devs.find(d=>d.serial===androidDeviceSerial);
   valueEl.textContent=cur?androidDeviceTitle(cur):'Select device…';
   if(meta)meta.textContent=cur?androidDeviceMeta(cur):'';
+}
+
+function moveDeviceOption(menu, trigger, delta) {
+  const opts=[...menu.querySelectorAll('[role="option"]:not(:disabled)')];
+  if(!opts.length)return;
+  const active=document.activeElement?.closest?.('[role="option"]');
+  let i=active?opts.indexOf(active):opts.findIndex(o=>o.getAttribute('aria-selected')==='true');
+  if(i<0)i=0;
+  i=(i+delta+opts.length)%opts.length;
+  opts[i].focus();
+  opts.forEach(o=>o.classList.toggle('active',o===opts[i]));
+}
+function jumpDeviceOption(menu, trigger, end=false) {
+  const opts=[...menu.querySelectorAll('[role="option"]:not(:disabled)')];
+  if(!opts.length)return;
+  const opt=end?opts[opts.length-1]:opts[0];
+  opt.focus();
+  opts.forEach(o=>o.classList.toggle('active',o===opt));
+}
+function wireDeviceMenuKeyboard(menu, trigger, openMenu, closeMenu) {
+  if(!menu||!trigger)return;
+  trigger.addEventListener('keydown',e=>{
+    if(!['ArrowDown','ArrowUp','Home','End','Enter',' '].includes(e.key))return;
+    e.preventDefault();
+    if(menu.hidden){openMenu();}
+    if(e.key==='ArrowDown')moveDeviceOption(menu,trigger,1);
+    else if(e.key==='ArrowUp')moveDeviceOption(menu,trigger,-1);
+    else if(e.key==='Home')jumpDeviceOption(menu,trigger);
+    else if(e.key==='End')jumpDeviceOption(menu,trigger,true);
+    else moveDeviceOption(menu,trigger,0);
+  });
+  menu.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();moveDeviceOption(menu,trigger,1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();moveDeviceOption(menu,trigger,-1);}
+    else if(e.key==='Home'){e.preventDefault();jumpDeviceOption(menu,trigger);}
+    else if(e.key==='End'){e.preventDefault();jumpDeviceOption(menu,trigger,true);}
+    else if(e.key==='Escape'){e.preventDefault();closeMenu(true);}
+    else if(e.key==='Enter'||e.key===' '){e.preventDefault();document.activeElement?.closest?.('[role="option"]:not(:disabled)')?.click();}
+  });
 }
 
 async function androidPost(path,body){
@@ -1137,13 +1177,14 @@ $('#androidProxyMode')&&$('#androidProxyMode').addEventListener('click',e=>{
   const opt=e.target.closest('.ui-select-opt');
   if(!opt||opt.disabled)return;
   androidDeviceSerial=opt.dataset.serial||'';
-  closeAndroidDeviceMenu();
+  closeAndroidDeviceMenu(true);
   loadAndroid();
 });}
 document.addEventListener('click',()=>closeAndroidDeviceMenu());
 {const wrap=$('#androidDeviceSelectWrap');if(wrap)wrap.addEventListener('keydown',e=>{
-  if(e.key==='Escape')closeAndroidDeviceMenu();
+  if(e.key==='Escape')closeAndroidDeviceMenu(true);
 });}
+wireDeviceMenuKeyboard($('#androidDeviceMenu'),$('#androidDeviceTrigger'),toggleAndroidDeviceMenu,closeAndroidDeviceMenu);
 {const lh=$('#androidLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#androidOpenProxyBtn'))openSettingsProxy();});}
 $('#androidRefreshBtn')&&($('#androidRefreshBtn').onclick=()=>androidAction(loadAndroid));
 $('#androidSetupAllBtn')&&($('#androidSetupAllBtn').onclick=()=>androidAction(async()=>{
@@ -1193,10 +1234,11 @@ function iosProxyMode(){
   return on?.dataset.mode==='wifi'?'wifi':'localhost';
 }
 
-function closeIOSDeviceMenu(){
+function closeIOSDeviceMenu(returnFocus=false){
   const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger');
   if(menu)menu.hidden=true;
   if(trigger)trigger.setAttribute('aria-expanded','false');
+  if(returnFocus&&trigger)trigger.focus(); // keyboard focus return to its combobox trigger
 }
 
 function toggleIOSDeviceMenu(){
@@ -1225,7 +1267,7 @@ function renderIOSDevicePicker(devs){
   }
   menu.innerHTML=devs.map(d=>{
     const sel=d.udid===iosDeviceUDID;
-    return `<button type="button" role="option" class="ui-select-opt${sel?' sel':''}" data-udid="${escAttr(d.udid)}" aria-selected="${sel?'true':'false'}"><span class="ui-select-opt-title">${esc(iosDeviceTitle(d))}</span><span class="ui-select-opt-sub">${esc(iosDeviceMeta(d))}</span></button>`;
+    return `<button type="button" role="option" id="ios-device-option-${escAttr(d.udid)}" class="ui-select-opt${sel?' sel':''}" data-device-option="${escAttr(d.udid)}" data-udid="${escAttr(d.udid)}" aria-selected="${sel?'true':'false'}"><span class="ui-select-opt-title">${esc(iosDeviceTitle(d))}</span><span class="ui-select-opt-sub">${esc(iosDeviceMeta(d))}</span></button>`;
   }).join('');
   const cur=devs.find(d=>d.udid===iosDeviceUDID);
   valueEl.textContent=cur?iosDeviceTitle(cur):'Select target…';
@@ -1289,11 +1331,12 @@ $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
   const opt=e.target.closest('.ui-select-opt');
   if(!opt)return;
   iosDeviceUDID=opt.dataset.udid||'';
-  closeIOSDeviceMenu();
+  closeIOSDeviceMenu(true);
   loadIOS();
 });}
 document.addEventListener('click',()=>closeIOSDeviceMenu());
 {const lh=$('#iosLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosOpenProxyBtn'))openSettingsProxy();});}
+wireDeviceMenuKeyboard($('#iosDeviceMenu'),$('#iosDeviceTrigger'),toggleIOSDeviceMenu,closeIOSDeviceMenu);
 $('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(loadIOS));
 $('#iosSetupAllBtn')&&($('#iosSetupAllBtn').onclick=()=>iosAction(async()=>{
   const r=await iosPost('/api/ios/setup',{});

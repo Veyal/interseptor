@@ -4,9 +4,11 @@ import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
 // tabindex + Enter/Space) so endpoints/rows/sorts are reachable without a mouse.
-function keyClick(el, fn){
+function keyClick(el, fn, preserveRole=false){
   if(!el) return;
-  el.setAttribute('role','button');
+  // Keep native table row/header semantics when wiring keyboard activation.
+  // Non-table divs still receive button semantics for assistive technology.
+  if(!preserveRole)el.setAttribute('role','button');
   el.tabIndex=0;
   el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});
   el.onclick=fn;
@@ -78,7 +80,7 @@ function restoreMapView(){
 
 export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
-  statusClass: 0, hideNoise: restoreMapHideNoise(), collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
+  statusClass: 0, hideNoise: restoreMapHideNoise(), noiseHiddenCount: 0, collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
   sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
@@ -127,6 +129,20 @@ export async function loadEndpoints(){
     mapState.total = d.total != null ? d.total : mapState.eps.length;
     mapState.truncated = !!d.truncated;
     mapState.searchNote = d.searchNote || '';
+    mapState.noiseHiddenCount = 0;
+    // The default noise filter is server-side. When it produces an empty map,
+    // make the empty state distinguish "no capture" from "all paths were only
+    // 403/404" with one bounded diagnostic request. Only run this when the
+    // remaining client-side filters cannot make the count misleading.
+    if(mapState.hideNoise && !mapState.eps.length && !mapState.search && !mapState.method && !mapState.statusClass){
+      const allQ = new URLSearchParams({hideNoise:'0'});
+      if(mapState.domain) allQ.set('host',mapState.domain);
+      if(mapState.tag) allQ.set('tag',mapState.tag);
+      try{
+        const all=await api('/api/endpoints?'+allQ.toString());
+        mapState.noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
+      }catch(e){/* diagnostic only; preserve the primary map result */}
+    }
     mapState._dataVersion++;
     mapState._needFit = true;
     fillMapDomains();
@@ -429,7 +445,7 @@ function renderMapParams(d){
     </tr>`).join('')}
     </tbody></table></div>`).join('');
   box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
-  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow))));
+  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
 }
 
 function renderMapCrumb(eps){
@@ -482,24 +498,32 @@ export function renderMap(){
   const eps = mapVisibleEps(filtered);
   const hostN = new Set(eps.map(e => e.host)).size;
   const hasFilters = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
+  const hiddenByNoise = !eps.length && mapState.noiseHiddenCount > 0;
   let countText = eps.length
     ? `${eps.length.toLocaleString()} endpoint${eps.length === 1 ? '' : 's'} · ${hostN} host${hostN === 1 ? '' : 's'}`
-    : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
+    : hiddenByNoise
+      ? `${mapState.noiseHiddenCount.toLocaleString()} endpoint${mapState.noiseHiddenCount === 1 ? '' : 's'} hidden by the 403/404 noise filter`
+      : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
   if(mapState.truncated && mapState.total > mapState.eps.length) countText += ` (${mapState.total.toLocaleString()} total)`;
   $('#mapCount').textContent = countText;
   const warn = $('#mapWarn');
   const perf = mapPerfNote(eps);
-  if(warn && mapState.view !== 'graph'){
-    if(perf){
+  if(warn){
+    if(hiddenByNoise){
+      warn.style.display = 'block';
+      warn.innerHTML = `${mapState.noiseHiddenCount.toLocaleString()} endpoint${mapState.noiseHiddenCount === 1 ? '' : 's'} hidden because they only returned 403/404. <button type="button" class="btn xs" id="mapShowNoise">Show all statuses</button>`;
+      const show=$('#mapShowNoise');
+      if(show)show.onclick=mapHiddenNoiseAction;
+    }else if(mapState.view !== 'graph' && perf){
       warn.style.display = 'block';
       warn.textContent = perf;
-    }else if(mapState.searchNote){
+    }else if(mapState.view !== 'graph' && mapState.searchNote){
       warn.style.display = 'block';
       warn.textContent = mapState.searchNote;
-    }else if(mapUsesServerSearch() && (mapState.searchScope === 'body' || mapState.searchScope === 'all') && mapState.view !== 'graph'){
+    }else if(mapState.view !== 'graph' && mapUsesServerSearch() && (mapState.searchScope === 'body' || mapState.searchScope === 'all')){
       warn.style.display = 'block';
       warn.textContent = 'Body search scans stored bodies (content-deduped, latest 8000 flows max). Filter by domain to narrow.';
-    }else if(warn && mapState.view !== 'graph'){
+    }else if(mapState.view !== 'graph'){
       warn.style.display = 'none';
       warn.textContent = '';
     }
@@ -508,6 +532,15 @@ export function renderMap(){
   if(mapState.view === 'graph') renderMapGraph(eps);
   else if(mapState.view === 'table') renderMapTable(eps);
   else renderMapTree(eps);
+}
+
+// Keep the empty-state recovery local: changing this filter should not reset
+// the host/search selection or require a second navigation step.
+function mapHiddenNoiseAction(){
+  mapState.hideNoise=false;
+  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,'0');}catch(e){}
+  syncMapHideNoise();
+  loadEndpoints();
 }
 
 export function renderMapTree(eps){
@@ -572,7 +605,7 @@ function wireMapTableRows(box){
     keyClick(tr, ev => {
       if(ev.target.closest('[data-rep]')) return;
       flowPopup(id);
-    });
+    }, true);
   });
   box.querySelectorAll('[data-rep]').forEach(b => b.onclick = ev => {
     ev.stopPropagation();
@@ -589,7 +622,7 @@ function renderMapTable(eps){
   const sorted = mapSortEps(eps);
   const showHost = !mapState.domain;
   const sk = mapState.sort.key, sd = mapState.sort.dir;
-  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
   const head = `<thead><tr>
     ${showHost ? th('host', 'Host', '140px') : ''}
     ${th('method', 'Method', '72px')}
@@ -630,7 +663,7 @@ function renderMapTable(eps){
     if(mapState.sort.key === k) mapState.sort.dir *= -1;
     else{ mapState.sort.key = k; mapState.sort.dir = 1; }
     renderMap();
-  }));
+  }, true));
 }
 
 let mapSearchTimer = null;
@@ -913,7 +946,7 @@ export function renderMapGraph(eps){
   if(!eps.length){
     g.removeAttribute('transform');
     g.innerHTML = '<text class="g-dim" x="20" y="28">No endpoints match — relax the filters, clear the search, or Refresh.</text>';
-    if(warn) warn.style.display = 'none';
+    if(warn && !mapState.noiseHiddenCount) warn.style.display = 'none';
     return;
   }
   if(mapState.search) mapExpandForSearch(eps);
@@ -978,6 +1011,7 @@ export function renderMapGraph(eps){
     const host=el.dataset.host;
     if(!host)return;
     mapState.domain=host;
+    try{localStorage.setItem(MAP_DOMAIN_KEY,host);}catch(e){}
     const sel=$('#mapDomain');if(sel)sel.value=host;
     mapState.collapsed.clear();
     mapState._needFit=true;

@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Restrained workstation motion.** Added shared motion tokens and reduced-motion-aware panel, live-traffic, intercept, Repeater, Scanner, and Map feedback; high-volume History signals are capped, acknowledged queue actions remain truthful, and SVG graph nodes are keyboard-selectable with finite Fit/focus movement.
 - **UI motion guidance and safeguards.** Documented allowed motion, performance limits, and the deferred 3D assessment, with design-system tests preventing unapproved infinite animation, external animation assets, dense-row hover transforms, and broad transitions.
 
+### Fixed
+- **Audited workstation interactions.** Repaired Findings creation, Checks actions, History source filters and live reconciliation, Intercept selection races, Repeater shortcut feedback, Intruder polling recovery, OOB destructive-action feedback, Map noise-filter recovery, keyboard device selectors, and narrow Repeater/Intruder/Checks layouts.
+- **Capture-burst control traffic.** Coalesced TLS diagnosis refreshes so established plain-HTTP capture no longer creates one diagnostic API request per flow.
+
 ## [2.0.3] - 2026-08-21
 
 ### Changed

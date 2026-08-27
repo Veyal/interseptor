@@ -30,7 +30,6 @@
      colour token. Enforced by TestUIUsesVectorIconsNotEmoji. -->
 <svg id="iconSprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M10 11v6M14 11v6"/></symbol>
-<path d="M11 3l1.7 4.8L17.5 9.5l-4.8 1.7L11 16l-1.7-4.8L4.5 9.5l4.8-1.7z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.6-4.6"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 5a1 1 0 0 1 1-1h11l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 4v6h7V4M7 20v-6h10v6"/></symbol>
@@ -281,7 +280,7 @@
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
       <button class="btn" id="repPostmanImport" type="button" title="Select a Postman collection JSON, optionally with an environment JSON">Import Postman</button>
       <input type="file" id="repPostmanFile" accept=".json,application/json" multiple aria-label="Import Postman collection or environment" style="display:none">
-      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)">Send ▸<span class="kbd">Ctrl/⌘+Space</span></button>
+      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)"><span id="repSendLabel">Send ▸</span><span class="kbd">Ctrl/⌘+Space</span></button>
     </div>
     <div class="rep-work">
       <aside id="repHistory" class="rep-hist" style="display:none"></aside>
@@ -356,7 +355,7 @@ Content-Type: application/json
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
       <section class="pane intr-results">
-        <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><div class="spacer"></div>
+        <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><span id="intrPollStatus" class="statusline" role="status" aria-live="polite"></span><div class="spacer"></div>
           <span class="seg intr-res-filter" id="intrResFilter" role="tablist" aria-label="Filter results">
             <button type="button" class="on" data-f="all" role="tab" aria-selected="true">All</button>
             <button type="button" data-f="interesting" role="tab" aria-selected="false" title="Flagged, grep match, or length anomaly">Interesting</button>
@@ -375,7 +374,7 @@ Content-Type: application/json
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <div id="scanPassiveBar" class="row find-toolbar-row">
-      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target"><option value="">All in-scope hosts</option></select>
+      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
       <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanClear">Clear results</button>
@@ -392,7 +391,7 @@ Content-Type: application/json
       <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">` OOB</button>
     </div>
     <div id="scanPassiveView" class="scan-passive-view">
-      <div id="scanList" class="scan-list">
+      <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
         <div class="state-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
           <div class="state-empty-title">No issues yet</div>
@@ -1285,7 +1284,7 @@ Content-Type: application/json
         <input id="oobUrl" class="btn" readonly style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);font-family:var(--mono);color:var(--accent)" aria-label="Generated OOB payload URL" placeholder="click Generate…">
         <button class="btn" id="oobCopy">⧉ Copy</button>
       </div>
-      <div class="row" style="gap:10px"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
+      <div class="row" style="gap:10px"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><span id="oobLoadState" class="hint" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
       <div id="oobList"><div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div></div>
     </div>
   </div>

@@ -66,6 +66,10 @@ const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
 const FLOW_COL_MIN=40;              // floor width for a resized column
 const HIDE_TLS_KEY='proxy.hideTlsFailed';
+// History source filters are intentionally client state: the backend already
+// exposes the matching `manual` and `ai` query parameters, and live SSE rows
+// need the same predicates before they are admitted to the in-memory window.
+if(typeof state.showAI!=='boolean')state.showAI=true;
 function loadProxyPrefs(){
   try{state.hideTlsFailed=localStorage.getItem(HIDE_TLS_KEY)!=='0';}catch(e){state.hideTlsFailed=true;}
 }
@@ -295,6 +299,9 @@ function canIncremental(){
 }
 function flowMatchesFilters(f){
   const fl=state.filters;
+  const isAI=(f.flags&FLAG_AI)!==0;
+  if(!state.showManual&&!isAI)return false;
+  if(!state.showAI&&isAI)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
 
@@ -408,11 +415,15 @@ function updateTruncBanner(){
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
+    const hadFocus=row===document.activeElement||row.contains(document.activeElement);
     const tmp=document.createElement('div');
     tmp.innerHTML=flowRowHTML(f);
     const nr=tmp.firstElementChild;
     wireFlowRow(nr);
     row.replaceWith(nr);
+    // SSE response updates replace the row's DOM node. Keep keyboard users on
+    // the same flow instead of dropping focus to the document body.
+    if(hadFocus)nr.focus({preventScroll:true});
     return;
   }
   if(!flowMatchesFilters(f))return;
@@ -507,6 +518,9 @@ export function handleFlowUpdate(f){
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   const active=proxy&&proxy.classList.contains('active');
   if(flowStore.byId.has(f.id)){
+    const existing=flowStore.byId.get(f.id);
+    const sortValueBefore=flowSortValue(existing);
+    const sortValueAfter=flowSortValue(f);
     // Already visible in the loaded list. A previously-matching flow can stop
     // matching on update (e.g. its status now falls outside an active status
     // filter) — remove it from the list in that case rather than leaving a
@@ -521,6 +535,11 @@ export function handleFlowUpdate(f){
       return;
     }
     storeUpsertFlow(flowStore,f); // O(1) in-place refresh — no findIndex over the loaded list
+    // Status, response length, and MIME are mutable after capture. If one of
+    // them is the active sort key, patching in place would leave History in the
+    // wrong order. Coalesced reloads keep this correct without doing a full
+    // fetch for every burst event.
+    if(sortValueBefore!==sortValueAfter){scheduleReload();return;}
     if(!active)return;
     flowRowLiveUpdate(f,false);
     return;
@@ -541,7 +560,7 @@ export function getStartedCard(){
       <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
       <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
-      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder }</li>
+      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder</li>
 
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
@@ -677,6 +696,8 @@ function buildFlowParams(){
   if(state.inScopeOnly)q.set('inScope','1');
 
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
+  q.set('manual',state.showManual?'1':'0');
+  q.set('ai',state.showAI?'1':'0');
   q.set('sort',state.sort.key);
   q.set('dir',sortDirParam());
   return q;
@@ -998,9 +1019,12 @@ $('#scopeToggle').onclick=()=>{
 function syncSourceFilters(){
   const mf=$('#manualFilter');
   if(mf){mf.classList.toggle('on',state.showManual);mf.setAttribute('aria-pressed',state.showManual?'true':'false');}
+  const af=$('#aiFilter');
+  if(af){af.classList.toggle('on',state.showAI);af.setAttribute('aria-pressed',state.showAI?'true':'false');}
 }
 export { syncSourceFilters };
 $('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
+$('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();loadFlows();});
  syncSourceFilters();
 export async function saveNote(){
   if(!state.selId)return;

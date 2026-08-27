@@ -323,3 +323,28 @@ func TestUIFoundationShortcutContract(t *testing.T) {
 		}
 	}
 }
+
+// A burst of plain HTTP captures must not produce one TLS-diagnosis fetch per
+// SSE event. Only the first flow can change the initial no-traffic verdict;
+// after that, another refresh is useful only for a TLS-relevant flow.
+func TestUIFoundationTLSDiagnosisCoalescesCaptureBursts(t *testing.T) {
+	tlsdiag := executableJS(readUIAsset(t, "js/tlsdiag.js"))
+	requireUIContains(t, tlsdiag,
+		"let diagRefreshTimer=null",
+		"function scheduleTrafficDiagnosis(",
+		"if(diagRefreshTimer)return",
+		"lastDiag.verdict === 'no_traffic'",
+		"f.scheme === 'https'",
+		"scheduleTrafficDiagnosis()",
+	)
+	onFlow := regexp.MustCompile(`(?s)export function onFlowMaybeTLS\(f\) \{(.*?)\n\}`).FindStringSubmatch(tlsdiag)
+	if onFlow == nil {
+		t.Fatal("onFlowMaybeTLS function not found")
+	}
+	if strings.Contains(onFlow[1], "lastDiag.verdict === 'no_https'") {
+		t.Error("plain HTTP flows must not keep refreshing an already-known no-HTTPS verdict")
+	}
+	if strings.Contains(onFlow[1], "loadTrafficDiagnosis()") {
+		t.Error("capture events must schedule a coalesced TLS diagnosis, not fetch immediately")
+	}
+}

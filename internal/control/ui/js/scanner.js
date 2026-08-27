@@ -1,14 +1,30 @@
-import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
+let oobLoadEpoch=0;
+let oobClearEpoch=0;
+let oobGenerateEpoch=0;
 export async function loadOob(){
-  const d=await apiTry('/api/oob/state',{},{toastOnError:false});
-  if(!d)return;
-  if(document.activeElement!==$('#oobBase'))$('#oobBase').value=d.baseUrl||'';
-  renderOobList(d.interactions||[]);
+  const epoch=++oobLoadEpoch;
+  const status=$('#oobLoadState');
+  if(status)status.textContent='Loading interactions…';
+  try{
+    const d=await api('/api/oob/state');
+    if(epoch!==oobLoadEpoch)return;
+    if(document.activeElement!==$('#oobBase'))$('#oobBase').value=d.baseUrl||'';
+    renderOobList(d.interactions||[]);
+    if(status)status.textContent='';
+  }catch(e){
+    if(epoch!==oobLoadEpoch)return;
+    if(status){
+      status.innerHTML='<span class="state-error-msg">Couldn\'t load interactions: '+esc(e.message||'request failed')+'</span> <button type="button" class="btn xs" data-oob-retry>Retry</button>';
+      const retry=status.querySelector('[data-oob-retry]');
+      if(retry)retry.onclick=()=>loadOob();
+    }
+  }
 }
 function renderOobList(list){
   const c=$('#oobCount');if(c)c.textContent=list.length?list.length+' interaction'+(list.length===1?'':'s'):'';
@@ -25,10 +41,27 @@ $('#oobBtn')&&($('#oobBtn').onclick=()=>{
   openModal($('#oobModal'));loadOob();
 });
 $('#oobClose')&&($('#oobClose').onclick=()=>closeModal($('#oobModal')));
-$('#oobGen')&&($('#oobGen').onclick=async()=>{try{const r=await api('/api/oob/new',{method:'POST'});$('#oobUrl').value=r.url||'';copyText(r.url||'','OOB URL generated & copied');}catch(e){toast(e.message);}});
+$('#oobGen')&&($('#oobGen').onclick=async()=>{
+  const button=$('#oobGen');
+  if(button.disabled)return;
+  const epoch=++oobGenerateEpoch;
+  button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Generating…';
+  try{const r=await api('/api/oob/new',{method:'POST'});$('#oobUrl').value=r.url||'';copyText(r.url||'','OOB URL generated & copied');}
+  catch(e){toast(e.message,'error');}
+  finally{if(epoch===oobGenerateEpoch){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='＋ Generate payload URL';}}
+});
 $('#oobCopy')&&($('#oobCopy').onclick=()=>{const u=$('#oobUrl').value;if(u)copyText(u,'OOB URL copied');else toast('generate a URL first');});
 $('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{try{await api('/api/oob/base',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({baseUrl:$('#oobBase').value.trim()})});toast('OOB base saved');loadOob();}catch(e){toast(e.message);}});
-$('#oobClear')&&($('#oobClear').onclick=async()=>{try{await api('/api/oob/interactions',{method:'DELETE'});loadOob();toast('OOB interactions cleared');}catch(e){toast(e.message);}});
+$('#oobClear')&&($('#oobClear').onclick=async()=>{
+  const button=$('#oobClear');
+  if(button.disabled)return;
+  if(!await uiConfirm('Clear OOB interactions?','Remove all captured callback interactions? This evidence cannot be recovered.','Clear interactions','btn danger','var(--red)'))return;
+  const epoch=++oobClearEpoch;
+  button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';
+  try{await api('/api/oob/interactions',{method:'DELETE'});await loadOob();toast('OOB interactions cleared');}
+  catch(e){toast(e.message,'error');}
+  finally{if(epoch===oobClearEpoch){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Clear';}}
+});
 
 function oobTunnelCmd(){return 'cloudflared tunnel --url http://'+(state.controlAddr||'127.0.0.1:9966');}
 $('#oobModalTunnelCopy')&&($('#oobModalTunnelCopy').onclick=()=>copyText(oobTunnelCmd(),'Tunnel command copied'));
@@ -38,6 +71,31 @@ let checkMode='code',checkDocsLoaded=false;
 let checkSelId=null;
 let checkBuiltin=false,checkOverridden=false;
 const checkEndpoint='/api/checks';
+let checkActionEpoch=0;
+let checkActionBusy=false;
+function setCheckActionState(kind,stateName){
+  const test=$('#checkTest'),save=$('#checkSave');
+  if(!test||!save)return;
+  const busy=stateName==='pending';
+  checkActionBusy=busy;
+  [test,save].forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',busy?'true':'false');});
+  test.classList.remove('is-pending','is-success','is-error');
+  save.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle'){
+    const button=kind==='test'?test:save;
+    button.classList.add('is-'+stateName);
+    button.textContent=stateName==='pending'?(kind==='test'?'Testing…':'Saving…'):(stateName==='success'?(kind==='test'?'Tested':'Saved'):(kind==='test'?'Test failed':'Save failed'));
+  }else{
+    test.textContent='Test ▸';save.textContent='Save';
+  }
+}
+function resetCheckAction(kind,delay,epoch){
+  setTimeout(()=>{if(epoch===checkActionEpoch)setCheckActionState(kind,'idle');},delay);
+}
+function cancelCheckAction(){
+  checkActionEpoch++;
+  if(checkActionBusy)setCheckActionState('other','idle');
+}
 function checkSetEditorReadonly(on){const el=$('#checkId');if(el)el.readOnly=!!on;}
 function checkSetMode(mode){
   checkMode=mode;
@@ -162,6 +220,7 @@ function updateCheckDeleteLabel(){
   }
 }
 export async function loadBuiltinCheck(id){
+  cancelCheckAction();
   checkBuiltin=true;checkSelId=id;refreshCheckEditorMode();
   try{
     const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
@@ -175,6 +234,7 @@ export async function loadBuiltinCheck(id){
   }catch(e){toast(e.message);}
 }
 export async function loadCheck(id){
+  cancelCheckAction();
   checkBuiltin=false;checkOverridden=false;checkSelId=id;refreshCheckEditorMode();
   try{const d=await api(checkEndpoint+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
     $('#checkSrc').value=d.source||'';
@@ -183,6 +243,7 @@ export async function loadCheck(id){
     markChecksSelected($('#checksList'));}catch(e){toast(e.message);}
 }
 export function checkNew(){
+  cancelCheckAction();
   checkBuiltin=false;checkOverridden=false;checkSelId=null;refreshCheckEditorMode();
   checkSetEditorReadonly(false);
   $('#checkId').value='';
@@ -192,33 +253,51 @@ export function checkNew(){
   markChecksSelected($('#checksList'));
 }
 export async function checkTest(){
+  if(checkActionBusy)return;
+  const epoch=++checkActionEpoch,selection=checkSelId;
+  setCheckActionState('test','pending');
   const out=$('#checkOut');out.innerHTML='<div class="check-status check-status-pending">running…</div>';
-  try{const r=await api(checkEndpoint()+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
-    if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';return;}
+  try{const r=await api(checkEndpoint+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value,flowId:state.selId||0})});
+    if(epoch!==checkActionEpoch||selection!==checkSelId)return;
+    if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';setCheckActionState('test','error');resetCheckAction('test',1000,epoch);return;}
     // Passive checks return {findings:[...]} (testCheck in internal/control/checks.go)
     // — zero, one, or many findings on the tested flow.
     const findings=r.findings||[];
     if(!findings.length){
       const note=r.note||'no finding';
       out.innerHTML=`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
+      setCheckActionState('test','success');resetCheckAction('test',800,epoch);
       return;
     }
     const note='finding'+(findings.length===1?'':'s')+' on flow #'+(r.flowId||'?');
     out.innerHTML=`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}</div>`
       +findings.map(f=>`<div><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div>`).join('')
       +`</div>`;
-  }catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>';}
+    setCheckActionState('test','success');resetCheckAction('test',800,epoch);
+  }catch(e){
+    if(epoch!==checkActionEpoch)return;
+    out.innerHTML='<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>';
+    setCheckActionState('test','error');resetCheckAction('test',1000,epoch);
+  }
 }
 export async function checkSave(){
+  if(checkActionBusy)return;
   const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
+  const epoch=++checkActionEpoch,selection=checkSelId;
+  setCheckActionState('save','pending');
   const out=$('#checkOut');
   out.innerHTML='<div class="check-status check-status-pending">saving…</div>';
-  try{await api(checkEndpoint()+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
+  try{await api(checkEndpoint+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source:$('#checkSrc').value})});
+    if(epoch!==checkActionEpoch||selection!==checkSelId)return;
     checkOverridden=checkBuiltin||checkOverridden;
     out.innerHTML='<div class="check-status check-status-ok">Saved ✓ — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>';
     updateCheckDeleteLabel();
-    loadChecksList();}
-  catch(e){out.innerHTML='<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>';}
+    loadChecksList();setCheckActionState('save','success');resetCheckAction('save',800,epoch);}
+  catch(e){
+    if(epoch!==checkActionEpoch)return;
+    out.innerHTML='<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>';
+    setCheckActionState('save','error');resetCheckAction('save',1000,epoch);
+  }
 }
 export async function checkDelete(){
   const id=$('#checkId').value.trim();if(!id)return;
@@ -328,6 +407,7 @@ if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output c
 /* ---- scanner ---- */
 export const scanState={sel:null,issues:[]};
 let scanRunEpoch=0;
+let promoteFindingPending=false;
 function setScanRunState(stateName,label){
   const button=$('#scanRun');if(!button)return;
   button.classList.remove('is-pending','is-success','is-error');
@@ -399,7 +479,7 @@ export function renderScan(){
   const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
   $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
   if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
-  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}">
+  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}" role="option" aria-selected="${idx===scanState.sel?'true':'false'}">
     <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
     <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
   list.querySelectorAll('.scan-item').forEach(el=>{el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();};wireRowKey(el);});
@@ -424,14 +504,18 @@ export function renderScanDetail(){
     ${tgts}
     ${first.fix?`<div class="micro-label" style="margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
   $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
-  const pm=$('#scanPromote'); if(pm) pm.onclick=()=>promoteFinding(g);
+  const pm=$('#scanPromote'); if(pm){pm.onclick=()=>promoteFinding(g);if(promoteFindingPending)setPromoteFindingState(pm,'pending');}
 }
 // promoteFinding turns a passive-scan issue group into a curated Finding (with all
 // its PoC flows attached), then opens it — bridging the two views of "vulns" that
 // were previously disconnected silos.
 async function promoteFinding(g){
+  if(promoteFindingPending)return;
   const first=g.items[0]||{};
   const flowIds=g.items.map(i=>i.flowId).filter(Boolean);
+  const button=$('#scanPromote');
+  promoteFindingPending=true;
+  setPromoteFindingState(button,'pending');
   try{
     const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
       title:g.title,severity:g.severity,source:'scanner',
@@ -440,7 +524,19 @@ async function promoteFinding(g){
     })});
     toast('Promoted to Finding #'+f.id+(flowIds.length?' · '+flowIds.length+' PoC flow'+(flowIds.length===1?'':'s'):''));
     openFinding(f.id);
-  }catch(e){toast(e.message);}
+  }catch(e){toast(e.message,'error');}
+  finally{
+    promoteFindingPending=false;
+    if(button&&document.body.contains(button))setPromoteFindingState(button,'idle');
+  }
+}
+function setPromoteFindingState(button,stateName){
+  if(!button)return;
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  if(stateName==='pending')button.textContent='Promoting…';
+  else button.innerHTML=icon('plus')+' Promote to Finding';
 }
 $('#scanRun').onclick=runScan;
 $('#scanClear')&&($('#scanClear').onclick=async()=>{
