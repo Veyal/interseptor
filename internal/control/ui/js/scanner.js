@@ -1,6 +1,7 @@
 import { $, esc, escAttr, state, toast, api, apiTry, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
+import { animateOnce, MOTION } from './motion.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 export async function loadOob(){
@@ -326,6 +327,17 @@ if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output c
 
 /* ---- scanner ---- */
 export const scanState={sel:null,issues:[]};
+let scanRunEpoch=0;
+function setScanRunState(stateName,label){
+  const button=$('#scanRun');if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  button.textContent=label;
+}
+function resetScanRun(delay,epoch){setTimeout(()=>{if(epoch===scanRunEpoch)setScanRunState('idle','Run scan ▸');},delay);}
 export async function loadIssues(){
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Loading scanner results…';
   try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();if(stateEl)stateEl.textContent='';}
@@ -333,15 +345,17 @@ export async function loadIssues(){
   finally{if(stateEl&&stateEl.textContent==='Loading scanner results…')stateEl.textContent='';}
 }
 export async function runScan(){
-  $('#scanRun').textContent='Scanning…';$('#scanRun').disabled=true;
+  const epoch=++scanRunEpoch;
+  setScanRunState('pending','Scanning…');
   const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
   const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Rescanning selected in-scope traffic…';
   try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});scanState.issues=d.issues||[];renderScan();
+    await animateOnce($('#scanPassiveView'),[{opacity:.6},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
     if(stateEl)stateEl.textContent='Rescan complete · stale issues reconciled for this scan';
+    setScanRunState('success','Scan complete');resetScanRun(700,epoch);
     toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
-  catch(e){renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);}
-  finally{$('#scanRun').textContent='Run scan ▸';$('#scanRun').disabled=false;}
+  catch(e){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);}
 }
 // Populate the scanner's target dropdown from in-scope history only.
 export async function loadScanTargets(){

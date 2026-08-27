@@ -1,10 +1,22 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey, prettify } from './core.js';
+import { animateOnce, MOTION } from './motion.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
 // is {id, side:'req'|'resp'} for the selected item, or null.
 const heldRawCache=new Map();
 const heldOriginalCache=new Map();
+let heldKeysReady=false;
+let knownHeldKeys=new Set();
+let heldSignalWindowAt=0,heldSignalCount=0;
+let heldActionInFlight=null;
+let heldActionEpoch=0;
+function allowHeldSignal(){
+  const now=performance.now();
+  if(now-heldSignalWindowAt>800){heldSignalWindowAt=now;heldSignalCount=0;}
+  heldSignalCount++;
+  return !document.hidden&&heldSignalCount<=4;
+}
 function heldKey(side,id){return side+':'+id;}
 function heldOriginal(h){return h.original||h.raw||'';}
 function setHeldModified(raw, original){
@@ -24,6 +36,17 @@ export function renderIntercept(){
   const fp=$('#interceptFilterPattern');if(fp&&document.activeElement!==fp)fp.value=ic.filterPattern||'';
   // unified queue: requests then responses, each tagged with its side
   const items=[...rq.map(h=>({...h,side:'req'})),...rrq.map(h=>({...h,side:'resp'}))];
+  if(heldActionInFlight&&!items.some(h=>heldKey(h.side,h.id)===heldActionInFlight.key)){
+    // The SSE update can arrive before fetch() resolves. Keep the acknowledged
+    // item's DOM row in place until the action handler starts its exit motion;
+    // state still comes from the server and the deferred render is short.
+    heldActionInFlight.deferred=true;
+    return;
+  }
+  const nextHeldKeys=new Set(items.map(h=>heldKey(h.side,h.id)));
+  const arrivals=heldKeysReady?items.filter(h=>!knownHeldKeys.has(heldKey(h.side,h.id))&&allowHeldSignal()):[];
+  knownHeldKeys=nextHeldKeys;
+  heldKeysReady=true;
   const total=items.length;
   const danger=$('#interceptWarning');
   const interceptDanger=!!(ic.enabled||ic.responseEnabled||total);
@@ -43,6 +66,13 @@ export function renderIntercept(){
     ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
     <span class="u">${esc(h.host)}${esc(h.path)}</span></div>`).join('');
   $$('#heldList .icpt-item').forEach(el=>{el.onclick=()=>selectHeld(Number(el.dataset.id),el.dataset.side);wireRowKey(el,()=>selectHeld(Number(el.dataset.id),el.dataset.side));});
+  arrivals.forEach(h=>{
+    const el=list.querySelector(`.icpt-item[data-id="${h.id}"][data-side="${h.side}"]`);
+    animateOnce(el,[
+      {opacity:.45,transform:'translateX(-4px)',backgroundColor:'var(--accentDim)'},
+      {opacity:1,transform:'translateX(0)',backgroundColor:'transparent'},
+    ],{duration:MOTION.base,easing:MOTION.enter});
+  });
   const cur=state.heldSel&&items.find(h=>h.id===state.heldSel.id&&h.side===state.heldSel.side);
   if(cur)selectHeld(cur.id,cur.side,{keepEditor:true});
   else selectHeld(items[0].id,items[0].side);
@@ -104,12 +134,45 @@ export async function toggleIntercept(){
 }
 $('#interceptToggle').onclick=toggleIntercept;
 // Forward / Drop act on the selected item, routing to the request or response API.
+function setHeldActionState(button,stateName,label){
+  const buttons=[$('#forwardBtn'),$('#dropBtn')];
+  buttons.forEach(b=>{if(b)b.disabled=stateName==='pending';});
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.textContent=label;
+}
+function resetHeldAction(button,label,delay,epoch){
+  setTimeout(()=>{if(epoch===heldActionEpoch)setHeldActionState(button,'idle',label);},delay);
+}
+function finishHeldExit(row){
+  const deferred=!!heldActionInFlight?.deferred;
+  heldActionInFlight=null;
+  if(deferred)renderIntercept();
+  else if(row?.isConnected)row.remove();
+}
+function releaseHeldAction(){
+  const deferred=!!heldActionInFlight?.deferred;
+  heldActionInFlight=null;
+  if(deferred)renderIntercept();
+}
 $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
+  const button=$('#forwardBtn');
+  const row=document.querySelector(`#heldList .icpt-item[data-id="${sel.id}"][data-side="${sel.side}"]`);
+  const epoch=++heldActionEpoch;
+  heldActionInFlight={key:heldKey(sel.side,sel.id),deferred:false};
+  setHeldActionState(button,'pending','Forwarding…');
   try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
+    await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    toast(sel.side==='resp'?'response forwarded':'forwarded');}catch(e){toast(e.message);}};
+    finishHeldExit(row);
+    setHeldActionState(button,'success','Forwarded');
+    resetHeldAction(button,'Forward',600,epoch);
+    toast(sel.side==='resp'?'response forwarded':'forwarded');
+  }catch(e){releaseHeldAction();setHeldActionState(button,'error','Forward failed');resetHeldAction(button,'Forward',900,epoch);toast(e.message);}};
 $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const sel=state.heldSel;if(!sel)return;
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
@@ -146,10 +209,20 @@ $('#heldResetBtn')&&($('#heldResetBtn').onclick=()=>{
 
 $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
+  const button=$('#dropBtn');
+  const row=document.querySelector(`#heldList .icpt-item[data-id="${sel.id}"][data-side="${sel.side}"]`);
+  const epoch=++heldActionEpoch;
+  heldActionInFlight={key:heldKey(sel.side,sel.id),deferred:false};
+  setHeldActionState(button,'pending','Dropping…');
   try{await api(base+sel.id+'/drop',{method:'POST'});
+    await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    toast(sel.side==='resp'?'response dropped':'dropped');}catch(e){toast(e.message);}};
+    finishHeldExit(row);
+    setHeldActionState(button,'success','Dropped');
+    resetHeldAction(button,'Drop',600,epoch);
+    toast(sel.side==='resp'?'response dropped':'dropped');
+  }catch(e){releaseHeldAction();setHeldActionState(button,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch);toast(e.message);}};
 export async function applyInterceptFilter(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
   try{const s=await api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})});

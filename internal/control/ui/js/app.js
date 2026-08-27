@@ -19,6 +19,7 @@ import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
+import { transitionView } from './motion.js';
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
@@ -47,17 +48,25 @@ function updateCrumb(t){
 function activateTab(t){
   const prev=$('.panel.active');
   if(prev&&prev.dataset.panel==='notes')flushNotesSave();
-  const tabs=$$('.tab');
-  tabs.forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');x.tabIndex=-1;});
-  t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
-  $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
-  try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
-  updateCrumb(t);
-  if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-  if(t.dataset.tab==='scanner')loadScanTargets();
-  if(t.dataset.tab==='findings')loadFindings();
-  if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
-  if(t.dataset.tab==='notes')loadNotes();
+  const tabs=$$('.tab'), current=tabs.find(x=>x.classList.contains('active'));
+  const currentIndex=tabs.indexOf(current), nextIndex=tabs.indexOf(t);
+  const changing=!!current&&current!==t;
+  if(changing)document.documentElement.dataset.motionDirection=nextIndex<currentIndex?'back':'forward';
+  const update=()=>{
+    tabs.forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');x.tabIndex=-1;});
+    t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
+    $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
+    try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
+    updateCrumb(t);
+    if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
+    if(t.dataset.tab==='scanner')loadScanTargets();
+    if(t.dataset.tab==='findings')loadFindings();
+    if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
+    if(t.dataset.tab==='notes')loadNotes();
+  };
+  const transition=changing?transitionView(update):(update(),null);
+  if(transition)transition.finished.catch(()=>{}).finally(()=>{delete document.documentElement.dataset.motionDirection;});
+  else delete document.documentElement.dataset.motionDirection;
 }
 function goToNotes(){
   const tab=document.querySelector('.tab[data-tab="notes"]');

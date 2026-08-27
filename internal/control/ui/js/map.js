@@ -1,5 +1,6 @@
 import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
 import { sendToRepeater } from './tools.js';
+import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
 // tabindex + Enter/Space) so endpoints/rows/sorts are reachable without a mouse.
@@ -79,7 +80,7 @@ export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, hideNoise: restoreMapHideNoise(), collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
-  sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0,
+  sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
 
 function mapUsesServerSearch(){
@@ -855,11 +856,29 @@ function graphTipShow(n, ev){
 
 function graphTipHide(){ const t = $('#mapGraphTip'); if(t) t.style.display = 'none'; }
 
+const graphSnapshots=new Map();
+let mapZoomEpoch=0;
+function graphNodeSignature(n){
+  const e=n.ep||{};
+  return [n.type,n.label,n._col?'1':'0',gCount(n),e.lastStatus||0,e.hits||0,e.lastFlowId||0].join('|');
+}
+function graphEdgeKey(a,b){return a.key+'>'+b.key;}
+function selectGraphNode(el){
+  if(!el)return;
+  mapState.selectedNodeKey=el.dataset.key||'';
+  document.querySelectorAll('#mapGraphG .g-node').forEach(node=>{
+    const on=node.dataset.key===mapState.selectedNodeKey;
+    node.classList.toggle('g-selected',on);
+    node.setAttribute('aria-selected',on?'true':'false');
+  });
+}
+
 export function gNode(n){
   const x = n.px, y = n.py;
   const match = graphNodeMatches(n);
   const dim = mapState.search && !match;
-  const cls = `g-node g-click${dim ? ' g-dimmed' : ''}${match && mapState.search ? ' g-match' : ''}`;
+  const selected=n.key===mapState.selectedNodeKey;
+  const cls = `g-node g-click${dim ? ' g-dimmed' : ''}${match && mapState.search ? ' g-match' : ''}${selected ? ' g-selected' : ''}`;
   let mk, lb, title = esc(n.label || ''), extra = '', hitW = 120;
   if(n.type === 'host'){
     mk = `<circle cx="${x}" cy="${y}" r="6" fill="var(--accent)"/>`;
@@ -878,12 +897,18 @@ export function gNode(n){
     hitW = Math.min(240, 10 + n.label.length * 6);
   }
   const hit = `<rect class="g-hit" x="${x-8}" y="${y-12}" width="${hitW}" height="24" fill="transparent"/>`;
-  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
+  const aria=n.type==='host'
+    ?`${n.label}, host, ${gCount(n)} endpoints. Enter toggles; F focuses host.`
+    :n.type==='ep'
+      ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}. Enter opens the latest flow.`
+      :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
+  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="0" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
 
 export function renderMapGraph(eps){
   const g = $('#mapGraphG'); if(!g) return;
   const warn = $('#mapWarn');
+  const focusedKey=document.activeElement?.closest?.('#mapGraphG .g-node')?.dataset.key||'';
   graphTipHide();
   if(!eps.length){
     g.removeAttribute('transform');
@@ -916,13 +941,50 @@ export function renderMapGraph(eps){
       warn.style.display = 'none';
     }
   }
+  const snapshotKey=[mapState.domain,mapState.method,mapState.statusClass,mapState.collapseIdentical?'1':'0'].join('|');
+  const previousGraph=graphSnapshots.get(snapshotKey);
+  const nextNodeSignatures=new Map(lay.nodes.map(n=>[n.key,graphNodeSignature(n)]));
+  const nextEdgeKeys=new Set(lay.edges.map(([a,b])=>graphEdgeKey(a,b)));
+  const dataChanged=!!previousGraph&&previousGraph.dataVersion!==mapState._dataVersion;
+  const changedNodes=new Set();
+  if(dataChanged){
+    nextNodeSignatures.forEach((signature,key)=>{if(previousGraph.nodes.get(key)!==signature)changedNodes.add(key);});
+  }
+  const changedEdges=new Set();
+  if(dataChanged){
+    lay.edges.forEach(([a,b])=>{const key=graphEdgeKey(a,b);if(!previousGraph.edges.has(key)||changedNodes.has(b.key))changedEdges.add(key);});
+  }
+  const animateGraphDiff=changedNodes.size+changedEdges.size<=24;
   let h = '';
   lay.edges.forEach(([a, b]) => {
     const x1 = a.px + 8, y1 = a.py, x2 = b.px - 4, y2 = b.py, mx = (x1 + x2) / 2;
-    h += `<path class="g-edge" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
+    h += `<path class="g-edge" data-edge="${escAttr(graphEdgeKey(a,b))}" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
   });
   lay.nodes.forEach(n => h += gNode(n));
   g.innerHTML = h;
+  graphSnapshots.set(snapshotKey,{nodes:nextNodeSignatures,edges:nextEdgeKeys,dataVersion:mapState._dataVersion});
+  if(graphSnapshots.size>12)graphSnapshots.delete(graphSnapshots.keys().next().value);
+  if(animateGraphDiff){
+    changedEdges.forEach(key=>{
+      const edge=[...g.querySelectorAll('.g-edge')].find(el=>el.dataset.edge===key);
+      animateOnce(edge,[{opacity:.25,strokeDasharray:'3 5',strokeDashoffset:'16'},{opacity:1,strokeDasharray:'3 5',strokeDashoffset:'0'}],{duration:MOTION.slow,easing:MOTION.enter});
+    });
+    changedNodes.forEach(key=>{
+      const node=[...g.querySelectorAll('.g-node')].find(el=>el.dataset.key===key);
+      animateOnce(node,[{opacity:.45,transform:'translateX(-3px)'},{opacity:1,transform:'translateX(0)'}],{duration:MOTION.slow,easing:MOTION.enter});
+    });
+  }
+  const focusHost=el=>{
+    const host=el.dataset.host;
+    if(!host)return;
+    mapState.domain=host;
+    const sel=$('#mapDomain');if(sel)sel.value=host;
+    mapState.collapsed.clear();
+    mapState._needFit=true;
+    mapState._animateNextFit=true;
+    renderMap();
+    toast('focused on '+host);
+  };
   g.querySelectorAll('.g-node').forEach(el => {
     el.addEventListener('mouseenter', ev => {
       const key = el.dataset.key;
@@ -932,18 +994,11 @@ export function renderMapGraph(eps){
     el.addEventListener('mouseleave', graphTipHide);
     el.addEventListener('dblclick', ev => {
       ev.stopPropagation();
-      const host = el.dataset.host;
-      if(!host) return;
-      mapState.domain = host;
-      const sel = $('#mapDomain');
-      if(sel) sel.value = host;
-      mapState.collapsed.clear();
-      mapState._needFit = true;
-      renderMap();
-      toast('focused on '+host);
+      focusHost(el);
     });
     el.onclick = ev => {
       ev.stopPropagation();
+      selectGraphNode(el);
       if(el.dataset.kind === 'ep'){
         const f = el.dataset.flow;
         if(f) flowPopup(Number(f));
@@ -953,27 +1008,56 @@ export function renderMapGraph(eps){
       mapState.collapsed.has(k) ? mapState.collapsed.delete(k) : mapState.collapsed.add(k);
       renderMap();
     };
+    el.addEventListener('keydown',ev=>{
+      if((ev.key==='f'||ev.key==='F')&&el.dataset.host){ev.preventDefault();focusHost(el);return;}
+      if(ev.key==='Enter'||ev.key===' '){
+        ev.preventDefault();
+        el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      }
+    });
   });
-  if(mapState._needFit){ mapState._needFit = false; mapFitNow(); }
+  if(focusedKey){
+    const focused=[...g.querySelectorAll('.g-node')].find(el=>el.dataset.key===focusedKey);
+    if(focused)focused.focus({preventScroll:true});
+  }
+  if(mapState._needFit){
+    mapState._needFit=false;
+    const animate=mapState._animateNextFit;
+    mapState._animateNextFit=false;
+    mapFitNow(animate);
+  }
   else mapApplyZoom();
 }
 
 export function mapApplyZoom(){
   const z = mapState.zoom;
-  $('#mapGraphG').setAttribute('transform', `translate(${z.x} ${z.y}) scale(${z.k})`);
+  const g=$('#mapGraphG');if(!g)return;
+  mapZoomEpoch++;
+  cancelElementAnimations(g);
+  g.setAttribute('transform', `translate(${z.x} ${z.y}) scale(${z.k})`);
 }
 
-export function mapFitNow(){
+function graphTransform(z){return `translate(${z.x}px,${z.y}px) scale(${z.k})`;}
+export async function mapFitNow(animate=false){
   const svg = $('#mapGraphSvg'), gr = mapState._g;
   if(!svg || !gr) return;
   const vw = svg.clientWidth || 820, vh = svg.clientHeight || 520;
   const k = Math.max(0.35, Math.min(1.5, vw / gr.w, vh / gr.h));
-  mapState.zoom = { k, x: 16, y: Math.max(10, (vh - gr.h * k) / 2) };
-  mapApplyZoom();
+  const from={...mapState.zoom};
+  const next={k,x:16,y:Math.max(10,(vh-gr.h*k)/2)};
+  mapState.zoom=next;
+  const g=$('#mapGraphG');
+  if(!animate||!g){mapApplyZoom();return;}
+  const epoch=++mapZoomEpoch;
+  g.removeAttribute('transform');
+  await animateOnce(g,[{transform:graphTransform(from)},{transform:graphTransform(next)}],{duration:MOTION.slow,easing:MOTION.standard,fill:'both'});
+  if(epoch!==mapZoomEpoch)return;
+  g.setAttribute('transform',`translate(${next.x} ${next.y}) scale(${next.k})`);
+  cancelElementAnimations(g);
 }
 
 $('#mapViewSeg') && $('#mapViewSeg').querySelectorAll('button').forEach(b => b.onclick = () => setMapView(b.dataset.v));
-$('#mapFit') && ($('#mapFit').onclick = mapFitNow);
+$('#mapFit') && ($('#mapFit').onclick = () => mapFitNow(true));
 
 // Graph wheel: pinch (trackpad) and Ctrl/Cmd+scroll zoom; plain scroll pans.
 // Browsers fire trackpad pinch as wheel events with ctrlKey set, so the same

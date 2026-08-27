@@ -1,4 +1,5 @@
 import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, syncUiSelectStyles, icon } from './core.js';
+import { animateOnce, MOTION } from './motion.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -25,6 +26,18 @@ function repStatusLine(f){
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+let repSendEpoch=0;
+
+function setRepSendState(stateName,label){
+  const button=$('#repSend');if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  button.textContent=label;
+}
+function resetRepSend(delay,epoch){setTimeout(()=>{if(epoch===repSendEpoch)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
 export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
@@ -178,6 +191,7 @@ async function repEnterDecoded(t){
 export async function repSend(){
   repSaveEditor();const t=repCur();if(!t)return;
   if(!(t.url||'').trim()){toast('enter a URL');return;}
+  const epoch=++repSendEpoch;
   let body=t.body,payload={method:t.method,url:t.url.trim(),headers:t.headers,body};
   if((t.reqView||'raw')==='decoded'){
     if(t.applyOnSend&&t.codecId){
@@ -194,17 +208,25 @@ export async function repSend(){
     else $('#repBody').value=t.body;
   }
   repRefreshHL();
-  $('#repSend').textContent='Sending…';$('#repSend').disabled=true;
+  setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
-  $('#repResView').innerHTML='<span class="blink" style="color:var(--fg3)">sending…</span>';
+  $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
-    await renderRepResponse();loadRepHistory();repPersist();
-  }catch(e){const msg=friendlySendError(e.message);$('#repStatus').textContent='';$('#repResView').textContent='(error: '+msg+')';toast(msg);}
-  $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
+    await renderRepResponse();
+    await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
+    setRepSendState('success','Sent');resetRepSend(600,epoch);
+    loadRepHistory();repPersist();
+  }catch(e){
+    const msg=friendlySendError(e.message);
+    $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
+    $('#repResView').textContent='(error: '+msg+')';
+    await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
+    setRepSendState('error','Send failed');resetRepSend(900,epoch);toast(msg);
+  }
 }
 export async function renderRepResponse(){
   const t=repCur();if(!t||!t.resId)return;

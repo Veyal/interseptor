@@ -302,7 +302,7 @@
         </div>
       </section>
       <section class="pane rep-res">
-        <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline"></span>
+        <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline" role="status" aria-live="polite"></span>
           <div class="spacer"></div>
           <div class="seg" id="repResSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button></div>
         </div>
@@ -495,7 +495,7 @@ Content-Type: application/json
     <div id="mapTable" class="map-table-wrap map-view" style="display:none"></div>
     <div id="mapGraphWrap" style="display:none;flex:1;min-height:0;position:relative">
       <div id="mapGraphTip" class="map-graph-tip" style="display:none" role="tooltip"></div>
-      <svg id="mapGraphSvg" style="width:100%;height:100%;background:var(--bg1);cursor:grab" xmlns="http://www.w3.org/2000/svg"><g id="mapGraphG"></g></svg>
+      <svg id="mapGraphSvg" style="width:100%;height:100%;background:var(--bg1);cursor:grab" xmlns="http://www.w3.org/2000/svg"><g id="mapGraphG" role="listbox" aria-label="Endpoint relationship graph"></g></svg>
     </div>
     <div id="mapParams" class="map-table-wrap map-view" style="display:none;padding:10px 14px"></div>
   </div>

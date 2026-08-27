@@ -528,9 +528,79 @@ func TestUIHoverStatesDoNotShiftLayout(t *testing.T) {
 		if strings.Contains(body, "translateY") || strings.Contains(body, "translateX") {
 			t.Errorf("hover rule shifts layout: %s{%s}", strings.TrimSpace(m[1]), strings.TrimSpace(body))
 		}
+		selector := strings.TrimSpace(m[1])
+		for _, dense := range []string{".trow", ".intr-row", ".icpt-item", ".scan-item", ".find-row", ".map-ep", ".map-tbl"} {
+			if strings.Contains(selector, dense) && strings.Contains(body, "transform:") {
+				t.Errorf("dense hover rule transforms content: %s{%s}", selector, strings.TrimSpace(body))
+			}
+		}
 	}
-	if strings.Contains(css, "transition:all") {
+	if regexp.MustCompile(`transition\s*:\s*all(?:\s|;|$)`).MatchString(css) {
 		t.Error("transition:all animates unintended properties; name the properties explicitly")
+	}
+}
+
+func TestUIMotionTokensExist(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	vars := parseThemeBlock(t, css, ":root{")
+	want := map[string]string{
+		"--motion-instant":  "80ms",
+		"--motion-fast":     "120ms",
+		"--motion-base":     "180ms",
+		"--motion-slow":     "260ms",
+		"--motion-standard": "cubic-bezier(.4,0,.2,1)",
+		"--motion-exit":     "cubic-bezier(.4,0,1,1)",
+		"--motion-enter":    "cubic-bezier(.2,.8,.2,1)",
+	}
+	for name, expected := range want {
+		if got := strings.ReplaceAll(vars[name], " ", ""); got != expected {
+			t.Errorf("motion token %s = %q, want %q", name, vars[name], expected)
+		}
+	}
+	if !strings.Contains(readUIAsset(t, "js/app.js"), "./motion.js") {
+		t.Error("app.js does not use the shared motion helper")
+	}
+}
+
+func TestUIReducedMotionContract(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	start := strings.Index(css, "@media (prefers-reduced-motion:reduce)")
+	if start < 0 {
+		t.Fatal("prefers-reduced-motion rule not found")
+	}
+	reduced := css[start:]
+	for _, contract := range []string{"animation:none!important", "transition:none!important", "scroll-behavior:auto!important"} {
+		if !strings.Contains(reduced, contract) {
+			t.Errorf("reduced-motion rule missing %q", contract)
+		}
+	}
+}
+
+func TestUIHasNoExternalAnimationAssets(t *testing.T) {
+	assetTag := regexp.MustCompile(`(?is)<(?:script|link|img|source|video)[^>]+(?:src|href)\s*=\s*["']https?://`)
+	cssURL := regexp.MustCompile(`(?i)url\(\s*["']?https?://`)
+	animationRuntime := regexp.MustCompile(`(?i)\b(?:lottie|bodymovin)\b`)
+	for _, name := range []string{"index.html", "app.css", "js/app.js", "js/motion.js"} {
+		body := readUIAsset(t, name)
+		if assetTag.MatchString(body) || cssURL.MatchString(body) || animationRuntime.MatchString(body) {
+			t.Errorf("%s introduces an external animation asset or runtime", name)
+		}
+	}
+}
+
+func TestUIInfiniteAnimationsAreApprovedLiveIndicators(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	rule := regexp.MustCompile(`(?m)([^{}]+)\{([^{}]*animation\s*:[^{};]*\binfinite\b[^{}]*)\}`)
+	approved := map[string]bool{
+		".uisw.on .uisw-led":    true,
+		".sse-dot.reconnecting": true,
+		"#capDot.live":          true,
+	}
+	for _, match := range rule.FindAllStringSubmatch(css, -1) {
+		selector := strings.Join(strings.Fields(match[1]), " ")
+		if !approved[selector] {
+			t.Errorf("infinite animation is not an approved live-status indicator: %s", selector)
+		}
 	}
 }
 

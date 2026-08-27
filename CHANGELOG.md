@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Dev-build fallback version advanced to published `2.0.3`.**
+- **Restrained workstation motion.** Added shared motion tokens and reduced-motion-aware panel, live-traffic, intercept, Repeater, Scanner, and Map feedback; high-volume History signals are capped, acknowledged queue actions remain truthful, and SVG graph nodes are keyboard-selectable with finite Fit/focus movement.
+- **UI motion guidance and safeguards.** Documented allowed motion, performance limits, and the deferred 3D assessment, with design-system tests preventing unapproved infinite animation, external animation assets, dense-row hover transforms, and broad transitions.
 
 ## [2.0.3] - 2026-08-21
 

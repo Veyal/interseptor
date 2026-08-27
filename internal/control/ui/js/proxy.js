@@ -6,6 +6,7 @@ import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+import { animateOnce, MOTION } from './motion.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -56,6 +57,8 @@ const ROW_H=28;                 // virtualized row height (px)
 const VIRT_MIN=120;             // virtualize when more rows than this
 const VIRT_BUF=40;
 const MAX_LIVE_FLOWS=5000;      // cap the in-memory live list so long capture sessions don't grow unbounded (older rows stay on the server, reachable via scroll paging)
+const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst window
+const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 const EXCLUDE_NORM=64|128; // repeater, intruder
@@ -368,6 +371,27 @@ function wireFlowRow(r){
     }
   });
 }
+let flowSignalWindowAt=0,flowSignalCount=0;
+const pendingFlowSignals=new Set();
+function queueFlowSignal(id){
+  if(document.hidden)return;
+  const now=performance.now();
+  if(now-flowSignalWindowAt>FLOW_SIGNAL_WINDOW){flowSignalWindowAt=now;flowSignalCount=0;}
+  flowSignalCount++;
+  if(flowSignalCount<=FLOW_SIGNAL_LIMIT)pendingFlowSignals.add(id);
+}
+function consumeFlowSignals(){
+  for(const id of pendingFlowSignals){
+    pendingFlowSignals.delete(id);
+    const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
+    if(!row)continue;
+    row.classList.add('flow-new');
+    animateOnce(row,[
+      {backgroundColor:'var(--accentDim)',borderLeftColor:'var(--accent)'},
+      {backgroundColor:'transparent',borderLeftColor:'transparent'},
+    ],{duration:MOTION.slow,easing:MOTION.enter}).finally(()=>row.classList.remove('flow-new'));
+  }
+}
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
   if(!b)return;
@@ -456,7 +480,7 @@ function queueFullWindowRebuild(){
 // where it sits). That distinction is what lets updates patch a single DOM node
 // even while virtualized, instead of falling back to a full window rebuild.
 function flowRowLiveUpdate(f,isNew){
-  if(!flowVirt.isActive()){patchFlowRow(f);return;}
+  if(!flowVirt.isActive()){patchFlowRow(f);consumeFlowSignals();return;}
   if(isNew){queueFullWindowRebuild();return;}
   // Virtualized + update: the row is either currently rendered (patch it directly,
   // same surgical replace patchFlowRow already does for the non-virtualized case)
@@ -474,6 +498,7 @@ export function handleFlowNew(f){
   refreshMethodFilter();
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   if(!proxy||!proxy.classList.contains('active'))return;
+  queueFlowSignal(f.id);
   flowRowLiveUpdate(f,true);
 }
 export function handleFlowUpdate(f){
@@ -574,10 +599,12 @@ export function renderRows(){
   if(win){
     box.innerHTML=`<div style="height:${win.topPad}px" aria-hidden="true"></div>`+flows.slice(win.start,win.end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
     $$('#rows .trow').forEach(wireFlowRow);
+    consumeFlowSignals();
     return;
   }
   box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
   $$('#rows .trow').forEach(wireFlowRow);
+  consumeFlowSignals();
 }
 export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
