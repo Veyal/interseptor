@@ -129,7 +129,7 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //                 omit to leave the span unstyled)
 // Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
 export function createTabManager(opts){
-  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist}=opts;
+  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,tablistLabel='Tabs'}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
   const mgr={tabs:[],active:null,seq:1,persistT:null};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
@@ -142,23 +142,47 @@ export function createTabManager(opts){
   mgr.persistDebounced=function(){clearTimeout(mgr.persistT);mgr.persistT=setTimeout(mgr.persist,400);};
   mgr.render=function(barSel){
     const bar=$(barSel);if(!bar)return;
+    bar.setAttribute('role','tablist');bar.setAttribute('aria-label',tablistLabel);bar.setAttribute('aria-orientation','horizontal');
     bar.innerHTML=mgr.tabs.map(t=>{
       const active=t.tid===mgr.active;
       const style=labelStyle?labelStyle(t,active):'';
-      return `<div class="rep-tab${active?' on':''}" data-tid="${t.tid}" title="${escAttr(title(t))}">
-    <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(title(t))}</span>
-    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="close tab" title="close tab">✕</button></div>`;
-    }).join('')+`<button class="rep-tab-add" id="${bar.id}Add" title="New tab">＋</button>`;
-    bar.querySelectorAll('.rep-tab').forEach(el=>{el.onclick=e=>{if(e.target.dataset.close!=null)return;mgr.switchTo(Number(el.dataset.tid));};wireRowKey(el,()=>mgr.switchTo(Number(el.dataset.tid)));});
-    bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();mgr.close(Number(x.dataset.close));});
+      const label=title(t);
+      return `<div class="rep-tab${active?' on':''}" data-tid="${t.tid}" title="${escAttr(label)}">
+    <button type="button" class="rt-select" role="tab" aria-selected="${active?'true':'false'}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
+      <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
+    </button>
+    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
+    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-label="New ${escAttr(tablistLabel.replace(/ tabs?$/i,' tab'))}" title="New tab">＋</button>`;
+    const tabButtons=[...bar.querySelectorAll('.rt-select')];
+    tabButtons.forEach((el,i)=>{
+      const item=el.closest('.rep-tab'),tid=Number(item.dataset.tid);
+      el.onclick=()=>mgr.switchTo(tid,true);
+      el.onkeydown=e=>{
+        let next=-1;
+        if(e.key==='ArrowRight')next=(i+1)%tabButtons.length;
+        else if(e.key==='ArrowLeft')next=(i-1+tabButtons.length)%tabButtons.length;
+        else if(e.key==='Home')next=0;
+        else if(e.key==='End')next=tabButtons.length-1;
+        else return;
+        e.preventDefault();
+        const nextTid=Number(tabButtons[next].closest('.rep-tab').dataset.tid);
+        mgr.switchTo(nextTid,true);
+      };
+    });
+    bar.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{e.stopPropagation();mgr.close(Number(x.dataset.close),true);});
     const addBtn=$('#'+bar.id+'Add');
     if(addBtn)addBtn.onclick=()=>{
       onSave();mgr.tabs.push(blank(mgr.seq++));mgr.active=mgr.tabs[mgr.tabs.length-1].tid;
       mgr.render(barSel);onLoad(mgr.cur());mgr.persist();
+      mgr._focusTab?.(mgr.active);
     };
   };
-  mgr.switchTo=function(tid){if(tid===mgr.active)return;onSave();mgr.active=tid;mgr._rerender();onLoad(mgr.cur());mgr.persist();};
-  mgr.close=function(tid){
+  mgr.switchTo=function(tid,restoreFocus=false){
+    if(tid===mgr.active){if(restoreFocus)mgr._focusTab?.(tid);return;}
+    onSave();mgr.active=tid;mgr._rerender();onLoad(mgr.cur());mgr.persist();
+    if(restoreFocus)mgr._focusTab?.(tid);
+  };
+  mgr.close=function(tid,restoreFocus=false){
     const i=mgr.tabs.findIndex(t=>t.tid===tid);if(i<0)return;
     const wasActive=tid===mgr.active;
     mgr.tabs.splice(i,1);
@@ -167,12 +191,14 @@ export function createTabManager(opts){
     mgr._rerender();
     if(wasActive)onLoad(mgr.cur());
     mgr.persist();
+    if(restoreFocus)mgr._focusTab?.(mgr.active);
   };
   // init loads persisted tabs (or seeds one blank tab), wires the bar, and
   // paints the editor. barSel is stored so switchTo/close/add can re-render
   // the same bar without every caller having to pass it again.
   mgr.init=function(barSel){
     mgr._rerender=()=>mgr.render(barSel);
+    mgr._focusTab=tid=>requestAnimationFrame(()=>$(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus());
     let ok=false;
     try{
       const d=JSON.parse(localStorage.getItem(storageKey())||'null');
@@ -693,20 +719,31 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
    the last-saved value and no-ops (like notes.js bailing when
    v===notesState.loaded) instead of scheduling a redundant save. ---- */
 export function createAutosave({delay=800,save,onStatus}={}){
-  let timer=null,saving=false,lastSaved='',current='';
+  let timer=null,saving=null,lastSaved='',current='';
   const status=k=>{if(onStatus)onStatus(k);};
   async function flush(){
     clearTimeout(timer);timer=null;
-    if(current===lastSaved||saving)return;
-    saving=true;status('saving');
-    try{
-      await save(current);
-      lastSaved=current;
-      status('saved');
-    }catch(e){
-      status('dirty');
-      throw e;
-    }finally{saving=false;}
+    if(saving)return saving;
+    if(current===lastSaved)return;
+    const run=(async()=>{
+      let submitted=current;
+      try{
+        while(current!==lastSaved){
+          submitted=current;
+          status('saving');
+          await save(submitted);
+          lastSaved=submitted;
+          clearTimeout(timer);timer=null;
+        }
+        status('saved');
+      }catch(e){
+        status('dirty');
+        if(current!==submitted&&!timer)timer=setTimeout(()=>{flush().catch(()=>{});},delay);
+        throw e;
+      }
+    })();
+    saving=run;
+    try{return await run;}finally{if(saving===run)saving=null;}
   }
   function schedule(value){
     current=value;
@@ -717,7 +754,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
   }
   // setBaseline marks `value` as already-saved (e.g. right after the initial
   // load fetch) without triggering a save or a status change.
-  function setBaseline(value){lastSaved=value;current=value;}
+  function setBaseline(value,{preserveCurrent=false}={}){lastSaved=value;if(!preserveCurrent)current=value;}
   return {schedule,flush,setBaseline,isDirty:()=>current!==lastSaved};
 }
 

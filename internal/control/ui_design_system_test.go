@@ -517,20 +517,201 @@ func TestUIResponsiveShellConstrainsNarrowViewport(t *testing.T) {
 	}
 }
 
+// TestUIDenseWorkspacesStackAtNarrowViewport protects the editors that need
+// enough horizontal room to remain usable. The shell already collapses at
+// 720px, but Repeater, Intruder, and the checks/codecs manager previously kept
+// their desktop split panes and squeezed each editor to roughly half a phone.
+func TestUIDenseWorkspacesStackAtNarrowViewport(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	narrow := strings.Index(css, "@media (max-width:720px){")
+	if narrow < 0 {
+		t.Fatal("narrow viewport media rule not found")
+	}
+	block := css[narrow:]
+	for _, contract := range []string{
+		".rep-work,.intr-work,.checks-work{flex-direction:column}",
+		".checks-sidebar{width:100%;min-width:0",
+		".rep-req,.rep-res,.intr-config,.intr-results{min-height:260px}",
+		".rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto",
+		"#repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}",
+		".intr-results .pane-head{overflow-x:auto",
+	} {
+		if !strings.Contains(block, contract) {
+			t.Errorf("narrow workspace rule missing %q", contract)
+		}
+	}
+}
+
+// TestUIIconSpriteContainsOnlySymbols catches malformed leftovers inside the
+// hidden SVG definition block. Browsers recover from an orphan <path> and
+// unmatched </symbol>, but the recovery is parser-dependent and can make later
+// sprite references silently disappear.
+func TestUIIconSpriteContainsOnlySymbols(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	start := strings.Index(index, "<defs>")
+	end := strings.Index(index, "</defs>")
+	if start < 0 || end <= start {
+		t.Fatal("icon sprite defs block not found")
+	}
+	body := index[start+len("<defs>") : end]
+	symbol := regexp.MustCompile(`(?s)<symbol\b[^>]*>.*?</symbol>`)
+	leftover := strings.TrimSpace(symbol.ReplaceAllString(body, ""))
+	if leftover != "" {
+		t.Errorf("icon sprite contains markup outside <symbol> definitions: %s", leftover)
+	}
+}
+
 // TestUIHoverStatesDoNotShiftLayout keeps dense list and toolbar rows stable
 // under the cursor. Transform-based hover makes rows jitter as the pointer
 // crosses them, which reads as a rendering bug in a data-dense tool.
 func TestUIHoverStatesDoNotShiftLayout(t *testing.T) {
 	css := readUIAsset(t, "app.css")
+	if !regexp.MustCompile(`\.seg button\{[^}]*cursor:pointer`).MatchString(css) {
+		t.Error("segmented-control buttons must expose pointer affordance")
+	}
+	if !regexp.MustCompile(`\.btn:not\(input\):not\(select\):not\(textarea\)\{[^}]*cursor:pointer`).MatchString(css) {
+		t.Error("button-like .btn controls must expose pointer affordance without changing text-field cursors")
+	}
 	rule := regexp.MustCompile(`(?m)^([^{\n]*:hover[^{\n]*)\{([^}]*)\}`)
 	for _, m := range rule.FindAllStringSubmatch(css, -1) {
 		body := m[2]
 		if strings.Contains(body, "translateY") || strings.Contains(body, "translateX") {
 			t.Errorf("hover rule shifts layout: %s{%s}", strings.TrimSpace(m[1]), strings.TrimSpace(body))
 		}
+		selector := strings.TrimSpace(m[1])
+		for _, dense := range []string{".trow", ".intr-row", ".icpt-item", ".scan-item", ".find-row", ".map-ep", ".map-tbl"} {
+			if strings.Contains(selector, dense) && strings.Contains(body, "transform:") {
+				t.Errorf("dense hover rule transforms content: %s{%s}", selector, strings.TrimSpace(body))
+			}
+		}
 	}
-	if strings.Contains(css, "transition:all") {
+	if regexp.MustCompile(`transition\s*:\s*all(?:\s|;|$)`).MatchString(css) {
 		t.Error("transition:all animates unintended properties; name the properties explicitly")
+	}
+}
+
+// TestUISharedToggleAndSegmentContracts keeps the initial accessibility state
+// in the shipped HTML honest. These controls are progressively enhanced by
+// JavaScript, but a slow module load, a browser's accessibility snapshot, or a
+// future script error must not leave a toggle without its state or a segment
+// behaving like an implicit form submit button.
+func TestUISharedToggleAndSegmentContracts(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, id := range []string{
+		"notesFilter", "hideTlsFilter", "scopeToggle", "manualFilter", "aiFilter",
+		"interceptToggle", "respInterceptToggle", "mapHideNoise", "mapCollapseIdentical",
+		"sysProxyToggle", "capScopeToggle", "suppressTelemetryToggle",
+		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "autoBypassToggle",
+	} {
+		pattern := regexp.MustCompile(`(?s)<button[^>]*id="` + id + `"[^>]*>`)
+		m := pattern.FindString(index)
+		if m == "" {
+			t.Errorf("toggle %q is not present as a button", id)
+			continue
+		}
+		if !strings.Contains(m, `aria-pressed="`) {
+			t.Errorf("toggle %q must expose its initial aria-pressed state", id)
+		}
+	}
+
+	// Segments are buttons even though they live outside a form today. Explicit
+	// type avoids a future wrapper/form change turning every view switch into a
+	// submit, and aria-pressed gives the initial selected state to AT.
+	seg := regexp.MustCompile(`(?s)<div[^>]*class="seg[^"]*"[^>]*>(.*?)</div>`)
+	button := regexp.MustCompile(`(?s)<button\b[^>]*>`)
+	for _, group := range seg.FindAllStringSubmatch(index, -1) {
+		for _, tag := range button.FindAllString(group[1], -1) {
+			if !strings.Contains(tag, `type="button"`) {
+				t.Errorf("segmented-control button lacks type=button: %s", tag)
+			}
+			// Intruder results and editor mode use tab semantics, where
+			// aria-selected is the state attribute instead.
+			if !strings.Contains(group[0], `role="tablist"`) && !strings.Contains(tag, `aria-pressed="`) {
+				t.Errorf("segmented-control button lacks aria-pressed: %s", tag)
+			}
+		}
+	}
+}
+
+func TestUIMotionTokensExist(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	vars := parseThemeBlock(t, css, ":root{")
+	want := map[string]string{
+		"--motion-instant":  "80ms",
+		"--motion-fast":     "120ms",
+		"--motion-base":     "180ms",
+		"--motion-slow":     "260ms",
+		"--motion-standard": "cubic-bezier(.4,0,.2,1)",
+		"--motion-exit":     "cubic-bezier(.4,0,1,1)",
+		"--motion-enter":    "cubic-bezier(.2,.8,.2,1)",
+	}
+	for name, expected := range want {
+		if got := strings.ReplaceAll(vars[name], " ", ""); got != expected {
+			t.Errorf("motion token %s = %q, want %q", name, vars[name], expected)
+		}
+	}
+	if !strings.Contains(readUIAsset(t, "js/app.js"), "./motion.js") {
+		t.Error("app.js does not use the shared motion helper")
+	}
+}
+
+func TestUIReducedMotionContract(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	start := strings.Index(css, "@media (prefers-reduced-motion:reduce)")
+	if start < 0 {
+		t.Fatal("prefers-reduced-motion rule not found")
+	}
+	reduced := css[start:]
+	for _, contract := range []string{"animation:none!important", "transition:none!important", "scroll-behavior:auto!important"} {
+		if !strings.Contains(reduced, contract) {
+			t.Errorf("reduced-motion rule missing %q", contract)
+		}
+	}
+}
+
+func TestUIJavaScriptReducedMotionContract(t *testing.T) {
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, settings,
+		"import { prefersReducedMotion } from './motion.js'",
+		"behavior:prefersReducedMotion()?'auto':'smooth'",
+	)
+}
+
+func TestUINarrowWorkspacesRemainScrollable(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	requireUIContains(t, css, ".rep-work,.intr-work{overflow-y:auto}")
+	base := strings.Index(css, ".checks-sidebar{width:min(340px,32%)")
+	override := strings.Index(css, ".checks-work>.checks-sidebar{width:100%")
+	if base < 0 || override < base {
+		t.Error("narrow Checks sidebar override must follow the base rule")
+	}
+}
+
+func TestUIHasNoExternalAnimationAssets(t *testing.T) {
+	assetTag := regexp.MustCompile(`(?is)<(?:script|link|img|source|video)[^>]+(?:src|href)\s*=\s*["']https?://`)
+	cssURL := regexp.MustCompile(`(?i)url\(\s*["']?https?://`)
+	animationRuntime := regexp.MustCompile(`(?i)\b(?:lottie|bodymovin)\b`)
+	for _, name := range []string{"index.html", "app.css", "js/app.js", "js/motion.js"} {
+		body := readUIAsset(t, name)
+		if assetTag.MatchString(body) || cssURL.MatchString(body) || animationRuntime.MatchString(body) {
+			t.Errorf("%s introduces an external animation asset or runtime", name)
+		}
+	}
+}
+
+func TestUIInfiniteAnimationsAreApprovedLiveIndicators(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	rule := regexp.MustCompile(`(?m)([^{}]+)\{([^{}]*animation\s*:[^{};]*\binfinite\b[^{}]*)\}`)
+	approved := map[string]bool{
+		".uisw.on .uisw-led":    true,
+		".sse-dot.reconnecting": true,
+		"#capDot.live":          true,
+	}
+	for _, match := range rule.FindAllStringSubmatch(css, -1) {
+		selector := strings.Join(strings.Fields(match[1]), " ")
+		if !approved[selector] {
+			t.Errorf("infinite animation is not an approved live-status indicator: %s", selector)
+		}
 	}
 }
 

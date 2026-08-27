@@ -1,16 +1,30 @@
 import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
 import { sendToRepeater } from './tools.js';
+import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
 // keyClick promotes a click-only element to a keyboard-operable control (role +
 // tabindex + Enter/Space) so endpoints/rows/sorts are reachable without a mouse.
-function keyClick(el, fn){
+function keyClick(el, fn, preserveRole=false){
   if(!el) return;
-  el.setAttribute('role','button');
+  // Keep native table row/header semantics when wiring keyboard activation.
+  // Non-table divs still receive button semantics for assistive technology.
+  if(!preserveRole)el.setAttribute('role','button');
   el.tabIndex=0;
   el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});
   el.onclick=fn;
 }
 import { flowPopup } from './flowmodal.js';
+
+function labelMapControls() {
+  const labels = {
+    '#mapDomain': 'Map domain', '#mapSearch': 'Search site map',
+    '#mapSearchScope': 'Map search scope', '#mapMethod': 'Map method',
+    '#mapStatus': 'Map status', '#mapTag': 'Map tag',
+  };
+  Object.entries(labels).forEach(([sel, label]) => {
+    const el = $(sel); if (el && !el.getAttribute('aria-label')) el.setAttribute('aria-label', label);
+  });
+}
 
 const GRAPH_NODE_MAX = 200;
 const MAP_TREE_EAGER_MAX = 2500;
@@ -77,9 +91,9 @@ function restoreMapView(){
 
 export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
-  statusClass: 0, hideNoise: restoreMapHideNoise(), collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
+  statusClass: 0, hideNoise: restoreMapHideNoise(), noiseHiddenCount: 0, collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
-  sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0,
+  sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
 
 function mapUsesServerSearch(){
@@ -126,9 +140,23 @@ export async function loadEndpoints(){
     mapState.total = d.total != null ? d.total : mapState.eps.length;
     mapState.truncated = !!d.truncated;
     mapState.searchNote = d.searchNote || '';
+    mapState.noiseHiddenCount = 0;
+    // The default noise filter is server-side. When it produces an empty map,
+    // make the empty state distinguish "no capture" from "all paths were only
+    // 403/404" with one bounded diagnostic request. Only run this when the
+    // remaining client-side filters cannot make the count misleading.
+    if(mapState.hideNoise && !mapState.eps.length && !mapState.search && !mapState.method && !mapState.statusClass){
+      const allQ = new URLSearchParams({hideNoise:'0'});
+      if(mapState.domain) allQ.set('host',mapState.domain);
+      if(mapState.tag) allQ.set('tag',mapState.tag);
+      try{
+        const all=await api('/api/endpoints?'+allQ.toString());
+        mapState.noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
+      }catch(e){/* diagnostic only; preserve the primary map result */}
+    }
     mapState._dataVersion++;
     mapState._needFit = true;
-    fillMapDomains();
+    fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'');
     fillMapMethods();
     fillMapTags();
     renderMap();
@@ -139,19 +167,22 @@ export async function loadEndpoints(){
   }
 }
 
-let _fdKey = -1, _fdHtml = '';
-export function fillMapDomains(){
+let _fdKey = -1, _fdPreserved = '', _fdHtml = '';
+export function fillMapDomains(preserveMissing=''){
   const sel = $('#mapDomain'); if(!sel) return;
   // Rebuild the (potentially thousands-of-options) host <select> only when the
   // dataset actually changes — successive re-fetches with the same hosts reuse it.
-  if(mapState._dataVersion !== _fdKey){
+  if(mapState._dataVersion !== _fdKey || preserveMissing !== _fdPreserved){
     const counts = {};
     mapState.eps.forEach(e => { counts[e.host] = (counts[e.host] || 0) + 1; });
     const hosts = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-    if(mapState.domain && !counts[mapState.domain]) mapState.domain = '';
+    if(mapState.domain && !counts[mapState.domain] && mapState.domain !== preserveMissing) mapState.domain = '';
+    const preserved = preserveMissing && !counts[preserveMissing]
+      ? `<option value="${escAttr(preserveMissing)}">${esc(preserveMissing)} (${mapState.noiseHiddenCount} hidden)</option>` : '';
     _fdHtml = `<option value="">All domains (${mapState.eps.length})</option>`
-      + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
+      + preserved + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
     _fdKey = mapState._dataVersion;
+    _fdPreserved = preserveMissing;
     sel.innerHTML = _fdHtml;
   }
   sel.value = mapState.domain;
@@ -342,7 +373,7 @@ export function mapEpRow(e, dim){
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
     const extra = e._cluster.count - 1;
     const expanded = mapState.expandedClusters.has(e._cluster.key);
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
@@ -381,11 +412,12 @@ function hydrateMapTreeNode(body){
 }
 
 function setMapView(v){
+  labelMapControls();
   mapState.view = v;
   if(v === 'graph') mapState._forceGraph = false; // re-evaluate the node cap each time Graph is chosen
   try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
   const seg = $('#mapViewSeg');
-  if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); x.setAttribute('aria-label', 'Map view '+(x.dataset.v||'')); });
   const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap'), params = $('#mapParams');
   if(tree) tree.style.display = v === 'tree' ? 'block' : 'none';
   if(tbl) tbl.style.display = v === 'table' ? 'block' : 'none';
@@ -410,7 +442,14 @@ export async function loadParams(){
     renderMapParams(d);
     if(warn) warn.style.display='none';
     const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
-  }catch(e){if(warn){warn.style.display='block';warn.textContent='';} toast('params: '+e.message);}
+  }catch(e){
+    // Parameter mining is an explicit user action; leave a retry in the panel
+    // instead of reducing a failed request to a transient toast.
+    if(warn)warn.setAttribute('aria-live','polite');
+    renderLoadError(warn,'Parameters',e,loadParams,false);
+    const retry=warn?.querySelector('[data-load-retry]');
+    if(retry)retry.setAttribute('data-map-params-retry','');
+  }
 }
 
 function renderMapParams(d){
@@ -428,7 +467,7 @@ function renderMapParams(d){
     </tr>`).join('')}
     </tbody></table></div>`).join('');
   box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
-  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow))));
+  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
 }
 
 function renderMapCrumb(eps){
@@ -481,24 +520,32 @@ export function renderMap(){
   const eps = mapVisibleEps(filtered);
   const hostN = new Set(eps.map(e => e.host)).size;
   const hasFilters = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
+  const hiddenByNoise = !eps.length && mapState.noiseHiddenCount > 0;
   let countText = eps.length
     ? `${eps.length.toLocaleString()} endpoint${eps.length === 1 ? '' : 's'} · ${hostN} host${hostN === 1 ? '' : 's'}`
-    : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
+    : hiddenByNoise
+      ? `${mapState.noiseHiddenCount.toLocaleString()} endpoint${mapState.noiseHiddenCount === 1 ? '' : 's'} hidden by the 403/404 noise filter`
+      : (mapState.eps.length ? (hasFilters ? 'No endpoints match the filters' : 'No endpoints') : 'No endpoints captured yet');
   if(mapState.truncated && mapState.total > mapState.eps.length) countText += ` (${mapState.total.toLocaleString()} total)`;
   $('#mapCount').textContent = countText;
   const warn = $('#mapWarn');
   const perf = mapPerfNote(eps);
-  if(warn && mapState.view !== 'graph'){
-    if(perf){
+  if(warn){
+    if(hiddenByNoise){
+      warn.style.display = 'block';
+      warn.innerHTML = `${mapState.noiseHiddenCount.toLocaleString()} endpoint${mapState.noiseHiddenCount === 1 ? '' : 's'} hidden because they only returned 403/404. <button type="button" class="btn xs" id="mapShowNoise">Show all statuses</button>`;
+      const show=$('#mapShowNoise');
+      if(show)show.onclick=mapHiddenNoiseAction;
+    }else if(mapState.view !== 'graph' && perf){
       warn.style.display = 'block';
       warn.textContent = perf;
-    }else if(mapState.searchNote){
+    }else if(mapState.view !== 'graph' && mapState.searchNote){
       warn.style.display = 'block';
       warn.textContent = mapState.searchNote;
-    }else if(mapUsesServerSearch() && (mapState.searchScope === 'body' || mapState.searchScope === 'all') && mapState.view !== 'graph'){
+    }else if(mapState.view !== 'graph' && mapUsesServerSearch() && (mapState.searchScope === 'body' || mapState.searchScope === 'all')){
       warn.style.display = 'block';
       warn.textContent = 'Body search scans stored bodies (content-deduped, latest 8000 flows max). Filter by domain to narrow.';
-    }else if(warn && mapState.view !== 'graph'){
+    }else if(mapState.view !== 'graph'){
       warn.style.display = 'none';
       warn.textContent = '';
     }
@@ -507,6 +554,15 @@ export function renderMap(){
   if(mapState.view === 'graph') renderMapGraph(eps);
   else if(mapState.view === 'table') renderMapTable(eps);
   else renderMapTree(eps);
+}
+
+// Keep the empty-state recovery local: changing this filter should not reset
+// the host/search selection or require a second navigation step.
+function mapHiddenNoiseAction(){
+  mapState.hideNoise=false;
+  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,'0');}catch(e){}
+  syncMapHideNoise();
+  loadEndpoints();
 }
 
 export function renderMapTree(eps){
@@ -571,7 +627,7 @@ function wireMapTableRows(box){
     keyClick(tr, ev => {
       if(ev.target.closest('[data-rep]')) return;
       flowPopup(id);
-    });
+    }, true);
   });
   box.querySelectorAll('[data-rep]').forEach(b => b.onclick = ev => {
     ev.stopPropagation();
@@ -588,7 +644,7 @@ function renderMapTable(eps){
   const sorted = mapSortEps(eps);
   const showHost = !mapState.domain;
   const sk = mapState.sort.key, sd = mapState.sort.dir;
-  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+  const th = (k, label, w) => `<th class="${sk === k ? 'sorted' : ''}" data-sort="${k}" aria-sort="${sk === k ? (sd > 0 ? 'ascending' : 'descending') : 'none'}"${w ? ` style="width:${w}"` : ''}>${label}${sk === k ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`;
   const head = `<thead><tr>
     ${showHost ? th('host', 'Host', '140px') : ''}
     ${th('method', 'Method', '72px')}
@@ -629,7 +685,7 @@ function renderMapTable(eps){
     if(mapState.sort.key === k) mapState.sort.dir *= -1;
     else{ mapState.sort.key = k; mapState.sort.dir = 1; }
     renderMap();
-  }));
+  }, true));
 }
 
 let mapSearchTimer = null;
@@ -855,11 +911,29 @@ function graphTipShow(n, ev){
 
 function graphTipHide(){ const t = $('#mapGraphTip'); if(t) t.style.display = 'none'; }
 
+const graphSnapshots=new Map();
+let mapZoomEpoch=0;
+function graphNodeSignature(n){
+  const e=n.ep||{};
+  return [n.type,n.label,n._col?'1':'0',gCount(n),e.lastStatus||0,e.hits||0,e.lastFlowId||0].join('|');
+}
+function graphEdgeKey(a,b){return a.key+'>'+b.key;}
+function selectGraphNode(el){
+  if(!el)return;
+  mapState.selectedNodeKey=el.dataset.key||'';
+  document.querySelectorAll('#mapGraphG .g-node').forEach(node=>{
+    const on=node.dataset.key===mapState.selectedNodeKey;
+    node.classList.toggle('g-selected',on);
+    node.setAttribute('aria-selected',on?'true':'false');
+  });
+}
+
 export function gNode(n){
   const x = n.px, y = n.py;
   const match = graphNodeMatches(n);
   const dim = mapState.search && !match;
-  const cls = `g-node g-click${dim ? ' g-dimmed' : ''}${match && mapState.search ? ' g-match' : ''}`;
+  const selected=n.key===mapState.selectedNodeKey;
+  const cls = `g-node g-click${dim ? ' g-dimmed' : ''}${match && mapState.search ? ' g-match' : ''}${selected ? ' g-selected' : ''}`;
   let mk, lb, title = esc(n.label || ''), extra = '', hitW = 120;
   if(n.type === 'host'){
     mk = `<circle cx="${x}" cy="${y}" r="6" fill="var(--accent)"/>`;
@@ -878,17 +952,23 @@ export function gNode(n){
     hitW = Math.min(240, 10 + n.label.length * 6);
   }
   const hit = `<rect class="g-hit" x="${x-8}" y="${y-12}" width="${hitW}" height="24" fill="transparent"/>`;
-  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
+  const aria=n.type==='host'
+    ?`${n.label}, host, ${gCount(n)} endpoints. Enter toggles; F focuses host.`
+    :n.type==='ep'
+      ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}. Enter opens the latest flow.`
+      :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
+  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="0" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
 
 export function renderMapGraph(eps){
   const g = $('#mapGraphG'); if(!g) return;
   const warn = $('#mapWarn');
+  const focusedKey=document.activeElement?.closest?.('#mapGraphG .g-node')?.dataset.key||'';
   graphTipHide();
   if(!eps.length){
     g.removeAttribute('transform');
     g.innerHTML = '<text class="g-dim" x="20" y="28">No endpoints match — relax the filters, clear the search, or Refresh.</text>';
-    if(warn) warn.style.display = 'none';
+    if(warn && !mapState.noiseHiddenCount) warn.style.display = 'none';
     return;
   }
   if(mapState.search) mapExpandForSearch(eps);
@@ -916,13 +996,51 @@ export function renderMapGraph(eps){
       warn.style.display = 'none';
     }
   }
+  const snapshotKey=[mapState.domain,mapState.method,mapState.statusClass,mapState.collapseIdentical?'1':'0'].join('|');
+  const previousGraph=graphSnapshots.get(snapshotKey);
+  const nextNodeSignatures=new Map(lay.nodes.map(n=>[n.key,graphNodeSignature(n)]));
+  const nextEdgeKeys=new Set(lay.edges.map(([a,b])=>graphEdgeKey(a,b)));
+  const dataChanged=!!previousGraph&&previousGraph.dataVersion!==mapState._dataVersion;
+  const changedNodes=new Set();
+  if(dataChanged){
+    nextNodeSignatures.forEach((signature,key)=>{if(previousGraph.nodes.get(key)!==signature)changedNodes.add(key);});
+  }
+  const changedEdges=new Set();
+  if(dataChanged){
+    lay.edges.forEach(([a,b])=>{const key=graphEdgeKey(a,b);if(!previousGraph.edges.has(key)||changedNodes.has(b.key))changedEdges.add(key);});
+  }
+  const animateGraphDiff=changedNodes.size+changedEdges.size<=24;
   let h = '';
   lay.edges.forEach(([a, b]) => {
     const x1 = a.px + 8, y1 = a.py, x2 = b.px - 4, y2 = b.py, mx = (x1 + x2) / 2;
-    h += `<path class="g-edge" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
+    h += `<path class="g-edge" data-edge="${escAttr(graphEdgeKey(a,b))}" d="M${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
   });
   lay.nodes.forEach(n => h += gNode(n));
   g.innerHTML = h;
+  graphSnapshots.set(snapshotKey,{nodes:nextNodeSignatures,edges:nextEdgeKeys,dataVersion:mapState._dataVersion});
+  if(graphSnapshots.size>12)graphSnapshots.delete(graphSnapshots.keys().next().value);
+  if(animateGraphDiff){
+    changedEdges.forEach(key=>{
+      const edge=[...g.querySelectorAll('.g-edge')].find(el=>el.dataset.edge===key);
+      animateOnce(edge,[{opacity:.25,strokeDasharray:'3 5',strokeDashoffset:'16'},{opacity:1,strokeDasharray:'3 5',strokeDashoffset:'0'}],{duration:MOTION.slow,easing:MOTION.enter});
+    });
+    changedNodes.forEach(key=>{
+      const node=[...g.querySelectorAll('.g-node')].find(el=>el.dataset.key===key);
+      animateOnce(node,[{opacity:.45,transform:'translateX(-3px)'},{opacity:1,transform:'translateX(0)'}],{duration:MOTION.slow,easing:MOTION.enter});
+    });
+  }
+  const focusHost=el=>{
+    const host=el.dataset.host;
+    if(!host)return;
+    mapState.domain=host;
+    try{localStorage.setItem(MAP_DOMAIN_KEY,host);}catch(e){}
+    const sel=$('#mapDomain');if(sel)sel.value=host;
+    mapState.collapsed.clear();
+    mapState._needFit=true;
+    mapState._animateNextFit=true;
+    renderMap();
+    toast('focused on '+host);
+  };
   g.querySelectorAll('.g-node').forEach(el => {
     el.addEventListener('mouseenter', ev => {
       const key = el.dataset.key;
@@ -932,18 +1050,11 @@ export function renderMapGraph(eps){
     el.addEventListener('mouseleave', graphTipHide);
     el.addEventListener('dblclick', ev => {
       ev.stopPropagation();
-      const host = el.dataset.host;
-      if(!host) return;
-      mapState.domain = host;
-      const sel = $('#mapDomain');
-      if(sel) sel.value = host;
-      mapState.collapsed.clear();
-      mapState._needFit = true;
-      renderMap();
-      toast('focused on '+host);
+      focusHost(el);
     });
     el.onclick = ev => {
       ev.stopPropagation();
+      selectGraphNode(el);
       if(el.dataset.kind === 'ep'){
         const f = el.dataset.flow;
         if(f) flowPopup(Number(f));
@@ -953,27 +1064,56 @@ export function renderMapGraph(eps){
       mapState.collapsed.has(k) ? mapState.collapsed.delete(k) : mapState.collapsed.add(k);
       renderMap();
     };
+    el.addEventListener('keydown',ev=>{
+      if((ev.key==='f'||ev.key==='F')&&el.dataset.host){ev.preventDefault();focusHost(el);return;}
+      if(ev.key==='Enter'||ev.key===' '){
+        ev.preventDefault();
+        el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      }
+    });
   });
-  if(mapState._needFit){ mapState._needFit = false; mapFitNow(); }
+  if(focusedKey){
+    const focused=[...g.querySelectorAll('.g-node')].find(el=>el.dataset.key===focusedKey);
+    if(focused)focused.focus({preventScroll:true});
+  }
+  if(mapState._needFit){
+    mapState._needFit=false;
+    const animate=mapState._animateNextFit;
+    mapState._animateNextFit=false;
+    mapFitNow(animate);
+  }
   else mapApplyZoom();
 }
 
 export function mapApplyZoom(){
   const z = mapState.zoom;
-  $('#mapGraphG').setAttribute('transform', `translate(${z.x} ${z.y}) scale(${z.k})`);
+  const g=$('#mapGraphG');if(!g)return;
+  mapZoomEpoch++;
+  cancelElementAnimations(g);
+  g.setAttribute('transform', `translate(${z.x} ${z.y}) scale(${z.k})`);
 }
 
-export function mapFitNow(){
+function graphTransform(z){return `translate(${z.x}px,${z.y}px) scale(${z.k})`;}
+export async function mapFitNow(animate=false){
   const svg = $('#mapGraphSvg'), gr = mapState._g;
   if(!svg || !gr) return;
   const vw = svg.clientWidth || 820, vh = svg.clientHeight || 520;
   const k = Math.max(0.35, Math.min(1.5, vw / gr.w, vh / gr.h));
-  mapState.zoom = { k, x: 16, y: Math.max(10, (vh - gr.h * k) / 2) };
-  mapApplyZoom();
+  const from={...mapState.zoom};
+  const next={k,x:16,y:Math.max(10,(vh-gr.h*k)/2)};
+  mapState.zoom=next;
+  const g=$('#mapGraphG');
+  if(!animate||!g){mapApplyZoom();return;}
+  const epoch=++mapZoomEpoch;
+  g.removeAttribute('transform');
+  await animateOnce(g,[{transform:graphTransform(from)},{transform:graphTransform(next)}],{duration:MOTION.slow,easing:MOTION.standard,fill:'both'});
+  if(epoch!==mapZoomEpoch)return;
+  g.setAttribute('transform',`translate(${next.x} ${next.y}) scale(${next.k})`);
+  cancelElementAnimations(g);
 }
 
 $('#mapViewSeg') && $('#mapViewSeg').querySelectorAll('button').forEach(b => b.onclick = () => setMapView(b.dataset.v));
-$('#mapFit') && ($('#mapFit').onclick = mapFitNow);
+$('#mapFit') && ($('#mapFit').onclick = () => mapFitNow(true));
 
 // Graph wheel: pinch (trackpad) and Ctrl/Cmd+scroll zoom; plain scroll pans.
 // Browsers fire trackpad pinch as wheel events with ctrlKey set, so the same

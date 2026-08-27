@@ -7,6 +7,14 @@ import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, pr
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
 const LAST = 3;
+let setupActionBusy = false;
+function setSetupActionBusy(button, busy, label) {
+  setupActionBusy = !!busy;
+  if (!button) return;
+  button.disabled = setupActionBusy;
+  button.setAttribute('aria-busy', setupActionBusy ? 'true' : 'false');
+  if (label) button.textContent = label;
+}
 
 function osHint() {
   const p = (navigator.platform || '') + ' ' + (navigator.userAgent || '');
@@ -68,12 +76,17 @@ function renderStep() {
        if (!st.supported) $('#setupSysProxy').style.display = 'none';
      }).catch(() => {});
      $('#setupSysProxy').onclick = async () => {
+      if (setupActionBusy) return;
+      const button = $('#setupSysProxy');
+      const label = button.textContent;
+      setSetupActionBusy(button, true, 'Setting proxy…');
       try {
         const st = await api('/api/sysproxy');
         if (!st.supported) { toast('automatic system-proxy is macOS-only — set it manually on Windows/Linux'); return; }
         await api('/api/sysproxy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
         toast('system proxy on — point your browser at the proxy now');
       } catch (e) { toast(e.message); }
+      finally { setSetupActionBusy(button, false, label); }
     };
     setupReadiness();
   } else if (step === 1) {
@@ -100,13 +113,18 @@ function renderStep() {
       </div>
       <div id="setupScopeMsg" class="hint" style="margin-top:8px"></div>`;
     $('#setupScopeAdd').onclick = async () => {
+      if (setupActionBusy) return;
       const host = $('#setupScopeHost').value.trim();
       if (!host) { toast('enter a host'); return; }
+      const button = $('#setupScopeAdd');
+      const label = button.textContent;
+      setSetupActionBusy(button, true, 'Adding…');
       try {
         await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host, enabled: true }) });
         $('#setupScopeMsg').innerHTML = '<span style="color:var(--accent)">✓ added ' + esc(host) + ' to scope</span>';
         $('#setupScopeHost').value = '';
       } catch (e) { toast(e.message); }
+      finally { setSetupActionBusy(button, false, label); }
     };
   } else {
     b.innerHTML = `<p style="margin:0 0 10px">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>

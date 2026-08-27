@@ -21,9 +21,10 @@ scan under pressure.
   for methods, URLs, status codes, raw HTTP, paths, and operational metadata.
 - Prefer thin rails, inset rules, corner/frame cues, and a very subtle grid to
   large decorative backgrounds or rounded dashboard cards.
-- Motion and imagery are optional. Never use video on the login gate. A static
-  visual must be low contrast, self-contained, and leave the access-key action
-  as the clear focal point.
+- Follow the [UI motion specification](../../../docs/ui-motion-spec.md) for
+  allowed motion, shared tokens, performance limits, and reduced-motion behavior.
+  Never use video on the login gate. A static visual must be low contrast,
+  self-contained, and leave the access-key action as the clear focal point.
 
 ## Workflow
 

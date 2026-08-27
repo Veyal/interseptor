@@ -7,6 +7,19 @@ import { selectFlow, refreshAuthzIds } from './proxy.js';
 let authzFlowId = null;
 let authzViewMode = 'list'; // 'list' | 'matrix' — toggled in bulk results
 let authzMode = 'flow';     // 'flow' | 'scope' | 'crosshost' — the segmented picker at the top
+let authzActionBusy = false;
+function setAuthzActionBusy(busy) {
+  authzActionBusy = !!busy;
+  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow'].forEach(sel => {
+    const b = $(sel); if (!b) return;
+    b.disabled = authzActionBusy;
+    b.setAttribute('aria-busy', authzActionBusy ? 'true' : 'false');
+  });
+}
+function setAuthzStatus(message) {
+  const status = $('#authzStatus');
+  if (status) status.textContent = message || '';
+}
 // authzTarget resolves the flow to act on AT CALL TIME — the live History selection
 // wins (so changing selection while the modal is open isn't ignored, which would
 // silently test the wrong endpoint for IDOR), falling back to the flow the modal
@@ -79,6 +92,7 @@ export function openAuthz(flowId){
   openModal($('#authzModal'));
   $('#authzFlow').textContent=authzFlowId?('#'+authzFlowId):'(none — select in History)';
   $('#authzResults').innerHTML='<div class="hint">Define identities, then <b>Run</b>. Use <b>Check sessions</b> first if cookies may be stale.</div>';
+  setAuthzStatus('');
   setAuthzMode('flow');
   loadAuthzIdentities();
   loadFlowAuthHint(authzFlowId);
@@ -145,10 +159,13 @@ async function fillFromFlow(){
 }
 
 async function checkSessions(){
+  if(authzActionBusy)return;
   const probe=authzTarget(); syncAuthzLabel();
   if(!probe){toast('select a flow to probe sessions (e.g. GET /api/me)');return;}
   if(collectIds().length<1){toast('add at least one identity');return;}
   $('#authzResults').innerHTML='<div class="hint">checking sessions…</div>';
+  setAuthzStatus('Checking sessions…');
+  setAuthzActionBusy(true);
   try{
     await saveIds();
     const d=await api('/api/authz/check-sessions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:probe})});
@@ -163,7 +180,9 @@ async function checkSessions(){
         <span style="color:${statusColor(c.status)};font-weight:700">${c.error?'ERR':(c.status||'—')}</span>
         <span>${!c.hasAuth?'<span class="hint">anonymous</span>':c.sessionInvalid?'<span style="color:var(--red);font-weight:700">expired?</span>':'<span class="hint">ok</span>'}</span>
         <span></span></div>`).join('');
-  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+    setAuthzStatus('Session check complete');
+  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Check failed: '+esc(e.message)+'</div>';setAuthzStatus('Session check failed: '+e.message);}
+  finally{setAuthzActionBusy(false);}
 }
 
 function runBody(){
@@ -254,13 +273,18 @@ function renderAuthzResults(d){
 }
 
 async function crossHostReplay(){
+  if(authzActionBusy)return;
   const fid=authzTarget();syncAuthzLabel();
   if(!fid){toast('select a reference flow first');return;}
   $('#authzResults').innerHTML='<div class="hint">replaying to all in-scope hosts…</div>';
+  setAuthzStatus('Running cross-host replay…');
+  setAuthzActionBusy(true);
   try{
     const d=await api('/api/authz/cross-host-replay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:fid})});
     renderCrossHostResults(d);
-  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+    setAuthzStatus('Cross-host replay complete');
+  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Cross-host replay failed: '+e.message);}
+  finally{setAuthzActionBusy(false);}
 }
 
 function renderCrossHostResults(d){
@@ -286,20 +310,32 @@ function renderCrossHostResults(d){
 $('#authzAdd')&&($('#authzAdd').onclick=()=>renderIdentities([...collectIds(),{name:'',headers:''}]));
 $('#authzFromFlow')&&($('#authzFromFlow').onclick=fillFromFlow);
 $('#authzCheck')&&($('#authzCheck').onclick=checkSessions);
-$('#authzSave')&&($('#authzSave').onclick=async()=>{try{await saveIds();toast('identities saved');refreshAuthzIds();}catch(e){toast(e.message);}});
+$('#authzSave')&&($('#authzSave').onclick=async()=>{
+  if(authzActionBusy)return;
+  setAuthzStatus('Saving identities…');
+  setAuthzActionBusy(true);
+  try{await saveIds();toast('identities saved');refreshAuthzIds();setAuthzStatus('Identities saved');}
+  catch(e){toast('Save failed: '+e.message,'error');setAuthzStatus('Saving identities failed: '+e.message);}
+  finally{setAuthzActionBusy(false);}
+});
 $('#authzClose')&&($('#authzClose').onclick=()=>closeModal($('#authzModal')));
 $('#authzMode')&&($('#authzMode').querySelectorAll('button').forEach(b=>b.onclick=()=>setAuthzMode(b.dataset.m)));
 $('#authzRun')&&($('#authzRun').onclick=async()=>{
+  if(authzActionBusy)return;
   // Cross-host JWT replay is a distinct action — dispatch it instead of the role-swap run.
   if(authzMode==='crosshost'){crossHostReplay();return;}
   const body=runBody();if(!body)return;
   if(collectIds().length<1){toast('add at least one identity');return;}
   $('#authzResults').innerHTML='<div class="hint">replaying…</div>';
+  setAuthzStatus('Running authorization replay…');
+  setAuthzActionBusy(true);
   try{
     await saveIds();refreshAuthzIds();
     const d=await api('/api/authz/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     renderAuthzResults(d);
-  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+    setAuthzStatus('Authorization replay complete');
+  }catch(e){$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Authorization replay failed: '+e.message);}
+  finally{setAuthzActionBusy(false);}
 });
 
 export { renderAuthzScopePanel };

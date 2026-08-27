@@ -5,7 +5,8 @@ import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
-import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+import { animateOnce, MOTION } from './motion.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -56,6 +57,8 @@ const ROW_H=28;                 // virtualized row height (px)
 const VIRT_MIN=120;             // virtualize when more rows than this
 const VIRT_BUF=40;
 const MAX_LIVE_FLOWS=5000;      // cap the in-memory live list so long capture sessions don't grow unbounded (older rows stay on the server, reachable via scroll paging)
+const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst window
+const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 const EXCLUDE_NORM=64|128; // repeater, intruder
@@ -63,6 +66,10 @@ const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
 const FLOW_COL_MIN=40;              // floor width for a resized column
 const HIDE_TLS_KEY='proxy.hideTlsFailed';
+// History source filters are intentionally client state: the backend already
+// exposes the matching `manual` and `ai` query parameters, and live SSE rows
+// need the same predicates before they are admitted to the in-memory window.
+if(typeof state.showAI!=='boolean')state.showAI=true;
 function loadProxyPrefs(){
   try{state.hideTlsFailed=localStorage.getItem(HIDE_TLS_KEY)!=='0';}catch(e){state.hideTlsFailed=true;}
 }
@@ -215,11 +222,12 @@ export function renderFlowHead(){
   head.innerHTML=state.flowCols.map(k=>{
     const c=FLOW_COLUMNS.find(x=>x.key===k);
     const align=c.align?` style="text-align:${c.align}"`:'';
+    const accessible=c.label==='St'?'Status':c.label;
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
-    return `<div class="${sorted.trim()}" data-sort="${c.sort}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    return `<div class="${sorted.trim()}" data-sort="${c.sort}" aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
@@ -292,6 +300,9 @@ function canIncremental(){
 }
 function flowMatchesFilters(f){
   const fl=state.filters;
+  const isAI=(f.flags&FLAG_AI)!==0;
+  if(!state.showManual&&!isAI)return false;
+  if(!state.showAI&&isAI)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
 
@@ -339,7 +350,10 @@ function wireFlowRow(r){
   const id=Number(r.dataset.id);
   r.onclick=e=>flowRowClick(id,e);
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
-  r.setAttribute('aria-label','flow '+id);
+  const flow=flowStore.byId.get(id);
+  r.setAttribute('aria-label',flow
+    ? `Flow #${id}: ${flow.method||'request'} ${flow.host||''}${flow.path||''}${flow.status?`, status ${flow.status} ${statusText(flow.status)}`:''}`
+    : 'Flow #'+id);
   r.querySelectorAll('.flowtag').forEach(chip=>{
     const t=chip.dataset.tagchip;
     chip.setAttribute('role','button');
@@ -368,6 +382,27 @@ function wireFlowRow(r){
     }
   });
 }
+let flowSignalWindowAt=0,flowSignalCount=0;
+const pendingFlowSignals=new Set();
+function queueFlowSignal(id){
+  if(document.hidden)return;
+  const now=performance.now();
+  if(now-flowSignalWindowAt>FLOW_SIGNAL_WINDOW){flowSignalWindowAt=now;flowSignalCount=0;}
+  flowSignalCount++;
+  if(flowSignalCount<=FLOW_SIGNAL_LIMIT)pendingFlowSignals.add(id);
+}
+function consumeFlowSignals(){
+  for(const id of pendingFlowSignals){
+    pendingFlowSignals.delete(id);
+    const row=document.querySelector('#rows .trow[data-id="'+id+'"]');
+    if(!row)continue;
+    row.classList.add('flow-new');
+    animateOnce(row,[
+      {backgroundColor:'var(--accentDim)',borderLeftColor:'var(--accent)'},
+      {backgroundColor:'transparent',borderLeftColor:'transparent'},
+    ],{duration:MOTION.slow,easing:MOTION.enter}).finally(()=>row.classList.remove('flow-new'));
+  }
+}
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
   if(!b)return;
@@ -384,11 +419,15 @@ function updateTruncBanner(){
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
+    const hadFocus=row===document.activeElement||row.contains(document.activeElement);
     const tmp=document.createElement('div');
     tmp.innerHTML=flowRowHTML(f);
     const nr=tmp.firstElementChild;
     wireFlowRow(nr);
     row.replaceWith(nr);
+    // SSE response updates replace the row's DOM node. Keep keyboard users on
+    // the same flow instead of dropping focus to the document body.
+    if(hadFocus)nr.focus({preventScroll:true});
     return;
   }
   if(!flowMatchesFilters(f))return;
@@ -456,7 +495,7 @@ function queueFullWindowRebuild(){
 // where it sits). That distinction is what lets updates patch a single DOM node
 // even while virtualized, instead of falling back to a full window rebuild.
 function flowRowLiveUpdate(f,isNew){
-  if(!flowVirt.isActive()){patchFlowRow(f);return;}
+  if(!flowVirt.isActive()){patchFlowRow(f);consumeFlowSignals();return;}
   if(isNew){queueFullWindowRebuild();return;}
   // Virtualized + update: the row is either currently rendered (patch it directly,
   // same surgical replace patchFlowRow already does for the non-virtualized case)
@@ -474,6 +513,7 @@ export function handleFlowNew(f){
   refreshMethodFilter();
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   if(!proxy||!proxy.classList.contains('active'))return;
+  queueFlowSignal(f.id);
   flowRowLiveUpdate(f,true);
 }
 export function handleFlowUpdate(f){
@@ -482,6 +522,9 @@ export function handleFlowUpdate(f){
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   const active=proxy&&proxy.classList.contains('active');
   if(flowStore.byId.has(f.id)){
+    const existing=flowStore.byId.get(f.id);
+    const sortValueBefore=flowSortValue(existing);
+    const sortValueAfter=flowSortValue(f);
     // Already visible in the loaded list. A previously-matching flow can stop
     // matching on update (e.g. its status now falls outside an active status
     // filter) — remove it from the list in that case rather than leaving a
@@ -496,6 +539,11 @@ export function handleFlowUpdate(f){
       return;
     }
     storeUpsertFlow(flowStore,f); // O(1) in-place refresh — no findIndex over the loaded list
+    // Status, response length, and MIME are mutable after capture. If one of
+    // them is the active sort key, patching in place would leave History in the
+    // wrong order. Coalesced reloads keep this correct without doing a full
+    // fetch for every burst event.
+    if(sortValueBefore!==sortValueAfter){scheduleReload();return;}
     if(!active)return;
     flowRowLiveUpdate(f,false);
     return;
@@ -506,17 +554,15 @@ export function handleFlowUpdate(f){
 }
 
 export function getStartedCard(){
-  const diag=getStartedDiagnosisHint();
   return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
     <div style="font-size:var(--fs-lg);font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
     <div class="hint" style="margin-bottom:14px">Interseptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
-    ${diag}
     <ol style="color:var(--fg2);line-height:2;font-size:var(--fs-sm);padding-left:20px;margin:0">
       <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
       <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
       <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
       <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
-      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder }</li>
+      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder</li>
 
     </ol>
     <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
@@ -574,10 +620,12 @@ export function renderRows(){
   if(win){
     box.innerHTML=`<div style="height:${win.topPad}px" aria-hidden="true"></div>`+flows.slice(win.start,win.end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
     $$('#rows .trow').forEach(wireFlowRow);
+    consumeFlowSignals();
     return;
   }
   box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
   $$('#rows .trow').forEach(wireFlowRow);
+  consumeFlowSignals();
 }
 export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
@@ -650,6 +698,8 @@ function buildFlowParams(){
   if(state.inScopeOnly)q.set('inScope','1');
 
   if(state.hideTlsFailed&&f.tag!=='tls-failed')q.set('hideTlsFailed','1');
+  q.set('manual',state.showManual?'1':'0');
+  q.set('ai',state.showAI?'1':'0');
   q.set('sort',state.sort.key);
   q.set('dir',sortDirParam());
   return q;
@@ -714,7 +764,7 @@ function refreshMethodFilter(){
   const present=[...seenMethods]
     .sort((a,b)=>{const ia=order.indexOf(a),ib=order.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
   const sel=$('#fMethod');if(!sel)return;const cur=sel.value;
-  sel.innerHTML='<option value="">method</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
+  sel.innerHTML='<option value="">All methods</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
 }
 const seenMethods=new Set();
 let methodsDirty=true; // build the method filter once initially
@@ -971,9 +1021,12 @@ $('#scopeToggle').onclick=()=>{
 function syncSourceFilters(){
   const mf=$('#manualFilter');
   if(mf){mf.classList.toggle('on',state.showManual);mf.setAttribute('aria-pressed',state.showManual?'true':'false');}
+  const af=$('#aiFilter');
+  if(af){af.classList.toggle('on',state.showAI);af.setAttribute('aria-pressed',state.showAI?'true':'false');}
 }
 export { syncSourceFilters };
 $('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
+$('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();loadFlows();});
  syncSourceFilters();
 export async function saveNote(){
   if(!state.selId)return;
@@ -1087,11 +1140,11 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;
+  state.notesOnly=false;state.showManual=true;state.showAI=true;syncSourceFilters();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncControls();renderChips();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length));}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||!state.showManual||!state.showAI);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}

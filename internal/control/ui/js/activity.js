@@ -1,4 +1,4 @@
-import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError } from './core.js';
+import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError, uiConfirm } from './core.js';
 import { selectFlow } from './proxy.js';
 
 /* ---- AI activity feed (glass box: watch what the AI is doing, live) ---- */
@@ -39,12 +39,13 @@ export function renderActivity(){
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
     const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows
+    const duration=it.ms == null?'—':it.ms+'ms';
     return `<div class="act-row${fid?' act-jump':''}${grp}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr((it.tool||'activity')+': '+(it.summary||it.result||''))}" title="${fid?'Open flow #'+fid+' in History':''}">
     <span class="ok" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${it.ok?'ok':'error'}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
     <span class="act-res">${esc(it.result||'')}</span>
-    <span class="act-meta">${it.ms}ms · ${actTime(it.ts)}</span>
+    <span class="act-meta">${duration} · ${actTime(it.ts)}</span>
     ${it.intent?`<span class="act-intent" title="the AI's stated reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-thought"/></svg> ${esc(it.intent)}</span>`:''}
   </div>`;
   }).join('');
@@ -70,7 +71,22 @@ export async function loadActivity(){
   finally{if(box)delete box.dataset.loading;}
 }
 export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.style.display='none';}
-$('#actClear').onclick=async()=>{try{await api('/api/activity',{method:'DELETE'});}catch(e){}state.activity=[];renderActivity();clearActSeen();};
+let actClearInFlight=false;
+$('#actClear').onclick=async()=>{
+  if(actClearInFlight)return;
+  if(!await uiConfirm('Clear activity','Remove all AI activity from this project? This cannot be undone.','Clear','btn danger','var(--red)'))return;
+  const button=$('#actClear');
+  actClearInFlight=true;
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}
+  try{
+    await api('/api/activity',{method:'DELETE'});
+    state.activity=[];renderActivity();clearActSeen();
+  }catch(e){toast('clear failed: '+e.message,'error');}
+  finally{
+    actClearInFlight=false;
+    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Clear';}
+  }
+};
 // Free-text intent filter (substring, case-insensitive).
 const actIntentFilter=$('#actIntentFilter');
 if(actIntentFilter){

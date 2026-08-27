@@ -1,4 +1,5 @@
 import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, syncUiSelectStyles, icon } from './core.js';
+import { animateOnce, MOTION } from './motion.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -26,8 +27,21 @@ function repStatusLine(f){
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 
+function setRepSendState(stateName,label){
+  const button=$('#repSend');if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  const labelEl=$('#repSendLabel');
+  if(labelEl)labelEl.textContent=label;
+  else button.textContent=label;
+}
+function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
+
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -110,9 +124,10 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
   serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
+  tablistLabel:'Repeater tabs',
   onPersist:blob=>persistUIState('repeater',blob),
 });
 export function repCur(){return repTabs.cur();}
@@ -147,6 +162,9 @@ function repCodecBadge(t){
 export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repTabs.tabs.push(t);repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
+  if(t.sendPending)setRepSendState('pending','Sending…');
+  else if(t.sendError)setRepSendState('error','Send failed');
+  else setRepSendState('idle','Send ▸');
   repSetMethod(t.method);$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
   const rv=t.reqView||'raw';
   repSyncReqSeg(rv);
@@ -155,7 +173,8 @@ export function repLoadEditor(){
   repCodecBadge(t);
   repRefreshHL();
   $('#repResSeg').querySelectorAll('button').forEach(x=>{const on=x.dataset.view===(t.resView||'pretty');x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
-  if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
+  if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
+  else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
   loadRepHistory();
 }
@@ -194,25 +213,47 @@ export async function repSend(){
     else $('#repBody').value=t.body;
   }
   repRefreshHL();
-  $('#repSend').textContent='Sending…';$('#repSend').disabled=true;
+  t.sendError='';
+  t.sendPending=true;
+  setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
-  $('#repResView').innerHTML='<span class="blink" style="color:var(--fg3)">sending…</span>';
+  $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    t.sendPending=false;
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    // The editor panes are shared between tabs. A slow send can finish after
+    // the operator has switched to another tab; keep the result on its source
+    // tab, but never paint that result into the currently visible tab.
+    if(repCur()!==t){repPersist();return;}
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
-    await renderRepResponse();loadRepHistory();repPersist();
-  }catch(e){const msg=friendlySendError(e.message);$('#repStatus').textContent='';$('#repResView').textContent='(error: '+msg+')';toast(msg);}
-  $('#repSend').textContent='Send ▸';$('#repSend').disabled=false;
+    await renderRepResponse();
+    if(repCur()!==t){repPersist();return;}
+    await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
+    if(repCur()!==t){repPersist();return;}
+    setRepSendState('success','Sent');resetRepSend(600,t);
+    loadRepHistory();repPersist();
+  }catch(e){
+    t.sendPending=false;
+    const msg=friendlySendError(e.message);
+    t.sendError=msg;t.status='send failed';t.color='var(--red)';
+    if(repCur()!==t){repPersist();return;}
+    $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
+    $('#repResView').textContent='(error: '+msg+')';
+    await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
+    if(repCur()!==t){repPersist();return;}
+    setRepSendState('error','Send failed');resetRepSend(900,t);toast(msg);
+  }
 }
 export async function renderRepResponse(){
   const t=repCur();if(!t||!t.resId)return;
+  const resId=t.resId,resView=t.resView||'pretty';
   try{
     // Message-codec Decoded view (same engine as History inspect).
-    if((t.resView||'pretty')==='decoded'){
-      const d=await api('/api/flows/'+t.resId+'/decoded?side=res');
-      if(repCur()!==t)return;
+    if(resView==='decoded'){
+      const d=await api('/api/flows/'+resId+'/decoded?side=res');
+      if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
       if(!d.matched){
         $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this response.<br>
           Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
@@ -229,12 +270,12 @@ export async function renderRepResponse(){
       $('#repResView').innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,'application/json')+'</pre>';
       return;
     }
-    const raw=await api('/api/flows/'+t.resId+'/raw?side=res');
+    const raw=await api('/api/flows/'+resId+'/raw?side=res');
     // A tab switch during the fetch would otherwise paint this response into the
     // now-active tab's shared #repResView pane.
-    if(repCur()!==t)return;
-    $('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw,t.resView==='pretty',contentTypeFromRaw(raw));
-  }catch(e){if(repCur()===t)$('#repResView').textContent='(error: '+e.message+')';}
+    if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
+    $('#repResView').innerHTML=highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
+  }catch(e){if(repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError)$('#repResView').textContent='(error: '+e.message+')';}
 }
 export async function loadRepHistory(){
   const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpointParts(t);
@@ -264,8 +305,8 @@ export async function repLoadSend(id){
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
-    t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
+    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){toast(e.message);}
 }
@@ -282,8 +323,8 @@ export async function sendToRepeater(f){
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
-    t.resId=null;t.status='';t.color='';t.title=repTitle(t);
+    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.resId=null;t.status='';t.color='';t.sendError='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
     // that a complete editable request is ready.
@@ -607,6 +648,7 @@ const intrTabs=createTabManager({
   onLoad:t=>intrApply(t),
   normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
+  tablistLabel:'Intruder tabs',
   onPersist:blob=>persistUIState('intruder',blob),
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
@@ -627,6 +669,9 @@ export async function intrInit(){
 
 /* ---- intruder run history (this session) ---- */
 const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
+let intrStartPending=false;
+let intrPollError='';
+let intrLastRunning=false,intrLastTotal=0,intrLastDone=0;
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
@@ -879,16 +924,32 @@ function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==
 // setSniperPayloads: used by the AI assistant's "load into Intruder" action.
 export function setSniperPayloads(text){intrState.type='sniper';intrSetPayloadLines('s', parseListLines(text||''), null);updateIntrMode();intrTouch();}
 const INTR_MAX_REQUESTS=2000;
+function setIntrStartState(stateName,label){
+  const button=$('#intrStart');if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  if(stateName!=='idle')button.classList.add('is-'+stateName);
+  button.dataset.state=stateName;
+  button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
+  button.disabled=stateName==='pending';
+  button.textContent=label;
+}
+function resetIntrStart(delay,epoch){setTimeout(()=>{if(epoch===intrStartEpoch&&!intrLastRunning)setIntrStartState('idle','Start ▸');},delay);}
+let intrStartEpoch=0;
 export async function intrStart(){
+  if(intrStartPending)return;
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
-  const threads=Math.max(1,parseInt($('#intrThreads').value,10)||1);
-  const delayMs=Math.max(0,parseInt($('#intrDelay').value,10)||0);
+  const threadsValue=Number($('#intrThreads').value),delayValue=Number($('#intrDelay').value);
+  if(!Number.isInteger(threadsValue)||threadsValue<1||threadsValue>64){toast('threads must be between 1 and 64','error');$('#intrThreads').focus();return;}
+  if(!Number.isInteger(delayValue)||delayValue<0){toast('delay must be zero or greater','error');$('#intrDelay').focus();return;}
+  const threads=threadsValue,delayMs=delayValue;
   const body={target,template:$('#intrTemplate').value,attackType:intrState.type,threads,delayMs,
     grepMatch:$('#intrGrep').value.trim(),grepExtract:$('#intrExtract').value.trim(),
     processRules:lines($('#intrProc').value.replace(/,/g,'\n')).map(s=>s.trim()).filter(Boolean)};
   if(intrState.type==='repeat'){
-    body.repeat=Math.max(1,parseInt($('#intrRepeat').value,10)||1);
+    const repeatValue=Number($('#intrRepeat').value);
+    if(!Number.isInteger(repeatValue)||repeatValue<1||repeatValue>2000){toast('repeat must be between 1 and 2000','error');$('#intrRepeat').focus();return;}
+    body.repeat=repeatValue;
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends');$('#intrTemplate').focus();return;}
@@ -909,8 +970,20 @@ export async function intrStart(){
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg=intrReadEditor();       // snapshot for the history entry
   intrCapturePending=true;           // capture this run into history on completion
-  try{renderIntr(await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));}
-  catch(e){intrCapturePending=false;toast('attack: '+e.message);}
+  intrStartPending=true;
+  const epoch=++intrStartEpoch;
+  intrPollError='';
+  setIntrStartState('pending','Starting…');
+  try{
+    const started=await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    intrStartPending=false;
+    renderIntr(started);
+  }catch(e){
+    intrStartPending=false;intrCapturePending=false;
+    setIntrStartState('error','Start failed');
+    resetIntrStart(1000,epoch);
+    toast('attack: '+e.message,'error');
+  }
 }
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
@@ -960,11 +1033,34 @@ function intrApplyFilter(res){
   if(intrFilter==='error') return res.filter(r=>r.error);
   return res;
 }
-export function scheduleIntr(){clearTimeout(intrTimer);intrTimer=setTimeout(async()=>{try{renderIntr(await api('/api/intruder/state'));}catch(e){}},120);}
+export function scheduleIntr(){
+  clearTimeout(intrTimer);
+  intrTimer=setTimeout(async()=>{
+    try{
+      renderIntr(await api('/api/intruder/state'));
+    }catch(e){
+      // Keep the last result set visible while the state endpoint is unavailable.
+      // A retry affordance makes a long-running attack recoverable instead of
+      // silently freezing at its last progress value.
+      intrPollError=e&&e.message?e.message:'connection unavailable';
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true});
+    }
+  },120);
+}
 export function renderIntr(st){
   const running=!!st.running,total=st.total||0,done=st.done||0;
+  if(!st.pollFailed)intrPollError='';
+  if(!st.pollFailed){intrLastRunning=running;intrLastTotal=total;intrLastDone=done;}
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
-  $('#intrStart').disabled=running;$('#intrStart').textContent=running?'Running…':'Start ▸';
+  if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
+  const pollStatus=$('#intrPollStatus');
+  if(pollStatus){
+    if(intrPollError){
+      pollStatus.innerHTML='<span class="state-error-msg">Attack status unavailable: '+esc(intrPollError)+'</span> <button type="button" class="btn xs" data-intr-poll-retry>Retry</button>';
+      const retry=pollStatus.querySelector('[data-intr-poll-retry]');
+      if(retry)retry.onclick=()=>{intrPollError='';pollStatus.textContent='Retrying…';scheduleIntr();};
+    }else pollStatus.textContent='';
+  }
   // progress bar
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
@@ -983,7 +1079,7 @@ export function renderIntr(st){
     if(intrHistory.length>30)intrHistory.length=30;
     renderIntrHistory();
   }
-  if(running)scheduleIntr(); // self-poll until the attack converges (robust to event/POST races)
+  if(running&&!st.pollFailed)scheduleIntr(); // pause on failure; Retry resumes polling
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!res.length){
@@ -998,12 +1094,29 @@ export function renderIntr(st){
   if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);
   else{box.innerHTML=view.map(intrRowHTML).join('');wireIntrResultRows(box);}
 }
+function wireTabListKeys(seg){
+  if(!seg)return;
+  const tabs=[...seg.querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab,i)=>{
+    tab.tabIndex=tab.getAttribute('aria-selected')==='true'?0:-1;
+    tab.addEventListener('keydown',e=>{
+      let next=-1;
+      if(e.key==='ArrowRight')next=(i+1)%tabs.length;
+      else if(e.key==='ArrowLeft')next=(i-1+tabs.length)%tabs.length;
+      else if(e.key==='Home')next=0;
+      else if(e.key==='End')next=tabs.length-1;
+      else return;
+      e.preventDefault();tabs[next].focus();tabs[next].click();
+    });
+  });
+}
 {const seg=$('#intrResFilter');
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
-  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
   renderIntr({running:false,total:intrLastResults.length,done:intrLastResults.length,results:intrLastResults});
 });}
+wireTabListKeys($('#intrResFilter'));
 async function intrToFinding(){
   const pool=intrApplyFilter(intrLastResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);

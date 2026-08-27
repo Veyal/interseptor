@@ -11,6 +11,17 @@ const VERDICT = {
 export const BANNER_HIDDEN_KEY = 'tlsDiagBannerHidden';
 let lastDiag = null;
 let bannerDismissedVerdict = null;
+let diagRefreshTimer=null;
+
+// Capture SSE can arrive in large bursts. Coalesce diagnosis refreshes so a
+// busy HTTP-only target does not turn one flow into one control-plane request.
+function scheduleTrafficDiagnosis(delay=180) {
+  if(diagRefreshTimer)return;
+  diagRefreshTimer=setTimeout(()=>{
+    diagRefreshTimer=null;
+    loadTrafficDiagnosis();
+  },delay);
+}
 
 function verdictMeta(v) {
   return VERDICT[v] || { label: v, color: 'var(--fg2)', icon: '·' };
@@ -57,8 +68,8 @@ function dismissBannerForVerdict(verdict) {
 
 function wireBannerDismiss(root, rep) {
   if (!root || !rep) return;
-  root.querySelector('#tlsBannerDismiss')?.addEventListener('click', () => dismissBannerForVerdict(rep.verdict));
-  root.querySelector('#tlsBannerDismissForever')?.addEventListener('click', () => {
+  root.querySelector('[data-tls-action="dismiss"]')?.addEventListener('click', () => dismissBannerForVerdict(rep.verdict));
+  root.querySelector('[data-tls-action="dismiss-forever"]')?.addEventListener('click', () => {
     setTlsBannerHidden(true);
     dismissBannerForVerdict(rep.verdict);
   });
@@ -79,11 +90,11 @@ export function renderTrafficDiagnosis(rep) {
   const body = `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
     <span style="font-weight:700;color:${v.color};white-space:nowrap">${v.icon} ${esc(v.label)}</span>
     <span style="flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:1.55">${esc(rep.detail || '')}</span>
-    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" id="tlsFilterPinBtn" style="flex:none">Show PIN rows</button>` : ''}
-    ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent" id="tlsPassthroughBtn" style="flex:none" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
-    ${rep.verdict !== 'ok' ? `<button type="button" class="btn" id="tlsOpenSettingsBtn" style="flex:none">Settings → TLS</button>` : ''}
-    <button type="button" class="btn" id="tlsBannerDismiss" title="Dismiss until verdict changes" style="flex:none;padding:3px 8px" aria-label="Dismiss TLS diagnosis banner">✕</button>
-    <button type="button" class="btn" id="tlsBannerDismissForever" title="Never show this banner in Proxy History" style="flex:none;font-size:var(--fs-xs)">Don't show again</button>
+    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" data-tls-action="filter-pin" style="flex:none">Show PIN rows</button>` : ''}
+    ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent" data-tls-action="passthrough" style="flex:none" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
+    ${rep.verdict !== 'ok' ? `<button type="button" class="btn" data-tls-action="open-settings" style="flex:none">Settings → TLS</button>` : ''}
+    <button type="button" class="btn" data-tls-action="dismiss" title="Dismiss until verdict changes" style="flex:none;padding:3px 8px" aria-label="Dismiss TLS diagnosis banner">✕</button>
+    <button type="button" class="btn" data-tls-action="dismiss-forever" title="Never show this banner in Proxy History" style="flex:none;font-size:var(--fs-xs)">Don't show again</button>
   </div>
   ${rep.fix ? `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--fg2)"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
   ${hostsLine(rep)}
@@ -119,7 +130,7 @@ export function renderTrafficDiagnosis(rep) {
 
 function wireTrafficDiagnosisActions(root) {
   if (!root) return;
-  const pin = root.querySelector('#tlsFilterPinBtn');
+  const pin = root.querySelector('[data-tls-action="filter-pin"]');
   if (pin) pin.onclick = () => {
     document.querySelector('.tab[data-tab="proxy"]')?.click();
     import('./proxy.js').then(m => {
@@ -127,12 +138,12 @@ function wireTrafficDiagnosisActions(root) {
       m.setFilter('tag', 'tls-failed');
     });
   };
-  const set = root.querySelector('#tlsOpenSettingsBtn');
+  const set = root.querySelector('[data-tls-action="open-settings"]');
   if (set) set.onclick = () => {
     document.querySelector('.tab[data-tab="settings"]')?.click();
     document.querySelector('#setNav button[data-sec="tls"]')?.click();
   };
-  const pass = root.querySelector('#tlsPassthroughBtn');
+  const pass = root.querySelector('[data-tls-action="passthrough"]');
   if (pass) pass.onclick = () => addHostsToPassthrough((lastDiag && lastDiag.hostsBlocked) || []);
 }
 
@@ -176,13 +187,10 @@ export function getStartedDiagnosisHint() {
 
 export function onFlowMaybeTLS(f) {
   if (!f) return;
-  // A TLS-relevant flow (handshake failure/success) can always flip the
-  // verdict. But "no_traffic"/"no_https" are about traffic volume, not TLS
-  // specifically — any new flow (including plain HTTP) can move TotalFlows
-  // off zero and stale-out one of those two verdicts, so re-check on every
-  // flow while the banner is showing either, not just TLS-flagged ones.
-  // Otherwise a run of non-TLS traffic never clears an initial "no traffic
-  // reached the proxy yet" reading taken at page load.
-  const stalable = lastDiag && (lastDiag.verdict === 'no_traffic' || lastDiag.verdict === 'no_https');
-  if ((f.flags & 16) || stalable) loadTrafficDiagnosis();
+  // The first captured flow can move "no traffic" to another verdict. Once
+  // plain HTTP is already known, only HTTPS traffic or a TLS failure can change
+  // the diagnosis; more HTTP requests merely change the total count.
+  const stalable = lastDiag && lastDiag.verdict === 'no_traffic';
+  const tlsRelevant = (f.flags & 16) || f.scheme === 'https';
+  if (tlsRelevant || stalable) scheduleTrafficDiagnosis();
 }

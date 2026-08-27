@@ -30,7 +30,6 @@
      colour token. Enforced by TestUIUsesVectorIconsNotEmoji. -->
 <svg id="iconSprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden"><defs>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M10 11v6M14 11v6"/></symbol>
-<path d="M11 3l1.7 4.8L17.5 9.5l-4.8 1.7L11 16l-1.7-4.8L4.5 9.5l4.8-1.7z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
 <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.6-4.6"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 5a1 1 0 0 1 1-1h11l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 4v6h7V4M7 20v-6h10v6"/></symbol>
@@ -123,8 +122,8 @@
         <select id="fSearchScope" class="btn" title="Search in history" aria-label="Search scope"><option value="anywhere" selected>Anywhere</option><option value="body">Body</option><option value="id">ID</option><option value="script">Script</option></select>
         <input id="fSearch" aria-label="Search history (method / host / path / id)" placeholder="Search method / host / path / #id…">
       </div>
-      <select id="fMethod" class="btn"><option value="">method</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
-      <select id="fStatus" class="btn"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
+      <select id="fMethod" class="btn" aria-label="HTTP method filter"><option value="">All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+      <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views ▾</button>
       <div class="spacer"></div>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-haspopup="menu" aria-expanded="false">▦ Cols</button>
@@ -144,11 +143,11 @@
       <div id="flowSearchScriptError" role="alert" style="color:var(--red);white-space:pre-wrap"></div>
     </details>
     <div class="toolbar toolbar-secondary">
-      <button class="uisw" id="notesFilter" title="Flows with notes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
-      <button class="uisw" id="hideTlsFilter" title="Hide TLS failures"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> PIN</button>
+      <button type="button" class="uisw" id="notesFilter" title="Flows with notes" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
+      <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
       <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
-      <button class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
-       <button class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
+      <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
+       <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
 
     </div>
     <div id="chips"></div>
@@ -170,7 +169,7 @@
     <div id="inspect">
       <div class="pane">
         <div class="pane-head"><span class="lbl">REQUEST</span>
-          <div class="seg" data-side="req"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button></div>
+          <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button></div>
           <div class="spacer"></div>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
@@ -189,7 +188,7 @@
       <div class="pane">
         <div class="pane-head"><span class="lbl">RESPONSE</span>
           <span id="resStatus" class="statusline"></span>
-          <div class="seg" data-side="res"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button><button data-view="render">Render</button></div>
+          <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
           <div id="inspectFind" class="inspect-find" style="display:none">
             <input id="inspectFindIn" type="search" aria-label="Find in response" placeholder="Find…">
             <span id="inspectFindStat" class="hint"></span>
@@ -218,11 +217,11 @@
     <div id="interceptWarning" class="tls-diag-banner intercept-danger" style="display:none" role="alert"></div>
     <!-- control strip: the on/off switches + conditional filter -->
     <div class="icpt-bar">
-      <button class="uisw" id="interceptToggle" aria-pressed="false" title="Hold matching requests before they leave"><span class="uisw-led"></span>Requests <b id="icptReqState">Off</b></button>
-      <button class="uisw" id="respInterceptToggle" aria-pressed="false" title="Hold responses before they reach the client"><span class="uisw-led"></span>Responses <b id="icptResState">Off</b></button>
+      <button type="button" class="uisw" id="interceptToggle" aria-pressed="false" title="Hold matching requests before they leave"><span class="uisw-led"></span>Requests <b id="icptReqState">Off</b></button>
+      <button type="button" class="uisw" id="respInterceptToggle" aria-pressed="false" title="Hold responses before they reach the client"><span class="uisw-led"></span>Responses <b id="icptResState">Off</b></button>
       <div class="icpt-cond">
         <label class="icpt-chk"><input type="checkbox" id="interceptFilterOn"> Only hold when</label>
-        <select id="interceptFilterTarget" class="btn"><option value="any">anything</option><option value="url">URL</option><option value="header">headers</option><option value="body">body</option><option value="method">method</option></select>
+        <select id="interceptFilterTarget" class="btn" aria-label="Intercept match field"><option value="any">Anything</option><option value="url">URL</option><option value="header">Headers</option><option value="body">Body</option><option value="method">Method</option></select>
         <span class="hint">matches</span>
         <input id="interceptFilterPattern" class="btn btn-field field-grow font-mono" aria-label="Intercept filter pattern" placeholder="regex e.g. /admin|password=" spellcheck="false">
       </div>
@@ -262,7 +261,7 @@
           <tbody id="rulesBody"></tbody>
         </table>
         <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
-          <select id="newRuleType" class="btn"><option value="req-header">req-header</option><option value="req-body">req-body</option><option value="res-header">res-header</option><option value="res-body">res-body</option></select>
+          <select id="newRuleType" class="btn" aria-label="Match and replace message part"><option value="req-header">Request header</option><option value="req-body">Request body</option><option value="res-header">Response header</option><option value="res-body">Response body</option></select>
           <input id="newRuleMatch" class="btn btn-field field-grow" aria-label="Match & replace — match regex" placeholder="match regex e.g. User-Agent: .*">
           <input id="newRuleReplace" class="btn btn-field field-grow" aria-label="Match & replace — replacement" placeholder="replace e.g. User-Agent: interseptor">
           <button class="btn btn-primary" id="addRuleBtn">+ Add rule</button>
@@ -281,7 +280,7 @@
       <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
       <button class="btn" id="repPostmanImport" type="button" title="Select a Postman collection JSON, optionally with an environment JSON">Import Postman</button>
       <input type="file" id="repPostmanFile" accept=".json,application/json" multiple aria-label="Import Postman collection or environment" style="display:none">
-      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)">Send ▸<span class="kbd">Ctrl/⌘+Space</span></button>
+      <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)"><span id="repSendLabel">Send ▸</span><span class="kbd">Ctrl/⌘+Space</span></button>
     </div>
     <div class="rep-work">
       <aside id="repHistory" class="rep-hist" style="display:none"></aside>
@@ -293,7 +292,7 @@
           <textarea id="repHeaders" class="rep-edit" aria-label="Repeater request headers" spellcheck="false" placeholder="Header: value (one per line)"></textarea>
         </div>
         <div class="rep-sub row"><span>BODY</span><div class="spacer"></div>
-          <div class="seg rep-req-seg" id="repReqSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Edit codec plaintext (re-encode on send if apply_on_send)">Decoded</button></div>
+          <div class="seg rep-req-seg" id="repReqSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Edit codec plaintext (re-encode on send if apply_on_send)" aria-pressed="false">Decoded</button></div>
           <span id="repCodecBadge" class="hint" style="display:none;margin-left:8px"></span>
         </div>
         <div class="rep-field rep-field-body">
@@ -302,9 +301,9 @@
         </div>
       </section>
       <section class="pane rep-res">
-        <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline"></span>
+        <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline" role="status" aria-live="polite"></span>
           <div class="spacer"></div>
-          <div class="seg" id="repResSeg"><button data-view="raw">Raw</button><button class="on" data-view="pretty">Pretty</button><button data-view="decoded" title="Message codec plaintext">Decoded</button></div>
+          <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button></div>
         </div>
         <pre id="repResView"><div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
       </section>
@@ -318,8 +317,8 @@
     <div class="intr-bar">
       <input id="intrTarget" class="repurl" style="flex:1 1 240px;min-width:200px;max-width:420px" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
       <span class="intr-sep" aria-hidden="true"></span>
-      <div class="seg" id="intrType"><button class="on" data-t="sniper" aria-pressed="true">Sniper</button><button data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
-      <select id="intrListMode" class="btn btn-field" style="display:none" title="How the per-marker lists combine"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
+      <div class="seg" id="intrType"><button type="button" class="on" data-t="sniper" aria-pressed="true">Sniper</button><button type="button" data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button type="button" data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
+      <select id="intrListMode" class="btn btn-field" style="display:none" title="How the per-marker lists combine" aria-label="Payload list combination"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
       <span class="intr-sep" aria-hidden="true"></span>
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
       <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span><input id="intrDelay" type="number" min="0" step="50" value="0">ms</label>
@@ -339,7 +338,7 @@
         <label class="hint" for="intrProc">Process</label>
         <input id="intrProc" class="btn btn-field" style="flex:1;min-width:140px;font-family:var(--mono)" aria-label="Payload processing pipeline" placeholder="payload processing e.g. urlencode, base64, prefix:id=" spellcheck="false" title="comma-separated, applied in order: urlencode · base64 · upper · lower · prefix:X · suffix:X">
         <span class="intr-sep" aria-hidden="true"></span>
-        <select id="intrPreset" class="btn" title="Load a saved attack preset"><option value="">presets…</option></select>
+      <select id="intrPreset" class="btn" title="Load a saved attack preset" aria-label="Saved Intruder preset"><option value="">Saved presets…</option></select>
         <button class="btn" id="intrPresetSave" title="Save current attack setup as a preset"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"/></svg> Save</button>
       </div>
     </details>
@@ -356,7 +355,7 @@ Content-Type: application/json
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
       <section class="pane intr-results">
-        <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><div class="spacer"></div>
+        <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><span id="intrPollStatus" class="statusline" role="status" aria-live="polite"></span><div class="spacer"></div>
           <span class="seg intr-res-filter" id="intrResFilter" role="tablist" aria-label="Filter results">
             <button type="button" class="on" data-f="all" role="tab" aria-selected="true">All</button>
             <button type="button" data-f="interesting" role="tab" aria-selected="false" title="Flagged, grep match, or length anomaly">Interesting</button>
@@ -375,7 +374,7 @@ Content-Type: application/json
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <div id="scanPassiveBar" class="row find-toolbar-row">
-      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target"><option value="">All in-scope hosts</option></select>
+      <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
       <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
       <button class="btn" id="scanClear">Clear results</button>
@@ -392,7 +391,7 @@ Content-Type: application/json
       <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">` OOB</button>
     </div>
     <div id="scanPassiveView" class="scan-passive-view">
-      <div id="scanList" class="scan-list">
+      <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
         <div class="state-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
           <div class="state-empty-title">No issues yet</div>
@@ -454,24 +453,24 @@ Content-Type: application/json
   <!-- Endpoint map (attack surface) -->
   <div class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map">
     <div class="toolbar">
-      <select id="mapDomain" class="btn btn-field map-domain" title="Filter domain"><option value="">All domains</option></select>
+      <select id="mapDomain" class="btn btn-field map-domain" title="Filter domain" aria-label="Map domain filter"><option value="">All domains</option></select>
       <input id="mapSearch" class="btn btn-field map-search" aria-label="Search the site map" placeholder="Search…">
-      <select id="mapSearchScope" class="btn btn-field map-search-scope" title="What to search">
+      <select id="mapSearchScope" class="btn btn-field map-search-scope" title="What to search" aria-label="Map search scope">
         <option value="path">Path / host</option>
         <option value="headers">Headers</option>
         <option value="body">Body</option>
         <option value="all">All</option>
       </select>
-      <div class="seg" id="mapViewSeg"><button data-v="tree" class="on">Tree</button><button data-v="table">Table</button><button data-v="graph">Graph</button><button data-v="params">Params</button></div>
+      <div class="seg" id="mapViewSeg"><button type="button" data-v="tree" class="on" aria-pressed="true">Tree</button><button type="button" data-v="table" aria-pressed="false">Table</button><button type="button" data-v="graph" aria-pressed="false">Graph</button><button type="button" data-v="params" aria-pressed="false">Params</button></div>
       <span id="mapCount" class="count"></span>
       <div class="spacer"></div>
     </div>
     <div class="toolbar toolbar-secondary">
-      <select id="mapMethod" class="btn btn-field"><option value="">method</option></select>
-      <select id="mapStatus" class="btn btn-field"><option value="">status</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
-      <select id="mapTag" class="btn btn-field map-tag" title="Show only endpoints with flows carrying this tag"><option value="">all tags</option></select>
-      <button type="button" class="uisw on" id="mapHideNoise" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hiding 403/404-only</button>
-      <button type="button" class="uisw on" id="mapCollapseIdentical" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapsing identical</button>
+      <select id="mapMethod" class="btn btn-field" aria-label="Map HTTP method filter"><option value="">All methods</option></select>
+      <select id="mapStatus" class="btn btn-field" aria-label="Map response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
+      <select id="mapTag" class="btn btn-field map-tag" title="Show only endpoints with flows carrying this tag" aria-label="Map tag filter"><option value="">All tags</option></select>
+      <button type="button" class="uisw on" id="mapHideNoise" aria-pressed="true" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hide 403/404-only</button>
+      <button type="button" class="uisw on" id="mapCollapseIdentical" aria-pressed="true" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapse identical</button>
       <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy">Discovery ▸</button>
       <div class="spacer"></div>
       <button class="btn" id="mapExpand">Expand all</button>
@@ -495,7 +494,7 @@ Content-Type: application/json
     <div id="mapTable" class="map-table-wrap map-view" style="display:none"></div>
     <div id="mapGraphWrap" style="display:none;flex:1;min-height:0;position:relative">
       <div id="mapGraphTip" class="map-graph-tip" style="display:none" role="tooltip"></div>
-      <svg id="mapGraphSvg" style="width:100%;height:100%;background:var(--bg1);cursor:grab" xmlns="http://www.w3.org/2000/svg"><g id="mapGraphG"></g></svg>
+      <svg id="mapGraphSvg" style="width:100%;height:100%;background:var(--bg1);cursor:grab" xmlns="http://www.w3.org/2000/svg"><g id="mapGraphG" role="listbox" aria-label="Endpoint relationship graph"></g></svg>
     </div>
     <div id="mapParams" class="map-table-wrap map-view" style="display:none;padding:10px 14px"></div>
   </div>
@@ -503,7 +502,7 @@ Content-Type: application/json
   <!-- Project notes (markdown notebook) -->
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
-      <div class="seg" id="notesSeg"><button class="on" data-m="edit">Edit</button><button data-m="preview">Preview</button></div>
+      <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
 
       <div class="spacer"></div>
@@ -539,7 +538,7 @@ Content-Type: application/json
         <div class="settings-nav-group" data-nav-group="testing">
           <div class="settings-nav-group-label">Testing</div>
           <button data-sec="scope">Target scope</button>
-          <button data-sec="scanner">Scanner</button>
+          <button type="button" data-sec="scanner" aria-pressed="false">Scanner &amp; OOB</button>
           <button data-sec="session">Session / auth</button>
         </div>
         <div class="settings-nav-group" data-nav-group="system">
@@ -565,7 +564,7 @@ Content-Type: application/json
             <h3>DEVICE PROXY</h3>
             <p class="hint" style="margin-bottom:10px">Address phones use for Wi-Fi proxy. ADB USB still uses <b>127.0.0.1</b>.</p>
             <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-              <div class="seg" id="deviceProxyModeSeg"><button type="button" class="on" data-mode="auto">Auto</button><button type="button" data-mode="manual">Manual</button></div>
+              <div class="seg" id="deviceProxyModeSeg"><button type="button" class="on" data-mode="auto" aria-pressed="true">Auto</button><button type="button" data-mode="manual" aria-pressed="false">Manual</button></div>
               <span class="hint" id="deviceProxyResolved">…</span>
             </div>
             <div class="field" id="deviceProxyManualField" style="display:none">
@@ -578,8 +577,8 @@ Content-Type: application/json
             <h3>CONTROL UI</h3>
             <p class="hint" style="margin-bottom:10px">Web UI and REST API listener. Bind <b>0.0.0.0</b> for remote OOB callbacks.</p>
             <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
-              <div class="field" style="flex:1;min-width:180px;max-width:none;margin-bottom:0"><label>Host</label><select id="setControlHost" class="btn" style="width:100%;text-align:left"></select></div>
-              <div class="field" style="width:120px;flex:none;margin-bottom:0"><label>Port</label><input id="setControlPort" inputmode="numeric" placeholder="9966" style="width:100%"></div>
+              <div class="field" style="flex:1;min-width:180px;max-width:none;margin-bottom:0"><label for="setControlHost">Host</label><select id="setControlHost" class="btn" aria-label="Control UI bind host" style="width:100%;text-align:left"></select></div>
+              <div class="field" style="width:120px;flex:none;margin-bottom:0"><label for="setControlPort">Port</label><input id="setControlPort" aria-label="Control UI port" inputmode="numeric" placeholder="9966" style="width:100%"></div>
             </div>
             <input type="hidden" id="setControlAddr">
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
@@ -625,27 +624,27 @@ Content-Type: application/json
           <div class="section" id="sysProxySection">
             <h3>SYSTEM PROXY</h3>
             <p class="hint" style="margin-bottom:10px">Route this machine's traffic through Interseptor (macOS only).</p>
-            <div class="row" style="gap:12px"><button class="uisw" id="sysProxyToggle">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
+            <div class="row" style="gap:12px"><button type="button" class="uisw" id="sysProxyToggle" aria-pressed="false">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
           <div class="section">
             <h3>CAPTURE POLICY</h3>
             <p class="hint" style="margin-bottom:10px">Store only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded.</p>
-            <div class="row" style="gap:12px"><button class="uisw" id="capScopeToggle">Saving all traffic</button></div>
+            <div class="row" style="gap:12px"><button type="button" class="uisw" id="capScopeToggle" aria-pressed="false">Saving all traffic</button></div>
           </div>
           <div class="section">
             <h3>BROWSER TELEMETRY</h3>
             <p class="hint" style="margin-bottom:10px">Suppresses Safe Browsing, update pings, crash reports, and captive-portal probes from capture.</p>
-            <div class="row" style="gap:12px"><button class="uisw on" id="suppressTelemetryToggle">Suppressing</button></div>
+            <div class="row" style="gap:12px"><button type="button" class="uisw on" id="suppressTelemetryToggle" aria-pressed="true">Suppressing</button></div>
           </div>
           <div class="section">
             <h3>ANDROID TELEMETRY</h3>
             <p class="hint" style="margin-bottom:10px">Suppresses Play/GMS check-in, Crashlytics, Analytics, connectivity probes, and ad/measurement noise from capture. App backends, auth, and FCM push stay visible.</p>
-            <div class="row" style="gap:12px"><button class="uisw on" id="suppressAndroidTelemetryToggle">Suppressing</button></div>
+            <div class="row" style="gap:12px"><button type="button" class="uisw on" id="suppressAndroidTelemetryToggle" aria-pressed="true">Suppressing</button></div>
           </div>
           <div class="section">
             <h3>INVISIBLE PROXY</h3>
             <p class="hint" style="margin-bottom:10px">Accept traffic from clients that aren't proxy-configured (e.g. redirected via iptables/pf, DNS spoofing, or port forwarding). Origin-form requests are forwarded to their <b>Host</b> header. <b>Off</b> by default.</p>
-            <div class="row" style="gap:12px"><button class="uisw" id="invisibleProxyToggle">Invisible proxy is off</button></div>
+            <div class="row" style="gap:12px"><button type="button" class="uisw" id="invisibleProxyToggle" aria-pressed="false">Invisible proxy is off</button></div>
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
@@ -669,8 +668,8 @@ Content-Type: application/json
           <div class="section" id="tlsBypassSection">
             <h3>TLS PASSTHROUGH · SSL PINNING</h3>
             <p class="hint" style="margin-bottom:10px">Domains listed here are tunneled straight through <b>without interception</b>, so pinned apps keep working while you focus on the domains you <i>can</i> intercept. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
-            <div class="row" style="gap:12px;margin-bottom:10px"><button class="uisw" id="autoBypassToggle">Auto-bypass on pinning failure is off</button><span class="hint">Adds a domain here automatically the first time its TLS handshake fails (pinning).</span></div>
-            <textarea id="tlsBypassList" spellcheck="false" placeholder="api.pinned-app.com&#10;*.analytics.example.com" style="width:100%;min-height:96px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
+            <div class="row" style="gap:12px;margin-bottom:10px"><button type="button" class="uisw" id="autoBypassToggle" aria-pressed="false">Auto-bypass on pinning failure is off</button><span class="hint">Adds a domain here automatically the first time its TLS handshake fails (pinning).</span></div>
+            <textarea id="tlsBypassList" aria-label="TLS passthrough hosts" spellcheck="false" placeholder="api.pinned-app.com&#10;*.analytics.example.com" style="width:100%;min-height:96px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="tlsBypassSave">Save passthrough list</button><span class="hint" id="tlsBypassCount"></span></div>
           </div>
           <div class="section" id="originTLSVerifyBypassSection">
@@ -682,7 +681,7 @@ Content-Type: application/json
               <button type="button" class="btn" id="originTLSVerifyBypassAdd">Add exception</button>
               <button type="button" class="btn" id="originTLSVerifyBypassSelected">Add selected History host</button>
             </div>
-            <textarea id="originTLSVerifyBypassList" spellcheck="false" placeholder="api.example.com&#10;*.test.example.com" style="width:100%;min-height:72px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
+            <textarea id="originTLSVerifyBypassList" aria-label="Origin TLS verification exceptions" spellcheck="false" placeholder="api.example.com&#10;*.test.example.com" style="width:100%;min-height:72px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="originTLSVerifyBypassSave">Save verification exceptions</button><span class="hint" id="originTLSVerifyBypassCount"></span></div>
           </div>
           <div class="section" id="tlsPinningSection">
@@ -870,7 +869,7 @@ Content-Type: application/json
               <tbody id="scopeBody"></tbody>
             </table>
             <div class="row" style="gap:8px;margin-top:10px">
-              <select id="newScopeAction" class="btn"><option value="include">include</option><option value="exclude">exclude</option></select>
+              <select id="newScopeAction" class="btn" aria-label="Scope rule action"><option value="include">Include</option><option value="exclude">Exclude</option></select>
               <input id="newScopeHost" class="btn btn-field" style="flex:1" aria-label="Scope rule — host pattern" placeholder="host e.g. *.acme.com or .*ohsome.*">
               <input id="newScopePath" class="btn btn-field" style="width:130px" aria-label="Scope rule — path prefix" placeholder="path prefix or regex">
               <button class="btn btn-primary" id="addScopeBtn">+ Add</button>
@@ -889,7 +888,7 @@ Content-Type: application/json
         </section>
         <section class="set-sec" data-sec="api" hidden>
           <div class="section">
-            <div class="seg" id="apiSub" style="margin-bottom:12px"><button class="on" data-s="keys">API Keys</button><button data-s="allowlist">Allowlist</button><button data-s="share">Share</button><button data-s="rest">REST</button><button data-s="mcp" >MCP</button></div>
+            <div class="seg" id="apiSub" style="margin-bottom:12px"><button type="button" class="on" data-s="keys" aria-pressed="true">API Keys</button><button type="button" data-s="allowlist" aria-pressed="false">Allowlist</button><button type="button" data-s="share" aria-pressed="false">Share</button><button type="button" data-s="rest" aria-pressed="false">REST</button><button type="button" data-s="mcp" aria-pressed="false">MCP</button></div>
             <div id="apiKeys" class="api-pane">
               <h3>API KEYS</h3>
               <p class="hint" style="margin-bottom:12px">Authenticate remote access. New tokens are shown once at creation. If you're signed in remotely, <b>Show session key</b> reveals the key in your current browser session so you can copy it again. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
@@ -985,7 +984,7 @@ Content-Type: application/json
               <input id="macroExtract" class="btn btn-field field-grow font-mono" style="min-width:200px" aria-label="Token macro — extract regex" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
             </div>
             <div class="row" style="gap:8px;flex-wrap:wrap">
-              <select id="macroMode" class="btn btn-field"><option value="header">inject as header</option><option value="placeholder">replace placeholder</option></select>
+              <select id="macroMode" class="btn btn-field" aria-label="Token macro injection mode"><option value="header">Inject as header</option><option value="placeholder">Replace placeholder</option></select>
               <input id="macroName" class="btn btn-field field-grow font-mono" style="min-width:200px" aria-label="Token macro — header name or placeholder" placeholder="header name e.g. X-CSRF-Token  (or placeholder e.g. §CSRF§)" spellcheck="false">
             </div>
             <p class="hint" style="margin-top:8px;color:var(--amber)">Note: this fires one extra request per send — for Intruder that doubles the request count. Use <b>Save session</b> below to persist.</p>
@@ -1016,14 +1015,14 @@ Content-Type: application/json
             <p class="hint" style="margin-bottom:12px">Each project has its own history, rules, and scope, kept under <code>~/.interseptor/projects/&lt;name&gt;/</code> by default — or a folder you choose below. CA and checks are shared globally. Switching restarts Interseptor.</p>
             <div class="field"><label>Active project</label><div style="font-size:var(--fs-md)"><b id="projNameHint" style="color:var(--accent)">default</b> · <span id="projDirHint" style="color:var(--fg3)">~/.interseptor</span></div></div>
             <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
-              <div class="field" style="margin-bottom:0"><label>Switch to a saved project</label><select id="projSelect" class="btn btn-field" style="min-width:200px"></select></div>
+              <div class="field" style="margin-bottom:0"><label for="projSelect">Switch to a saved project</label><select id="projSelect" aria-label="Saved project" class="btn btn-field" style="min-width:200px"></select></div>
               <button class="btn btn-primary" id="projSwitchBtn">Open ▸</button>
             </div>
             <div class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
-              <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label>New project</label><input id="projNew" class="btn btn-field" style="width:100%" placeholder="acme-engagement"></div>
+              <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label for="projNew">New project</label><input id="projNew" aria-label="New project name" class="btn btn-field" style="width:100%" placeholder="acme-engagement"></div>
               <button class="btn" id="projNewBtn">Create &amp; open</button>
             </div>
-            <div class="field" style="margin-bottom:0;margin-top:8px"><label>Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="e.g. D:\engagements\acme-2026"></div>
+            <div class="field" style="margin-bottom:0;margin-top:8px"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-label="New project save location" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="e.g. D:\engagements\acme-2026"></div>
             <p class="hint" id="projSwitchNote" style="margin-top:12px;display:none;color:var(--accent)"></p>
             <div class="row" style="margin-top:14px"><button class="btn" id="runSetupBtn" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg> Run setup wizard again</button><span class="hint">Replays the first-run guide (proxy, CA, scope).</span></div>
           </div>
@@ -1096,7 +1095,7 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell" style="width:min(1100px,94vw);height:min(82vh,820px)">
     <div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line);gap:10px">
       <div id="fmTitle" style="flex:1;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-      <div class="seg" id="fmSeg"><button data-v="raw">Raw</button><button class="on" data-v="pretty">Pretty</button><button data-v="compare" hidden>Compare</button></div>
+      <div class="seg" id="fmSeg"><button type="button" data-v="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-v="pretty" aria-pressed="true">Pretty</button><button type="button" data-v="compare" hidden aria-pressed="false">Compare</button></div>
       <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
       <button class="btn" id="fmCopyLink" title="Copy deep link to this flow">⧉ Copy link</button>
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>
@@ -1285,7 +1284,7 @@ Content-Type: application/json
         <input id="oobUrl" class="btn" readonly style="flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line);font-family:var(--mono);color:var(--accent)" aria-label="Generated OOB payload URL" placeholder="click Generate…">
         <button class="btn" id="oobCopy">⧉ Copy</button>
       </div>
-      <div class="row" style="gap:10px"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
+      <div class="row" style="gap:10px"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><span id="oobLoadState" class="hint" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
       <div id="oobList"><div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div></div>
     </div>
   </div>
@@ -1294,7 +1293,7 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="projModalTitle" class="modal-shell" style="max-width:560px;max-height:86vh;width:94%">
     <div class="row modal-shell-head">
       <span id="projModalTitle" class="modal-shell-title">◧ Projects</span>
-      <div class="spacer"></div><button class="btn" id="pmClose">✕</button>
+      <div class="spacer"></div><button type="button" class="btn" id="pmClose" aria-label="Close projects">✕</button>
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto">
       <div class="field" style="margin:0"><label>Active project</label><div style="font-size:var(--fs-md)"><b id="pmCurrent" style="color:var(--accent)">default</b> · <span id="pmDir" style="color:var(--fg3);font-family:var(--mono);font-size:var(--fs-xs)"></span></div></div>
@@ -1324,7 +1323,7 @@ Content-Type: application/json
     </div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto">
       <p class="hint" style="line-height:1.6;margin:0">Define identities below — the <b>first is the baseline</b>. Each replay swaps auth headers. Lower-privileged roles with <b>~same-size</b> responses are flagged.</p>
-      <div class="seg" id="authzMode" role="tablist" aria-label="Authorization test mode">
+      <div class="seg" id="authzMode" role="group" aria-label="Authorization test mode">
         <button type="button" data-m="flow" class="on" aria-pressed="true">Selected flow <b id="authzFlow" style="color:var(--accent)"></b></button>
         <button type="button" data-m="scope" aria-pressed="false">All in-scope</button>
         <button type="button" data-m="crosshost" aria-pressed="false" title="Replay this endpoint to every in-scope host with its JWT — detects cross-environment token confusion">Cross-host JWT</button>
@@ -1342,6 +1341,7 @@ Content-Type: application/json
         <button class="btn btn-primary" id="authzRun">Run ▸</button>
       </div>
       <div class="micro-label">RESULTS</div>
+      <div id="authzStatus" class="statusline" role="status" aria-live="polite"></div>
       <div id="authzResults"><div class="hint">Run to compare access across roles.</div></div>
     </div>
   </div>

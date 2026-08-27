@@ -90,6 +90,47 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 }
 
+func TestUIJourneyAsyncEditorStateSurvivesLateCompletions(t *testing.T) {
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	notes := executableJS(readUIAsset(t, "js/notes.js"))
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	codecs := executableJS(readUIAsset(t, "js/codecs.js"))
+	mapJS := executableJS(readUIAsset(t, "js/map.js"))
+
+	requireUIContains(t, core,
+		"while(current!==lastSaved)",
+		"let submitted=current",
+		"lastSaved=submitted",
+		"preserveCurrent=false",
+	)
+	requireUIContains(t, notes,
+		"let notesEditGeneration=0",
+		"notesEditGeneration!==generation",
+		"preserveCurrent:preserveLocal",
+	)
+	requireUIContains(t, tools,
+		"sendError:''",
+		"t.sendError=msg",
+		"else if(t.sendError)setRepSendState('error','Send failed')",
+	)
+	recordError := strings.Index(tools, "t.sendError=msg")
+	backgroundGuard := -1
+	if recordError >= 0 {
+		backgroundGuard = strings.Index(tools[recordError:], "if(repCur()!==t)")
+	}
+	if recordError < 0 || backgroundGuard < 0 {
+		t.Error("Repeater must record a source-tab error before guarding active-tab paint")
+	}
+	requireUIContains(t, codecs,
+		"function codecEditorMatches(epoch, id, source)",
+		"if (!codecEditorMatches(epoch, id, source)) return",
+	)
+	requireUIContains(t, mapJS,
+		"fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'')",
+		"mapState.domain !== preserveMissing",
+	)
+}
+
 func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
@@ -255,6 +296,72 @@ func TestUIJourneyRepeaterHistoryUsesFullEndpointIdentity(t *testing.T) {
 	}
 }
 
+func TestUIJourneyToolTabsExposeUnambiguousTabSemantics(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	core := readUIAsset(t, "js/core.js")
+	// Repeater and Intruder tab items include a close control. Explicit tab
+	// semantics belong in the shared renderer so re-renders cannot restore a
+	// button-like parent around the nested Close action.
+	requireUIContains(t, core,
+		"tablistLabel='Tabs'",
+		"class=\"rt-select\"",
+		"role','tablist'",
+		"role=\"tab\"",
+		"aria-selected=",
+		"ArrowRight",
+		"Home",
+		"mgr._focusTab",
+		"mgr.switchTo=function(tid,restoreFocus=false)",
+		"mgr.close=function(tid,restoreFocus=false)",
+	)
+	if strings.Contains(core, "wireRowKey(el,()=>mgr.switchTo") {
+		t.Fatal("tool tabs must not wrap their Close button in a button-like tab row")
+	}
+	requireUIContains(t, tools,
+		"tablistLabel:'Repeater tabs'",
+		"tablistLabel:'Intruder tabs'",
+		"function wireTabListKeys(",
+		"intrResFilter",
+	)
+}
+
+func TestUIJourneyRepeaterDoesNotPaintAResponseIntoAnotherTab(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "const flow=await api('/api/repeater/send'")
+	if start < 0 {
+		t.Fatal("Repeater send request is missing")
+	}
+	guard := strings.Index(tools[start:], "if(repCur()!==t)")
+	assign := strings.Index(tools[start:], "t.resId=flow.id")
+	paint := strings.Index(tools[start:], "$('#repStatus').textContent=t.status")
+	if guard < 0 || assign < 0 || paint < 0 || guard < assign || guard > paint {
+		t.Fatal("Repeater must guard shared response panes when the active tab changes mid-send")
+	}
+}
+
+func TestUIJourneyRepeaterPendingStateFollowsItsSourceTab(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"t.sendPending=true",
+		"t.sendPending=false",
+		"if(t.sendPending)setRepSendState('pending','Sending…')",
+		"else setRepSendState('idle','Send ▸')",
+	)
+}
+
+func TestUIJourneyIntruderValidatesNumericLimitsBeforeStart(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "export async function intrStart()")
+	if start < 0 {
+		t.Fatal("Intruder start handler is missing")
+	}
+	section := tools[start:]
+	if !strings.Contains(section, "threads must be between 1 and 64") ||
+		!strings.Contains(section, "repeat must be between 1 and 2000") {
+		t.Fatal("Intruder must reject out-of-range numeric inputs before starting an attack")
+	}
+}
+
 func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
@@ -396,4 +503,38 @@ func TestUIJourneyCodecsListUsesChecksRowLayout(t *testing.T) {
 		t.Error("codecs modal still uses legacy codecTestOut instead of Checks-style panes")
 	}
 	requireUIContains(t, css, ".codecs-list .codecs-row", ".codecs-dir-hint", "#codecOut")
+}
+
+func TestUIJourneyToolsAndScannerAsyncActionContracts(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	scanner := readUIAsset(t, "js/scanner.js")
+	index := readUIAsset(t, "index.html")
+
+	// The shortcut hint must survive Repeater's transient Send states.
+	requireUIContains(t, index, `id="repSendLabel"`)
+	requireUIContains(t, tools, "repSendLabel", "setRepSendState", "intrStartPending", "intrPollError", "data-intr-poll-retry")
+	if !strings.Contains(tools, "if(running&&!st.pollFailed)scheduleIntr()") {
+		t.Error("Intruder polling must pause after an explicit poll failure until Retry")
+	}
+
+	// Checks actions must call the string endpoint, expose pending state, and
+	// prevent a second Test/Save while the first request is in flight.
+	if strings.Contains(scanner, "checkEndpoint()") {
+		t.Error("Checks Test/Save must not call the string endpoint as a function")
+	}
+	requireUIContains(t, scanner, "setCheckActionState", "checkActionEpoch", "aria-busy")
+
+	// OOB clear/load and scanner promotion are destructive or duplicate-prone;
+	// their contracts require visible retry/pending state.
+	requireUIContains(t, index, `id="oobLoadState"`)
+	requireUIContains(t, scanner,
+		"data-oob-retry",
+		"oobClearEpoch",
+		"oobGenerateEpoch",
+		"promoteFindingPending",
+		"setPromoteFindingState",
+	)
+
+	// Scanner controls expose their selection and target to assistive tech.
+	requireUIContains(t, index, `aria-label="Scanner target host"`, `aria-selected="false"`)
 }

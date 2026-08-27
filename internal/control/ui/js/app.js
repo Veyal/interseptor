@@ -3,7 +3,7 @@
 // the command palette, global keyboard shortcuts, the live SSE event stream,
 // theme, the version badge, and the boot sequence that kicks everything off.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
-import { selectFlow, renderChips, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -19,6 +19,7 @@ import './authz.js'; // side-effect: wires authz modal buttons
 import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
+import { transitionView } from './motion.js';
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
@@ -47,17 +48,26 @@ function updateCrumb(t){
 function activateTab(t){
   const prev=$('.panel.active');
   if(prev&&prev.dataset.panel==='notes')flushNotesSave();
-  const tabs=$$('.tab');
-  tabs.forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');x.tabIndex=-1;});
-  t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
-  $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
-  try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
-  updateCrumb(t);
-  if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-  if(t.dataset.tab==='scanner')loadScanTargets();
-  if(t.dataset.tab==='findings')loadFindings();
-  if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
-  if(t.dataset.tab==='notes')loadNotes();
+  const tabs=$$('.tab'), current=tabs.find(x=>x.classList.contains('active'));
+  const currentIndex=tabs.indexOf(current), nextIndex=tabs.indexOf(t);
+  const changing=!!current&&current!==t;
+  if(changing)document.documentElement.dataset.motionDirection=nextIndex<currentIndex?'back':'forward';
+  const update=()=>{
+    tabs.forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');x.tabIndex=-1;});
+    t.classList.add('active');t.setAttribute('aria-selected','true');t.tabIndex=0;
+    $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
+    try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
+    updateCrumb(t);
+    if(t.dataset.tab==='proxy')renderRows();
+    if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
+    if(t.dataset.tab==='scanner')loadScanTargets();
+    if(t.dataset.tab==='findings')loadFindings();
+    if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
+    if(t.dataset.tab==='notes')loadNotes();
+  };
+  const transition=changing?transitionView(update):(update(),null);
+  if(transition)transition.finished.catch(()=>{}).finally(()=>{delete document.documentElement.dataset.motionDirection;});
+  else delete document.documentElement.dataset.motionDirection;
 }
 function goToNotes(){
   const tab=document.querySelector('.tab[data-tab="notes"]');
@@ -73,13 +83,13 @@ $$('.tab').forEach(t=>{
 // rail is vertical, so Up/Down walks it; Left/Right are also accepted so
 // muscle memory from the old horizontal strip still works.
 $('#tabs').addEventListener('keydown',e=>{
-  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown'&&e.key!=='Home'&&e.key!=='End')return;
   const tabs=$$('.tab');
   const idx=tabs.indexOf(document.activeElement);
   if(idx<0)return;
   e.preventDefault();
   const fwd=e.key==='ArrowRight'||e.key==='ArrowDown';
-  const next=fwd?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
+  const next=e.key==='Home'?tabs[0]:e.key==='End'?tabs[tabs.length-1]:fwd?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
   next.focus();
   activateTab(next);
 });
@@ -94,7 +104,15 @@ function restoreTab(){
     if(id==='discover'){id='map';localStorage.setItem('tab','map');}
     if(!id||id==='proxy')return;
     const b=document.querySelector('.tab[data-tab="'+id+'"]');if(b)b.click();
-    if(id==='settings'&&localStorage.getItem('setSec')==='api'){document.querySelector('#setNav button[data-sec="api"]')?.click();}
+    if(id==='settings'){
+      // Restore any valid settings subsection, while ignoring stale ids from
+      // older builds. The panel update above is synchronous even when the
+      // optional view transition is enabled, so this runs after Settings is
+      // active and keeps the saved subsection selection intact.
+      const sec=localStorage.getItem('setSec');
+      const b=sec&&document.querySelector('#setNav button[data-sec="'+sec+'"]');
+      if(b) b.click();
+    }
   }catch(e){}
 }
 
