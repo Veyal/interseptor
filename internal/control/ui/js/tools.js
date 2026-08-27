@@ -38,10 +38,10 @@ function setRepSendState(stateName,label){
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
 }
-function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending)setRepSendState('idle','Send ▸');},delay);}
+function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -124,7 +124,7 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
   serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
@@ -163,6 +163,7 @@ export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repT
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
   if(t.sendPending)setRepSendState('pending','Sending…');
+  else if(t.sendError)setRepSendState('error','Send failed');
   else setRepSendState('idle','Send ▸');
   repSetMethod(t.method);$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
   const rv=t.reqView||'raw';
@@ -172,7 +173,8 @@ export function repLoadEditor(){
   repCodecBadge(t);
   repRefreshHL();
   $('#repResSeg').querySelectorAll('button').forEach(x=>{const on=x.dataset.view===(t.resView||'pretty');x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
-  if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
+  if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
+  else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
   loadRepHistory();
 }
@@ -211,6 +213,7 @@ export async function repSend(){
     else $('#repBody').value=t.body;
   }
   repRefreshHL();
+  t.sendError='';
   t.sendPending=true;
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
@@ -218,7 +221,7 @@ export async function repSend(){
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     t.sendPending=false;
-    t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
@@ -233,8 +236,9 @@ export async function repSend(){
     loadRepHistory();repPersist();
   }catch(e){
     t.sendPending=false;
-    if(repCur()!==t){repPersist();return;}
     const msg=friendlySendError(e.message);
+    t.sendError=msg;t.status='send failed';t.color='var(--red)';
+    if(repCur()!==t){repPersist();return;}
     $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
     $('#repResView').textContent='(error: '+msg+')';
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
@@ -244,11 +248,12 @@ export async function repSend(){
 }
 export async function renderRepResponse(){
   const t=repCur();if(!t||!t.resId)return;
+  const resId=t.resId,resView=t.resView||'pretty';
   try{
     // Message-codec Decoded view (same engine as History inspect).
-    if((t.resView||'pretty')==='decoded'){
-      const d=await api('/api/flows/'+t.resId+'/decoded?side=res');
-      if(repCur()!==t)return;
+    if(resView==='decoded'){
+      const d=await api('/api/flows/'+resId+'/decoded?side=res');
+      if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
       if(!d.matched){
         $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this response.<br>
           Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
@@ -265,12 +270,12 @@ export async function renderRepResponse(){
       $('#repResView').innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,'application/json')+'</pre>';
       return;
     }
-    const raw=await api('/api/flows/'+t.resId+'/raw?side=res');
+    const raw=await api('/api/flows/'+resId+'/raw?side=res');
     // A tab switch during the fetch would otherwise paint this response into the
     // now-active tab's shared #repResView pane.
-    if(repCur()!==t)return;
-    $('#repResView').innerHTML=highlightHTTP((t.resView==='pretty')?prettify(raw):raw,t.resView==='pretty',contentTypeFromRaw(raw));
-  }catch(e){if(repCur()===t)$('#repResView').textContent='(error: '+e.message+')';}
+    if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
+    $('#repResView').innerHTML=highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
+  }catch(e){if(repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError)$('#repResView').textContent='(error: '+e.message+')';}
 }
 export async function loadRepHistory(){
   const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpointParts(t);
@@ -301,7 +306,7 @@ export async function repLoadSend(id){
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
-    t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
+    t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){toast(e.message);}
 }
@@ -319,7 +324,7 @@ export async function sendToRepeater(f){
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
-    t.resId=null;t.status='';t.color='';t.title=repTitle(t);
+    t.resId=null;t.status='';t.color='';t.sendError='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
     // that a complete editable request is ready.

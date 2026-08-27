@@ -2,6 +2,7 @@ import { $, api, toast, renderMD, accordionize, createAutosave } from './core.js
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
 export const notesState={loaded:'',mode:'edit'};
+let notesEditGeneration=0;
 
 function notesLoadState() {
   let el=$('#notesLoadState');
@@ -55,16 +56,17 @@ export async function loadNotes(){
   const loadState=notesLoadState();
   if(loadState){loadState.textContent='Loading notes…';loadState.style.display='block';}
   const ta=$('#notesEdit');
-  const active=document.activeElement===ta;
   const current=ta?.value||'';
-  const dirty=active&&current!==notesState.loaded;
+  const generation=notesEditGeneration;
+  const dirty=notesAutosave.isDirty()||current!==notesState.loaded;
   try{
     const d=await api('/api/notes');
-    notesState.loaded=d.notes||'';
-    notesAutosave.setBaseline(notesState.loaded);
-    if(!active)ta.value=notesState.loaded;
-    else if(dirty)notesAutosave.schedule(current); // preserve unsaved typing during retry/reconnect
-    setNotesStatus('');
+    const loaded=d.notes||'';
+    const preserveLocal=dirty||notesEditGeneration!==generation||(ta&&ta.value!==current);
+    notesState.loaded=loaded;
+    notesAutosave.setBaseline(loaded,{preserveCurrent:preserveLocal});
+    if(preserveLocal){if(ta)notesAutosave.schedule(ta.value);}
+    else{if(ta)ta.value=loaded;setNotesStatus('');}
     if(loadState){loadState.textContent='';loadState.style.display='none';}
     if(notesState.mode==='preview')showNotesPreview();
   }catch(e){
@@ -75,6 +77,7 @@ export async function loadNotes(){
 }
 
 export function scheduleNotesSave(){
+  notesEditGeneration++;
   const v=$('#notesEdit').value;
   if(v!==notesState.loaded)notesPreviewCache={src:'',html:''};
   notesAutosave.schedule(v);
@@ -89,6 +92,7 @@ export async function flushNotesSave(){
 // was last passed to scheduleNotesSave) so callers that set ta.value programmatically
 // and then immediately save (applyOrganizedNotes) don't flush a stale value.
 export async function saveNotes(){
+  notesEditGeneration++;
   notesAutosave.schedule($('#notesEdit').value);
   await flushNotesSave();
 }

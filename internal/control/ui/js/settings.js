@@ -1,6 +1,7 @@
 import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
+import { prefersReducedMotion } from './motion.js';
 
 /* ---- JWT expiry countdown ---- */
 let sessExpTimer = null;
@@ -254,7 +255,7 @@ export function openSettingsSection(sec){
 export function openSettingsProxy(){
   openSettingsSection('proxy');
   const row=$('#proxyListenersList .proxy-listener-row');
-  if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
+  if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:prefersReducedMotion()?'auto':'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
 }
 
 function syncSettingsNavA11y(active) {

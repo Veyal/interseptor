@@ -90,6 +90,47 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	)
 }
 
+func TestUIJourneyAsyncEditorStateSurvivesLateCompletions(t *testing.T) {
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	notes := executableJS(readUIAsset(t, "js/notes.js"))
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	codecs := executableJS(readUIAsset(t, "js/codecs.js"))
+	mapJS := executableJS(readUIAsset(t, "js/map.js"))
+
+	requireUIContains(t, core,
+		"while(current!==lastSaved)",
+		"let submitted=current",
+		"lastSaved=submitted",
+		"preserveCurrent=false",
+	)
+	requireUIContains(t, notes,
+		"let notesEditGeneration=0",
+		"notesEditGeneration!==generation",
+		"preserveCurrent:preserveLocal",
+	)
+	requireUIContains(t, tools,
+		"sendError:''",
+		"t.sendError=msg",
+		"else if(t.sendError)setRepSendState('error','Send failed')",
+	)
+	recordError := strings.Index(tools, "t.sendError=msg")
+	backgroundGuard := -1
+	if recordError >= 0 {
+		backgroundGuard = strings.Index(tools[recordError:], "if(repCur()!==t)")
+	}
+	if recordError < 0 || backgroundGuard < 0 {
+		t.Error("Repeater must record a source-tab error before guarding active-tab paint")
+	}
+	requireUIContains(t, codecs,
+		"function codecEditorMatches(epoch, id, source)",
+		"if (!codecEditorMatches(epoch, id, source)) return",
+	)
+	requireUIContains(t, mapJS,
+		"fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'')",
+		"mapState.domain !== preserveMissing",
+	)
+}
+
 func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))

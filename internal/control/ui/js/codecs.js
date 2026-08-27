@@ -39,6 +39,12 @@ let codecDocsLoaded = false;
 let codecBusy = false;
 let codecLoadEpoch = 0;
 
+function codecEditorMatches(epoch, id, source) {
+  return epoch === codecLoadEpoch
+    && ($('#codecId').value || '').trim() === id
+    && ($('#codecSrc').value || '') === source;
+}
+
 function setCodecBusy(busy) {
   codecBusy = !!busy;
   ['#codecSave', '#codecTest', '#codecDelete'].forEach(sel => {
@@ -223,6 +229,7 @@ async function codecSave() {
   if (codecBusy) return;
   const id = ($('#codecId').value || '').trim();
   const source = $('#codecSrc').value || '';
+  const epoch = codecLoadEpoch;
   if (!id) { toast('enter a codec id'); return; }
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">saving…</div>';
@@ -234,12 +241,14 @@ async function codecSave() {
       method: 'PUT', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ source }),
     });
-    codecSel = id;
-    if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved ✓ — available in History / Repeater <b>Decoded</b> views.</div>';
+    if (codecEditorMatches(epoch, id, source)) {
+      codecSel = id;
+      if (out) out.innerHTML = '<div class="check-status check-status-ok">Saved ✓ — available in History / Repeater <b>Decoded</b> views.</div>';
+    }
     toast('codec saved');
     loadCodecsList();
   } catch (e) {
-    if (out) out.innerHTML = '<div class="check-status check-status-error"><b>Save failed</b><pre>' + esc(e.message) + '</pre></div>';
+    if (out && codecEditorMatches(epoch, id, source)) out.innerHTML = '<div class="check-status check-status-error"><b>Save failed</b><pre>' + esc(e.message) + '</pre></div>';
     else toast(e.message);
   } finally {
     setCodecBusy(false);
@@ -248,15 +257,21 @@ async function codecSave() {
 }
 
 async function codecDelete() {
+  if (codecBusy) return;
   const id = ($('#codecId').value || codecSel || '').trim();
+  const source = $('#codecSrc').value || '';
+  const epoch = codecLoadEpoch;
   if (!id) return;
   if (!await uiConfirm('Delete codec', `Delete message codec <b>${esc(id)}</b>? Its Starlark source will be removed.`, 'Delete', 'btn danger', 'var(--red)')) return;
+  if (!codecEditorMatches(epoch, id, source)) return;
+  setCodecBusy(true);
   try {
     await api('/api/codecs/' + encodeURIComponent(id), { method: 'DELETE' });
     toast('deleted');
-    codecNew();
+    if (codecEditorMatches(epoch, id, source)) codecNew();
     loadCodecsList();
   } catch (e) { toast(e.message); }
+  finally { setCodecBusy(false); }
 }
 
 async function codecTest() {
@@ -264,6 +279,8 @@ async function codecTest() {
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">running…</div>';
   const button = $('#codecTest');
+  const id = ($('#codecId').value || '').trim();
+  const epoch = codecLoadEpoch;
   setCodecBusy(true);
   if (button) button.textContent = 'Testing…';
   const source = $('#codecSrc').value || '';
@@ -273,6 +290,7 @@ async function codecTest() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ source, flowId, side: 'req' }),
     });
+    if (!codecEditorMatches(epoch, id, source)) return;
     if (!out) return;
     if (d.error) {
       out.innerHTML = '<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>' + esc(d.error) + '</pre></div>';
@@ -290,7 +308,7 @@ async function codecTest() {
     const body = esc(d.plaintext || '').slice(0, 4000);
     out.innerHTML = `<div class="check-status check-status-ok"><div class="hint" style="margin-bottom:6px">${esc(note)}${d.note ? ' — ' + esc(d.note) : ''}</div><pre style="white-space:pre-wrap;margin:0;font-family:var(--mono);font-size:var(--fs-xs)">${body}</pre></div>`;
   } catch (e) {
-    if (out) out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre>' + esc(e.message) + '</pre></div>';
+    if (out && codecEditorMatches(epoch, id, source)) out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre>' + esc(e.message) + '</pre></div>';
     else toast(e.message);
   } finally {
     setCodecBusy(false);

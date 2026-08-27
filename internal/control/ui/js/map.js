@@ -156,7 +156,7 @@ export async function loadEndpoints(){
     }
     mapState._dataVersion++;
     mapState._needFit = true;
-    fillMapDomains();
+    fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'');
     fillMapMethods();
     fillMapTags();
     renderMap();
@@ -167,19 +167,22 @@ export async function loadEndpoints(){
   }
 }
 
-let _fdKey = -1, _fdHtml = '';
-export function fillMapDomains(){
+let _fdKey = -1, _fdPreserved = '', _fdHtml = '';
+export function fillMapDomains(preserveMissing=''){
   const sel = $('#mapDomain'); if(!sel) return;
   // Rebuild the (potentially thousands-of-options) host <select> only when the
   // dataset actually changes — successive re-fetches with the same hosts reuse it.
-  if(mapState._dataVersion !== _fdKey){
+  if(mapState._dataVersion !== _fdKey || preserveMissing !== _fdPreserved){
     const counts = {};
     mapState.eps.forEach(e => { counts[e.host] = (counts[e.host] || 0) + 1; });
     const hosts = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-    if(mapState.domain && !counts[mapState.domain]) mapState.domain = '';
+    if(mapState.domain && !counts[mapState.domain] && mapState.domain !== preserveMissing) mapState.domain = '';
+    const preserved = preserveMissing && !counts[preserveMissing]
+      ? `<option value="${escAttr(preserveMissing)}">${esc(preserveMissing)} (${mapState.noiseHiddenCount} hidden)</option>` : '';
     _fdHtml = `<option value="">All domains (${mapState.eps.length})</option>`
-      + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
+      + preserved + hosts.map(h => `<option value="${escAttr(h)}">${esc(h)} (${counts[h]})</option>`).join('');
     _fdKey = mapState._dataVersion;
+    _fdPreserved = preserveMissing;
     sel.innerHTML = _fdHtml;
   }
   sel.value = mapState.domain;

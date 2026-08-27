@@ -719,20 +719,31 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
    the last-saved value and no-ops (like notes.js bailing when
    v===notesState.loaded) instead of scheduling a redundant save. ---- */
 export function createAutosave({delay=800,save,onStatus}={}){
-  let timer=null,saving=false,lastSaved='',current='';
+  let timer=null,saving=null,lastSaved='',current='';
   const status=k=>{if(onStatus)onStatus(k);};
   async function flush(){
     clearTimeout(timer);timer=null;
-    if(current===lastSaved||saving)return;
-    saving=true;status('saving');
-    try{
-      await save(current);
-      lastSaved=current;
-      status('saved');
-    }catch(e){
-      status('dirty');
-      throw e;
-    }finally{saving=false;}
+    if(saving)return saving;
+    if(current===lastSaved)return;
+    const run=(async()=>{
+      let submitted=current;
+      try{
+        while(current!==lastSaved){
+          submitted=current;
+          status('saving');
+          await save(submitted);
+          lastSaved=submitted;
+          clearTimeout(timer);timer=null;
+        }
+        status('saved');
+      }catch(e){
+        status('dirty');
+        if(current!==submitted&&!timer)timer=setTimeout(()=>{flush().catch(()=>{});},delay);
+        throw e;
+      }
+    })();
+    saving=run;
+    try{return await run;}finally{if(saving===run)saving=null;}
   }
   function schedule(value){
     current=value;
@@ -743,7 +754,7 @@ export function createAutosave({delay=800,save,onStatus}={}){
   }
   // setBaseline marks `value` as already-saved (e.g. right after the initial
   // load fetch) without triggering a save or a status change.
-  function setBaseline(value){lastSaved=value;current=value;}
+  function setBaseline(value,{preserveCurrent=false}={}){lastSaved=value;if(!preserveCurrent)current=value;}
   return {schedule,flush,setBaseline,isDirty:()=>current!==lastSaved};
 }
 

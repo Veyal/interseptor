@@ -669,6 +669,24 @@ func TestUIReducedMotionContract(t *testing.T) {
 	}
 }
 
+func TestUIJavaScriptReducedMotionContract(t *testing.T) {
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, settings,
+		"import { prefersReducedMotion } from './motion.js'",
+		"behavior:prefersReducedMotion()?'auto':'smooth'",
+	)
+}
+
+func TestUINarrowWorkspacesRemainScrollable(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	requireUIContains(t, css, ".rep-work,.intr-work{overflow-y:auto}")
+	base := strings.Index(css, ".checks-sidebar{width:min(340px,32%)")
+	override := strings.Index(css, ".checks-work>.checks-sidebar{width:100%")
+	if base < 0 || override < base {
+		t.Error("narrow Checks sidebar override must follow the base rule")
+	}
+}
+
 func TestUIHasNoExternalAnimationAssets(t *testing.T) {
 	assetTag := regexp.MustCompile(`(?is)<(?:script|link|img|source|video)[^>]+(?:src|href)\s*=\s*["']https?://`)
 	cssURL := regexp.MustCompile(`(?i)url\(\s*["']?https?://`)

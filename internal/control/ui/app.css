@@ -1116,13 +1116,13 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .icpt-work{flex-direction:column}
   .icpt-queue{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .rep-work,.intr-work,.checks-work{flex-direction:column}
+  .rep-work,.intr-work{overflow-y:auto}
   .rep-req,.rep-res,.intr-config,.intr-results{min-height:260px}
   .rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;overflow:visible}
   #repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}
   #repHistToggle{grid-column:1;grid-row:2}#repPostmanImport{grid-column:2/4;grid-row:2;justify-self:start}
   #repSend .kbd{display:none}
   .intr-results .pane-head{overflow-x:auto;scrollbar-width:thin}
-  .checks-sidebar{width:100%;min-width:0;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .sc-grid{grid-template-columns:repeat(2,1fr)!important}
   .find-guide-body{grid-template-columns:1fr}
   .find-guide-check{grid-column:1}
@@ -1199,6 +1199,9 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .codecs-list .codecs-row:hover,.codecs-list .codecs-row.sel{background:var(--bg3)}
 .codecs-dir-hint{max-width:100%}
 .checks-work{flex:1;display:flex;min-height:0;overflow:hidden}
+@media (max-width:720px){
+  .checks-work>.checks-sidebar{width:100%;min-width:0;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
+}
 .checks-editor{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .check-pane{flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
 .check-describe-wrap{flex:1;display:flex;flex-direction:column;min-height:0;padding:12px}

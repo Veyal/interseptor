@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Consistent workstation controls.** Clarified filter and settings labels, normalized toggle state semantics, added complete Arrow/Home/End keyboard behavior to tab and listbox surfaces, and documented a rendered-UI accessibility audit workflow for future embedded-interface changes.
 
 ### Fixed
+- **Async UI state integrity.** Preserved Notes edits, Repeater failures, codec operation context, and Map domain selection across delayed requests, while keeping narrow workspaces scrollable and settings navigation reduced-motion safe.
 - **Audited workstation interactions.** Repaired Findings creation, Checks actions, History source filters and live reconciliation, Intercept selection races, Repeater shortcut feedback, Intruder polling recovery, OOB destructive-action feedback, Map noise-filter recovery, keyboard device selectors, and narrow Repeater/Intruder/Checks layouts.
 - **Capture-burst control traffic.** Coalesced TLS diagnosis refreshes so established plain-HTTP capture no longer creates one diagnostic API request per flow.
 - **Cross-feature UI clarity and feedback.** Prevented delayed Repeater responses from appearing in another tab, removed duplicate TLS diagnosis actions and nested interactive rows, made Findings and Map load failures retryable, guarded destructive Activity clearing and duplicate async submissions, exposed direct accessible names and selection state, and kept Intercept filters visible on narrow screens.
