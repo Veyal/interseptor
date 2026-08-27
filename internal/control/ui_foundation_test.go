@@ -231,6 +231,41 @@ func TestUIFoundationCustomSelectKeyboardContract(t *testing.T) {
 	requireUIContains(t, tools, "syncUiSelectStyles", "syncUiSelectStyles(lm)")
 }
 
+// TLS diagnosis is rendered into both the History banner and the Settings
+// panel. Action hooks must therefore be scoped to their render root; duplicate
+// document ids make querySelector bind only the first banner and leave the
+// second copy inert.
+func TestUITLSDiagnosisUsesScopedActionHooks(t *testing.T) {
+	src := readUIAsset(t, "js/tlsdiag.js")
+	for _, action := range []string{"filter-pin", "passthrough", "open-settings", "dismiss", "dismiss-forever"} {
+		requireUIContains(t, src, `data-tls-action="`+action+`"`)
+	}
+	for _, id := range []string{"tlsFilterPinBtn", "tlsPassthroughBtn", "tlsOpenSettingsBtn", "tlsBannerDismiss", "tlsBannerDismissForever"} {
+		if strings.Contains(src, `id="`+id+`"`) {
+			t.Errorf("TLS diagnosis action %q must not be a document id: it renders in multiple roots", id)
+		}
+	}
+}
+
+func TestUISelectFiltersHaveTaskSpecificNames(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, want := range []string{
+		`id="fMethod"`, `aria-label="HTTP method filter"`,
+		`id="fStatus"`, `aria-label="Response status filter"`,
+		`id="mapMethod"`, `aria-label="Map HTTP method filter"`,
+		`id="mapStatus"`, `aria-label="Map response status filter"`,
+	} {
+		if !strings.Contains(index, want) {
+			t.Errorf("shared filter select is missing task-specific accessible name %q", want)
+		}
+	}
+}
+
+func TestUIMainTablistSupportsHomeEndNavigation(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app, "e.key==='Home'", "e.key==='End'")
+}
+
 func TestUIFoundationCommandPaletteAccessibilityContract(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	requireUIContains(t, app,

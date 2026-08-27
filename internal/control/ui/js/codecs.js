@@ -36,6 +36,17 @@ def encode(flow, side, plaintext):
 let codecSel = '';
 let codecMode = 'code';
 let codecDocsLoaded = false;
+let codecBusy = false;
+let codecLoadEpoch = 0;
+
+function setCodecBusy(busy) {
+  codecBusy = !!busy;
+  ['#codecSave', '#codecTest', '#codecDelete'].forEach(sel => {
+    const b = $(sel); if (!b) return;
+    b.disabled = codecBusy;
+    b.setAttribute('aria-busy', codecBusy ? 'true' : 'false');
+  });
+}
 
 function codecsDirLabel(dir) {
   if (!dir) return { text: 'No project codecs dir', title: '' };
@@ -85,7 +96,7 @@ function codecRow(c) {
     err ? '<span class="checks-cat" style="color:var(--red);border-color:var(--red)">error</span>' : '',
     send ? '<span class="checks-cat" style="color:var(--accent);border-color:var(--accent)">re-encode on send</span>' : '<span class="checks-cat">display</span>',
   ].filter(Boolean).join('');
-  return `<div class="checks-row checks-pick codecs-row${codecSel === id ? ' sel' : ''}" data-id="${escAttr(id)}" title="${escAttr(err ? c.error : title)}" aria-label="codec ${escAttr(id)}">
+  return `<div class="checks-row checks-pick codecs-row${codecSel === id ? ' sel' : ''}" id="codec-option-${escAttr(id)}" data-id="${escAttr(id)}" role="option" tabindex="${codecSel === id ? '0' : '-1'}" aria-selected="${codecSel === id ? 'true' : 'false'}" title="${escAttr(err ? c.error : title)}" aria-label="codec ${escAttr(id)}">
     <div class="checks-body">
       <span class="checks-title" style="color:${err ? 'var(--red)' : 'var(--fg)'}">${esc(title)}${err ? ' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>' : ''}</span>
       <div class="checks-meta"><span class="checks-cat">${esc(id)}</span>${badges}</div>
@@ -93,14 +104,44 @@ function codecRow(c) {
   </div>`;
 }
 
+// The codec list is a listbox. wireRowKey would promote each option to a
+// button, which makes screen-reader semantics contradictory and breaks arrow
+// navigation. Keep option semantics and provide the same Enter/Space affordance
+// locally, while leaving controls inside a row alone.
+function wireCodecRow(el, onActivate, list) {
+  if (!el) return;
+  // role=option is present in codecRow before this call, so the shared helper
+  // adds Enter/Space activation without changing the listbox semantics.
+  wireRowKey(el, onActivate);
+  el.onclick = onActivate;
+  el.onkeydown = e => {
+    if (['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {
+      e.preventDefault();
+      const options = [...list.querySelectorAll('.codecs-row[data-id]')].filter(option => option.style.display !== 'none');
+      let i = options.indexOf(el);
+      if (e.key === 'ArrowDown') i = (i + 1) % options.length;
+      else if (e.key === 'ArrowUp') i = (i - 1 + options.length) % options.length;
+      else if (e.key === 'Home') i = 0;
+      else i = options.length - 1;
+      options.forEach((option, index) => { option.tabIndex = index === i ? 0 : -1; });
+      options[i]?.focus();
+      return;
+    }
+  };
+}
+
 function codecsApplyFilter() {
   const q = (($('#codecsSearch') || {}).value || '').trim().toLowerCase();
   const box = $('#codecsList');
   if (!box) return;
-  box.querySelectorAll('.codecs-row').forEach(row => {
+  const rows = [...box.querySelectorAll('.codecs-row')];
+  rows.forEach(row => {
     const hay = (row.querySelector('.checks-title')?.textContent || '') + ' ' + (row.dataset.id || '');
     row.style.display = !q || hay.toLowerCase().includes(q) ? '' : 'none';
   });
+  const visible = rows.filter(row => row.style.display !== 'none');
+  const entry = visible.find(row => row.dataset.id === codecSel) || visible[0];
+  rows.forEach(row => { row.tabIndex = row === entry ? 0 : -1; });
 }
 
 export async function loadCodecsList() {
@@ -120,10 +161,11 @@ export async function loadCodecsList() {
       return;
     }
     box.innerHTML = list.map(codecRow).join('');
+    const options = [...box.querySelectorAll('.codecs-row[data-id]')];
+    if (!options.some(el => el.tabIndex === 0) && options[0]) options[0].tabIndex = 0;
     box.querySelectorAll('.codecs-row[data-id]').forEach(el => {
       const open = () => openCodec(el.dataset.id);
-      el.onclick = open;
-      wireRowKey(el, open);
+      wireCodecRow(el, open, box);
     });
     codecsApplyFilter();
   } catch (e) {
@@ -132,9 +174,11 @@ export async function loadCodecsList() {
 }
 
 async function openCodec(id) {
+  const epoch = ++codecLoadEpoch;
   codecSel = id;
   try {
     const d = await api('/api/codecs/' + encodeURIComponent(id));
+    if (epoch!==codecLoadEpoch || codecSel!==id) return;
     $('#codecId').value = d.id || id;
     $('#codecSrc').value = d.source || '';
     const out = $('#codecOut');
@@ -145,10 +189,11 @@ async function openCodec(id) {
     }
     codecSetMode('code');
     loadCodecsList();
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (epoch===codecLoadEpoch && codecSel===id) toast(e.message); }
 }
 
 export function openCodecs() {
+  codecLoadEpoch++;
   openModal($('#codecsModal'));
   const s = $('#codecsSearch');
   if (s) s.value = '';
@@ -163,6 +208,7 @@ export function openCodecs() {
 }
 
 function codecNew() {
+  codecLoadEpoch++;
   codecSel = '';
   $('#codecId').value = 'aes-content-field';
   $('#codecSrc').value = TEMPLATE;
@@ -174,11 +220,15 @@ function codecNew() {
 }
 
 async function codecSave() {
+  if (codecBusy) return;
   const id = ($('#codecId').value || '').trim();
   const source = $('#codecSrc').value || '';
   if (!id) { toast('enter a codec id'); return; }
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">saving…</div>';
+  const button = $('#codecSave');
+  setCodecBusy(true);
+  if (button) button.textContent = 'Saving…';
   try {
     await api('/api/codecs/' + encodeURIComponent(id), {
       method: 'PUT', headers: { 'content-type': 'application/json' },
@@ -191,6 +241,9 @@ async function codecSave() {
   } catch (e) {
     if (out) out.innerHTML = '<div class="check-status check-status-error"><b>Save failed</b><pre>' + esc(e.message) + '</pre></div>';
     else toast(e.message);
+  } finally {
+    setCodecBusy(false);
+    if (button) button.textContent = 'Save';
   }
 }
 
@@ -207,8 +260,12 @@ async function codecDelete() {
 }
 
 async function codecTest() {
+  if (codecBusy) return;
   const out = $('#codecOut');
   if (out) out.innerHTML = '<div class="check-status check-status-pending">running…</div>';
+  const button = $('#codecTest');
+  setCodecBusy(true);
+  if (button) button.textContent = 'Testing…';
   const source = $('#codecSrc').value || '';
   const flowId = state.selId || 0;
   try {
@@ -235,6 +292,9 @@ async function codecTest() {
   } catch (e) {
     if (out) out.innerHTML = '<div class="check-status check-status-error"><b>Request failed</b><pre>' + esc(e.message) + '</pre></div>';
     else toast(e.message);
+  } finally {
+    setCodecBusy(false);
+    if (button) button.textContent = 'Test ▸';
   }
 }
 

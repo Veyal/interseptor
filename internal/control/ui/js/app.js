@@ -83,13 +83,13 @@ $$('.tab').forEach(t=>{
 // rail is vertical, so Up/Down walks it; Left/Right are also accepted so
 // muscle memory from the old horizontal strip still works.
 $('#tabs').addEventListener('keydown',e=>{
-  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown'&&e.key!=='Home'&&e.key!=='End')return;
   const tabs=$$('.tab');
   const idx=tabs.indexOf(document.activeElement);
   if(idx<0)return;
   e.preventDefault();
   const fwd=e.key==='ArrowRight'||e.key==='ArrowDown';
-  const next=fwd?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
+  const next=e.key==='Home'?tabs[0]:e.key==='End'?tabs[tabs.length-1]:fwd?tabs[(idx+1)%tabs.length]:tabs[(idx-1+tabs.length)%tabs.length];
   next.focus();
   activateTab(next);
 });

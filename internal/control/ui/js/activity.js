@@ -1,4 +1,4 @@
-import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError } from './core.js';
+import { $, esc, escAttr, api, state, toast, wireRowKey, renderLoadError, uiConfirm } from './core.js';
 import { selectFlow } from './proxy.js';
 
 /* ---- AI activity feed (glass box: watch what the AI is doing, live) ---- */
@@ -74,6 +74,7 @@ export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.s
 let actClearInFlight=false;
 $('#actClear').onclick=async()=>{
   if(actClearInFlight)return;
+  if(!await uiConfirm('Clear activity','Remove all AI activity from this project? This cannot be undone.','Clear','btn danger','var(--red)'))return;
   const button=$('#actClear');
   actClearInFlight=true;
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}

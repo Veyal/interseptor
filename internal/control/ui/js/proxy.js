@@ -5,7 +5,7 @@ import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
-import { getStartedDiagnosisHint, loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
+import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
@@ -222,11 +222,12 @@ export function renderFlowHead(){
   head.innerHTML=state.flowCols.map(k=>{
     const c=FLOW_COLUMNS.find(x=>x.key===k);
     const align=c.align?` style="text-align:${c.align}"`:'';
+    const accessible=c.label==='St'?'Status':c.label;
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
-    return `<div class="${sorted.trim()}" data-sort="${c.sort}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    return `<div class="${sorted.trim()}" data-sort="${c.sort}" aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
@@ -349,7 +350,10 @@ function wireFlowRow(r){
   const id=Number(r.dataset.id);
   r.onclick=e=>flowRowClick(id,e);
   wireRowKey(r,()=>flowRowClick(id,{})); // Enter/Space inspects the focused row
-  r.setAttribute('aria-label','flow '+id);
+  const flow=flowStore.byId.get(id);
+  r.setAttribute('aria-label',flow
+    ? `Flow #${id}: ${flow.method||'request'} ${flow.host||''}${flow.path||''}${flow.status?`, status ${flow.status} ${statusText(flow.status)}`:''}`
+    : 'Flow #'+id);
   r.querySelectorAll('.flowtag').forEach(chip=>{
     const t=chip.dataset.tagchip;
     chip.setAttribute('role','button');
@@ -550,11 +554,9 @@ export function handleFlowUpdate(f){
 }
 
 export function getStartedCard(){
-  const diag=getStartedDiagnosisHint();
   return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
     <div style="font-size:var(--fs-lg);font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
     <div class="hint" style="margin-bottom:14px">Interseptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
-    ${diag}
     <ol style="color:var(--fg2);line-height:2;font-size:var(--fs-sm);padding-left:20px;margin:0">
       <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
       <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
@@ -762,7 +764,7 @@ function refreshMethodFilter(){
   const present=[...seenMethods]
     .sort((a,b)=>{const ia=order.indexOf(a),ib=order.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
   const sel=$('#fMethod');if(!sel)return;const cur=sel.value;
-  sel.innerHTML='<option value="">method</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
+  sel.innerHTML='<option value="">All methods</option>'+present.map(m=>`<option ${m===cur?'selected':''}>${esc(m)}</option>`).join('');
 }
 const seenMethods=new Set();
 let methodsDirty=true; // build the method filter once initially
@@ -1138,11 +1140,11 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;
+  state.notesOnly=false;state.showManual=true;state.showAI=true;syncSourceFilters();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
   syncControls();renderChips();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length));}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||!state.showManual||!state.showAI);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}

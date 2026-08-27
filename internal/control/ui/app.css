@@ -212,7 +212,7 @@ html[data-motion-direction="back"]::view-transition-new(panel){animation-name:pa
 /* Icon + label layout for real button-like elements. Excluded for input/
    select/textarea, which also carry .btn via .btn-field but are replaced
    elements with no children to lay out. */
-.btn:not(input):not(select):not(textarea){display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn:not(input):not(select):not(textarea){display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
 .btn:hover{color:var(--fg);background:color-mix(in srgb,var(--bg3) 78%,var(--accent) 22%);border-color:color-mix(in srgb,var(--line2) 55%,var(--accent) 45%);box-shadow:0 2px 6px var(--shadow)}
 .btn:active{filter:brightness(.94)}
 .btn.accent{color:var(--onAccent);background:var(--grad-accent);border:1px solid color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 2px 8px var(--accentDim)}
@@ -328,7 +328,7 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
    headers that lead a card rather than a sub-block). */
 .micro-label-accent{color:var(--accent)}
 .seg{display:inline-flex;gap:2px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);padding:2px}
-.seg button{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:4px 8px;border-radius:var(--r-sm)}
+.seg button{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:4px 8px;border-radius:var(--r-sm);cursor:pointer}
 .seg button.on{color:var(--accent);background:var(--accentDim);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
 .pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:var(--fs-xs);line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
 .sel-decode{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--noteDim);border-bottom:1px solid var(--line);font-size:var(--fs-xs);min-height:0;max-height:56px}
@@ -577,10 +577,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    inline recipe (flex:1 + full-bleed mono editor on --bg1). */
 .notes-edit{flex:1;border:none;resize:none;background:var(--bg1);color:var(--fg);font-family:var(--mono);font-size:var(--fs-md);line-height:1.6;padding:16px 18px}
 .rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;background:var(--bg2);border-bottom:1px solid var(--line2)}
-.rep-tab{display:flex;align-items:center;gap:8px;padding:6px 12px 8px;border:none;border-radius:var(--r-md) 7px 0 0;background:transparent;color:var(--fg2);cursor:pointer;white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
+.rep-tab{display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:none;border-radius:var(--r-md) 7px 0 0;background:transparent;color:var(--fg2);white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
 .rep-tab:hover{background:var(--bg3);color:var(--fg)}
 .rep-tab.on{background:var(--bg);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
 .rep-tab.on .rt-label{font-weight:700}
+.rep-tab .rt-select{display:flex;align-items:center;min-width:0;padding:6px 4px 8px 12px;color:inherit;background:transparent;font:inherit;text-align:left;cursor:pointer}
 .rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
 .rep-tab .rt-close{opacity:.45;font-size:var(--fs-xs);border-radius:var(--r-sm);padding:0 3px}
 .rep-tab .rt-close:hover{opacity:1;color:var(--red);background:var(--sel)}
@@ -1090,6 +1091,10 @@ details.acc>summary.acc-h>*{margin:7px 0}
 /* responsive: only extreme narrow windows (not the normal desktop layout) */
 .oob-disabled [data-oob-ui]{display:none!important;}
 
+@media (max-width:1100px){
+  .intr-results .pane-head{height:auto;flex-wrap:wrap;overflow:visible}
+  .intr-results .pane-head>.spacer{display:none}
+}
 @media (max-width:720px){
   body{min-width:0;overflow:hidden}
   #bar{min-width:0;overflow:hidden;gap:8px;padding:0 8px}
@@ -1106,6 +1111,8 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .panel{min-width:0;overflow:hidden}
   #panel-proxy.active #inspect{height:38%;flex-direction:column}
   #panel-proxy.active #inspect .pane{flex:1;min-height:110px}
+  .icpt-bar{flex-wrap:wrap;overflow-x:visible}
+  .icpt-cond{flex:1 0 100%;min-width:0}
   .icpt-work{flex-direction:column}
   .icpt-queue{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .rep-work,.intr-work,.checks-work{flex-direction:column}
@@ -1125,6 +1132,10 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .find-header-top{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center}
   .find-header-top .find-title-text{grid-column:1/-1;grid-row:2;margin-top:4px}
   .find-header-top>.spacer{display:none}
+}
+@media (max-width:480px){
+  .icpt-cond{display:grid;grid-template-columns:auto minmax(0,1fr) auto}
+  .icpt-cond .field-grow{grid-column:1/-1;width:100%;min-width:0}
 }
 
 /* CA trust how-to (Settings → TLS / CA) */

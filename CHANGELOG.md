@@ -13,10 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Dev-build fallback version advanced to published `2.0.3`.**
 - **Restrained workstation motion.** Added shared motion tokens and reduced-motion-aware panel, live-traffic, intercept, Repeater, Scanner, and Map feedback; high-volume History signals are capped, acknowledged queue actions remain truthful, and SVG graph nodes are keyboard-selectable with finite Fit/focus movement.
 - **UI motion guidance and safeguards.** Documented allowed motion, performance limits, and the deferred 3D assessment, with design-system tests preventing unapproved infinite animation, external animation assets, dense-row hover transforms, and broad transitions.
+- **Consistent workstation controls.** Clarified filter and settings labels, normalized toggle state semantics, added complete Arrow/Home/End keyboard behavior to tab and listbox surfaces, and documented a rendered-UI accessibility audit workflow for future embedded-interface changes.
 
 ### Fixed
 - **Audited workstation interactions.** Repaired Findings creation, Checks actions, History source filters and live reconciliation, Intercept selection races, Repeater shortcut feedback, Intruder polling recovery, OOB destructive-action feedback, Map noise-filter recovery, keyboard device selectors, and narrow Repeater/Intruder/Checks layouts.
 - **Capture-burst control traffic.** Coalesced TLS diagnosis refreshes so established plain-HTTP capture no longer creates one diagnostic API request per flow.
+- **Cross-feature UI clarity and feedback.** Prevented delayed Repeater responses from appearing in another tab, removed duplicate TLS diagnosis actions and nested interactive rows, made Findings and Map load failures retryable, guarded destructive Activity clearing and duplicate async submissions, exposed direct accessible names and selection state, and kept Intercept filters visible on narrow screens.
 
 ## [2.0.3] - 2026-08-21
 

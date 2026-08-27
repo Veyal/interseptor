@@ -71,6 +71,7 @@ let checkMode='code',checkDocsLoaded=false;
 let checkSelId=null;
 let checkBuiltin=false,checkOverridden=false;
 const checkEndpoint='/api/checks';
+let checkLoadEpoch=0;
 let checkActionEpoch=0;
 let checkActionBusy=false;
 function setCheckActionState(kind,stateName){
@@ -145,10 +146,10 @@ export async function loadChecksList(){
       const titleColor=opts.error?'var(--red)':'var(--fg)';
       const ov=opts.overridden?'<span class="checks-cat" style="color:var(--accent)">customized</span>':'';
       return `<div class="${cls}"${data} title="${escAttr(opts.hint||'')}" aria-label="${escAttr(opts.aria||opts.title)}">
-        ${cb}<div class="checks-body">
+        ${cb}<button type="button" class="checks-body checks-edit-target" style="padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer" aria-label="Edit ${escAttr(opts.title)}">
         <span class="checks-title" style="color:${titleColor}" title="${escAttr(opts.title)}">${esc(opts.title)}${opts.error?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>':''}</span>
         <div class="checks-meta">${opts.severity?sevBadge(opts.severity):''}${opts.category?catBadge(opts.category):''}${ov}</div>
-        </div></div>`;
+        </button></div>`;
     };
     const group=(title,open,body)=>`<details class="checks-group${open?' checks-group-custom':''}"${open?' open':''} data-default-open="${open?'1':'0'}"><summary>${title}</summary><div class="checks-group-body">${body}</div></details>`;
     let html='';
@@ -169,8 +170,7 @@ export async function loadChecksList(){
       const id=el.dataset.id;
       const builtin=el.classList.contains('checks-builtin');
       const open=()=>builtin?loadBuiltinCheck(id):loadCheck(id);
-      el.onclick=e=>{if(e.target.classList.contains('check-en'))return;open();};
-      wireRowKey(el,open);
+      el.querySelector('.checks-edit-target')?.addEventListener('click',open);
     });
     // Any checkbox change (built-in or custom) recomputes the disabled set.
     box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=async()=>{
@@ -220,10 +220,12 @@ function updateCheckDeleteLabel(){
   }
 }
 export async function loadBuiltinCheck(id){
+  const epoch=++checkLoadEpoch;
   cancelCheckAction();
   checkBuiltin=true;checkSelId=id;refreshCheckEditorMode();
   try{
     const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
+    if(epoch!==checkLoadEpoch||checkSelId!==id||!checkBuiltin)return;
     checkOverridden=!!d.overridden;
     $('#checkId').value=id;checkSetEditorReadonly(true);
     $('#checkSrc').value=d.source||'';
@@ -231,18 +233,22 @@ export async function loadBuiltinCheck(id){
     $('#checkOut').innerHTML='<div class="check-status check-status-pending">Built-in <b>'+esc(id)+'</b> — '+note+'</div>';
     updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));
-  }catch(e){toast(e.message);}
+  }catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&checkBuiltin)toast(e.message);}
 }
 export async function loadCheck(id){
+  const epoch=++checkLoadEpoch;
   cancelCheckAction();
   checkBuiltin=false;checkOverridden=false;checkSelId=id;refreshCheckEditorMode();
-  try{const d=await api(checkEndpoint+'/'+encodeURIComponent(id));$('#checkId').value=id;checkSetEditorReadonly(false);
+  try{const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
+    if(epoch!==checkLoadEpoch||checkSelId!==id||checkBuiltin)return;
+    $('#checkId').value=id;checkSetEditorReadonly(false);
     $('#checkSrc').value=d.source||'';
     $('#checkOut').innerHTML='<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> (passive). Edit on <b>Code</b>, then Save.</div>';
     updateCheckDeleteLabel();
-    markChecksSelected($('#checksList'));}catch(e){toast(e.message);}
+    markChecksSelected($('#checksList'));}catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&!checkBuiltin)toast(e.message);}
 }
 export function checkNew(){
+  checkLoadEpoch++;
   cancelCheckAction();
   checkBuiltin=false;checkOverridden=false;checkSelId=null;refreshCheckEditorMode();
   checkSetEditorReadonly(false);
@@ -479,10 +485,29 @@ export function renderScan(){
   const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
   $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
   if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
-  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" data-i="${idx}" role="option" aria-selected="${idx===scanState.sel?'true':'false'}">
+  list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" role="option" tabindex="${idx===scanState.sel?'0':'-1'}" aria-selected="${idx===scanState.sel?'true':'false'}">
     <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
     <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
-  list.querySelectorAll('.scan-item').forEach(el=>{el.onclick=()=>{scanState.sel=Number(el.dataset.i);renderScan();};wireRowKey(el);});
+  list.querySelectorAll('.scan-item').forEach(el=>{
+    const choose=()=>{
+      scanState.sel=Number(el.dataset.i);renderScan();
+      requestAnimationFrame(()=>list.querySelector('#scan-issue-'+scanState.sel)?.focus());
+    };
+    el.onclick=choose;wireRowKey(el);
+    el.addEventListener('keydown',e=>{
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
+      e.preventDefault();
+      const items=[...list.querySelectorAll('.scan-item')];
+      let next=Number(el.dataset.i);
+      if(e.key==='ArrowDown')next=(next+1)%items.length;
+      else if(e.key==='ArrowUp')next=(next-1+items.length)%items.length;
+      else if(e.key==='Home')next=0;
+      else next=items.length-1;
+      scanState.sel=next;
+      renderScan();
+      requestAnimationFrame(()=>list.querySelector('#scan-issue-'+next)?.focus());
+    });
+  });
   renderScanDetail();
 }
 export function renderScanDetail(){

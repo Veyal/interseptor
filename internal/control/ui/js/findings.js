@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, uiConfirm, methodColor, statusColor } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, wireRowKey, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { sendToRepeater } from './tools.js';
 
@@ -8,6 +8,20 @@ import { sendToRepeater } from './tools.js';
 
 const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'fixed'];
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
+let findingsLoadStateEl = null;
+
+function findingsLoadState() {
+  if (findingsLoadStateEl?.isConnected) return findingsLoadStateEl;
+  const list = $('#findList');
+  if (!list) return null;
+  findingsLoadStateEl = document.createElement('div');
+  findingsLoadStateEl.id = 'findingsLoadState';
+  findingsLoadStateEl.className = 'tls-diag-banner';
+  findingsLoadStateEl.setAttribute('role', 'status');
+  findingsLoadStateEl.setAttribute('aria-live', 'polite');
+  list.parentNode?.insertBefore(findingsLoadStateEl, list);
+  return findingsLoadStateEl;
+}
 // Default Read/report view; Edit toggles the block editor.
 let findEditMode = false;
 
@@ -109,8 +123,19 @@ export async function loadFindings() {
     findTagCounts = tags.tags || [];
     renderFindTagFilter();
     renderFindings();
+    const loadState = findingsLoadState();
+    if (loadState) { loadState.style.display = 'none'; loadState.textContent = ''; }
     void q;
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    // Keep the last report visible. A toast alone disappears before a user can
+    // diagnose a transient SSE/API failure, and an empty report is misleading.
+    const loadState = findingsLoadState();
+    if (loadState) {
+      renderLoadError(loadState, 'Findings', e, loadFindings, findings.length > 0);
+      const retry = loadState.querySelector('[data-load-retry]');
+      if (retry) retry.setAttribute('data-findings-retry', '');
+    } else toast(e.message);
+  }
 }
 
 function findingsEmptyHTML() {

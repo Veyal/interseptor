@@ -129,6 +129,8 @@ function renderHostSelect(sel,selectedHost){
 
 async function loadNetworkHosts(){
   try{networkHosts=await api('/api/network/hosts');}catch(e){networkHosts=null;}
+  $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
+  $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
   renderHostSelect($('#setControlHost'),parseListenAddr(state.controlAddr).host);
 }
 
@@ -137,9 +139,9 @@ function makeProxyListenerRow(addr){
   const row=document.createElement('div');
   row.className='proxy-listener-row row';
   row.style.cssText='gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap';
-  row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" style="width:100%;text-align:left"></select></div>`+
+  row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" aria-label="Proxy listener host" style="width:100%;text-align:left"></select></div>`+
     `<div style="width:100px"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
-    `<button type="button" class="btn proxy-listener-del" title="Remove listener" style="color:var(--red);padding:3px 10px">×</button>`;
+    `<button type="button" class="btn proxy-listener-del" title="Remove proxy listener" aria-label="Remove proxy listener" style="color:var(--red);padding:3px 10px">×</button>`;
   renderHostSelect(row.querySelector('.proxy-host-select'),host);
   row.querySelector('.proxy-listener-del').onclick=()=>{
     const list=$('#proxyListenersList');
@@ -255,9 +257,21 @@ export function openSettingsProxy(){
   if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
 }
 
+function syncSettingsNavA11y(active) {
+  $$('#setNav button').forEach(button => {
+    const sec = document.querySelector('.set-sec[data-sec="'+button.dataset.sec+'"]');
+    if (sec) {
+      if (!sec.id) sec.id = 'settings-section-'+button.dataset.sec;
+      button.setAttribute('aria-controls', sec.id);
+    }
+    button.setAttribute('aria-current', button === active ? 'page' : 'false');
+  });
+}
+
 $$('#setNav button').forEach(b=>b.onclick=()=>{
   $$('#setNav button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
+  syncSettingsNavA11y(b);
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'&&!retentionLoaded){retentionLoaded=true;loadRetention();}
@@ -265,6 +279,7 @@ $$('#setNav button').forEach(b=>b.onclick=()=>{
   if(b.dataset.sec==='devices'){loadAndroid();loadIOS();loadIOSSsh();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
 });
+syncSettingsNavA11y(document.querySelector('#setNav button.on')||document.querySelector('#setNav button'));
 
 // Settings search — filter the left nav to sections whose label or body text
 // matches the query, so options are discoverable without knowing which group
@@ -1020,6 +1035,9 @@ function toggleAndroidDeviceMenu(){
 function renderAndroidDevicePicker(devs){
   const menu=$('#androidDeviceMenu'),trigger=$('#androidDeviceTrigger'),valueEl=$('#androidDeviceValue'),meta=$('#androidDeviceMeta');
   if(!menu||!trigger||!valueEl)return;
+  trigger.setAttribute('aria-label','Android device');
+  trigger.setAttribute('aria-controls','androidDeviceMenu');
+  trigger.setAttribute('aria-haspopup','listbox');
   closeAndroidDeviceMenu();
   if(!devs.length){
     androidDeviceSerial='';
@@ -1252,6 +1270,9 @@ function toggleIOSDeviceMenu(){
 function renderIOSDevicePicker(devs){
   const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger'),valueEl=$('#iosDeviceValue'),meta=$('#iosDeviceMeta');
   if(!menu||!trigger||!valueEl)return;
+  trigger.setAttribute('aria-label','iOS device');
+  trigger.setAttribute('aria-controls','iosDeviceMenu');
+  trigger.setAttribute('aria-haspopup','listbox');
   closeIOSDeviceMenu();
   trigger.disabled=false;
   if(!devs.length){

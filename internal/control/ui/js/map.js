@@ -15,6 +15,17 @@ function keyClick(el, fn, preserveRole=false){
 }
 import { flowPopup } from './flowmodal.js';
 
+function labelMapControls() {
+  const labels = {
+    '#mapDomain': 'Map domain', '#mapSearch': 'Search site map',
+    '#mapSearchScope': 'Map search scope', '#mapMethod': 'Map method',
+    '#mapStatus': 'Map status', '#mapTag': 'Map tag',
+  };
+  Object.entries(labels).forEach(([sel, label]) => {
+    const el = $(sel); if (el && !el.getAttribute('aria-label')) el.setAttribute('aria-label', label);
+  });
+}
+
 const GRAPH_NODE_MAX = 200;
 const MAP_TREE_EAGER_MAX = 2500;
 const MAP_TABLE_VIRTUAL_MIN = 400;
@@ -359,7 +370,7 @@ export function mapEpRow(e, dim){
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
     const extra = e._cluster.count - 1;
     const expanded = mapState.expandedClusters.has(e._cluster.key);
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
@@ -398,11 +409,12 @@ function hydrateMapTreeNode(body){
 }
 
 function setMapView(v){
+  labelMapControls();
   mapState.view = v;
   if(v === 'graph') mapState._forceGraph = false; // re-evaluate the node cap each time Graph is chosen
   try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
   const seg = $('#mapViewSeg');
-  if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); x.setAttribute('aria-label', 'Map view '+(x.dataset.v||'')); });
   const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap'), params = $('#mapParams');
   if(tree) tree.style.display = v === 'tree' ? 'block' : 'none';
   if(tbl) tbl.style.display = v === 'table' ? 'block' : 'none';
@@ -427,7 +439,14 @@ export async function loadParams(){
     renderMapParams(d);
     if(warn) warn.style.display='none';
     const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
-  }catch(e){if(warn){warn.style.display='block';warn.textContent='';} toast('params: '+e.message);}
+  }catch(e){
+    // Parameter mining is an explicit user action; leave a retry in the panel
+    // instead of reducing a failed request to a transient toast.
+    if(warn)warn.setAttribute('aria-live','polite');
+    renderLoadError(warn,'Parameters',e,loadParams,false);
+    const retry=warn?.querySelector('[data-load-retry]');
+    if(retry)retry.setAttribute('data-map-params-retry','');
+  }
 }
 
 function renderMapParams(d){

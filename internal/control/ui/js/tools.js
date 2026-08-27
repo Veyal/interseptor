@@ -26,7 +26,6 @@ function repStatusLine(f){
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
-let repSendEpoch=0;
 
 function setRepSendState(stateName,label){
   const button=$('#repSend');if(!button)return;
@@ -39,7 +38,7 @@ function setRepSendState(stateName,label){
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
 }
-function resetRepSend(delay,epoch){setTimeout(()=>{if(epoch===repSendEpoch)setRepSendState('idle','Send ▸');},delay);}
+function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
 export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
@@ -128,6 +127,7 @@ export const repTabs=createTabManager({
   normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
   serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
+  tablistLabel:'Repeater tabs',
   onPersist:blob=>persistUIState('repeater',blob),
 });
 export function repCur(){return repTabs.cur();}
@@ -162,6 +162,8 @@ function repCodecBadge(t){
 export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repTabs.tabs.push(t);repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
+  if(t.sendPending)setRepSendState('pending','Sending…');
+  else setRepSendState('idle','Send ▸');
   repSetMethod(t.method);$('#repUrl').value=t.url||'';$('#repHeaders').value=t.headers||'';
   const rv=t.reqView||'raw';
   repSyncReqSeg(rv);
@@ -193,7 +195,6 @@ async function repEnterDecoded(t){
 export async function repSend(){
   repSaveEditor();const t=repCur();if(!t)return;
   if(!(t.url||'').trim()){toast('enter a URL');return;}
-  const epoch=++repSendEpoch;
   let body=t.body,payload={method:t.method,url:t.url.trim(),headers:t.headers,body};
   if((t.reqView||'raw')==='decoded'){
     if(t.applyOnSend&&t.codecId){
@@ -210,24 +211,35 @@ export async function repSend(){
     else $('#repBody').value=t.body;
   }
   repRefreshHL();
+  t.sendPending=true;
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    t.sendPending=false;
     t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    // The editor panes are shared between tabs. A slow send can finish after
+    // the operator has switched to another tab; keep the result on its source
+    // tab, but never paint that result into the currently visible tab.
+    if(repCur()!==t){repPersist();return;}
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
+    if(repCur()!==t){repPersist();return;}
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    setRepSendState('success','Sent');resetRepSend(600,epoch);
+    if(repCur()!==t){repPersist();return;}
+    setRepSendState('success','Sent');resetRepSend(600,t);
     loadRepHistory();repPersist();
   }catch(e){
+    t.sendPending=false;
+    if(repCur()!==t){repPersist();return;}
     const msg=friendlySendError(e.message);
     $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
     $('#repResView').textContent='(error: '+msg+')';
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
-    setRepSendState('error','Send failed');resetRepSend(900,epoch);toast(msg);
+    if(repCur()!==t){repPersist();return;}
+    setRepSendState('error','Send failed');resetRepSend(900,t);toast(msg);
   }
 }
 export async function renderRepResponse(){
@@ -631,6 +643,7 @@ const intrTabs=createTabManager({
   onLoad:t=>intrApply(t),
   normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
+  tablistLabel:'Intruder tabs',
   onPersist:blob=>persistUIState('intruder',blob),
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
@@ -921,13 +934,17 @@ export async function intrStart(){
   if(intrStartPending)return;
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
-  const threads=Math.max(1,parseInt($('#intrThreads').value,10)||1);
-  const delayMs=Math.max(0,parseInt($('#intrDelay').value,10)||0);
+  const threadsValue=Number($('#intrThreads').value),delayValue=Number($('#intrDelay').value);
+  if(!Number.isInteger(threadsValue)||threadsValue<1||threadsValue>64){toast('threads must be between 1 and 64','error');$('#intrThreads').focus();return;}
+  if(!Number.isInteger(delayValue)||delayValue<0){toast('delay must be zero or greater','error');$('#intrDelay').focus();return;}
+  const threads=threadsValue,delayMs=delayValue;
   const body={target,template:$('#intrTemplate').value,attackType:intrState.type,threads,delayMs,
     grepMatch:$('#intrGrep').value.trim(),grepExtract:$('#intrExtract').value.trim(),
     processRules:lines($('#intrProc').value.replace(/,/g,'\n')).map(s=>s.trim()).filter(Boolean)};
   if(intrState.type==='repeat'){
-    body.repeat=Math.max(1,parseInt($('#intrRepeat').value,10)||1);
+    const repeatValue=Number($('#intrRepeat').value);
+    if(!Number.isInteger(repeatValue)||repeatValue<1||repeatValue>2000){toast('repeat must be between 1 and 2000','error');$('#intrRepeat').focus();return;}
+    body.repeat=repeatValue;
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends');$('#intrTemplate').focus();return;}
@@ -1072,12 +1089,29 @@ export function renderIntr(st){
   if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);
   else{box.innerHTML=view.map(intrRowHTML).join('');wireIntrResultRows(box);}
 }
+function wireTabListKeys(seg){
+  if(!seg)return;
+  const tabs=[...seg.querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab,i)=>{
+    tab.tabIndex=tab.getAttribute('aria-selected')==='true'?0:-1;
+    tab.addEventListener('keydown',e=>{
+      let next=-1;
+      if(e.key==='ArrowRight')next=(i+1)%tabs.length;
+      else if(e.key==='ArrowLeft')next=(i-1+tabs.length)%tabs.length;
+      else if(e.key==='Home')next=0;
+      else if(e.key==='End')next=tabs.length-1;
+      else return;
+      e.preventDefault();tabs[next].focus();tabs[next].click();
+    });
+  });
+}
 {const seg=$('#intrResFilter');
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
-  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
   renderIntr({running:false,total:intrLastResults.length,done:intrLastResults.length,results:intrLastResults});
 });}
+wireTabListKeys($('#intrResFilter'));
 async function intrToFinding(){
   const pool=intrApplyFilter(intrLastResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);

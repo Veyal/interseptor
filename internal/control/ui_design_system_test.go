@@ -566,6 +566,12 @@ func TestUIIconSpriteContainsOnlySymbols(t *testing.T) {
 // crosses them, which reads as a rendering bug in a data-dense tool.
 func TestUIHoverStatesDoNotShiftLayout(t *testing.T) {
 	css := readUIAsset(t, "app.css")
+	if !regexp.MustCompile(`\.seg button\{[^}]*cursor:pointer`).MatchString(css) {
+		t.Error("segmented-control buttons must expose pointer affordance")
+	}
+	if !regexp.MustCompile(`\.btn:not\(input\):not\(select\):not\(textarea\)\{[^}]*cursor:pointer`).MatchString(css) {
+		t.Error("button-like .btn controls must expose pointer affordance without changing text-field cursors")
+	}
 	rule := regexp.MustCompile(`(?m)^([^{\n]*:hover[^{\n]*)\{([^}]*)\}`)
 	for _, m := range rule.FindAllStringSubmatch(css, -1) {
 		body := m[2]
@@ -581,6 +587,49 @@ func TestUIHoverStatesDoNotShiftLayout(t *testing.T) {
 	}
 	if regexp.MustCompile(`transition\s*:\s*all(?:\s|;|$)`).MatchString(css) {
 		t.Error("transition:all animates unintended properties; name the properties explicitly")
+	}
+}
+
+// TestUISharedToggleAndSegmentContracts keeps the initial accessibility state
+// in the shipped HTML honest. These controls are progressively enhanced by
+// JavaScript, but a slow module load, a browser's accessibility snapshot, or a
+// future script error must not leave a toggle without its state or a segment
+// behaving like an implicit form submit button.
+func TestUISharedToggleAndSegmentContracts(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, id := range []string{
+		"notesFilter", "hideTlsFilter", "scopeToggle", "manualFilter", "aiFilter",
+		"interceptToggle", "respInterceptToggle", "mapHideNoise", "mapCollapseIdentical",
+		"sysProxyToggle", "capScopeToggle", "suppressTelemetryToggle",
+		"suppressAndroidTelemetryToggle", "invisibleProxyToggle", "autoBypassToggle",
+	} {
+		pattern := regexp.MustCompile(`(?s)<button[^>]*id="` + id + `"[^>]*>`)
+		m := pattern.FindString(index)
+		if m == "" {
+			t.Errorf("toggle %q is not present as a button", id)
+			continue
+		}
+		if !strings.Contains(m, `aria-pressed="`) {
+			t.Errorf("toggle %q must expose its initial aria-pressed state", id)
+		}
+	}
+
+	// Segments are buttons even though they live outside a form today. Explicit
+	// type avoids a future wrapper/form change turning every view switch into a
+	// submit, and aria-pressed gives the initial selected state to AT.
+	seg := regexp.MustCompile(`(?s)<div[^>]*class="seg[^"]*"[^>]*>(.*?)</div>`)
+	button := regexp.MustCompile(`(?s)<button\b[^>]*>`)
+	for _, group := range seg.FindAllStringSubmatch(index, -1) {
+		for _, tag := range button.FindAllString(group[1], -1) {
+			if !strings.Contains(tag, `type="button"`) {
+				t.Errorf("segmented-control button lacks type=button: %s", tag)
+			}
+			// Intruder results and editor mode use tab semantics, where
+			// aria-selected is the state attribute instead.
+			if !strings.Contains(group[0], `role="tablist"`) && !strings.Contains(tag, `aria-pressed="`) {
+				t.Errorf("segmented-control button lacks aria-pressed: %s", tag)
+			}
+		}
 	}
 }
 
