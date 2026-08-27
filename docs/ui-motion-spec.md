@@ -24,7 +24,7 @@ Interseptor uses motion to explain state changes in a dense security workspace. 
 | `--motion-exit` | `cubic-bezier(.4, 0, 1, 1)` | removal after acknowledgement |
 | `--motion-enter` | `cubic-bezier(.2, .8, .2, 1)` | newly available content |
 
-Durations and easings come from these tokens in CSS and their equivalent constants in `js/motion.js`. One-shot JavaScript motion uses `Element.animate()`, cancels an older animation on the same element, and is skipped while the document is hidden.
+CSS uses these tokens directly. One-shot JavaScript motion uses the matching subset of values from `js/motion.js`, calls `Element.animate()`, cancels an older animation on the same element, and is skipped while the document is hidden.
 
 ## Component behavior
 

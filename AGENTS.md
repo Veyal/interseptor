@@ -22,7 +22,7 @@ All three checks must pass before every commit.
 
 `internal/*` packages, each one responsibility, wired by `cmd/interseptor`. Key packages: `store` (SQLite + content-addressed bodies), `proxy` (forward + MITM), `control` (REST + SSE + embedded UI), `sender`, `intruder`, `scanner`, `ios`, `android`, `mcp`, `scope`.
 
-UI: `internal/control/ui/` — embedded via `//go:embed`, no build step. Native ES modules in `js/`. `core.js` = shared foundation, each feature = one module.
+UI: `internal/control/ui/` — embedded via `//go:embed`, no build step. See [the Web UI architecture](docs/architecture.md#web-ui) for the current module layout and shared primitives.
 
 Adding a feature: `store` → `internal/*` (TDD) → `control` (REST+SSE) → `js/<feature>.js`.
 

@@ -84,7 +84,9 @@ independently tested.
 ## Web UI
 
 The web UI lives in `internal/control/ui/` (embedded via `//go:embed`): an `index.html` shell,
-`app.css`, and native ES modules under `js/` — `core.js` (shared foundation) plus one module per
-feature, wired together by `app.js`. No build step or bundler; the binary stays single and static.
-Design notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).
+`app.css`, and native ES modules under `js/`. Shared primitives live in `core.js` and `motion.js`;
+feature behavior stays in its feature module, wired together by `app.js`. No build step or bundler;
+the binary stays single and static.
+The [UI motion specification](https://github.com/Veyal/interseptor/blob/main/docs/ui-motion-spec.md) owns motion behavior and constraints. Other design
+notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).
 
