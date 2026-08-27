@@ -28,13 +28,12 @@ Every ~5 minutes (or on wake): triage open PRs, then release if `main` moved pas
 
 Ship a patch/minor when commits since the latest `v*` tag include user-visible fixes/features (UI breakage, MCP, proxy, docs that operators rely on). Skip pure chore-only gaps unless asked.
 
-Release steps (same as CONTRIBUTING “Cutting a release”):
+Release version, tag, and changelog sequencing is owned by
+[CONTRIBUTING “Cutting a release”](../../../CONTRIBUTING.md#cutting-a-release); follow it exactly.
+After those documented steps:
 
-1. Move `[Unreleased]` bullets into `## [X.Y.Z] - YYYY-MM-DD`; leave Version const at **previous** published tag.
-2. Commit, push `main`, annotated tag `vX.Y.Z`, push tag.
-3. Watch Release workflow; on success bump `internal/version.Version` to the new tag + Unreleased changelog note; push.
-4. `TAG=vX.Y.Z HOMEBREW_TAP_TOKEN="$(gh auth token)" SCOOP_BUCKET_TOKEN="$(gh auth token)" ./packaging/scripts/publish-packages.sh` when packaging should track the release.
-5. `update-filemap` after notable path/sync changes.
+1. `TAG=vX.Y.Z HOMEBREW_TAP_TOKEN="$(gh auth token)" SCOOP_BUCKET_TOKEN="$(gh auth token)" ./packaging/scripts/publish-packages.sh` when packaging should track the release.
+2. `update-filemap` after notable path/sync changes.
 
 ## Tick report (short)
 
