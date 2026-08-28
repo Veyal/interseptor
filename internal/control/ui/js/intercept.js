@@ -469,9 +469,14 @@ export async function updateRule(id,tr){
   try{await api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('rule saved');}catch(e){toast(e.message);loadRules();}
 }
 export async function deleteRule(id){try{await api('/api/rules/'+id,{method:'DELETE'});loadRules();}catch(e){toast(e.message);}}
+let ruleAddInFlight=false,ruleAddEpoch=0;
+function setRuleAddState(stateName){const b=$('#addRuleBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add rule';}
 $('#addRuleBtn').onclick=async()=>{
+  if(ruleAddInFlight)return;
   const rule={type:$('#newRuleType').value,match:$('#newRuleMatch').value,replace:$('#newRuleReplace').value,enabled:true};
   if(!rule.match){toast('match regex required');return;}
+  ruleAddInFlight=true;const addEpoch=++ruleAddEpoch;setRuleAddState('pending');
   try{await api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');}catch(e){toast(e.message);}
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
+  finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };

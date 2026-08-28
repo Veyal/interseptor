@@ -105,8 +105,9 @@ func TestRepeaterDecodeCompletionDistinguishesStaleFromFallback(t *testing.T) {
 		"t.reqEditEpoch===editorEpoch",
 		"if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
 		"if(!current())return null",
-		"if(repCur()!==t||ok===null)return",
-		"if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}",
+		"if(ok===null)return",
+		"if(repCur()!==t)return",
+		"t.reqView='decoded';t.codecId=d.codecId||''",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("Repeater decoded-view stale result contract missing %q", contract)
@@ -205,7 +206,7 @@ func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
 		"const uiPersistenceReady=new Map()",
-		"if(uiPersistenceReady.get(panel)!==true)return",
+		"if(uiPersistenceReady.get(panel)!==true)return false",
 		"const UI_HYDRATE_TIMEOUT_MS=2500",
 		"async function readBoundedUIState(panel)",
 		"const controller=new AbortController()",
@@ -216,10 +217,9 @@ func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 		"return {status:'empty'}",
 		"return {status:'error',error:e}",
 		"const result=await readBoundedUIState(panel)",
-		"uiPersistenceReady.set(panel,result.status!=='error')",
-		"const result=await readBoundedUIState('intruder-presets')",
-		"uiPersistenceReady.set('intruder-presets',result.status!=='error')",
-		"const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
+		"uiPersistenceReady.set(panel,result.status!=='error'&&validServer)",
+		"return hydrateUIState('intruder-presets','intruder.presets',Array.isArray)",
+		"const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
 		"if(repTabs.tabs.length&&hydration!=='error')repTabs.persist()",
 		"if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist()",
 	} {

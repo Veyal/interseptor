@@ -986,6 +986,19 @@ async function addPoCFlowsToFinding(findingId) {
 let flowPickFindingId = null;
 let flowPickFlows = [];
 let flowPickSel = new Set();
+// Flow-picker requests outlive the event that started them. These epochs keep
+// a late response from a previous query or finding from repainting the active
+// modal (especially across close/reopen).
+let flowPickEpoch=0;
+let flowPickSearchEpoch=0;
+
+function flowPickModalOpen() {
+  return $('#findFlowPickModal')?.style.display!=='none';
+}
+
+function flowPickSearchCurrent(q) {
+  return flowPickModalOpen() && ($('#ffpSearch')?.value || '').trim() === String(q || '').trim();
+}
 
 function flowPickIdQuery(q) {
   const s = (q || '').trim();
@@ -1008,17 +1021,32 @@ function flowPickFilter(q) {
 let flowPickSearchTimer = null;
 
 async function flowPickSearch(q) {
+  const searchEpoch=++flowPickSearchEpoch;
+  const ownerEpoch=flowPickEpoch;
+  const ownerFindingId=flowPickFindingId;
   const idTerm = flowPickIdQuery(q);
   if (idTerm) {
     try {
       const d = await api('/api/flows?search=' + encodeURIComponent(idTerm) + '&searchScope=id&limit=20');
+      if(searchEpoch!==flowPickSearchEpoch)return;
+      if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+      if(!flowPickSearchCurrent(q))return;
       const extra = d.flows || [];
       const seen = new Set(flowPickFlows.map(f => f.id));
       for (const f of extra) {
         if (!seen.has(f.id)) { flowPickFlows.push(f); seen.add(f.id); }
       }
-    } catch (e) { toast(e.message); }
+    } catch (e) {
+      if(searchEpoch!==flowPickSearchEpoch)return;
+      if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+      if(!flowPickSearchCurrent(q))return;
+      toast(e.message);
+      return;
+    }
   }
+  if(searchEpoch!==flowPickSearchEpoch)return;
+  if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+  if(!flowPickSearchCurrent(q))return;
   renderFlowPickList(q);
 }
 
@@ -1057,27 +1085,44 @@ function renderFlowPickList(filter = '') {
 }
 
 async function openFlowPickForFinding(findingId) {
+  const epoch=++flowPickEpoch;
+  const initialSearchEpoch=++flowPickSearchEpoch;
   flowPickFindingId = findingId;
   flowPickSel = new Set();
   flowPickFlows = [];
   const list = $('#findFlowPickList');
   if (list) list.innerHTML = '<div class="hint" style="padding:12px">Loading…</div>';
+  const count=$('#ffpCount');if(count)count.textContent='0 selected';
+  const attach=$('#ffpAttach');if(attach)attach.disabled=true;
   const search = $('#ffpSearch');
   if (search) search.value = '';
   openModal($('#findFlowPickModal'));
   try {
     const d = await api('/api/flows?limit=200');
-    flowPickFlows = d.flows || [];
-    renderFlowPickList();
-  } catch (e) { toast(e.message); if (list) list.innerHTML = ''; }
+    if(epoch!==flowPickEpoch||flowPickFindingId!==findingId)return;
+    if(!flowPickModalOpen())return;
+    const incoming=d.flows||[];
+    if(initialSearchEpoch===flowPickSearchEpoch)flowPickFlows=incoming;
+    else{
+      const seen=new Set(flowPickFlows.map(f=>f.id));
+      for(const flow of incoming){if(!seen.has(flow.id)){flowPickFlows.push(flow);seen.add(flow.id);}}
+    }
+    renderFlowPickList(search?.value||'');
+  } catch (e) {
+    if(epoch!==flowPickEpoch||flowPickFindingId!==findingId)return;
+    if(!flowPickModalOpen())return;
+    toast(e.message);
+    if (list) list.innerHTML = '';
+  }
 }
 
 /* ---- create finding ---- */
-function openFindCreate() {
+function openFindCreate(event) {
+  const trigger=event?.currentTarget;
+  if(trigger?.focus)trigger.focus({preventScroll:true});
   $('#fcTitle').value = '';
   $('#fcSeverity').value = 'Medium';
-  openModal($('#findCreateModal'));
-  $('#fcTitle').focus();
+  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle')});
 }
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
@@ -1199,7 +1244,11 @@ function pickFindingForFlows(ids) {
   };
 }
 $('#fpClose') && ($('#fpClose').onclick = () => closeModal($('#findPickModal')));
-$('#ffpClose') && ($('#ffpClose').onclick = () => closeModal($('#findFlowPickModal')));
+$('#ffpClose') && ($('#ffpClose').onclick = () => {
+  flowPickEpoch++;
+  flowPickSearchEpoch++;
+  closeModal($('#findFlowPickModal'));
+});
 $('#ffpSearch') && ($('#ffpSearch').oninput = e => {
   clearTimeout(flowPickSearchTimer);
   const v = e.target.value;

@@ -1089,15 +1089,26 @@ if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
+let flowSearchSourceEpoch=0;
 function flowSearchStatus(text,error=false){const el=$('#flowSearchScriptError'),status=$('#flowSearchScriptStatus');if(el)el.textContent=error?String(text||''):'';if(status)status.textContent=error?'':String(text||'');}
 function flowSearchPayload(){return {name:($('#flowSearchScriptName')||{}).value.trim(),scope:'anywhere',script:($('#flowSearchScriptEditor')||{}).value||'',flowId:state.selId||0};}
 function renderFlowSearches(){const list=$('#flowSearchScriptList');if(!list)return;list.innerHTML='<option value="">new search…</option>'+flowSearchUI.items.map(x=>`<option value="${escAttr(x.name)}">${esc(x.name)} · ${esc(x.scope||'anywhere')}</option>`).join('');list.value=flowSearchUI.name;}
 async function loadFlowSearches(){try{const d=await api('/api/flow-searches');flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
-async function loadFlowSearchSource(name){try{const d=await api('/api/flow-searches/'+encodeURIComponent(name)+'/source');flowSearchUI.name=name;$('#flowSearchScriptName').value=d.name||name;$('#flowSearchScriptEditor').value=d.script||'';state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();}catch(e){flowSearchStatus(e.message,true);}}
+async function loadFlowSearchSource(name){
+  const epoch=++flowSearchSourceEpoch;
+  const current=()=>epoch===flowSearchSourceEpoch&&$('#flowSearchScriptList')?.value===name;
+  try{
+    const d=await api('/api/flow-searches/'+encodeURIComponent(name)+'/source');
+    if(!current())return;
+    flowSearchUI.name=name;$('#flowSearchScriptName').value=d.name||name;$('#flowSearchScriptEditor').value=d.script||'';
+    state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();
+  }catch(e){if(current())flowSearchStatus(e.message,true);}
+}
 async function testFlowSearch(){const p=flowSearchPayload();if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchStatus(d.valid?'valid':'invalid');}catch(e){flowSearchStatus(e.message,true);}}
 async function saveFlowSearch(){const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchUI.name=p.name;flowSearchStatus('saved');await loadFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
 async function deleteFlowSearch(){const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name)return;try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';renderFlowSearches();flowSearchStatus('deleted');}catch(e){flowSearchStatus(e.message,true);}}
-$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;});});
 $('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
 $('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
 $('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
@@ -1228,11 +1239,16 @@ async function updateScope(id,tr){
   try{await api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('scope saved');}catch(e){toast(e.message);loadScope();}
 }
 async function deleteScope(id){try{await api('/api/scope/'+id,{method:'DELETE'});loadScope();}catch(e){toast(e.message);}}
+let scopeAddInFlight=false,scopeAddEpoch=0;
+function setScopeAddState(stateName){const b=$('#addScopeBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add';}
 $('#addScopeBtn').onclick=async()=>{
+  if(scopeAddInFlight)return;
   const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
   if(!rule.host&&!rule.path){toast('host or path required');return;}
+  scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
   try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');}catch(e){toast(e.message);}
+    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
+  finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
 export function syncControls(){

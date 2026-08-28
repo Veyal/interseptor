@@ -105,15 +105,69 @@ function repSyncReqSeg(view){
 // not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
 // migrated once into the current project via projectStorageKey.
 const uiPersistenceReady=new Map();
+const uiPersistenceQueues=new Map();
 let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
 export function releaseWorkstationReady(){resolveWorkstationReady();}
+function uiPendingStateKey(panel){return projectStorageKey('ui.pending.'+panel);}
+export function uiStateSyncPending(){
+  try{return ['repeater','intruder','intruder-presets'].some(panel=>localStorage.getItem(uiPendingStateKey(panel))!==null);}
+  catch(e){return true;}
+}
+function readPendingUIState(panel){
+  try{
+    const raw=localStorage.getItem(uiPendingStateKey(panel));
+    if(raw===null)return null;
+    return JSON.parse(raw);
+  }catch(e){try{localStorage.removeItem(uiPendingStateKey(panel));}catch(ignore){}return null;}
+}
+function uiPersistenceQueue(panel){
+  let queue=uiPersistenceQueues.get(panel);
+  if(!queue){queue={pending:null,saving:false};uiPersistenceQueues.set(panel,queue);}
+  return queue;
+}
+async function drainUIState(panel){
+  const queue=uiPersistenceQueue(panel);
+  if(queue.saving||uiPersistenceReady.get(panel)!==true)return;
+  queue.saving=true;
+  try{
+    while(queue.pending!==null){
+      const body=queue.pending;queue.pending=null;
+      try{
+        await api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body});
+        if(queue.pending===null){
+          try{
+            if(localStorage.getItem(uiPendingStateKey(panel))===body){
+              localStorage.removeItem(uiPendingStateKey(panel));
+              document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:uiStateSyncPending()}}));
+            }
+          }catch(e){}
+        }
+      }catch(e){
+        if(queue.pending===null)queue.pending=body;
+        document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:true,error:true,panel}}));
+        break;
+      }
+    }
+  }finally{queue.saving=false;}
+}
+export async function retryUIStateSync(){
+  const panels=['repeater','intruder','intruder-presets'].filter(panel=>uiPersistenceQueue(panel).pending!==null);
+  await Promise.all(panels.map(panel=>drainUIState(panel)));
+  const pending=uiStateSyncPending();
+  document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending}}));
+  return !pending;
+}
 function persistUIState(panel, blob){
-  if(uiPersistenceReady.get(panel)!==true)return;
-  // Fire-and-forget project DB write so drafts survive browser clears / machines.
-  api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(blob)}).catch(()=>{});
+  let body;
+  try{body=JSON.stringify(blob);}catch(e){return false;}
+  try{localStorage.setItem(uiPendingStateKey(panel),body);}catch(e){}
+  uiPersistenceQueue(panel).pending=body;
+  if(uiPersistenceReady.get(panel)!==true)return false;
+  drainUIState(panel);
+  return true;
 }
 const UI_HYDRATE_TIMEOUT_MS=2500;
 async function readBoundedUIState(panel){
@@ -126,9 +180,21 @@ async function readBoundedUIState(panel){
   }catch(e){return {status:'error',error:e};}
   finally{clearTimeout(timer);}
 }
-async function hydrateUIState(panel, storageBase){
+async function hydrateUIState(panel,storageBase,valid=()=>true){
+  let pending=readPendingUIState(panel);
+  if(pending!==null&&!valid(pending)){
+    try{localStorage.removeItem(uiPendingStateKey(panel));}catch(e){}
+    pending=null;
+  }
   const result=await readBoundedUIState(panel);
-  uiPersistenceReady.set(panel,result.status!=='error');
+  const validServer=result.status!=='success'||valid(result.value);
+  uiPersistenceReady.set(panel,result.status!=='error'&&validServer);
+  if(!validServer)return 'error';
+  if(pending!==null){
+    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(pending));}catch(e){}
+    if(result.status!=='error')persistUIState(panel,pending);
+    return result.status==='error'?'error':'pending';
+  }
   if(result.status==='success'){
     try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(result.value));}catch(e){}
   }
@@ -200,10 +266,12 @@ export function repLoadEditor(){
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
   const wire=t.body||'';
+  const startView=t.reqView||'pretty';
   t.reqDecodeEpoch=(t.reqDecodeEpoch||0)+1;
   const decodeEpoch=t.reqDecodeEpoch;
   const editorEpoch=t.reqEditEpoch||0;
-  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqEditEpoch===editorEpoch&&t.reqView==='decoded'&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
+  t.reqDecodePending=true;
+  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqEditEpoch===editorEpoch&&t.reqView===startView&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
   try{
     let d;
     if(flowId){
@@ -213,19 +281,17 @@ async function repEnterDecoded(t){
     }
     if(!current())return null;
     if(!d.matched||d.error){
-      t.reqView='pretty';
-      if(repCur()!==t)return null;
-      toast(d.error||'no message codec matched');repSyncReqSeg('pretty');repCodecBadge(t);return false;
+      if(repCur()===t)toast(d.error||'no message codec matched');
+      return false;
     }
-    t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
+    t.reqView='decoded';t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
     if(repCur()!==t)return true;
     $('#repBody').value=t.decodedPlain;repCodecBadge(t);repRefreshHL();return true;
   }catch(e){
     if(!current())return null;
-    t.reqView='pretty';
-    if(repCur()!==t)return null;
-    toast(e.message);repSyncReqSeg('pretty');repCodecBadge(t);return false;
-  }
+    if(repCur()===t)toast(e.message);
+    return false;
+  }finally{t.reqDecodePending=false;}
 }
 export async function repSend(){
   repSaveEditor();const t=repCur();if(!t)return;
@@ -347,6 +413,7 @@ export async function repLoadSend(id){
 export async function sendToRepeater(f){
   await workstationReady;
   repSaveEditor();
+  const tabEditEpochs=new Map(repTabs.tabs.map(t=>[t.tid,t.reqEditEpoch||0]));
   try{
     const d=await api('/api/flows/'+f.id);
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
@@ -354,6 +421,7 @@ export async function sendToRepeater(f){
     // choosing a tab so requests do not collapse into an "undefined" endpoint.
     const fep=repFlowEndpoint(d);
     let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
+    if(t&&tabEditEpochs.get(t.tid)!==(t.reqEditEpoch||0))t=null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
@@ -431,6 +499,18 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   const next=b.dataset.view;
   if(next===(t.reqView||'raw'))return;
   repSaveEditor();
+  if(next==='decoded'){
+    if(t.reqDecodePending)return;
+    b.disabled=true;b.setAttribute('aria-busy','true');
+    const ok=await repEnterDecoded(t);
+    b.disabled=false;b.setAttribute('aria-busy','false');
+    if(ok===null)return;
+    if(repCur()!==t)return;
+    if(ok){repSyncReqSeg('decoded');}
+    else{$('#repBody').value=repBodyForDisplay(t.body,t.reqView||'pretty');repSyncReqSeg(t.reqView||'pretty');repCodecBadge(t);}
+    repRefreshHL();repPersistDebounced();
+    return;
+  }
   if((t.reqView||'raw')==='pretty'&&next==='raw')t.body=compactBody(t.body);
   if((t.reqView||'raw')==='decoded'&&next!=='decoded'){
     // leave decoded — wire body stays in t.body/rawBody
@@ -438,14 +518,8 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   }
   t.reqView=next;
   repSyncReqSeg(next);
-  if(next==='decoded'){
-    const ok=await repEnterDecoded(t);
-    if(repCur()!==t||ok===null)return;
-    if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}
-  }else{
-    $('#repBody').value=repBodyForDisplay(t.body,next);
-    repCodecBadge(t);
-  }
+  $('#repBody').value=repBodyForDisplay(t.body,next);
+  repCodecBadge(t);
   repRefreshHL();
   repPersistDebounced();
 });
@@ -694,7 +768,8 @@ function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return intruderReady; intrInit._done=true;
-  const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
+  const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
+  const hydration=[tabHydration,presetHydration].includes('error')?'error':[tabHydration,presetHydration].includes('pending')?'pending':tabHydration;
   intrTabs.init('#intrTabs');
   if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist();
   renderIntrHistory();loadIntrPresets();
@@ -1065,11 +1140,7 @@ export async function intrStart(){
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 async function hydrateIntrPresets(){
-  const result=await readBoundedUIState('intruder-presets');
-  uiPersistenceReady.set('intruder-presets',result.status!=='error');
-  if(result.status==='success'&&Array.isArray(result.value)){
-    try{localStorage.setItem(intrPresetsKey(),JSON.stringify(result.value));}catch(e){}
-  }
+  return hydrateUIState('intruder-presets','intruder.presets',Array.isArray);
 }
 function loadIntrPresets(){
   const sel=$('#intrPreset');if(!sel)return;
@@ -1098,8 +1169,8 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
     repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
   if(list.length>20)list.length=20;
   try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
-  persistUIState('intruder-presets', list);
-  loadIntrPresets();toast('preset saved');
+  const serverSyncQueued=persistUIState('intruder-presets',list);
+  loadIntrPresets();toast(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable',serverSyncQueued?'success':'warn');
 };
 export let intrTimer=null;
 let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;

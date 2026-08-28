@@ -434,9 +434,11 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 		t.Error("mobile setup still claims the selected device is ready from historical project evidence")
 	}
 	requireUIContains(t, app, "await projectStorageReady", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
-	requireUIContains(t, projectJS, "'/api/project'", "'/api/version'", "return 'default'")
+	requireUIContains(t, projectJS, "'/api/project'", "'/api/version'", "Promise.allSettled", "throw new Error('active project unavailable')")
 	requireUIRegex(t, app, `(?s)await bootProjectScopedUI\(\).*?await loadFlows\(\).*?maybeShowSetup\(\)`)
-	requireUIRegex(t, projectJS, `(?s)api\('/api/project'\).*?api\('/api/version'\).*?return 'default'`)
+	if strings.Contains(projectJS, "return 'default'") {
+		t.Error("project identity must fail closed instead of selecting an unverified default workspace")
+	}
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}

@@ -3,6 +3,7 @@ import { $, api, toast, renderMD, accordionize, createAutosave } from './core.js
 /* ---- project notes (auto-saved markdown notebook) ---- */
 export const notesState={loaded:'',mode:'edit'};
 let notesEditGeneration=0;
+let notesLoadGeneration=0;
 
 function notesLoadState() {
   let el=$('#notesLoadState');
@@ -53,6 +54,7 @@ const notesAutosave=createAutosave({
 });
 
 export async function loadNotes(){
+  const loadGeneration=++notesLoadGeneration;
   const loadState=notesLoadState();
   if(loadState){loadState.textContent='Loading notes…';loadState.style.display='block';}
   const ta=$('#notesEdit');
@@ -61,6 +63,7 @@ export async function loadNotes(){
   const dirty=notesAutosave.isDirty()||current!==notesState.loaded;
   try{
     const d=await api('/api/notes');
+    if(loadGeneration!==notesLoadGeneration)return;
     const loaded=d.notes||'';
     const preserveLocal=dirty||notesEditGeneration!==generation||(ta&&ta.value!==current);
     notesState.loaded=loaded;
@@ -70,6 +73,7 @@ export async function loadNotes(){
     if(loadState){loadState.textContent='';loadState.style.display='none';}
     if(notesState.mode==='preview')showNotesPreview();
   }catch(e){
+    if(loadGeneration!==notesLoadGeneration)return;
     // Keep the current notebook visible; an error must never look like an empty
     // notebook or overwrite unsaved notes. The Retry action is intentionally local.
     showNotesLoadError(e);

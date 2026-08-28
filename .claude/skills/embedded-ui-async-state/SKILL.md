@@ -22,6 +22,13 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   re-selection invalidates work started for an older snapshot.
 - Keep successful values, authoritative empty values, and read failures
   distinct. Never persist a local fallback after a failed hydration read.
+- Bound project-identity reads and fail closed when neither authoritative
+  endpoint identifies the active project. Never guess the `default` namespace:
+  a transient startup failure must not expose another engagement's local draft.
+- Serialize full-snapshot persistence per panel and retain the latest snapshot
+  in a project-scoped dirty marker until its exact PUT is acknowledged. On the
+  next hydration, reconcile that pending local snapshot before copying server
+  state into local storage, then resume the ordered write queue.
 - Block pagination while its first page is refreshing. A failed refresh must
   not leave the old rows eligible for paging with new filters.
 - Guard full-state mutation responses with the same generation as live events;
@@ -67,6 +74,14 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   visible rows and their actions cannot silently refer to different runs. When
   live processing continues behind a history snapshot, provide a direct,
   keyboard-accessible return to the live evidence owner.
+- Do not commit an asynchronous editor mode (for example Decoded) until the
+  transform succeeds for the same input and edit generation. The editor's
+  visible content, mode metadata, and eventual transmitted body must always
+  describe the same snapshot.
+- For modal transforms and pickers, bind completions to the input text, owner
+  entity, modal/open generation, and request generation. Closing, reopening,
+  changing input, or starting a newer operation invalidates both stale success
+  and stale error rendering.
 - Resolve the active project before importing any module that reads
   project-scoped storage during evaluation. Route every cross-feature entry
   point through one shared readiness-aware loader rather than importing the

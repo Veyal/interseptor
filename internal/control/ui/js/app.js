@@ -6,7 +6,7 @@
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady } from './tools.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
@@ -549,6 +549,7 @@ async function bootProjectScopedUI(){
 function completeProjectScopedUIHydration(statuses){
   projectScopedUIReady=true;
   const failed=statuses.includes('error');
+  const pending=statuses.includes('pending');
   const nav=$('#tabs');if(nav)nav.setAttribute('aria-busy','false');
   $$('.tab').forEach(tab=>{tab.disabled=false;});
   const command=$('#cmdkBtn');if(command)command.disabled=false;
@@ -557,9 +558,30 @@ function completeProjectScopedUIHydration(statuses){
     panel.setAttribute('aria-busy','false');panel.removeAttribute('inert');
   });
   const status=$('#workspaceHydrationStatus');if(!status)return;
-  if(failed){status.textContent='Saved workspace unavailable · local drafts only';status.classList.add('is-error');}
+  if(failed){status.innerHTML='Saved workspace unavailable · local drafts only <button type="button" class="btn xs" data-workspace-retry>Retry</button>';status.classList.add('is-error');}
+  else if(pending&&uiStateSyncPending()){
+    renderWorkspaceSyncPending('Restored local workspace · server sync pending');
+    setTimeout(()=>{if(status.dataset.syncPending==='true'&&!uiStateSyncPending()){status.hidden=true;delete status.dataset.syncPending;}},0);
+  }
   else status.hidden=true;
+  const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
 }
+function renderWorkspaceSyncPending(message='Local draft · server sync pending'){
+  const status=$('#workspaceHydrationStatus');if(!status)return;
+  status.hidden=false;status.innerHTML=`${message} <button type="button" class="btn xs" data-workspace-sync-retry>Retry</button>`;
+  status.classList.add('is-error');status.dataset.syncPending='true';
+  const retry=status.querySelector('[data-workspace-sync-retry]');
+  if(retry)retry.onclick=async()=>{
+    retry.disabled=true;retry.setAttribute('aria-busy','true');
+    await retryUIStateSync();
+    if(retry.isConnected&&uiStateSyncPending()){retry.disabled=false;retry.setAttribute('aria-busy','false');}
+  };
+}
+document.addEventListener('interseptor:ui-state-sync',event=>{
+  const status=$('#workspaceHydrationStatus');
+  if(event.detail?.pending){renderWorkspaceSyncPending();return;}
+  if(status?.dataset.syncPending==='true'){status.hidden=true;delete status.dataset.syncPending;}
+});
 async function bootFirstRunUI(){
   try{
     const statuses=await bootProjectScopedUI();
@@ -568,7 +590,15 @@ async function bootFirstRunUI(){
     releaseWorkstationReady();
     await loadFlows();
     maybeShowSetup();
-  }catch(e){const status=$('#workspaceHydrationStatus');if(status){status.textContent='Workspace initialization failed';status.classList.add('is-error');}toast('Could not initialize project-scoped UI: '+e.message);}
+  }catch(e){
+    const status=$('#workspaceHydrationStatus');
+    if(status){
+      status.innerHTML='Active project unavailable · project-scoped tools are locked <button type="button" class="btn xs" data-workspace-retry>Retry</button>';
+      status.classList.add('is-error');status.setAttribute('role','alert');
+      const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
+    }
+    toast('Could not initialize project-scoped UI: '+e.message,'error');
+  }
 }
 renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
