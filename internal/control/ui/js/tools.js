@@ -199,19 +199,19 @@ async function repEnterDecoded(t){
     }else{
       d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:'req',rawBody:wire,host:(()=>{try{return new URL(t.url).host;}catch(e){return'';}})()})});
     }
-    if(!current())return false;
+    if(!current())return null;
     if(!d.matched||d.error){
       t.reqView='pretty';
-      if(repCur()!==t)return false;
+      if(repCur()!==t)return null;
       toast(d.error||'no message codec matched');repSyncReqSeg('pretty');repCodecBadge(t);return false;
     }
     t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
     if(repCur()!==t)return true;
     $('#repBody').value=t.decodedPlain;repCodecBadge(t);repRefreshHL();return true;
   }catch(e){
-    if(!current())return false;
+    if(!current())return null;
     t.reqView='pretty';
-    if(repCur()!==t)return false;
+    if(repCur()!==t)return null;
     toast(e.message);repSyncReqSeg('pretty');repCodecBadge(t);return false;
   }
 }
@@ -424,7 +424,7 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   repSyncReqSeg(next);
   if(next==='decoded'){
     const ok=await repEnterDecoded(t);
-    if(repCur()!==t)return;
+    if(repCur()!==t||ok===null)return;
     if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}
   }else{
     $('#repBody').value=repBodyForDisplay(t.body,next);

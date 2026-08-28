@@ -34,11 +34,17 @@ func TestFindingsMapStateContracts(t *testing.T) {
 }
 
 func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
-	findings := executableJS(readUIAsset(t, "js/findings.js"))
+	findings := readUIAsset(t, "js/findings.js")
 	for _, contract := range []string{
 		"let findingsLoadEpoch=0",
+		"let findingWritesInFlight = 0",
+		"let findingDetailRefreshDeferred = false",
 		"const epoch=++findingsLoadEpoch",
 		"if(epoch!==findingsLoadEpoch)return false",
+		"function findingDetailEditPending()",
+		"findingWritesInFlight > 0",
+		"bodySaveTimer !== null",
+		"findingDetailRefreshDeferred = true",
 		"catch (err) { if (el.value === v) el.value = previous; toast(err.message); return; }",
 	} {
 		if !strings.Contains(findings, contract) {
@@ -52,6 +58,19 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 	reload := strings.Index(findings[patchFailure:], "await loadFindings()")
 	if reload < 0 {
 		t.Fatal("Finding blur save must separate PATCH rollback from the later refresh")
+	}
+}
+
+func TestRepeaterDecodeCompletionDistinguishesStaleFromFallback(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	for _, contract := range []string{
+		"if(!current())return null",
+		"if(repCur()!==t||ok===null)return",
+		"if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("Repeater decoded-view stale result contract missing %q", contract)
+		}
 	}
 }
 

@@ -33,9 +33,15 @@ func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 	for _, contract := range []string{
 		"let flowRefreshing=false",
 		"let flowLoadEpoch=0,flowPageEpoch=0",
+		"let flowLoadEvents=[]",
 		"const epoch=++flowLoadEpoch",
+		"flowLoadEvents=[]",
 		"flowRefreshing=true",
 		"if(epoch!==flowLoadEpoch)return",
+		"const replay=flowLoadEvents",
+		"if(flowLoadEvents.length>MAX_LIVE_FLOWS)",
+		"reconcileFlowLoadEvent(event)",
+		"if(!replayExact)scheduleReload()",
 		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
 		"const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch",
 		"if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return",
@@ -220,9 +226,12 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 	for _, contract := range []string{
 		"export function interceptStateGeneration()",
 		"export function replaceInterceptState(next)",
+		"let interceptMutationTail=Promise.resolve()",
 		"async function applyInterceptMutation(request)",
+		"const result=interceptMutationTail.then(async()=>",
 		"const generation=interceptStateGeneration()",
 		"if(generation!==interceptStateGeneration())return false",
+		"interceptMutationTail=result.catch(()=>{})",
 		"replaceInterceptState(s)",
 	} {
 		if !strings.Contains(intercept, contract) {

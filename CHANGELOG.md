@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Keyboard-safe motion and graph navigation.** Main tabs now commit selection and focus synchronously before a restrained panel entrance, dense Map graphs use one roving tab stop, and reduced-motion users receive the same persistent state cues without travel.
 
 ### Fixed
+- **Rereviewed async state safety.** Serialized Intercept snapshots, rejected stale Repeater decode fallbacks, preserved active Findings drafts, and replayed live History events over delayed list snapshots.
 - **Contained panel motion.** Main-panel entrance transforms now stay clipped to the workspace instead of briefly widening the document and flashing horizontal overflow.
 - **Live History virtualization.** History now enters its bounded DOM window when an incremental capture burst crosses the virtualization threshold instead of retaining every subsequent row.
 - **Project-scoped async state safety.** Prevented failed draft hydration, overlapping History/detail loads, delayed Intercept reads or mutations, and every early Map entry point from overwriting newer project state.

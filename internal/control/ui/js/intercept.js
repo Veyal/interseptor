@@ -13,13 +13,18 @@ let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
 let interceptStateEpoch=0;
+let interceptMutationTail=Promise.resolve();
 export function interceptStateGeneration(){return interceptStateEpoch;}
 export function replaceInterceptState(next){state.intercept=next;interceptStateEpoch++;}
 async function applyInterceptMutation(request){
-  const generation=interceptStateGeneration();
-  const s=await request();
-  if(generation!==interceptStateGeneration())return false;
-  replaceInterceptState(s);renderIntercept();return true;
+  const result=interceptMutationTail.then(async()=>{
+    const generation=interceptStateGeneration();
+    const s=await request();
+    if(generation!==interceptStateGeneration())return false;
+    replaceInterceptState(s);renderIntercept();return true;
+  });
+  interceptMutationTail=result.catch(()=>{});
+  return result;
 }
 function allowHeldSignal(){
   const now=performance.now();

@@ -18,6 +18,13 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   not leave the old rows eligible for paging with new filters.
 - Guard full-state mutation responses with the same generation as live events;
   a delayed POST snapshot must not overwrite a newer SSE queue.
+- Serialize full-state mutations that can begin from the same generation so a
+  faster earlier response cannot invalidate a later user write.
+- When a wholesale list snapshot races live events, buffer and replay the
+  events over the accepted snapshot; retry only cases that cannot be reconciled
+  exactly from the event payload.
+- Defer server-driven editor remounts while a control is focused, a debounced
+  draft is dirty, or a write is in flight, then apply the latest deferred view.
 - Resolve the active project before importing any module that reads
   project-scoped storage during evaluation. Route every cross-feature entry
   point through one shared readiness-aware loader rather than importing the

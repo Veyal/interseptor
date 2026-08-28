@@ -30,6 +30,9 @@ let findEditMode = false;
 let bodyBlocks = [];
 let bodyFindingId = null;
 let bodySaveTimer = null;
+let bodySavesInFlight = 0;
+let findingWritesInFlight = 0;
+let findingDetailRefreshDeferred = false;
 // True while a text-block textarea has focus. An SSE findings.update (e.g. a body
 // save round-tripping, or the AI recording) would otherwise rebuild the detail
 // pane mid-edit and discard the focused textarea + any unsaved keystrokes.
@@ -170,6 +173,19 @@ function setFindingsViewEmpty(empty) {
   if (view) view.classList.toggle('is-empty', !!empty);
 }
 
+function findingDetailEditPending() {
+  const detail = $('#findDetail');
+  const active = document.activeElement;
+  return bodyEditing || bodySaveTimer !== null || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
+    !!(findEditMode && detail && active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"]'));
+}
+
+function refreshDeferredFindingDetail() {
+  if (!findingDetailRefreshDeferred || findingDetailEditPending()) return;
+  findingDetailRefreshDeferred = false;
+  renderFindingDetail();
+}
+
 function renderFindings() {
   const box = $('#findList'); if (!box) return;
   const list = visibleFindings();
@@ -205,10 +221,8 @@ function renderFindings() {
     <span class="find-meta">${findingListMeta(f)}</span>
   </div>`).join('');
   box.querySelectorAll('.find-row').forEach(el => { el.onclick = () => { const id=Number(el.dataset.id); if(id!==selFinding)findEditMode=false; selFinding = id; renderFindings(); renderFindingDetail(); }; wireRowKey(el); });
-  // Skip the detail rebuild while a text block is open for this same finding —
-  // otherwise an SSE findings.update (e.g. a body save round-tripping) wipes the
-  // focused textarea. An explicit row click still calls renderFindingDetail().
-  if (!(bodyEditing && selFinding === bodyFindingId)) renderFindingDetail();
+  if (findingDetailEditPending() && selFinding === bodyFindingId) findingDetailRefreshDeferred = true;
+  else { findingDetailRefreshDeferred = false; renderFindingDetail(); }
 }
 
 // ---- block editor --------------------------------------------------------
@@ -456,11 +470,12 @@ function scheduleSave(fid) {
     if (b.caption) r.caption = b.caption;
     return r;
   });
-  bodySaveTimer = setTimeout(() => flushBodySave(fid, snap), 700);
+  bodySaveTimer = setTimeout(() => { bodySaveTimer = null; flushBodySave(fid, snap); }, 700);
 }
 
 async function flushBodySave(fid, snapshot) {
   if (!fid || !snapshot) return;
+  bodySavesInFlight++;
   // Strip enriched metadata before sending; store only type/md/flowId/note.
   try {
     await api('/api/findings/' + fid, {
@@ -469,6 +484,7 @@ async function flushBodySave(fid, snapshot) {
       body: JSON.stringify({ body: JSON.stringify(snapshot) }),
     });
   } catch (e) { toast('body save: ' + e.message); }
+  finally { bodySavesInFlight--; setTimeout(refreshDeferredFindingDetail, 0); }
 }
 
 // ---- detail pane ---------------------------------------------------------
@@ -478,15 +494,22 @@ function missingLabel(k) {
 }
 
 async function patchFinding(id, fields) {
-  await api('/api/findings/' + id, {
-    method: 'PATCH', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(fields),
-  });
-  Object.assign(findings.find(x => x.id === id) || {}, fields);
+  findingWritesInFlight++;
+  try {
+    await api('/api/findings/' + id, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    Object.assign(findings.find(x => x.id === id) || {}, fields);
+  } finally {
+    findingWritesInFlight--;
+    setTimeout(refreshDeferredFindingDetail, 0);
+  }
 }
 
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
+  findingDetailRefreshDeferred = false;
   const f = findings.find(x => x.id === selFinding);
   if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg></div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
   const edit = findEditMode;
@@ -612,6 +635,7 @@ function renderFindingDetail() {
         : `<div class="hint" style="padding:8px 0">${f.fix ? esc(f.fix) : '—'}</div>`}
     </details>
   </article>`;
+  box.onfocusout = () => setTimeout(refreshDeferredFindingDetail, 0);
 
   bodyFindingId = f.id;
   bodyBlocks = (f.blocks || []).map(b => ({ ...b }));

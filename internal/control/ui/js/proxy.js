@@ -64,6 +64,7 @@ let flowHasMore=false;         // the server may have older flows past what's lo
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
 let flowLoadEpoch=0,flowPageEpoch=0;
+let flowLoadEvents=[];
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
@@ -515,8 +516,39 @@ function flowRowLiveUpdate(f,isNew){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row)patchFlowRow(f);
 }
+function rememberFlowLoadEvent(kind,flow){
+  if(!flowRefreshing)return;
+  flowLoadEvents.push({kind,flow});
+  if(flowLoadEvents.length>MAX_LIVE_FLOWS)flowLoadEvents.splice(0,flowLoadEvents.length-MAX_LIVE_FLOWS);
+}
+function reconcileFlowLoadEvent(event){
+  const f=event.flow;
+  if(event.kind==='new'){
+    if(!sortIsLiveDefault()||!canIncremental())return false;
+    if(flowMatchesFilters(f))upsertFlow(f);
+    return true;
+  }
+  if(!canIncremental())return false;
+  const existing=flowStore.byId.get(f.id);
+  if(existing){
+    const sortValueBefore=flowSortValue(existing),sortValueAfter=flowSortValue(f);
+    if(!flowMatchesFilters(f)){
+      removeFlow(flowStore,f.id);
+      if(state.selected)state.selected.delete(f.id);
+      if(state.selId===f.id){state.selId=null;state.detail=null;}
+      return true;
+    }
+    storeUpsertFlow(flowStore,f);
+    return sortValueBefore===sortValueAfter;
+  }
+  if(!flowMatchesFilters(f))return true;
+  if(!sortIsLiveDefault())return false;
+  upsertFlow(f);
+  return true;
+}
 export function handleFlowNew(f){
   if(!f)return;
+  rememberFlowLoadEvent('new',f);
   onFlowMaybeTLS(f);
   if(!sortIsLiveDefault()||!canIncremental()){scheduleReload();return;}
   if(!flowMatchesFilters(f))return; // doesn't match the active filters — nothing to show, no reload needed
@@ -529,6 +561,7 @@ export function handleFlowNew(f){
 }
 export function handleFlowUpdate(f){
   if(!f)return;
+  rememberFlowLoadEvent('update',f);
   onFlowMaybeTLS(f);
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   const active=proxy&&proxy.classList.contains('active');
@@ -723,6 +756,7 @@ export async function loadFlows(){
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
   loadingMore=false;
+  flowLoadEvents=[];
   flowRefreshing=true;
   flowHasMore=false;
   updateTruncBanner();
@@ -731,18 +765,23 @@ export async function loadFlows(){
   try{
     const d=await api('/api/flows?'+q.toString());
     if(epoch!==flowLoadEpoch)return;
+    const replay=flowLoadEvents;
+    flowLoadEvents=[];
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
+    let replayExact=true;
+    for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
     updateTruncBanner();
     refreshMethodFilter();
     loadTrafficDiagnosis();
+    if(!replayExact)scheduleReload();
   }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}}
   finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
