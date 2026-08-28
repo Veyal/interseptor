@@ -41,7 +41,7 @@ function setRepSendState(stateName,label){
 function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[]};}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -104,19 +104,107 @@ function repSyncReqSeg(view){
 // Storage is project-scoped (`rep.tabs.<project>`) so switching projects does
 // not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
 // migrated once into the current project via projectStorageKey.
-function persistUIState(panel, blob){
-  // Fire-and-forget project DB write so drafts survive browser clears / machines.
-  api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(blob)}).catch(()=>{});
-}
-async function hydrateUIState(panel, storageBase){
-  try{
-    const d=await api('/api/ui/'+panel);
-    if(d&&d.value!=null){
-      try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(d.value));}catch(e){}
-      return true;
-    }
-  }catch(e){}
+const uiPersistenceReady=new Map();
+const uiPersistenceQueues=new Map();
+let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
+const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
+const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
+export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
+export function releaseWorkstationReady(result={ok:true}){resolveWorkstationReady(result);}
+export async function waitForWorkstationReady(){
+  const result=await workstationReady;
+  if(result?.ok)return true;
+  toast(result?.message||'Active project unavailable · project-scoped tools are locked','error');
   return false;
+}
+function uiPendingStateKey(panel){return projectStorageKey('ui.pending.'+panel);}
+export function uiStateSyncPending(){
+  try{return ['repeater','intruder','intruder-presets'].some(panel=>localStorage.getItem(uiPendingStateKey(panel))!==null);}
+  catch(e){return true;}
+}
+function readPendingUIState(panel){
+  try{
+    const raw=localStorage.getItem(uiPendingStateKey(panel));
+    if(raw===null)return null;
+    return JSON.parse(raw);
+  }catch(e){try{localStorage.removeItem(uiPendingStateKey(panel));}catch(ignore){}return null;}
+}
+function uiPersistenceQueue(panel){
+  let queue=uiPersistenceQueues.get(panel);
+  if(!queue){queue={pending:null,saving:false};uiPersistenceQueues.set(panel,queue);}
+  return queue;
+}
+async function drainUIState(panel){
+  const queue=uiPersistenceQueue(panel);
+  if(queue.saving||uiPersistenceReady.get(panel)!==true)return;
+  queue.saving=true;
+  try{
+    while(queue.pending!==null){
+      const body=queue.pending;queue.pending=null;
+      try{
+        await api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body});
+        if(queue.pending===null){
+          try{
+            if(localStorage.getItem(uiPendingStateKey(panel))===body){
+              localStorage.removeItem(uiPendingStateKey(panel));
+              document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:uiStateSyncPending()}}));
+            }
+          }catch(e){}
+        }
+      }catch(e){
+        if(queue.pending===null)queue.pending=body;
+        document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:true,error:true,panel}}));
+        break;
+      }
+    }
+  }finally{queue.saving=false;}
+}
+export async function retryUIStateSync(){
+  const panels=['repeater','intruder','intruder-presets'].filter(panel=>uiPersistenceQueue(panel).pending!==null);
+  await Promise.all(panels.map(panel=>drainUIState(panel)));
+  const pending=uiStateSyncPending();
+  document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending}}));
+  return !pending;
+}
+function persistUIState(panel, blob){
+  let body;
+  try{body=JSON.stringify(blob);}catch(e){return false;}
+  try{localStorage.setItem(uiPendingStateKey(panel),body);}catch(e){}
+  uiPersistenceQueue(panel).pending=body;
+  if(uiPersistenceReady.get(panel)!==true)return false;
+  drainUIState(panel);
+  return true;
+}
+const UI_HYDRATE_TIMEOUT_MS=2500;
+async function readBoundedUIState(panel){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),UI_HYDRATE_TIMEOUT_MS);
+  try{
+    const d=await api('/api/ui/'+panel,{signal:controller.signal});
+    if(d&&d.value!=null)return {status:'success',value:d.value};
+    return {status:'empty'};
+  }catch(e){return {status:'error',error:e};}
+  finally{clearTimeout(timer);}
+}
+async function hydrateUIState(panel,storageBase,valid=()=>true){
+  let pending=readPendingUIState(panel);
+  if(pending!==null&&!valid(pending)){
+    try{localStorage.removeItem(uiPendingStateKey(panel));}catch(e){}
+    pending=null;
+  }
+  const result=await readBoundedUIState(panel);
+  const validServer=result.status!=='success'||valid(result.value);
+  uiPersistenceReady.set(panel,result.status!=='error'&&validServer);
+  if(!validServer)return 'error';
+  if(pending!==null){
+    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(pending));}catch(e){}
+    if(result.status!=='error')persistUIState(panel,pending);
+    return result.status==='error'?'error':'pending';
+  }
+  if(result.status==='success'){
+    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(result.value));}catch(e){}
+  }
+  return result.status;
 }
 export const repTabs=createTabManager({
   storageKey:()=>projectStorageKey('rep.tabs'),
@@ -124,7 +212,7 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
   serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
@@ -138,8 +226,11 @@ export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
 export function repSaveEditor(){
   const t=repCur();if(!t)return;
-  t.method=$('#repMethod').value;t.url=$('#repUrl').value;t.headers=$('#repHeaders').value;
+  const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
   const v=$('#repBody').value;
+  const previous=((t.reqView||'raw')==='decoded'?t.decodedPlain:t.body)||'';
+  if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  t.method=method;t.url=url;t.headers=headers;
   if((t.reqView||'raw')==='decoded')t.decodedPlain=v;
   else t.body=v;
   t.title=repTitle(t);
@@ -181,6 +272,12 @@ export function repLoadEditor(){
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
   const wire=t.body||'';
+  const startView=t.reqView||'pretty';
+  t.reqDecodeEpoch=(t.reqDecodeEpoch||0)+1;
+  const decodeEpoch=t.reqDecodeEpoch;
+  const editorEpoch=t.reqEditEpoch||0;
+  t.reqDecodePending=true;
+  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqEditEpoch===editorEpoch&&t.reqView===startView&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
   try{
     let d;
     if(flowId){
@@ -188,14 +285,23 @@ async function repEnterDecoded(t){
     }else{
       d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:'req',rawBody:wire,host:(()=>{try{return new URL(t.url).host;}catch(e){return'';}})()})});
     }
-    if(!d.matched){toast('no message codec matched');t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
-    if(d.error){toast(d.error);t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
-    t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
+    if(!current())return null;
+    if(!d.matched||d.error){
+      if(repCur()===t)toast(d.error||'no message codec matched');
+      return false;
+    }
+    t.reqView='decoded';t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
+    if(repCur()!==t)return true;
     $('#repBody').value=t.decodedPlain;repCodecBadge(t);repRefreshHL();return true;
-  }catch(e){toast(e.message);t.reqView='pretty';repSyncReqSeg('pretty');return false;}
+  }catch(e){
+    if(!current())return null;
+    if(repCur()===t)toast(e.message);
+    return false;
+  }finally{t.reqDecodePending=false;}
 }
 export async function repSend(){
   repSaveEditor();const t=repCur();if(!t)return;
+  if(t.sendPending)return;
   if(!(t.url||'').trim()){toast('enter a URL');return;}
   let body=t.body,payload={method:t.method,url:t.url.trim(),headers:t.headers,body};
   if((t.reqView||'raw')==='decoded'){
@@ -311,7 +417,9 @@ export async function repLoadSend(id){
   }catch(e){toast(e.message);}
 }
 export async function sendToRepeater(f){
+  if(!await waitForWorkstationReady())return false;
   repSaveEditor();
+  const tabEditEpochs=new Map(repTabs.tabs.map(t=>[t.tid,t.reqEditEpoch||0]));
   try{
     const d=await api('/api/flows/'+f.id);
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
@@ -319,6 +427,7 @@ export async function sendToRepeater(f){
     // choosing a tab so requests do not collapse into an "undefined" endpoint.
     const fep=repFlowEndpoint(d);
     let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
+    if(t&&tabEditEpochs.get(t.tid)!==(t.reqEditEpoch||0))t=null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
@@ -335,10 +444,11 @@ export async function sendToRepeater(f){
   }catch(e){toast(e.message);return false;}
 }
 export async function repInit(){
-  await hydrateUIState('repeater','rep.tabs');
+  if(repInit._done)return repeaterReady;repInit._done=true;
+  const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
   // First persist migrates localStorage drafts into the project DB.
-  if(repTabs.tabs.length) repTabs.persist();
+  if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{
     repSaveEditor();
     // Typing in method/url only changes the active tab's label — don't rebuild the
@@ -358,6 +468,8 @@ export async function repInit(){
   repRefreshHL();
   repWireEncodeCtx();
   wirePostmanImport();
+  resolveRepeaterReady(hydration);
+  return hydration;
 }
 
 async function repEncodeSel(el,op){
@@ -393,6 +505,18 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   const next=b.dataset.view;
   if(next===(t.reqView||'raw'))return;
   repSaveEditor();
+  if(next==='decoded'){
+    if(t.reqDecodePending)return;
+    b.disabled=true;b.setAttribute('aria-busy','true');
+    const ok=await repEnterDecoded(t);
+    b.disabled=false;b.setAttribute('aria-busy','false');
+    if(ok===null)return;
+    if(repCur()!==t)return;
+    if(ok){repSyncReqSeg('decoded');}
+    else{$('#repBody').value=repBodyForDisplay(t.body,t.reqView||'pretty');repSyncReqSeg(t.reqView||'pretty');repCodecBadge(t);}
+    repRefreshHL();repPersistDebounced();
+    return;
+  }
   if((t.reqView||'raw')==='pretty'&&next==='raw')t.body=compactBody(t.body);
   if((t.reqView||'raw')==='decoded'&&next!=='decoded'){
     // leave decoded — wire body stays in t.body/rawBody
@@ -400,13 +524,8 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   }
   t.reqView=next;
   repSyncReqSeg(next);
-  if(next==='decoded'){
-    const ok=await repEnterDecoded(t);
-    if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}
-  }else{
-    $('#repBody').value=repBodyForDisplay(t.body,next);
-    repCodecBadge(t);
-  }
+  $('#repBody').value=repBodyForDisplay(t.body,next);
+  repCodecBadge(t);
   repRefreshHL();
   repPersistDebounced();
 });
@@ -652,43 +771,72 @@ const intrTabs=createTabManager({
   onPersist:blob=>persistUIState('intruder',blob),
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
-function renderIntrTabs(){intrTabs.render('#intrTabs');}
+function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
-  if(intrInit._done)return; intrInit._done=true;
-  await hydrateUIState('intruder','intr.tabs');
-  await hydrateIntrPresets();
+  if(intrInit._done)return intruderReady; intrInit._done=true;
+  const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
+  const hydration=[tabHydration,presetHydration].includes('error')?'error':[tabHydration,presetHydration].includes('pending')?'pending':tabHydration;
   intrTabs.init('#intrTabs');
-  if(intrTabs.tabs.length) intrTabs.persist();
+  if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist();
   renderIntrHistory();loadIntrPresets();
+  const tabBar=$('#intrTabs');
+  if(tabBar)tabBar.addEventListener('keydown',e=>{
+    if((intrStartPending||intrLastRunning)&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+      e.preventDefault();e.stopImmediatePropagation();
+    }
+  },true);
   $('#intrTarget')&&$('#intrTarget').addEventListener('input',intrTouch);
   $('#intrTemplate')&&$('#intrTemplate').addEventListener('input',()=>{intrTemplateChanged();intrTouch();});
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
+  resolveIntruderReady(hydration);
+  return hydration;
 }
 
 /* ---- intruder run history (this session) ---- */
 const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
 let intrStartPending=false;
+let intrRunTabId=null;
 let intrPollError='';
 let intrLastRunning=false,intrLastTotal=0,intrLastDone=0;
+function syncIntrTabLock(locked){
+  const bar=$('#intrTabs');if(!bar)return;
+  bar.setAttribute('aria-busy',locked?'true':'false');
+  bar.querySelectorAll('.rt-select').forEach(button=>{
+    const tid=Number(button.closest('.rep-tab')?.dataset.tid);
+    button.disabled=!!locked&&tid!==intrRunTabId;
+  });
+  bar.querySelectorAll('.rt-close,.rep-tab-add').forEach(button=>{button.disabled=!!locked;});
+  bar.title=locked?'Attack tabs are locked until the active run finishes':'';
+}
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
   if(!box)return;
   if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
-  box.innerHTML=intrHistory.map((h,i)=>`<div class="h" data-i="${i}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
-  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
+  const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
+  box.innerHTML=liveRow+intrHistory.map((h,i)=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-i="${i}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  const live=box.querySelector('[data-intr-live]');if(live){live.onclick=showIntrLiveResults;wireRowKey(live,showIntrLiveResults);}
+  box.querySelectorAll('.h[data-i]').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
 }
 function intrLoadHistory(i){
   const h=intrHistory[i];if(!h)return;
-  if(h.cfg){
+  // History is a display choice, not a replacement for the authoritative
+  // server snapshot. Keep polling, locks, and recovery tied to the active run
+  // while filters and finding creation operate on what the operator chose.
+  intrDisplayOwner='history';
+  intrDisplayedHistory=h;
+  intrDisplayedTarget=h.target||'';
+  intrDisplayedResults=h.results.slice();
+  if(h.cfg&&!intrLastRunning&&!intrStartPending){
     intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
     intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
     intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
     $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
     updateIntrMode();intrTouch();}
-  renderIntr({running:false,total:h.total,done:h.total,results:h.results,capped:h.capped});
+  renderIntrHistory();
+  renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }
 $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
 
@@ -819,6 +967,7 @@ function renderPayloadInputs(){
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
     const p=ta.dataset.pos;
+    ta.setAttribute('aria-label',p==='s'?'Payload list for all injection positions':`Payload list for injection position ${Number(p)+1}`);
     ta.value=p==='s'?(intrState.sniper||''):(intrState.pos[Number(p)]||'');
     ta.readOnly=intrPayloadTruncated(p);
     const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
@@ -971,15 +1120,24 @@ export async function intrStart(){
   intrRunCfg=intrReadEditor();       // snapshot for the history entry
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
+  intrRunTabId=intrTabs.cur()?.tid??null;
+  syncIntrTabLock(true);
   const epoch=++intrStartEpoch;
+  const pollEpoch=invalidateIntrPoll();
   intrPollError='';
+  showIntrLiveResults();
   setIntrStartState('pending','Starting…');
   try{
     const started=await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     intrStartPending=false;
-    renderIntr(started);
+    intrDisplayOwner='live';
+    intrDisplayedHistory=null;
+    renderIntrHistory();
+    if(pollEpoch===intrPollEpoch)renderIntr(started);
+    else scheduleIntr();
   }catch(e){
     intrStartPending=false;intrCapturePending=false;
+    intrRunTabId=null;syncIntrTabLock(false);
     setIntrStartState('error','Start failed');
     resetIntrStart(1000,epoch);
     toast('attack: '+e.message,'error');
@@ -988,12 +1146,7 @@ export async function intrStart(){
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 async function hydrateIntrPresets(){
-  try{
-    const d=await api('/api/ui/intruder-presets');
-    if(d&&Array.isArray(d.value)){
-      try{localStorage.setItem(intrPresetsKey(),JSON.stringify(d.value));}catch(e){}
-    }
-  }catch(e){}
+  return hydrateUIState('intruder-presets','intruder.presets',Array.isArray);
 }
 function loadIntrPresets(){
   const sel=$('#intrPreset');if(!sel)return;
@@ -1022,11 +1175,26 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
     repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
   if(list.length>20)list.length=20;
   try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
-  persistUIState('intruder-presets', list);
-  loadIntrPresets();toast('preset saved');
+  const serverSyncQueued=persistUIState('intruder-presets',list);
+  loadIntrPresets();toast(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable',serverSyncQueued?'success':'warn');
 };
 export let intrTimer=null;
-let intrFilter='all', intrLastResults=[];
+let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;
+let intrPollEpoch=0;
+let intrPollInFlight=false,intrPollQueued=false;
+function showIntrLiveResults(){
+  intrDisplayOwner='live';
+  intrDisplayedHistory=null;
+  intrDisplayedResults=intrLastResults.slice();
+  intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+  renderIntrHistory();
+  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+}
+function invalidateIntrPoll(){
+  clearTimeout(intrTimer);
+  intrPollQueued=false;
+  return ++intrPollEpoch;
+}
 function intrIsInteresting(r){return !!(r&& (r.flagged||r.matched||r.anomaly));}
 function intrApplyFilter(res){
   if(intrFilter==='interesting') return res.filter(intrIsInteresting);
@@ -1035,24 +1203,54 @@ function intrApplyFilter(res){
 }
 export function scheduleIntr(){
   clearTimeout(intrTimer);
+  if(intrPollInFlight){intrPollQueued=true;return;}
+  const epoch=++intrPollEpoch;
   intrTimer=setTimeout(async()=>{
+    intrPollInFlight=true;
     try{
-      renderIntr(await api('/api/intruder/state'));
+      const st=await api('/api/intruder/state');
+      if(epoch!==intrPollEpoch)return;
+      renderIntr(st);
     }catch(e){
+      if(epoch!==intrPollEpoch)return;
       // Keep the last result set visible while the state endpoint is unavailable.
       // A retry affordance makes a long-running attack recoverable instead of
       // silently freezing at its last progress value.
       intrPollError=e&&e.message?e.message:'connection unavailable';
-      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true});
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults,pollFailed:true},{authoritative:false});
+    }finally{
+      intrPollInFlight=false;
+      if(intrPollQueued){intrPollQueued=false;scheduleIntr();}
     }
   },120);
 }
-export function renderIntr(st){
-  const running=!!st.running,total=st.total||0,done=st.done||0;
-  if(!st.pollFailed)intrPollError='';
-  if(!st.pollFailed){intrLastRunning=running;intrLastTotal=total;intrLastDone=done;}
+export function renderIntr(st,{authoritative=true}={}){
+  const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
+  if(authoritative){
+    if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
+    if(!st.pollFailed){
+      intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
+      intrLastResults=res.slice();
+      if(intrDisplayOwner==='live'){
+        intrDisplayedResults=res.slice();
+        intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+      }
+    }
+    if(!running&&!intrStartPending)intrRunTabId=null;
+    if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
+    if(!running&&total>0&&intrCapturePending){
+      intrCapturePending=false;
+      intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
+      if(intrHistory.length>30)intrHistory.length=30;
+      renderIntrHistory();
+    }
+    if(running&&!st.pollFailed)scheduleIntr();
+  }
+  const displayRes=authoritative
+    ?(intrDisplayOwner==='live'?res:intrDisplayedResults)
+    :(Array.isArray(st.results)?st.results:intrDisplayedResults);
+  syncIntrTabLock(intrLastRunning||intrStartPending);
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
-  if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
   const pollStatus=$('#intrPollStatus');
   if(pollStatus){
     if(intrPollError){
@@ -1065,28 +1263,19 @@ export function renderIntr(st){
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
   // results summary (flagged count)
-  const stats=$('#intrStats'),res=st.results||[];
-  intrLastResults=res.slice();
+  const stats=$('#intrStats');
   if(stats){
-    const fl=res.filter(r=>r.flagged).length, int=res.filter(intrIsInteresting).length;
-    const shown=intrApplyFilter(res).length;
-    stats.textContent=res.length?`${res.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
+    const fl=displayRes.filter(r=>r.flagged).length, int=displayRes.filter(intrIsInteresting).length;
+    const shown=intrApplyFilter(displayRes).length;
+    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
   }
-  // capture a completed run into history (once per Start)
-  if(!running&&total>0&&intrCapturePending){
-    intrCapturePending=false;
-    intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
-    if(intrHistory.length>30)intrHistory.length=30;
-    renderIntrHistory();
-  }
-  if(running&&!st.pollFailed)scheduleIntr(); // pause on failure; Retry resumes polling
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
-  if(!res.length){
+  if(!displayRes.length){
     box.innerHTML=running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
-  const view=intrApplyFilter(res);
+  const view=intrApplyFilter(displayRes);
   if(!view.length){
     box.innerHTML='<div class="hint" style="padding:12px">No results match this filter.</div>';
     return;
@@ -1114,21 +1303,22 @@ function wireTabListKeys(seg){
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
   seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
-  renderIntr({running:false,total:intrLastResults.length,done:intrLastResults.length,results:intrLastResults});
+  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
 });}
 wireTabListKeys($('#intrResFilter'));
 async function intrToFinding(){
-  const pool=intrApplyFilter(intrLastResults);
+  const pool=intrApplyFilter(intrDisplayedResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
   const interesting=withFlow.filter(intrIsInteresting);
   const pick=interesting.length?interesting:withFlow.slice(0,10);
   if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
-  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:($('#intrTarget').value||'Intruder finding').replace(/^https?:\/\//,'')});
+  const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
+  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
   if(!title)return;
   try{
     const body={
       title, severity:'medium', status:'needs_verification', source:'human',
-      target:$('#intrTarget').value||'',
+      target:displayTarget,
       why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
       impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
       verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
@@ -1238,6 +1428,7 @@ export function applyIntruderPayloadSuggestion(data, opts){
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
 export async function sendToIntruder(f){
+  if(!await waitForWorkstationReady())return false;
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
   // and capture the active attack tab before any await so a sub-tab switch during
   // the fetch can't make intrTouch() save the request into the wrong tab.

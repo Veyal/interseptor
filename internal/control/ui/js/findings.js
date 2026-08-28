@@ -9,6 +9,7 @@ import { sendToRepeater } from './tools.js';
 const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'fixed'];
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
+let findingsLoadEpoch=0;
 
 function findingsLoadState() {
   if (findingsLoadStateEl?.isConnected) return findingsLoadStateEl;
@@ -28,7 +29,15 @@ let findEditMode = false;
 // Body editor state for the active finding.
 let bodyBlocks = [];
 let bodyFindingId = null;
-let bodySaveTimer = null;
+let bodySaveTimers = new Map();
+let bodySavesInFlight = 0;
+let findingWritesInFlight = 0;
+// PATCH requests for one finding are serialized. The API applies a PATCH as a
+// whole document, so allowing an older body snapshot or blur value to finish
+// after a newer one can silently restore stale operator intent. Pending writes
+// coalesce by field while the current request is in flight.
+const findingWriteQueues = new Map();
+let findingDetailRefreshDeferred = false;
 // True while a text-block textarea has focus. An SSE findings.update (e.g. a body
 // save round-tripping, or the AI recording) would otherwise rebuild the detail
 // pane mid-edit and discard the focused textarea + any unsaved keystrokes.
@@ -111,6 +120,7 @@ function renderFindTagFilter() {
 }
 
 export async function loadFindings() {
+  const epoch=++findingsLoadEpoch;
   try {
     const q = findTagFilter ? '?tag=' + encodeURIComponent(findTagFilter) : '';
     // Always load the full set for the sidebar filter counts; filter client-side
@@ -119,6 +129,7 @@ export async function loadFindings() {
       api('/api/findings'),
       api('/api/findings/tags').catch(() => ({ tags: [] })),
     ]);
+    if(epoch!==findingsLoadEpoch)return false;
     findings = d.findings || [];
     findTagCounts = tags.tags || [];
     renderFindTagFilter();
@@ -126,7 +137,9 @@ export async function loadFindings() {
     const loadState = findingsLoadState();
     if (loadState) { loadState.style.display = 'none'; loadState.textContent = ''; }
     void q;
+    return true;
   } catch (e) {
+    if(epoch!==findingsLoadEpoch)return false;
     // Keep the last report visible. A toast alone disappears before a user can
     // diagnose a transient SSE/API failure, and an empty report is misleading.
     const loadState = findingsLoadState();
@@ -135,6 +148,7 @@ export async function loadFindings() {
       const retry = loadState.querySelector('[data-load-retry]');
       if (retry) retry.setAttribute('data-findings-retry', '');
     } else toast(e.message);
+    return false;
   }
 }
 
@@ -162,6 +176,51 @@ function wireFindingsEmptyActions(root) {
 function setFindingsViewEmpty(empty) {
   const view = $('#scanFindingsView');
   if (view) view.classList.toggle('is-empty', !!empty);
+}
+
+function findingDetailEditPending() {
+  const detail = $('#findDetail');
+  const active = document.activeElement;
+  return bodyEditing || bodySaveTimers.has(selFinding) || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
+    !!(findEditMode && detail && active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"]'));
+}
+
+function refreshDeferredFindingDetail() {
+  if (!findingDetailRefreshDeferred || findingDetailEditPending()) return;
+  const focus = captureFindingFocus();
+  findingDetailRefreshDeferred = false;
+  renderFindingDetail();
+  restoreFindingFocus(focus);
+}
+
+function captureFindingFocus() {
+  const detail = $('#findDetail');
+  const active = document.activeElement;
+  if (!detail || !active || active === detail || !detail.contains(active) || active.tabIndex < 0) return null;
+  if (!active.matches('button,a,input,textarea,select,[tabindex]')) return null;
+  const attrs = {};
+  for (const attr of active.attributes) {
+    if (attr.name === 'id' || attr.name.startsWith('data-')) attrs[attr.name] = attr.value;
+  }
+  return {
+    tag: active.tagName.toLowerCase(),
+    className: typeof active.className === 'string' ? active.className : '',
+    attrs,
+  };
+}
+
+function restoreFindingFocus(focus) {
+  if (!focus) return;
+  const detail = $('#findDetail');
+  if (!detail) return;
+  const controls = detail.querySelectorAll('button,a,input,textarea,select,[tabindex]');
+  for (const control of controls) {
+    if (control.tagName.toLowerCase() !== focus.tag) continue;
+    if (focus.className && control.className !== focus.className) continue;
+    if (Object.entries(focus.attrs).some(([name, value]) => control.getAttribute(name) !== value)) continue;
+    control.focus({ preventScroll: true });
+    return;
+  }
 }
 
 function renderFindings() {
@@ -199,10 +258,8 @@ function renderFindings() {
     <span class="find-meta">${findingListMeta(f)}</span>
   </div>`).join('');
   box.querySelectorAll('.find-row').forEach(el => { el.onclick = () => { const id=Number(el.dataset.id); if(id!==selFinding)findEditMode=false; selFinding = id; renderFindings(); renderFindingDetail(); }; wireRowKey(el); });
-  // Skip the detail rebuild while a text block is open for this same finding —
-  // otherwise an SSE findings.update (e.g. a body save round-tripping) wipes the
-  // focused textarea. An explicit row click still calls renderFindingDetail().
-  if (!(bodyEditing && selFinding === bodyFindingId)) renderFindingDetail();
+  if (findingDetailEditPending() && selFinding === bodyFindingId) findingDetailRefreshDeferred = true;
+  else { findingDetailRefreshDeferred = false; renderFindingDetail(); }
 }
 
 // ---- block editor --------------------------------------------------------
@@ -275,7 +332,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-text${hasMd ? '' : ' find-doc-text-empty'}" data-i="${i}">
       ${controls}
       <div class="find-text-view md"${hasMd ? '' : ' style="display:none"'}>${hasMd ? renderMD(b.md) : ''}</div>
-      <textarea class="find-text-edit block-text" data-i="${i}" rows="1" spellcheck="true"
+      <textarea class="find-text-edit block-text" data-i="${i}" rows="1" spellcheck="true" aria-label="Finding evidence step ${i+1}"
         ${hasMd ? 'style="display:none"' : ''}
         placeholder="Describe the vulnerability, steps to reproduce, and what you observed…">${esc(b.md || '')}</textarea>
     </div>`;
@@ -289,7 +346,7 @@ function renderBlockEl(b, i, total) {
           <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot — evidence blob missing</div>
           <span class="hint">${esc(b.hash || '')}</span>
         </blockquote>
-        <input class="find-poc-note-input block-caption" data-i="${i}" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
+        <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
       </div>`;
     }
     const src = b.url || ('/api/findings/images/' + (b.hash || ''));
@@ -297,7 +354,7 @@ function renderBlockEl(b, i, total) {
       ${controls}
       <figure class="find-doc-figure">
         <img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
-        <input class="find-poc-note-input block-caption" data-i="${i}" value="${escAttr(b.caption || '')}"
+        <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}"
           placeholder="Caption (optional)" onclick="event.stopPropagation()">
       </figure>
     </div>`;
@@ -313,7 +370,7 @@ function renderBlockEl(b, i, total) {
         <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
         <span class="hint">Re-capture this endpoint to restore evidence</span>
       </blockquote>
-      <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
+      <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
     </div>`;
   }
   const reqLine = b.method
@@ -328,7 +385,7 @@ function renderBlockEl(b, i, total) {
          <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
        </div>
      </div>
-     <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}"
+     <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}"
        placeholder="Annotation (optional)" onclick="event.stopPropagation()">
    </div>`;
 }
@@ -436,7 +493,8 @@ function renderFindBody(fid) {
 }
 
 function scheduleSave(fid) {
-  clearTimeout(bodySaveTimer);
+  const previous = bodySaveTimers.get(fid);
+  if (previous) clearTimeout(previous);
   // Snapshot the blocks now: switching findings before the 700 ms debounce fires
   // would otherwise make the deferred save read a module-level bodyBlocks that now
   // belongs to a different finding and PATCH it onto this one.
@@ -450,19 +508,88 @@ function scheduleSave(fid) {
     if (b.caption) r.caption = b.caption;
     return r;
   });
-  bodySaveTimer = setTimeout(() => flushBodySave(fid, snap), 700);
+  bodySaveTimers.set(fid, setTimeout(() => {
+    bodySaveTimers.delete(fid);
+    flushBodySave(fid, snap);
+  }, 700));
+}
+
+function findingWriteQueue(id) {
+  let queue = findingWriteQueues.get(id);
+  if (!queue) {
+    queue = { running: false, pendingFields: null, pendingWaiters: [], latest: {}, latestValues: {} };
+    findingWriteQueues.set(id, queue);
+  }
+  return queue;
+}
+
+function pendingFindingValue(id, key, fallback) {
+  const queue = findingWriteQueues.get(id);
+  return queue && Object.prototype.hasOwnProperty.call(queue.latestValues, key)
+    ? queue.latestValues[key]
+    : fallback;
+}
+
+function acknowledgedFindingValue(id, key, fallback) {
+  const finding = findings.find(item => item.id === id);
+  return finding && Object.prototype.hasOwnProperty.call(finding, key)
+    ? finding[key]
+    : fallback;
+}
+
+function enqueueFindingPatch(id, fields) {
+  const queue = findingWriteQueue(id);
+  const tokens = {};
+  for (const key of Object.keys(fields)) {
+    tokens[key] = Symbol(key);
+    queue.latest[key] = tokens[key];
+    queue.latestValues[key] = fields[key];
+  }
+  if (!queue.pendingFields) queue.pendingFields = {};
+  Object.assign(queue.pendingFields, fields);
+  const result = new Promise((resolve, reject) => queue.pendingWaiters.push({ resolve, reject, tokens }));
+  void drainFindingWrites(id);
+  return result;
+}
+
+async function drainFindingWrites(id) {
+  const queue = findingWriteQueues.get(id);
+  if (!queue || queue.running) return;
+  queue.running = true;
+  try {
+    while (queue.pendingFields) {
+      const fields = queue.pendingFields;
+      queue.pendingFields = null;
+      const waiters = queue.pendingWaiters.splice(0);
+      try {
+        await api('/api/findings/' + id, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(fields),
+        });
+        Object.assign(findings.find(x => x.id === id) || {}, fields);
+        for (const waiter of waiters) {
+          const latest = Object.entries(waiter.tokens).every(([key, token]) => queue.latest[key] === token);
+          waiter.resolve({ latest });
+        }
+      } catch (error) {
+        for (const waiter of waiters) waiter.reject(error);
+      }
+    }
+  } finally {
+    queue.running = false;
+    if (!queue.pendingFields && !queue.pendingWaiters.length) findingWriteQueues.delete(id);
+    else void drainFindingWrites(id);
+  }
 }
 
 async function flushBodySave(fid, snapshot) {
   if (!fid || !snapshot) return;
+  bodySavesInFlight++;
   // Strip enriched metadata before sending; store only type/md/flowId/note.
   try {
-    await api('/api/findings/' + fid, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: JSON.stringify(snapshot) }),
-    });
+    await enqueueFindingPatch(fid, { body: JSON.stringify(snapshot) });
   } catch (e) { toast('body save: ' + e.message); }
+  finally { bodySavesInFlight--; setTimeout(refreshDeferredFindingDetail, 0); }
 }
 
 // ---- detail pane ---------------------------------------------------------
@@ -472,17 +599,21 @@ function missingLabel(k) {
 }
 
 async function patchFinding(id, fields) {
-  await api('/api/findings/' + id, {
-    method: 'PATCH', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(fields),
-  });
-  Object.assign(findings.find(x => x.id === id) || {}, fields);
+  findingWritesInFlight++;
+  try {
+    return await enqueueFindingPatch(id, fields);
+  } finally {
+    findingWritesInFlight--;
+    setTimeout(refreshDeferredFindingDetail, 0);
+  }
 }
 
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
+  findingDetailRefreshDeferred = false;
   const f = findings.find(x => x.id === selFinding);
   if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg></div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
+  const edit = findEditMode;
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
   const sevOpts = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(s => `<option value="${s}"${s === f.severity ? ' selected' : ''}>${s}</option>`).join('');
@@ -505,7 +636,7 @@ function renderFindingDetail() {
     ? `<div class="find-verif-banner" role="status">
         <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Needs human verification</div>
         ${edit
-          ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
+          ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" aria-label="Human verification instructions" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
           : `<div class="find-verif-read">${f.verificationInstructions ? esc(f.verificationInstructions) : '<span class="hint">No verification instructions recorded.</span>'}</div>`}
       </div>` : '';
   const machineProof = (() => {
@@ -534,15 +665,14 @@ function renderFindingDetail() {
     </div>`;
   })();
 
-  const edit = findEditMode;
   const impactRead = f.impact
     ? `<div class="find-sticky-impact">${esc(f.impact)}</div>`
     : `<div class="hint">No impact written yet.</div>`;
   const metaStrip = `<details class="find-meta-strip" open><summary>Technical context · target, classification, and tags</summary>
     <div class="find-meta-strip-body">
       ${edit
-        ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2">${esc(f.why || '')}</textarea></section>
-           <section class="find-sec" id="find-sec-target"><h3>Affected target</h3><input id="findTarget" class="btn btn-field find-target-input" type="text" value="${escAttr(f.target || '')}"></section>`
+        ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2" aria-label="Why this is a finding">${esc(f.why || '')}</textarea></section>
+           <section class="find-sec" id="find-sec-target"><h3>Affected target</h3><input id="findTarget" class="btn btn-field find-target-input" type="text" aria-label="Affected target" value="${escAttr(f.target || '')}"></section>`
         : `<p><b>Why</b> — ${f.why ? esc(f.why) : '<span class="hint">—</span>'}</p>
            <p><b>Target</b> — ${f.target ? esc(f.target) : '<span class="hint">—</span>'}</p>`}
       <p class="hint">CVSS ${esc(f.cvss || '—')} · CWE ${esc(f.cwe || '—')} · env ${esc(f.environment || '—')}</p>
@@ -582,7 +712,7 @@ function renderFindingDetail() {
     <section class="find-sec find-sec-impact-sticky" id="find-sec-impact">
       <h3>Impact</h3>
       ${edit
-        ? `<textarea id="findImpact" class="find-field-text" rows="2" placeholder="What an attacker gains…">${esc(f.impact || '')}</textarea>`
+        ? `<textarea id="findImpact" class="find-field-text" rows="2" aria-label="Finding impact" placeholder="What an attacker gains…">${esc(f.impact || '')}</textarea>`
         : impactRead}
     </section>
     ${metaStrip}
@@ -602,10 +732,11 @@ function renderFindingDetail() {
     <details class="find-more"${f.fix ? ' open' : ''}>
       <summary>Remediation (optional)</summary>
       ${edit
-        ? `<textarea id="findFix" class="find-field-text" rows="2">${esc(f.fix || '')}</textarea>`
+        ? `<textarea id="findFix" class="find-field-text" rows="2" aria-label="Finding remediation">${esc(f.fix || '')}</textarea>`
         : `<div class="hint" style="padding:8px 0">${f.fix ? esc(f.fix) : '—'}</div>`}
     </details>
   </article>`;
+  box.onfocusout = () => setTimeout(refreshDeferredFindingDetail, 0);
 
   bodyFindingId = f.id;
   bodyBlocks = (f.blocks || []).map(b => ({ ...b }));
@@ -619,12 +750,21 @@ function renderFindingDetail() {
     const el = $(id); if (!el) return;
     el.addEventListener('blur', async () => {
       const v = getVal(el);
-      if (v === (f[key] || '')) return;
+      const previous = f[key] || '';
+      const expected = pendingFindingValue(f.id, key, previous);
+      if (v === expected) return;
       try {
-        await patchFinding(f.id, { [key]: v });
+        const result = await patchFinding(f.id, { [key]: v });
+        // A newer edit for this same field may have been coalesced while the
+        // request was in flight. Its completion owns the local model and reload.
+        if (!result?.latest) return;
         f[key] = v;
-        await loadFindings();
-      } catch (err) { toast(err.message); }
+      } catch (err) {
+        const authoritative = acknowledgedFindingValue(f.id, key, previous);
+        if (el.value === v) el.value = authoritative;
+        toast(err.message); return;
+      }
+      await loadFindings();
     });
   };
   if (edit) {
@@ -640,34 +780,55 @@ function renderFindingDetail() {
   const renameBtn = $('#findRename');
   if (renameBtn) renameBtn.onclick = async () => {
     const t = await uiPrompt({ title: 'Rename finding', value: f.title, placeholder: 'Finding title' });
-    if (t == null || t === f.title) return;
-    try { await patchFinding(f.id, { title: t }); f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
+    if (t == null || t === pendingFindingValue(f.id, 'title', f.title)) return;
+    try { const result = await patchFinding(f.id, { title: t }); if (!result?.latest) return; f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
     catch (err) { toast(err.message); }
   };
   const stSel = $('#findStatus');
   if (stSel) stSel.onchange = async e => {
+    const previous = f.status || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { status: e.target.value });
-      f.status = e.target.value;
-      toast('status: ' + statusLabel(f.status));
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      const result = await patchFinding(f.id, { status: attempted });
+      if (!result?.latest) return;
+    } catch (err) {
+      const authoritative=acknowledgedFindingValue(f.id, 'status', previous);
+      if (e.target.value === attempted) e.target.value = authoritative;
+      toast(err.message); return;
+    }
+    f.status = attempted;
+    toast('status: ' + statusLabel(f.status));
+    await loadFindings();
   };
   const sevSel = $('#findSeverity');
   if (sevSel) sevSel.onchange = async e => {
+    const previous = f.severity || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { severity: e.target.value });
-      f.severity = e.target.value;
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      const result = await patchFinding(f.id, { severity: attempted });
+      if (!result?.latest) return;
+    } catch (err) {
+      const authoritative=acknowledgedFindingValue(f.id, 'severity', previous);
+      if (e.target.value === attempted) { e.target.value = authoritative; e.target.style.color = sevColor(authoritative); }
+      toast(err.message); return;
+    }
+    f.severity = attempted;
+    await loadFindings();
   };
   const envSel = $('#findEnv');
   if (envSel) envSel.onchange = async e => {
+    const previous = f.environment || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { environment: e.target.value });
-      f.environment = e.target.value;
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      const result = await patchFinding(f.id, { environment: attempted });
+      if (!result?.latest) return;
+    } catch (err) {
+      const authoritative=acknowledgedFindingValue(f.id, 'environment', previous);
+      if (e.target.value === attempted) e.target.value = authoritative;
+      toast(err.message); return;
+    }
+    f.environment = attempted;
+    await loadFindings();
   };
   const deleteBtn = $('#findDelete');
   if (deleteBtn) deleteBtn.onclick = async () => {
@@ -694,7 +855,8 @@ function renderFindingDetail() {
     if (v == null) return;
     const tags = parseFindTags(v);
     try {
-      await patchFinding(f.id, { tags });
+      const result = await patchFinding(f.id, { tags });
+      if (!result?.latest) return;
       f.tags = tags;
       toast(tags.length ? 'tags: ' + tags.join(', ') : 'tags cleared');
       await loadFindings();
@@ -824,6 +986,19 @@ async function addPoCFlowsToFinding(findingId) {
 let flowPickFindingId = null;
 let flowPickFlows = [];
 let flowPickSel = new Set();
+// Flow-picker requests outlive the event that started them. These epochs keep
+// a late response from a previous query or finding from repainting the active
+// modal (especially across close/reopen).
+let flowPickEpoch=0;
+let flowPickSearchEpoch=0;
+
+function flowPickModalOpen() {
+  return $('#findFlowPickModal')?.style.display!=='none';
+}
+
+function flowPickSearchCurrent(q) {
+  return flowPickModalOpen() && ($('#ffpSearch')?.value || '').trim() === String(q || '').trim();
+}
 
 function flowPickIdQuery(q) {
   const s = (q || '').trim();
@@ -846,17 +1021,32 @@ function flowPickFilter(q) {
 let flowPickSearchTimer = null;
 
 async function flowPickSearch(q) {
+  const searchEpoch=++flowPickSearchEpoch;
+  const ownerEpoch=flowPickEpoch;
+  const ownerFindingId=flowPickFindingId;
   const idTerm = flowPickIdQuery(q);
   if (idTerm) {
     try {
       const d = await api('/api/flows?search=' + encodeURIComponent(idTerm) + '&searchScope=id&limit=20');
+      if(searchEpoch!==flowPickSearchEpoch)return;
+      if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+      if(!flowPickSearchCurrent(q))return;
       const extra = d.flows || [];
       const seen = new Set(flowPickFlows.map(f => f.id));
       for (const f of extra) {
         if (!seen.has(f.id)) { flowPickFlows.push(f); seen.add(f.id); }
       }
-    } catch (e) { toast(e.message); }
+    } catch (e) {
+      if(searchEpoch!==flowPickSearchEpoch)return;
+      if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+      if(!flowPickSearchCurrent(q))return;
+      toast(e.message);
+      return;
+    }
   }
+  if(searchEpoch!==flowPickSearchEpoch)return;
+  if(ownerEpoch!==flowPickEpoch||ownerFindingId!==flowPickFindingId)return;
+  if(!flowPickSearchCurrent(q))return;
   renderFlowPickList(q);
 }
 
@@ -895,27 +1085,44 @@ function renderFlowPickList(filter = '') {
 }
 
 async function openFlowPickForFinding(findingId) {
+  const epoch=++flowPickEpoch;
+  const initialSearchEpoch=++flowPickSearchEpoch;
   flowPickFindingId = findingId;
   flowPickSel = new Set();
   flowPickFlows = [];
   const list = $('#findFlowPickList');
   if (list) list.innerHTML = '<div class="hint" style="padding:12px">Loading…</div>';
+  const count=$('#ffpCount');if(count)count.textContent='0 selected';
+  const attach=$('#ffpAttach');if(attach)attach.disabled=true;
   const search = $('#ffpSearch');
   if (search) search.value = '';
   openModal($('#findFlowPickModal'));
   try {
     const d = await api('/api/flows?limit=200');
-    flowPickFlows = d.flows || [];
-    renderFlowPickList();
-  } catch (e) { toast(e.message); if (list) list.innerHTML = ''; }
+    if(epoch!==flowPickEpoch||flowPickFindingId!==findingId)return;
+    if(!flowPickModalOpen())return;
+    const incoming=d.flows||[];
+    if(initialSearchEpoch===flowPickSearchEpoch)flowPickFlows=incoming;
+    else{
+      const seen=new Set(flowPickFlows.map(f=>f.id));
+      for(const flow of incoming){if(!seen.has(flow.id)){flowPickFlows.push(flow);seen.add(flow.id);}}
+    }
+    renderFlowPickList(search?.value||'');
+  } catch (e) {
+    if(epoch!==flowPickEpoch||flowPickFindingId!==findingId)return;
+    if(!flowPickModalOpen())return;
+    toast(e.message);
+    if (list) list.innerHTML = '';
+  }
 }
 
 /* ---- create finding ---- */
-function openFindCreate() {
+function openFindCreate(event) {
+  const trigger=event?.currentTarget;
+  if(trigger?.focus)trigger.focus({preventScroll:true});
   $('#fcTitle').value = '';
   $('#fcSeverity').value = 'Medium';
-  openModal($('#findCreateModal'));
-  $('#fcTitle').focus();
+  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle')});
 }
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
@@ -1037,7 +1244,11 @@ function pickFindingForFlows(ids) {
   };
 }
 $('#fpClose') && ($('#fpClose').onclick = () => closeModal($('#findPickModal')));
-$('#ffpClose') && ($('#ffpClose').onclick = () => closeModal($('#findFlowPickModal')));
+$('#ffpClose') && ($('#ffpClose').onclick = () => {
+  flowPickEpoch++;
+  flowPickSearchEpoch++;
+  closeModal($('#findFlowPickModal'));
+});
 $('#ffpSearch') && ($('#ffpSearch').oninput = e => {
   clearTimeout(flowPickSearchTimer);
   const v = e.target.value;

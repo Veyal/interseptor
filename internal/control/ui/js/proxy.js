@@ -1,19 +1,20 @@
 import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
-import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
+import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
+import { loadMapModule } from './project.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
 // it is a panel lazy-loaded on first visit (Phase 4a, UI-REDESIGN-ROADMAP.md §4) —
 // a static import here would defeat that by pulling it in at boot via proxy.js's
 // own always-loaded chain.
-const focusMapSearch=(...args)=>import('./map.js').then(m=>m.focusMapSearch(...args));
+const focusMapSearch=(...args)=>loadMapModule().then(m=>m.focusMapSearch(...args));
 
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.
@@ -33,6 +34,7 @@ function applyIdentityToHeaders(hdrsText, identityHdrs){
 }
 
 async function sendAsIdentity(f, id){
+  if(!await waitForWorkstationReady())return false;
   document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
   try{
@@ -61,6 +63,10 @@ const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst wind
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
+let flowRefreshing=false;
+let flowLoadEpoch=0,flowPageEpoch=0;
+let flowLoadEvents=new Map();
+let flowLoadOverflow=false;
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
@@ -408,7 +414,8 @@ function updateTruncBanner(){
   if(!b)return;
   // No hard cap anymore — older flows stream in as you scroll. Show a subtle
   // affordance only while a page is loading or when more remain below.
-  if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
+  if(flowRefreshing){b.style.display='block';b.textContent='Refreshing flows…';}
+  else if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
   else if(flowHasMore){b.style.display='block';b.textContent='Scroll down to load older flows.';}
   else b.style.display='none';
 }
@@ -495,7 +502,14 @@ function queueFullWindowRebuild(){
 // where it sits). That distinction is what lets updates patch a single DOM node
 // even while virtualized, instead of falling back to a full window rebuild.
 function flowRowLiveUpdate(f,isNew){
-  if(!flowVirt.isActive()){patchFlowRow(f);consumeFlowSignals();return;}
+  if(!flowVirt.isActive()){
+    // A list that started below the threshold is still on the incremental DOM
+    // patch path. The insert that crosses the threshold must rebuild once so
+    // computeWindow() can activate virtualization; otherwise every later live
+    // row remains mounted for the rest of the capture session.
+    if(isNew&&state.flows.length>=VIRT_MIN){renderRows();return;}
+    patchFlowRow(f);consumeFlowSignals();return;
+  }
   if(isNew){queueFullWindowRebuild();return;}
   // Virtualized + update: the row is either currently rendered (patch it directly,
   // same surgical replace patchFlowRow already does for the non-virtualized case)
@@ -504,8 +518,47 @@ function flowRowLiveUpdate(f,isNew){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row)patchFlowRow(f);
 }
+function rememberFlowLoadEvent(kind,flow){
+  if(!flowRefreshing)return;
+  const previous=flowLoadEvents.get(flow.id);
+  const replayKind=kind==='new'||(previous&&previous.kind==='new')?'new':'update';
+  // Keep one latest snapshot per flow. Delete first so Map iteration remains in
+  // live-arrival order while a new+update pair consumes only one bounded slot.
+  flowLoadEvents.delete(flow.id);
+  flowLoadEvents.set(flow.id,{kind:replayKind,flow});
+  if(flowLoadEvents.size>MAX_LIVE_FLOWS){
+    flowLoadOverflow=true;
+    flowLoadEvents.delete(flowLoadEvents.keys().next().value);
+  }
+}
+function reconcileFlowLoadEvent(event){
+  const f=event.flow;
+  if(event.kind==='new'){
+    if(!sortIsLiveDefault()||!canIncremental())return false;
+    if(flowMatchesFilters(f))upsertFlow(f);
+    return true;
+  }
+  if(!canIncremental())return false;
+  const existing=flowStore.byId.get(f.id);
+  if(existing){
+    const sortValueBefore=flowSortValue(existing),sortValueAfter=flowSortValue(f);
+    if(!flowMatchesFilters(f)){
+      removeFlow(flowStore,f.id);
+      if(state.selected)state.selected.delete(f.id);
+      if(state.selId===f.id){state.selId=null;state.detail=null;}
+      return true;
+    }
+    storeUpsertFlow(flowStore,f);
+    return sortValueBefore===sortValueAfter;
+  }
+  if(!flowMatchesFilters(f))return true;
+  if(!sortIsLiveDefault())return false;
+  upsertFlow(f);
+  return true;
+}
 export function handleFlowNew(f){
   if(!f)return;
+  rememberFlowLoadEvent('new',f);
   onFlowMaybeTLS(f);
   if(!sortIsLiveDefault()||!canIncremental()){scheduleReload();return;}
   if(!flowMatchesFilters(f))return; // doesn't match the active filters — nothing to show, no reload needed
@@ -518,6 +571,7 @@ export function handleFlowNew(f){
 }
 export function handleFlowUpdate(f){
   if(!f)return;
+  rememberFlowLoadEvent('update',f);
   onFlowMaybeTLS(f);
   const proxy=document.querySelector('.panel[data-panel="proxy"]');
   const active=proxy&&proxy.classList.contains('active');
@@ -533,8 +587,10 @@ export function handleFlowUpdate(f){
     // instead of a full reload either way.
     if(!canIncremental()){storeUpsertFlow(flowStore,f);if(active)flowRowLiveUpdate(f,false);return;}
     if(!flowMatchesFilters(f)){
+      const removedSelected=state.selId===f.id;
       removeFlow(flowStore,f.id);
       if(state.selected)state.selected.delete(f.id);
+      if(removedSelected){closeInspector();return;}
       if(active){const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');if(row)row.remove();else if(flowVirt.isActive())queueFullWindowRebuild();}
       return;
     }
@@ -707,29 +763,47 @@ function buildFlowParams(){
 function bodySearchActive(){return false;}
 
 export async function loadFlows(){
+  const epoch=++flowLoadEpoch;
+  flowPageEpoch++;
+  loadingMore=false;
+  flowLoadEvents=new Map();
+  flowLoadOverflow=false;
+  flowRefreshing=true;
+  flowHasMore=false;
+  updateTruncBanner();
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
   try{
     const d=await api('/api/flows?'+q.toString());
+    if(epoch!==flowLoadEpoch)return;
+    const replay=Array.from(flowLoadEvents.values());
+    const replayOverflow=flowLoadOverflow;
+    flowLoadEvents=new Map();
+    flowLoadOverflow=false;
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
+    let replayExact=!replayOverflow;
+    for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
     updateTruncBanner();
     refreshMethodFilter();
     loadTrafficDiagnosis();
-  }catch(e){toast('flows: '+e.message);}
+    if(!replayExact)scheduleReload();
+  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}}
+  finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
 
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
-  if(loadingMore||!flowHasMore||!state.flows.length)return;
+  if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
+  const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   updateTruncBanner();
   try{
@@ -739,6 +813,7 @@ export async function loadMoreFlows(){
     appendFlowCursor(q,last);
     q.set('limit',String(FLOW_FETCH+1));
     const d=await api('/api/flows?'+q.toString());
+    if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH;
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
@@ -752,7 +827,7 @@ export async function loadMoreFlows(){
       }
     }
   }catch(e){/* a failed page-load is non-fatal; the user can scroll again */}
-  finally{loadingMore=false;updateTruncBanner();}
+  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method
@@ -774,18 +849,31 @@ let methodsDirty=true; // build the method filter once initially
 // loaded list — essential once you've scrolled deep.
 const flowStore=createFlowStore(state.flows);
 let reloadTimer=null;
+const renderSideEpoch={req:0,res:0};
+let wsRenderEpoch=0;
+let selectFlowEpoch=0;
+const noteSaveTails=new Map();
+const noteEditorGenerations=new Map();
+function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 export async function selectFlow(id){
+  const selectEpoch=++selectFlowEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
+  const noteGeneration=noteEditorGeneration(id);
+  const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
   state.selId=id;renderRows();
   try{
     const d=await api('/api/flows/'+id);
-    if(state.selId!==id)return; // a newer selection superseded this one mid-fetch — don't overwrite its panes
+    if(!current())return;
     state.detail=d;
-    $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
+    if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
+    $('#noteBar').style.display='flex';
     await renderSide('req');
+    if(!current())return;
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
       await renderWSFrames(id);
+      if(!current())return;
     }else if(d.flags&FLAG_TLS){
       $('#resView').innerHTML=`<div style="padding:12px;color:var(--fg2);line-height:1.5"><strong style="color:var(--red)">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span style="color:var(--fg3)">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
       $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
@@ -796,10 +884,11 @@ export async function selectFlow(id){
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
       await renderSide('res');
+      if(!current())return;
       $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
-  }catch(e){toast('flow: '+e.message);}
+  }catch(e){if(current())toast('flow: '+e.message);}
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
@@ -815,15 +904,24 @@ function wsFrameRow(dir,opcode,length,text){
 // into the #wsMsg box (the most-expected WS-replay affordance that was missing).
 function wireWsFrames(root){
   if(!root)return;
-  root.querySelectorAll('.ws-frame-replay').forEach(el=>el.onclick=()=>{const m=$('#wsMsg');if(m){m.value=el.dataset.replay||'';m.focus();}});
+  root.querySelectorAll('.ws-frame-replay').forEach(el=>{
+    const activate=()=>{const m=$('#wsMsg');if(m){m.value=el.dataset.replay||'';m.focus();}};
+    el.setAttribute('aria-label','Load this text frame into the WebSocket replay editor');
+    wireRowKey(el,activate);
+  });
 }
 function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${d.host}${def?'':':'+d.port}${d.path||'/'}`;}
 export async function renderWSFrames(id){
+  const epoch=++wsRenderEpoch;
+  const detail=state.detail;
+  const selectEpoch=selectFlowEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
   try{
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
-    const url=flowWsURL(state.detail||{});
+    if(!current())return;
+    const url=flowWsURL(detail||{});
     const box=`<div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="wsMsg" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
+        <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
         <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
       <div id="wsReplayOut" style="margin-bottom:10px"></div>`;
     const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
@@ -832,7 +930,7 @@ export async function renderWSFrames(id){
     wireWsFrames($('#resView'));
     const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
     const inp=document.getElementById('wsMsg');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')wsReplay(url);};
-  }catch(e){$('#resView').textContent='(error: '+e.message+')';}
+  }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
 }
 async function wsReplay(url){
   const msg=($('#wsMsg')||{}).value||'';
@@ -862,11 +960,34 @@ export async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
   const dec=side==='req'?$('#reqDecode'):$('#resDecode');
   if(dec)dec.hidden=true;
-  if(!state.selId){return;}
+  const flowId=state.selId;
+  const detail=state.detail;
+  const selectEpoch=selectFlowEpoch;
+  const epoch=++renderSideEpoch[side];
+  if(!flowId||!detail){return;}
+  const len=side==='req'?detail.reqLen:detail.resLen;
+  // Binary body (image/font/media/archive/…): show only the headers — the bytes
+  // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
+  const mime=bodyMime(detail,side);
+  // "Render" only makes sense for HTML; for JSON/images/etc. it used to silently
+  // fall through to an ugly raw view. Hide the button and fall back to Pretty.
+  if(side==='res'){
+    const isHtml=!!mime&&/html/i.test(mime);
+    const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
+    if(renderBtn)renderBtn.style.display=isHtml?'':'none';
+    if(!isHtml&&state.view.res==='render'){
+      state.view.res='pretty';
+      const seg=document.querySelector('#inspect .seg[data-side="res"]');
+      if(seg)seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+    }
+  }
+  const view=state.view[side];
+  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
   const draw=async()=>{
     try{
-      if(state.view[side]==='decoded'){
-        const d=await api('/api/flows/'+state.selId+'/decoded?side='+side);
+      if(view==='decoded'){
+        const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
+        if(!current())return;
         if(!d.matched){
           el.innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this ${side==='req'?'request':'response'}.<br>
             Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
@@ -882,46 +1003,31 @@ export async function renderSide(side){
         const body=typeof d.plaintext==='string'?d.plaintext:'';
         el._rawText=body;
         el._pretty=true;
-        el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body, mime||'application/json')+'</pre>';
+        el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,mime||'application/json')+'</pre>';
         return;
       }
-      const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
+      const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
+      if(!current())return;
       el._rawText=raw;
-      el._pretty=state.view[side]==='pretty';
-      if(side==='res'&&state.view.res==='render'&&mime&&/html/i.test(mime)){
+      el._pretty=view==='pretty';
+      if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
         const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';
         el.innerHTML=`<iframe sandbox="" title="Rendered HTML" srcdoc="${escAttr(body)}" style="width:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>`;
         return;
       }
-      let html=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty',mime);
+      let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);
       const fq=($('#inspectFindIn')||{}).value;
       const stat=$('#inspectFindStat');
       if(side==='res'&&fq&&fq.length>1){
-        const r=markFindInHtml(html,fq); html=r.html;
+        const r=markFindInHtml(html,fq);html=r.html;
         if(stat)stat.textContent=r.count?r.count+' match'+(r.count===1?'':'es'):'no matches';
-      } else if(stat){ stat.textContent=''; }
+      }else if(stat){stat.textContent='';}
       el.innerHTML=html;
-    }catch(e){el.textContent='(error: '+e.message+')';}
+    }catch(e){if(current())el.textContent='(error: '+e.message+')';}
   };
-  const len=state.detail?(side==='req'?state.detail.reqLen:state.detail.resLen):0;
-  // Binary body (image/font/media/archive/…): show only the headers — the bytes
-  // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
-  const mime=bodyMime(state.detail,side);
-  // "Render" only makes sense for HTML; for JSON/images/etc. it used to silently
-  // fall through to an ugly raw view. Hide the button and fall back to Pretty.
-  if(side==='res'){
-    const isHtml=!!mime&&/html/i.test(mime);
-    const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
-    if(renderBtn)renderBtn.style.display=isHtml?'':'none';
-    if(!isHtml&&state.view.res==='render'){
-      state.view.res='pretty';
-      const seg=document.querySelector('#inspect .seg[data-side="res"]');
-      if(seg)seg.querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.view==='pretty');});
-    }
-  }
   if(isBinaryMime(mime)){
-    const dl=flowBodyDownloadName(state.selId,side,mime), href=flowBodyDownloadHref(state.selId,side);
-    el.innerHTML=highlightHTTP(headerBlockText(state.detail,side))+
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
+    el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
         <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
         <button class="btn" data-bin="1" style="margin-top:8px;margin-left:6px">Show raw anyway</button></div>`;
@@ -930,7 +1036,7 @@ export async function renderSide(side){
     return;
   }
   if(len>RENDER_CAP){
-    const dl=flowBodyDownloadName(state.selId,side,mime), href=flowBodyDownloadHref(state.selId,side);
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=`<div class="hint" style="padding:18px;line-height:1.8">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
       <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
       <button class="btn" data-bigshow="1" style="margin-top:8px">Show anyway</button></div>`;
@@ -988,15 +1094,26 @@ if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
+let flowSearchSourceEpoch=0;
 function flowSearchStatus(text,error=false){const el=$('#flowSearchScriptError'),status=$('#flowSearchScriptStatus');if(el)el.textContent=error?String(text||''):'';if(status)status.textContent=error?'':String(text||'');}
 function flowSearchPayload(){return {name:($('#flowSearchScriptName')||{}).value.trim(),scope:'anywhere',script:($('#flowSearchScriptEditor')||{}).value||'',flowId:state.selId||0};}
 function renderFlowSearches(){const list=$('#flowSearchScriptList');if(!list)return;list.innerHTML='<option value="">new search…</option>'+flowSearchUI.items.map(x=>`<option value="${escAttr(x.name)}">${esc(x.name)} · ${esc(x.scope||'anywhere')}</option>`).join('');list.value=flowSearchUI.name;}
 async function loadFlowSearches(){try{const d=await api('/api/flow-searches');flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
-async function loadFlowSearchSource(name){try{const d=await api('/api/flow-searches/'+encodeURIComponent(name)+'/source');flowSearchUI.name=name;$('#flowSearchScriptName').value=d.name||name;$('#flowSearchScriptEditor').value=d.script||'';state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();}catch(e){flowSearchStatus(e.message,true);}}
+async function loadFlowSearchSource(name){
+  const epoch=++flowSearchSourceEpoch;
+  const current=()=>epoch===flowSearchSourceEpoch&&$('#flowSearchScriptList')?.value===name;
+  try{
+    const d=await api('/api/flow-searches/'+encodeURIComponent(name)+'/source');
+    if(!current())return;
+    flowSearchUI.name=name;$('#flowSearchScriptName').value=d.name||name;$('#flowSearchScriptEditor').value=d.script||'';
+    state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();
+  }catch(e){if(current())flowSearchStatus(e.message,true);}
+}
 async function testFlowSearch(){const p=flowSearchPayload();if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchStatus(d.valid?'valid':'invalid');}catch(e){flowSearchStatus(e.message,true);}}
 async function saveFlowSearch(){const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchUI.name=p.name;flowSearchStatus('saved');await loadFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
 async function deleteFlowSearch(){const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name)return;try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';renderFlowSearches();flowSearchStatus('deleted');}catch(e){flowSearchStatus(e.message,true);}}
-$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;});});
 $('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
 $('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
 $('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
@@ -1028,19 +1145,32 @@ export { syncSourceFilters };
 $('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
 $('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();loadFlows();});
  syncSourceFilters();
-export async function saveNote(){
-  if(!state.selId)return;
+export function saveNote(){
+  const flowId=state.selId,detail=state.detail;
+  if(!flowId)return Promise.resolve();
   const note=$('#noteInput').value;
-  if(state.detail&&note===(state.detail.note||''))return; // unchanged — skip redundant PUT
-  try{
-    await api('/api/flows/'+state.selId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
-    if(state.detail)state.detail.note=note;
-    const fl=flowStore.byId.get(state.selId);
-    if(fl){fl.note=note;patchFlowRow(fl);}
-    const s=$('#noteSaved');s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);
-  }catch(e){toast('note: '+e.message);}
+  const editorGeneration=noteEditorGeneration(flowId);
+  if(detail&&note===(detail.note||''))return Promise.resolve();
+  const previous=noteSaveTails.get(flowId)||Promise.resolve();
+  const save=previous.then(async()=>{
+    try{
+      await api('/api/flows/'+flowId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
+      if(detail)detail.note=note;
+      const fl=flowStore.byId.get(flowId);
+      if(fl){fl.note=note;patchFlowRow(fl);}
+      if(state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration&&$('#noteInput').value===note){
+        if(state.detail)state.detail.note=note;
+        const s=$('#noteSaved');if(s){s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);}
+      }
+    }catch(e){toast('note: '+e.message);}
+  });
+  const tail=save.catch(()=>{});
+  noteSaveTails.set(flowId,tail);
+  tail.finally(()=>{if(noteSaveTails.get(flowId)===tail)noteSaveTails.delete(flowId);});
+  return save;
 }
 $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
+$('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
 $('#noteInput').addEventListener('blur',saveNote);
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
 export async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
@@ -1101,11 +1231,11 @@ export function renderScope(){
   }
   if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
   body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
-    <td><input type="text" data-k="host" value="${escAttr(r.host)}" placeholder="*.acme.com"></td>
-    <td><input type="text" data-k="path" value="${escAttr(r.path)}" placeholder="/"></td>
-    <td><input type="text" data-k="scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
+    <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
+    <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
+    <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
+    <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"></td>
+    <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
     tr.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>updateScope(id,tr)));});
@@ -1117,11 +1247,16 @@ async function updateScope(id,tr){
   try{await api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('scope saved');}catch(e){toast(e.message);loadScope();}
 }
 async function deleteScope(id){try{await api('/api/scope/'+id,{method:'DELETE'});loadScope();}catch(e){toast(e.message);}}
+let scopeAddInFlight=false,scopeAddEpoch=0;
+function setScopeAddState(stateName){const b=$('#addScopeBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add';}
 $('#addScopeBtn').onclick=async()=>{
+  if(scopeAddInFlight)return;
   const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
   if(!rule.host&&!rule.path){toast('host or path required');return;}
+  scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
   try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');}catch(e){toast(e.message);}
+    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
+  finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
 export function syncControls(){

@@ -35,6 +35,17 @@ scan under pressure.
    `TestUIStylesheetHasNoDuplicateSelectors` enforces this.
 4. Check both themes, narrow layouts, loading/error/empty states, and dense
    request/response views.
+   - At narrow widths, inspect the right edge of descendants as well as the
+     document scroll width. A clipped toolbar can be unusable even when the
+     page itself reports no overflow.
+   - Main-tab state and focus must commit synchronously. Apply finite entrance
+     motion after the panel switch; do not defer ARIA/tab state inside a View
+     Transition callback. Clip transformed panels inside the main workspace so
+     entrance travel cannot create transient document-level overflow.
+   - For incrementally updated virtual lists, explicitly transition from the
+     patch-only path to a full window render when the item count crosses the
+     virtualization threshold. Checking only the existing active flag leaves a
+     list that started small permanently unvirtualized.
 5. Run the focused UI tests, then `go test ./...`, `go test -race ./...`,
    `go vet ./...`, and a no-cgo build before release.
 

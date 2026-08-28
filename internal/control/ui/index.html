@@ -82,7 +82,8 @@
 
 
 <div id="appRow">
-<div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
+<div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
+  <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
     <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
@@ -271,7 +272,7 @@
   </div>
 
   <!-- REPEATER -->
-  <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater">
+  <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert>
     <div class="rep-tabs" id="repTabs"></div>
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
@@ -311,7 +312,7 @@
   </div>
 
   <!-- INTRUDER -->
-  <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder">
+  <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert>
     <div class="rep-tabs" id="intrTabs"></div>
     <!-- run bar: grouped by intent (target · mode · runtime · start) -->
     <div class="intr-bar">
@@ -489,7 +490,7 @@ Content-Type: application/json
       </div>
     </div>
     <div id="mapCrumb" class="map-crumb" style="display:none"></div>
-    <div id="mapWarn" class="map-warn" style="display:none"></div>
+    <div id="mapWarn" class="map-warn" style="display:none" role="status" aria-live="polite"></div>
     <div id="mapTree" class="map-tree"></div>
     <div id="mapTable" class="map-table-wrap map-view" style="display:none"></div>
     <div id="mapGraphWrap" style="display:none;flex:1;min-height:0;position:relative">
@@ -516,7 +517,7 @@ Content-Type: application/json
     <div class="toolbar">
       <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
-      <span class="count" id="actCount"></span>
+      <span class="count" id="actCount" role="status" aria-live="polite" aria-atomic="true"></span>
       <button class="btn act-clear" id="actClear">Clear</button>
     </div>
     <div id="actFeed" class="scroll"></div>
@@ -568,7 +569,7 @@ Content-Type: application/json
               <span class="hint" id="deviceProxyResolved">…</span>
             </div>
             <div class="field" id="deviceProxyManualField" style="display:none">
-              <label>Manual host (port comes from listener)</label>
+              <label for="deviceProxyManualHost">Manual host (port comes from listener)</label>
               <input id="deviceProxyManualHost" placeholder="192.168.1.5" spellcheck="false" style="font-family:var(--mono)">
             </div>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" type="button" id="saveDeviceProxyBtn">Save device proxy</button></div>
@@ -862,7 +863,7 @@ Content-Type: application/json
         <section class="set-sec" data-sec="scope" hidden>
           <div class="section">
             <h3>TARGET SCOPE</h3>
-            <p class="hint" style="margin-bottom:10px"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.acme.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
+            <p class="hint" style="margin-bottom:10px"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.example.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
             <p id="scopeDupWarn" class="hint" style="display:none;margin-bottom:8px;color:var(--amber)"></p>
             <table class="rules-tbl">
               <thead><tr><th style="width:34px">On</th><th style="width:96px">Action</th><th>Host</th><th style="width:130px">Path</th><th style="width:84px">Scheme</th><th style="width:60px"></th></tr></thead>
@@ -870,7 +871,7 @@ Content-Type: application/json
             </table>
             <div class="row" style="gap:8px;margin-top:10px">
               <select id="newScopeAction" class="btn" aria-label="Scope rule action"><option value="include">Include</option><option value="exclude">Exclude</option></select>
-              <input id="newScopeHost" class="btn btn-field" style="flex:1" aria-label="Scope rule — host pattern" placeholder="host e.g. *.acme.com or .*ohsome.*">
+              <input id="newScopeHost" class="btn btn-field" style="flex:1" aria-label="Scope rule — host pattern" placeholder="host e.g. *.example.com or .*example\.com">
               <input id="newScopePath" class="btn btn-field" style="width:130px" aria-label="Scope rule — path prefix" placeholder="path prefix or regex">
               <button class="btn btn-primary" id="addScopeBtn">+ Add</button>
             </div>
@@ -966,7 +967,7 @@ Content-Type: application/json
             <h3>SESSION · auth headers</h3>
             <p class="hint" style="margin-bottom:10px">Auto-applied to <b>Repeater</b> and <b>Intruder</b> sends. Sent only to in-scope hosts.</p>
             <label class="chk-row" style="margin-bottom:8px"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
-            <div class="field"><textarea id="setSessionHeaders" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
+            <div class="field"><textarea id="setSessionHeaders" aria-label="Session headers applied to outgoing sends" rows="3" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <label class="chk-row" style="align-items:flex-start;margin-bottom:8px"><input type="checkbox" id="setSessionUnscoped" style="margin-top:2px"> <span><b style="color:var(--red)">Allow on any host (unsafe)</b> — attach session headers even when the send target is outside scope. Only use if you understand the cross-domain leak risk.</span></label>
             <details class="section set-disc">
             <summary>Per-host overrides</summary>
@@ -978,7 +979,7 @@ Content-Type: application/json
             <summary>Token macro (CSRF / re-auth)</summary>
             <p class="hint" style="margin:10px 0 12px">Before each send, fires a refresh request, extracts a value with regex, and injects it as a header or placeholder.</p>
             <label class="chk-row" style="margin-bottom:10px"><input type="checkbox" id="macroOn"> Run token macro before each send</label>
-            <div class="field" style="max-width:none"><label>Refresh request <span class="hint">(raw HTTP — request line + headers)</span></label><textarea id="macroReq" rows="4" placeholder="GET /login HTTP/1.1&#10;Host: app.example.com&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
+            <div class="field" style="max-width:none"><label for="macroReq">Refresh request <span class="hint">(raw HTTP — request line + headers)</span></label><textarea id="macroReq" rows="4" placeholder="GET /login HTTP/1.1&#10;Host: app.example.com&#10;Cookie: session=…" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
               <input id="macroTarget" class="btn btn-field field-grow font-mono" style="min-width:200px" aria-label="Token macro — target URL" placeholder="https://app.example.com" spellcheck="false">
               <input id="macroExtract" class="btn btn-field field-grow font-mono" style="min-width:200px" aria-label="Token macro — extract regex" placeholder="extract regex, 1 group e.g. name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;" spellcheck="false">
@@ -993,7 +994,7 @@ Content-Type: application/json
             <summary>Login macro (session re-auth)</summary>
             <p class="hint" style="margin:10px 0 12px">Runs a login request to extract <b>Cookie</b>/<b>Authorization</b> into session headers.</p>
             <label class="chk-row" style="margin-bottom:10px"><input type="checkbox" id="loginMacroOn"> Enable login macro</label>
-            <div class="field" style="max-width:none"><label>Login request <span class="hint">(raw HTTP)</span></label><textarea id="loginMacroReq" rows="4" placeholder="POST /api/login HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/json&#10;&#10;{&quot;user&quot;:&quot;…&quot;,&quot;pass&quot;:&quot;…&quot;}" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
+            <div class="field" style="max-width:none"><label for="loginMacroReq">Login request <span class="hint">(raw HTTP)</span></label><textarea id="loginMacroReq" rows="4" placeholder="POST /api/login HTTP/1.1&#10;Host: app.example.com&#10;Content-Type: application/json&#10;&#10;{&quot;user&quot;:&quot;…&quot;,&quot;pass&quot;:&quot;…&quot;}" style="font-family:var(--mono);width:100%;resize:vertical"></textarea></div>
             <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
               <input id="loginMacroTarget" class="btn btn-field field-grow font-mono" style="min-width:200px" aria-label="Login macro — target URL" placeholder="https://app.example.com" spellcheck="false">
               <label class="hint">Refresh sec <input id="loginMacroRefresh" class="btn" type="number" min="0" value="0" style="background:var(--bg3);width:72px" title="0 = manual / 401 only"></label>
@@ -1135,7 +1136,7 @@ Content-Type: application/json
         <h3 class="sc-section">Navigation</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>K</kbd></div><p class="sc-desc">Command palette — jump anywhere, run anything</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>p</kbd></div><p class="sc-desc">Go to a panel — p Proxy, i Intercept, r Repeater, u Intruder</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings, o Removed</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus History search (Proxy)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>?</kbd></div><p class="sc-desc">This shortcuts panel</p></div>
         <h3 class="sc-section">History</h3>
@@ -1152,12 +1153,12 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></div><p class="sc-desc">Intruder and Decoder support <b>Load file</b> for payloads, templates, and blobs</p></div>
         <div class="sc-card"><div class="sc-keys">Map ▾</div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
         <h3 class="sc-section">Intercept</h3>
-        <div class="sc-card"><div class="sc-keys"><kbd>f</kbd></div><p class="sc-desc">Forward the selected held request (works while editing raw)</p></div>
-        <div class="sc-card"><div class="sc-keys"><kbd>d</kbd></div><p class="sc-desc">Drop the selected held request (works while editing raw)</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>f</kbd></div><p class="sc-desc">Forward the selected held request (outside editors)</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>d</kbd></div><p class="sc-desc">Drop the selected held request (outside editors)</p></div>
         <h3 class="sc-section">General</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Esc</kbd></div><p class="sc-desc">Close dialog → context menu → collapse inspector</p></div>
       </div>
-      <div class="hint sc-foot">Most workflow shortcuts are disabled while typing — Intercept <kbd>f</kbd>/<kbd>d</kbd> and Repeater Send still work in their editors.</div>
+      <div class="hint sc-foot">Plain-letter workflow shortcuts are disabled while typing. Repeater Send still works in its editor.</div>
     </div>
   </div>
 </div>
@@ -1202,7 +1203,7 @@ Content-Type: application/json
           <span class="hint" id="checkKindHint" style="display:none;color:var(--amber)"></span>
         </div>
         <div id="checkPaneCode" class="check-pane">
-          <textarea id="checkSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
+          <textarea id="checkSrc" class="rep-edit" aria-label="Custom check source" spellcheck="false" style="border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
         </div>
         <div id="checkPaneDocs" class="check-pane" style="display:none">
           <div id="checkDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
@@ -1247,7 +1248,7 @@ Content-Type: application/json
           <span class="hint" id="codecFlowHint">Test uses selected flow or latest capture</span>
         </div>
         <div id="codecPaneCode" class="check-pane">
-          <textarea id="codecSrc" class="rep-edit" spellcheck="false" style="border-top:none" placeholder="meta = {&#10;    &quot;id&quot;: &quot;aes-content-field&quot;,&#10;    &quot;title&quot;: &quot;JSON content&quot;,&#10;    &quot;apply_on_send&quot;: False,&#10;}&#10;&#10;def match(flow, side):&#10;    return True&#10;&#10;def decode(flow, side, raw):&#10;    return raw"></textarea>
+          <textarea id="codecSrc" class="rep-edit" aria-label="Message codec source" spellcheck="false" style="border-top:none" placeholder="meta = {&#10;    &quot;id&quot;: &quot;aes-content-field&quot;,&#10;    &quot;title&quot;: &quot;JSON content&quot;,&#10;    &quot;apply_on_send&quot;: False,&#10;}&#10;&#10;def match(flow, side):&#10;    return True&#10;&#10;def decode(flow, side, raw):&#10;    return raw"></textarea>
         </div>
         <div id="codecPaneDocs" class="check-pane" style="display:none">
           <div id="codecDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
@@ -1445,7 +1446,7 @@ Content-Type: application/json
 <div id="promptModal" class="modal-overlay modal-overlay-high" style="display:none">
   <div role="dialog" aria-modal="true" aria-labelledby="promptTitle" class="modal-shell" style="width:420px;max-width:92%">
     <div style="padding:14px 16px 0"><div id="promptTitle" style="font-weight:700;color:var(--fg);font-size:var(--fs-md)">Enter a value</div></div>
-    <div style="padding:12px 16px"><input id="promptInput" class="btn btn-field" style="width:100%;border:1px solid var(--line);font-size:var(--fs-md);padding:9px 11px"></div>
+    <div style="padding:12px 16px"><input id="promptInput" class="btn btn-field" aria-label="Value" style="width:100%;border:1px solid var(--line);font-size:var(--fs-md);padding:9px 11px"></div>
     <div class="row" style="gap:8px;justify-content:flex-end;padding:0 16px 14px"><button class="btn" id="promptCancel">Cancel</button><button class="btn btn-primary" id="promptOk">OK</button></div>
   </div>
 </div>

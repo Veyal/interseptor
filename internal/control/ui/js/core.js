@@ -70,9 +70,10 @@ export function setSeg(btn,on){
   btn.setAttribute('aria-pressed',on?'true':'false');
 }
 
-// Project-scoped localStorage (#17/#18): Repeater/Intruder tabs (and Intruder
-// presets) must not leak across project switches. Keys look like `rep.tabs.default`.
-// On first use of a scoped key, an unscoped legacy value is migrated once.
+// Project-scoped localStorage (#17/#18): feature preferences and drafts must not
+// leak across project switches. Repeater/Intruder tabs and presets plus Map view
+// preferences use keys such as `rep.tabs.default`. On first use of a scoped key,
+// an unscoped legacy value is migrated once.
 let storageProject='default';
 const migratedStorageBases=new Set();
 export function setStorageProject(name){
@@ -82,7 +83,7 @@ export function projectStorageKey(base){
   const safe=String(storageProject).replace(/[^A-Za-z0-9._-]+/g,'_')||'default';
   const scoped=base+'.'+safe;
   // One-shot migrate: copy legacy unscoped key into *this* project, then remove
-  // it so a later project switch cannot inherit the same drafts (#17/#18).
+  // it so a later project switch cannot inherit the same state (#17/#18).
   if(!migratedStorageBases.has(base)){
     migratedStorageBases.add(base);
     try{

@@ -1,11 +1,12 @@
-// app.js — entry module and glue. Imports every feature module (which wires its
-// own DOM handlers on load), then owns the cross-cutting pieces: tab switching,
-// the command palette, global keyboard shortcuts, the live SSE event stream,
-// theme, the version badge, and the boot sequence that kicks everything off.
-import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
+// app.js — entry module and glue. Imports the boot-loaded feature modules (which
+// wire their own DOM handlers on load), then owns the cross-cutting pieces: tab
+// switching, the command palette, global keyboard shortcuts, the live SSE event
+// stream, theme, the version badge, and the boot sequence that kicks everything
+// off. Lazy modules use their shared readiness-aware loaders below.
+import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
-import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
+import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
@@ -20,14 +21,14 @@ import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
 import { transitionView } from './motion.js';
+import { projectStorageReady, loadMapModule } from './project.js';
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
 // tags/ai/authz/tlsdiag/flowmodal regardless of active tab), so static-importing
 // it buys nothing. Map's code never runs unless the user visits it — see
-// loadMapModule() below for the dynamic import() (Phase 4a).
-let mapMod=null;
-function loadMapModule(){ return mapMod || (mapMod=import('./map.js')); }
+// project.js keeps Map lazy while ensuring every entry point waits for the
+// active project before reading scoped preferences (Phase 4a).
 
 /* ---- nav-rail badges (Discover/Map off-screen-update dots) ---- */
 // Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
@@ -45,7 +46,11 @@ function updateCrumb(t){
 }
 
 /* ---- tabs ---- */
+let projectScopedUIReady=false;
+$$('.tab').forEach(tab=>{tab.disabled=true;});
+{const button=$('#cmdkBtn');if(button)button.disabled=true;}
 function activateTab(t){
+  if(!projectScopedUIReady)return;
   const prev=$('.panel.active');
   if(prev&&prev.dataset.panel==='notes')flushNotesSave();
   const tabs=$$('.tab'), current=tabs.find(x=>x.classList.contains('active'));
@@ -107,7 +112,7 @@ function restoreTab(){
     if(id==='settings'){
       // Restore any valid settings subsection, while ignoring stale ids from
       // older builds. The panel update above is synchronous even when the
-      // optional view transition is enabled, so this runs after Settings is
+      // optional panel entrance is enabled, so this runs after Settings is
       // active and keeps the saved subsection selection intact.
       const sec=localStorage.getItem('setSec');
       const b=sec&&document.querySelector('#setNav button[data-sec="'+sec+'"]');
@@ -292,7 +297,7 @@ function connectEvents(){
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
     else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
-    else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();renderIcptStat();}
+    else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='intruder.update')scheduleIntr();
     else if(m.type==='scanner.update')loadIssues();
@@ -414,7 +419,7 @@ function cmdkPaint(){
   const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
 }
 function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
-function cmdkOpen(){if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
+function cmdkOpen(){if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
 function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
 
 /* ---- global keyboard shortcuts ---- */
@@ -446,15 +451,16 @@ document.addEventListener('keydown',e=>{
   if(isModShortcut(e,'k')){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
   if(cmdk.open)return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
+  if(workflowShortcutBlocked())return;
   // Repeater Send works while the request editor is focused (caret in textarea).
   if(activePanel()==='repeater'&&(isModSpace(e)||isModShortcut(e,'Enter'))){e.preventDefault();repSend();return;}
-  // Intercept Forward/Drop must work while editing held raw (the normal path).
+  // Plain-letter workflow shortcuts never act through an editor. In particular,
+  // typing an f or d into a held HTTP message must not forward or drop it.
+  if(typing)return;
   if(activePanel()==='intercept'&&state.heldSel&&(isPlainShortcut(e,'f')||isPlainShortcut(e,'d'))){
     e.preventDefault();$(e.key.toLowerCase()==='d'?'#dropBtn':'#forwardBtn').click();return;
   }
-  if(typing)return;
   if(isHelpShortcut(e)){e.preventDefault();openModal($('#shortcutsModal'));return;} // ?: keyboard cheatsheet
-  if(workflowShortcutBlocked())return;
   if(gotoPending){
     const panel=isPlainShortcut(e,e.key)?GO_MNEMONICS[e.key.toLowerCase()]:null;
     resetGoto();
@@ -517,31 +523,83 @@ if(tlsBanner){
 }}
 
 /* ---- boot ---- */
-async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
-// Resolve the active project before Repeater/Intruder tab init so localStorage
-// keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
-async function activeProjectIdentity(){
+function renderInterceptUnavailable(error){
+  ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=true;});
+  ['#icptReqState','#icptResState'].forEach(sel=>{const label=$(sel);if(label)label.textContent='Unknown';});
+  const warning=$('#interceptWarning');if(!warning)return;
+  warning.style.display='block';
+  warning.innerHTML=`Intercept state unavailable: ${esc(error?.message||'connection failed')} <button type="button" class="btn" data-intercept-retry>Retry</button>`;
+  const retry=warning.querySelector('[data-intercept-retry]');if(retry)retry.onclick=refreshIntercept;
+}
+async function refreshIntercept(){
+  const generation=interceptStateGeneration();
+  const filterGeneration=interceptFilterGeneration();
   try{
-    const project=await api('/api/project');
-    if(project&&project.current)return project.current;
-  }catch(e){}
-  try{
-    const version=await api('/api/version');
-    if(version&&version.project)return version.project;
-  }catch(e){}
-  return 'default';
+    const next=await api('/api/intercept');
+    if(generation!==interceptStateGeneration())return;
+    replaceInterceptState(mergeInterceptFilterSince(next,filterGeneration));
+    ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
+    renderIntercept();
+  }catch(e){if(generation!==interceptStateGeneration())return;renderInterceptUnavailable(e);}
 }
 async function bootProjectScopedUI(){
-  setStorageProject(await activeProjectIdentity());
-  repInit();
-  intrInit();
+  await projectStorageReady;
+  return await Promise.all([repInit(),intrInit()]);
 }
+function completeProjectScopedUIHydration(statuses){
+  projectScopedUIReady=true;
+  const failed=statuses.includes('error');
+  const pending=statuses.includes('pending');
+  const nav=$('#tabs');if(nav)nav.setAttribute('aria-busy','false');
+  $$('.tab').forEach(tab=>{tab.disabled=false;});
+  const command=$('#cmdkBtn');if(command)command.disabled=false;
+  ['repeater','intruder'].forEach(name=>{
+    const panel=document.querySelector(`.panel[data-panel="${name}"]`);if(!panel)return;
+    panel.setAttribute('aria-busy','false');panel.removeAttribute('inert');
+  });
+  const status=$('#workspaceHydrationStatus');if(!status)return;
+  if(failed){status.innerHTML='Saved workspace unavailable · local drafts only <button type="button" class="btn xs" data-workspace-retry>Retry</button>';status.classList.add('is-error');}
+  else if(pending&&uiStateSyncPending()){
+    renderWorkspaceSyncPending('Restored local workspace · server sync pending');
+    setTimeout(()=>{if(status.dataset.syncPending==='true'&&!uiStateSyncPending()){status.hidden=true;delete status.dataset.syncPending;}},0);
+  }
+  else status.hidden=true;
+  const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
+}
+function renderWorkspaceSyncPending(message='Local draft · server sync pending'){
+  const status=$('#workspaceHydrationStatus');if(!status)return;
+  status.hidden=false;status.innerHTML=`${message} <button type="button" class="btn xs" data-workspace-sync-retry>Retry</button>`;
+  status.classList.add('is-error');status.dataset.syncPending='true';
+  const retry=status.querySelector('[data-workspace-sync-retry]');
+  if(retry)retry.onclick=async()=>{
+    retry.disabled=true;retry.setAttribute('aria-busy','true');
+    await retryUIStateSync();
+    if(retry.isConnected&&uiStateSyncPending()){retry.disabled=false;retry.setAttribute('aria-busy','false');}
+  };
+}
+document.addEventListener('interseptor:ui-state-sync',event=>{
+  const status=$('#workspaceHydrationStatus');
+  if(event.detail?.pending){renderWorkspaceSyncPending();return;}
+  if(status?.dataset.syncPending==='true'){status.hidden=true;delete status.dataset.syncPending;}
+});
 async function bootFirstRunUI(){
   try{
-    await bootProjectScopedUI();
+    const statuses=await bootProjectScopedUI();
+    completeProjectScopedUIHydration(statuses);
+    restoreTab();
+    releaseWorkstationReady();
     await loadFlows();
     maybeShowSetup();
-  }catch(e){toast('Could not initialize project-scoped UI: '+e.message);}
+  }catch(e){
+    releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'});
+    const status=$('#workspaceHydrationStatus');
+    if(status){
+      status.innerHTML='Active project unavailable · project-scoped tools are locked <button type="button" class="btn xs" data-workspace-retry>Retry</button>';
+      status.classList.add('is-error');status.setAttribute('role','alert');
+      const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
+    }
+    toast('Could not initialize project-scoped UI: '+e.message,'error');
+  }
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}

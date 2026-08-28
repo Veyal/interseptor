@@ -63,8 +63,8 @@ function makeHostHdrRow(host, hdrs) {
   const row = document.createElement('div');
   row.className = 'host-hdr-row';
   row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
-  row.innerHTML = `<input class="btn host-hdr-host" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
-    `<textarea class="host-hdr-headers" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
+  row.innerHTML = `<input class="btn host-hdr-host" aria-label="Host override hostname" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
+    `<textarea class="host-hdr-headers" aria-label="Headers for host override" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
     `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override">×</button>`;
   row.querySelector('.host-hdr-del').onclick = () => row.remove();
   return row;
@@ -320,6 +320,8 @@ let apiLoaded=false;
 function settingsLoadState(){
   let el=$('#settingsLoadState');if(el)return el;
   el=document.createElement('div');el.id='settingsLoadState';el.className='tls-diag-banner';
+  el.setAttribute('role','status');
+  el.setAttribute('aria-live','polite');
   const body=document.querySelector('#panel-settings .settings-body');if(body)body.prepend(el);
   return el;
 }
@@ -994,6 +996,12 @@ function androidSerial(){
   return androidDeviceSerial||'';
 }
 
+function setAndroidDeviceActionsEnabled(enabled){
+  ['androidSetupAllBtn','androidInstallUserBtn','androidInstallSystemBtn','androidProxyBtn','androidUnproxyBtn']
+    .forEach(id=>{const button=$('#'+id);if(button){button.disabled=!enabled;button.title=enabled?'':'Connect and authorize an Android device first';}});
+  const remove=$('#androidRemoveSystemCa');if(remove)remove.disabled=!enabled;
+}
+
 function androidDeviceTitle(d){
   if(d.model)return d.model;
   if(d.emulator)return 'Android emulator';
@@ -1145,12 +1153,14 @@ export async function loadAndroid(){
   try{
     const s=await api('/api/android/status');
     if(!s.available){
+      setAndroidDeviceActionsEnabled(false);
       sec.style.display='none';
       return;
     }
     sec.style.display='';
     const devs=s.devices||[];
     renderAndroidDevicePicker(devs);
+    setAndroidDeviceActionsEnabled(devs.some(d=>d.state==='device')&&!!androidSerial());
     if(lanHint){
       let html='';
       if(s.lanHost)html=`<span>LAN host: ${esc(s.lanHost)}</span>`;
@@ -1177,6 +1187,7 @@ export async function loadAndroid(){
     if(hint)hint.textContent=msg;
   }catch(e){
     if(hint)hint.textContent='';
+    setAndroidDeviceActionsEnabled(false);
     sec.style.display='none';
   }
 }
@@ -1326,11 +1337,13 @@ export async function loadIOS(){
         html+=`<span>Wi‑Fi mode needs bind <code>0.0.0.0</code> on the proxy listener.</span> <button type="button" class="btn" id="iosOpenProxyBtn">Settings → Proxy</button>`;
       }
       if(!s.simctlAvailable&&devs.every(d=>d.kind!=='simulator'))html+=(html?'<br>':'')+'<span>Install Xcode for simulator automation (<code>xcrun simctl</code>).</span>';
+      if(s.deviceError)html+=(html?'<br>':'')+`<span class="state-error-msg">Device discovery failed: ${esc(s.deviceError)}. Install or select Xcode, or use the manual profile flow.</span>`;
       lanHint.innerHTML=html;
       lanHint.style.display=html?'':'none';
     }
     let msg='';
-    if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
+    if(s.deviceError)msg='Device discovery failed. Install or select Xcode, or download the profile for manual installation.';
+    else if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
     else if(!s.simctlAvailable)msg='Simulator automation needs Xcode on macOS. Physical devices: download profile → open in Safari on the phone.';
     if(hint)hint.textContent=msg;
   }catch(e){

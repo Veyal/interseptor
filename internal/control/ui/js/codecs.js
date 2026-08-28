@@ -89,7 +89,8 @@ async function loadCodecDocs() {
     box.innerHTML = renderMD(d.markdown || '');
     codecDocsLoaded = true;
   } catch (e) {
-    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">' + esc(e.message) + '</p></div>';
+    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
+    const retry=box.querySelector('[data-codec-docs-retry]');if(retry)retry.onclick=loadCodecDocs;
   }
 }
 

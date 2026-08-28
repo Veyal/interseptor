@@ -30,7 +30,7 @@ CSS uses these tokens directly. One-shot JavaScript motion uses the matching sub
 
 ### Navigation
 
-Only the old and new main-panel surfaces participate in a 180ms View Transition. The new panel moves at most 6px in the navigation direction while fading in. Unsupported browsers switch immediately and preserve the existing selected tab, focus, panel scroll position, and local state.
+Main-tab state, ARIA selection, focus, and panel visibility commit synchronously. The newly active panel then receives one 180ms Web Animations API entrance: opacity plus no more than 6px of movement in the navigation direction. A deferred View Transition update is deliberately rejected for the tab surface because it can leave keyboard focus on a tab whose panel is not yet active. Unsupported browsers switch immediately and preserve panel scroll position and local state.
 
 ### Proxy history
 
@@ -54,7 +54,7 @@ Toast entry/exit, control state, capture-live, reconnecting, and enabled-live in
 
 ## Reduced motion
 
-`prefers-reduced-motion: reduce` disables non-essential CSS animation, transitions, smooth scrolling, and View Transition pseudo-element animation. JavaScript helpers also return immediately. Every state remains understandable through persistent text, color, border, icon, selection, and final position. Focus is never moved to facilitate animation.
+`prefers-reduced-motion: reduce` disables non-essential CSS animation, transitions, and smooth scrolling. JavaScript helpers also return immediately. Every state remains understandable through persistent text, color, border, icon, selection, and final position. Focus is never moved to facilitate animation.
 
 ## Performance rules
 

@@ -64,7 +64,7 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	requireUIContains(t, mapJS,
 		"const MAP_DOMAIN_KEY =",
 		"restoreMapDomain()",
-		"localStorage.setItem(MAP_DOMAIN_KEY",
+		"localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY)",
 		"renderLoadError(",
 		"finally",
 	)
@@ -393,6 +393,7 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	app := executableJS(readUIAsset(t, "js/app.js"))
+	projectJS := executableJS(readUIAsset(t, "js/project.js"))
 	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	index := readUIAsset(t, "index.html")
@@ -432,9 +433,12 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(settings, "Traffic and TLS interception are ready") {
 		t.Error("mobile setup still claims the selected device is ready from historical project evidence")
 	}
-	requireUIContains(t, app, "'/api/project'", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
+	requireUIContains(t, app, "await projectStorageReady", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
+	requireUIContains(t, projectJS, "'/api/project'", "'/api/version'", "Promise.allSettled", "throw new Error('active project unavailable')")
 	requireUIRegex(t, app, `(?s)await bootProjectScopedUI\(\).*?await loadFlows\(\).*?maybeShowSetup\(\)`)
-	requireUIRegex(t, app, `(?s)api\('/api/project'\).*?api\('/api/version'\).*?return 'default'`)
+	if strings.Contains(projectJS, "return 'default'") {
+		t.Error("project identity must fail closed instead of selecting an unverified default workspace")
+	}
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}

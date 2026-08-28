@@ -117,7 +117,10 @@ async function loadCheckDocs(){
     const d=await api('/api/checks/reference');
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
-  }catch(e){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p></div>';}
+  }catch(e){
+    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
+    const retry=box.querySelector('[data-check-docs-retry]');if(retry)retry.onclick=loadCheckDocs;
+  }
 }
 function updateCheckFlowHint(){
   const el=$('#checkFlowHint');if(!el)return;
@@ -385,34 +388,61 @@ if($('#checksSearch'))$('#checksSearch').oninput=checksApplyFilter;
 
 /* ---- decoder ---- */
 export { DEC_OPS };
+let decRequestEpoch=0;
+let decModalEpoch=0;
+function decSetPending(on,op){
+  const ops=$('#decOps'),err=$('#decErr');
+  if(ops)ops.setAttribute('aria-busy',on?'true':'false');
+  if(!err)return;
+  if(on){err.style.color='var(--fg3)';err.textContent=(op||'Operation')+'…';}
+  else if(err.textContent.endsWith('…')){err.textContent='';}
+}
+function decInvalidatePending(){decRequestEpoch++;decSetPending(false);}
+function decCurrent(epoch,modalEpoch,input){
+  const modal=$('#decModal'),field=$('#decIn');
+  return epoch===decRequestEpoch&&modalEpoch===decModalEpoch&&modal?.style.display==='flex'&&field?.value===input;
+}
 export function decBuildOps(){const box=$('#decOps');if(!box||box._built)return;box._built=1;
   box.innerHTML=DEC_OPS.map(([op,label])=>`<button class="btn" data-op="${op}">${esc(label)}</button>`).join('');
   box.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>decApply(b.dataset.op));}
 export async function decApply(op){
-  const err=$('#decErr');err.textContent='';
-  try{const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:$('#decIn').value})});
-    if(r.error){err.style.color='var(--red)';err.textContent=r.error;return;}
-    $('#decOut').value=r.output;}
-  catch(e){err.style.color='var(--red)';err.textContent=e.message;}
+  const epoch=++decRequestEpoch;
+  const modalEpoch=decModalEpoch;
+  const input=$('#decIn').value;
+  const err=$('#decErr');
+  decSetPending(true,op);
+  try{const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input})});
+    if(!decCurrent(epoch,modalEpoch,input))return;
+    if(r.error){err.style.color='var(--red)';err.textContent=r.error;decSetPending(false);return;}
+    $('#decOut').value=r.output;decSetPending(false);}
+  catch(e){if(!decCurrent(epoch,modalEpoch,input))return;err.style.color='var(--red)';err.textContent=e.message;decSetPending(false);}
 }
-export function openDecoder(seed){decBuildOps();openModal($('#decModal'));if(seed)$('#decIn').value=seed;$('#decOut').value='';$('#decErr').textContent='';setTimeout(()=>$('#decIn').focus(),0);}
+export function openDecoder(seed){decBuildOps();decModalEpoch++;decInvalidatePending();openModal($('#decModal'));if(seed)$('#decIn').value=seed;$('#decOut').value='';$('#decErr').textContent='';setTimeout(()=>$('#decIn').focus(),0);}
 async function decLoadFile(){
+  decInvalidatePending();
   try{
     const got=await pickTextFile();
     if(!got) return;
+    // The native picker yields to the event loop; invalidate again in case a
+    // decoder request was started while it was open.
+    decInvalidatePending();
     $('#decIn').value=normalizeListText(got.text);
     $('#decOut').value='';$('#decErr').textContent='';
     toast('loaded from '+got.name);
   }catch(e){toast(e.message);}
 }
 if($('#decLoad'))$('#decLoad').onclick=decLoadFile;
-if($('#decClose'))$('#decClose').onclick=()=>closeModal($('#decModal'));
-if($('#decUp'))$('#decUp').onclick=()=>{$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
+if($('#decClose'))$('#decClose').onclick=()=>{decModalEpoch++;decInvalidatePending();closeModal($('#decModal'));};
+if($('#decIn'))$('#decIn').addEventListener('input',()=>decInvalidatePending());
+if($('#decUp'))$('#decUp').onclick=()=>{decInvalidatePending();$('#decIn').value=$('#decOut').value;$('#decOut').value='';$('#decIn').focus();};
 if($('#decCopy'))$('#decCopy').onclick=()=>copyText($('#decOut').value,'output copied');
 
 /* ---- scanner ---- */
 export const scanState={sel:null,issues:[]};
 let scanRunEpoch=0;
+// Results are shared by the initial load and an explicit rescan. A later
+// request owns the result surface; older responses must not roll it back.
+let scanResultsEpoch=0;
 let promoteFindingPending=false;
 function setScanRunState(stateName,label){
   const button=$('#scanRun');if(!button)return;
@@ -425,23 +455,40 @@ function setScanRunState(stateName,label){
 }
 function resetScanRun(delay,epoch){setTimeout(()=>{if(epoch===scanRunEpoch)setScanRunState('idle','Run scan ▸');},delay);}
 export async function loadIssues(){
+  const resultsEpoch=++scanResultsEpoch;
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Loading scanner results…';
-  try{const d=await api('/api/scanner/issues');scanState.issues=d.issues||[];renderScan();if(stateEl)stateEl.textContent='';}
-  catch(e){renderLoadError(stateEl,'Scanner results',e,loadIssues,scanState.issues.length>0);}
-  finally{if(stateEl&&stateEl.textContent==='Loading scanner results…')stateEl.textContent='';}
+  try{const d=await api('/api/scanner/issues');
+    if(resultsEpoch!==scanResultsEpoch)return;
+    scanState.issues=d.issues||[];renderScan();if(stateEl)stateEl.textContent='';}
+  catch(e){if(resultsEpoch===scanResultsEpoch)renderLoadError(stateEl,'Scanner results',e,loadIssues,scanState.issues.length>0);}
+  finally{if(resultsEpoch===scanResultsEpoch&&stateEl&&stateEl.textContent==='Loading scanner results…')stateEl.textContent='';}
 }
 export async function runScan(){
   const epoch=++scanRunEpoch;
+  const resultsEpoch=++scanResultsEpoch;
   setScanRunState('pending','Scanning…');
   const host=($('#scanTarget')||{}).value||'',search=(($('#scanFilter')||{}).value||'').trim();
   const q=new URLSearchParams();if(host)q.set('host',host);if(search)q.set('search',search);
   const stateEl=$('#scanRescanState');if(stateEl)stateEl.textContent='Rescanning selected in-scope traffic…';
-  try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});scanState.issues=d.issues||[];renderScan();
+  try{const d=await api('/api/scanner/run'+(q.toString()?'?'+q:''),{method:'POST'});
+    if(resultsEpoch!==scanResultsEpoch){
+      // A newer results load owns the issue list, but this run still owns its
+      // button lifecycle unless another run started after it.
+      if(epoch===scanRunEpoch){setScanRunState('success','Scan complete');resetScanRun(700,epoch);}
+      return;
+    }
+    scanState.issues=d.issues||[];renderScan();
     await animateOnce($('#scanPassiveView'),[{opacity:.6},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
     if(stateEl)stateEl.textContent='Rescan complete · stale issues reconciled for this scan';
     setScanRunState('success','Scan complete');resetScanRun(700,epoch);
     toast(scanState.issues.length+' issue'+(scanState.issues.length===1?'':'s')+(host?' · '+host:'')+(search?' · "'+search+'"':''));}
-  catch(e){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);}
+  catch(e){
+    if(resultsEpoch!==scanResultsEpoch){
+      if(epoch===scanRunEpoch){setScanRunState('error','Scan failed');resetScanRun(1000,epoch);}
+      return;
+    }
+    setScanRunState('error','Scan failed');resetScanRun(1000,epoch);renderLoadError(stateEl,'Scanner',e,runScan,scanState.issues.length>0);
+  }
 }
 // Populate the scanner's target dropdown from in-scope history only.
 export async function loadScanTargets(){

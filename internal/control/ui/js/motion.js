@@ -1,6 +1,6 @@
 // motion.js — small shared primitives for state-driven UI motion. Keep this
 // module deliberately narrow: CSS owns repeatable component states; these
-// helpers cover one-shot changes and optional main-panel View Transitions.
+// helpers cover one-shot changes and optional main-panel entrances.
 export const MOTION = Object.freeze({
   instant: 80,
   fast: 120,
@@ -36,9 +36,17 @@ export function animateOnce(element, keyframes, options={}){
 }
 
 export function transitionView(updateFunction){
-  if(prefersReducedMotion() || typeof document.startViewTransition !== 'function'){
-    updateFunction();
-    return null;
-  }
-  return document.startViewTransition(updateFunction);
+  // Tab semantics are synchronous: a deferred View Transition callback can let
+  // rapid click/arrow activation leave focus on one tab while another panel is
+  // still active. Commit first, then animate only the newly-active panel.
+  updateFunction();
+  if(document.hidden || prefersReducedMotion()) return null;
+  const panel=document.querySelector('.panel.active');
+  if(!panel || typeof panel.animate !== 'function') return null;
+  cancelElementAnimations(panel);
+  const x=document.documentElement.dataset.motionDirection==='back'?-6:6;
+  return panel.animate([
+    {opacity:.72,transform:`translateX(${x}px)`},
+    {opacity:1,transform:'translateX(0)'},
+  ],{duration:MOTION.base,easing:MOTION.enter});
 }

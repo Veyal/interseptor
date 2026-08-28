@@ -1,6 +1,8 @@
 import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode } from './core.js';
 import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
 /* ---- flow inspect popup (Map graph/table, Scanner findings, …) ---- */
+let fmOpenEpoch=0;
+const fmSideEpoch={req:0,res:0};
 function fmFlowUrl(d){
   if(!d) return '';
   const port = d.port && !((d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80)) ? ':'+d.port : '';
@@ -8,8 +10,10 @@ function fmFlowUrl(d){
 }
 
 export async function flowPopup(id){
+  const epoch=++fmOpenEpoch;
   let d;
-  try{ d = await api('/api/flows/'+id); }catch(e){ toast('flow: '+e.message); return; }
+  try{d=await api('/api/flows/'+id);}catch(e){if(epoch===fmOpenEpoch)toast('flow: '+e.message);return;}
+  if(epoch!==fmOpenEpoch)return;
   state.fm = { id, detail: d, url: fmFlowUrl(d), pretty: true, compare: false };
   const compareBtn=$('#fmSeg').querySelector('[data-v="compare"]');
   const hasCompare=!!(d.originalReqBodyHash||d.originalResBodyHash||d.originalReqHeaders||d.originalResHeaders);
@@ -49,8 +53,11 @@ export async function fmRenderSide(side){
   const el = side === 'req' ? $('#fmReq') : $('#fmRes');
   const dec = side === 'req' ? $('#fmReqDecode') : $('#fmResDecode');
   if(dec)dec.hidden=true;
+  const renderEpoch=++fmSideEpoch[side];
   const id = state.fm.id; // snapshot: a second flowPopup must not let this render write the wrong flow
   const d = state.fm.detail;
+  const pretty=state.fm.pretty,compare=state.fm.compare;
+  const current=()=>fmSideEpoch[side]===renderEpoch&&state.fm.id===id&&state.fm.detail===d&&state.fm.pretty===pretty&&state.fm.compare===compare;
   const len = side === 'req' ? d.reqLen : d.resLen;
   const mime = bodyMime(d, side);
   if(isBinaryMime(mime)){
@@ -65,15 +72,14 @@ export async function fmRenderSide(side){
   }
   el.innerHTML = '<span class="hint" style="padding:12px">loading…</span>';
   try{
-const raw = await api('/api/flows/'+id+'/raw?side='+side+(state.fm.compare?'&variant=original':''));
-     if(state.fm.id !== id) return; // a newer flowPopup superseded this render
-     el._rawText=raw;
-     const shown=raw;
-    el.innerHTML = highlightHTTP(state.fm.pretty ? prettify(shown) : shown, state.fm.pretty, mime);
-  }catch(e){ el.textContent = '(error: '+e.message+')'; }
+    const raw=await api('/api/flows/'+id+'/raw?side='+side+(compare?'&variant=original':''));
+    if(!current())return;
+    el._rawText=raw;
+    el.innerHTML=highlightHTTP(pretty?prettify(raw):raw,pretty,mime);
+  }catch(e){if(current())el.textContent='(error: '+e.message+')';}
 }
 
-$('#fmClose') && ($('#fmClose').onclick = () => closeModal($('#flowModal')));
+$('#fmClose') && ($('#fmClose').onclick = () => {fmOpenEpoch++;fmSideEpoch.req++;fmSideEpoch.res++;closeModal($('#flowModal'));});
 $('#fmCopyUrl') && ($('#fmCopyUrl').onclick = () => {
   const url = state.fm && (state.fm.url || fmFlowUrl(state.fm.detail));
   if(url) copyText(url, 'URL copied');

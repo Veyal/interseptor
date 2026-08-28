@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey } from './core.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
@@ -34,6 +34,11 @@ const MAP_VIEW_KEY = 'mapView';
 const MAP_HIDE_NOISE_KEY = 'mapHideNoise';
 const MAP_COLLAPSE_IDENTICAL_KEY = 'mapCollapseIdentical';
 const MAP_DOMAIN_KEY = 'mapDomain';
+let loadEndpointsEpoch = 0;
+let loadParamsEpoch = 0;
+let mapEndpointDataMode='unknown';
+let mapEndpointRequestMode='full';
+let loadEndpointsPending=false;
 
 // Static media extensions omitted from the node-link graph (images, fonts, AV).
 const MAP_MEDIA_EXT = new Set([
@@ -64,7 +69,7 @@ function graphEps(eps){
 
 function restoreMapHideNoise(){
   try{
-    const v = localStorage.getItem(MAP_HIDE_NOISE_KEY);
+    const v = localStorage.getItem(projectStorageKey(MAP_HIDE_NOISE_KEY));
     if(v === '0') return false;
   }catch(e){}
   return true;
@@ -72,18 +77,18 @@ function restoreMapHideNoise(){
 
 function restoreMapCollapseIdentical(){
   try{
-    if(localStorage.getItem(MAP_COLLAPSE_IDENTICAL_KEY) === '0') return false;
+    if(localStorage.getItem(projectStorageKey(MAP_COLLAPSE_IDENTICAL_KEY)) === '0') return false;
   }catch(e){}
   return true;
 }
 function restoreMapDomain(){
-  try{return localStorage.getItem(MAP_DOMAIN_KEY)||'';}catch(e){return '';}
+  try{return localStorage.getItem(projectStorageKey(MAP_DOMAIN_KEY))||'';}catch(e){return '';}
 }
 
 /* ---- endpoint map ---- */
 function restoreMapView(){
   try{
-    const v = localStorage.getItem(MAP_VIEW_KEY);
+    const v = localStorage.getItem(projectStorageKey(MAP_VIEW_KEY));
     if(v === 'tree' || v === 'table' || v === 'graph' || v === 'params') return v;
   }catch(e){}
   return 'tree';
@@ -100,60 +105,98 @@ function mapUsesServerSearch(){
   return mapState.searchScope !== 'path' && mapState.search.trim().length > 0;
 }
 
+function mapFilterSignature(source=mapState){
+  return JSON.stringify([
+    source.domain||'',source.tag||'',source.method||'',Number(source.statusClass)||0,
+    String(source.search||'').trim(),source.searchScope||'path',!!source.hideNoise,
+  ]);
+}
+
+function invalidateEndpointLoad(){
+  if(!loadEndpointsPending)return;
+  loadEndpointsEpoch++;
+  loadEndpointsPending=false;
+}
+
+function setMapSearchState(search,scope=mapState.searchScope){
+  const nextSearch=String(search||'').trim(),nextScope=scope||'path';
+  if(nextSearch===mapState.search&&nextScope===mapState.searchScope)return false;
+  const wasServer=mapUsesServerSearch();
+  mapState.search=nextSearch;
+  mapState.searchScope=nextScope;
+  const nextServer=mapUsesServerSearch();
+  if(loadEndpointsPending&&(wasServer||nextServer))invalidateEndpointLoad();
+  return true;
+}
+
 export function focusMapSearch(term, scope='body'){
   term=String(term||'').trim();
   if(!term){ toast('nothing to search'); return; }
   document.querySelector('.tab[data-tab="map"]')?.click();
   mapState.domain='';
-  mapState.search=term;
-  mapState.searchScope=scope||'body';
+  setMapSearchState(term,scope||'body');
   mapState.view='table';
   setMapView('table');
   const dom=$('#mapDomain'), sr=$('#mapSearch'), sc=$('#mapSearchScope');
   if(dom) dom.value='';
   if(sr) sr.value=term;
   if(sc) sc.value=mapState.searchScope;
-  loadEndpoints();
 }
 
 export async function loadEndpoints(){
+  const request={
+    serverSearch:mapUsesServerSearch(),domain:mapState.domain,search:mapState.search.trim(),searchScope:mapState.searchScope,
+    tag:mapState.tag,hideNoise:mapState.hideNoise,method:mapState.method,statusClass:mapState.statusClass,
+  };
+  const serverSearch=request.serverSearch;
+  const requestFilterSignature=mapFilterSignature(request);
+  const epoch = ++loadEndpointsEpoch;
+  loadEndpointsPending=true;
+  mapEndpointRequestMode=serverSearch?'server':'full';
   const warn=$('#mapWarn');
-  if(warn&&mapUsesServerSearch()){warn.style.display='block';warn.textContent='Searching bodies…';}
+  if(warn&&serverSearch){warn.style.display='block';warn.textContent='Searching bodies…';}
   const params = new URLSearchParams();
-  if(mapState.tag) params.set('tag', mapState.tag);
-  if(!mapState.hideNoise) params.set('hideNoise', '0');
-  if(mapUsesServerSearch()){
+  if(request.tag) params.set('tag', request.tag);
+  if(!request.hideNoise) params.set('hideNoise', '0');
+  if(serverSearch){
     // Scope a body/header search to the selected host — but NEVER host-filter a
     // plain load. The domain dropdown is populated from the fetched endpoints
     // (fillMapDomains), so fetching only one host would collapse the selector to
     // that single domain and hide every other host (leaving the user unable to
     // switch domains). Plain domain filtering is applied client-side in mapFiltered.
-    if(mapState.domain) params.set('host', mapState.domain);
-    params.set('search', mapState.search.trim());
-    params.set('searchScope', mapState.searchScope);
+    if(request.domain) params.set('host', request.domain);
+    params.set('search', request.search);
+    params.set('searchScope', request.searchScope);
   }
   const q = params.toString();
   if(warn){warn.style.display='block';warn.textContent='Loading Map…';}
   try{
     const d = await api('/api/endpoints' + (q ? '?' + q : ''));
-    mapState.eps = d.endpoints || [];
-    mapState.total = d.total != null ? d.total : mapState.eps.length;
-    mapState.truncated = !!d.truncated;
-    mapState.searchNote = d.searchNote || '';
-    mapState.noiseHiddenCount = 0;
+    if (epoch !== loadEndpointsEpoch) return;
+    const endpoints=d.endpoints||[];
+    let noiseHiddenCount=0;
     // The default noise filter is server-side. When it produces an empty map,
     // make the empty state distinguish "no capture" from "all paths were only
     // 403/404" with one bounded diagnostic request. Only run this when the
     // remaining client-side filters cannot make the count misleading.
-    if(mapState.hideNoise && !mapState.eps.length && !mapState.search && !mapState.method && !mapState.statusClass){
+    if(request.hideNoise&&!endpoints.length&&!request.search&&!request.method&&!request.statusClass){
       const allQ = new URLSearchParams({hideNoise:'0'});
-      if(mapState.domain) allQ.set('host',mapState.domain);
-      if(mapState.tag) allQ.set('tag',mapState.tag);
+      if(request.domain) allQ.set('host',request.domain);
+      if(request.tag) allQ.set('tag',request.tag);
       try{
         const all=await api('/api/endpoints?'+allQ.toString());
-        mapState.noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
+        if (epoch !== loadEndpointsEpoch) return;
+        if(requestFilterSignature===mapFilterSignature())
+          noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
       }catch(e){/* diagnostic only; preserve the primary map result */}
     }
+    if (epoch !== loadEndpointsEpoch) return;
+    mapState.eps=endpoints;
+    mapState.total=d.total!=null?d.total:endpoints.length;
+    mapState.truncated=!!d.truncated;
+    mapState.searchNote=d.searchNote||'';
+    mapState.noiseHiddenCount=noiseHiddenCount;
+    mapEndpointDataMode=serverSearch?'server':'full';
     mapState._dataVersion++;
     mapState._needFit = true;
     fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'');
@@ -161,9 +204,12 @@ export async function loadEndpoints(){
     fillMapTags();
     renderMap();
   }catch(e){
-    renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
+    if(epoch === loadEndpointsEpoch) renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
   }finally{
-    if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+    if(epoch===loadEndpointsEpoch){
+      loadEndpointsPending=false;
+      if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+    }
   }
 }
 
@@ -413,9 +459,10 @@ function hydrateMapTreeNode(body){
 
 function setMapView(v){
   labelMapControls();
+  if(v!=='params')loadParamsEpoch++;
   mapState.view = v;
   if(v === 'graph') mapState._forceGraph = false; // re-evaluate the node cap each time Graph is chosen
-  try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_VIEW_KEY),v);}catch(e){}
   const seg = $('#mapViewSeg');
   if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); x.setAttribute('aria-label', 'Map view '+(x.dataset.v||'')); });
   const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap'), params = $('#mapParams');
@@ -428,10 +475,11 @@ function setMapView(v){
   if(fit) fit.style.display = v === 'graph' ? '' : 'none';
   mapState._needFit = true;
   if(v === 'params') loadParams();
-  else renderMap();
+  else mapApplySearch();
 }
 
 export async function loadParams(){
+  const epoch = ++loadParamsEpoch;
   const warn=$('#mapWarn');
   if(warn){warn.style.display='block';warn.textContent='Mining parameters…';}
   try{
@@ -439,16 +487,19 @@ export async function loadParams(){
     if(mapState.domain) q.set('host', mapState.domain);
     q.set('inScope', '1');
     const d = await api('/api/params?' + q);
+    if (epoch !== loadParamsEpoch) return;
     renderMapParams(d);
     if(warn) warn.style.display='none';
     const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
   }catch(e){
     // Parameter mining is an explicit user action; leave a retry in the panel
     // instead of reducing a failed request to a transient toast.
-    if(warn)warn.setAttribute('aria-live','polite');
-    renderLoadError(warn,'Parameters',e,loadParams,false);
-    const retry=warn?.querySelector('[data-load-retry]');
-    if(retry)retry.setAttribute('data-map-params-retry','');
+    if(epoch === loadParamsEpoch){
+      if(warn)warn.setAttribute('aria-live','polite');
+      renderLoadError(warn,'Parameters',e,loadParams,false);
+      const retry=warn?.querySelector('[data-load-retry]');
+      if(retry)retry.setAttribute('data-map-params-retry','');
+    }
   }
 }
 
@@ -489,12 +540,13 @@ function renderMapCrumb(eps){
       if(a.dataset.crumb === 'all'){
         mapState.domain = '';
         $('#mapDomain').value = '';
+        try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),'');}catch(e){}
         mapCollapseHosts();
       }else if(a.dataset.crumb === 'domain'){
         mapState.collapsed.clear();
       }
       mapState._needFit = true;
-      renderMap();
+      refreshMapDomainSelection();
     };
   });
 }
@@ -560,7 +612,7 @@ export function renderMap(){
 // the host/search selection or require a second navigation step.
 function mapHiddenNoiseAction(){
   mapState.hideNoise=false;
-  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_HIDE_NOISE_KEY),'0');}catch(e){}
   syncMapHideNoise();
   loadEndpoints();
 }
@@ -690,7 +742,7 @@ function renderMapTable(eps){
 
 let mapSearchTimer = null;
 function mapApplySearch(){
-  if(mapUsesServerSearch()){
+  if(mapUsesServerSearch()||mapEndpointDataMode!=='full'||mapEndpointRequestMode==='server'){
     loadEndpoints();
     return;
   }
@@ -704,23 +756,29 @@ function mapApplySearch(){
   renderMap();
 }
 $('#mapSearch') && ($('#mapSearch').oninput = e => {
-  mapState.search = e.target.value.trim();
+  setMapSearchState(e.target.value,mapState.searchScope);
   clearTimeout(mapSearchTimer);
   mapSearchTimer = setTimeout(mapApplySearch, mapUsesServerSearch() ? 350 : 280);
 });
 $('#mapSearchScope') && ($('#mapSearchScope').onchange = e => {
-  mapState.searchScope = e.target.value || 'path';
+  setMapSearchState(mapState.search,e.target.value||'path');
   mapApplySearch();
 });
+function refreshMapDomainSelection(){
+  if(mapState.view==='params'){
+    invalidateEndpointLoad();loadParams();return;
+  }
+  if(mapUsesServerSearch()||mapEndpointDataMode!=='full'||mapEndpointRequestMode==='server')loadEndpoints();
+  else renderMap();
+}
 $('#mapDomain') && ($('#mapDomain').onchange = e => {
   mapState.domain = e.target.value;
-  try{localStorage.setItem(MAP_DOMAIN_KEY,mapState.domain);}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),mapState.domain);}catch(e){}
   if(mapState.domain) mapState.collapsed.clear();
   else mapCollapseHosts();
   mapState._needFit = true;
   if($('#mapDiscoveryPanel')&&!$('#mapDiscoveryPanel').hidden) refreshMapDiscoveryPanel();
-  if(mapUsesServerSearch()) loadEndpoints();
-  else renderMap();
+  refreshMapDomainSelection();
 });
 $('#mapMethod') && ($('#mapMethod').onchange = e => { mapState.method = e.target.value; mapState._needFit = true; renderMap(); });
 $('#mapRefresh') && ($('#mapRefresh').onclick = loadEndpoints);
@@ -752,7 +810,7 @@ syncMapHideNoise();
 syncMapCollapseIdentical();
 $('#mapHideNoise')&&($('#mapHideNoise').onclick=()=>{
   mapState.hideNoise=!mapState.hideNoise;
-  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,mapState.hideNoise?'1':'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_HIDE_NOISE_KEY),mapState.hideNoise?'1':'0');}catch(e){}
   syncMapHideNoise();
   loadEndpoints();
 });
@@ -802,7 +860,7 @@ $('#mapDscCopyFfuf')&&($('#mapDscCopyFfuf').onclick=()=>copyMapDiscovery('ffuf')
 $('#mapCollapseIdentical')&&($('#mapCollapseIdentical').onclick=()=>{
   mapState.collapseIdentical=!mapState.collapseIdentical;
   mapState.expandedClusters.clear();
-  try{localStorage.setItem(MAP_COLLAPSE_IDENTICAL_KEY,mapState.collapseIdentical?'1':'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_COLLAPSE_IDENTICAL_KEY),mapState.collapseIdentical?'1':'0');}catch(e){}
   syncMapCollapseIdentical();
   mapState._needFit = true;
   renderMap();
@@ -925,6 +983,7 @@ function selectGraphNode(el){
     const on=node.dataset.key===mapState.selectedNodeKey;
     node.classList.toggle('g-selected',on);
     node.setAttribute('aria-selected',on?'true':'false');
+    node.tabIndex=on?0:-1;
   });
 }
 
@@ -957,7 +1016,7 @@ export function gNode(n){
     :n.type==='ep'
       ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}. Enter opens the latest flow.`
       :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
-  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="0" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
+  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="${selected?'0':'-1'}" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
 
 export function renderMapGraph(eps){
@@ -996,6 +1055,9 @@ export function renderMapGraph(eps){
       warn.style.display = 'none';
     }
   }
+  if(!lay.nodes.some(n=>n.key===mapState.selectedNodeKey)){
+    mapState.selectedNodeKey=lay.nodes.some(n=>n.key===focusedKey)?focusedKey:lay.nodes[0].key;
+  }
   const snapshotKey=[mapState.domain,mapState.method,mapState.statusClass,mapState.collapseIdentical?'1':'0'].join('|');
   const previousGraph=graphSnapshots.get(snapshotKey);
   const nextNodeSignatures=new Map(lay.nodes.map(n=>[n.key,graphNodeSignature(n)]));
@@ -1033,12 +1095,13 @@ export function renderMapGraph(eps){
     const host=el.dataset.host;
     if(!host)return;
     mapState.domain=host;
-    try{localStorage.setItem(MAP_DOMAIN_KEY,host);}catch(e){}
+    try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),host);}catch(e){}
     const sel=$('#mapDomain');if(sel)sel.value=host;
     mapState.collapsed.clear();
     mapState._needFit=true;
     mapState._animateNextFit=true;
-    renderMap();
+    if($('#mapDiscoveryPanel')&&!$('#mapDiscoveryPanel').hidden)refreshMapDiscoveryPanel();
+    refreshMapDomainSelection();
     toast('focused on '+host);
   };
   g.querySelectorAll('.g-node').forEach(el => {
@@ -1065,6 +1128,14 @@ export function renderMapGraph(eps){
       renderMap();
     };
     el.addEventListener('keydown',ev=>{
+      const navKeys=['ArrowRight','ArrowDown','ArrowLeft','ArrowUp','Home','End'];
+      if(navKeys.includes(ev.key)){
+        ev.preventDefault();
+        const nodes=[...g.querySelectorAll('.g-node')],i=nodes.indexOf(el);
+        const forward=ev.key==='ArrowRight'||ev.key==='ArrowDown';
+        const next=ev.key==='Home'?nodes[0]:ev.key==='End'?nodes[nodes.length-1]:nodes[(i+(forward?1:-1)+nodes.length)%nodes.length];
+        selectGraphNode(next);next.focus({preventScroll:true});return;
+      }
       if((ev.key==='f'||ev.key==='F')&&el.dataset.host){ev.preventDefault();focusHost(el);return;}
       if(ev.key==='Enter'||ev.key===' '){
         ev.preventDefault();

@@ -12,6 +12,115 @@ let heldSignalWindowAt=0,heldSignalCount=0;
 let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
+let heldDecodeEpoch=0;
+let interceptStateEpoch=0;
+let interceptSummaryEpoch=0;
+// Toggle mutations can change the held queues and are kept on their own lane.
+// Filter persistence is deliberately separate: the filter endpoint does not
+// emit an intercept.update event, and a stalled request must never make the
+// safety toggles inoperable.
+let interceptMutationTail=Promise.resolve();
+let interceptFilterMutationTail=Promise.resolve();
+let filterMutationEpoch=0;
+let filterCommitEpoch=0;
+let pendingFilterMutation=null;
+let acknowledgedFilterConfig=null;
+export function interceptStateGeneration(){return interceptStateEpoch;}
+export function interceptFilterGeneration(){return filterCommitEpoch;}
+function currentFilterConfig(source=state.intercept||{}){
+  return {
+    filterEnabled:!!source.filterEnabled,
+    filterTarget:source.filterTarget||'any',
+    filterPattern:source.filterPattern||'',
+  };
+}
+function commitFilterConfig(config){
+  // Filter reconciliation owns only filter fields. It must not invalidate an
+  // in-flight authoritative refresh for queue or safety-toggle state: a failed
+  // filter save is local rollback, not a newer intercept summary.
+  state.intercept={...(state.intercept||{}),...config};
+  filterCommitEpoch++;
+}
+function readFilterControls(){
+  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
+  return {
+    input:{enabled,target,pattern},
+    config:{filterEnabled:enabled&&pattern!=='',filterTarget:target||'any',filterPattern:pattern},
+  };
+}
+function stageInterceptFilter(){
+  const {input,config}=readFilterControls();
+  const epoch=++filterMutationEpoch;
+  pendingFilterMutation={epoch,config,input};
+  return pendingFilterMutation;
+}
+function filterControlsMatch(input){
+  const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
+  return !!enabled&&!!target&&!!pattern&&enabled.checked===!!input.enabled&&target.value===input.target&&pattern.value===input.pattern;
+}
+function syncFilterControls(config){
+  const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
+  if(enabled)enabled.checked=!!config?.filterEnabled;
+  if(target)target.value=config?.filterTarget||'any';
+  if(pattern)pattern.value=config?.filterPattern||'';
+}
+function mergeIncomingInterceptState(next){
+  const incoming=next||{};
+  if(!pendingFilterMutation)return incoming;
+  // SSE summaries (and toggle responses) can still contain filter A while the
+  // user's filter B request is in flight. Merge only the local filter fields;
+  // all queue/toggle fields remain authoritative from the newer summary.
+  return {...incoming,...pendingFilterMutation.config};
+}
+export function mergeInterceptFilterSince(next,generation){
+  return generation===filterCommitEpoch?next:{...(next||{}),...currentFilterConfig()};
+}
+function commitInterceptState(next,filterAuthoritative){
+  if(filterAuthoritative)acknowledgedFilterConfig=currentFilterConfig(next||{});
+  const merged=mergeIncomingInterceptState(next);
+  state.intercept=merged;interceptStateEpoch++;interceptSummaryEpoch++;
+}
+export function replaceInterceptState(next){commitInterceptState(next,true);}
+function replaceLocalInterceptState(next){commitInterceptState(next,false);}
+async function applyInterceptMutation(request){
+  const result=interceptMutationTail.then(async()=>{
+    const generation=interceptSummaryEpoch;
+    const filterGeneration=filterCommitEpoch;
+    const s=await request();
+    if(generation!==interceptSummaryEpoch)return false;
+    replaceInterceptState(mergeInterceptFilterSince(s,filterGeneration));renderIntercept();return true;
+  });
+  interceptMutationTail=result.catch(()=>{});
+  return result;
+}
+async function applyFilterMutation(request,draft){
+  const {epoch,config,input}=draft;
+  const result=interceptFilterMutationTail.then(async()=>{
+    if(epoch!==filterMutationEpoch)return false;
+    const generation=interceptSummaryEpoch;
+    try{
+      const summary=await request();
+      acknowledgedFilterConfig={...config};
+      const latest=epoch===filterMutationEpoch;
+      const summaryCurrent=generation===interceptSummaryEpoch;
+      if(latest)pendingFilterMutation=null;
+      if(summaryCurrent){replaceInterceptState(summary);renderIntercept();}
+      else if(latest)commitFilterConfig(config);
+      return latest;
+    }catch(error){
+      if(epoch===filterMutationEpoch){
+        pendingFilterMutation=null;
+        const fallback=acknowledgedFilterConfig||currentFilterConfig();
+        commitFilterConfig(fallback);
+        if(filterControlsMatch(input))syncFilterControls(fallback);
+        throw error;
+      }
+      return false;
+    }
+  });
+  interceptFilterMutationTail=result.catch(()=>{});
+  return result;
+}
 function allowHeldSignal(){
   const now=performance.now();
   if(now-heldSignalWindowAt>800){heldSignalWindowAt=now;heldSignalCount=0;}
@@ -19,6 +128,9 @@ function allowHeldSignal(){
   return !document.hidden&&heldSignalCount<=4;
 }
 function heldKey(side,id){return side+':'+id;}
+function heldDecodeCurrent(epoch,selectionKey,raw){
+  return epoch===heldDecodeEpoch&&!!state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id)===selectionKey&&$('#heldRaw').value===raw;
+}
 function heldOriginal(h){return h.original||h.raw||'';}
 function setHeldModified(raw, original){
   const badge=$('#heldModified');
@@ -124,7 +236,7 @@ export function renderIntercept(){
   else selectHeld(items[0].id,items[0].side);
 }
 function setSwitch(btnSel,stateSel,on){
-  const b=$(btnSel);if(b){b.classList.toggle('on',!!on);b.setAttribute('aria-pressed',on?'true':'false');}
+  const b=$(btnSel);if(b){b.disabled=false;b.classList.toggle('on',!!on);b.setAttribute('aria-pressed',on?'true':'false');}
   const s=$(stateSel);if(s)s.textContent=on?'On':'Off';
 }
 function heldItem(id,side){const q=side==='resp'?(state.intercept.responseQueue||[]):(state.intercept.queue||[]);return q.find(x=>x.id===id);}
@@ -151,11 +263,14 @@ function showEditor(h){
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
 }
 export async function selectHeld(id,side,opts={}){
+  const previousKey=state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id);
+  const nextKey=heldKey(side,id);
   state.heldSel={id,side};
+  if(previousKey!==nextKey)heldDecodeEpoch++;
   $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
-   let raw=h.raw;
+   let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
    if(!heldOriginalCache.has(cacheKey))heldOriginalCache.set(cacheKey,heldOriginal(h));
 
   if(heldLoadingKey===cacheKey&&opts.keepEditor)return;
@@ -163,9 +278,8 @@ export async function selectHeld(id,side,opts={}){
   if(opts.keepEditor){
     const ta=$('#heldRaw');
     if(ta&&document.activeElement===ta)return;
-    if(ta&&ta.value)raw=ta.value;
   }
-  if(!raw&&h.len!=null){
+  if(!heldRawCache.has(cacheKey)&&!raw&&h.len!=null){
     showHeldLoading({...h,side});
     if(heldRawCache.has(cacheKey))raw=heldRawCache.get(cacheKey);
     else{
@@ -189,17 +303,16 @@ export async function selectHeld(id,side,opts={}){
   showEditor({...h,side,raw});
 }
 $('#respInterceptToggle').onclick=async()=>{
-  try{const s=await api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})});state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+  try{await applyInterceptMutation(()=>api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})}));}catch(e){toast(e.message);}
 };
 export async function toggleIntercept(){
-  try{const s=await api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})});
-    state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+  try{await applyInterceptMutation(()=>api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})}));}catch(e){toast(e.message);}
 }
 $('#interceptToggle').onclick=toggleIntercept;
 // Forward / Drop act on the selected item, routing to the request or response API.
 function setHeldActionState(button,stateName,label){
   const buttons=[$('#forwardBtn'),$('#dropBtn')];
-  buttons.forEach(b=>{if(b)b.disabled=stateName==='pending';});
+  buttons.forEach(b=>{if(b)b.disabled=stateName==='pending'||!state.heldSel;});
   button.classList.remove('is-pending','is-success','is-error');
   if(stateName!=='idle')button.classList.add('is-'+stateName);
   button.dataset.state=stateName;
@@ -209,11 +322,13 @@ function setHeldActionState(button,stateName,label){
 function resetHeldAction(button,label,delay,epoch){
   setTimeout(()=>{if(epoch===heldActionEpoch)setHeldActionState(button,'idle',label);},delay);
 }
-function finishHeldExit(row){
-  const deferred=!!heldActionInFlight?.deferred;
+function reconcileHeldRemoval(sel){
+  const queueKey=sel.side==='resp'?'responseQueue':'queue';
+  const queue=(state.intercept?.[queueKey]||[]).filter(h=>h.id!==sel.id);
+  replaceLocalInterceptState({...(state.intercept||{}),[queueKey]:queue});
+  if(state.heldSel&&state.heldSel.id===sel.id&&state.heldSel.side===sel.side)state.heldSel=null;
   heldActionInFlight=null;
-  if(deferred)renderIntercept();
-  else if(row?.isConnected)row.remove();
+  renderIntercept();
 }
 function releaseHeldAction(){
   const deferred=!!heldActionInFlight?.deferred;
@@ -231,7 +346,7 @@ $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    finishHeldExit(row);
+    reconcileHeldRemoval(sel);
     setHeldActionState(button,'success','Forwarded');
     resetHeldAction(button,'Forward',600,epoch);
     toast(sel.side==='resp'?'response forwarded':'forwarded');
@@ -241,24 +356,32 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
   if(!rawEl||!decEl)return;
   if(decEl.style.display&&decEl.style.display!=='none'){
+    heldDecodeEpoch++;
     decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';return;
   }
   const raw=rawEl.value||'';
+  const decodeEpoch=++heldDecodeEpoch;
+  const selectionKey=heldKey(sel.side,sel.id);
   const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):raw;
   const hostLine=(raw.match(/^Host:\s*(.+)$/im)||[])[1]||'';
   const side=sel.side==='resp'?'res':'req';
   try{
     const d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({side,rawBody:body,host:hostLine.trim()})});
+    if(!heldDecodeCurrent(decodeEpoch,selectionKey,raw))return;
     if(!d.matched){toast('no message codec matched');return;}
     if(d.error){toast(d.error);return;}
     decEl.textContent=(d.title||d.codecId||'decoded')+'\n\n'+(d.plaintext||'');
     decEl.hidden=false;decEl.style.display='block';rawEl.style.display='none';
-  }catch(e){toast(e.message);}
+  }catch(e){if(heldDecodeCurrent(decodeEpoch,selectionKey,raw))toast(e.message);}
 });
 $('#heldRaw').addEventListener('input',()=>{
+  heldDecodeEpoch++;
   const sel=state.heldSel,h=sel&&heldItem(sel.id,sel.side);
-  if(h)setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
+  if(h){
+    heldRawCache.set(heldKey(sel.side,sel.id),$('#heldRaw').value);
+    setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
+  }
 });
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
   const ta=$('#heldRaw');if(!ta)return;
@@ -281,23 +404,36 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    finishHeldExit(row);
+    reconcileHeldRemoval(sel);
     setHeldActionState(button,'success','Dropped');
     resetHeldAction(button,'Drop',600,epoch);
     toast(sel.side==='resp'?'response dropped':'dropped');
   }catch(e){releaseHeldAction();setHeldActionState(button,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch);toast(e.message);}};
-export async function applyInterceptFilter(){
-  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
-  try{const s=await api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})});
-    state.intercept=s;renderIntercept();toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
+export async function applyInterceptFilter(draft=pendingFilterMutation||stageInterceptFilter()){
+  if(draft.started)return draft.promise;
+  draft.started=true;
+  const {input}=draft;
+  draft.promise=(async()=>{
+    try{
+      const saved=await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),draft);
+      if(saved)toast(input.enabled&&input.pattern?'filter applied':'filter off');
+      return saved;
+    }catch(e){toast(e.message);return false;}
+  })();
+  return draft.promise;
 }
 // The conditional filter auto-applies on a debounce (and on Enter), so there is
 // no Apply button — keeping one would be a redundant third commit path.
-$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyInterceptFilter();}});
+$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){
+  e.preventDefault();clearTimeout(icptFilterTimer);
+  const draft=pendingFilterMutation&&filterControlsMatch(pendingFilterMutation.input)?pendingFilterMutation:stageInterceptFilter();
+  applyInterceptFilter(draft);
+}});
 let icptFilterTimer=null;
 function scheduleInterceptFilter(){
   clearTimeout(icptFilterTimer);
-  icptFilterTimer=setTimeout(applyInterceptFilter,650);
+  const draft=stageInterceptFilter();
+  icptFilterTimer=setTimeout(()=>applyInterceptFilter(draft),650);
 }
 ['interceptFilterOn','interceptFilterTarget','interceptFilterPattern'].forEach(id=>{
   const el=$('#'+id);if(!el)return;
@@ -312,10 +448,10 @@ export function renderRules(){
   if(det&&state.rules.length)det.open=true;
   if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
   body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
-    <td><input type="text" data-k="match" value="${escAttr(r.match)}"></td>
-    <td><input type="text" data-k="replace" value="${escAttr(r.replace)}"></td>
+    <td><input type="checkbox" aria-label="Enable interception rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
+    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
+    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
+    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" value="${escAttr(r.replace)}"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);
@@ -333,9 +469,14 @@ export async function updateRule(id,tr){
   try{await api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('rule saved');}catch(e){toast(e.message);loadRules();}
 }
 export async function deleteRule(id){try{await api('/api/rules/'+id,{method:'DELETE'});loadRules();}catch(e){toast(e.message);}}
+let ruleAddInFlight=false,ruleAddEpoch=0;
+function setRuleAddState(stateName){const b=$('#addRuleBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add rule';}
 $('#addRuleBtn').onclick=async()=>{
+  if(ruleAddInFlight)return;
   const rule={type:$('#newRuleType').value,match:$('#newRuleMatch').value,replace:$('#newRuleReplace').value,enabled:true};
   if(!rule.match){toast('match regex required');return;}
+  ruleAddInFlight=true;const addEpoch=++ruleAddEpoch;setRuleAddState('pending');
   try{await api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');}catch(e){toast(e.message);}
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
+  finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };
