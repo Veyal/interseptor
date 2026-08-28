@@ -393,6 +393,7 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	scanner := executableJS(readUIAsset(t, "js/scanner.js"))
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	app := executableJS(readUIAsset(t, "js/app.js"))
+	projectJS := executableJS(readUIAsset(t, "js/project.js"))
 	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
 	findings := executableJS(readUIAsset(t, "js/findings.js"))
 	index := readUIAsset(t, "index.html")
@@ -432,9 +433,10 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(settings, "Traffic and TLS interception are ready") {
 		t.Error("mobile setup still claims the selected device is ready from historical project evidence")
 	}
-	requireUIContains(t, app, "'/api/project'", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
+	requireUIContains(t, app, "await projectStorageReady", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
+	requireUIContains(t, projectJS, "'/api/project'", "'/api/version'", "return 'default'")
 	requireUIRegex(t, app, `(?s)await bootProjectScopedUI\(\).*?await loadFlows\(\).*?maybeShowSetup\(\)`)
-	requireUIRegex(t, app, `(?s)api\('/api/project'\).*?api\('/api/version'\).*?return 'default'`)
+	requireUIRegex(t, projectJS, `(?s)api\('/api/project'\).*?api\('/api/version'\).*?return 'default'`)
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}

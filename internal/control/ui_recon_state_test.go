@@ -57,14 +57,24 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 
 func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
+	projectJS := executableJS(readUIAsset(t, "js/project.js"))
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{
 		"const projectStorageReady=activeProjectIdentity().then(name=>setStorageProject(name))",
 		"return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')))",
-		"await projectStorageReady",
 	} {
-		if !strings.Contains(app, contract) {
+		if !strings.Contains(projectJS, contract) {
 			t.Errorf("project-ready Map contract missing %q", contract)
 		}
+	}
+	if !strings.Contains(app, "await projectStorageReady") {
+		t.Error("application boot must await the shared project-ready boundary")
+	}
+	if !strings.Contains(app, "from './project.js'") || !strings.Contains(proxy, "from './project.js'") {
+		t.Error("application navigation and Proxy Map search must share the project-ready Map loader")
+	}
+	if strings.Contains(proxy, "import('./map.js')") {
+		t.Error("Proxy must not bypass the project-ready Map loader")
 	}
 	start := strings.Index(app, "async function bootFirstRunUI()")
 	if start < 0 {

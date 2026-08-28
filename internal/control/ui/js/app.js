@@ -2,7 +2,7 @@
 // own DOM handlers on load), then owns the cross-cutting pieces: tab switching,
 // the command palette, global keyboard shortcuts, the live SSE event stream,
 // theme, the version badge, and the boot sequence that kicks everything off.
-import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
+import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
@@ -20,15 +20,14 @@ import { openAuthz, renderAuthzScopePanel } from './authz.js';
 import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
 import { transitionView } from './motion.js';
+import { projectStorageReady, loadMapModule } from './project.js';
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
 // tags/ai/authz/tlsdiag/flowmodal regardless of active tab), so static-importing
 // it buys nothing. Map's code never runs unless the user visits it — see
-// loadMapModule() below for the dynamic import() (Phase 4a).
-let mapMod=null;
-const projectStorageReady=activeProjectIdentity().then(name=>setStorageProject(name));
-function loadMapModule(){return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')));}
+// project.js keeps Map lazy while ensuring every entry point waits for the
+// active project before reading scoped preferences (Phase 4a).
 
 /* ---- nav-rail badges (Discover/Map off-screen-update dots) ---- */
 // Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
@@ -536,19 +535,6 @@ async function refreshIntercept(){
     ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
     renderIntercept();
   }catch(e){if(generation!==interceptStateGeneration())return;renderInterceptUnavailable(e);}
-}
-// Resolve the active project before Repeater/Intruder tab init so localStorage
-// keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
-async function activeProjectIdentity(){
-  try{
-    const project=await api('/api/project');
-    if(project&&project.current)return project.current;
-  }catch(e){}
-  try{
-    const version=await api('/api/version');
-    if(version&&version.project)return version.project;
-  }catch(e){}
-  return 'default';
 }
 async function bootProjectScopedUI(){
   await projectStorageReady;

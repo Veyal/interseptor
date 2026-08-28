@@ -7,13 +7,14 @@ import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
+import { loadMapModule } from './project.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
 // it is a panel lazy-loaded on first visit (Phase 4a, UI-REDESIGN-ROADMAP.md §4) —
 // a static import here would defeat that by pulling it in at boot via proxy.js's
 // own always-loaded chain.
-const focusMapSearch=(...args)=>import('./map.js').then(m=>m.focusMapSearch(...args));
+const focusMapSearch=(...args)=>loadMapModule().then(m=>m.focusMapSearch(...args));
 
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.

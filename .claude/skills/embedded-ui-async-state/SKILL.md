@@ -16,8 +16,12 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   distinct. Never persist a local fallback after a failed hydration read.
 - Block pagination while its first page is refreshing. A failed refresh must
   not leave the old rows eligible for paging with new filters.
+- Guard full-state mutation responses with the same generation as live events;
+  a delayed POST snapshot must not overwrite a newer SSE queue.
 - Resolve the active project before importing any module that reads
-  project-scoped storage during evaluation.
+  project-scoped storage during evaluation. Route every cross-feature entry
+  point through one shared readiness-aware loader rather than importing the
+  feature directly from a second module.
 
 Add focused source-contract coverage for each generation, readiness boundary,
 and persistence guard because the embedded UI has no frontend build step.

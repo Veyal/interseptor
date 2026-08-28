@@ -220,6 +220,9 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 	for _, contract := range []string{
 		"export function interceptStateGeneration()",
 		"export function replaceInterceptState(next)",
+		"async function applyInterceptMutation(request)",
+		"const generation=interceptStateGeneration()",
+		"if(generation!==interceptStateGeneration())return false",
 		"replaceInterceptState(s)",
 	} {
 		if !strings.Contains(intercept, contract) {
@@ -237,5 +240,8 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 	}
 	if strings.Count(app, "if(generation!==interceptStateGeneration())return") < 2 {
 		t.Error("Intercept refresh success and failure must both reject stale completions")
+	}
+	if strings.Count(intercept, "await applyInterceptMutation(") < 3 {
+		t.Error("every full-state Intercept mutation must reject a response superseded by newer SSE state")
 	}
 }
