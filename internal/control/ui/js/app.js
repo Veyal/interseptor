@@ -591,6 +591,7 @@ async function bootFirstRunUI(){
     await loadFlows();
     maybeShowSetup();
   }catch(e){
+    releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'});
     const status=$('#workspaceHydrationStatus');
     if(status){
       status.innerHTML='Active project unavailable · project-scoped tools are locked <button type="button" class="btn xs" data-workspace-retry>Retry</button>';

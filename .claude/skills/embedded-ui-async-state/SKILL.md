@@ -25,6 +25,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
 - Bound project-identity reads and fail closed when neither authoritative
   endpoint identifies the active project. Never guess the `default` namespace:
   a transient startup failure must not expose another engagement's local draft.
+- Settle shared readiness boundaries with an explicit success or failure result.
+  Every dependent action must inspect that result and return truthful recovery
+  feedback instead of waiting forever on a success-only latch.
 - Serialize full-snapshot persistence per panel and retain the latest snapshot
   in a project-scoped dirty marker until its exact PUT is acknowledged. On the
   next hydration, reconcile that pending local snapshot before copying server
@@ -55,6 +58,10 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   not only the last server value—a return to the original value can itself be
   the newest intent. On failure, restore the value currently acknowledged in
   the live collection only if the control still shows the failed attempt.
+- Reconcile an acknowledged entity write into the latest visible snapshot when
+  its entity ID still matches and its per-entity edit generation is unchanged.
+  Object identity alone is too strict because a same-entity refresh may replace
+  the snapshot while the write is in flight.
 - Scope debounce timers by entity whenever selection can change before they
   fire. A snapshot prevents cross-entity corruption, but a global timer can
   still cancel another entity's unsent edit.

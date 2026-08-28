@@ -1,7 +1,7 @@
 import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
-import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, workstationReady } from './tools.js';
+import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
@@ -34,7 +34,7 @@ function applyIdentityToHeaders(hdrsText, identityHdrs){
 }
 
 async function sendAsIdentity(f, id){
-  await workstationReady;
+  if(!await waitForWorkstationReady())return false;
   document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
   try{
@@ -853,6 +853,8 @@ const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0;
 let selectFlowEpoch=0;
 const noteSaveTails=new Map();
+const noteEditorGenerations=new Map();
+function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
@@ -1144,6 +1146,7 @@ export function saveNote(){
   const flowId=state.selId,detail=state.detail;
   if(!flowId)return Promise.resolve();
   const note=$('#noteInput').value;
+  const editorGeneration=noteEditorGeneration(flowId);
   if(detail&&note===(detail.note||''))return Promise.resolve();
   const previous=noteSaveTails.get(flowId)||Promise.resolve();
   const save=previous.then(async()=>{
@@ -1152,7 +1155,9 @@ export function saveNote(){
       if(detail)detail.note=note;
       const fl=flowStore.byId.get(flowId);
       if(fl){fl.note=note;patchFlowRow(fl);}
-      if(state.selId===flowId&&state.detail===detail&&$('#noteInput').value===note){
+      if(state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration){
+        if(state.detail)state.detail.note=note;
+        $('#noteInput').value=note;
         const s=$('#noteSaved');if(s){s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);}
       }
     }catch(e){toast('note: '+e.message);}
@@ -1163,6 +1168,7 @@ export function saveNote(){
   return save;
 }
 $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
+$('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
 $('#noteInput').addEventListener('blur',saveNote);
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
 export async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}

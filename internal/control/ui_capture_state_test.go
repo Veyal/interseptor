@@ -32,12 +32,16 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
 	for _, contract := range []string{
 		"const noteSaveTails=new Map()",
+		"const noteEditorGenerations=new Map()",
 		"const flowId=state.selId,detail=state.detail",
+		"const editorGeneration=noteEditorGeneration(flowId)",
 		"const previous=noteSaveTails.get(flowId)||Promise.resolve()",
 		"previous.then(async()=>",
 		"'/api/flows/'+flowId+'/note'",
 		"flowStore.byId.get(flowId)",
-		"state.selId===flowId&&state.detail===detail&&$('#noteInput').value===note",
+		"state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration",
+		"state.detail.note=note",
+		"$('#noteInput').value=note",
 		"noteSaveTails.delete(flowId)",
 	} {
 		if !strings.Contains(proxy, contract) {
@@ -46,6 +50,9 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 	}
 	if strings.Contains(proxy, "'/api/flows/'+state.selId+'/note'") {
 		t.Error("Flow note persistence must not resolve its target from mutable selection state after blur")
+	}
+	if !strings.Contains(proxy, "addEventListener('input'") || !strings.Contains(proxy, "noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1)") {
+		t.Error("Flow note editor must advance per-flow ownership when the user edits")
 	}
 }
 

@@ -180,12 +180,12 @@ func TestProjectDraftHydrationGatesNavigationEditorsAndCrossFeatureEntries(t *te
 		"const repeaterReady=new Promise",
 		"const intruderReady=new Promise",
 		"export const workstationReady=new Promise",
-		"export function releaseWorkstationReady()",
-		"await workstationReady",
+		"export function releaseWorkstationReady(result={ok:true})",
+		"export async function waitForWorkstationReady()",
 	)
 	requireUIContains(t, proxy,
-		"workstationReady",
-		"await workstationReady",
+		"waitForWorkstationReady",
+		"if(!await waitForWorkstationReady())return false",
 	)
 
 	boot := strings.Index(app, "async function bootFirstRunUI()")
@@ -200,6 +200,31 @@ func TestProjectDraftHydrationGatesNavigationEditorsAndCrossFeatureEntries(t *te
 	if hydrate < 0 || complete < 0 || restore < 0 || release < 0 || !(hydrate < complete && complete < restore && restore < release) {
 		t.Errorf("saved navigation must restore before workstation actions are released (hydrate=%d complete=%d restore=%d release=%d)", hydrate, complete, restore, release)
 	}
+}
+
+func TestProjectIdentityFailureSettlesWorkstationActions(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	tools := readUIAsset(t, "js/tools.js")
+	findings := executableJS(readUIAsset(t, "js/findings.js"))
+
+	requireUIContains(t, app,
+		"releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'})",
+	)
+	requireUIContains(t, tools,
+		"export function releaseWorkstationReady(result={ok:true})",
+		"resolveWorkstationReady(result)",
+		"export async function waitForWorkstationReady()",
+		"const result=await workstationReady",
+		"if(result?.ok)return true",
+		"return false",
+	)
+	if strings.Count(tools, "if(!await waitForWorkstationReady())return false") != 2 {
+		t.Error("Repeater and Intruder sends must both reject failed workstation readiness")
+	}
+	requireUIContains(t, findings,
+		"const ok = await sendToRepeater({ id })",
+		"if (!ok && btn.isConnected)",
+	)
 }
 
 func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {

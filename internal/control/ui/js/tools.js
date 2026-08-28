@@ -110,7 +110,13 @@ let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
-export function releaseWorkstationReady(){resolveWorkstationReady();}
+export function releaseWorkstationReady(result={ok:true}){resolveWorkstationReady(result);}
+export async function waitForWorkstationReady(){
+  const result=await workstationReady;
+  if(result?.ok)return true;
+  toast(result?.message||'Active project unavailable · project-scoped tools are locked','error');
+  return false;
+}
 function uiPendingStateKey(panel){return projectStorageKey('ui.pending.'+panel);}
 export function uiStateSyncPending(){
   try{return ['repeater','intruder','intruder-presets'].some(panel=>localStorage.getItem(uiPendingStateKey(panel))!==null);}
@@ -411,7 +417,7 @@ export async function repLoadSend(id){
   }catch(e){toast(e.message);}
 }
 export async function sendToRepeater(f){
-  await workstationReady;
+  if(!await waitForWorkstationReady())return false;
   repSaveEditor();
   const tabEditEpochs=new Map(repTabs.tabs.map(t=>[t.tid,t.reqEditEpoch||0]));
   try{
@@ -1422,7 +1428,7 @@ export function applyIntruderPayloadSuggestion(data, opts){
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
 export async function sendToIntruder(f){
-  await workstationReady;
+  if(!await waitForWorkstationReady())return false;
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
   // and capture the active attack tab before any await so a sub-tab switch during
   // the fetch can't make intrTouch() save the request into the wrong tab.
