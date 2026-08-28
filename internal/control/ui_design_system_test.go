@@ -517,6 +517,17 @@ func TestUIResponsiveShellConstrainsNarrowViewport(t *testing.T) {
 	}
 }
 
+func TestUIPanelMotionIsClippedToWorkspace(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	rule := regexp.MustCompile(`#main\{([^}]*)\}`).FindStringSubmatch(css)
+	if rule == nil {
+		t.Fatal("main workspace rule not found")
+	}
+	if !strings.Contains(rule[1], "min-width:0") || !strings.Contains(rule[1], "overflow:hidden") {
+		t.Error("the main flex workspace must constrain and clip panel entrance transforms so they cannot create document-level horizontal overflow")
+	}
+}
+
 // TestUIDenseWorkspacesStackAtNarrowViewport protects the editors that need
 // enough horizontal room to remain usable. The shell already collapses at
 // 720px, but Repeater, Intruder, and the checks/codecs manager previously kept

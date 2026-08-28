@@ -65,6 +65,18 @@ func TestUIHistoryLiveFilterRemovalClosesSelectedInspector(t *testing.T) {
 	}
 }
 
+func TestUIHistoryLiveBurstActivatesVirtualization(t *testing.T) {
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
+	start := strings.Index(proxy, "function flowRowLiveUpdate(f,isNew)")
+	if start < 0 {
+		t.Fatal("History live-update renderer not found")
+	}
+	body := proxy[start:]
+	if !strings.Contains(body, "if(isNew&&state.flows.length>=VIRT_MIN){renderRows();return;}") {
+		t.Error("History must enter its virtualized render path when a live burst crosses the row threshold")
+	}
+}
+
 func TestUIResponseRenderFallbackKeepsARIAStateInSync(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{

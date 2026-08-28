@@ -498,7 +498,14 @@ function queueFullWindowRebuild(){
 // where it sits). That distinction is what lets updates patch a single DOM node
 // even while virtualized, instead of falling back to a full window rebuild.
 function flowRowLiveUpdate(f,isNew){
-  if(!flowVirt.isActive()){patchFlowRow(f);consumeFlowSignals();return;}
+  if(!flowVirt.isActive()){
+    // A list that started below the threshold is still on the incremental DOM
+    // patch path. The insert that crosses the threshold must rebuild once so
+    // computeWindow() can activate virtualization; otherwise every later live
+    // row remains mounted for the rest of the capture session.
+    if(isNew&&state.flows.length>=VIRT_MIN){renderRows();return;}
+    patchFlowRow(f);consumeFlowSignals();return;
+  }
   if(isNew){queueFullWindowRebuild();return;}
   // Virtualized + update: the row is either currently rendered (patch it directly,
   // same surgical replace patchFlowRow already does for the non-virtualized case)
