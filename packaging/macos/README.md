@@ -123,11 +123,12 @@ it to the bundle's `Info.plist` under `LSEnvironment`, or launch from a shell.
 
 **CI builds the bundle but cannot sign it.** `ci.yml` has a `macos-app` job on
 `macos-latest` that runs the darwin test suite, builds the bundle, validates the
-plist and universal binaries, and uploads it as an artifact — unsigned, because
-signing needs a Developer ID certificate and notary credentials that CI does not
-have. `release.yml` is untouched and still publishes only tarballs from
-`ubuntu-latest`; attaching a signed `.app` to releases means adding a
-`macos-latest` job with those credentials in repository secrets.
+plist and universal binaries, and uploads it as an artifact. Tagged builds use
+the same validation in `release.yml`, then publish an unsigned app ZIP and DMG
+only after the cross-platform GoReleaser candidate also passes. The assets stay
+unsigned because signing needs a Developer ID certificate and notary
+credentials that CI does not have; publishing signed assets requires adding
+those credentials to repository secrets and the release workflow.
 
 **Homebrew cask needs notarization.** Homebrew is phasing out unsigned casks, so
 cask distribution is not viable without the signing steps above.
