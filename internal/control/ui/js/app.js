@@ -1,7 +1,8 @@
-// app.js — entry module and glue. Imports every feature module (which wires its
-// own DOM handlers on load), then owns the cross-cutting pieces: tab switching,
-// the command palette, global keyboard shortcuts, the live SSE event stream,
-// theme, the version badge, and the boot sequence that kicks everything off.
+// app.js — entry module and glue. Imports the boot-loaded feature modules (which
+// wire their own DOM handlers on load), then owns the cross-cutting pieces: tab
+// switching, the command palette, global keyboard shortcuts, the live SSE event
+// stream, theme, the version badge, and the boot sequence that kicks everything
+// off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
