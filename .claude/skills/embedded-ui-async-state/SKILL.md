@@ -61,7 +61,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
 - Reconcile an acknowledged entity write into the latest visible snapshot when
   its entity ID still matches and its per-entity edit generation is unchanged.
   Object identity alone is too strict because a same-entity refresh may replace
-  the snapshot while the write is in flight.
+  the snapshot while the write is in flight. Never assign the captured write
+  snapshot back into a live editor on acknowledgement; also require the current
+  editor value to match before showing saved feedback.
 - Scope debounce timers by entity whenever selection can change before they
   fire. A snapshot prevents cross-entity corruption, but a global timer can
   still cancel another entity's unsent edit.

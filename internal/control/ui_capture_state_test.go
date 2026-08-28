@@ -35,13 +35,15 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 		"const noteEditorGenerations=new Map()",
 		"const flowId=state.selId,detail=state.detail",
 		"const editorGeneration=noteEditorGeneration(flowId)",
+		"const noteGeneration=noteEditorGeneration(id)",
+		"const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'')",
 		"const previous=noteSaveTails.get(flowId)||Promise.resolve()",
 		"previous.then(async()=>",
 		"'/api/flows/'+flowId+'/note'",
 		"flowStore.byId.get(flowId)",
 		"state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration",
+		"$('#noteInput').value===note",
 		"state.detail.note=note",
-		"$('#noteInput').value=note",
 		"noteSaveTails.delete(flowId)",
 	} {
 		if !strings.Contains(proxy, contract) {
@@ -53,6 +55,12 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 	}
 	if !strings.Contains(proxy, "addEventListener('input'") || !strings.Contains(proxy, "noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1)") {
 		t.Error("Flow note editor must advance per-flow ownership when the user edits")
+	}
+	if strings.Contains(proxy, "$('#noteInput').value=note") {
+		t.Error("A note acknowledgement must never write its captured snapshot back into the live editor")
+	}
+	if !strings.Contains(proxy, "if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||''") {
+		t.Error("A same-flow refresh must not remount an acknowledged note over a newer editor draft")
 	}
 }
 

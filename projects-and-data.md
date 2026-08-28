@@ -20,8 +20,10 @@ project archives as engagement evidence.
 ## Project boundaries
 
 History, scope, rules, findings, notes, session settings, Repeater and Intruder drafts and presets,
-Map view preferences, setup-wizard completion, and codecs are project-scoped. Theme and the last
-open top-level panel remain browser-wide.
+Map view preferences, setup-wizard completion, and codecs are project-scoped. Presentation-only
+preferences—such as theme, the last open top-level panel and Settings section, History columns,
+and inspector height—remain browser-wide. Device-helper form state may remain in the current
+browser tab.
 Switching projects restarts/re-executes the application so proxy and control listeners move to the
 new store together. Finish unsaved edits and check the project badge before sending traffic.
 

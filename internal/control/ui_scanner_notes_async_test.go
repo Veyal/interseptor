@@ -31,7 +31,9 @@ func TestUIScannerResultsRejectStaleRequests(t *testing.T) {
 func TestUINotesLoadRejectsStaleRequests(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/notes.js"))
 	for _, want := range []string{"let notesLoadGeneration=0", "const loadGeneration=++notesLoadGeneration"} {
-		if !strings.Contains(src, want) { t.Errorf("notes async load ownership contract missing %q", want) }
+		if !strings.Contains(src, want) {
+			t.Errorf("notes async load ownership contract missing %q", want)
+		}
 	}
 	if strings.Count(src, "if(loadGeneration!==notesLoadGeneration)return") < 2 {
 		t.Error("notes async load ownership contract must guard both success and error effects")

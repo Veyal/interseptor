@@ -24,8 +24,8 @@ func TestUISavedSearchSourceRejectsStaleSelection(t *testing.T) {
 
 func TestUIRuleAndScopeAddsAreAcknowledgementGated(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		path string
+		name      string
+		path      string
 		contracts []string
 	}{
 		{"interception rules", "js/intercept.js", []string{"let ruleAddInFlight=false", "if(ruleAddInFlight)return", "b.disabled=stateName==='pending'", "b.setAttribute('aria-busy'", "setRuleAddState('pending')"}},

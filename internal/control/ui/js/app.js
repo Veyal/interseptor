@@ -112,7 +112,7 @@ function restoreTab(){
     if(id==='settings'){
       // Restore any valid settings subsection, while ignoring stale ids from
       // older builds. The panel update above is synchronous even when the
-      // optional view transition is enabled, so this runs after Settings is
+      // optional panel entrance is enabled, so this runs after Settings is
       // active and keeps the saved subsection selection intact.
       const sec=localStorage.getItem('setSec');
       const b=sec&&document.querySelector('#setNav button[data-sec="'+sec+'"]');

@@ -859,12 +859,15 @@ export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeou
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
   const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
+  const noteGeneration=noteEditorGeneration(id);
+  const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
   state.selId=id;renderRows();
   try{
     const d=await api('/api/flows/'+id);
     if(!current())return;
     state.detail=d;
-    $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
+    if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
+    $('#noteBar').style.display='flex';
     await renderSide('req');
     if(!current())return;
     if(d.flags&FLAG_WS){
@@ -1155,9 +1158,8 @@ export function saveNote(){
       if(detail)detail.note=note;
       const fl=flowStore.byId.get(flowId);
       if(fl){fl.note=note;patchFlowRow(fl);}
-      if(state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration){
+      if(state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration&&$('#noteInput').value===note){
         if(state.detail)state.detail.note=note;
-        $('#noteInput').value=note;
         const s=$('#noteSaved');if(s){s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);}
       }
     }catch(e){toast('note: '+e.message);}

@@ -1,6 +1,6 @@
 // motion.js — small shared primitives for state-driven UI motion. Keep this
 // module deliberately narrow: CSS owns repeatable component states; these
-// helpers cover one-shot changes and optional main-panel View Transitions.
+// helpers cover one-shot changes and optional main-panel entrances.
 export const MOTION = Object.freeze({
   instant: 80,
   fast: 120,
