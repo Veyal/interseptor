@@ -43,7 +43,7 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 		"if(epoch!==findingsLoadEpoch)return false",
 		"function findingDetailEditPending()",
 		"findingWritesInFlight > 0",
-		"bodySaveTimer !== null",
+		"bodySaveTimers.has(selFinding)",
 		"findingDetailRefreshDeferred = true",
 		"const authoritative = acknowledgedFindingValue(f.id, key, previous)",
 		"if (el.value === v) el.value = authoritative",

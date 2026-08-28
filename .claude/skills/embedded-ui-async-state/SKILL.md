@@ -27,12 +27,19 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   never replace queue or selection state with a response that owns only filter
   or preference fields. Scope generations to the state a response owns so a
   filter-only commit cannot invalidate an unrelated safety acknowledgement.
+- Mark debounced controls dirty on the input event, not when the eventual
+  request starts. Merge that draft over intervening live summaries, accept a
+  returned full summary only while its summary generation is current, and do
+  not let a field-only fallback clear an explicit unavailable state.
 - Serialize writes per entity and coalesce still-pending fields. Track the
   latest intent per field so an older completion cannot trigger an authoritative
   reload that restores its stale value. Compare edits with that pending value,
   not only the last server value—a return to the original value can itself be
   the newest intent. On failure, restore the value currently acknowledged in
   the live collection only if the control still shows the failed attempt.
+- Scope debounce timers by entity whenever selection can change before they
+  fire. A snapshot prevents cross-entity corruption, but a global timer can
+  still cancel another entity's unsent edit.
 - When a wholesale list snapshot races live events, buffer and replay the
   events over the accepted snapshot. Coalesce by stable entity ID rather than
   counting raw events, and explicitly mark buffer overflow inexact so it forces
@@ -41,6 +48,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   draft is dirty, or a write is in flight, then apply the latest deferred view.
   Capture and restore any stable focusable detail control—not only form fields—
   when that deferred remount becomes safe.
+- Keep authoritative lifecycle transitions separate from display-only renders.
+  Filtering or opening history may repaint results, but must not change run
+  ownership, locks, completion capture, polling, or the authoritative fallback.
 - Resolve the active project before importing any module that reads
   project-scoped storage during evaluation. Route every cross-feature entry
   point through one shared readiness-aware loader rather than importing the

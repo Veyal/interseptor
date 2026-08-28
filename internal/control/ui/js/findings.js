@@ -29,7 +29,7 @@ let findEditMode = false;
 // Body editor state for the active finding.
 let bodyBlocks = [];
 let bodyFindingId = null;
-let bodySaveTimer = null;
+let bodySaveTimers = new Map();
 let bodySavesInFlight = 0;
 let findingWritesInFlight = 0;
 // PATCH requests for one finding are serialized. The API applies a PATCH as a
@@ -181,7 +181,7 @@ function setFindingsViewEmpty(empty) {
 function findingDetailEditPending() {
   const detail = $('#findDetail');
   const active = document.activeElement;
-  return bodyEditing || bodySaveTimer !== null || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
+  return bodyEditing || bodySaveTimers.has(selFinding) || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
     !!(findEditMode && detail && active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"]'));
 }
 
@@ -493,7 +493,8 @@ function renderFindBody(fid) {
 }
 
 function scheduleSave(fid) {
-  clearTimeout(bodySaveTimer);
+  const previous = bodySaveTimers.get(fid);
+  if (previous) clearTimeout(previous);
   // Snapshot the blocks now: switching findings before the 700 ms debounce fires
   // would otherwise make the deferred save read a module-level bodyBlocks that now
   // belongs to a different finding and PATCH it onto this one.
@@ -507,7 +508,10 @@ function scheduleSave(fid) {
     if (b.caption) r.caption = b.caption;
     return r;
   });
-  bodySaveTimer = setTimeout(() => { bodySaveTimer = null; flushBodySave(fid, snap); }, 700);
+  bodySaveTimers.set(fid, setTimeout(() => {
+    bodySaveTimers.delete(fid);
+    flushBodySave(fid, snap);
+  }, 700));
 }
 
 function findingWriteQueue(id) {

@@ -14,6 +14,8 @@ func TestUIInterceptFilterSSEMergeKeepsLocalMutationAuthoritative(t *testing.T) 
 	requireUIContains(t, intercept,
 		"let pendingFilterMutation=null",
 		"let filterMutationEpoch=0",
+		"function stageInterceptFilter()",
+		"pendingFilterMutation={epoch,config,input}",
 		"function mergeIncomingInterceptState(next)",
 		"pendingFilterMutation.config",
 		"replaceInterceptState(next)",
@@ -32,12 +34,12 @@ func TestUIInterceptSafetyTogglesAreNotQueuedBehindFilter(t *testing.T) {
 		"let interceptMutationTail=Promise.resolve()",
 		"let interceptFilterMutationTail=Promise.resolve()",
 		"let interceptSummaryEpoch=0",
-		"async function applyFilterMutation(request,config,input)",
+		"async function applyFilterMutation(request,draft)",
 		"interceptFilterMutationTail.then(async()=>",
 		"const generation=interceptSummaryEpoch",
-		"if(generation!==interceptSummaryEpoch)return false",
-		"const filter=currentFilterConfig()",
-		"replaceInterceptState({...s,...filter})",
+		"const summary=await request()",
+		"const summaryCurrent=generation===interceptSummaryEpoch",
+		"replaceInterceptState(summary)",
 		"await applyFilterMutation(",
 		"await applyInterceptMutation(",
 	)
@@ -53,6 +55,16 @@ func TestUIInterceptFailedFilterRestoresAcknowledgedControls(t *testing.T) {
 		"function filterControlsMatch(input)",
 		"function syncFilterControls(config)",
 		"acknowledgedFilterConfig={...config}",
+		"else if(latest)commitFilterConfig(config)",
 		"if(filterControlsMatch(input))syncFilterControls(fallback)",
+	)
+}
+
+func TestUIInterceptDraftOwnsFilterFieldsBeforeDebounce(t *testing.T) {
+	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
+	requireUIContains(t, intercept,
+		"const draft=stageInterceptFilter()",
+		"icptFilterTimer=setTimeout(()=>applyInterceptFilter(draft),650)",
+		"if(epoch!==filterMutationEpoch)return false",
 	)
 }

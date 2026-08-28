@@ -57,3 +57,21 @@ func TestUIFindingsDeferredRefreshRestoresStableDetailFocus(t *testing.T) {
 		}
 	}
 }
+
+func TestUIFindingsDebouncesBodiesPerFinding(t *testing.T) {
+	findings := executableJS(readUIAsset(t, "js/findings.js"))
+	for _, want := range []string{
+		"let bodySaveTimers = new Map()",
+		"const previous = bodySaveTimers.get(fid)",
+		"bodySaveTimers.set(fid",
+		"bodySaveTimers.delete(fid)",
+		"bodySaveTimers.has(selFinding)",
+	} {
+		if !strings.Contains(findings, want) {
+			t.Errorf("finding body debounce must be entity-scoped: missing %q", want)
+		}
+	}
+	if strings.Contains(findings, "clearTimeout(bodySaveTimer)") {
+		t.Error("one finding must not cancel another finding's pending body save")
+	}
+}

@@ -182,6 +182,24 @@ func TestUIIntruderLocksRunToOriginatingTab(t *testing.T) {
 	}
 }
 
+func TestUIIntruderDisplayRendersPreserveAuthoritativeRunState(t *testing.T) {
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	for _, contract := range []string{
+		"export function renderIntr(st,{authoritative=true}={})",
+		"if(authoritative){",
+		"syncIntrTabLock(intrLastRunning||intrStartPending)",
+		"intrLastResults=res.slice()",
+		"{authoritative:false}",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("Intruder display rendering must preserve run lifecycle: missing %q", contract)
+		}
+	}
+	if strings.Contains(tools, "syncIntrTabLock(running||intrStartPending)") {
+		t.Error("display-only Intruder data must not control attack tab locking")
+	}
+}
+
 func TestUIWebSocketReplayRowsAreKeyboardOperable(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	if !strings.Contains(proxy, "wireRowKey(el,activate)") {
@@ -231,12 +249,12 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 		"let interceptMutationTail=Promise.resolve()",
 		"let interceptFilterMutationTail=Promise.resolve()",
 		"async function applyInterceptMutation(request)",
-		"async function applyFilterMutation(request,config,input)",
+		"async function applyFilterMutation(request,draft)",
 		"const result=interceptMutationTail.then(async()=>",
 		"const generation=interceptSummaryEpoch",
 		"if(generation!==interceptSummaryEpoch)return false",
 		"interceptMutationTail=result.catch(()=>{})",
-		"replaceInterceptState({...s,...filter})",
+		"replaceInterceptState(s)",
 	} {
 		if !strings.Contains(intercept, contract) {
 			t.Errorf("Intercept authoritative-state contract missing %q", contract)

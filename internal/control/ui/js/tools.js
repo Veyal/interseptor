@@ -727,7 +727,7 @@ function intrLoadHistory(i){
     intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
     $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
     updateIntrMode();intrTouch();}
-  renderIntr({running:false,total:h.total,done:h.total,results:h.results,capped:h.capped});
+  renderIntr({running:false,total:h.total,done:h.total,results:h.results,capped:h.capped},{authoritative:false});
 }
 $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
 
@@ -1084,19 +1084,30 @@ export function scheduleIntr(){
       // A retry affordance makes a long-running attack recoverable instead of
       // silently freezing at its last progress value.
       intrPollError=e&&e.message?e.message:'connection unavailable';
-      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true});
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true},{authoritative:false});
     }
   },120);
 }
-export function renderIntr(st){
-  const running=!!st.running,total=st.total||0,done=st.done||0;
-  if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
-  if(!st.pollFailed)intrPollError='';
-  if(!st.pollFailed){intrLastRunning=running;intrLastTotal=total;intrLastDone=done;}
-  syncIntrTabLock(running||intrStartPending);
-  if(!running&&!intrStartPending)intrRunTabId=null;
+export function renderIntr(st,{authoritative=true}={}){
+  const running=!!st.running,total=st.total||0,done=st.done||0,res=st.results||[];
+  if(authoritative){
+    if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
+    if(!st.pollFailed){
+      intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
+      intrLastResults=res.slice();
+    }
+    if(!running&&!intrStartPending)intrRunTabId=null;
+    if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
+    if(!running&&total>0&&intrCapturePending){
+      intrCapturePending=false;
+      intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
+      if(intrHistory.length>30)intrHistory.length=30;
+      renderIntrHistory();
+    }
+    if(running&&!st.pollFailed)scheduleIntr();
+  }
+  syncIntrTabLock(intrLastRunning||intrStartPending);
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
-  if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
   const pollStatus=$('#intrPollStatus');
   if(pollStatus){
     if(intrPollError){
@@ -1109,21 +1120,12 @@ export function renderIntr(st){
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
   // results summary (flagged count)
-  const stats=$('#intrStats'),res=st.results||[];
-  intrLastResults=res.slice();
+  const stats=$('#intrStats');
   if(stats){
     const fl=res.filter(r=>r.flagged).length, int=res.filter(intrIsInteresting).length;
     const shown=intrApplyFilter(res).length;
     stats.textContent=res.length?`${res.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
   }
-  // capture a completed run into history (once per Start)
-  if(!running&&total>0&&intrCapturePending){
-    intrCapturePending=false;
-    intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
-    if(intrHistory.length>30)intrHistory.length=30;
-    renderIntrHistory();
-  }
-  if(running&&!st.pollFailed)scheduleIntr(); // pause on failure; Retry resumes polling
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!res.length){
@@ -1158,7 +1160,7 @@ function wireTabListKeys(seg){
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
   seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
-  renderIntr({running:false,total:intrLastResults.length,done:intrLastResults.length,results:intrLastResults});
+  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults},{authoritative:false});
 });}
 wireTabListKeys($('#intrResFilter'));
 async function intrToFinding(){

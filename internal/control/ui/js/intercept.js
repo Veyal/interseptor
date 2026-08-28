@@ -35,6 +35,19 @@ function commitFilterConfig(config){
   state.intercept={...(state.intercept||{}),...config};
   interceptStateEpoch++;
 }
+function readFilterControls(){
+  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
+  return {
+    input:{enabled,target,pattern},
+    config:{filterEnabled:enabled&&pattern!=='',filterTarget:target||'any',filterPattern:pattern},
+  };
+}
+function stageInterceptFilter(){
+  const {input,config}=readFilterControls();
+  const epoch=++filterMutationEpoch;
+  pendingFilterMutation={epoch,config,input};
+  return pendingFilterMutation;
+}
 function filterControlsMatch(input){
   const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
   return !!enabled&&!!target&&!!pattern&&enabled.checked===!!input.enabled&&target.value===input.target&&pattern.value===input.pattern;
@@ -53,56 +66,46 @@ function mergeIncomingInterceptState(next){
   // all queue/toggle fields remain authoritative from the newer summary.
   return {...incoming,...pendingFilterMutation.config};
 }
-export function replaceInterceptState(next){
-  if(!pendingFilterMutation)acknowledgedFilterConfig=currentFilterConfig(next||{});
+function commitInterceptState(next,filterAuthoritative){
+  if(filterAuthoritative)acknowledgedFilterConfig=currentFilterConfig(next||{});
   const merged=mergeIncomingInterceptState(next);
   state.intercept=merged;interceptStateEpoch++;interceptSummaryEpoch++;
 }
+export function replaceInterceptState(next){commitInterceptState(next,true);}
+function replaceLocalInterceptState(next){commitInterceptState(next,false);}
 async function applyInterceptMutation(request){
   const result=interceptMutationTail.then(async()=>{
     const generation=interceptSummaryEpoch;
     const s=await request();
     if(generation!==interceptSummaryEpoch)return false;
-    // A filter acknowledgement owns only filter fields and may complete while
-    // this summary response is in flight. Preserve the latest acknowledged or
-    // pending filter rather than restoring the older snapshot carried here.
-    const filter=currentFilterConfig();
-    replaceInterceptState({...s,...filter});renderIntercept();return true;
+    replaceInterceptState(s);renderIntercept();return true;
   });
   interceptMutationTail=result.catch(()=>{});
   return result;
 }
-async function applyFilterMutation(request,config,input){
-  const epoch=++filterMutationEpoch;
-  pendingFilterMutation={epoch,config};
+async function applyFilterMutation(request,draft){
+  const {epoch,config,input}=draft;
   const result=interceptFilterMutationTail.then(async()=>{
+    if(epoch!==filterMutationEpoch)return false;
+    const generation=interceptSummaryEpoch;
     try{
-      await request();
-      // Filter requests are serialized, so every successful response advances
-      // the real server-backed fallback even when a newer local edit owns UI.
+      const summary=await request();
       acknowledgedFilterConfig={...config};
-      // A newer edit owns the UI. The older request may have succeeded on the
-      // server, but must not clear the newer pending value or repaint it.
-      if(epoch!==filterMutationEpoch)return false;
-      pendingFilterMutation=null;
-      // Filter changes do not alter queues. Commit only the acknowledged
-      // config so a response delayed behind a newer SSE summary cannot erase
-      // held items that arrived while it was in flight.
-      commitFilterConfig(config);
-      renderIntercept();
-      return true;
+      const latest=epoch===filterMutationEpoch;
+      const summaryCurrent=generation===interceptSummaryEpoch;
+      if(latest)pendingFilterMutation=null;
+      if(summaryCurrent){replaceInterceptState(summary);renderIntercept();}
+      else if(latest)commitFilterConfig(config);
+      return latest;
     }catch(error){
       if(epoch===filterMutationEpoch){
         pendingFilterMutation=null;
         const fallback=acknowledgedFilterConfig||currentFilterConfig();
         commitFilterConfig(fallback);
-        // Do not erase a still-newer unsent edit. When the controls still show
-        // the failed attempt, roll them back immediately so active state is
-        // never implied by stale inputs.
         if(filterControlsMatch(input))syncFilterControls(fallback);
-        renderIntercept();
+        throw error;
       }
-      throw error;
+      return false;
     }
   });
   interceptFilterMutationTail=result.catch(()=>{});
@@ -306,7 +309,7 @@ function resetHeldAction(button,label,delay,epoch){
 function reconcileHeldRemoval(sel){
   const queueKey=sel.side==='resp'?'responseQueue':'queue';
   const queue=(state.intercept?.[queueKey]||[]).filter(h=>h.id!==sel.id);
-  replaceInterceptState({...(state.intercept||{}),[queueKey]:queue});
+  replaceLocalInterceptState({...(state.intercept||{}),[queueKey]:queue});
   if(state.heldSel&&state.heldSel.id===sel.id&&state.heldSel.side===sel.side)state.heldSel=null;
   heldActionInFlight=null;
   renderIntercept();
@@ -385,20 +388,31 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     resetHeldAction(button,'Drop',600,epoch);
     toast(sel.side==='resp'?'response dropped':'dropped');
   }catch(e){releaseHeldAction();setHeldActionState(button,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch);toast(e.message);}};
-export async function applyInterceptFilter(){
-  const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
-  const config={filterEnabled:enabled&&pattern!=='',filterTarget:target||'any',filterPattern:pattern};
-  const input={enabled,target,pattern};
-  try{await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),config,input);
-    toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
+export async function applyInterceptFilter(draft=pendingFilterMutation||stageInterceptFilter()){
+  if(draft.started)return draft.promise;
+  draft.started=true;
+  const {input}=draft;
+  draft.promise=(async()=>{
+    try{
+      const saved=await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),draft);
+      if(saved)toast(input.enabled&&input.pattern?'filter applied':'filter off');
+      return saved;
+    }catch(e){toast(e.message);return false;}
+  })();
+  return draft.promise;
 }
 // The conditional filter auto-applies on a debounce (and on Enter), so there is
 // no Apply button — keeping one would be a redundant third commit path.
-$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyInterceptFilter();}});
+$('#interceptFilterPattern').addEventListener('keydown',e=>{if(e.key==='Enter'){
+  e.preventDefault();clearTimeout(icptFilterTimer);
+  const draft=pendingFilterMutation&&filterControlsMatch(pendingFilterMutation.input)?pendingFilterMutation:stageInterceptFilter();
+  applyInterceptFilter(draft);
+}});
 let icptFilterTimer=null;
 function scheduleInterceptFilter(){
   clearTimeout(icptFilterTimer);
-  icptFilterTimer=setTimeout(applyInterceptFilter,650);
+  const draft=stageInterceptFilter();
+  icptFilterTimer=setTimeout(()=>applyInterceptFilter(draft),650);
 }
 ['interceptFilterOn','interceptFilterTarget','interceptFilterPattern'].forEach(id=>{
   const el=$('#'+id);if(!el)return;

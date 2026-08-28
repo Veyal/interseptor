@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Keyboard-safe motion and graph navigation.** Main tabs now commit selection and focus synchronously before a restrained panel entrance, dense Map graphs use one roving tab stop, and reduced-motion users receive the same persistent state cues without travel.
 
 ### Fixed
+- **Entity-scoped workstation state.** Intercept filter drafts now survive debounce and merge full acknowledgements without masking unavailable safety state, Findings debounce body saves per finding, and Intruder history/filter renders no longer alter active-run ownership or locks.
 - **Rereviewed async state safety.** Kept Intercept safety toggles independent from filter persistence while merging only pending filter fields, serialized and coalesced Findings writes so the latest edit and focused detail control survive refreshes, rejected stale Repeater decode fallbacks, and replayed coalesced live History updates over delayed snapshots with an authoritative refetch after overflow.
 - **Contained panel motion.** Main-panel entrance transforms now stay clipped to the workspace instead of briefly widening the document and flashing horizontal overflow.
 - **Live History virtualization.** History now enters its bounded DOM window when an incremental capture burst crosses the virtualization threshold instead of retaining every subsequent row.
