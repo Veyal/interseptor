@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to published `2.0.4` and documented the separate post-publication cleanup step.
+- **Direct, accessible workstation controls.** Added explicit names and truthful pending, retry, disabled, and live-region states across History, Intercept, Repeater, Intruder, Scanner, Findings, Map, authorization testing, mobile tooling, API keys, custom tools, Activity, and Settings; narrow History/Map toolbars now wrap and Scanner uses a readable stacked workspace.
+- **Keyboard-safe motion and graph navigation.** Main tabs now commit selection and focus synchronously before a restrained panel entrance, dense Map graphs use one roving tab stop, and reduced-motion users receive the same persistent state cues without travel.
+
+### Fixed
+- **Latest-view state integrity.** Prevented delayed History bodies and filters, WebSocket frames, flow details, Repeater/Intruder hydration and decoding, Findings edits, Map endpoints/parameters, and rapid main-tab changes from overwriting a newer selection or visible workspace; live filters now close an inspector whose flow no longer matches.
+- **Safe live-workflow actions.** Prevented Intercept shortcuts while typing, preserved intentional empty held bodies, blocked duplicate Repeater/API-key actions, locked Intruder tabs during an attack, and kept destructive queue movement dependent on successful acknowledgement.
+- **Reporting, response-view, and device feedback.** Repaired the Findings verification view, kept response-view ARIA state aligned with automatic Render fallbacks, rolled failed finding edits back to authoritative values, made reference-data and Map failures retryable, and surfaced actionable Android/iOS availability errors instead of leaving controls misleadingly active.
 
 ## [2.0.4] - 2026-08-27
 

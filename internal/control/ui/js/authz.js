@@ -15,6 +15,11 @@ function setAuthzActionBusy(busy) {
     b.disabled = authzActionBusy;
     b.setAttribute('aria-busy', authzActionBusy ? 'true' : 'false');
   });
+  const mode=$('#authzMode');
+  if(mode){
+    mode.setAttribute('aria-busy',authzActionBusy?'true':'false');
+    mode.querySelectorAll('button').forEach(button=>{button.disabled=authzActionBusy;});
+  }
 }
 function setAuthzStatus(message) {
   const status = $('#authzStatus');
@@ -114,8 +119,8 @@ async function loadAuthzIdentities(){
 function renderIdentities(ids){
   if(!ids.length)ids=[{name:'',headers:''}];
   $('#authzIds').innerHTML=ids.map((id,i)=>`<div class="authz-id${id.broken?' authz-id-broken':''}" data-i="${i}">
-    <input class="authz-name btn" style="background:var(--bg3)" placeholder="role e.g. ${i===0?'admin (baseline)':'user'}" value="${escAttr(id.name||'')}">
-    <textarea class="authz-hdr rep-edit" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
+    <input class="authz-name btn" aria-label="Authorization identity ${i+1} name" style="background:var(--bg3)" placeholder="role e.g. ${i===0?'admin (baseline)':'user'}" value="${escAttr(id.name||'')}">
+    <textarea class="authz-hdr rep-edit" aria-label="Authorization identity ${i+1} headers" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
     <div style="display:flex;gap:4px">
       <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>'}</button>
       <button class="btn danger authz-del" data-i="${i}" title="remove">✕</button>
@@ -208,6 +213,14 @@ function renderAuthzRow(r,i){
     <span>${verdict}</span></div>`;
 }
 
+function wireAuthzFlowRows(box){
+  box.querySelectorAll('[data-flow]').forEach(el=>{
+    const go=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));};
+    el.setAttribute('aria-label','Inspect captured flow #'+el.dataset.flow);
+    el.onclick=go;wireRowKey(el,go);
+  });
+}
+
 function renderAuthzListBulk(runs){
   let html='';
   runs.forEach(run=>{
@@ -256,7 +269,7 @@ function renderAuthzResults(d){
     const res=runs[0].results||[];
     box.innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
       +res.map((r,i)=>renderAuthzRow(r,i)).join('');
-    box.querySelectorAll('[data-flow]').forEach(el=>{const go=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));};el.onclick=go;wireRowKey(el,go);});
+    wireAuthzFlowRows(box);
     return;
   }
   const sum=d.summary||{};
@@ -269,7 +282,7 @@ function renderAuthzResults(d){
   box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
   $('#authzViewList')?.addEventListener('click',()=>{authzViewMode='list';renderAuthzResults(d);});
   $('#authzViewMatrix')?.addEventListener('click',()=>{authzViewMode='matrix';renderAuthzResults(d);});
-  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));});
+  wireAuthzFlowRows(box);
 }
 
 async function crossHostReplay(){
@@ -304,7 +317,7 @@ function renderCrossHostResults(d){
     </div>`;
   });
   box.innerHTML=html;
-  box.querySelectorAll('[data-flow]').forEach(el=>el.onclick=()=>{closeModal($('#authzModal'));selectFlow(Number(el.dataset.flow));});
+  wireAuthzFlowRows(box);
 }
 
 $('#authzAdd')&&($('#authzAdd').onclick=()=>renderIdentities([...collectIds(),{name:'',headers:''}]));

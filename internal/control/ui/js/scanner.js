@@ -117,7 +117,10 @@ async function loadCheckDocs(){
     const d=await api('/api/checks/reference');
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
-  }catch(e){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p></div>';}
+  }catch(e){
+    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
+    const retry=box.querySelector('[data-check-docs-retry]');if(retry)retry.onclick=loadCheckDocs;
+  }
 }
 function updateCheckFlowHint(){
   const el=$('#checkFlowHint');if(!el)return;

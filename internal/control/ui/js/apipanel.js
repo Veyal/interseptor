@@ -50,17 +50,30 @@ export async function loadApiKeys(){
       <td><button class="btn danger" data-revoke="${k.id}" data-kp="${escAttr(k.prefix||'')}" data-kl="${escAttr(k.label||'')}">Revoke</button></td></tr>`).join('')
       :'<tr><td colspan="5" class="hint" style="padding:10px">No keys yet.</td></tr>';
     $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke),b.dataset.kp,b.dataset.kl));
-  }catch(e){}
+  }catch(e){
+    const list=$('#keyList');if(!list)return;
+    list.innerHTML='<tr><td colspan="5" class="state-error-msg" style="padding:10px">Keys unavailable: '+esc(e.message||'request failed')+' <button type="button" class="btn xs" data-key-list-retry>Retry</button></td></tr>';
+    const retry=list.querySelector('[data-key-list-retry]');if(retry)retry.onclick=loadApiKeys;
+  }
 }
+let apiKeyCreatePending=false;
 export async function createApiKey(){
+  if(apiKeyCreatePending)return;
+  const button=$('#keyCreate');
   const label=$('#keyLabel').value.trim()||'key';
   const scope=($('#keyScope')||{}).value||'full';
   const expiresIn=Number(($('#keyExpiry')||{}).value||0);
+  apiKeyCreatePending=true;
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Creating…';}
   try{const d=await api('/api/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label,scope,expiresIn})});
     $('#keyNew').style.display='block';
     $('#keyNew').innerHTML='New '+esc(scope)+' token — copy now, it is shown only once:<br><b style="color:var(--accent);user-select:all">'+esc(d.token)+'</b>';
     $('#keyLabel').value='';loadApiKeys();
   }catch(e){toast(e.message);}
+  finally{
+    apiKeyCreatePending=false;
+    if(button){button.disabled=false;button.removeAttribute('aria-busy');button.textContent='Create key';}
+  }
 }
 
 /** Reveal the API token for the current cookie session (remote Tailscale login). */

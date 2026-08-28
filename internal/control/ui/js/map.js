@@ -1,4 +1,4 @@
-import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError } from './core.js';
+import { $, esc, escAttr, state, toast, api, copyText, methodColor, statusColor, statusText, fmtSize, fmtDur, renderLoadError, projectStorageKey } from './core.js';
 import { sendToRepeater } from './tools.js';
 import { animateOnce, cancelElementAnimations, MOTION } from './motion.js';
 
@@ -34,6 +34,8 @@ const MAP_VIEW_KEY = 'mapView';
 const MAP_HIDE_NOISE_KEY = 'mapHideNoise';
 const MAP_COLLAPSE_IDENTICAL_KEY = 'mapCollapseIdentical';
 const MAP_DOMAIN_KEY = 'mapDomain';
+let loadEndpointsEpoch = 0;
+let loadParamsEpoch = 0;
 
 // Static media extensions omitted from the node-link graph (images, fonts, AV).
 const MAP_MEDIA_EXT = new Set([
@@ -64,7 +66,7 @@ function graphEps(eps){
 
 function restoreMapHideNoise(){
   try{
-    const v = localStorage.getItem(MAP_HIDE_NOISE_KEY);
+    const v = localStorage.getItem(projectStorageKey(MAP_HIDE_NOISE_KEY));
     if(v === '0') return false;
   }catch(e){}
   return true;
@@ -72,18 +74,18 @@ function restoreMapHideNoise(){
 
 function restoreMapCollapseIdentical(){
   try{
-    if(localStorage.getItem(MAP_COLLAPSE_IDENTICAL_KEY) === '0') return false;
+    if(localStorage.getItem(projectStorageKey(MAP_COLLAPSE_IDENTICAL_KEY)) === '0') return false;
   }catch(e){}
   return true;
 }
 function restoreMapDomain(){
-  try{return localStorage.getItem(MAP_DOMAIN_KEY)||'';}catch(e){return '';}
+  try{return localStorage.getItem(projectStorageKey(MAP_DOMAIN_KEY))||'';}catch(e){return '';}
 }
 
 /* ---- endpoint map ---- */
 function restoreMapView(){
   try{
-    const v = localStorage.getItem(MAP_VIEW_KEY);
+    const v = localStorage.getItem(projectStorageKey(MAP_VIEW_KEY));
     if(v === 'tree' || v === 'table' || v === 'graph' || v === 'params') return v;
   }catch(e){}
   return 'tree';
@@ -117,6 +119,7 @@ export function focusMapSearch(term, scope='body'){
 }
 
 export async function loadEndpoints(){
+  const epoch = ++loadEndpointsEpoch;
   const warn=$('#mapWarn');
   if(warn&&mapUsesServerSearch()){warn.style.display='block';warn.textContent='Searching bodies…';}
   const params = new URLSearchParams();
@@ -136,6 +139,7 @@ export async function loadEndpoints(){
   if(warn){warn.style.display='block';warn.textContent='Loading Map…';}
   try{
     const d = await api('/api/endpoints' + (q ? '?' + q : ''));
+    if (epoch !== loadEndpointsEpoch) return;
     mapState.eps = d.endpoints || [];
     mapState.total = d.total != null ? d.total : mapState.eps.length;
     mapState.truncated = !!d.truncated;
@@ -151,9 +155,11 @@ export async function loadEndpoints(){
       if(mapState.tag) allQ.set('tag',mapState.tag);
       try{
         const all=await api('/api/endpoints?'+allQ.toString());
+        if (epoch !== loadEndpointsEpoch) return;
         mapState.noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
       }catch(e){/* diagnostic only; preserve the primary map result */}
     }
+    if (epoch !== loadEndpointsEpoch) return;
     mapState._dataVersion++;
     mapState._needFit = true;
     fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'');
@@ -161,9 +167,9 @@ export async function loadEndpoints(){
     fillMapTags();
     renderMap();
   }catch(e){
-    renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
+    if(epoch === loadEndpointsEpoch) renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
   }finally{
-    if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+    if(epoch === loadEndpointsEpoch && warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
   }
 }
 
@@ -413,9 +419,10 @@ function hydrateMapTreeNode(body){
 
 function setMapView(v){
   labelMapControls();
+  if(v!=='params')loadParamsEpoch++;
   mapState.view = v;
   if(v === 'graph') mapState._forceGraph = false; // re-evaluate the node cap each time Graph is chosen
-  try{ localStorage.setItem(MAP_VIEW_KEY, v); }catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_VIEW_KEY),v);}catch(e){}
   const seg = $('#mapViewSeg');
   if(seg) seg.querySelectorAll('button').forEach(x => { const on = x.dataset.v === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); x.setAttribute('aria-label', 'Map view '+(x.dataset.v||'')); });
   const tree = $('#mapTree'), tbl = $('#mapTable'), wrap = $('#mapGraphWrap'), params = $('#mapParams');
@@ -432,6 +439,7 @@ function setMapView(v){
 }
 
 export async function loadParams(){
+  const epoch = ++loadParamsEpoch;
   const warn=$('#mapWarn');
   if(warn){warn.style.display='block';warn.textContent='Mining parameters…';}
   try{
@@ -439,16 +447,19 @@ export async function loadParams(){
     if(mapState.domain) q.set('host', mapState.domain);
     q.set('inScope', '1');
     const d = await api('/api/params?' + q);
+    if (epoch !== loadParamsEpoch) return;
     renderMapParams(d);
     if(warn) warn.style.display='none';
     const c=$('#mapCount');if(c)c.textContent=(d.flowsScanned||0)+' flows · param miner';
   }catch(e){
     // Parameter mining is an explicit user action; leave a retry in the panel
     // instead of reducing a failed request to a transient toast.
-    if(warn)warn.setAttribute('aria-live','polite');
-    renderLoadError(warn,'Parameters',e,loadParams,false);
-    const retry=warn?.querySelector('[data-load-retry]');
-    if(retry)retry.setAttribute('data-map-params-retry','');
+    if(epoch === loadParamsEpoch){
+      if(warn)warn.setAttribute('aria-live','polite');
+      renderLoadError(warn,'Parameters',e,loadParams,false);
+      const retry=warn?.querySelector('[data-load-retry]');
+      if(retry)retry.setAttribute('data-map-params-retry','');
+    }
   }
 }
 
@@ -560,7 +571,7 @@ export function renderMap(){
 // the host/search selection or require a second navigation step.
 function mapHiddenNoiseAction(){
   mapState.hideNoise=false;
-  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_HIDE_NOISE_KEY),'0');}catch(e){}
   syncMapHideNoise();
   loadEndpoints();
 }
@@ -714,7 +725,7 @@ $('#mapSearchScope') && ($('#mapSearchScope').onchange = e => {
 });
 $('#mapDomain') && ($('#mapDomain').onchange = e => {
   mapState.domain = e.target.value;
-  try{localStorage.setItem(MAP_DOMAIN_KEY,mapState.domain);}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),mapState.domain);}catch(e){}
   if(mapState.domain) mapState.collapsed.clear();
   else mapCollapseHosts();
   mapState._needFit = true;
@@ -752,7 +763,7 @@ syncMapHideNoise();
 syncMapCollapseIdentical();
 $('#mapHideNoise')&&($('#mapHideNoise').onclick=()=>{
   mapState.hideNoise=!mapState.hideNoise;
-  try{localStorage.setItem(MAP_HIDE_NOISE_KEY,mapState.hideNoise?'1':'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_HIDE_NOISE_KEY),mapState.hideNoise?'1':'0');}catch(e){}
   syncMapHideNoise();
   loadEndpoints();
 });
@@ -802,7 +813,7 @@ $('#mapDscCopyFfuf')&&($('#mapDscCopyFfuf').onclick=()=>copyMapDiscovery('ffuf')
 $('#mapCollapseIdentical')&&($('#mapCollapseIdentical').onclick=()=>{
   mapState.collapseIdentical=!mapState.collapseIdentical;
   mapState.expandedClusters.clear();
-  try{localStorage.setItem(MAP_COLLAPSE_IDENTICAL_KEY,mapState.collapseIdentical?'1':'0');}catch(e){}
+  try{localStorage.setItem(projectStorageKey(MAP_COLLAPSE_IDENTICAL_KEY),mapState.collapseIdentical?'1':'0');}catch(e){}
   syncMapCollapseIdentical();
   mapState._needFit = true;
   renderMap();
@@ -925,6 +936,7 @@ function selectGraphNode(el){
     const on=node.dataset.key===mapState.selectedNodeKey;
     node.classList.toggle('g-selected',on);
     node.setAttribute('aria-selected',on?'true':'false');
+    node.tabIndex=on?0:-1;
   });
 }
 
@@ -957,7 +969,7 @@ export function gNode(n){
     :n.type==='ep'
       ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}. Enter opens the latest flow.`
       :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
-  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="0" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
+  return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="${selected?'0':'-1'}" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
 
 export function renderMapGraph(eps){
@@ -996,6 +1008,9 @@ export function renderMapGraph(eps){
       warn.style.display = 'none';
     }
   }
+  if(!lay.nodes.some(n=>n.key===mapState.selectedNodeKey)){
+    mapState.selectedNodeKey=lay.nodes.some(n=>n.key===focusedKey)?focusedKey:lay.nodes[0].key;
+  }
   const snapshotKey=[mapState.domain,mapState.method,mapState.statusClass,mapState.collapseIdentical?'1':'0'].join('|');
   const previousGraph=graphSnapshots.get(snapshotKey);
   const nextNodeSignatures=new Map(lay.nodes.map(n=>[n.key,graphNodeSignature(n)]));
@@ -1033,7 +1048,7 @@ export function renderMapGraph(eps){
     const host=el.dataset.host;
     if(!host)return;
     mapState.domain=host;
-    try{localStorage.setItem(MAP_DOMAIN_KEY,host);}catch(e){}
+    try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),host);}catch(e){}
     const sel=$('#mapDomain');if(sel)sel.value=host;
     mapState.collapsed.clear();
     mapState._needFit=true;
@@ -1065,6 +1080,14 @@ export function renderMapGraph(eps){
       renderMap();
     };
     el.addEventListener('keydown',ev=>{
+      const navKeys=['ArrowRight','ArrowDown','ArrowLeft','ArrowUp','Home','End'];
+      if(navKeys.includes(ev.key)){
+        ev.preventDefault();
+        const nodes=[...g.querySelectorAll('.g-node')],i=nodes.indexOf(el);
+        const forward=ev.key==='ArrowRight'||ev.key==='ArrowDown';
+        const next=ev.key==='Home'?nodes[0]:ev.key==='End'?nodes[nodes.length-1]:nodes[(i+(forward?1:-1)+nodes.length)%nodes.length];
+        selectGraphNode(next);next.focus({preventScroll:true});return;
+      }
       if((ev.key==='f'||ev.key==='F')&&el.dataset.host){ev.preventDefault();focusHost(el);return;}
       if(ev.key==='Enter'||ev.key===' '){
         ev.preventDefault();

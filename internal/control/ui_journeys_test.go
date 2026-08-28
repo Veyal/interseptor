@@ -64,7 +64,7 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 	requireUIContains(t, mapJS,
 		"const MAP_DOMAIN_KEY =",
 		"restoreMapDomain()",
-		"localStorage.setItem(MAP_DOMAIN_KEY",
+		"localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY)",
 		"renderLoadError(",
 		"finally",
 	)

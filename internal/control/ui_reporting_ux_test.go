@@ -54,8 +54,8 @@ func TestUIMapReportingContracts(t *testing.T) {
 		"Show all statuses",
 		"aria-sort",
 		"preserveRole",
-		"localStorage.setItem(MAP_DOMAIN_KEY",
-		"localStorage.setItem(MAP_HIDE_NOISE_KEY,'0')",
+		"localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY)",
+		"localStorage.setItem(projectStorageKey(MAP_HIDE_NOISE_KEY),'0')",
 	} {
 		if !strings.Contains(mapJS, want) {
 			t.Errorf("map UI missing contract %q", want)

@@ -446,15 +446,16 @@ document.addEventListener('keydown',e=>{
   if(isModShortcut(e,'k')){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
   if(cmdk.open)return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
+  if(workflowShortcutBlocked())return;
   // Repeater Send works while the request editor is focused (caret in textarea).
   if(activePanel()==='repeater'&&(isModSpace(e)||isModShortcut(e,'Enter'))){e.preventDefault();repSend();return;}
-  // Intercept Forward/Drop must work while editing held raw (the normal path).
+  // Plain-letter workflow shortcuts never act through an editor. In particular,
+  // typing an f or d into a held HTTP message must not forward or drop it.
+  if(typing)return;
   if(activePanel()==='intercept'&&state.heldSel&&(isPlainShortcut(e,'f')||isPlainShortcut(e,'d'))){
     e.preventDefault();$(e.key.toLowerCase()==='d'?'#dropBtn':'#forwardBtn').click();return;
   }
-  if(typing)return;
   if(isHelpShortcut(e)){e.preventDefault();openModal($('#shortcutsModal'));return;} // ?: keyboard cheatsheet
-  if(workflowShortcutBlocked())return;
   if(gotoPending){
     const panel=isPlainShortcut(e,e.key)?GO_MNEMONICS[e.key.toLowerCase()]:null;
     resetGoto();
@@ -517,7 +518,21 @@ if(tlsBanner){
 }}
 
 /* ---- boot ---- */
-async function refreshIntercept(){try{state.intercept=await api('/api/intercept');renderIntercept();}catch(e){}}
+function renderInterceptUnavailable(error){
+  ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=true;});
+  ['#icptReqState','#icptResState'].forEach(sel=>{const label=$(sel);if(label)label.textContent='Unknown';});
+  const warning=$('#interceptWarning');if(!warning)return;
+  warning.style.display='block';
+  warning.innerHTML=`Intercept state unavailable: ${esc(error?.message||'connection failed')} <button type="button" class="btn" data-intercept-retry>Retry</button>`;
+  const retry=warning.querySelector('[data-intercept-retry]');if(retry)retry.onclick=refreshIntercept;
+}
+async function refreshIntercept(){
+  try{
+    state.intercept=await api('/api/intercept');
+    ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
+    renderIntercept();
+  }catch(e){renderInterceptUnavailable(e);}
+}
 // Resolve the active project before Repeater/Intruder tab init so localStorage
 // keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
 async function activeProjectIdentity(){
@@ -533,15 +548,15 @@ async function activeProjectIdentity(){
 }
 async function bootProjectScopedUI(){
   setStorageProject(await activeProjectIdentity());
-  repInit();
-  intrInit();
+  await Promise.all([repInit(),intrInit()]);
 }
 async function bootFirstRunUI(){
   try{
     await bootProjectScopedUI();
+    restoreTab();
     await loadFlows();
     maybeShowSetup();
   }catch(e){toast('Could not initialize project-scoped UI: '+e.message);}
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();restoreTab();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}

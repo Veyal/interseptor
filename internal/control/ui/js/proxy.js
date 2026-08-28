@@ -61,6 +61,7 @@ const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst wind
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
+let flowLoadEpoch=0,flowPageEpoch=0;
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
@@ -533,8 +534,10 @@ export function handleFlowUpdate(f){
     // instead of a full reload either way.
     if(!canIncremental()){storeUpsertFlow(flowStore,f);if(active)flowRowLiveUpdate(f,false);return;}
     if(!flowMatchesFilters(f)){
+      const removedSelected=state.selId===f.id;
       removeFlow(flowStore,f.id);
       if(state.selected)state.selected.delete(f.id);
+      if(removedSelected){closeInspector();return;}
       if(active){const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');if(row)row.remove();else if(flowVirt.isActive())queueFullWindowRebuild();}
       return;
     }
@@ -707,10 +710,14 @@ function buildFlowParams(){
 function bodySearchActive(){return false;}
 
 export async function loadFlows(){
+  const epoch=++flowLoadEpoch;
+  flowPageEpoch++;
+  loadingMore=false;
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
   try{
     const d=await api('/api/flows?'+q.toString());
+    if(epoch!==flowLoadEpoch)return;
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
@@ -723,13 +730,14 @@ export async function loadFlows(){
     updateTruncBanner();
     refreshMethodFilter();
     loadTrafficDiagnosis();
-  }catch(e){toast('flows: '+e.message);}
+  }catch(e){if(epoch===flowLoadEpoch)toast('flows: '+e.message);}
 }
 
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
   if(loadingMore||!flowHasMore||!state.flows.length)return;
+  const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   updateTruncBanner();
   try{
@@ -739,6 +747,7 @@ export async function loadMoreFlows(){
     appendFlowCursor(q,last);
     q.set('limit',String(FLOW_FETCH+1));
     const d=await api('/api/flows?'+q.toString());
+    if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return;
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH;
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
@@ -752,7 +761,7 @@ export async function loadMoreFlows(){
       }
     }
   }catch(e){/* a failed page-load is non-fatal; the user can scroll again */}
-  finally{loadingMore=false;updateTruncBanner();}
+  finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
 }
 function refreshMethodFilter(){
   if(state.filters.method)return; // don't shrink the list while filtering by method
@@ -774,6 +783,8 @@ let methodsDirty=true; // build the method filter once initially
 // loaded list — essential once you've scrolled deep.
 const flowStore=createFlowStore(state.flows);
 let reloadTimer=null;
+const renderSideEpoch={req:0,res:0};
+let wsRenderEpoch=0;
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 export async function selectFlow(id){
   state.selId=id;renderRows();
@@ -783,6 +794,7 @@ export async function selectFlow(id){
     state.detail=d;
     $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
     await renderSide('req');
+    if(state.selId!==id)return;
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
       await renderWSFrames(id);
@@ -796,10 +808,11 @@ export async function selectFlow(id){
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
       await renderSide('res');
+      if(state.selId!==id)return;
       $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
-  }catch(e){toast('flow: '+e.message);}
+  }catch(e){if(state.selId===id)toast('flow: '+e.message);}
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
@@ -815,15 +828,23 @@ function wsFrameRow(dir,opcode,length,text){
 // into the #wsMsg box (the most-expected WS-replay affordance that was missing).
 function wireWsFrames(root){
   if(!root)return;
-  root.querySelectorAll('.ws-frame-replay').forEach(el=>el.onclick=()=>{const m=$('#wsMsg');if(m){m.value=el.dataset.replay||'';m.focus();}});
+  root.querySelectorAll('.ws-frame-replay').forEach(el=>{
+    const activate=()=>{const m=$('#wsMsg');if(m){m.value=el.dataset.replay||'';m.focus();}};
+    el.setAttribute('aria-label','Load this text frame into the WebSocket replay editor');
+    wireRowKey(el,activate);
+  });
 }
 function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);return `${s}://${d.host}${def?'':':'+d.port}${d.path||'/'}`;}
 export async function renderWSFrames(id){
+  const epoch=++wsRenderEpoch;
+  const detail=state.detail;
+  const current=()=>state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
   try{
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
-    const url=flowWsURL(state.detail||{});
+    if(!current())return;
+    const url=flowWsURL(detail||{});
     const box=`<div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="wsMsg" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
+        <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
         <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
       <div id="wsReplayOut" style="margin-bottom:10px"></div>`;
     const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
@@ -832,7 +853,7 @@ export async function renderWSFrames(id){
     wireWsFrames($('#resView'));
     const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
     const inp=document.getElementById('wsMsg');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')wsReplay(url);};
-  }catch(e){$('#resView').textContent='(error: '+e.message+')';}
+  }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
 }
 async function wsReplay(url){
   const msg=($('#wsMsg')||{}).value||'';
@@ -862,11 +883,33 @@ export async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
   const dec=side==='req'?$('#reqDecode'):$('#resDecode');
   if(dec)dec.hidden=true;
-  if(!state.selId){return;}
+  const flowId=state.selId;
+  const detail=state.detail;
+  const epoch=++renderSideEpoch[side];
+  if(!flowId||!detail){return;}
+  const len=side==='req'?detail.reqLen:detail.resLen;
+  // Binary body (image/font/media/archive/…): show only the headers — the bytes
+  // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
+  const mime=bodyMime(detail,side);
+  // "Render" only makes sense for HTML; for JSON/images/etc. it used to silently
+  // fall through to an ugly raw view. Hide the button and fall back to Pretty.
+  if(side==='res'){
+    const isHtml=!!mime&&/html/i.test(mime);
+    const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
+    if(renderBtn)renderBtn.style.display=isHtml?'':'none';
+    if(!isHtml&&state.view.res==='render'){
+      state.view.res='pretty';
+      const seg=document.querySelector('#inspect .seg[data-side="res"]');
+      if(seg)seg.querySelectorAll('button').forEach(b=>{const on=b.dataset.view==='pretty';b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');});
+    }
+  }
+  const view=state.view[side];
+  const current=()=>renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
   const draw=async()=>{
     try{
-      if(state.view[side]==='decoded'){
-        const d=await api('/api/flows/'+state.selId+'/decoded?side='+side);
+      if(view==='decoded'){
+        const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
+        if(!current())return;
         if(!d.matched){
           el.innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this ${side==='req'?'request':'response'}.<br>
             Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
@@ -882,46 +925,31 @@ export async function renderSide(side){
         const body=typeof d.plaintext==='string'?d.plaintext:'';
         el._rawText=body;
         el._pretty=true;
-        el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body, mime||'application/json')+'</pre>';
+        el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,mime||'application/json')+'</pre>';
         return;
       }
-      const raw=await api('/api/flows/'+state.selId+'/raw?side='+side);
+      const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
+      if(!current())return;
       el._rawText=raw;
-      el._pretty=state.view[side]==='pretty';
-      if(side==='res'&&state.view.res==='render'&&mime&&/html/i.test(mime)){
+      el._pretty=view==='pretty';
+      if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
         const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';
         el.innerHTML=`<iframe sandbox="" title="Rendered HTML" srcdoc="${escAttr(body)}" style="width:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>`;
         return;
       }
-      let html=highlightHTTP(state.view[side]==='pretty'?prettify(raw):raw,state.view[side]==='pretty',mime);
+      let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);
       const fq=($('#inspectFindIn')||{}).value;
       const stat=$('#inspectFindStat');
       if(side==='res'&&fq&&fq.length>1){
-        const r=markFindInHtml(html,fq); html=r.html;
+        const r=markFindInHtml(html,fq);html=r.html;
         if(stat)stat.textContent=r.count?r.count+' match'+(r.count===1?'':'es'):'no matches';
-      } else if(stat){ stat.textContent=''; }
+      }else if(stat){stat.textContent='';}
       el.innerHTML=html;
-    }catch(e){el.textContent='(error: '+e.message+')';}
+    }catch(e){if(current())el.textContent='(error: '+e.message+')';}
   };
-  const len=state.detail?(side==='req'?state.detail.reqLen:state.detail.resLen):0;
-  // Binary body (image/font/media/archive/…): show only the headers — the bytes
-  // aren't readable as text. Built from the detail DTO, so the body isn't fetched.
-  const mime=bodyMime(state.detail,side);
-  // "Render" only makes sense for HTML; for JSON/images/etc. it used to silently
-  // fall through to an ugly raw view. Hide the button and fall back to Pretty.
-  if(side==='res'){
-    const isHtml=!!mime&&/html/i.test(mime);
-    const renderBtn=document.querySelector('#inspect .seg[data-side="res"] button[data-view="render"]');
-    if(renderBtn)renderBtn.style.display=isHtml?'':'none';
-    if(!isHtml&&state.view.res==='render'){
-      state.view.res='pretty';
-      const seg=document.querySelector('#inspect .seg[data-side="res"]');
-      if(seg)seg.querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.view==='pretty');});
-    }
-  }
   if(isBinaryMime(mime)){
-    const dl=flowBodyDownloadName(state.selId,side,mime), href=flowBodyDownloadHref(state.selId,side);
-    el.innerHTML=highlightHTTP(headerBlockText(state.detail,side))+
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
+    el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
         <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
         <button class="btn" data-bin="1" style="margin-top:8px;margin-left:6px">Show raw anyway</button></div>`;
@@ -930,7 +958,7 @@ export async function renderSide(side){
     return;
   }
   if(len>RENDER_CAP){
-    const dl=flowBodyDownloadName(state.selId,side,mime), href=flowBodyDownloadHref(state.selId,side);
+    const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=`<div class="hint" style="padding:18px;line-height:1.8">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
       <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
       <button class="btn" data-bigshow="1" style="margin-top:8px">Show anyway</button></div>`;
@@ -1101,11 +1129,11 @@ export function renderScope(){
   }
   if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
   body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
-    <td><input type="text" data-k="host" value="${escAttr(r.host)}" placeholder="*.acme.com"></td>
-    <td><input type="text" data-k="path" value="${escAttr(r.path)}" placeholder="/"></td>
-    <td><input type="text" data-k="scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
+    <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
+    <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
+    <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
+    <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"></td>
+    <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
     tr.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>updateScope(id,tr)));});

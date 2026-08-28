@@ -108,14 +108,21 @@ function persistUIState(panel, blob){
   // Fire-and-forget project DB write so drafts survive browser clears / machines.
   api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(blob)}).catch(()=>{});
 }
-async function hydrateUIState(panel, storageBase){
+const UI_HYDRATE_TIMEOUT_MS=2500;
+async function readBoundedUIState(panel){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),UI_HYDRATE_TIMEOUT_MS);
   try{
-    const d=await api('/api/ui/'+panel);
-    if(d&&d.value!=null){
-      try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(d.value));}catch(e){}
-      return true;
-    }
-  }catch(e){}
+    return await api('/api/ui/'+panel,{signal:controller.signal});
+  }catch(e){return null;}
+  finally{clearTimeout(timer);}
+}
+async function hydrateUIState(panel, storageBase){
+  const d=await readBoundedUIState(panel);
+  if(d&&d.value!=null){
+    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(d.value));}catch(e){}
+    return true;
+  }
   return false;
 }
 export const repTabs=createTabManager({
@@ -181,6 +188,9 @@ export function repLoadEditor(){
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
   const wire=t.body||'';
+  t.reqDecodeEpoch=(t.reqDecodeEpoch||0)+1;
+  const decodeEpoch=t.reqDecodeEpoch;
+  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqView==='decoded'&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
   try{
     let d;
     if(flowId){
@@ -188,14 +198,25 @@ async function repEnterDecoded(t){
     }else{
       d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:'req',rawBody:wire,host:(()=>{try{return new URL(t.url).host;}catch(e){return'';}})()})});
     }
-    if(!d.matched){toast('no message codec matched');t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
-    if(d.error){toast(d.error);t.reqView='pretty';repSyncReqSeg('pretty');repCodecBadge(t);return false;}
+    if(!current())return false;
+    if(!d.matched||d.error){
+      t.reqView='pretty';
+      if(repCur()!==t)return false;
+      toast(d.error||'no message codec matched');repSyncReqSeg('pretty');repCodecBadge(t);return false;
+    }
     t.codecId=d.codecId||'';t.applyOnSend=!!d.applyOnSend;t.rawBody=wire;t.decodedPlain=d.plaintext||'';
+    if(repCur()!==t)return true;
     $('#repBody').value=t.decodedPlain;repCodecBadge(t);repRefreshHL();return true;
-  }catch(e){toast(e.message);t.reqView='pretty';repSyncReqSeg('pretty');return false;}
+  }catch(e){
+    if(!current())return false;
+    t.reqView='pretty';
+    if(repCur()!==t)return false;
+    toast(e.message);repSyncReqSeg('pretty');repCodecBadge(t);return false;
+  }
 }
 export async function repSend(){
   repSaveEditor();const t=repCur();if(!t)return;
+  if(t.sendPending)return;
   if(!(t.url||'').trim()){toast('enter a URL');return;}
   let body=t.body,payload={method:t.method,url:t.url.trim(),headers:t.headers,body};
   if((t.reqView||'raw')==='decoded'){
@@ -402,6 +423,7 @@ $('#repReqSeg')&&$('#repReqSeg').querySelectorAll('button').forEach(b=>b.onclick
   repSyncReqSeg(next);
   if(next==='decoded'){
     const ok=await repEnterDecoded(t);
+    if(repCur()!==t)return;
     if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}
   }else{
     $('#repBody').value=repBodyForDisplay(t.body,next);
@@ -652,14 +674,19 @@ const intrTabs=createTabManager({
   onPersist:blob=>persistUIState('intruder',blob),
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
-function renderIntrTabs(){intrTabs.render('#intrTabs');}
+function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return; intrInit._done=true;
-  await hydrateUIState('intruder','intr.tabs');
-  await hydrateIntrPresets();
+  await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
   intrTabs.init('#intrTabs');
   if(intrTabs.tabs.length) intrTabs.persist();
   renderIntrHistory();loadIntrPresets();
+  const tabBar=$('#intrTabs');
+  if(tabBar)tabBar.addEventListener('keydown',e=>{
+    if((intrStartPending||intrLastRunning)&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+      e.preventDefault();e.stopImmediatePropagation();
+    }
+  },true);
   $('#intrTarget')&&$('#intrTarget').addEventListener('input',intrTouch);
   $('#intrTemplate')&&$('#intrTemplate').addEventListener('input',()=>{intrTemplateChanged();intrTouch();});
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
@@ -670,8 +697,19 @@ export async function intrInit(){
 /* ---- intruder run history (this session) ---- */
 const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
 let intrStartPending=false;
+let intrRunTabId=null;
 let intrPollError='';
 let intrLastRunning=false,intrLastTotal=0,intrLastDone=0;
+function syncIntrTabLock(locked){
+  const bar=$('#intrTabs');if(!bar)return;
+  bar.setAttribute('aria-busy',locked?'true':'false');
+  bar.querySelectorAll('.rt-select').forEach(button=>{
+    const tid=Number(button.closest('.rep-tab')?.dataset.tid);
+    button.disabled=!!locked&&tid!==intrRunTabId;
+  });
+  bar.querySelectorAll('.rt-close,.rep-tab-add').forEach(button=>{button.disabled=!!locked;});
+  bar.title=locked?'Attack tabs are locked until the active run finishes':'';
+}
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
@@ -819,6 +857,7 @@ function renderPayloadInputs(){
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
     const p=ta.dataset.pos;
+    ta.setAttribute('aria-label',p==='s'?'Payload list for all injection positions':`Payload list for injection position ${Number(p)+1}`);
     ta.value=p==='s'?(intrState.sniper||''):(intrState.pos[Number(p)]||'');
     ta.readOnly=intrPayloadTruncated(p);
     const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
@@ -971,6 +1010,8 @@ export async function intrStart(){
   intrRunCfg=intrReadEditor();       // snapshot for the history entry
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
+  intrRunTabId=intrTabs.cur()?.tid??null;
+  syncIntrTabLock(true);
   const epoch=++intrStartEpoch;
   intrPollError='';
   setIntrStartState('pending','Starting…');
@@ -980,6 +1021,7 @@ export async function intrStart(){
     renderIntr(started);
   }catch(e){
     intrStartPending=false;intrCapturePending=false;
+    intrRunTabId=null;syncIntrTabLock(false);
     setIntrStartState('error','Start failed');
     resetIntrStart(1000,epoch);
     toast('attack: '+e.message,'error');
@@ -988,12 +1030,10 @@ export async function intrStart(){
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 async function hydrateIntrPresets(){
-  try{
-    const d=await api('/api/ui/intruder-presets');
-    if(d&&Array.isArray(d.value)){
-      try{localStorage.setItem(intrPresetsKey(),JSON.stringify(d.value));}catch(e){}
-    }
-  }catch(e){}
+  const d=await readBoundedUIState('intruder-presets');
+  if(d&&Array.isArray(d.value)){
+    try{localStorage.setItem(intrPresetsKey(),JSON.stringify(d.value));}catch(e){}
+  }
 }
 function loadIntrPresets(){
   const sel=$('#intrPreset');if(!sel)return;
@@ -1049,8 +1089,11 @@ export function scheduleIntr(){
 }
 export function renderIntr(st){
   const running=!!st.running,total=st.total||0,done=st.done||0;
+  if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
   if(!st.pollFailed)intrPollError='';
   if(!st.pollFailed){intrLastRunning=running;intrLastTotal=total;intrLastDone=done;}
+  syncIntrTabLock(running||intrStartPending);
+  if(!running&&!intrStartPending)intrRunTabId=null;
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
   if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
   const pollStatus=$('#intrPollStatus');

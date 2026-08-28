@@ -190,13 +190,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 
 #main{flex:1;min-height:0;position:relative}
 .panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg);background-image:linear-gradient(90deg,var(--signal-grid) 1px,transparent 1px),linear-gradient(0deg,var(--signal-grid) 1px,transparent 1px);background-size:32px 32px}
-.panel.active{display:flex;view-transition-name:panel}
-::view-transition-old(panel){animation:panel-exit var(--motion-base) var(--motion-exit) both}
-::view-transition-new(panel){animation:panel-enter-forward var(--motion-base) var(--motion-enter) both}
-html[data-motion-direction="back"]::view-transition-new(panel){animation-name:panel-enter-back}
-@keyframes panel-exit{0%{opacity:1}100%{opacity:0}}
-@keyframes panel-enter-forward{0%{opacity:0;transform:translateX(6px)}100%{opacity:1;transform:translateX(0)}}
-@keyframes panel-enter-back{0%{opacity:0;transform:translateX(-6px)}100%{opacity:1;transform:translateX(0)}}
+.panel.active{display:flex}
 
 /* toolbar — single desktop row; scroll horizontally if the window is tight */
 .toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;min-height:46px;padding:8px 16px;border-bottom:1px solid var(--surface-frame);background:var(--bg2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:thin;box-shadow:inset 0 1px 0 var(--line)}
@@ -1123,6 +1117,9 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #repHistToggle{grid-column:1;grid-row:2}#repPostmanImport{grid-column:2/4;grid-row:2;justify-self:start}
   #repSend .kbd{display:none}
   .intr-results .pane-head{overflow-x:auto;scrollbar-width:thin}
+  .scan-passive-view{flex-direction:column;overflow-y:auto}
+  .scan-passive-view .scan-list{width:100%;height:auto;max-height:210px;min-height:120px;flex:none;border-right:none;border-bottom:1px solid var(--line2)}
+  .scan-detail-pane{min-height:0;flex:1}
   .sc-grid{grid-template-columns:repeat(2,1fr)!important}
   .find-guide-body{grid-template-columns:1fr}
   .find-guide-check{grid-column:1}
@@ -1136,6 +1133,12 @@ details.acc>summary.acc-h>*{margin:7px 0}
 @media (max-width:480px){
   .icpt-cond{display:grid;grid-template-columns:auto minmax(0,1fr) auto}
   .icpt-cond .field-grow{grid-column:1/-1;width:100%;min-width:0}
+  #panel-proxy>.toolbar:first-child,#panel-proxy>div.toolbar-secondary,#panel-map>.toolbar{flex-wrap:wrap;overflow-x:visible}
+  #panel-proxy>.toolbar:first-child .search{flex:1 1 100%;max-width:none;min-width:0}
+  #panel-proxy>.toolbar:first-child>.spacer,#panel-map>.toolbar>.spacer{display:none}
+  #panel-map>.toolbar>.btn-field{flex:1 1 110px;min-width:0;max-width:none}
+  #mapViewSeg{flex:1 1 100%;justify-content:stretch}
+  #mapViewSeg button{flex:1}
 }
 
 /* CA trust how-to (Settings → TLS / CA) */

@@ -124,7 +124,7 @@ export function renderIntercept(){
   else selectHeld(items[0].id,items[0].side);
 }
 function setSwitch(btnSel,stateSel,on){
-  const b=$(btnSel);if(b){b.classList.toggle('on',!!on);b.setAttribute('aria-pressed',on?'true':'false');}
+  const b=$(btnSel);if(b){b.disabled=false;b.classList.toggle('on',!!on);b.setAttribute('aria-pressed',on?'true':'false');}
   const s=$(stateSel);if(s)s.textContent=on?'On':'Off';
 }
 function heldItem(id,side){const q=side==='resp'?(state.intercept.responseQueue||[]):(state.intercept.queue||[]);return q.find(x=>x.id===id);}
@@ -155,7 +155,7 @@ export async function selectHeld(id,side,opts={}){
   $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
-   let raw=h.raw;
+   let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
    if(!heldOriginalCache.has(cacheKey))heldOriginalCache.set(cacheKey,heldOriginal(h));
 
   if(heldLoadingKey===cacheKey&&opts.keepEditor)return;
@@ -163,9 +163,8 @@ export async function selectHeld(id,side,opts={}){
   if(opts.keepEditor){
     const ta=$('#heldRaw');
     if(ta&&document.activeElement===ta)return;
-    if(ta&&ta.value)raw=ta.value;
   }
-  if(!raw&&h.len!=null){
+  if(!heldRawCache.has(cacheKey)&&!raw&&h.len!=null){
     showHeldLoading({...h,side});
     if(heldRawCache.has(cacheKey))raw=heldRawCache.get(cacheKey);
     else{
@@ -199,7 +198,7 @@ $('#interceptToggle').onclick=toggleIntercept;
 // Forward / Drop act on the selected item, routing to the request or response API.
 function setHeldActionState(button,stateName,label){
   const buttons=[$('#forwardBtn'),$('#dropBtn')];
-  buttons.forEach(b=>{if(b)b.disabled=stateName==='pending';});
+  buttons.forEach(b=>{if(b)b.disabled=stateName==='pending'||!state.heldSel;});
   button.classList.remove('is-pending','is-success','is-error');
   if(stateName!=='idle')button.classList.add('is-'+stateName);
   button.dataset.state=stateName;
@@ -209,11 +208,13 @@ function setHeldActionState(button,stateName,label){
 function resetHeldAction(button,label,delay,epoch){
   setTimeout(()=>{if(epoch===heldActionEpoch)setHeldActionState(button,'idle',label);},delay);
 }
-function finishHeldExit(row){
-  const deferred=!!heldActionInFlight?.deferred;
+function reconcileHeldRemoval(sel){
+  const queueKey=sel.side==='resp'?'responseQueue':'queue';
+  const queue=(state.intercept?.[queueKey]||[]).filter(h=>h.id!==sel.id);
+  state.intercept={...(state.intercept||{}),[queueKey]:queue};
+  if(state.heldSel&&state.heldSel.id===sel.id&&state.heldSel.side===sel.side)state.heldSel=null;
   heldActionInFlight=null;
-  if(deferred)renderIntercept();
-  else if(row?.isConnected)row.remove();
+  renderIntercept();
 }
 function releaseHeldAction(){
   const deferred=!!heldActionInFlight?.deferred;
@@ -231,7 +232,7 @@ $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    finishHeldExit(row);
+    reconcileHeldRemoval(sel);
     setHeldActionState(button,'success','Forwarded');
     resetHeldAction(button,'Forward',600,epoch);
     toast(sel.side==='resp'?'response forwarded':'forwarded');
@@ -258,7 +259,10 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
 });
 $('#heldRaw').addEventListener('input',()=>{
   const sel=state.heldSel,h=sel&&heldItem(sel.id,sel.side);
-  if(h)setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
+  if(h){
+    heldRawCache.set(heldKey(sel.side,sel.id),$('#heldRaw').value);
+    setHeldModified($('#heldRaw').value,heldOriginalCache.get(heldKey(sel.side,sel.id))||heldOriginal(h));
+  }
 });
 $('#heldBeautifyBtn')&&($('#heldBeautifyBtn').onclick=()=>{
   const ta=$('#heldRaw');if(!ta)return;
@@ -281,7 +285,7 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
     await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
-    finishHeldExit(row);
+    reconcileHeldRemoval(sel);
     setHeldActionState(button,'success','Dropped');
     resetHeldAction(button,'Drop',600,epoch);
     toast(sel.side==='resp'?'response dropped':'dropped');
@@ -312,10 +316,10 @@ export function renderRules(){
   if(det&&state.rules.length)det.open=true;
   if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
   body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
-    <td><input type="checkbox" ${r.enabled?'checked':''} data-k="enabled"></td>
-    <td><select data-k="type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
-    <td><input type="text" data-k="match" value="${escAttr(r.match)}"></td>
-    <td><input type="text" data-k="replace" value="${escAttr(r.replace)}"></td>
+    <td><input type="checkbox" aria-label="Enable interception rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
+    <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
+    <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
+    <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" value="${escAttr(r.replace)}"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);

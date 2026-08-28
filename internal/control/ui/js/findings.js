@@ -9,6 +9,7 @@ import { sendToRepeater } from './tools.js';
 const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'wont_fix', 'fixed'];
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
+let findingsLoadEpoch=0;
 
 function findingsLoadState() {
   if (findingsLoadStateEl?.isConnected) return findingsLoadStateEl;
@@ -111,6 +112,7 @@ function renderFindTagFilter() {
 }
 
 export async function loadFindings() {
+  const epoch=++findingsLoadEpoch;
   try {
     const q = findTagFilter ? '?tag=' + encodeURIComponent(findTagFilter) : '';
     // Always load the full set for the sidebar filter counts; filter client-side
@@ -119,6 +121,7 @@ export async function loadFindings() {
       api('/api/findings'),
       api('/api/findings/tags').catch(() => ({ tags: [] })),
     ]);
+    if(epoch!==findingsLoadEpoch)return false;
     findings = d.findings || [];
     findTagCounts = tags.tags || [];
     renderFindTagFilter();
@@ -126,7 +129,9 @@ export async function loadFindings() {
     const loadState = findingsLoadState();
     if (loadState) { loadState.style.display = 'none'; loadState.textContent = ''; }
     void q;
+    return true;
   } catch (e) {
+    if(epoch!==findingsLoadEpoch)return false;
     // Keep the last report visible. A toast alone disappears before a user can
     // diagnose a transient SSE/API failure, and an empty report is misleading.
     const loadState = findingsLoadState();
@@ -135,6 +140,7 @@ export async function loadFindings() {
       const retry = loadState.querySelector('[data-load-retry]');
       if (retry) retry.setAttribute('data-findings-retry', '');
     } else toast(e.message);
+    return false;
   }
 }
 
@@ -275,7 +281,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-text${hasMd ? '' : ' find-doc-text-empty'}" data-i="${i}">
       ${controls}
       <div class="find-text-view md"${hasMd ? '' : ' style="display:none"'}>${hasMd ? renderMD(b.md) : ''}</div>
-      <textarea class="find-text-edit block-text" data-i="${i}" rows="1" spellcheck="true"
+      <textarea class="find-text-edit block-text" data-i="${i}" rows="1" spellcheck="true" aria-label="Finding evidence step ${i+1}"
         ${hasMd ? 'style="display:none"' : ''}
         placeholder="Describe the vulnerability, steps to reproduce, and what you observed…">${esc(b.md || '')}</textarea>
     </div>`;
@@ -289,7 +295,7 @@ function renderBlockEl(b, i, total) {
           <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot — evidence blob missing</div>
           <span class="hint">${esc(b.hash || '')}</span>
         </blockquote>
-        <input class="find-poc-note-input block-caption" data-i="${i}" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
+        <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}" placeholder="Caption (optional)">
       </div>`;
     }
     const src = b.url || ('/api/findings/images/' + (b.hash || ''));
@@ -297,7 +303,7 @@ function renderBlockEl(b, i, total) {
       ${controls}
       <figure class="find-doc-figure">
         <img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
-        <input class="find-poc-note-input block-caption" data-i="${i}" value="${escAttr(b.caption || '')}"
+        <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}"
           placeholder="Caption (optional)" onclick="event.stopPropagation()">
       </figure>
     </div>`;
@@ -313,7 +319,7 @@ function renderBlockEl(b, i, total) {
         <div><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> PoC flow #${esc(String(b.flowId))} — evidence deleted from history</div>
         <span class="hint">Re-capture this endpoint to restore evidence</span>
       </blockquote>
-      <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
+      <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}" placeholder="Annotation (optional)">
     </div>`;
   }
   const reqLine = b.method
@@ -328,7 +334,7 @@ function renderBlockEl(b, i, total) {
          <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
        </div>
      </div>
-     <input class="find-poc-note-input block-note" data-i="${i}" value="${escAttr(b.note || '')}"
+     <input class="find-poc-note-input block-note" data-i="${i}" aria-label="Evidence annotation" value="${escAttr(b.note || '')}"
        placeholder="Annotation (optional)" onclick="event.stopPropagation()">
    </div>`;
 }
@@ -483,6 +489,7 @@ function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
   const f = findings.find(x => x.id === selFinding);
   if (!f) { box.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg></div><div class="state-empty-title">No finding selected</div><p class="state-empty-hint">Select a finding from the list to view its details.</p></div>'; return; }
+  const edit = findEditMode;
 
   const statusSel = STATUSES.map(s => `<option value="${s}"${s === f.status ? ' selected' : ''}>${esc(statusLabel(s))}</option>`).join('');
   const sevOpts = ['Critical', 'High', 'Medium', 'Low', 'Info'].map(s => `<option value="${s}"${s === f.severity ? ' selected' : ''}>${s}</option>`).join('');
@@ -505,7 +512,7 @@ function renderFindingDetail() {
     ? `<div class="find-verif-banner" role="status">
         <div class="find-verif-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Needs human verification</div>
         ${edit
-          ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
+          ? `<textarea id="findVerifInstr" class="find-verif-text" rows="3" aria-label="Human verification instructions" placeholder="What should the human check? Exact steps…">${esc(f.verificationInstructions || '')}</textarea>`
           : `<div class="find-verif-read">${f.verificationInstructions ? esc(f.verificationInstructions) : '<span class="hint">No verification instructions recorded.</span>'}</div>`}
       </div>` : '';
   const machineProof = (() => {
@@ -534,15 +541,14 @@ function renderFindingDetail() {
     </div>`;
   })();
 
-  const edit = findEditMode;
   const impactRead = f.impact
     ? `<div class="find-sticky-impact">${esc(f.impact)}</div>`
     : `<div class="hint">No impact written yet.</div>`;
   const metaStrip = `<details class="find-meta-strip" open><summary>Technical context · target, classification, and tags</summary>
     <div class="find-meta-strip-body">
       ${edit
-        ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2">${esc(f.why || '')}</textarea></section>
-           <section class="find-sec" id="find-sec-target"><h3>Affected target</h3><input id="findTarget" class="btn btn-field find-target-input" type="text" value="${escAttr(f.target || '')}"></section>`
+        ? `<section class="find-sec" id="find-sec-why"><h3>Why it's a finding</h3><textarea id="findWhy" class="find-field-text" rows="2" aria-label="Why this is a finding">${esc(f.why || '')}</textarea></section>
+           <section class="find-sec" id="find-sec-target"><h3>Affected target</h3><input id="findTarget" class="btn btn-field find-target-input" type="text" aria-label="Affected target" value="${escAttr(f.target || '')}"></section>`
         : `<p><b>Why</b> — ${f.why ? esc(f.why) : '<span class="hint">—</span>'}</p>
            <p><b>Target</b> — ${f.target ? esc(f.target) : '<span class="hint">—</span>'}</p>`}
       <p class="hint">CVSS ${esc(f.cvss || '—')} · CWE ${esc(f.cwe || '—')} · env ${esc(f.environment || '—')}</p>
@@ -582,7 +588,7 @@ function renderFindingDetail() {
     <section class="find-sec find-sec-impact-sticky" id="find-sec-impact">
       <h3>Impact</h3>
       ${edit
-        ? `<textarea id="findImpact" class="find-field-text" rows="2" placeholder="What an attacker gains…">${esc(f.impact || '')}</textarea>`
+        ? `<textarea id="findImpact" class="find-field-text" rows="2" aria-label="Finding impact" placeholder="What an attacker gains…">${esc(f.impact || '')}</textarea>`
         : impactRead}
     </section>
     ${metaStrip}
@@ -602,7 +608,7 @@ function renderFindingDetail() {
     <details class="find-more"${f.fix ? ' open' : ''}>
       <summary>Remediation (optional)</summary>
       ${edit
-        ? `<textarea id="findFix" class="find-field-text" rows="2">${esc(f.fix || '')}</textarea>`
+        ? `<textarea id="findFix" class="find-field-text" rows="2" aria-label="Finding remediation">${esc(f.fix || '')}</textarea>`
         : `<div class="hint" style="padding:8px 0">${f.fix ? esc(f.fix) : '—'}</div>`}
     </details>
   </article>`;
@@ -619,12 +625,13 @@ function renderFindingDetail() {
     const el = $(id); if (!el) return;
     el.addEventListener('blur', async () => {
       const v = getVal(el);
-      if (v === (f[key] || '')) return;
+      const previous = f[key] || '';
+      if (v === previous) return;
       try {
         await patchFinding(f.id, { [key]: v });
         f[key] = v;
-        await loadFindings();
-      } catch (err) { toast(err.message); }
+      } catch (err) { if (el.value === v) el.value = previous; toast(err.message); return; }
+      await loadFindings();
     });
   };
   if (edit) {
@@ -646,28 +653,37 @@ function renderFindingDetail() {
   };
   const stSel = $('#findStatus');
   if (stSel) stSel.onchange = async e => {
+    const previous = f.status || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { status: e.target.value });
-      f.status = e.target.value;
-      toast('status: ' + statusLabel(f.status));
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      await patchFinding(f.id, { status: attempted });
+    } catch (err) { if (e.target.value === attempted) e.target.value = previous; toast(err.message); return; }
+    f.status = attempted;
+    toast('status: ' + statusLabel(f.status));
+    await loadFindings();
   };
   const sevSel = $('#findSeverity');
   if (sevSel) sevSel.onchange = async e => {
+    const previous = f.severity || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { severity: e.target.value });
-      f.severity = e.target.value;
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      await patchFinding(f.id, { severity: attempted });
+    } catch (err) {
+      if (e.target.value === attempted) { e.target.value = previous; e.target.style.color = sevColor(previous); }
+      toast(err.message); return;
+    }
+    f.severity = attempted;
+    await loadFindings();
   };
   const envSel = $('#findEnv');
   if (envSel) envSel.onchange = async e => {
+    const previous = f.environment || '';
+    const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { environment: e.target.value });
-      f.environment = e.target.value;
-      await loadFindings();
-    } catch (err) { toast(err.message); }
+      await patchFinding(f.id, { environment: attempted });
+    } catch (err) { if (e.target.value === attempted) e.target.value = previous; toast(err.message); return; }
+    f.environment = attempted;
+    await loadFindings();
   };
   const deleteBtn = $('#findDelete');
   if (deleteBtn) deleteBtn.onclick = async () => {
