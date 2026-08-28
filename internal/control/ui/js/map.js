@@ -105,6 +105,13 @@ function mapUsesServerSearch(){
   return mapState.searchScope !== 'path' && mapState.search.trim().length > 0;
 }
 
+function mapFilterSignature(source=mapState){
+  return JSON.stringify([
+    source.domain||'',source.tag||'',source.method||'',Number(source.statusClass)||0,
+    String(source.search||'').trim(),source.searchScope||'path',!!source.hideNoise,
+  ]);
+}
+
 function invalidateEndpointLoad(){
   if(!loadEndpointsPending)return;
   loadEndpointsEpoch++;
@@ -142,6 +149,7 @@ export async function loadEndpoints(){
     tag:mapState.tag,hideNoise:mapState.hideNoise,method:mapState.method,statusClass:mapState.statusClass,
   };
   const serverSearch=request.serverSearch;
+  const requestFilterSignature=mapFilterSignature(request);
   const epoch = ++loadEndpointsEpoch;
   loadEndpointsPending=true;
   mapEndpointRequestMode=serverSearch?'server':'full';
@@ -178,7 +186,8 @@ export async function loadEndpoints(){
       try{
         const all=await api('/api/endpoints?'+allQ.toString());
         if (epoch !== loadEndpointsEpoch) return;
-        noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
+        if(requestFilterSignature===mapFilterSignature())
+          noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
       }catch(e){/* diagnostic only; preserve the primary map result */}
     }
     if (epoch !== loadEndpointsEpoch) return;
@@ -1091,7 +1100,8 @@ export function renderMapGraph(eps){
     mapState.collapsed.clear();
     mapState._needFit=true;
     mapState._animateNextFit=true;
-    renderMap();
+    if($('#mapDiscoveryPanel')&&!$('#mapDiscoveryPanel').hidden)refreshMapDiscoveryPanel();
+    refreshMapDomainSelection();
     toast('focused on '+host);
   };
   g.querySelectorAll('.g-node').forEach(el => {

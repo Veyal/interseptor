@@ -8,10 +8,15 @@ import (
 func TestUIIntruderHistoryOwnsDisplayedResultsSeparatelyFromActiveRun(t *testing.T) {
 	tools := executableJS(readUIAsset(t, "js/tools.js"))
 	for _, contract := range []string{
-		"let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget=''",
+		"let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null",
 		"intrDisplayOwner='history'",
+		"intrDisplayedHistory=h",
 		"intrDisplayedTarget=h.target||''",
 		"intrDisplayedResults=h.results.slice()",
+		"function showIntrLiveResults()",
+		"intrDisplayedHistory=null",
+		"intrDisplayedResults=intrLastResults.slice()",
+		"data-intr-live",
 		"if(intrDisplayOwner==='live'){",
 		"intrDisplayedResults=res.slice()",
 		"const pool=intrApplyFilter(intrDisplayedResults)",
@@ -21,6 +26,19 @@ func TestUIIntruderHistoryOwnsDisplayedResultsSeparatelyFromActiveRun(t *testing
 		if !strings.Contains(tools, contract) {
 			t.Errorf("Intruder display ownership contract missing %q", contract)
 		}
+	}
+}
+
+func TestUIIntruderHistoryProvidesDirectReturnToLiveResults(t *testing.T) {
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	if strings.Count(tools, "showIntrLiveResults()") < 2 {
+		t.Error("Intruder must expose live-result restoration and use it when a new attack starts")
+	}
+	if !strings.Contains(tools, "live.onclick=showIntrLiveResults") {
+		t.Error("Intruder history must provide a direct keyboard-wired return to current live results")
+	}
+	if !strings.Contains(tools, "box.querySelectorAll('.h[data-i]')") {
+		t.Error("Intruder history row wiring must not overwrite the live-results action")
 	}
 }
 

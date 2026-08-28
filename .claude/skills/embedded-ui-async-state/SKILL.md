@@ -14,6 +14,10 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   query. When changing back to client-only filtering, invalidate the filtered
   request immediately and reload the full collection; a generation guard alone
   cannot restore rows the server omitted.
+- Bind auxiliary counts and diagnostics to a complete filter-context signature.
+  Their primary dataset may remain valid after a client-only filter changes,
+  while a secondary “hidden” or “available” count no longer describes the
+  visible context.
 - Include the selection generation in dependent body or detail renderers so a
   re-selection invalidates work started for an older snapshot.
 - Keep successful values, authoritative empty values, and read failures
@@ -60,7 +64,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   ownership, locks, completion capture, polling, or the authoritative fallback.
   Track the displayed evidence snapshot independently, and make filters,
   follow-up actions, and error-only rerenders consume that same snapshot so the
-  visible rows and their actions cannot silently refer to different runs.
+  visible rows and their actions cannot silently refer to different runs. When
+  live processing continues behind a history snapshot, provide a direct,
+  keyboard-accessible return to the live evidence owner.
 - Resolve the active project before importing any module that reads
   project-scoped storage during evaluation. Route every cross-feature entry
   point through one shared readiness-aware loader rather than importing the

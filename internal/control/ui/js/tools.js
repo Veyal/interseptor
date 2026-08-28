@@ -716,8 +716,10 @@ function renderIntrHistory(){
   if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
   if(!box)return;
   if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
-  box.innerHTML=intrHistory.map((h,i)=>`<div class="h" data-i="${i}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
-  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
+  const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
+  box.innerHTML=liveRow+intrHistory.map((h,i)=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-i="${i}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  const live=box.querySelector('[data-intr-live]');if(live){live.onclick=showIntrLiveResults;wireRowKey(live,showIntrLiveResults);}
+  box.querySelectorAll('.h[data-i]').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
 }
 function intrLoadHistory(i){
   const h=intrHistory[i];if(!h)return;
@@ -725,6 +727,7 @@ function intrLoadHistory(i){
   // server snapshot. Keep polling, locks, and recovery tied to the active run
   // while filters and finding creation operate on what the operator chose.
   intrDisplayOwner='history';
+  intrDisplayedHistory=h;
   intrDisplayedTarget=h.target||'';
   intrDisplayedResults=h.results.slice();
   if(h.cfg&&!intrLastRunning&&!intrStartPending){
@@ -733,6 +736,7 @@ function intrLoadHistory(i){
     intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
     $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
     updateIntrMode();intrTouch();}
+  renderIntrHistory();
   renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }
 $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
@@ -1022,11 +1026,14 @@ export async function intrStart(){
   const epoch=++intrStartEpoch;
   const pollEpoch=invalidateIntrPoll();
   intrPollError='';
+  showIntrLiveResults();
   setIntrStartState('pending','Starting…');
   try{
     const started=await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     intrStartPending=false;
     intrDisplayOwner='live';
+    intrDisplayedHistory=null;
+    renderIntrHistory();
     if(pollEpoch===intrPollEpoch)renderIntr(started);
     else scheduleIntr();
   }catch(e){
@@ -1076,9 +1083,18 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   loadIntrPresets();toast('preset saved');
 };
 export let intrTimer=null;
-let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='';
+let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;
 let intrPollEpoch=0;
 let intrPollInFlight=false,intrPollQueued=false;
+function showIntrLiveResults(){
+  intrDisplayOwner='live';
+  intrDisplayedHistory=null;
+  intrDisplayedResults=intrLastResults.slice();
+  if(intrRunCfg&&!intrLastRunning&&!intrStartPending){intrApply(intrRunCfg);intrTouch();}
+  intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+  renderIntrHistory();
+  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+}
 function invalidateIntrPoll(){
   clearTimeout(intrTimer);
   intrPollQueued=false;

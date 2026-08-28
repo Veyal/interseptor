@@ -23,6 +23,9 @@ func TestFindingsMapStateContracts(t *testing.T) {
 	for _, contract := range []string{
 		"let mapEndpointDataMode='unknown'",
 		"let mapEndpointRequestMode='full'",
+		"function mapFilterSignature(source=mapState)",
+		"const requestFilterSignature=mapFilterSignature(request)",
+		"if(requestFilterSignature===mapFilterSignature())",
 		"function setMapSearchState(search,scope=mapState.searchScope)",
 		"if(loadEndpointsPending&&(wasServer||nextServer))invalidateEndpointLoad()",
 		"mapEndpointDataMode=serverSearch?'server':'full'",
@@ -42,6 +45,18 @@ func TestFindingsMapStateContracts(t *testing.T) {
 	}
 	if strings.Count(mapJS, "refreshMapDomainSelection()") < 3 {
 		t.Error("Map domain selector and both breadcrumb paths must share the view-aware refresh boundary")
+	}
+	focusHostStart := strings.Index(mapJS, "const focusHost=el=>")
+	if focusHostStart < 0 {
+		t.Fatal("Map graph host-focus handler not found")
+	}
+	focusHostEnd := strings.Index(mapJS[focusHostStart:], "g.querySelectorAll('.g-node')")
+	if focusHostEnd < 0 {
+		t.Fatal("Map graph host-focus handler is not bounded")
+	}
+	focusHost := mapJS[focusHostStart : focusHostStart+focusHostEnd]
+	if !strings.Contains(focusHost, "refreshMapDomainSelection()") {
+		t.Error("Map graph host focus must use the server-search-aware domain refresh boundary")
 	}
 	for _, key := range []string{"MAP_VIEW_KEY", "MAP_DOMAIN_KEY", "MAP_HIDE_NOISE_KEY", "MAP_COLLAPSE_IDENTICAL_KEY"} {
 		if !strings.Contains(mapJS, "projectStorageKey("+key+")") {
