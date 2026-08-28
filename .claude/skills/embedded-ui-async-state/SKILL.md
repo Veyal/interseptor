@@ -10,6 +10,10 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
 
 - Give every latest-request-wins path a generation token. Compare the token
   after each await, including when the selected entity ID is unchanged.
+- Track whether a visible collection came from a full load or a server-filtered
+  query. When changing back to client-only filtering, invalidate the filtered
+  request immediately and reload the full collection; a generation guard alone
+  cannot restore rows the server omitted.
 - Include the selection generation in dependent body or detail renderers so a
   re-selection invalidates work started for an older snapshot.
 - Keep successful values, authoritative empty values, and read failures

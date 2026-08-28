@@ -28,6 +28,27 @@ func TestUIProxyInspectorRejectsStaleAsyncBodies(t *testing.T) {
 	}
 }
 
+func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"const noteSaveTails=new Map()",
+		"const flowId=state.selId,detail=state.detail",
+		"const previous=noteSaveTails.get(flowId)||Promise.resolve()",
+		"previous.then(async()=>",
+		"'/api/flows/'+flowId+'/note'",
+		"flowStore.byId.get(flowId)",
+		"state.selId===flowId&&state.detail===detail&&$('#noteInput').value===note",
+		"noteSaveTails.delete(flowId)",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("Flow note ownership contract missing %q", contract)
+		}
+	}
+	if strings.Contains(proxy, "'/api/flows/'+state.selId+'/note'") {
+		t.Error("Flow note persistence must not resolve its target from mutable selection state after blur")
+	}
+}
+
 func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{

@@ -20,8 +20,28 @@ func TestFindingsMapStateContracts(t *testing.T) {
 			t.Errorf("map must use latest-request-wins epoch %s", name)
 		}
 	}
+	for _, contract := range []string{
+		"let mapEndpointDataMode='unknown'",
+		"let mapEndpointRequestMode='full'",
+		"function setMapSearchState(search,scope=mapState.searchScope)",
+		"if(loadEndpointsPending&&(wasServer||nextServer))invalidateEndpointLoad()",
+		"mapEndpointDataMode=serverSearch?'server':'full'",
+		"mapEndpointRequestMode=serverSearch?'server':'full'",
+		"if(mapUsesServerSearch()||mapEndpointDataMode!=='full'||mapEndpointRequestMode==='server')",
+		"function refreshMapDomainSelection()",
+		"if(mapState.view==='params'){",
+		"invalidateEndpointLoad();loadParams();return",
+		"else mapApplySearch()",
+	} {
+		if !strings.Contains(mapJS, contract) {
+			t.Errorf("Map search/domain transition contract missing %q", contract)
+		}
+	}
 	if !strings.Contains(mapJS, "if(v!=='params')loadParamsEpoch++") {
 		t.Error("leaving Map parameter view must invalidate its pending response")
+	}
+	if strings.Count(mapJS, "refreshMapDomainSelection()") < 3 {
+		t.Error("Map domain selector and both breadcrumb paths must share the view-aware refresh boundary")
 	}
 	for _, key := range []string{"MAP_VIEW_KEY", "MAP_DOMAIN_KEY", "MAP_HIDE_NOISE_KEY", "MAP_COLLAPSE_IDENTICAL_KEY"} {
 		if !strings.Contains(mapJS, "projectStorageKey("+key+")") {

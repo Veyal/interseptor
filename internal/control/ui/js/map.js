@@ -36,6 +36,9 @@ const MAP_COLLAPSE_IDENTICAL_KEY = 'mapCollapseIdentical';
 const MAP_DOMAIN_KEY = 'mapDomain';
 let loadEndpointsEpoch = 0;
 let loadParamsEpoch = 0;
+let mapEndpointDataMode='unknown';
+let mapEndpointRequestMode='full';
+let loadEndpointsPending=false;
 
 // Static media extensions omitted from the node-link graph (images, fonts, AV).
 const MAP_MEDIA_EXT = new Set([
@@ -102,64 +105,89 @@ function mapUsesServerSearch(){
   return mapState.searchScope !== 'path' && mapState.search.trim().length > 0;
 }
 
+function invalidateEndpointLoad(){
+  if(!loadEndpointsPending)return;
+  loadEndpointsEpoch++;
+  loadEndpointsPending=false;
+}
+
+function setMapSearchState(search,scope=mapState.searchScope){
+  const nextSearch=String(search||'').trim(),nextScope=scope||'path';
+  if(nextSearch===mapState.search&&nextScope===mapState.searchScope)return false;
+  const wasServer=mapUsesServerSearch();
+  mapState.search=nextSearch;
+  mapState.searchScope=nextScope;
+  const nextServer=mapUsesServerSearch();
+  if(loadEndpointsPending&&(wasServer||nextServer))invalidateEndpointLoad();
+  return true;
+}
+
 export function focusMapSearch(term, scope='body'){
   term=String(term||'').trim();
   if(!term){ toast('nothing to search'); return; }
   document.querySelector('.tab[data-tab="map"]')?.click();
   mapState.domain='';
-  mapState.search=term;
-  mapState.searchScope=scope||'body';
+  setMapSearchState(term,scope||'body');
   mapState.view='table';
   setMapView('table');
   const dom=$('#mapDomain'), sr=$('#mapSearch'), sc=$('#mapSearchScope');
   if(dom) dom.value='';
   if(sr) sr.value=term;
   if(sc) sc.value=mapState.searchScope;
-  loadEndpoints();
 }
 
 export async function loadEndpoints(){
+  const request={
+    serverSearch:mapUsesServerSearch(),domain:mapState.domain,search:mapState.search.trim(),searchScope:mapState.searchScope,
+    tag:mapState.tag,hideNoise:mapState.hideNoise,method:mapState.method,statusClass:mapState.statusClass,
+  };
+  const serverSearch=request.serverSearch;
   const epoch = ++loadEndpointsEpoch;
+  loadEndpointsPending=true;
+  mapEndpointRequestMode=serverSearch?'server':'full';
   const warn=$('#mapWarn');
-  if(warn&&mapUsesServerSearch()){warn.style.display='block';warn.textContent='Searching bodies…';}
+  if(warn&&serverSearch){warn.style.display='block';warn.textContent='Searching bodies…';}
   const params = new URLSearchParams();
-  if(mapState.tag) params.set('tag', mapState.tag);
-  if(!mapState.hideNoise) params.set('hideNoise', '0');
-  if(mapUsesServerSearch()){
+  if(request.tag) params.set('tag', request.tag);
+  if(!request.hideNoise) params.set('hideNoise', '0');
+  if(serverSearch){
     // Scope a body/header search to the selected host — but NEVER host-filter a
     // plain load. The domain dropdown is populated from the fetched endpoints
     // (fillMapDomains), so fetching only one host would collapse the selector to
     // that single domain and hide every other host (leaving the user unable to
     // switch domains). Plain domain filtering is applied client-side in mapFiltered.
-    if(mapState.domain) params.set('host', mapState.domain);
-    params.set('search', mapState.search.trim());
-    params.set('searchScope', mapState.searchScope);
+    if(request.domain) params.set('host', request.domain);
+    params.set('search', request.search);
+    params.set('searchScope', request.searchScope);
   }
   const q = params.toString();
   if(warn){warn.style.display='block';warn.textContent='Loading Map…';}
   try{
     const d = await api('/api/endpoints' + (q ? '?' + q : ''));
     if (epoch !== loadEndpointsEpoch) return;
-    mapState.eps = d.endpoints || [];
-    mapState.total = d.total != null ? d.total : mapState.eps.length;
-    mapState.truncated = !!d.truncated;
-    mapState.searchNote = d.searchNote || '';
-    mapState.noiseHiddenCount = 0;
+    const endpoints=d.endpoints||[];
+    let noiseHiddenCount=0;
     // The default noise filter is server-side. When it produces an empty map,
     // make the empty state distinguish "no capture" from "all paths were only
     // 403/404" with one bounded diagnostic request. Only run this when the
     // remaining client-side filters cannot make the count misleading.
-    if(mapState.hideNoise && !mapState.eps.length && !mapState.search && !mapState.method && !mapState.statusClass){
+    if(request.hideNoise&&!endpoints.length&&!request.search&&!request.method&&!request.statusClass){
       const allQ = new URLSearchParams({hideNoise:'0'});
-      if(mapState.domain) allQ.set('host',mapState.domain);
-      if(mapState.tag) allQ.set('tag',mapState.tag);
+      if(request.domain) allQ.set('host',request.domain);
+      if(request.tag) allQ.set('tag',request.tag);
       try{
         const all=await api('/api/endpoints?'+allQ.toString());
         if (epoch !== loadEndpointsEpoch) return;
-        mapState.noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
+        noiseHiddenCount=all.total!=null?all.total:(all.endpoints||[]).length;
       }catch(e){/* diagnostic only; preserve the primary map result */}
     }
     if (epoch !== loadEndpointsEpoch) return;
+    mapState.eps=endpoints;
+    mapState.total=d.total!=null?d.total:endpoints.length;
+    mapState.truncated=!!d.truncated;
+    mapState.searchNote=d.searchNote||'';
+    mapState.noiseHiddenCount=noiseHiddenCount;
+    mapEndpointDataMode=serverSearch?'server':'full';
     mapState._dataVersion++;
     mapState._needFit = true;
     fillMapDomains(mapState.noiseHiddenCount>0?mapState.domain:'');
@@ -169,7 +197,10 @@ export async function loadEndpoints(){
   }catch(e){
     if(epoch === loadEndpointsEpoch) renderLoadError(warn,'Map',e,loadEndpoints,mapState.eps.length>0);
   }finally{
-    if(epoch === loadEndpointsEpoch && warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+    if(epoch===loadEndpointsEpoch){
+      loadEndpointsPending=false;
+      if(warn&&warn.textContent==='Loading Map…'){warn.style.display='none';warn.textContent='';}
+    }
   }
 }
 
@@ -435,7 +466,7 @@ function setMapView(v){
   if(fit) fit.style.display = v === 'graph' ? '' : 'none';
   mapState._needFit = true;
   if(v === 'params') loadParams();
-  else renderMap();
+  else mapApplySearch();
 }
 
 export async function loadParams(){
@@ -500,12 +531,13 @@ function renderMapCrumb(eps){
       if(a.dataset.crumb === 'all'){
         mapState.domain = '';
         $('#mapDomain').value = '';
+        try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),'');}catch(e){}
         mapCollapseHosts();
       }else if(a.dataset.crumb === 'domain'){
         mapState.collapsed.clear();
       }
       mapState._needFit = true;
-      renderMap();
+      refreshMapDomainSelection();
     };
   });
 }
@@ -701,7 +733,7 @@ function renderMapTable(eps){
 
 let mapSearchTimer = null;
 function mapApplySearch(){
-  if(mapUsesServerSearch()){
+  if(mapUsesServerSearch()||mapEndpointDataMode!=='full'||mapEndpointRequestMode==='server'){
     loadEndpoints();
     return;
   }
@@ -715,14 +747,21 @@ function mapApplySearch(){
   renderMap();
 }
 $('#mapSearch') && ($('#mapSearch').oninput = e => {
-  mapState.search = e.target.value.trim();
+  setMapSearchState(e.target.value,mapState.searchScope);
   clearTimeout(mapSearchTimer);
   mapSearchTimer = setTimeout(mapApplySearch, mapUsesServerSearch() ? 350 : 280);
 });
 $('#mapSearchScope') && ($('#mapSearchScope').onchange = e => {
-  mapState.searchScope = e.target.value || 'path';
+  setMapSearchState(mapState.search,e.target.value||'path');
   mapApplySearch();
 });
+function refreshMapDomainSelection(){
+  if(mapState.view==='params'){
+    invalidateEndpointLoad();loadParams();return;
+  }
+  if(mapUsesServerSearch()||mapEndpointDataMode!=='full'||mapEndpointRequestMode==='server')loadEndpoints();
+  else renderMap();
+}
 $('#mapDomain') && ($('#mapDomain').onchange = e => {
   mapState.domain = e.target.value;
   try{localStorage.setItem(projectStorageKey(MAP_DOMAIN_KEY),mapState.domain);}catch(e){}
@@ -730,8 +769,7 @@ $('#mapDomain') && ($('#mapDomain').onchange = e => {
   else mapCollapseHosts();
   mapState._needFit = true;
   if($('#mapDiscoveryPanel')&&!$('#mapDiscoveryPanel').hidden) refreshMapDiscoveryPanel();
-  if(mapUsesServerSearch()) loadEndpoints();
-  else renderMap();
+  refreshMapDomainSelection();
 });
 $('#mapMethod') && ($('#mapMethod').onchange = e => { mapState.method = e.target.value; mapState._needFit = true; renderMap(); });
 $('#mapRefresh') && ($('#mapRefresh').onclick = loadEndpoints);

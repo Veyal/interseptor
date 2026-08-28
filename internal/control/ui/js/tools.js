@@ -724,8 +724,10 @@ function intrLoadHistory(i){
   // History is a display choice, not a replacement for the authoritative
   // server snapshot. Keep polling, locks, and recovery tied to the active run
   // while filters and finding creation operate on what the operator chose.
+  intrDisplayOwner='history';
+  intrDisplayedTarget=h.target||'';
   intrDisplayedResults=h.results.slice();
-  if(h.cfg){
+  if(h.cfg&&!intrLastRunning&&!intrStartPending){
     intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
     intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
     intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
@@ -1018,12 +1020,15 @@ export async function intrStart(){
   intrRunTabId=intrTabs.cur()?.tid??null;
   syncIntrTabLock(true);
   const epoch=++intrStartEpoch;
+  const pollEpoch=invalidateIntrPoll();
   intrPollError='';
   setIntrStartState('pending','Starting…');
   try{
     const started=await api('/api/intruder/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     intrStartPending=false;
-    renderIntr(started);
+    intrDisplayOwner='live';
+    if(pollEpoch===intrPollEpoch)renderIntr(started);
+    else scheduleIntr();
   }catch(e){
     intrStartPending=false;intrCapturePending=false;
     intrRunTabId=null;syncIntrTabLock(false);
@@ -1071,7 +1076,14 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   loadIntrPresets();toast('preset saved');
 };
 export let intrTimer=null;
-let intrFilter='all', intrLastResults=[], intrDisplayedResults=[];
+let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='';
+let intrPollEpoch=0;
+let intrPollInFlight=false,intrPollQueued=false;
+function invalidateIntrPoll(){
+  clearTimeout(intrTimer);
+  intrPollQueued=false;
+  return ++intrPollEpoch;
+}
 function intrIsInteresting(r){return !!(r&& (r.flagged||r.matched||r.anomaly));}
 function intrApplyFilter(res){
   if(intrFilter==='interesting') return res.filter(intrIsInteresting);
@@ -1080,15 +1092,24 @@ function intrApplyFilter(res){
 }
 export function scheduleIntr(){
   clearTimeout(intrTimer);
+  if(intrPollInFlight){intrPollQueued=true;return;}
+  const epoch=++intrPollEpoch;
   intrTimer=setTimeout(async()=>{
+    intrPollInFlight=true;
     try{
-      renderIntr(await api('/api/intruder/state'));
+      const st=await api('/api/intruder/state');
+      if(epoch!==intrPollEpoch)return;
+      renderIntr(st);
     }catch(e){
+      if(epoch!==intrPollEpoch)return;
       // Keep the last result set visible while the state endpoint is unavailable.
       // A retry affordance makes a long-running attack recoverable instead of
       // silently freezing at its last progress value.
       intrPollError=e&&e.message?e.message:'connection unavailable';
       renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults,pollFailed:true},{authoritative:false});
+    }finally{
+      intrPollInFlight=false;
+      if(intrPollQueued){intrPollQueued=false;scheduleIntr();}
     }
   },120);
 }
@@ -1099,7 +1120,10 @@ export function renderIntr(st,{authoritative=true}={}){
     if(!st.pollFailed){
       intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
       intrLastResults=res.slice();
-      intrDisplayedResults=res.slice();
+      if(intrDisplayOwner==='live'){
+        intrDisplayedResults=res.slice();
+        intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+      }
     }
     if(!running&&!intrStartPending)intrRunTabId=null;
     if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
@@ -1111,7 +1135,9 @@ export function renderIntr(st,{authoritative=true}={}){
     }
     if(running&&!st.pollFailed)scheduleIntr();
   }
-  const displayRes=authoritative?res:(Array.isArray(st.results)?st.results:intrDisplayedResults);
+  const displayRes=authoritative
+    ?(intrDisplayOwner==='live'?res:intrDisplayedResults)
+    :(Array.isArray(st.results)?st.results:intrDisplayedResults);
   syncIntrTabLock(intrLastRunning||intrStartPending);
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
   const pollStatus=$('#intrPollStatus');
@@ -1175,12 +1201,13 @@ async function intrToFinding(){
   const interesting=withFlow.filter(intrIsInteresting);
   const pick=interesting.length?interesting:withFlow.slice(0,10);
   if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
-  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:($('#intrTarget').value||'Intruder finding').replace(/^https?:\/\//,'')});
+  const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
+  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
   if(!title)return;
   try{
     const body={
       title, severity:'medium', status:'needs_verification', source:'human',
-      target:$('#intrTarget').value||'',
+      target:displayTarget,
       why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
       impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
       verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',

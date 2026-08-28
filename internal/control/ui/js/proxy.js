@@ -851,6 +851,7 @@ let reloadTimer=null;
 const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0;
 let selectFlowEpoch=0;
+const noteSaveTails=new Map();
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
@@ -1127,17 +1128,27 @@ export { syncSourceFilters };
 $('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
 $('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();loadFlows();});
  syncSourceFilters();
-export async function saveNote(){
-  if(!state.selId)return;
+export function saveNote(){
+  const flowId=state.selId,detail=state.detail;
+  if(!flowId)return Promise.resolve();
   const note=$('#noteInput').value;
-  if(state.detail&&note===(state.detail.note||''))return; // unchanged — skip redundant PUT
-  try{
-    await api('/api/flows/'+state.selId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
-    if(state.detail)state.detail.note=note;
-    const fl=flowStore.byId.get(state.selId);
-    if(fl){fl.note=note;patchFlowRow(fl);}
-    const s=$('#noteSaved');s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);
-  }catch(e){toast('note: '+e.message);}
+  if(detail&&note===(detail.note||''))return Promise.resolve();
+  const previous=noteSaveTails.get(flowId)||Promise.resolve();
+  const save=previous.then(async()=>{
+    try{
+      await api('/api/flows/'+flowId+'/note',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note})});
+      if(detail)detail.note=note;
+      const fl=flowStore.byId.get(flowId);
+      if(fl){fl.note=note;patchFlowRow(fl);}
+      if(state.selId===flowId&&state.detail===detail&&$('#noteInput').value===note){
+        const s=$('#noteSaved');if(s){s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);}
+      }
+    }catch(e){toast('note: '+e.message);}
+  });
+  const tail=save.catch(()=>{});
+  noteSaveTails.set(flowId,tail);
+  tail.finally(()=>{if(noteSaveTails.get(flowId)===tail)noteSaveTails.delete(flowId);});
+  return save;
 }
 $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
 $('#noteInput').addEventListener('blur',saveNote);
