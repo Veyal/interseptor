@@ -13,17 +13,99 @@ let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
 let interceptStateEpoch=0;
+let interceptSummaryEpoch=0;
+// Toggle mutations can change the held queues and are kept on their own lane.
+// Filter persistence is deliberately separate: the filter endpoint does not
+// emit an intercept.update event, and a stalled request must never make the
+// safety toggles inoperable.
 let interceptMutationTail=Promise.resolve();
+let interceptFilterMutationTail=Promise.resolve();
+let filterMutationEpoch=0;
+let pendingFilterMutation=null;
+let acknowledgedFilterConfig=null;
 export function interceptStateGeneration(){return interceptStateEpoch;}
-export function replaceInterceptState(next){state.intercept=next;interceptStateEpoch++;}
+function currentFilterConfig(source=state.intercept||{}){
+  return {
+    filterEnabled:!!source.filterEnabled,
+    filterTarget:source.filterTarget||'any',
+    filterPattern:source.filterPattern||'',
+  };
+}
+function commitFilterConfig(config){
+  state.intercept={...(state.intercept||{}),...config};
+  interceptStateEpoch++;
+}
+function filterControlsMatch(input){
+  const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
+  return !!enabled&&!!target&&!!pattern&&enabled.checked===!!input.enabled&&target.value===input.target&&pattern.value===input.pattern;
+}
+function syncFilterControls(config){
+  const enabled=$('#interceptFilterOn'),target=$('#interceptFilterTarget'),pattern=$('#interceptFilterPattern');
+  if(enabled)enabled.checked=!!config?.filterEnabled;
+  if(target)target.value=config?.filterTarget||'any';
+  if(pattern)pattern.value=config?.filterPattern||'';
+}
+function mergeIncomingInterceptState(next){
+  const incoming=next||{};
+  if(!pendingFilterMutation)return incoming;
+  // SSE summaries (and toggle responses) can still contain filter A while the
+  // user's filter B request is in flight. Merge only the local filter fields;
+  // all queue/toggle fields remain authoritative from the newer summary.
+  return {...incoming,...pendingFilterMutation.config};
+}
+export function replaceInterceptState(next){
+  if(!pendingFilterMutation)acknowledgedFilterConfig=currentFilterConfig(next||{});
+  const merged=mergeIncomingInterceptState(next);
+  state.intercept=merged;interceptStateEpoch++;interceptSummaryEpoch++;
+}
 async function applyInterceptMutation(request){
   const result=interceptMutationTail.then(async()=>{
-    const generation=interceptStateGeneration();
+    const generation=interceptSummaryEpoch;
     const s=await request();
-    if(generation!==interceptStateGeneration())return false;
-    replaceInterceptState(s);renderIntercept();return true;
+    if(generation!==interceptSummaryEpoch)return false;
+    // A filter acknowledgement owns only filter fields and may complete while
+    // this summary response is in flight. Preserve the latest acknowledged or
+    // pending filter rather than restoring the older snapshot carried here.
+    const filter=currentFilterConfig();
+    replaceInterceptState({...s,...filter});renderIntercept();return true;
   });
   interceptMutationTail=result.catch(()=>{});
+  return result;
+}
+async function applyFilterMutation(request,config,input){
+  const epoch=++filterMutationEpoch;
+  pendingFilterMutation={epoch,config};
+  const result=interceptFilterMutationTail.then(async()=>{
+    try{
+      await request();
+      // Filter requests are serialized, so every successful response advances
+      // the real server-backed fallback even when a newer local edit owns UI.
+      acknowledgedFilterConfig={...config};
+      // A newer edit owns the UI. The older request may have succeeded on the
+      // server, but must not clear the newer pending value or repaint it.
+      if(epoch!==filterMutationEpoch)return false;
+      pendingFilterMutation=null;
+      // Filter changes do not alter queues. Commit only the acknowledged
+      // config so a response delayed behind a newer SSE summary cannot erase
+      // held items that arrived while it was in flight.
+      commitFilterConfig(config);
+      renderIntercept();
+      return true;
+    }catch(error){
+      if(epoch===filterMutationEpoch){
+        pendingFilterMutation=null;
+        const fallback=acknowledgedFilterConfig||currentFilterConfig();
+        commitFilterConfig(fallback);
+        // Do not erase a still-newer unsent edit. When the controls still show
+        // the failed attempt, roll them back immediately so active state is
+        // never implied by stale inputs.
+        if(filterControlsMatch(input))syncFilterControls(fallback);
+        renderIntercept();
+      }
+      throw error;
+    }
+  });
+  interceptFilterMutationTail=result.catch(()=>{});
   return result;
 }
 function allowHeldSignal(){
@@ -305,7 +387,9 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   }catch(e){releaseHeldAction();setHeldActionState(button,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch);toast(e.message);}};
 export async function applyInterceptFilter(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
-  try{await applyInterceptMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})}));
+  const config={filterEnabled:enabled&&pattern!=='',filterTarget:target||'any',filterPattern:pattern};
+  const input={enabled,target,pattern};
+  try{await applyFilterMutation(()=>api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),config,input);
     toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
 }
 // The conditional filter auto-applies on a debounce (and on Enter), so there is

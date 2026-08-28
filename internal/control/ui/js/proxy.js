@@ -64,7 +64,8 @@ let flowHasMore=false;         // the server may have older flows past what's lo
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
 let flowLoadEpoch=0,flowPageEpoch=0;
-let flowLoadEvents=[];
+let flowLoadEvents=new Map();
+let flowLoadOverflow=false;
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
@@ -518,8 +519,16 @@ function flowRowLiveUpdate(f,isNew){
 }
 function rememberFlowLoadEvent(kind,flow){
   if(!flowRefreshing)return;
-  flowLoadEvents.push({kind,flow});
-  if(flowLoadEvents.length>MAX_LIVE_FLOWS)flowLoadEvents.splice(0,flowLoadEvents.length-MAX_LIVE_FLOWS);
+  const previous=flowLoadEvents.get(flow.id);
+  const replayKind=kind==='new'||(previous&&previous.kind==='new')?'new':'update';
+  // Keep one latest snapshot per flow. Delete first so Map iteration remains in
+  // live-arrival order while a new+update pair consumes only one bounded slot.
+  flowLoadEvents.delete(flow.id);
+  flowLoadEvents.set(flow.id,{kind:replayKind,flow});
+  if(flowLoadEvents.size>MAX_LIVE_FLOWS){
+    flowLoadOverflow=true;
+    flowLoadEvents.delete(flowLoadEvents.keys().next().value);
+  }
 }
 function reconcileFlowLoadEvent(event){
   const f=event.flow;
@@ -756,7 +765,8 @@ export async function loadFlows(){
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
   loadingMore=false;
-  flowLoadEvents=[];
+  flowLoadEvents=new Map();
+  flowLoadOverflow=false;
   flowRefreshing=true;
   flowHasMore=false;
   updateTruncBanner();
@@ -765,15 +775,17 @@ export async function loadFlows(){
   try{
     const d=await api('/api/flows?'+q.toString());
     if(epoch!==flowLoadEpoch)return;
-    const replay=flowLoadEvents;
-    flowLoadEvents=[];
+    const replay=Array.from(flowLoadEvents.values());
+    const replayOverflow=flowLoadOverflow;
+    flowLoadEvents=new Map();
+    flowLoadOverflow=false;
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
     loadFlowStore(flowStore,flows);
     state.flows=flowStore.order;
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
-    let replayExact=true;
+    let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;

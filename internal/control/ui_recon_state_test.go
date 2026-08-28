@@ -45,13 +45,15 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 		"findingWritesInFlight > 0",
 		"bodySaveTimer !== null",
 		"findingDetailRefreshDeferred = true",
-		"catch (err) { if (el.value === v) el.value = previous; toast(err.message); return; }",
+		"const authoritative = acknowledgedFindingValue(f.id, key, previous)",
+		"if (el.value === v) el.value = authoritative",
+		"toast(err.message); return;",
 	} {
 		if !strings.Contains(findings, contract) {
 			t.Errorf("Findings authoritative-state contract missing %q", contract)
 		}
 	}
-	patchFailure := strings.Index(findings, "catch (err) { if (el.value === v) el.value = previous; toast(err.message); return; }")
+	patchFailure := strings.Index(findings, "const authoritative = acknowledgedFindingValue(f.id, key, previous)")
 	if patchFailure < 0 {
 		t.Fatal("Finding blur save must return after a failed PATCH")
 	}

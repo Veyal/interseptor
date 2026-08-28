@@ -33,13 +33,15 @@ func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 	for _, contract := range []string{
 		"let flowRefreshing=false",
 		"let flowLoadEpoch=0,flowPageEpoch=0",
-		"let flowLoadEvents=[]",
+		"let flowLoadEvents=new Map()",
+		"let flowLoadOverflow=false",
 		"const epoch=++flowLoadEpoch",
-		"flowLoadEvents=[]",
+		"flowLoadEvents=new Map()",
 		"flowRefreshing=true",
 		"if(epoch!==flowLoadEpoch)return",
-		"const replay=flowLoadEvents",
-		"if(flowLoadEvents.length>MAX_LIVE_FLOWS)",
+		"const replay=Array.from(flowLoadEvents.values())",
+		"if(flowLoadEvents.size>MAX_LIVE_FLOWS)",
+		"flowLoadOverflow=true",
 		"reconcileFlowLoadEvent(event)",
 		"if(!replayExact)scheduleReload()",
 		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
@@ -227,12 +229,14 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 		"export function interceptStateGeneration()",
 		"export function replaceInterceptState(next)",
 		"let interceptMutationTail=Promise.resolve()",
+		"let interceptFilterMutationTail=Promise.resolve()",
 		"async function applyInterceptMutation(request)",
+		"async function applyFilterMutation(request,config,input)",
 		"const result=interceptMutationTail.then(async()=>",
-		"const generation=interceptStateGeneration()",
-		"if(generation!==interceptStateGeneration())return false",
+		"const generation=interceptSummaryEpoch",
+		"if(generation!==interceptSummaryEpoch)return false",
 		"interceptMutationTail=result.catch(()=>{})",
-		"replaceInterceptState(s)",
+		"replaceInterceptState({...s,...filter})",
 	} {
 		if !strings.Contains(intercept, contract) {
 			t.Errorf("Intercept authoritative-state contract missing %q", contract)
@@ -250,7 +254,10 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 	if strings.Count(app, "if(generation!==interceptStateGeneration())return") < 2 {
 		t.Error("Intercept refresh success and failure must both reject stale completions")
 	}
-	if strings.Count(intercept, "await applyInterceptMutation(") < 3 {
-		t.Error("every full-state Intercept mutation must reject a response superseded by newer SSE state")
+	if strings.Count(intercept, "await applyInterceptMutation(") != 2 {
+		t.Error("request and response safety toggles must reject a response superseded by newer SSE state")
+	}
+	if strings.Count(intercept, "await applyFilterMutation(") != 1 {
+		t.Error("filter persistence must use its independent field-scoped mutation lane")
 	}
 }

@@ -32,6 +32,11 @@ let bodyFindingId = null;
 let bodySaveTimer = null;
 let bodySavesInFlight = 0;
 let findingWritesInFlight = 0;
+// PATCH requests for one finding are serialized. The API applies a PATCH as a
+// whole document, so allowing an older body snapshot or blur value to finish
+// after a newer one can silently restore stale operator intent. Pending writes
+// coalesce by field while the current request is in flight.
+const findingWriteQueues = new Map();
 let findingDetailRefreshDeferred = false;
 // True while a text-block textarea has focus. An SSE findings.update (e.g. a body
 // save round-tripping, or the AI recording) would otherwise rebuild the detail
@@ -182,8 +187,40 @@ function findingDetailEditPending() {
 
 function refreshDeferredFindingDetail() {
   if (!findingDetailRefreshDeferred || findingDetailEditPending()) return;
+  const focus = captureFindingFocus();
   findingDetailRefreshDeferred = false;
   renderFindingDetail();
+  restoreFindingFocus(focus);
+}
+
+function captureFindingFocus() {
+  const detail = $('#findDetail');
+  const active = document.activeElement;
+  if (!detail || !active || active === detail || !detail.contains(active) || active.tabIndex < 0) return null;
+  if (!active.matches('button,a,input,textarea,select,[tabindex]')) return null;
+  const attrs = {};
+  for (const attr of active.attributes) {
+    if (attr.name === 'id' || attr.name.startsWith('data-')) attrs[attr.name] = attr.value;
+  }
+  return {
+    tag: active.tagName.toLowerCase(),
+    className: typeof active.className === 'string' ? active.className : '',
+    attrs,
+  };
+}
+
+function restoreFindingFocus(focus) {
+  if (!focus) return;
+  const detail = $('#findDetail');
+  if (!detail) return;
+  const controls = detail.querySelectorAll('button,a,input,textarea,select,[tabindex]');
+  for (const control of controls) {
+    if (control.tagName.toLowerCase() !== focus.tag) continue;
+    if (focus.className && control.className !== focus.className) continue;
+    if (Object.entries(focus.attrs).some(([name, value]) => control.getAttribute(name) !== value)) continue;
+    control.focus({ preventScroll: true });
+    return;
+  }
 }
 
 function renderFindings() {
@@ -473,16 +510,80 @@ function scheduleSave(fid) {
   bodySaveTimer = setTimeout(() => { bodySaveTimer = null; flushBodySave(fid, snap); }, 700);
 }
 
+function findingWriteQueue(id) {
+  let queue = findingWriteQueues.get(id);
+  if (!queue) {
+    queue = { running: false, pendingFields: null, pendingWaiters: [], latest: {}, latestValues: {} };
+    findingWriteQueues.set(id, queue);
+  }
+  return queue;
+}
+
+function pendingFindingValue(id, key, fallback) {
+  const queue = findingWriteQueues.get(id);
+  return queue && Object.prototype.hasOwnProperty.call(queue.latestValues, key)
+    ? queue.latestValues[key]
+    : fallback;
+}
+
+function acknowledgedFindingValue(id, key, fallback) {
+  const finding = findings.find(item => item.id === id);
+  return finding && Object.prototype.hasOwnProperty.call(finding, key)
+    ? finding[key]
+    : fallback;
+}
+
+function enqueueFindingPatch(id, fields) {
+  const queue = findingWriteQueue(id);
+  const tokens = {};
+  for (const key of Object.keys(fields)) {
+    tokens[key] = Symbol(key);
+    queue.latest[key] = tokens[key];
+    queue.latestValues[key] = fields[key];
+  }
+  if (!queue.pendingFields) queue.pendingFields = {};
+  Object.assign(queue.pendingFields, fields);
+  const result = new Promise((resolve, reject) => queue.pendingWaiters.push({ resolve, reject, tokens }));
+  void drainFindingWrites(id);
+  return result;
+}
+
+async function drainFindingWrites(id) {
+  const queue = findingWriteQueues.get(id);
+  if (!queue || queue.running) return;
+  queue.running = true;
+  try {
+    while (queue.pendingFields) {
+      const fields = queue.pendingFields;
+      queue.pendingFields = null;
+      const waiters = queue.pendingWaiters.splice(0);
+      try {
+        await api('/api/findings/' + id, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(fields),
+        });
+        Object.assign(findings.find(x => x.id === id) || {}, fields);
+        for (const waiter of waiters) {
+          const latest = Object.entries(waiter.tokens).every(([key, token]) => queue.latest[key] === token);
+          waiter.resolve({ latest });
+        }
+      } catch (error) {
+        for (const waiter of waiters) waiter.reject(error);
+      }
+    }
+  } finally {
+    queue.running = false;
+    if (!queue.pendingFields && !queue.pendingWaiters.length) findingWriteQueues.delete(id);
+    else void drainFindingWrites(id);
+  }
+}
+
 async function flushBodySave(fid, snapshot) {
   if (!fid || !snapshot) return;
   bodySavesInFlight++;
   // Strip enriched metadata before sending; store only type/md/flowId/note.
   try {
-    await api('/api/findings/' + fid, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ body: JSON.stringify(snapshot) }),
-    });
+    await enqueueFindingPatch(fid, { body: JSON.stringify(snapshot) });
   } catch (e) { toast('body save: ' + e.message); }
   finally { bodySavesInFlight--; setTimeout(refreshDeferredFindingDetail, 0); }
 }
@@ -496,11 +597,7 @@ function missingLabel(k) {
 async function patchFinding(id, fields) {
   findingWritesInFlight++;
   try {
-    await api('/api/findings/' + id, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(fields),
-    });
-    Object.assign(findings.find(x => x.id === id) || {}, fields);
+    return await enqueueFindingPatch(id, fields);
   } finally {
     findingWritesInFlight--;
     setTimeout(refreshDeferredFindingDetail, 0);
@@ -650,11 +747,19 @@ function renderFindingDetail() {
     el.addEventListener('blur', async () => {
       const v = getVal(el);
       const previous = f[key] || '';
-      if (v === previous) return;
+      const expected = pendingFindingValue(f.id, key, previous);
+      if (v === expected) return;
       try {
-        await patchFinding(f.id, { [key]: v });
+        const result = await patchFinding(f.id, { [key]: v });
+        // A newer edit for this same field may have been coalesced while the
+        // request was in flight. Its completion owns the local model and reload.
+        if (!result?.latest) return;
         f[key] = v;
-      } catch (err) { if (el.value === v) el.value = previous; toast(err.message); return; }
+      } catch (err) {
+        const authoritative = acknowledgedFindingValue(f.id, key, previous);
+        if (el.value === v) el.value = authoritative;
+        toast(err.message); return;
+      }
       await loadFindings();
     });
   };
@@ -671,8 +776,8 @@ function renderFindingDetail() {
   const renameBtn = $('#findRename');
   if (renameBtn) renameBtn.onclick = async () => {
     const t = await uiPrompt({ title: 'Rename finding', value: f.title, placeholder: 'Finding title' });
-    if (t == null || t === f.title) return;
-    try { await patchFinding(f.id, { title: t }); f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
+    if (t == null || t === pendingFindingValue(f.id, 'title', f.title)) return;
+    try { const result = await patchFinding(f.id, { title: t }); if (!result?.latest) return; f.title = t; const el = $('#findTitleText'); if (el) el.textContent = t; toast('finding renamed'); renderFindings(); }
     catch (err) { toast(err.message); }
   };
   const stSel = $('#findStatus');
@@ -680,8 +785,13 @@ function renderFindingDetail() {
     const previous = f.status || '';
     const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { status: attempted });
-    } catch (err) { if (e.target.value === attempted) e.target.value = previous; toast(err.message); return; }
+      const result = await patchFinding(f.id, { status: attempted });
+      if (!result?.latest) return;
+    } catch (err) {
+      const authoritative=acknowledgedFindingValue(f.id, 'status', previous);
+      if (e.target.value === attempted) e.target.value = authoritative;
+      toast(err.message); return;
+    }
     f.status = attempted;
     toast('status: ' + statusLabel(f.status));
     await loadFindings();
@@ -691,9 +801,11 @@ function renderFindingDetail() {
     const previous = f.severity || '';
     const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { severity: attempted });
+      const result = await patchFinding(f.id, { severity: attempted });
+      if (!result?.latest) return;
     } catch (err) {
-      if (e.target.value === attempted) { e.target.value = previous; e.target.style.color = sevColor(previous); }
+      const authoritative=acknowledgedFindingValue(f.id, 'severity', previous);
+      if (e.target.value === attempted) { e.target.value = authoritative; e.target.style.color = sevColor(authoritative); }
       toast(err.message); return;
     }
     f.severity = attempted;
@@ -704,8 +816,13 @@ function renderFindingDetail() {
     const previous = f.environment || '';
     const attempted = e.target.value;
     try {
-      await patchFinding(f.id, { environment: attempted });
-    } catch (err) { if (e.target.value === attempted) e.target.value = previous; toast(err.message); return; }
+      const result = await patchFinding(f.id, { environment: attempted });
+      if (!result?.latest) return;
+    } catch (err) {
+      const authoritative=acknowledgedFindingValue(f.id, 'environment', previous);
+      if (e.target.value === attempted) e.target.value = authoritative;
+      toast(err.message); return;
+    }
     f.environment = attempted;
     await loadFindings();
   };
@@ -734,7 +851,8 @@ function renderFindingDetail() {
     if (v == null) return;
     const tags = parseFindTags(v);
     try {
-      await patchFinding(f.id, { tags });
+      const result = await patchFinding(f.id, { tags });
+      if (!result?.latest) return;
       f.tags = tags;
       toast(tags.length ? 'tags: ' + tags.join(', ') : 'tags cleared');
       await loadFindings();
