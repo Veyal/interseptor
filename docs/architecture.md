@@ -77,8 +77,10 @@ independently tested.
 ## Web UI
 
 The web UI lives in `internal/control/ui/` (embedded via `//go:embed`): an `index.html` shell,
-`app.css`, and native ES modules under `js/`. Shared primitives live in `core.js` and `motion.js`;
-feature behavior stays in its feature module, wired together by `app.js`. No build step or bundler;
-the binary stays single and static.
+`app.css`, and native ES modules under `js/`. `core.js` owns shared UI primitives, `motion.js` owns
+state-driven motion, and `project.js` owns active-project readiness plus the one lazy Map loader
+shared by main navigation and Proxy's **Search in Map** action. Feature behavior stays in its
+feature module; `app.js` owns global navigation, shortcuts, SSE dispatch, and boot. No build step or
+bundler; the binary stays single and static.
 The [UI motion specification](ui-motion-spec.md) owns motion behavior and constraints. Other design
 notes and per-slice specs/plans live under [`docs/`](.).

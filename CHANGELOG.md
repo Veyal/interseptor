@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to published `2.0.4` and documented the separate post-publication cleanup step.
+- **Web UI architecture guidance.** Documented the shared project-ready lazy loader and removed stale advice that every feature module loads through `app.js`.
 - **Direct, accessible workstation controls.** Added explicit names and truthful pending, retry, disabled, and live-region states across History, Intercept, Repeater, Intruder, Scanner, Findings, Map, authorization testing, mobile tooling, API keys, custom tools, Activity, and Settings; narrow History/Map toolbars now wrap and Scanner uses a readable stacked workspace.
 - **Keyboard-safe motion and graph navigation.** Main tabs now commit selection and focus synchronously before a restrained panel entrance, dense Map graphs use one roving tab stop, and reduced-motion users receive the same persistent state cues without travel.
 

@@ -50,9 +50,11 @@ assistants alike. They describe how the existing code is written; match it.
 - The UI lives in `internal/control/ui/` (embedded via `//go:embed`) — **no build step, no bundler,
   no external runtime dependency**. It is an `index.html` shell + `app.css` + native ES modules under
   `js/`. Shared helpers (DOM, `state`, `api()`, formatters, HTTP highlighters, modals, `renderMD`)
-  live in `js/core.js`; each feature owns one module; `app.js` imports them all and owns tabs /
-  palette / shortcuts / SSE / boot. Add a feature → add a `js/<feature>.js`, import shared bits from
-  `./core.js`, `export` anything other modules call, and import it from `app.js` so it loads.
+  live in `js/core.js`; each feature owns one module. See the
+  [Web UI architecture](docs/architecture.md#web-ui) for current shared boundaries and loading.
+  Add feature behavior to its owning module, import shared bits from `./core.js`, and `export`
+  anything other modules call. Boot-loaded modules wire through `app.js`; lazy modules must keep one
+  shared cross-feature loader so no entry point bypasses its readiness boundary.
   - Theme via CSS custom properties (`--bg`, `--fg`, `--accent`, …); **never hardcode hex colors**.
   - `esc()` every value interpolated into HTML. Keep dark-mode contrast at WCAG AA.
 
