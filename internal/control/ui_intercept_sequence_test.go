@@ -60,6 +60,44 @@ func TestUIInterceptFailedFilterRestoresAcknowledgedControls(t *testing.T) {
 	)
 }
 
+func TestUIInterceptFilterReconciliationDoesNotInvalidateRefresh(t *testing.T) {
+	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
+	start := strings.Index(intercept, "function commitFilterConfig(config)")
+	if start < 0 {
+		t.Fatal("filter-only state reconciliation helper not found")
+	}
+	end := strings.Index(intercept[start:], "function readFilterControls()")
+	if end < 0 {
+		t.Fatal("filter-only state reconciliation helper has no bounded body")
+	}
+	body := intercept[start : start+end]
+	if strings.Contains(body, "interceptStateEpoch++") {
+		t.Fatal("filter-only reconciliation must not invalidate an in-flight authoritative intercept refresh")
+	}
+	if !strings.Contains(intercept, "commitFilterConfig(fallback)") {
+		t.Fatal("failed filter persistence must reconcile the acknowledged filter fields")
+	}
+}
+
+func TestUIInterceptFilterReconciliationOverlaysOlderInflightSummaries(t *testing.T) {
+	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, intercept,
+		"let filterCommitEpoch=0",
+		"filterCommitEpoch++",
+		"export function interceptFilterGeneration()",
+		"export function mergeInterceptFilterSince(next,generation)",
+		"const filterGeneration=filterCommitEpoch",
+		"replaceInterceptState(mergeInterceptFilterSince(s,filterGeneration))",
+	)
+	requireUIContains(t, app,
+		"interceptFilterGeneration",
+		"mergeInterceptFilterSince",
+		"const filterGeneration=interceptFilterGeneration()",
+		"replaceInterceptState(mergeInterceptFilterSince(next,filterGeneration))",
+	)
+}
+
 func TestUIInterceptDraftOwnsFilterFieldsBeforeDebounce(t *testing.T) {
 	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
 	requireUIContains(t, intercept,

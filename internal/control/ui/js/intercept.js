@@ -21,9 +21,11 @@ let interceptSummaryEpoch=0;
 let interceptMutationTail=Promise.resolve();
 let interceptFilterMutationTail=Promise.resolve();
 let filterMutationEpoch=0;
+let filterCommitEpoch=0;
 let pendingFilterMutation=null;
 let acknowledgedFilterConfig=null;
 export function interceptStateGeneration(){return interceptStateEpoch;}
+export function interceptFilterGeneration(){return filterCommitEpoch;}
 function currentFilterConfig(source=state.intercept||{}){
   return {
     filterEnabled:!!source.filterEnabled,
@@ -32,8 +34,11 @@ function currentFilterConfig(source=state.intercept||{}){
   };
 }
 function commitFilterConfig(config){
+  // Filter reconciliation owns only filter fields. It must not invalidate an
+  // in-flight authoritative refresh for queue or safety-toggle state: a failed
+  // filter save is local rollback, not a newer intercept summary.
   state.intercept={...(state.intercept||{}),...config};
-  interceptStateEpoch++;
+  filterCommitEpoch++;
 }
 function readFilterControls(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
@@ -66,6 +71,9 @@ function mergeIncomingInterceptState(next){
   // all queue/toggle fields remain authoritative from the newer summary.
   return {...incoming,...pendingFilterMutation.config};
 }
+export function mergeInterceptFilterSince(next,generation){
+  return generation===filterCommitEpoch?next:{...(next||{}),...currentFilterConfig()};
+}
 function commitInterceptState(next,filterAuthoritative){
   if(filterAuthoritative)acknowledgedFilterConfig=currentFilterConfig(next||{});
   const merged=mergeIncomingInterceptState(next);
@@ -76,9 +84,10 @@ function replaceLocalInterceptState(next){commitInterceptState(next,false);}
 async function applyInterceptMutation(request){
   const result=interceptMutationTail.then(async()=>{
     const generation=interceptSummaryEpoch;
+    const filterGeneration=filterCommitEpoch;
     const s=await request();
     if(generation!==interceptSummaryEpoch)return false;
-    replaceInterceptState(s);renderIntercept();return true;
+    replaceInterceptState(mergeInterceptFilterSince(s,filterGeneration));renderIntercept();return true;
   });
   interceptMutationTail=result.catch(()=>{});
   return result;

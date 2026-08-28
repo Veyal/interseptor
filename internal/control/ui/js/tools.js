@@ -721,13 +721,17 @@ function renderIntrHistory(){
 }
 function intrLoadHistory(i){
   const h=intrHistory[i];if(!h)return;
+  // History is a display choice, not a replacement for the authoritative
+  // server snapshot. Keep polling, locks, and recovery tied to the active run
+  // while filters and finding creation operate on what the operator chose.
+  intrDisplayedResults=h.results.slice();
   if(h.cfg){
     intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
     intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
     intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
     $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
     updateIntrMode();intrTouch();}
-  renderIntr({running:false,total:h.total,done:h.total,results:h.results,capped:h.capped},{authoritative:false});
+  renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }
 $('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
 
@@ -1067,7 +1071,7 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   loadIntrPresets();toast('preset saved');
 };
 export let intrTimer=null;
-let intrFilter='all', intrLastResults=[];
+let intrFilter='all', intrLastResults=[], intrDisplayedResults=[];
 function intrIsInteresting(r){return !!(r&& (r.flagged||r.matched||r.anomaly));}
 function intrApplyFilter(res){
   if(intrFilter==='interesting') return res.filter(intrIsInteresting);
@@ -1084,17 +1088,18 @@ export function scheduleIntr(){
       // A retry affordance makes a long-running attack recoverable instead of
       // silently freezing at its last progress value.
       intrPollError=e&&e.message?e.message:'connection unavailable';
-      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults,pollFailed:true},{authoritative:false});
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults,pollFailed:true},{authoritative:false});
     }
   },120);
 }
 export function renderIntr(st,{authoritative=true}={}){
-  const running=!!st.running,total=st.total||0,done=st.done||0,res=st.results||[];
+  const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
   if(authoritative){
     if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
     if(!st.pollFailed){
       intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
       intrLastResults=res.slice();
+      intrDisplayedResults=res.slice();
     }
     if(!running&&!intrStartPending)intrRunTabId=null;
     if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
@@ -1106,6 +1111,7 @@ export function renderIntr(st,{authoritative=true}={}){
     }
     if(running&&!st.pollFailed)scheduleIntr();
   }
+  const displayRes=authoritative?res:(Array.isArray(st.results)?st.results:intrDisplayedResults);
   syncIntrTabLock(intrLastRunning||intrStartPending);
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
   const pollStatus=$('#intrPollStatus');
@@ -1122,17 +1128,17 @@ export function renderIntr(st,{authoritative=true}={}){
   // results summary (flagged count)
   const stats=$('#intrStats');
   if(stats){
-    const fl=res.filter(r=>r.flagged).length, int=res.filter(intrIsInteresting).length;
-    const shown=intrApplyFilter(res).length;
-    stats.textContent=res.length?`${res.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
+    const fl=displayRes.filter(r=>r.flagged).length, int=displayRes.filter(intrIsInteresting).length;
+    const shown=intrApplyFilter(displayRes).length;
+    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
   }
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
-  if(!res.length){
+  if(!displayRes.length){
     box.innerHTML=running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
-  const view=intrApplyFilter(res);
+  const view=intrApplyFilter(displayRes);
   if(!view.length){
     box.innerHTML='<div class="hint" style="padding:12px">No results match this filter.</div>';
     return;
@@ -1160,11 +1166,11 @@ function wireTabListKeys(seg){
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
   seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
-  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrLastResults},{authoritative:false});
+  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
 });}
 wireTabListKeys($('#intrResFilter'));
 async function intrToFinding(){
-  const pool=intrApplyFilter(intrLastResults);
+  const pool=intrApplyFilter(intrDisplayedResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
   const interesting=withFlow.filter(intrIsInteresting);
   const pick=interesting.length?interesting:withFlow.slice(0,10);

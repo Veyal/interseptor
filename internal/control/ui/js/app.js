@@ -4,7 +4,7 @@
 // theme, the version badge, and the boot sequence that kicks everything off.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
-import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, replaceInterceptState } from './intercept.js';
+import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
@@ -528,10 +528,11 @@ function renderInterceptUnavailable(error){
 }
 async function refreshIntercept(){
   const generation=interceptStateGeneration();
+  const filterGeneration=interceptFilterGeneration();
   try{
     const next=await api('/api/intercept');
     if(generation!==interceptStateGeneration())return;
-    replaceInterceptState(next);
+    replaceInterceptState(mergeInterceptFilterSince(next,filterGeneration));
     ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
     renderIntercept();
   }catch(e){if(generation!==interceptStateGeneration())return;renderInterceptUnavailable(e);}

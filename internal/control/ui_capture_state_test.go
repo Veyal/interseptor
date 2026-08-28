@@ -254,7 +254,7 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 		"const generation=interceptSummaryEpoch",
 		"if(generation!==interceptSummaryEpoch)return false",
 		"interceptMutationTail=result.catch(()=>{})",
-		"replaceInterceptState(s)",
+		"replaceInterceptState(mergeInterceptFilterSince(s,filterGeneration))",
 	} {
 		if !strings.Contains(intercept, contract) {
 			t.Errorf("Intercept authoritative-state contract missing %q", contract)
@@ -262,7 +262,7 @@ func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
 	}
 	for _, contract := range []string{
 		"const generation=interceptStateGeneration()",
-		"replaceInterceptState(next)",
+		"replaceInterceptState(mergeInterceptFilterSince(next,filterGeneration))",
 		"replaceInterceptState(m.intercept)",
 	} {
 		if !strings.Contains(app, contract) {

@@ -27,6 +27,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   never replace queue or selection state with a response that owns only filter
   or preference fields. Scope generations to the state a response owns so a
   filter-only commit cannot invalidate an unrelated safety acknowledgement.
+  Also capture the field-commit generation when a full-summary request starts;
+  if a field acknowledgement lands before that summary returns, overlay only
+  those newly committed fields so the older summary cannot restore stale input.
 - Mark debounced controls dirty on the input event, not when the eventual
   request starts. Merge that draft over intervening live summaries, accept a
   returned full summary only while its summary generation is current, and do
@@ -51,6 +54,9 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
 - Keep authoritative lifecycle transitions separate from display-only renders.
   Filtering or opening history may repaint results, but must not change run
   ownership, locks, completion capture, polling, or the authoritative fallback.
+  Track the displayed evidence snapshot independently, and make filters,
+  follow-up actions, and error-only rerenders consume that same snapshot so the
+  visible rows and their actions cannot silently refer to different runs.
 - Resolve the active project before importing any module that reads
   project-scoped storage during evaluation. Route every cross-feature entry
   point through one shared readiness-aware loader rather than importing the
