@@ -40,6 +40,18 @@ func TestUIIntruderHistoryProvidesDirectReturnToLiveResults(t *testing.T) {
 	if !strings.Contains(tools, "box.querySelectorAll('.h[data-i]')") {
 		t.Error("Intruder history row wiring must not overwrite the live-results action")
 	}
+	start := strings.Index(tools, "function showIntrLiveResults()")
+	if start < 0 {
+		t.Fatal("Intruder live-results restoration function not found")
+	}
+	end := strings.Index(tools[start:], "function invalidateIntrPoll()")
+	if end < 0 {
+		t.Fatal("Intruder live-results restoration function is not bounded")
+	}
+	liveRestore := tools[start : start+end]
+	if strings.Contains(liveRestore, "intrApply(") || strings.Contains(liveRestore, "intrTouch(") {
+		t.Error("returning to live evidence must not overwrite or persist the currently active attack tab")
+	}
 }
 
 func TestUIIntruderHistoryDoesNotOverwriteAuthoritativeRunLifecycle(t *testing.T) {

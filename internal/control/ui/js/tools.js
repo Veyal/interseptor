@@ -41,7 +41,7 @@ function setRepSendState(stateName,label){
 function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',warnings:[]};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[]};}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -104,7 +104,14 @@ function repSyncReqSeg(view){
 // Storage is project-scoped (`rep.tabs.<project>`) so switching projects does
 // not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
 // migrated once into the current project via projectStorageKey.
+const uiPersistenceReady=new Map();
+let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
+const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
+const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
+export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
+export function releaseWorkstationReady(){resolveWorkstationReady();}
 function persistUIState(panel, blob){
+  if(uiPersistenceReady.get(panel)!==true)return;
   // Fire-and-forget project DB write so drafts survive browser clears / machines.
   api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(blob)}).catch(()=>{});
 }
@@ -121,6 +128,7 @@ async function readBoundedUIState(panel){
 }
 async function hydrateUIState(panel, storageBase){
   const result=await readBoundedUIState(panel);
+  uiPersistenceReady.set(panel,result.status!=='error');
   if(result.status==='success'){
     try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(result.value));}catch(e){}
   }
@@ -132,7 +140,7 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
+  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
   serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
@@ -146,8 +154,11 @@ export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
 export function repSaveEditor(){
   const t=repCur();if(!t)return;
-  t.method=$('#repMethod').value;t.url=$('#repUrl').value;t.headers=$('#repHeaders').value;
+  const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
   const v=$('#repBody').value;
+  const previous=((t.reqView||'raw')==='decoded'?t.decodedPlain:t.body)||'';
+  if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  t.method=method;t.url=url;t.headers=headers;
   if((t.reqView||'raw')==='decoded')t.decodedPlain=v;
   else t.body=v;
   t.title=repTitle(t);
@@ -191,7 +202,8 @@ async function repEnterDecoded(t){
   const wire=t.body||'';
   t.reqDecodeEpoch=(t.reqDecodeEpoch||0)+1;
   const decodeEpoch=t.reqDecodeEpoch;
-  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqView==='decoded'&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
+  const editorEpoch=t.reqEditEpoch||0;
+  const current=()=>t.reqDecodeEpoch===decodeEpoch&&t.reqEditEpoch===editorEpoch&&t.reqView==='decoded'&&(t.sourceFlowId||t.resId)===flowId&&(t.body||'')===wire;
   try{
     let d;
     if(flowId){
@@ -333,6 +345,7 @@ export async function repLoadSend(id){
   }catch(e){toast(e.message);}
 }
 export async function sendToRepeater(f){
+  await workstationReady;
   repSaveEditor();
   try{
     const d=await api('/api/flows/'+f.id);
@@ -357,6 +370,7 @@ export async function sendToRepeater(f){
   }catch(e){toast(e.message);return false;}
 }
 export async function repInit(){
+  if(repInit._done)return repeaterReady;repInit._done=true;
   const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
   // First persist migrates localStorage drafts into the project DB.
@@ -380,6 +394,8 @@ export async function repInit(){
   repRefreshHL();
   repWireEncodeCtx();
   wirePostmanImport();
+  resolveRepeaterReady(hydration);
+  return hydration;
 }
 
 async function repEncodeSel(el,op){
@@ -677,7 +693,7 @@ const intrTabs=createTabManager({
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
-  if(intrInit._done)return; intrInit._done=true;
+  if(intrInit._done)return intruderReady; intrInit._done=true;
   const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
   intrTabs.init('#intrTabs');
   if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist();
@@ -693,6 +709,8 @@ export async function intrInit(){
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
+  resolveIntruderReady(hydration);
+  return hydration;
 }
 
 /* ---- intruder run history (this session) ---- */
@@ -1048,6 +1066,7 @@ $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 async function hydrateIntrPresets(){
   const result=await readBoundedUIState('intruder-presets');
+  uiPersistenceReady.set('intruder-presets',result.status!=='error');
   if(result.status==='success'&&Array.isArray(result.value)){
     try{localStorage.setItem(intrPresetsKey(),JSON.stringify(result.value));}catch(e){}
   }
@@ -1090,7 +1109,6 @@ function showIntrLiveResults(){
   intrDisplayOwner='live';
   intrDisplayedHistory=null;
   intrDisplayedResults=intrLastResults.slice();
-  if(intrRunCfg&&!intrLastRunning&&!intrStartPending){intrApply(intrRunCfg);intrTouch();}
   intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
   renderIntrHistory();
   renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
@@ -1333,6 +1351,7 @@ export function applyIntruderPayloadSuggestion(data, opts){
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
 export async function sendToIntruder(f){
+  await workstationReady;
   // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
   // and capture the active attack tab before any await so a sub-tab switch during
   // the fetch can't make intrTouch() save the request into the wrong tab.

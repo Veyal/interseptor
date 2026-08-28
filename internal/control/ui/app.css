@@ -164,6 +164,9 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
    role=tablist) as before — only its layout/placement changed, so existing
    JS selectors ($('#tabs'), .tab, data-tab, aria-controls) keep working. */
 #tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg1);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-right:1px solid var(--surface-frame);border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:var(--sp-4) var(--sp-2);overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:inset -1px 0 0 var(--line)}
+.workspace-hydration-status{margin:0 var(--sp-2) var(--sp-2);padding:var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--fg3);font-family:var(--mono);font-size:var(--fs-xs);line-height:var(--lh-tight)}
+.workspace-hydration-status.is-error{color:var(--warnFg);border-color:var(--warnLine);background:var(--noteDim)}
+#tabs[aria-busy="true"] .tab{opacity:.55;cursor:wait}
 .nav-rail-group{display:flex;flex-direction:column;gap:2px}
 .nav-rail-group+.nav-rail-group{margin-top:var(--sp-3)}
 .nav-rail-group-label{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--fg3);padding:5px 10px 4px}

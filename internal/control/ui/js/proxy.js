@@ -1,7 +1,7 @@
 import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
-import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText } from './tools.js';
+import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, workstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
@@ -34,6 +34,7 @@ function applyIdentityToHeaders(hdrsText, identityHdrs){
 }
 
 async function sendAsIdentity(f, id){
+  await workstationReady;
   document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
   try{

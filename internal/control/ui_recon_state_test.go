@@ -101,6 +101,9 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 func TestRepeaterDecodeCompletionDistinguishesStaleFromFallback(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
+		"const editorEpoch=t.reqEditEpoch||0",
+		"t.reqEditEpoch===editorEpoch",
+		"if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
 		"if(!current())return null",
 		"if(repCur()!==t||ok===null)return",
 		"if(!ok){$('#repBody').value=repBodyForDisplay(t.body,'pretty');}",
@@ -151,9 +154,58 @@ func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 	}
 }
 
+func TestProjectDraftHydrationGatesNavigationEditorsAndCrossFeatureEntries(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
+	requireUIContains(t, index,
+		`id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true"`,
+		`id="workspaceHydrationStatus"`,
+		`id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert`,
+		`id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert`,
+	)
+	requireUIContains(t, app,
+		"let projectScopedUIReady=false",
+		"if(!projectScopedUIReady)return",
+		"function completeProjectScopedUIHydration(statuses)",
+		"projectScopedUIReady=true",
+		"if(!projectScopedUIReady){toast('Loading saved workspace…');return;}",
+		"releaseWorkstationReady()",
+		"panel.removeAttribute('inert')",
+		"tab.disabled=false",
+	)
+	requireUIContains(t, tools,
+		"const repeaterReady=new Promise",
+		"const intruderReady=new Promise",
+		"export const workstationReady=new Promise",
+		"export function releaseWorkstationReady()",
+		"await workstationReady",
+	)
+	requireUIContains(t, proxy,
+		"workstationReady",
+		"await workstationReady",
+	)
+
+	boot := strings.Index(app, "async function bootFirstRunUI()")
+	if boot < 0 {
+		t.Fatal("bootFirstRunUI not found")
+	}
+	body := app[boot:]
+	hydrate := strings.Index(body, "await bootProjectScopedUI()")
+	complete := strings.Index(body, "completeProjectScopedUIHydration(statuses)")
+	restore := strings.Index(body, "restoreTab()")
+	release := strings.Index(body, "releaseWorkstationReady()")
+	if hydrate < 0 || complete < 0 || restore < 0 || release < 0 || !(hydrate < complete && complete < restore && restore < release) {
+		t.Errorf("saved navigation must restore before workstation actions are released (hydrate=%d complete=%d restore=%d release=%d)", hydrate, complete, restore, release)
+	}
+}
+
 func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
+		"const uiPersistenceReady=new Map()",
+		"if(uiPersistenceReady.get(panel)!==true)return",
 		"const UI_HYDRATE_TIMEOUT_MS=2500",
 		"async function readBoundedUIState(panel)",
 		"const controller=new AbortController()",
@@ -164,7 +216,9 @@ func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 		"return {status:'empty'}",
 		"return {status:'error',error:e}",
 		"const result=await readBoundedUIState(panel)",
+		"uiPersistenceReady.set(panel,result.status!=='error')",
 		"const result=await readBoundedUIState('intruder-presets')",
+		"uiPersistenceReady.set('intruder-presets',result.status!=='error')",
 		"const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
 		"if(repTabs.tabs.length&&hydration!=='error')repTabs.persist()",
 		"if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist()",

@@ -106,3 +106,18 @@ func TestUIInterceptDraftOwnsFilterFieldsBeforeDebounce(t *testing.T) {
 		"if(epoch!==filterMutationEpoch)return false",
 	)
 }
+
+func TestUIInterceptDecodeRejectsStaleSelectionAndEditorSnapshots(t *testing.T) {
+	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
+	requireUIContains(t, intercept,
+		"let heldDecodeEpoch=0",
+		"if(previousKey!==nextKey)heldDecodeEpoch++",
+		"const decodeEpoch=++heldDecodeEpoch",
+		"const selectionKey=heldKey(sel.side,sel.id)",
+		"function heldDecodeCurrent(epoch,selectionKey,raw)",
+		"epoch===heldDecodeEpoch",
+		"heldKey(state.heldSel.side,state.heldSel.id)===selectionKey",
+		"$('#heldRaw').value===raw",
+		"if(!heldDecodeCurrent(decodeEpoch,selectionKey,raw))return",
+	)
+}

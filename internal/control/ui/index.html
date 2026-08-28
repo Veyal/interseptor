@@ -82,7 +82,8 @@
 
 
 <div id="appRow">
-<div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical">
+<div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
+  <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
     <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
@@ -271,7 +272,7 @@
   </div>
 
   <!-- REPEATER -->
-  <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater">
+  <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert>
     <div class="rep-tabs" id="repTabs"></div>
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
@@ -311,7 +312,7 @@
   </div>
 
   <!-- INTRUDER -->
-  <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder">
+  <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert>
     <div class="rep-tabs" id="intrTabs"></div>
     <!-- run bar: grouped by intent (target · mode · runtime · start) -->
     <div class="intr-bar">

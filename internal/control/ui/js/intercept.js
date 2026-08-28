@@ -12,6 +12,7 @@ let heldSignalWindowAt=0,heldSignalCount=0;
 let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
+let heldDecodeEpoch=0;
 let interceptStateEpoch=0;
 let interceptSummaryEpoch=0;
 // Toggle mutations can change the held queues and are kept on their own lane.
@@ -127,6 +128,9 @@ function allowHeldSignal(){
   return !document.hidden&&heldSignalCount<=4;
 }
 function heldKey(side,id){return side+':'+id;}
+function heldDecodeCurrent(epoch,selectionKey,raw){
+  return epoch===heldDecodeEpoch&&!!state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id)===selectionKey&&$('#heldRaw').value===raw;
+}
 function heldOriginal(h){return h.original||h.raw||'';}
 function setHeldModified(raw, original){
   const badge=$('#heldModified');
@@ -259,7 +263,10 @@ function showEditor(h){
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;
 }
 export async function selectHeld(id,side,opts={}){
+  const previousKey=state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id);
+  const nextKey=heldKey(side,id);
   state.heldSel={id,side};
+  if(previousKey!==nextKey)heldDecodeEpoch++;
   $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
@@ -349,22 +356,27 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
   if(!rawEl||!decEl)return;
   if(decEl.style.display&&decEl.style.display!=='none'){
+    heldDecodeEpoch++;
     decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';return;
   }
   const raw=rawEl.value||'';
+  const decodeEpoch=++heldDecodeEpoch;
+  const selectionKey=heldKey(sel.side,sel.id);
   const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):raw;
   const hostLine=(raw.match(/^Host:\s*(.+)$/im)||[])[1]||'';
   const side=sel.side==='resp'?'res':'req';
   try{
     const d=await api('/api/codecs/test',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({side,rawBody:body,host:hostLine.trim()})});
+    if(!heldDecodeCurrent(decodeEpoch,selectionKey,raw))return;
     if(!d.matched){toast('no message codec matched');return;}
     if(d.error){toast(d.error);return;}
     decEl.textContent=(d.title||d.codecId||'decoded')+'\n\n'+(d.plaintext||'');
     decEl.hidden=false;decEl.style.display='block';rawEl.style.display='none';
-  }catch(e){toast(e.message);}
+  }catch(e){if(heldDecodeCurrent(decodeEpoch,selectionKey,raw))toast(e.message);}
 });
 $('#heldRaw').addEventListener('input',()=>{
+  heldDecodeEpoch++;
   const sel=state.heldSel,h=sel&&heldItem(sel.id,sel.side);
   if(h){
     heldRawCache.set(heldKey(sel.side,sel.id),$('#heldRaw').value);

@@ -6,7 +6,7 @@
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
@@ -46,7 +46,11 @@ function updateCrumb(t){
 }
 
 /* ---- tabs ---- */
+let projectScopedUIReady=false;
+$$('.tab').forEach(tab=>{tab.disabled=true;});
+{const button=$('#cmdkBtn');if(button)button.disabled=true;}
 function activateTab(t){
+  if(!projectScopedUIReady)return;
   const prev=$('.panel.active');
   if(prev&&prev.dataset.panel==='notes')flushNotesSave();
   const tabs=$$('.tab'), current=tabs.find(x=>x.classList.contains('active'));
@@ -415,7 +419,7 @@ function cmdkPaint(){
   const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
 }
 function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
-function cmdkOpen(){if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
+function cmdkOpen(){if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
 function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
 
 /* ---- global keyboard shortcuts ---- */
@@ -540,15 +544,31 @@ async function refreshIntercept(){
 }
 async function bootProjectScopedUI(){
   await projectStorageReady;
-  await Promise.all([repInit(),intrInit()]);
+  return await Promise.all([repInit(),intrInit()]);
+}
+function completeProjectScopedUIHydration(statuses){
+  projectScopedUIReady=true;
+  const failed=statuses.includes('error');
+  const nav=$('#tabs');if(nav)nav.setAttribute('aria-busy','false');
+  $$('.tab').forEach(tab=>{tab.disabled=false;});
+  const command=$('#cmdkBtn');if(command)command.disabled=false;
+  ['repeater','intruder'].forEach(name=>{
+    const panel=document.querySelector(`.panel[data-panel="${name}"]`);if(!panel)return;
+    panel.setAttribute('aria-busy','false');panel.removeAttribute('inert');
+  });
+  const status=$('#workspaceHydrationStatus');if(!status)return;
+  if(failed){status.textContent='Saved workspace unavailable · local drafts only';status.classList.add('is-error');}
+  else status.hidden=true;
 }
 async function bootFirstRunUI(){
   try{
-    await bootProjectScopedUI();
+    const statuses=await bootProjectScopedUI();
+    completeProjectScopedUIHydration(statuses);
     restoreTab();
+    releaseWorkstationReady();
     await loadFlows();
     maybeShowSetup();
-  }catch(e){toast('Could not initialize project-scoped UI: '+e.message);}
+  }catch(e){const status=$('#workspaceHydrationStatus');if(status){status.textContent='Workspace initialization failed';status.classList.add('is-error');}toast('Could not initialize project-scoped UI: '+e.message);}
 }
 renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}
