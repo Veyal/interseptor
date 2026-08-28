@@ -62,7 +62,8 @@ build_universal() {
 	for arch in amd64 arm64; do
 		echo "    $out ($arch)"
 		( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" \
-			go build -trimpath -ldflags "-s -w" -o "$tmp/$arch" "$pkg" )
+			go build -trimpath -ldflags "-s -w -X github.com/Veyal/interseptor/internal/version.Version=$SHORT_VERSION" \
+				-o "$tmp/$arch" "$pkg" )
 	done
 	lipo -create -output "$out" "$tmp/amd64" "$tmp/arm64"
 	rm -rf "$tmp"

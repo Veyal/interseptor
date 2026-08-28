@@ -135,6 +135,12 @@ jobs:
           test -x "$APP/Contents/MacOS/interseptor"
           test -x "$APP/Contents/MacOS/interseptor-macapp"
           plutil -lint "$APP/Contents/Info.plist"
+          expected_version="interseptor v${GITHUB_REF_NAME#v}"
+          actual_version="$("$APP/Contents/MacOS/interseptor" version)"
+          [[ "$actual_version" == "$expected_version" ]] || {
+            echo "bundled CLI version is '$actual_version', want '$expected_version'" >&2
+            exit 1
+          }
           for bin in "$APP/Contents/MacOS/"*; do
             lipo -info "$bin" | grep -q 'x86_64 arm64'
           done
@@ -172,7 +178,16 @@ jobs:
         with:
           name: release-macos-assets
           path: validated-macos
+      - name: Generate and validate macOS asset checksums
+        run: |
+          set -euo pipefail
+          cd validated-macos
+          shopt -s nullglob
+          macos_assets=(Interseptor-${GITHUB_REF_NAME}-unsigned.zip *.dmg)
+          [[ ${#macos_assets[@]} -ge 2 ]]
+          sha256sum "${macos_assets[@]}" > macos-checksums.txt
+          sha256sum -c macos-checksums.txt
       - name: Upload validated macOS app assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" validated-macos/Interseptor-${{ github.ref_name }}-unsigned.zip validated-macos/*.dmg
+        run: gh release upload "${{ github.ref_name }}" validated-macos/Interseptor-${{ github.ref_name }}-unsigned.zip validated-macos/*.dmg validated-macos/macos-checksums.txt

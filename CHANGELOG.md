@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.5` release without moving its tag.
 - **Reproducible release tooling.** Pinned candidate validation and publication to the same reviewed GoReleaser version, added a regression contract, and updated the macOS packaging guide to describe the app ZIP and DMG that tagged builds now publish.
 
+### Fixed
+- **macOS release integrity.** Stamp app binaries with the bundle version, verify the bundled CLI reports the exact tag, and publish validated checksums for the app ZIP and DMG.
+
 ## [2.0.5] - 2026-08-29
 
 ### Changed
