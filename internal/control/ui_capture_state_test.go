@@ -8,6 +8,9 @@ import (
 func TestUIProxyInspectorRejectsStaleAsyncBodies(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
 	for _, contract := range []string{
+		"let selectFlowEpoch=0",
+		"const selectEpoch=++selectFlowEpoch",
+		"selectFlowEpoch===selectEpoch",
 		"const renderSideEpoch={req:0,res:0}",
 		"const flowId=state.selId",
 		"const epoch=++renderSideEpoch[side]",
@@ -20,19 +23,24 @@ func TestUIProxyInspectorRejectsStaleAsyncBodies(t *testing.T) {
 			t.Errorf("Proxy stale-render contract missing %q", contract)
 		}
 	}
-	if !strings.Contains(proxy, "if(state.selId!==id)return") {
-		t.Error("WebSocket/flow detail rendering must stop after the selected flow changes")
+	if strings.Count(proxy, "const selectEpoch=selectFlowEpoch") < 2 {
+		t.Error("request, response, and WebSocket rendering must share the selected-flow generation")
 	}
 }
 
 func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{
+		"let flowRefreshing=false",
 		"let flowLoadEpoch=0,flowPageEpoch=0",
 		"const epoch=++flowLoadEpoch",
+		"flowRefreshing=true",
 		"if(epoch!==flowLoadEpoch)return",
+		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
 		"const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch",
 		"if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return",
+		"if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}",
+		"if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}",
 	} {
 		if !strings.Contains(proxy, contract) {
 			t.Errorf("History latest-filter contract missing %q", contract)
@@ -191,5 +199,31 @@ func TestUIInterceptInitialLoadFailureIsExplicitAndRetryable(t *testing.T) {
 		if !strings.Contains(app, contract) {
 			t.Errorf("Intercept initial error-state contract missing %q", contract)
 		}
+	}
+}
+
+func TestUIInterceptRefreshRejectsStaleAuthoritativeState(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	intercept := executableJS(readUIAsset(t, "js/intercept.js"))
+	for _, contract := range []string{
+		"export function interceptStateGeneration()",
+		"export function replaceInterceptState(next)",
+		"replaceInterceptState(s)",
+	} {
+		if !strings.Contains(intercept, contract) {
+			t.Errorf("Intercept authoritative-state contract missing %q", contract)
+		}
+	}
+	for _, contract := range []string{
+		"const generation=interceptStateGeneration()",
+		"replaceInterceptState(next)",
+		"replaceInterceptState(m.intercept)",
+	} {
+		if !strings.Contains(app, contract) {
+			t.Errorf("Intercept refresh generation contract missing %q", contract)
+		}
+	}
+	if strings.Count(app, "if(generation!==interceptStateGeneration())return") < 2 {
+		t.Error("Intercept refresh success and failure must both reject stale completions")
 	}
 }

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Keyboard-safe motion and graph navigation.** Main tabs now commit selection and focus synchronously before a restrained panel entrance, dense Map graphs use one roving tab stop, and reduced-motion users receive the same persistent state cues without travel.
 
 ### Fixed
+- **Project-scoped async state safety.** Prevented failed draft hydration, overlapping History/detail loads, delayed Intercept refreshes, and early Map navigation from overwriting newer project state.
 - **Latest-view state integrity.** Prevented delayed History bodies and filters, WebSocket frames, flow details, Repeater/Intruder hydration and decoding, Findings edits, Map endpoints/parameters, and rapid main-tab changes from overwriting a newer selection or visible workspace; live filters now close an inspector whose flow no longer matches.
 - **Safe live-workflow actions.** Prevented Intercept shortcuts while typing, preserved intentional empty held bodies, blocked duplicate Repeater/API-key actions, locked Intruder tabs during an attack, and kept destructive queue movement dependent on successful acknowledgement.
 - **Reporting, response-view, and device feedback.** Repaired the Findings verification view, kept response-view ARIA state aligned with automatic Render fallbacks, rolled failed finding edits back to authoritative values, made reference-data and Map failures retryable, and surfaced actionable Android/iOS availability errors instead of leaving controls misleadingly active.

@@ -57,6 +57,15 @@ func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 
 func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
+	for _, contract := range []string{
+		"const projectStorageReady=activeProjectIdentity().then(name=>setStorageProject(name))",
+		"return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')))",
+		"await projectStorageReady",
+	} {
+		if !strings.Contains(app, contract) {
+			t.Errorf("project-ready Map contract missing %q", contract)
+		}
+	}
 	start := strings.Index(app, "async function bootFirstRunUI()")
 	if start < 0 {
 		t.Fatal("bootFirstRunUI not found")
@@ -77,7 +86,7 @@ func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 }
 
 func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
-	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
 		"const UI_HYDRATE_TIMEOUT_MS=2500",
 		"async function readBoundedUIState(panel)",
@@ -85,9 +94,14 @@ func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 		"signal:controller.signal",
 		"controller.abort()",
 		"clearTimeout(timer)",
-		"const d=await readBoundedUIState(panel)",
-		"const d=await readBoundedUIState('intruder-presets')",
-		"await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
+		"return {status:'success',value:d.value}",
+		"return {status:'empty'}",
+		"return {status:'error',error:e}",
+		"const result=await readBoundedUIState(panel)",
+		"const result=await readBoundedUIState('intruder-presets')",
+		"const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
+		"if(repTabs.tabs.length&&hydration!=='error')repTabs.persist()",
+		"if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist()",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("bounded project UI hydration contract missing %q", contract)

@@ -12,6 +12,9 @@ let heldSignalWindowAt=0,heldSignalCount=0;
 let heldActionInFlight=null;
 let heldActionEpoch=0;
 let heldLoadingKey=null;
+let interceptStateEpoch=0;
+export function interceptStateGeneration(){return interceptStateEpoch;}
+export function replaceInterceptState(next){state.intercept=next;interceptStateEpoch++;}
 function allowHeldSignal(){
   const now=performance.now();
   if(now-heldSignalWindowAt>800){heldSignalWindowAt=now;heldSignalCount=0;}
@@ -188,11 +191,11 @@ export async function selectHeld(id,side,opts={}){
   showEditor({...h,side,raw});
 }
 $('#respInterceptToggle').onclick=async()=>{
-  try{const s=await api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})});state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+  try{const s=await api('/api/intercept/response/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.responseEnabled})});replaceInterceptState(s);renderIntercept();}catch(e){toast(e.message);}
 };
 export async function toggleIntercept(){
   try{const s=await api('/api/intercept/toggle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!state.intercept.enabled})});
-    state.intercept=s;renderIntercept();}catch(e){toast(e.message);}
+    replaceInterceptState(s);renderIntercept();}catch(e){toast(e.message);}
 }
 $('#interceptToggle').onclick=toggleIntercept;
 // Forward / Drop act on the selected item, routing to the request or response API.
@@ -211,7 +214,7 @@ function resetHeldAction(button,label,delay,epoch){
 function reconcileHeldRemoval(sel){
   const queueKey=sel.side==='resp'?'responseQueue':'queue';
   const queue=(state.intercept?.[queueKey]||[]).filter(h=>h.id!==sel.id);
-  state.intercept={...(state.intercept||{}),[queueKey]:queue};
+  replaceInterceptState({...(state.intercept||{}),[queueKey]:queue});
   if(state.heldSel&&state.heldSel.id===sel.id&&state.heldSel.side===sel.side)state.heldSel=null;
   heldActionInFlight=null;
   renderIntercept();
@@ -293,7 +296,7 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
 export async function applyInterceptFilter(){
   const enabled=$('#interceptFilterOn').checked,target=$('#interceptFilterTarget').value,pattern=$('#interceptFilterPattern').value;
   try{const s=await api('/api/intercept/filter',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled,target,pattern})});
-    state.intercept=s;renderIntercept();toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
+    replaceInterceptState(s);renderIntercept();toast(enabled&&pattern?'filter applied':'filter off');}catch(e){toast(e.message);}
 }
 // The conditional filter auto-applies on a debounce (and on Enter), so there is
 // no Apply button — keeping one would be a redundant third commit path.

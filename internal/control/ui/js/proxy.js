@@ -61,6 +61,7 @@ const FLOW_SIGNAL_LIMIT=6;       // one-shot arrival cues allowed per burst wind
 const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
+let flowRefreshing=false;
 let flowLoadEpoch=0,flowPageEpoch=0;
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
@@ -409,7 +410,8 @@ function updateTruncBanner(){
   if(!b)return;
   // No hard cap anymore — older flows stream in as you scroll. Show a subtle
   // affordance only while a page is loading or when more remain below.
-  if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
+  if(flowRefreshing){b.style.display='block';b.textContent='Refreshing flows…';}
+  else if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
   else if(flowHasMore){b.style.display='block';b.textContent='Scroll down to load older flows.';}
   else b.style.display='none';
 }
@@ -713,6 +715,9 @@ export async function loadFlows(){
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
   loadingMore=false;
+  flowRefreshing=true;
+  flowHasMore=false;
+  updateTruncBanner();
   const q=buildFlowParams();
   q.set('limit',String(FLOW_FETCH+1)); // +1 row tells us whether more exist
   try{
@@ -730,13 +735,14 @@ export async function loadFlows(){
     updateTruncBanner();
     refreshMethodFilter();
     loadTrafficDiagnosis();
-  }catch(e){if(epoch===flowLoadEpoch)toast('flows: '+e.message);}
+  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}}
+  finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
 
 // loadMoreFlows appends the next page (keyset cursor = last visible row) when the
 // user scrolls near the bottom. Scroll position is preserved across the re-render.
 export async function loadMoreFlows(){
-  if(loadingMore||!flowHasMore||!state.flows.length)return;
+  if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
   updateTruncBanner();
@@ -785,19 +791,23 @@ const flowStore=createFlowStore(state.flows);
 let reloadTimer=null;
 const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0;
+let selectFlowEpoch=0;
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 export async function selectFlow(id){
+  const selectEpoch=++selectFlowEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
   state.selId=id;renderRows();
   try{
     const d=await api('/api/flows/'+id);
-    if(state.selId!==id)return; // a newer selection superseded this one mid-fetch — don't overwrite its panes
+    if(!current())return;
     state.detail=d;
     $('#noteInput').value=d.note||'';$('#noteBar').style.display='flex';
     await renderSide('req');
-    if(state.selId!==id)return;
+    if(!current())return;
     if(d.flags&FLAG_WS){
       $('#resStatus').textContent='WebSocket frames';$('#resStatus').style.color='var(--accent)';
       await renderWSFrames(id);
+      if(!current())return;
     }else if(d.flags&FLAG_TLS){
       $('#resView').innerHTML=`<div style="padding:12px;color:var(--fg2);line-height:1.5"><strong style="color:var(--red)">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span style="color:var(--fg3)">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
       $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
@@ -808,11 +818,11 @@ export async function selectFlow(id){
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
       await renderSide('res');
-      if(state.selId!==id)return;
+      if(!current())return;
       $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
-  }catch(e){if(state.selId===id)toast('flow: '+e.message);}
+  }catch(e){if(current())toast('flow: '+e.message);}
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
@@ -838,7 +848,8 @@ function flowWsURL(d){const s=d.scheme==='https'?'wss':'ws';const def=(d.scheme=
 export async function renderWSFrames(id){
   const epoch=++wsRenderEpoch;
   const detail=state.detail;
-  const current=()=>state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
+  const selectEpoch=selectFlowEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
   try{
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
     if(!current())return;
@@ -885,6 +896,7 @@ export async function renderSide(side){
   if(dec)dec.hidden=true;
   const flowId=state.selId;
   const detail=state.detail;
+  const selectEpoch=selectFlowEpoch;
   const epoch=++renderSideEpoch[side];
   if(!flowId||!detail){return;}
   const len=side==='req'?detail.reqLen:detail.resLen;
@@ -904,7 +916,7 @@ export async function renderSide(side){
     }
   }
   const view=state.view[side];
-  const current=()=>renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
+  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
   const draw=async()=>{
     try{
       if(view==='decoded'){

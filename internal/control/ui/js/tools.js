@@ -113,17 +113,18 @@ async function readBoundedUIState(panel){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),UI_HYDRATE_TIMEOUT_MS);
   try{
-    return await api('/api/ui/'+panel,{signal:controller.signal});
-  }catch(e){return null;}
+    const d=await api('/api/ui/'+panel,{signal:controller.signal});
+    if(d&&d.value!=null)return {status:'success',value:d.value};
+    return {status:'empty'};
+  }catch(e){return {status:'error',error:e};}
   finally{clearTimeout(timer);}
 }
 async function hydrateUIState(panel, storageBase){
-  const d=await readBoundedUIState(panel);
-  if(d&&d.value!=null){
-    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(d.value));}catch(e){}
-    return true;
+  const result=await readBoundedUIState(panel);
+  if(result.status==='success'){
+    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(result.value));}catch(e){}
   }
-  return false;
+  return result.status;
 }
 export const repTabs=createTabManager({
   storageKey:()=>projectStorageKey('rep.tabs'),
@@ -356,10 +357,10 @@ export async function sendToRepeater(f){
   }catch(e){toast(e.message);return false;}
 }
 export async function repInit(){
-  await hydrateUIState('repeater','rep.tabs');
+  const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
   // First persist migrates localStorage drafts into the project DB.
-  if(repTabs.tabs.length) repTabs.persist();
+  if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{
     repSaveEditor();
     // Typing in method/url only changes the active tab's label — don't rebuild the
@@ -677,9 +678,9 @@ function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return; intrInit._done=true;
-  await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
+  const [hydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
   intrTabs.init('#intrTabs');
-  if(intrTabs.tabs.length) intrTabs.persist();
+  if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist();
   renderIntrHistory();loadIntrPresets();
   const tabBar=$('#intrTabs');
   if(tabBar)tabBar.addEventListener('keydown',e=>{
@@ -1030,9 +1031,9 @@ export async function intrStart(){
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 async function hydrateIntrPresets(){
-  const d=await readBoundedUIState('intruder-presets');
-  if(d&&Array.isArray(d.value)){
-    try{localStorage.setItem(intrPresetsKey(),JSON.stringify(d.value));}catch(e){}
+  const result=await readBoundedUIState('intruder-presets');
+  if(result.status==='success'&&Array.isArray(result.value)){
+    try{localStorage.setItem(intrPresetsKey(),JSON.stringify(result.value));}catch(e){}
   }
 }
 function loadIntrPresets(){

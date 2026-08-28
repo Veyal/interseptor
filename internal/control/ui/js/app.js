@@ -4,7 +4,7 @@
 // theme, the version badge, and the boot sequence that kicks everything off.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, setStorageProject, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
-import { renderIntercept, toggleIntercept, loadRules } from './intercept.js';
+import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
@@ -27,7 +27,8 @@ import { transitionView } from './motion.js';
 // it buys nothing. Map's code never runs unless the user visits it — see
 // loadMapModule() below for the dynamic import() (Phase 4a).
 let mapMod=null;
-function loadMapModule(){ return mapMod || (mapMod=import('./map.js')); }
+const projectStorageReady=activeProjectIdentity().then(name=>setStorageProject(name));
+function loadMapModule(){return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')));}
 
 /* ---- nav-rail badges (Discover/Map off-screen-update dots) ---- */
 // Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
@@ -292,7 +293,7 @@ function connectEvents(){
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
     else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
-    else if(m.type==='intercept.update'){state.intercept=m.intercept;renderIntercept();renderIcptStat();}
+    else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='intruder.update')scheduleIntr();
     else if(m.type==='scanner.update')loadIssues();
@@ -527,11 +528,14 @@ function renderInterceptUnavailable(error){
   const retry=warning.querySelector('[data-intercept-retry]');if(retry)retry.onclick=refreshIntercept;
 }
 async function refreshIntercept(){
+  const generation=interceptStateGeneration();
   try{
-    state.intercept=await api('/api/intercept');
+    const next=await api('/api/intercept');
+    if(generation!==interceptStateGeneration())return;
+    replaceInterceptState(next);
     ['#interceptToggle','#respInterceptToggle'].forEach(sel=>{const button=$(sel);if(button)button.disabled=false;});
     renderIntercept();
-  }catch(e){renderInterceptUnavailable(e);}
+  }catch(e){if(generation!==interceptStateGeneration())return;renderInterceptUnavailable(e);}
 }
 // Resolve the active project before Repeater/Intruder tab init so localStorage
 // keys are project-scoped (#17/#18). Other boot work can proceed in parallel.
@@ -547,7 +551,7 @@ async function activeProjectIdentity(){
   return 'default';
 }
 async function bootProjectScopedUI(){
-  setStorageProject(await activeProjectIdentity());
+  await projectStorageReady;
   await Promise.all([repInit(),intrInit()]);
 }
 async function bootFirstRunUI(){
