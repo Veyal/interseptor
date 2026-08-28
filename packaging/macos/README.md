@@ -13,6 +13,9 @@ MAKE_DMG=1 make macos-app        # also produce a DMG
 
 Must run on macOS: the script needs `lipo`, and `iconutil`/`codesign` when those
 steps are enabled. Both binaries are built universal (x86_64 + arm64).
+The server binary is stamped with the same numeric version written to
+`Info.plist`; tagged releases verify that `interseptor version` reports the
+exact tag before publishing the bundle.
 
 ## What's inside
 
@@ -20,7 +23,7 @@ steps are enabled. Both binaries are built universal (x86_64 + arm64).
 Interseptor.app/Contents/
   Info.plist
   MacOS/interseptor-macapp   ← CFBundleExecutable, the launcher
-  MacOS/interseptor          ← the real server binary, unchanged
+  MacOS/interseptor          ← the real server binary
   Resources/AppIcon.icns     ← only if packaging/macos/AppIcon.iconset exists
 ```
 
@@ -128,7 +131,9 @@ the same validation in `release.yml`, then publish an unsigned app ZIP and DMG
 only after the cross-platform GoReleaser candidate also passes. The assets stay
 unsigned because signing needs a Developer ID certificate and notary
 credentials that CI does not have; publishing signed assets requires adding
-those credentials to repository secrets and the release workflow.
+those credentials to repository secrets and the release workflow. Tagged
+releases also publish `macos-checksums.txt` for the ZIP and DMG; the separate
+`checksums.txt` covers the GoReleaser CLI archives.
 
 **Homebrew cask needs notarization.** Homebrew is phasing out unsigned casks, so
 cask distribution is not viable without the signing steps above.
