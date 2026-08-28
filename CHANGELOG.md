@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-08-29
+
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to published `2.0.4` and documented the separate post-publication cleanup step.
 - **Web UI architecture guidance.** Documented the shared project-ready lazy loader and removed stale advice that every feature module loads through `app.js`.
