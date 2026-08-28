@@ -19,7 +19,9 @@ project archives as engagement evidence.
 
 ## Project boundaries
 
-History, scope, rules, findings, notes, session settings, UI preferences and drafts, and codecs are project-scoped.
+History, scope, rules, findings, notes, session settings, Repeater and Intruder drafts and presets,
+Map view preferences, setup-wizard completion, and codecs are project-scoped. Theme and the last
+open top-level panel remain browser-wide.
 Switching projects restarts/re-executes the application so proxy and control listeners move to the
 new store together. Finish unsaved edits and check the project badge before sending traffic.
 
