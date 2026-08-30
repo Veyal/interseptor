@@ -221,7 +221,7 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 		"selectedOriginHost(",
 		"loadSettings();",
 		"document.activeElement!==ol",
-		"catch(e){renderOriginTLSVerifyWarning(true)",
+		"catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true)",
 	)
 }
 
