@@ -49,3 +49,22 @@ func TestUIRepeaterCloseSuppressesLateHistoryWrites(t *testing.T) {
 		t.Error("Repeater history cleanup must be serialized with outstanding writers")
 	}
 }
+
+func TestUIRepeaterCleanupLedgerFailureDoesNotBlockInit(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "async function repRetryHistoryCleanup(openTabs)")
+	end := strings.Index(tools, "async function repHydrateTabHistory(t)")
+	if start < 0 || end <= start {
+		t.Fatal("Repeater cleanup retry function not found")
+	}
+	retry := tools[start:end]
+	for _, contract := range []string{
+		"let cleanupKeys",
+		"try{cleanupKeys=repHistoryCleanupKeys();}catch(e){return;}",
+		"try{repClearHistoryCleanup(tabKey);}catch(e){}",
+	} {
+		if !strings.Contains(retry, contract) {
+			t.Errorf("Repeater cleanup retry must tolerate storage failure: missing %q", contract)
+		}
+	}
+}

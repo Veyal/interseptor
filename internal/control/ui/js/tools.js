@@ -166,9 +166,12 @@ async function repDeleteHistory(t){
 }
 async function repRetryHistoryCleanup(openTabs){
   const openKeys=new Set(openTabs.map(repHistoryTabKey));
-  for(const tabKey of repHistoryCleanupKeys()){
-    if(openKeys.has(tabKey)){repClearHistoryCleanup(tabKey);continue;}
-    try{await repDeleteHistoryKey(tabKey);repClearHistoryCleanup(tabKey);}catch(e){}
+  let cleanupKeys;
+  try{cleanupKeys=repHistoryCleanupKeys();}catch(e){return;}
+  for(const tabKey of cleanupKeys){
+    if(openKeys.has(tabKey)){try{repClearHistoryCleanup(tabKey);}catch(e){}continue;}
+    try{await repDeleteHistoryKey(tabKey);}catch(e){continue;}
+    try{repClearHistoryCleanup(tabKey);}catch(e){}
   }
 }
 async function repHydrateTabHistory(t){
