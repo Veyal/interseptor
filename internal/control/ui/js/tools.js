@@ -87,6 +87,26 @@ function repHistoryDB(){
   return repHistoryDBPromise;
 }
 function repHistoryTabKey(t){return projectStorageKey('rep.history')+'|'+t.historyKey;}
+function repHistoryCleanupStorageKey(){return projectStorageKey('rep.history.cleanup');}
+function repHistoryCleanupKeys(){
+  const raw=localStorage.getItem(repHistoryCleanupStorageKey());
+  if(!raw)return[];
+  try{
+    const prefix=projectStorageKey('rep.history')+'|';
+    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&key.startsWith(prefix)&&key.length<=512))];
+  }catch(e){return[];}
+}
+function repWriteHistoryCleanupKeys(keys){
+  if(keys.length)localStorage.setItem(repHistoryCleanupStorageKey(),JSON.stringify(keys));
+  else localStorage.removeItem(repHistoryCleanupStorageKey());
+}
+function repMarkHistoryCleanup(t){
+  const tabKey=repHistoryTabKey(t),keys=repHistoryCleanupKeys();
+  if(!keys.includes(tabKey))keys.push(tabKey);
+  repWriteHistoryCleanupKeys(keys);
+  return tabKey;
+}
+function repClearHistoryCleanup(tabKey){repWriteHistoryCleanupKeys(repHistoryCleanupKeys().filter(key=>key!==tabKey));}
 function repHistoryTxnDone(tx){
   return new Promise((resolve,reject)=>{
     tx.oncomplete=()=>resolve();
@@ -129,15 +149,27 @@ async function repReadHistory(t){
   await repHistoryTxnDone(tx);
   return normalizeRepHistory(rows.map(row=>row.entry)).sort((a,b)=>b.id-a.id);
 }
+async function repDeleteHistoryKey(tabKey){
+  const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
+  const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+  const request=index.openCursor(tabKey);
+  request.onsuccess=()=>{const cursor=request.result;if(cursor){cursor.delete();cursor.continue();}};
+  await repHistoryTxnDone(tx);
+}
 async function repDeleteHistory(t){
-  try{return await repHistoryOperation(t,async()=>{
+  const tabKey=repMarkHistoryCleanup(t);
+  return repHistoryOperation(t,async()=>{
     if(!t._closed)return;
-    const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
-    const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
-    const request=index.openCursor(repHistoryTabKey(t));
-    request.onsuccess=()=>{const cursor=request.result;if(cursor){cursor.delete();cursor.continue();}};
-    await repHistoryTxnDone(tx);
-  },true);}catch(e){}
+    await repDeleteHistoryKey(tabKey);
+    repClearHistoryCleanup(tabKey);
+  },true);
+}
+async function repRetryHistoryCleanup(openTabs){
+  const openKeys=new Set(openTabs.map(repHistoryTabKey));
+  for(const tabKey of repHistoryCleanupKeys()){
+    if(openKeys.has(tabKey)){repClearHistoryCleanup(tabKey);continue;}
+    try{await repDeleteHistoryKey(tabKey);repClearHistoryCleanup(tabKey);}catch(e){}
+  }
 }
 async function repHydrateTabHistory(t){
   if(t.historyHydrationPromise)return t.historyHydrationPromise;
@@ -629,6 +661,7 @@ export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
+  await repRetryHistoryCleanup(repTabs.tabs);
   await Promise.all(repTabs.tabs.map(repHydrateTabHistory));
   if(repCur())loadRepHistory();
   // First persist migrates localStorage drafts into the project DB.

@@ -78,8 +78,20 @@ function makeHostHdrRow(host, hdrs) {
 // Live settings.refresh events can arrive while an operator is editing. Keep
 // the dirty DOM values keyed by stable control IDs and snapshot dynamic rows
 // separately, so a response never silently wins over in-progress work.
-function markSettingsDirty(el) {
-  if (el) el.dataset.settingsDirty = '1';
+function markSettingsDirty(el,edited=true) {
+  if (el) {
+    el.dataset.settingsDirty = '1';
+    if(edited)el.dataset.settingsEditGeneration = String((Number(el.dataset.settingsEditGeneration)||0)+1);
+  }
+}
+
+function settingsEditGeneration(el) {
+  return Number(el?.dataset.settingsEditGeneration)||0;
+}
+
+function settingsEditOwned(el,generation,value) {
+  if(!el||settingsEditGeneration(el)!==generation)return false;
+  return value===undefined||el.value===value;
 }
 
 function clearSettingsDirty(ids=[], lists=[]) {
@@ -119,21 +131,21 @@ function restoreDirtySettings(snapshot) {
     if (el.type === 'file') return;
     if (el.type === 'checkbox') el.checked = !!value;
     else el.value = value;
-    markSettingsDirty(el);
+    markSettingsDirty(el,false);
   });
   if (snapshot.proxyListeners) {
     renderProxyListeners(snapshot.proxyListeners);
-    markSettingsDirty($('#proxyListenersList'));
+    markSettingsDirty($('#proxyListenersList'),false);
   }
   if (snapshot.hostHeaders) {
     renderHostHdrList(snapshot.hostHeaders);
-    markSettingsDirty($('#hostHdrList'));
+    markSettingsDirty($('#hostHdrList'),false);
   }
   if(snapshot.deviceProxyMode){
     const seg=$('#deviceProxyModeSeg');
     if(seg){
       seg.querySelectorAll('button[data-mode]').forEach(button=>setSeg(button,button.dataset.mode===snapshot.deviceProxyMode));
-      markSettingsDirty(seg);
+      markSettingsDirty(seg,false);
     }
     const manual=$('#deviceProxyManualField');
     if(manual)manual.style.display=snapshot.deviceProxyMode==='manual'?'':'none';
@@ -627,9 +639,10 @@ $('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
   catch(e){toast('auto-bypass: '+e.message);}
 });
 $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=()=>runSettingsAction($('#tlsBypassSave'),async()=>{
+  const list=$('#tlsBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
   const hosts=bypassHostsFromText();
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tlsBypassHosts:hosts})});
-    if($('#tlsBypassList'))$('#tlsBypassList').value=hosts.join('\n');updateBypassCount();clearSettingsDirty(['tlsBypassList']);
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=hosts.join('\n');clearSettingsDirty(['tlsBypassList']);}updateBypassCount();
     toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
   catch(e){toast('passthrough: '+e.message);}
 }));
@@ -637,8 +650,9 @@ function originTLSVerifyBypassHostsFromText(){return ($('#originTLSVerifyBypassL
 function updateOriginTLSVerifyBypassCount(){const el=$('#originTLSVerifyBypassCount');if(el)el.textContent=(n=>n?n+' verification exception'+(n>1?'s':''):'No verification exceptions')(originTLSVerifyBypassHostsFromText().length);}
 $('#originTLSVerifyBypassList')&&($('#originTLSVerifyBypassList').addEventListener('input',updateOriginTLSVerifyBypassCount));
 async function saveOriginTLSVerifyExceptions(hosts,message){
+  const list=$('#originTLSVerifyBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
   try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerifyBypassHosts:hosts})});
-    if($('#originTLSVerifyBypassList'))$('#originTLSVerifyBypassList').value=hosts.join('\n');updateOriginTLSVerifyBypassCount();
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=hosts.join('\n');clearSettingsDirty(['originTLSVerifyBypassList']);}updateOriginTLSVerifyBypassCount();
     toast(message||(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared'));
     return true;
   }catch(e){toast('origin TLS: '+e.message,'error');return false;}
@@ -673,7 +687,7 @@ $('#originTLSVerifyBypassSelected')&&($('#originTLSVerifyBypassSelected').onclic
   if(!host){toast('Select a request in History first','error');return;}
   addOriginTLSVerifyException(host);
 });
-$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>runSettingsAction($('#originTLSVerifyBypassSave'),()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText()).then(saved=>{if(saved)clearSettingsDirty(['originTLSVerifyBypassList']);return saved;})));
+$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>runSettingsAction($('#originTLSVerifyBypassSave'),()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText())));
 
 const upstreamDefaultPorts={http:'80',https:'443',socks5:'1080',socks5h:'1080'};
 function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
@@ -1186,28 +1200,33 @@ export async function openProjectModal(){
 {const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 {const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
+  const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();
   if(!addrs.length){toast('enter at least one listener');return;}
   try{
     const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddrs:addrs})});
     state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;
     if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
-    renderProxyListeners(s.proxyAddrs||addrs);
-    clearSettingsDirty([],['#proxyListenersList']);
+    if(settingsEditOwned(list,generation)){renderProxyListeners(s.proxyAddrs||addrs);clearSettingsDirty([],['#proxyListenersList']);}
     await loadDeviceProxyEndpoint();
     toast('proxy now on '+s.proxyAddr);
   }catch(e){toast(e.message);}
 });
 $('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),async()=>{
+  const host=$('#setControlHost'),port=$('#setControlPort');
+  const hostGeneration=settingsEditGeneration(host),portGeneration=settingsEditGeneration(port);
+  const submittedHost=host?.value,submittedPort=port?.value;
   const controlAddr=syncControlAddrFields();
   if(!controlAddr){toast('enter control host and port');return;}
   try{
     const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({controlAddr})});
     state.controlAddr=s.controlAddr;$('#controlAddr').textContent=s.controlAddr;
-    const c=parseListenAddr(s.controlAddr);
-    if($('#setControlPort'))$('#setControlPort').value=c.port;
-    renderHostSelect($('#setControlHost'),c.host);
-    clearSettingsDirty(['setControlHost','setControlPort','setControlAddr']);
+    if(settingsEditOwned(host,hostGeneration,submittedHost)&&settingsEditOwned(port,portGeneration,submittedPort)){
+      const c=parseListenAddr(s.controlAddr);
+      if(port)port.value=c.port;
+      renderHostSelect(host,c.host);
+      clearSettingsDirty(['setControlHost','setControlPort','setControlAddr']);
+    }
     const newUrl='http://'+s.controlAddr;
     if(location.host!==s.controlAddr)toast('Control UI now on '+newUrl+' — open that URL if this page stops updating');
     else toast('control UI now on '+s.controlAddr);

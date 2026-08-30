@@ -11,16 +11,18 @@ func TestUIRepeaterCloseSuppressesLateHistoryWrites(t *testing.T) {
 
 	for _, contract := range []string{
 		"closed._closed=true",
-		"if(typeof onClose==='function')Promise.resolve().then(()=>onClose(closed)).catch(()=>{});",
+		"try{closeResult=onClose(closed);}",
+		"mgr.tabs.splice(i,1)",
 	} {
 		if !strings.Contains(core, contract) {
 			t.Errorf("tab close lifecycle contract missing %q", contract)
 		}
 	}
 	closedMark := strings.Index(core, "closed._closed=true")
-	closeHook := strings.Index(core, "onClose(closed)")
-	if closedMark < 0 || closeHook < 0 || closedMark > closeHook {
-		t.Error("tab close must mark the detached tab before invoking asynchronous cleanup")
+	closeHook := strings.Index(core, "closeResult=onClose(closed)")
+	removeTab := strings.Index(core, "mgr.tabs.splice(i,1)")
+	if closedMark < 0 || closeHook < 0 || removeTab < 0 || closedMark > closeHook || closeHook > removeTab {
+		t.Error("tab close must durably register cleanup before discarding tab metadata")
 	}
 
 	for _, contract := range []string{
@@ -32,13 +34,18 @@ func TestUIRepeaterCloseSuppressesLateHistoryWrites(t *testing.T) {
 		"if(t._closed)return false",
 		"return repHistoryOperation(t,async()=>{",
 		"if(!t._closed)return;",
+		"function repMarkHistoryCleanup(t)",
+		"function repRetryHistoryCleanup(openTabs)",
+		"const tabKey=repMarkHistoryCleanup(t)",
+		"await repRetryHistoryCleanup(repTabs.tabs)",
+		"repClearHistoryCleanup(tabKey)",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("Repeater close-vs-late-write contract missing %q", contract)
 		}
 	}
 
-	if !strings.Contains(tools, "return await repHistoryOperation(t,async()=>{") {
+	if !strings.Contains(tools, "return repHistoryOperation(t,async()=>{") {
 		t.Error("Repeater history cleanup must be serialized with outstanding writers")
 	}
 }

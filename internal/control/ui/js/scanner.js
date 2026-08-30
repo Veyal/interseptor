@@ -75,6 +75,8 @@ let checkLoadEpoch=0;
 let checkActionEpoch=0;
 let checkActionBusy=false;
 let checkToggleEpoch=0;
+let checkListEpoch=0;
+let checkToggleBusy=false;
 function setCheckActionState(kind,stateName){
   const test=$('#checkTest'),save=$('#checkSave');
   if(!test||!save)return;
@@ -150,6 +152,8 @@ function markChecksSelected(box){
 async function saveCheckToggle(cb,box){
   const previous=!cb.checked;
   const epoch=++checkToggleEpoch;
+  checkToggleBusy=true;
+  checkListEpoch++;
   const toggles=[...box.querySelectorAll('.check-en')];
   const disabled=toggles.filter(x=>!x.checked).map(x=>x.dataset.id);
   toggles.forEach(toggle=>{toggle.disabled=true;});
@@ -164,14 +168,18 @@ async function saveCheckToggle(cb,box){
     toast(e.message,'error');
   }finally{
     if(epoch===checkToggleEpoch){
-      toggles.forEach(toggle=>{toggle.disabled=false;});
+      checkToggleBusy=false;
+      checkListEpoch++;
       box.removeAttribute('aria-busy');
+      await loadChecksList();
     }
   }
 }
 export async function loadChecksList(){
+  const epoch=++checkListEpoch;
   try{
     const d=await api('/api/checks');const box=$('#checksList');if(!box)return;
+    if(epoch!==checkListEpoch||checkToggleBusy)return;
     const cs=d.checks||[];const dis=new Set(d.disabled||[]);
     const builtin=d.builtin||[];
     const sevBadge=s=>`<span class="sev ${escAttr(s)}" style="font-size:var(--fs-xs)">${esc(s)}</span>`;
@@ -205,6 +213,7 @@ export async function loadChecksList(){
       html+=group(`BUILT-IN · PASSIVE (${builtin.length}) — click to edit`,false,builtinBody);
     }
     box.innerHTML=html;
+    box.removeAttribute('aria-busy');
     markChecksSelected(box);
     box.querySelectorAll('.checks-pick[data-id]').forEach(el=>{
       const id=el.dataset.id;
@@ -217,7 +226,9 @@ export async function loadChecksList(){
     box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=()=>saveCheckToggle(cb,box));
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
   }catch(e){
+    if(epoch!==checkListEpoch||checkToggleBusy)return;
     const box=$('#checksList');if(!box)return;
+    box.removeAttribute('aria-busy');
     box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load checks: ${esc(e.message)}</p><button type="button" class="btn" data-checks-list-retry>Retry</button></div>`;
     box.querySelector('[data-checks-list-retry]')?.addEventListener('click',loadChecksList);
   }

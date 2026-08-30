@@ -192,12 +192,13 @@ export function createTabManager(opts){
     const i=mgr.tabs.findIndex(t=>t.tid===tid);if(i<0)return;
     const closed=mgr.tabs[i];
     const wasActive=tid===mgr.active;
-    mgr.tabs.splice(i,1);
-    // Mark the detached tab before handing it to any asynchronous cleanup
-    // hook. Feature-owned work that completes after close must not recreate
-    // state under an object which is no longer reachable from this manager.
     closed._closed=true;
-    if(typeof onClose==='function')Promise.resolve().then(()=>onClose(closed)).catch(()=>{});
+    let closeResult;
+    if(typeof onClose==='function'){
+      try{closeResult=onClose(closed);}catch(e){closed._closed=false;toast(e.message||'Could not close tab');return;}
+    }
+    mgr.tabs.splice(i,1);
+    if(closeResult)Promise.resolve(closeResult).catch(()=>{});
     if(!mgr.tabs.length)mgr.tabs.push(blank(mgr.seq++));
     if(wasActive)mgr.active=mgr.tabs[Math.min(i,mgr.tabs.length-1)].tid;
     mgr._rerender();

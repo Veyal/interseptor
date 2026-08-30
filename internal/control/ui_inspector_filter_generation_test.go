@@ -14,7 +14,12 @@ func TestUIProxyInspectorRejectsDetailAfterFilterReload(t *testing.T) {
 	proxy := executableJS(source)
 	for _, contract := range []string{
 		"let flowFilterEpoch=0",
-		"const filterEpoch=++flowFilterEpoch",
+		"let flowFilterSignature=''",
+		"let flowFilterReconciledEpoch=0",
+		"function inspectorFilterSignature()",
+		"if(signatureChanged){flowFilterSignature=filterSignature;flowFilterEpoch++;}",
+		"const filterChanged=filterEpoch!==flowFilterReconciledEpoch",
+		"flowFilterReconciledEpoch=filterEpoch",
 		"const filterEpoch=flowFilterEpoch",
 		"flowFilterEpoch===filterEpoch",
 		"function showInspectorFilterLoadError(id,error)",
@@ -26,10 +31,15 @@ func TestUIProxyInspectorRejectsDetailAfterFilterReload(t *testing.T) {
 		"if(!canIncremental()&&!flowStore.byId.has(state.selId))",
 		"showInspectorSelectionUnavailable(state.selId)",
 		"showInspectorFilterLoadError(previousSelected,e)",
+		"if(filterChanged&&state.detail)selectFlow(state.selId)",
+		"else if(previousFlow&&canIncremental()&&filterChanged&&state.detail)selectFlow(state.selId)",
 	} {
 		if !strings.Contains(proxy, contract) {
 			t.Errorf("Inspector/filter ownership contract missing %q", contract)
 		}
+	}
+	if strings.Contains(proxy, "const filterEpoch=++flowFilterEpoch") {
+		t.Error("background History refreshes must not invalidate Inspector subloads")
 	}
 	if !strings.Contains(proxy, "const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&flowFilterEpoch===filterEpoch") {
 		t.Error("selected-flow detail responses must be rejected after a newer filter reload")

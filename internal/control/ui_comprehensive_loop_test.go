@@ -81,6 +81,33 @@ func TestUISettingsAndSessionRefreshesHaveSingleLatestOwners(t *testing.T) {
 	}
 }
 
+func TestUISettingsAcknowledgementsRetainNewerEdits(t *testing.T) {
+	settings := requireUIContracts(t, "js/settings.js",
+		"function markSettingsDirty(el,edited=true)",
+		"markSettingsDirty(el,false)",
+		"function settingsEditGeneration(el)",
+		"function settingsEditOwned(el,generation,value)",
+		"settingsEditOwned(list,generation,submittedValue)",
+		"settingsEditOwned(host,hostGeneration,submittedHost)",
+		"settingsEditOwned(port,portGeneration,submittedPort)",
+	)
+	if got := strings.Count(settings, "settingsEditOwned(list,generation,submittedValue)"); got < 2 {
+		t.Errorf("TLS list saves must preserve newer edits; found %d ownership checks", got)
+	}
+}
+
+func TestUICheckToggleOwnsListReconciliation(t *testing.T) {
+	requireUIContracts(t, "js/scanner.js",
+		"let checkListEpoch=0",
+		"let checkToggleBusy=false",
+		"checkToggleBusy=true",
+		"checkListEpoch++",
+		"if(epoch!==checkListEpoch||checkToggleBusy)return",
+		"checkToggleBusy=false",
+		"await loadChecksList()",
+	)
+}
+
 func TestUILoginMacroTestDoesNotMutateLiveSession(t *testing.T) {
 	settings := readUIAsset(t, "js/settings.js")
 	start := strings.Index(settings, "if($('#loginMacroTest'))")

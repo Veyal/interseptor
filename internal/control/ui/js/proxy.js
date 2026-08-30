@@ -797,8 +797,22 @@ function buildFlowParams(){
 }
 function bodySearchActive(){return false;}
 
+function inspectorFilterSignature(){
+  const f=state.filters;
+  return JSON.stringify({
+    scheme:f.scheme||'',search:f.search||'',searchScope:f.searchScope||'anywhere',
+    method:f.method||'',status:f.status||'',host:f.host||'',tag:f.tag||'',
+    exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
+    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
+    showManual:!!state.showManual,showAI:!!state.showAI,
+  });
+}
+
 export async function loadFlows(){
-  const filterEpoch=++flowFilterEpoch;
+  const filterSignature=inspectorFilterSignature();
+  const signatureChanged=filterSignature!==flowFilterSignature;
+  if(signatureChanged){flowFilterSignature=filterSignature;flowFilterEpoch++;}
+  const filterEpoch=flowFilterEpoch;
   const previousSelected=state.selId;
   const previousFlow=previousSelected==null?null:(flowStore.byId.get(previousSelected)||state.detail);
   const epoch=++flowLoadEpoch;
@@ -832,7 +846,11 @@ export async function loadFlows(){
     // wins. This preserves an older paged selection when its known flow still
     // matches, while restarting an invalidated pending detail request for a
     // flow that remains visible in the new cache.
-    if(filterEpoch===flowFilterEpoch&&state.selId===previousSelected)reconcileInspectorSelectionAfterReload(previousFlow);
+    if(filterEpoch===flowFilterEpoch){
+      const filterChanged=filterEpoch!==flowFilterReconciledEpoch;
+      flowFilterReconciledEpoch=filterEpoch;
+      if(state.selId===previousSelected)reconcileInspectorSelectionAfterReload(previousFlow,filterChanged);
+    }
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
@@ -914,11 +932,13 @@ let selectFlowEpoch=0;
 // started it, so a response for a flow excluded by the newer filter cannot
 // repaint the Inspector after the selection has gone stale.
 let flowFilterEpoch=0;
+let flowFilterSignature='';
+let flowFilterReconciledEpoch=0;
 const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
-function reconcileInspectorSelectionAfterReload(previousFlow){
+function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   if(state.selId==null)return;
   if(!state.detail&&flowStore.byId.has(state.selId)){selectFlow(state.selId);return;}
   if(!state.detail&&!flowStore.byId.has(state.selId)&&canIncremental()&&!previousFlow){selectFlow(state.selId);return;}
@@ -940,6 +960,7 @@ function reconcileInspectorSelectionAfterReload(previousFlow){
     return;
   }
   if(flowStore.byId.has(state.selId)){
+    if(filterChanged&&state.detail)selectFlow(state.selId);
     return;
   }
   // A page-cache replacement can legitimately evict an older selected flow;
@@ -947,6 +968,7 @@ function reconcileInspectorSelectionAfterReload(previousFlow){
   // For client-decidable filters, an explicit mismatch is authoritative and
   // should close the Inspector instead of leaving a stale loading pane.
   if(previousFlow&&canIncremental()&&!flowMatchesFilters(previousFlow))closeInspector();
+  else if(previousFlow&&canIncremental()&&filterChanged&&state.detail)selectFlow(state.selId);
   else if(!state.detail)showInspectorSelectionUnavailable(state.selId);
 }
 function setInspectorActionState(disabled){
