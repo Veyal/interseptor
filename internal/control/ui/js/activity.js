@@ -22,12 +22,18 @@ function sameWorkflow(a,b){
 // A single substring filter over each action's stated intent — enough to find
 // "what was the AI trying to do" without a noisy mode toggle.
 const actFilter={intent:''};
+// Keep a failed feed load visible until a retry succeeds. Tab activation and
+// live events both call renderActivity(), so without this guard they would
+// replace a useful Retry action with a misleading empty state.
+let activityLoadError=false;
+let activityLoadGeneration=0;
 function passesFilter(it){
   if(actFilter.intent&&!(it.intent||'').toLowerCase().includes(actFilter.intent))return false;
   return true;
 }
 export function renderActivity(){
   const box=$('#actFeed');if(!box)return;
+  if(activityLoadError)return;
   const focusedId=box.querySelector(':focus[data-activity-id]')?.dataset.activityId||'';
   const all=state.activity;
   // Filter first, then group: separators must reflect the visible subset only,
@@ -75,12 +81,29 @@ export function onActivity(it){
   else{state.actUnseen++;const b=$('#actBadge');if(b){b.style.display='inline-block';b.textContent=state.actUnseen;}}
 }
 export async function loadActivity(){
+  const generation=++activityLoadGeneration;
   const box=$('#actFeed');if(box)box.dataset.loading='1';
-  try{const d=await api('/api/activity');state.activity=d.activity||[];renderActivity();}
-  catch(e){renderLoadError(box,'Activity',e,loadActivity,state.activity.length>0);}
-  finally{if(box)delete box.dataset.loading;}
+  try{
+    const d=await api('/api/activity');
+    if(generation!==activityLoadGeneration)return;
+    activityLoadError=false;
+    state.activity=d.activity||[];
+    renderActivity();
+  }
+  catch(e){
+    if(generation!==activityLoadGeneration)return;
+    activityLoadError=true;
+    renderLoadError(box,'Activity',e,loadActivity,state.activity.length>0);
+  }
+  finally{if(box&&generation===activityLoadGeneration)delete box.dataset.loading;}
 }
 export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.style.display='none';}
+export function clearActivityLoadError(){
+  activityLoadError=false;
+  activityLoadGeneration++;
+  const box=$('#actFeed');
+  if(box)delete box.dataset.loading;
+}
 let actClearInFlight=false;
 $('#actClear').onclick=async()=>{
   if(actClearInFlight)return;
@@ -90,7 +113,7 @@ $('#actClear').onclick=async()=>{
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}
   try{
     await api('/api/activity',{method:'DELETE'});
-    state.activity=[];renderActivity();clearActSeen();
+    state.activity=[];clearActivityLoadError();renderActivity();clearActSeen();
   }catch(e){toast('clear failed: '+e.message,'error');}
   finally{
     actClearInFlight=false;

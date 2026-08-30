@@ -798,6 +798,9 @@ function buildFlowParams(){
 function bodySearchActive(){return false;}
 
 export async function loadFlows(){
+  const filterEpoch=++flowFilterEpoch;
+  const previousSelected=state.selId;
+  const previousFlow=previousSelected==null?null:(flowStore.byId.get(previousSelected)||state.detail);
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
   loadingMore=false;
@@ -825,7 +828,11 @@ export async function loadFlows(){
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
     let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
-    reconcileInspectorSelectionAfterReload();
+    // Reconcile against the replacement cache only after the latest response
+    // wins. This preserves an older paged selection when its known flow still
+    // matches, while restarting an invalidated pending detail request for a
+    // flow that remains visible in the new cache.
+    if(filterEpoch===flowFilterEpoch&&state.selId===previousSelected)reconcileInspectorSelectionAfterReload(previousFlow);
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
@@ -833,7 +840,16 @@ export async function loadFlows(){
     refreshMethodFilter();
     loadTrafficDiagnosis();
     if(!replayExact)scheduleReload();
-  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}}
+  }catch(e){
+    if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}
+    // The failed refresh already invalidated any pending detail request owned
+    // by the previous filter generation. Never leave its Inspector spinner in
+    // place; stale content is worse than an explicit retry state. Preserve
+    // already-loaded detail when a background refresh fails: it is the last
+    // confirmed snapshot, and the persistent History error still tells the
+    // operator that the newer filter result is unconfirmed.
+    if(epoch===flowLoadEpoch&&state.selId===previousSelected&&previousSelected!=null&&!state.detail){state.detail=null;showInspectorFilterLoadError(previousSelected,e);}
+  }
   finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
 
@@ -893,13 +909,45 @@ let reloadTimer=null;
 const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0;
 let selectFlowEpoch=0;
+// A full History reload can replace the page cache while an Inspector detail
+// request is in flight. Keep that request owned by the filter generation that
+// started it, so a response for a flow excluded by the newer filter cannot
+// repaint the Inspector after the selection has gone stale.
+let flowFilterEpoch=0;
 const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
-function reconcileInspectorSelectionAfterReload(){
-  if(state.selId==null||flowStore.byId.has(state.selId))return;
-  if(canIncremental()&&state.detail&&!flowMatchesFilters(state.detail))closeInspector();
+function reconcileInspectorSelectionAfterReload(previousFlow){
+  if(state.selId==null)return;
+  if(!state.detail&&flowStore.byId.has(state.selId)){selectFlow(state.selId);return;}
+  if(!state.detail&&!flowStore.byId.has(state.selId)&&canIncremental()&&!previousFlow){selectFlow(state.selId);return;}
+  if(!state.detail&&previousFlow&&canIncremental()&&flowMatchesFilters(previousFlow)){
+    // If a filter refresh invalidated the first detail request, resume it
+    // under the new generation even when the selected older page was evicted
+    // from the replacement's first page. The retained snapshot is enough for
+    // these client-decidable filters.
+    selectFlow(state.selId);
+    return;
+  }
+  // Server-only filters (text search and in-scope matching) cannot be
+  // reconstructed from a retained client snapshot. If the replacement page
+  // does not contain the selected flow, do not repaint retained detail as if
+  // it matched; provide an explicit state instead.
+  if(!canIncremental()&&!flowStore.byId.has(state.selId)){
+    state.detail=null;
+    showInspectorSelectionUnavailable(state.selId);
+    return;
+  }
+  if(flowStore.byId.has(state.selId)){
+    return;
+  }
+  // A page-cache replacement can legitimately evict an older selected flow;
+  // preserve that selection while its known snapshot still matches filters.
+  // For client-decidable filters, an explicit mismatch is authoritative and
+  // should close the Inspector instead of leaving a stale loading pane.
+  if(previousFlow&&canIncremental()&&!flowMatchesFilters(previousFlow))closeInspector();
+  else if(!state.detail)showInspectorSelectionUnavailable(state.selId);
 }
 function setInspectorActionState(disabled){
   ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
@@ -930,9 +978,30 @@ function showInspectorLoadError(id,error){
   if(status){status.textContent='load failed';status.style.color='var(--red)';}
   $$('#reqView [data-inspector-retry]').forEach(button=>button.onclick=()=>selectFlow(id));
 }
+function showInspectorFilterLoadError(id,error){
+  setInspectorActionState(true);
+  const message=error&&error.message?error.message:String(error||'unknown error');
+  const retry='<button type="button" class="btn xs" data-inspector-filter-retry>Retry History refresh</button>';
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  const content='History filters could not be refreshed: '+esc(message)+' — Inspector paused for flow #'+esc(id)+'. '+retry;
+  if(req)req.innerHTML='<div class="state-error" role="alert">'+content+'</div>';
+  if(res)res.innerHTML='<div class="state-error" role="alert">Retry the History refresh to confirm whether this flow matches the current filters.</div>';
+  if(status){status.textContent='History refresh failed';status.style.color='var(--red)';}
+  $$('#reqView [data-inspector-filter-retry]').forEach(button=>button.onclick=()=>loadFlows());
+}
+function showInspectorSelectionUnavailable(id){
+  setInspectorActionState(true);
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<div class="state-empty" role="status"><div class="state-empty-title">Flow #'+esc(id)+' is not available under the current search or scope filters.</div><p class="state-empty-hint">Clear or adjust the History filters to inspect this flow.</p></div>';
+  if(res)res.innerHTML='<div class="state-empty" role="status"><p class="state-empty-hint">No response can be shown until the selected flow matches the current filters.</p></div>';
+  if(status){status.textContent='not in current filters';status.style.color='var(--fg3)';}
+}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
-  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
+  const filterEpoch=flowFilterEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&flowFilterEpoch===filterEpoch;
   const switching=state.selId!==id;
   const needsLoadingState=switching||!state.detail;
   const noteGeneration=noteEditorGeneration(id);
@@ -947,6 +1016,7 @@ export async function selectFlow(id){
   try{
     const d=await api('/api/flows/'+id);
     if(!current())return;
+    if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}
     state.detail=d;
     if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
     setInspectorActionState(false);
@@ -998,7 +1068,8 @@ export async function renderWSFrames(id){
   const epoch=++wsRenderEpoch;
   const detail=state.detail;
   const selectEpoch=selectFlowEpoch;
-  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
+  const filterEpoch=flowFilterEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&flowFilterEpoch===filterEpoch&&wsRenderEpoch===epoch;
   try{
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
     if(!current())return;
@@ -1046,6 +1117,7 @@ export async function renderSide(side){
   const flowId=state.selId;
   const detail=state.detail;
   const selectEpoch=selectFlowEpoch;
+  const filterEpoch=flowFilterEpoch;
   const epoch=++renderSideEpoch[side];
   if(!flowId||!detail){return;}
   const len=side==='req'?detail.reqLen:detail.resLen;
@@ -1065,7 +1137,7 @@ export async function renderSide(side){
     }
   }
   const view=state.view[side];
-  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
+  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch&&state.view[side]===view;
   const draw=async()=>{
     try{
       if(view==='decoded'){

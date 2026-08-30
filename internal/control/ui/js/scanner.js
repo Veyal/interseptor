@@ -20,7 +20,7 @@ export async function loadOob(){
   }catch(e){
     if(epoch!==oobLoadEpoch)return;
     if(status){
-      status.innerHTML='<span class="state-error-msg">Couldn\'t load interactions: '+esc(e.message||'request failed')+'</span> <button type="button" class="btn xs" data-oob-retry>Retry</button>';
+      status.innerHTML='<span class="state-error-msg" role="alert">Couldn\'t load interactions: '+esc(e.message||'request failed')+'</span> <button type="button" class="btn xs" data-oob-retry>Retry</button>';
       const retry=status.querySelector('[data-oob-retry]');
       if(retry)retry.onclick=()=>loadOob();
     }
@@ -106,10 +106,24 @@ function checkSetMode(mode){
     const on=b.dataset.mode===mode;
     b.classList.toggle('on',on);
     b.setAttribute('aria-selected',on?'true':'false');
+    b.tabIndex=on?0:-1;
   });
   const panes={code:'#checkPaneCode',docs:'#checkPaneDocs'};
-  Object.entries(panes).forEach(([m,sel])=>{const el=$(sel);if(el)el.style.display=m===mode?'':'none';});
+  Object.entries(panes).forEach(([m,sel])=>{const el=$(sel);if(el){const on=m===mode;el.style.display=on?'':'none';el.hidden=!on;}});
   if(mode==='docs')loadCheckDocs();
+}
+function wireCheckModeKeys(seg){
+  if(!seg)return;
+  const tabs=[...seg.querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab,i)=>tab.addEventListener('keydown',e=>{
+    let next=-1;
+    if(e.key==='ArrowRight'||e.key==='ArrowDown')next=(i+1)%tabs.length;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=(i-1+tabs.length)%tabs.length;
+    else if(e.key==='Home')next=0;
+    else if(e.key==='End')next=tabs.length-1;
+    else return;
+    e.preventDefault();tabs[next].focus();tabs[next].click();
+  }));
 }
 async function loadCheckDocs(){
   if(checkDocsLoaded)return;
@@ -119,7 +133,7 @@ async function loadCheckDocs(){
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
   }catch(e){
-    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
+    box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-check-docs-retry]');if(retry)retry.onclick=loadCheckDocs;
   }
 }
@@ -202,7 +216,11 @@ export async function loadChecksList(){
     // sibling toggles until it resolves so rapid clicks cannot reorder writes.
     box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=()=>saveCheckToggle(cb,box));
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
-  }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">Couldn't load checks: ${esc(e.message)}</p></div>`;}
+  }catch(e){
+    const box=$('#checksList');if(!box)return;
+    box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load checks: ${esc(e.message)}</p><button type="button" class="btn" data-checks-list-retry>Retry</button></div>`;
+    box.querySelector('[data-checks-list-retry]')?.addEventListener('click',loadChecksList);
+  }
 }
 // Filters the sidebar by title/id substring match. Groups auto-expand while a
 // filter is active (so a match in a collapsed built-in group is still found)
@@ -404,6 +422,7 @@ if($('#checkTest'))$('#checkTest').onclick=checkTest;
 if($('#checkSave'))$('#checkSave').onclick=checkSave;
 if($('#checkDelete'))$('#checkDelete').onclick=checkDelete;
 if($('#checkModeSeg'))$('#checkModeSeg').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>checkSetMode(b.dataset.mode));
+wireCheckModeKeys($('#checkModeSeg'));
 if($('#checksSearch'))$('#checksSearch').oninput=checksApplyFilter;
 
 /* ---- decoder ---- */

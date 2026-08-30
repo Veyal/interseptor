@@ -101,7 +101,9 @@ export function renderLoadError(el, label, err, retry, stale=false){
   if(!el)return;
   const message=err&&err.message?err.message:String(err||'unknown error');
   el.style.display='block';
-  el.innerHTML=`<span class="state-error-msg">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
+  // Keep the alert scoped to the newly rendered error message. The host may be
+  // a high-volume list, so making it live would announce every recovery render.
+  el.innerHTML=`<span class="state-error-msg" role="alert">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
   const btn=el.querySelector('[data-load-retry]');
   if(btn)btn.onclick=retry;
 }
@@ -130,7 +132,7 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //                 omit to leave the span unstyled)
 // Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
 export function createTabManager(opts){
-  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs'}=opts;
+  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs',tabPanelId=''}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
   const mgr={tabs:[],active:null,seq:1,persistT:null};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
@@ -149,11 +151,14 @@ export function createTabManager(opts){
       const style=labelStyle?labelStyle(t,active):'';
       const label=title(t);
       return `<div class="rep-tab${active?' on':''}" data-tid="${t.tid}" title="${escAttr(label)}">
-    <button type="button" class="rt-select" role="tab" aria-selected="${active?'true':'false'}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
+    <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
     <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
     }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-label="New ${escAttr(tablistLabel.replace(/ tabs?$/i,' tab'))}" title="New tab">＋</button>`;
+    const tabPanel=document.getElementById(tabPanelId);
+    const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
+    if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
     const tabButtons=[...bar.querySelectorAll('.rt-select')];
     tabButtons.forEach((el,i)=>{
       const item=el.closest('.rep-tab'),tid=Number(item.dataset.tid);
@@ -188,7 +193,11 @@ export function createTabManager(opts){
     const closed=mgr.tabs[i];
     const wasActive=tid===mgr.active;
     mgr.tabs.splice(i,1);
-    if(typeof onClose==='function')Promise.resolve(onClose(closed)).catch(()=>{});
+    // Mark the detached tab before handing it to any asynchronous cleanup
+    // hook. Feature-owned work that completes after close must not recreate
+    // state under an object which is no longer reachable from this manager.
+    closed._closed=true;
+    if(typeof onClose==='function')Promise.resolve().then(()=>onClose(closed)).catch(()=>{});
     if(!mgr.tabs.length)mgr.tabs.push(blank(mgr.seq++));
     if(wasActive)mgr.active=mgr.tabs[Math.min(i,mgr.tabs.length-1)].tid;
     mgr._rerender();

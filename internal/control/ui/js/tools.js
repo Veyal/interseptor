@@ -94,12 +94,32 @@ function repHistoryTxnDone(tx){
     tx.onabort=()=>reject(tx.error||new Error('Repeater history transaction was aborted'));
   });
 }
+// IndexedDB transactions are ordered per connection, but a send, hydration,
+// and tab-close cleanup can all reach the database from different async
+// continuations. Serialize every tab-owned history operation so cleanup is
+// queued behind an in-flight writer and late writers become no-ops after the
+// manager marks the tab closed.
+function repHistoryOperation(t,work,allowClosed=false){
+  if(!t||(!allowClosed&&t._closed))return Promise.resolve(false);
+  const previous=t.historyOperation||Promise.resolve();
+  const next=previous.catch(()=>{}).then(async()=>{
+    if(!allowClosed&&t._closed)return false;
+    await work();
+    return true;
+  });
+  t.historyOperation=next.catch(()=>{});
+  return next;
+}
 async function repStoreHistoryEntries(t,entries){
   const normalized=normalizeRepHistory(entries);if(!normalized.length)return;
-  const db=await repHistoryDB(),tabKey=repHistoryTabKey(t);
-  const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE);
-  normalized.forEach(entry=>store.put({key:tabKey+'|'+entry.id,tabKey,entry}));
-  await repHistoryTxnDone(tx);
+  return repHistoryOperation(t,async()=>{
+    const db=await repHistoryDB();
+    if(t._closed)return false;
+    const tabKey=repHistoryTabKey(t);
+    const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE);
+    normalized.forEach(entry=>store.put({key:tabKey+'|'+entry.id,tabKey,entry}));
+    await repHistoryTxnDone(tx);
+  });
 }
 async function repReadHistory(t){
   const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readonly');
@@ -110,13 +130,14 @@ async function repReadHistory(t){
   return normalizeRepHistory(rows.map(row=>row.entry)).sort((a,b)=>b.id-a.id);
 }
 async function repDeleteHistory(t){
-  try{
+  try{return await repHistoryOperation(t,async()=>{
+    if(!t._closed)return;
     const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
     const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
     const request=index.openCursor(repHistoryTabKey(t));
     request.onsuccess=()=>{const cursor=request.result;if(cursor){cursor.delete();cursor.continue();}};
     await repHistoryTxnDone(tx);
-  }catch(e){}
+  },true);}catch(e){}
 }
 async function repHydrateTabHistory(t){
   if(t.historyHydrationPromise)return t.historyHydrationPromise;
@@ -329,6 +350,7 @@ export const repTabs=createTabManager({
   serialize:serializeRepeaterTab,
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
+  tabPanelId:'repTabPanel',
   onPersist:blob=>persistUIState('repeater',blob),
   onClose:t=>repDeleteHistory(t),
 });
@@ -551,7 +573,11 @@ export async function loadRepHistory(){
   box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
-$('#repHistToggle')&&($('#repHistToggle').onclick=()=>{const h=$('#repHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
+$('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
+  const h=$('#repHistory');if(!h)return;
+  const show=h.style.display==='none';h.style.display=show?'':'none';
+  $('#repHistToggle').setAttribute('aria-expanded',show?'true':'false');
+});
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
   t.historyLoadEpoch=(t.historyLoadEpoch||0)+1;
@@ -926,6 +952,7 @@ const intrTabs=createTabManager({
   normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
   tablistLabel:'Intruder tabs',
+  tabPanelId:'intrTabPanel',
   onPersist:blob=>persistUIState('intruder',blob),
 });
 function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
@@ -996,7 +1023,11 @@ function intrLoadHistory(i){
   renderIntrHistory();
   renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }
-$('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
+$('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{
+  const h=$('#intrHistory');if(!h)return;
+  const show=h.style.display==='none';h.style.display=show?'':'none';
+  $('#intrHistToggle').setAttribute('aria-expanded',show?'true':'false');
+});
 
 function intrModeText(){
   if(intrState.type==='repeat')
@@ -1204,6 +1235,7 @@ function updateIntrMode(){
   const repeat=intrState.type==='repeat';
   const primary=intrPrimary();
   $('#intrType').querySelectorAll('button').forEach(x=>{const on=x.dataset.t===primary;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  syncButtonGroupTabStops($('#intrType'));
   const lm=document.getElementById('intrListMode');
   if(lm){
     const isList=primary==='__lists__';
@@ -1222,6 +1254,27 @@ $('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   else intrState.type=t;
   updateIntrMode();intrTouch();
 });
+function syncButtonGroupTabStops(group){
+  if(!group)return;
+  const buttons=[...group.querySelectorAll('button')];
+  const active=buttons.find(b=>b.getAttribute('aria-pressed')==='true')||buttons[0];
+  buttons.forEach(b=>b.tabIndex=b===active?0:-1);
+}
+function wireButtonGroupKeys(group){
+  if(!group)return;
+  const buttons=[...group.querySelectorAll('button')];
+  syncButtonGroupTabStops(group);
+  buttons.forEach((button,i)=>button.addEventListener('keydown',e=>{
+    let next=-1;
+    if(e.key==='ArrowRight'||e.key==='ArrowDown')next=(i+1)%buttons.length;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=(i-1+buttons.length)%buttons.length;
+    else if(e.key==='Home')next=0;
+    else if(e.key==='End')next=buttons.length-1;
+    else return;
+    e.preventDefault();buttons[next].focus();buttons[next].click();
+  }));
+}
+wireButtonGroupKeys($('#intrType'));
 const _intrListMode=document.getElementById('intrListMode');
 if(_intrListMode)_intrListMode.onchange=()=>{intrState.type=_intrListMode.value;updateIntrMode();intrTouch();};
 $('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();};
@@ -1441,29 +1494,14 @@ export function renderIntr(st,{authoritative=true}={}){
   if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);
   else{box.innerHTML=view.map(intrRowHTML).join('');wireIntrResultRows(box);}
 }
-function wireTabListKeys(seg){
-  if(!seg)return;
-  const tabs=[...seg.querySelectorAll('[role="tab"]')];
-  tabs.forEach((tab,i)=>{
-    tab.tabIndex=tab.getAttribute('aria-selected')==='true'?0:-1;
-    tab.addEventListener('keydown',e=>{
-      let next=-1;
-      if(e.key==='ArrowRight')next=(i+1)%tabs.length;
-      else if(e.key==='ArrowLeft')next=(i-1+tabs.length)%tabs.length;
-      else if(e.key==='Home')next=0;
-      else if(e.key==='End')next=tabs.length-1;
-      else return;
-      e.preventDefault();tabs[next].focus();tabs[next].click();
-    });
-  });
-}
 {const seg=$('#intrResFilter');
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
-  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
+  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  syncButtonGroupTabStops(seg);
   renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
 });}
-wireTabListKeys($('#intrResFilter'));
+wireButtonGroupKeys($('#intrResFilter'));
 async function intrToFinding(){
   const pool=intrApplyFilter(intrDisplayedResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);

@@ -241,7 +241,7 @@
           <span id="heldModified" class="icpt-modified" hidden>MODIFIED</span>
           <button class="btn" id="heldBeautifyBtn" title="Beautify JSON or HTML body">Beautify</button>
           <button class="btn" id="heldResetBtn" title="Reset editor to original held bytes">Reset</button>
-          <button class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body">Decoded</button>
+          <button type="button" class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body" aria-label="Show decoded held message" aria-pressed="false">Decoded</button>
           <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
           <button class="btn btn-danger" id="dropBtn" title="Drop (D)">✕ Drop</button>
         </div>
@@ -275,11 +275,12 @@
   <!-- REPEATER -->
   <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert>
     <div class="rep-tabs" id="repTabs"></div>
+    <div id="repTabPanel" role="tabpanel" aria-labelledby="tab-repeater" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
       <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option><option>CONNECT</option><option>TRACE</option><option>COPY</option><option>LINK</option><option>UNLINK</option><option>PURGE</option><option>LOCK</option><option>UNLOCK</option><option>PROPFIND</option><option>VIEW</option></select>
       <input id="repUrl" class="repurl" aria-label="Request URL" placeholder="https://api.example.com/v1/resource" spellcheck="false">
-      <button class="btn" id="repHistToggle" title="Show/hide this tab's send history">⟲ History</button>
+      <button type="button" class="btn" id="repHistToggle" title="Show/hide this tab's send history" aria-controls="repHistory" aria-expanded="false">⟲ History</button>
       <button class="btn" id="repPostmanImport" type="button" title="Select a Postman collection JSON, optionally with an environment JSON">Import Postman</button>
       <input type="file" id="repPostmanFile" accept=".json,application/json" multiple aria-label="Import Postman collection or environment" style="display:none">
       <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)"><span id="repSendLabel">Send ▸</span><span class="kbd">Ctrl/⌘+Space</span></button>
@@ -310,16 +311,18 @@
         <pre id="repResView"><div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
       </section>
     </div>
+    </div>
   </div>
 
   <!-- INTRUDER -->
   <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert>
     <div class="rep-tabs" id="intrTabs"></div>
+    <div id="intrTabPanel" role="tabpanel" aria-labelledby="tab-intruder" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <!-- run bar: grouped by intent (target · mode · runtime · start) -->
     <div class="intr-bar">
       <input id="intrTarget" class="repurl" style="flex:1 1 240px;min-width:200px;max-width:420px" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
       <span class="intr-sep" aria-hidden="true"></span>
-      <div class="seg" id="intrType"><button type="button" class="on" data-t="sniper" aria-pressed="true">Sniper</button><button type="button" data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button type="button" data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
+      <div class="seg" id="intrType" role="group" aria-label="Intruder mode"><button type="button" class="on" data-t="sniper" aria-pressed="true">Sniper</button><button type="button" data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button type="button" data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
       <select id="intrListMode" class="btn btn-field" style="display:none" title="How the per-marker lists combine" aria-label="Payload list combination"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
       <span class="intr-sep" aria-hidden="true"></span>
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
@@ -358,17 +361,18 @@ Content-Type: application/json
       </section>
       <section class="pane intr-results">
         <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><span id="intrPollStatus" class="statusline" role="status" aria-live="polite"></span><div class="spacer"></div>
-          <span class="seg intr-res-filter" id="intrResFilter" role="tablist" aria-label="Filter results">
-            <button type="button" class="on" data-f="all" role="tab" aria-selected="true">All</button>
-            <button type="button" data-f="interesting" role="tab" aria-selected="false" title="Flagged, grep match, or length anomaly">Interesting</button>
-            <button type="button" data-f="error" role="tab" aria-selected="false">Errors</button>
+          <span class="seg intr-res-filter" id="intrResFilter" role="group" aria-label="Filter results">
+            <button type="button" class="on" data-f="all" aria-pressed="true">All</button>
+            <button type="button" data-f="interesting" aria-pressed="false" title="Flagged, grep match, or length anomaly">Interesting</button>
+            <button type="button" data-f="error" aria-pressed="false">Errors</button>
           </span>
           <button class="btn" id="intrToFinding" title="Create a Finding from interesting attempts (attaches their flows as PoCs)">→ Finding</button>
-          <span id="intrStats" class="hint"></span><button class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)">⟲ History</button></div>
+          <span id="intrStats" class="hint"></span><button type="button" class="btn" id="intrHistToggle" title="Show/hide past attacks (this session)" aria-controls="intrHistory" aria-expanded="false">⟲ History</button></div>
         <div class="intr-progbar" id="intrProgBar" style="display:none"><div id="intrProgFill"></div></div>
         <div class="intr-head"><div>#</div><div>Payload</div><div class="ta-c">St</div><div class="ta-r">Len</div><div class="ta-r">Time</div></div>
         <div id="intrResults" class="scroll"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg></div><div class="state-empty-title">No results yet</div><p class="state-empty-hint">Set a target, mark <b>§</b> injection points, add payloads, then <b>Start</b>.</p></div></div>
       </section>
+    </div>
     </div>
   </div>
 
@@ -473,7 +477,7 @@ Content-Type: application/json
       <select id="mapTag" class="btn btn-field map-tag" title="Show only endpoints with flows carrying this tag" aria-label="Map tag filter"><option value="">All tags</option></select>
       <button type="button" class="uisw on" id="mapHideNoise" aria-pressed="true" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hide 403/404-only</button>
       <button type="button" class="uisw on" id="mapCollapseIdentical" aria-pressed="true" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapse identical</button>
-      <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy">Discovery ▸</button>
+      <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy" aria-controls="mapDiscoveryPanel" aria-expanded="false">Discovery ▸</button>
       <div class="spacer"></div>
       <button class="btn" id="mapExpand">Expand all</button>
       <button class="btn" id="mapFit" title="Fit graph to view (pinch or Ctrl+scroll to zoom; scroll to pan)" style="display:none" aria-label="Fit graph to view">⤢ Fit</button>
@@ -540,7 +544,7 @@ Content-Type: application/json
         <div class="settings-nav-group" data-nav-group="testing">
           <div class="settings-nav-group-label">Testing</div>
           <button data-sec="scope">Target scope</button>
-          <button type="button" data-sec="scanner" aria-pressed="false">Scanner &amp; OOB</button>
+          <button type="button" data-sec="scanner">Scanner &amp; OOB</button>
           <button data-sec="session">Session / auth</button>
         </div>
         <div class="settings-nav-group" data-nav-group="system">
@@ -1200,17 +1204,16 @@ Content-Type: application/json
         </div>
         <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
           <div class="seg" id="checkModeSeg" role="tablist" aria-label="Check editor mode">
-            <button type="button" class="on" data-mode="code" role="tab" aria-selected="true">Code</button>
-
-            <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
+            <button type="button" class="on" id="checkModeCode" data-mode="code" role="tab" aria-selected="true" aria-controls="checkPaneCode" tabindex="0">Code</button>
+            <button type="button" id="checkModeDocs" data-mode="docs" role="tab" aria-selected="false" aria-controls="checkPaneDocs" tabindex="-1">Docs</button>
           </div>
           <span class="hint" id="checkFlowHint">Test uses selected flow or latest capture</span>
           <span class="hint" id="checkKindHint" style="display:none;color:var(--amber)"></span>
         </div>
-        <div id="checkPaneCode" class="check-pane">
+        <div id="checkPaneCode" class="check-pane" role="tabpanel" aria-labelledby="checkModeCode">
           <textarea id="checkSrc" class="rep-edit" aria-label="Custom check source" spellcheck="false" style="border-top:none" placeholder="def check(flow):&#10;    if not flow.res_header('Strict-Transport-Security'):&#10;        return [finding('medium','Missing HSTS', fix='Send HSTS.')]&#10;    return []"></textarea>
         </div>
-        <div id="checkPaneDocs" class="check-pane" style="display:none">
+        <div id="checkPaneDocs" class="check-pane" role="tabpanel" aria-labelledby="checkModeDocs" style="display:none" hidden>
           <div id="checkDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
         </div>
         <div id="checkOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
@@ -1246,16 +1249,15 @@ Content-Type: application/json
         </div>
         <div class="row checks-mode-bar" style="padding:6px 12px;gap:10px;border-bottom:1px solid var(--line);flex:none">
           <div class="seg" id="codecModeSeg" role="tablist" aria-label="Codec editor mode">
-            <button type="button" class="on" data-mode="code" role="tab" aria-selected="true">Code</button>
-
-            <button type="button" data-mode="docs" role="tab" aria-selected="false">Docs</button>
+            <button type="button" class="on" id="codecModeCode" data-mode="code" role="tab" aria-selected="true" aria-controls="codecPaneCode" tabindex="0">Code</button>
+            <button type="button" id="codecModeDocs" data-mode="docs" role="tab" aria-selected="false" aria-controls="codecPaneDocs" tabindex="-1">Docs</button>
           </div>
           <span class="hint" id="codecFlowHint">Test uses selected flow or latest capture</span>
         </div>
-        <div id="codecPaneCode" class="check-pane">
+        <div id="codecPaneCode" class="check-pane" role="tabpanel" aria-labelledby="codecModeCode">
           <textarea id="codecSrc" class="rep-edit" aria-label="Message codec source" spellcheck="false" style="border-top:none" placeholder="meta = {&#10;    &quot;id&quot;: &quot;aes-content-field&quot;,&#10;    &quot;title&quot;: &quot;JSON content&quot;,&#10;    &quot;apply_on_send&quot;: False,&#10;}&#10;&#10;def match(flow, side):&#10;    return True&#10;&#10;def decode(flow, side, raw):&#10;    return raw"></textarea>
         </div>
-        <div id="codecPaneDocs" class="check-pane" style="display:none">
+        <div id="codecPaneDocs" class="check-pane" role="tabpanel" aria-labelledby="codecModeDocs" style="display:none" hidden>
           <div id="codecDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
         </div>
         <div id="codecOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the codec under this project.</span></div>

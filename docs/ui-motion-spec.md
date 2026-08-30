@@ -36,7 +36,7 @@ Main-tab state, ARIA selection, focus, and panel visibility commit synchronously
 
 A newly inserted request may receive a finite accent-edge/background signal. The identity is consumed after its first DOM insertion, so virtualization and later row patches do not replay it. Signals are suppressed once a short update window becomes a burst; high-volume capture remains a stable table.
 
-Changing the selected flow clears the previous detail before the new request begins. Loading and failure are persistent text states with actions disabled, so the selected row, visible protocol data, and available cross-tool actions always refer to the same flow. Filtering or deleting that flow closes the Inspector without an exit animation. Pagination and scope failures stay inline and retryable; failure feedback does not travel or pulse.
+Changing the selected flow clears the previous detail before the new request begins. Loading and failure are persistent text states with actions disabled, so the selected row, visible protocol data, and available cross-tool actions always refer to the same flow. A known client-decidable filter mismatch or deletion closes the Inspector without an exit animation. When server-side search or scope matching cannot prove whether an older paged selection still belongs, the Inspector pauses on an explicit unavailable state instead of displaying unconfirmed data; clearing the filter can recover the selection. Failed History refreshes leave a direct Retry state rather than an indefinite loading indicator. Pagination and scope failures stay inline and retryable; failure feedback does not travel or pulse.
 
 ### Intercept
 

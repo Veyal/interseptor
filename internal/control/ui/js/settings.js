@@ -406,12 +406,15 @@ function syncSettingsNavA11y(active) {
       if (!sec.id) sec.id = 'settings-section-'+button.dataset.sec;
       button.setAttribute('aria-controls', sec.id);
     }
+    // Section navigation is a page-navigation list, not a toggle group. Keep
+    // stale markup/runtime state from exposing the wrong ARIA model.
+    button.removeAttribute('aria-pressed');
     button.setAttribute('aria-current', button === active ? 'page' : 'false');
   });
 }
 
 $$('#setNav button').forEach(b=>b.onclick=()=>{
-  $$('#setNav button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
+  $$('#setNav button').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   syncSettingsNavA11y(b);
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
@@ -808,7 +811,7 @@ if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#s
     toast(msg);loadSession();
   }catch(e){toast(e.message);}
 });
-if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{try{const submitted=sessionFormPayload();await saveSessionAll(submitted);sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');await loadSession();}catch(e){toast(e.message);}});
+if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{let saveAcknowledged=false;try{const submitted=sessionFormPayload();await saveSessionAll(submitted);saveAcknowledged=true;sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');}catch(e){toast(e.message);}finally{if(saveAcknowledged)await loadSession();}});
 // Test = dry-run: run the login request and show the response + the session it
 // would capture, WITHOUT touching the live session (so you can debug it safely).
 function hasDirtyLoginMacroDraft(){return ['loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');}

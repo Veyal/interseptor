@@ -131,6 +131,14 @@ function heldKey(side,id){return side+':'+id;}
 function heldDecodeCurrent(epoch,selectionKey,raw){
   return epoch===heldDecodeEpoch&&!!state.heldSel&&heldKey(state.heldSel.side,state.heldSel.id)===selectionKey&&$('#heldRaw').value===raw;
 }
+function setHeldDecodeState(show){
+  const button=$('#heldDecodeBtn');
+  if(!button)return;
+  button.textContent=show?'Raw':'Decoded';
+  button.title=show?'Show the raw held message':'Show message-codec plaintext for the body';
+  button.setAttribute('aria-label',show?'Show raw held message':'Show decoded held message');
+  button.setAttribute('aria-pressed',show?'true':'false');
+}
 function heldOriginal(h){return h.original||h.raw||'';}
 function setHeldModified(raw, original){
   const badge=$('#heldModified');
@@ -170,6 +178,7 @@ function showHeldLoading(h){
   if(head)head.style.display='flex';
   if(empty)empty.style.display='none';
   if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
+  setHeldDecodeState(false);
   if(ta){ta.style.display='block';ta.value='';ta.placeholder='Loading held message…';ta.disabled=true;}
   setHeldControlsDisabled(true);
   showHeldLoadState(h,'Loading held message…',false);
@@ -249,12 +258,14 @@ function showEditor(h){
     if(ta){ta.style.display='none';ta.disabled=false;ta.removeAttribute('placeholder');}
     if(empty)empty.style.display='flex';
     const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
+    setHeldDecodeState(false);
     setHeldControlsDisabled(false);
     return;
   }
   if(head)head.style.display='flex';
   if(empty)empty.style.display='none';
   const dec=$('#heldDecoded');if(dec){dec.style.display='none';dec.hidden=true;dec.textContent='';}
+  setHeldDecodeState(false);
   const original=heldOriginal(h);
   if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
   setHeldControlsDisabled(false);
@@ -267,6 +278,9 @@ export async function selectHeld(id,side,opts={}){
   const nextKey=heldKey(side,id);
   state.heldSel={id,side};
   if(previousKey!==nextKey)heldDecodeEpoch++;
+  if(previousKey!==nextKey){
+    if(!heldActionInFlight)restoreHeldActionControls();
+  }
   $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
@@ -319,8 +333,32 @@ function setHeldActionState(button,stateName,label){
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
   button.textContent=label;
 }
-function resetHeldAction(button,label,delay,epoch){
-  setTimeout(()=>{if(epoch===heldActionEpoch)setHeldActionState(button,'idle',label);},delay);
+function heldSelectionOwns(key){
+  const sel=state.heldSel;
+  return !!sel&&heldKey(sel.side,sel.id)===key;
+}
+function clearHeldActionState(button,label){
+  if(!button)return;
+  button.classList.remove('is-pending','is-success','is-error');
+  button.dataset.state='idle';
+  button.setAttribute('aria-busy','false');
+  button.textContent=label;
+}
+function restoreHeldActionControls(){
+  clearHeldActionState($('#forwardBtn'),'Forward');
+  clearHeldActionState($('#dropBtn'),'Drop');
+  if(state.heldSel&&!heldLoadingKey)setHeldControlsDisabled(false);
+}
+function setHeldActionResult(button,key,stateName,label){
+  if(!button)return false;
+  if(!heldSelectionOwns(key))return false;
+  setHeldActionState(button,stateName,label);
+  return true;
+}
+function resetHeldAction(button,label,delay,epoch,key){
+  setTimeout(()=>{
+    if(epoch===heldActionEpoch&&heldSelectionOwns(key))setHeldActionState(button,'idle',label);
+  },delay);
 }
 function reconcileHeldRemoval(sel){
   const queueKey=sel.side==='resp'?'responseQueue':'queue';
@@ -328,36 +366,39 @@ function reconcileHeldRemoval(sel){
   replaceLocalInterceptState({...(state.intercept||{}),[queueKey]:queue});
   if(state.heldSel&&state.heldSel.id===sel.id&&state.heldSel.side===sel.side)state.heldSel=null;
   heldActionInFlight=null;
+  restoreHeldActionControls();
   renderIntercept();
 }
 function releaseHeldAction(){
   const deferred=!!heldActionInFlight?.deferred;
   heldActionInFlight=null;
   if(deferred)renderIntercept();
+  restoreHeldActionControls();
 }
 $('#forwardBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const base=sel.side==='resp'?'/api/intercept/response/':'/api/intercept/';
   const button=$('#forwardBtn');
   const row=document.querySelector(`#heldList .icpt-item[data-id="${sel.id}"][data-side="${sel.side}"]`);
   const epoch=++heldActionEpoch;
-  heldActionInFlight={key:heldKey(sel.side,sel.id),deferred:false};
+  const actionKey=heldKey(sel.side,sel.id);
+  heldActionInFlight={key:actionKey,deferred:false};
   setHeldActionState(button,'pending','Forwarding…');
   try{await api(base+sel.id+'/forward',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({raw:$('#heldRaw').value})});
     await animateOnce(row,[{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(6px)'}],{duration:MOTION.base,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
     reconcileHeldRemoval(sel);
-    setHeldActionState(button,'success','Forwarded');
-    resetHeldAction(button,'Forward',600,epoch);
+    setHeldActionResult(button,actionKey,'success','Forwarded');
+    resetHeldAction(button,'Forward',600,epoch,actionKey);
     toast(sel.side==='resp'?'response forwarded':'forwarded');
-  }catch(e){releaseHeldAction();setHeldActionState(button,'error','Forward failed');resetHeldAction(button,'Forward',900,epoch);toast(e.message);}};
+  }catch(e){releaseHeldAction();setHeldActionResult(button,actionKey,'error','Forward failed');resetHeldAction(button,'Forward',900,epoch,actionKey);toast(e.message);}};
 $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
   const sel=state.heldSel;if(!sel)return;
   const rawEl=$('#heldRaw'),decEl=$('#heldDecoded');
   if(!rawEl||!decEl)return;
   if(decEl.style.display&&decEl.style.display!=='none'){
     heldDecodeEpoch++;
-    decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';return;
+    decEl.style.display='none';decEl.hidden=true;rawEl.style.display='block';setHeldDecodeState(false);return;
   }
   const raw=rawEl.value||'';
   const decodeEpoch=++heldDecodeEpoch;
@@ -372,7 +413,7 @@ $('#heldDecodeBtn')&&($('#heldDecodeBtn').onclick=async()=>{
     if(!d.matched){toast('no message codec matched');return;}
     if(d.error){toast(d.error);return;}
     decEl.textContent=(d.title||d.codecId||'decoded')+'\n\n'+(d.plaintext||'');
-    decEl.hidden=false;decEl.style.display='block';rawEl.style.display='none';
+    decEl.hidden=false;decEl.style.display='block';rawEl.style.display='none';setHeldDecodeState(true);
   }catch(e){if(heldDecodeCurrent(decodeEpoch,selectionKey,raw))toast(e.message);}
 });
 $('#heldRaw').addEventListener('input',()=>{
@@ -398,17 +439,18 @@ $('#dropBtn').onclick=async()=>{const sel=state.heldSel;if(!sel)return;
   const button=$('#dropBtn');
   const row=document.querySelector(`#heldList .icpt-item[data-id="${sel.id}"][data-side="${sel.side}"]`);
   const epoch=++heldActionEpoch;
-  heldActionInFlight={key:heldKey(sel.side,sel.id),deferred:false};
+  const actionKey=heldKey(sel.side,sel.id);
+  heldActionInFlight={key:actionKey,deferred:false};
   setHeldActionState(button,'pending','Dropping…');
   try{await api(base+sel.id+'/drop',{method:'POST'});
     await animateOnce(row,[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-3px)'}],{duration:MOTION.fast,easing:MOTION.exit});
     heldRawCache.delete(sel.side+':'+sel.id);
     heldOriginalCache.delete(heldKey(sel.side,sel.id));
     reconcileHeldRemoval(sel);
-    setHeldActionState(button,'success','Dropped');
-    resetHeldAction(button,'Drop',600,epoch);
+    setHeldActionResult(button,actionKey,'success','Dropped');
+    resetHeldAction(button,'Drop',600,epoch,actionKey);
     toast(sel.side==='resp'?'response dropped':'dropped');
-  }catch(e){releaseHeldAction();setHeldActionState(button,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch);toast(e.message);}};
+  }catch(e){releaseHeldAction();setHeldActionResult(button,actionKey,'error','Drop failed');resetHeldAction(button,'Drop',900,epoch,actionKey);toast(e.message);}};
 export async function applyInterceptFilter(draft=pendingFilterMutation||stageInterceptFilter()){
   if(draft.started)return draft.promise;
   draft.started=true;

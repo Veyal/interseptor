@@ -879,8 +879,10 @@ function refreshMapDiscoveryPanel(){
 $('#mapDiscoveryHelp')&&($('#mapDiscoveryHelp').onclick=()=>{
   const p=$('#mapDiscoveryPanel'); if(!p) return;
   const show=p.hasAttribute('hidden')||p.style.display==='none';
-  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); $('#mapDiscoveryHelp').textContent='Discovery ▾'; }
-  else { p.hidden=true; p.style.display='none'; $('#mapDiscoveryHelp').textContent='Discovery ▸'; }
+  const button=$('#mapDiscoveryHelp');
+  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); button.textContent='Discovery ▾'; }
+  else { p.hidden=true; p.style.display='none'; button.textContent='Discovery ▸'; }
+  button.setAttribute('aria-expanded',show?'true':'false');
 });
 function copyMapDiscovery(which){
   const cmds=mapDiscoveryCmds();

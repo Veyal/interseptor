@@ -74,7 +74,7 @@ export async function loadApiKeys(){
     $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke),b.dataset.kp,b.dataset.kl));
   }catch(e){
     const list=$('#keyList');if(!list)return;
-    list.innerHTML='<tr><td colspan="5" class="state-error-msg" style="padding:10px">Keys unavailable: '+esc(e.message||'request failed')+' <button type="button" class="btn xs" data-key-list-retry>Retry</button></td></tr>';
+    list.innerHTML='<tr><td colspan="5" class="state-error-msg" style="padding:10px"><span role="alert">Keys unavailable: '+esc(e.message||'request failed')+'</span> <button type="button" class="btn xs" data-key-list-retry>Retry</button></td></tr>';
     const retry=list.querySelector('[data-key-list-retry]');if(retry)retry.onclick=loadApiKeys;
   }
 }

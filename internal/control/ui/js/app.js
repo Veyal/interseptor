@@ -11,7 +11,7 @@ import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChec
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
-import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
+import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
 import { loadFindings } from './findings.js';
 import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
@@ -296,7 +296,7 @@ function connectEvents(){
     if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
-    else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
+    else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
     else if(m.type==='intruder.update')scheduleIntr();

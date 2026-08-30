@@ -313,7 +313,7 @@ func TestUIJourneyToolTabsExposeUnambiguousTabSemantics(t *testing.T) {
 	requireUIContains(t, tools,
 		"tablistLabel:'Repeater tabs'",
 		"tablistLabel:'Intruder tabs'",
-		"function wireTabListKeys(",
+		"function wireButtonGroupKeys(",
 		"intrResFilter",
 	)
 }
