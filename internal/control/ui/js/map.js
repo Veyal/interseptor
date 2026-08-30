@@ -665,7 +665,7 @@ export function renderMapTree(eps){
     if(lazy){
       return `<details class="map-host" data-host-key="${escAttr(h.key)}"${hostOpen ? ' open' : ''}><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body" data-lazy-key="${escAttr(h.key)}"></div></details>`;
     }
-    return `<details class="map-host" data-host-key="${escAttr(h.key)}"${hostOpen ? ' open' : ''}><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, hostOpen, dim, false)}</div></details>`;
+    return `<details class="map-host" data-host-key="${escAttr(h.key)}"${hostOpen ? ' open' : ''}><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, open, dim, false)}</div></details>`;
   }).join('');
   wireMapEpRows(box);
   wireMapHostDetails(box);

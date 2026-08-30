@@ -9,7 +9,7 @@ import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, 
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
-import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
+import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
 import { loadFindings } from './findings.js';
@@ -306,7 +306,7 @@ function connectEvents(){
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
 
-    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
+    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };

@@ -825,7 +825,7 @@ export async function loadFlows(){
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
     let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
-    clearMissingInspectorSelection();
+    reconcileInspectorSelectionAfterReload();
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
@@ -897,8 +897,9 @@ const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
-function clearMissingInspectorSelection(){
-  if(state.selId!=null&&!flowStore.byId.has(state.selId))closeInspector();
+function reconcileInspectorSelectionAfterReload(){
+  if(state.selId==null||flowStore.byId.has(state.selId))return;
+  if(canIncremental()&&state.detail&&!flowMatchesFilters(state.detail))closeInspector();
 }
 function setInspectorActionState(disabled){
   ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
@@ -1467,6 +1468,7 @@ function deleteHost(f){
     try{
       const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[f.host],mode:'delete'})});
       toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s'));
+      if(state.detail?.host===f.host)closeInspector();
       loadRetention();loadFlows();
     }catch(e){toast('purge: '+e.message);}
   };

@@ -18,8 +18,9 @@ func requireUIContracts(t *testing.T, asset string, contracts ...string) string 
 
 func TestUIProxyInspectorNeverShowsTheWrongSelectedFlow(t *testing.T) {
 	requireUIContracts(t, "js/proxy.js",
-		"function clearMissingInspectorSelection()",
-		"if(state.selId!=null&&!flowStore.byId.has(state.selId))closeInspector()",
+		"function reconcileInspectorSelectionAfterReload()",
+		"if(state.selId==null||flowStore.byId.has(state.selId))return",
+		"if(canIncremental()&&state.detail&&!flowMatchesFilters(state.detail))closeInspector()",
 		"function showInspectorLoading(id)",
 		"if(reqDecode)reqDecode.hidden=true",
 		"if(resDecode)resDecode.hidden=true",
@@ -40,6 +41,9 @@ func TestUISettingsRefreshPreservesDirtyFields(t *testing.T) {
 		"deferRender",
 		"setSeg(button,button.dataset.mode===snapshot.deviceProxyMode)",
 		"function restoreDirtySettingsDerived(snapshot)",
+		"let settingsLoadEpoch=0",
+		"const epoch=++settingsLoadEpoch",
+		"if(epoch!==settingsLoadEpoch)return",
 		"applyOobDisabledUI()",
 		"renderUpstreamProxyFields($('#setUpstreamScheme').value)",
 	)
@@ -48,6 +52,50 @@ func TestUISettingsRefreshPreservesDirtyFields(t *testing.T) {
 	}
 	if got := strings.Count(src, "restoreDirtySettings(dirty)"); got < 2 {
 		t.Fatalf("settings and session loaders must both restore dirty fields; found %d restores", got)
+	}
+}
+
+func TestUISettingsAndSessionRefreshesHaveSingleLatestOwners(t *testing.T) {
+	settings := requireUIContracts(t, "js/settings.js",
+		"const networkHostsResult=await loadNetworkHosts({deferRender:true})",
+		"const deviceProxyEndpoint=await loadDeviceProxyEndpoint({deferRender:true})",
+		"let sessionLoadEpoch=0",
+		"const epoch=++sessionLoadEpoch",
+		"if(epoch!==sessionLoadEpoch)return",
+		"function clearAcknowledgedSessionDirty(snapshot)",
+		"const submitted=sessionFormPayload()",
+		"sessionLoadEpoch++",
+		"clearAcknowledgedSessionDirty(submitted)",
+	)
+	if strings.Count(settings, "const epoch=++sessionLoadEpoch") != 1 {
+		t.Error("Session refreshes must share one latest-request generation")
+	}
+	app := readUIAsset(t, "js/app.js")
+	if strings.Contains(app, "loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint()") {
+		t.Error("settings.update must not start a competing device-proxy renderer")
+	}
+}
+
+func TestUILoginMacroTestDoesNotMutateLiveSession(t *testing.T) {
+	settings := readUIAsset(t, "js/settings.js")
+	start := strings.Index(settings, "if($('#loginMacroTest'))")
+	end := strings.Index(settings, "/* ---- data retention panel ---- */")
+	if start < 0 || end <= start {
+		t.Fatal("Login macro test handler not found")
+	}
+	handler := settings[start:end]
+	for _, contract := range []string{
+		"hasDirtyLoginMacroDraft()",
+		"testing saved login macro…",
+		"'/api/session/login/test'",
+		"live session unchanged",
+	} {
+		if !strings.Contains(handler, contract) {
+			t.Errorf("Login macro dry-run contract missing %q", contract)
+		}
+	}
+	if strings.Contains(handler, "saveSessionAll()") {
+		t.Error("Login macro Test must not save or mutate the live session")
 	}
 }
 
@@ -145,6 +193,7 @@ func TestUIFindingFlowEvidenceHasOneExplicitInspectAction(t *testing.T) {
 func TestUIMapCollapseAndGraphLabelsMatchVisibleState(t *testing.T) {
 	mapJS := requireUIContracts(t, "js/map.js",
 		"const hostOpen=open||!mapState.collapsed.has(h.key)",
+		"mapRenderNode(h, open, dim, false)",
 		"status ${n.ep.lastStatus||'unknown'}",
 		"${n.ep.hits||0} hit${n.ep.hits===1?'':'s'}",
 		"function mapGraphFiltered(eps)",
@@ -157,6 +206,9 @@ func TestUIMapCollapseAndGraphLabelsMatchVisibleState(t *testing.T) {
 	)
 	if strings.Count(mapJS, "wireMapHostDetails(box)") < 2 {
 		t.Error("Map tree must define and invoke host detail persistence wiring")
+	}
+	if strings.Contains(mapJS, "mapRenderNode(h, hostOpen, dim, false)") {
+		t.Error("opening a host must not recursively expand all of its path folders")
 	}
 }
 

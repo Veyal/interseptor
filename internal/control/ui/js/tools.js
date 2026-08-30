@@ -45,6 +45,15 @@ function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&
 // list in tab state, but only paint a bounded window so long sessions do not
 // turn opening History into a large synchronous DOM update.
 const REP_HISTORY_RENDER_BATCH=100;
+const REP_HISTORY_DB_NAME='interseptor-repeater-history';
+const REP_HISTORY_DB_VERSION=1;
+const REP_HISTORY_STORE='entries';
+let repHistoryDBPromise=null,repHistoryKeySeq=0;
+function newRepHistoryKey(){
+  if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+  repHistoryKeySeq++;
+  return Date.now().toString(36)+'-'+repHistoryKeySeq.toString(36)+'-'+Math.random().toString(36).slice(2);
+}
 function repHistoryEntry(flow){
   return {id:Number(flow&&flow.id),method:String(flow&&flow.method||''),status:Number(flow&&flow.status)||0,host:String(flow&&flow.host||''),path:String(flow&&flow.path||'')};
 }
@@ -61,20 +70,90 @@ function normalizeRepHistory(history){
   }
   return out;
 }
-function repRecordHistory(t,flow){
-  if(!t||!flow)return;
-  t.history=normalizeRepHistory([repHistoryEntry(flow),...(t.history||[])]);
-  t.historyLoadError='';
+function repHistoryDB(){
+  if(repHistoryDBPromise)return repHistoryDBPromise;
+  repHistoryDBPromise=new Promise((resolve,reject)=>{
+    if(!globalThis.indexedDB){reject(new Error('IndexedDB is unavailable'));return;}
+    const request=indexedDB.open(REP_HISTORY_DB_NAME,REP_HISTORY_DB_VERSION);
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      const store=db.objectStoreNames.contains(REP_HISTORY_STORE)?request.transaction.objectStore(REP_HISTORY_STORE):db.createObjectStore(REP_HISTORY_STORE,{keyPath:'key'});
+      if(!store.indexNames.contains('tabKey'))store.createIndex('tabKey','tabKey',{unique:false});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('Could not open Repeater history storage'));
+    request.onblocked=()=>reject(new Error('Repeater history storage is blocked by another window'));
+  }).catch(error=>{repHistoryDBPromise=null;throw error;});
+  return repHistoryDBPromise;
 }
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[],history:[],historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:''};}
+function repHistoryTabKey(t){return projectStorageKey('rep.history')+'|'+t.historyKey;}
+function repHistoryTxnDone(tx){
+  return new Promise((resolve,reject)=>{
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error||new Error('Repeater history transaction failed'));
+    tx.onabort=()=>reject(tx.error||new Error('Repeater history transaction was aborted'));
+  });
+}
+async function repStoreHistoryEntries(t,entries){
+  const normalized=normalizeRepHistory(entries);if(!normalized.length)return;
+  const db=await repHistoryDB(),tabKey=repHistoryTabKey(t);
+  const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE);
+  normalized.forEach(entry=>store.put({key:tabKey+'|'+entry.id,tabKey,entry}));
+  await repHistoryTxnDone(tx);
+}
+async function repReadHistory(t){
+  const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readonly');
+  const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+  const request=index.getAll(repHistoryTabKey(t));
+  const rows=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result||[]);request.onerror=()=>reject(request.error||new Error('Could not read Repeater history'));});
+  await repHistoryTxnDone(tx);
+  return normalizeRepHistory(rows.map(row=>row.entry)).sort((a,b)=>b.id-a.id);
+}
+async function repDeleteHistory(t){
+  try{
+    const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
+    const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+    const request=index.openCursor(repHistoryTabKey(t));
+    request.onsuccess=()=>{const cursor=request.result;if(cursor){cursor.delete();cursor.continue();}};
+    await repHistoryTxnDone(tx);
+  }catch(e){}
+}
+async function repHydrateTabHistory(t){
+  if(t.historyHydrationPromise)return t.historyHydrationPromise;
+  t.historyHydrationPromise=(async()=>{
+    const embedded=normalizeRepHistory(t.history);
+    try{
+      const stored=await repReadHistory(t);
+      const merged=normalizeRepHistory([...embedded,...stored]).sort((a,b)=>b.id-a.id);
+      if(t.historyStoreNeedsMigration&&merged.length)await repStoreHistoryEntries(t,merged);
+      t.history=merged;t.historyStoreNeedsMigration=false;t.historyStorageError='';
+    }catch(e){
+      t.history=embedded;t.historyStorageError=e.message||'unknown error';
+    }
+  })();
+  await t.historyHydrationPromise;
+}
+async function repRecordHistory(t,flow){
+  if(!t||!flow)return;
+  const entry=repHistoryEntry(flow);
+  t.history=normalizeRepHistory([entry,...(t.history||[])]);
+  t.historyLoadError='';
+  try{await repStoreHistoryEntries(t,t.historyStoreNeedsMigration?t.history:[entry]);t.historyStoreNeedsMigration=false;t.historyStorageError='';}
+  catch(e){const first=!t.historyStorageError;t.historyStoreNeedsMigration=true;t.historyStorageError=e.message||'unknown error';if(first)toast('Repeater history could not be saved for reload: '+t.historyStorageError,'error');}
+}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[],history:[],historyKey:newRepHistoryKey(),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:'',historyStoreNeedsMigration:false};}
 function normalizeRepeaterTab(t){
   const url=t.url||'';
   const hasHistory=Object.prototype.hasOwnProperty.call(t,'history')&&Array.isArray(t.history);
-  const historyNeedsMigration=t.historyNeedsMigration===true||!hasHistory;
-  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history:normalizeRepHistory(t.history),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):''};
+  const historyKey=typeof t.historyKey==='string'&&t.historyKey?t.historyKey.slice(0,160):newRepHistoryKey();
+  const historyNeedsMigration=t.historyNeedsMigration===true||(!t.historyKey&&!hasHistory);
+  const history=normalizeRepHistory(t.history);
+  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
 }
 function serializeRepeaterTab(t){
-  return {tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[],history:normalizeRepHistory(t.history),historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
+  const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
+  if(t.historyStoreNeedsMigration)out.history=normalizeRepHistory(t.history);
+  return out;
 }
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
@@ -251,6 +330,7 @@ export const repTabs=createTabManager({
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
   onPersist:blob=>persistUIState('repeater',blob),
+  onClose:t=>repDeleteHistory(t),
 });
 export function repCur(){return repTabs.cur();}
 export function renderRepTabs(){repTabs.render('#repTabs');}
@@ -361,7 +441,7 @@ export async function repSend(){
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     t.sendPending=false;
-    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);repRecordHistory(t,flow);repPersist();
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);await repRecordHistory(t,flow);repPersist();
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
@@ -430,7 +510,9 @@ async function migrateLegacyRepHistory(t){
       // A send can complete while this one-time snapshot is in flight. Keep
       // those tab-owned rows first, merge the legacy endpoint rows behind them,
       // and let normalization de-duplicate the result.
-      t.history=normalizeRepHistory([...(t.history||[]),...(d.flows||[])]);
+      const legacy=normalizeRepHistory(d.flows||[]);
+      t.history=normalizeRepHistory([...(t.history||[]),...legacy]);
+      await repStoreHistoryEntries(t,legacy);
       t.historyNeedsMigration=false;t.historyLegacyURL='';t.historyLoadError='';repPersist();return true;
     }catch(e){t.historyLoadError=e.message||'unknown error';return false;}
     finally{t.historyMigrationPromise=null;}
@@ -440,7 +522,9 @@ async function migrateLegacyRepHistory(t){
 export async function loadRepHistory(){
   const box=$('#repHistory');if(!box)return;const t=repCur();if(!t)return;
   const setCount=n=>{const tg=$('#repHistToggle');if(tg)tg.textContent='⟲ History'+(n?' ('+n+')':'');};
-  let migrationError='';
+  await repHydrateTabHistory(t);
+  if(repCur()!==t)return;
+  let migrationError=t.historyStorageError?`<div class="state-error" style="margin:8px"><span>History reload storage unavailable: ${esc(t.historyStorageError)}</span> <button type="button" class="btn xs" data-rep-history-storage-retry>Retry</button></div>`:'';
   if(t.historyNeedsMigration){
     setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Loading this tab’s saved history…</div>';
     const migrated=await migrateLegacyRepHistory(t);
@@ -462,6 +546,7 @@ export async function loadRepHistory(){
       loadRepHistory();
     });
   }
+  box.querySelector('[data-rep-history-storage-retry]')?.addEventListener('click',async()=>{t.historyHydrationPromise=null;await repHydrateTabHistory(t);if(repCur()===t){repPersist();loadRepHistory();}});
   box.querySelector('[data-rep-history-retry]')?.addEventListener('click',loadRepHistory);
   box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
 }
@@ -482,6 +567,7 @@ export async function repLoadSend(id){
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
@@ -517,6 +603,8 @@ export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
+  await Promise.all(repTabs.tabs.map(repHydrateTabHistory));
+  if(repCur())loadRepHistory();
   // First persist migrates localStorage drafts into the project DB.
   if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{

@@ -243,8 +243,11 @@ function renderHostSelect(sel,selectedHost){
   syncUiSelectStyles(sel);
 }
 
-async function loadNetworkHosts(){
-  try{networkHosts=await api('/api/network/hosts');}catch(e){networkHosts=null;}
+async function loadNetworkHosts({deferRender=false}={}){
+  let result=null;
+  try{result=await api('/api/network/hosts');}catch(e){}
+  if(deferRender)return result;
+  networkHosts=result;
   $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
   $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
   // A live settings refresh may finish while the operator is editing the
@@ -336,10 +339,20 @@ function renderDeviceProxyUI(ep){
   if($('#deviceProxyManualHost')&&ep?.manualHost!=null)$('#deviceProxyManualHost').value=ep.manualHost;
 }
 
+function snapshotDeviceProxyDirty(){
+  const snapshot=snapshotDirtySettings(),fields={};
+  if(Object.prototype.hasOwnProperty.call(snapshot.fields,'deviceProxyManualHost'))fields.deviceProxyManualHost=snapshot.fields.deviceProxyManualHost;
+  return {fields,proxyListeners:null,hostHeaders:null,deviceProxyMode:snapshot.deviceProxyMode};
+}
+
 async function loadDeviceProxyEndpoint({deferRender=false}={}){
   try{
     const ep=await api('/api/proxy/device-endpoint');
-    if(!deferRender)renderDeviceProxyUI(ep);
+    if(!deferRender){
+      const dirty=snapshotDeviceProxyDirty();
+      renderDeviceProxyUI(ep);
+      restoreDirtySettings(dirty);
+    }
     return ep;
   }catch(e){/* non-fatal */}
   return null;
@@ -350,8 +363,12 @@ async function saveDeviceProxyEndpoint(){
   const host=($('#deviceProxyManualHost')?.value||'').trim();
   try{
     const ep=await api('/api/proxy/device-endpoint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,host})});
+    const dirty=snapshotDeviceProxyDirty();
+    const currentMode=$('#deviceProxyModeSeg')?.querySelector('.on')?.dataset.mode||'auto';
+    const currentHost=($('#deviceProxyManualHost')?.value||'').trim();
     renderDeviceProxyUI(ep);
-    clearSettingsDirty(['deviceProxyManualHost','deviceProxyModeSeg']);
+    if(currentMode!==mode||currentHost!==host)restoreDirtySettings(dirty);
+    else clearSettingsDirty(['deviceProxyManualHost','deviceProxyModeSeg']);
     toast('device proxy → '+ep.endpoint+(ep.mode==='auto'?' (auto)':' (manual)'));
   }catch(e){toast(e.message);}
 }
@@ -505,15 +522,18 @@ $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
     loadSettings();
   }
 });
-export async function loadSettings(){const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
+let settingsLoadEpoch=0;
+export async function loadSettings(){const epoch=++settingsLoadEpoch;const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
   try{const s=await api('/api/settings');
-  // Wait for the network-host lookup before taking the snapshot. That lookup
-  // also repaints the control-host select; edits made during either request
-  // are therefore included and restored below.
-  state.controlAddr=s.controlAddr||'127.0.0.1:9966';
-  await loadNetworkHosts();
+  if(epoch!==settingsLoadEpoch)return;
+  const networkHostsResult=await loadNetworkHosts({deferRender:true});
+  if(epoch!==settingsLoadEpoch)return;
   const deviceProxyEndpoint=await loadDeviceProxyEndpoint({deferRender:true});
+  if(epoch!==settingsLoadEpoch)return;
   const dirty=snapshotDirtySettings();
+  networkHosts=networkHostsResult;
+  $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
+  $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
   setOriginTLSVerify(!!s.originTLSVerify);state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
   renderProxyListeners(s.proxyAddrs||[s.proxyAddr]);
   if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
@@ -546,8 +566,8 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   restoreDirtySettings(dirty);
   restoreDirtySettingsDerived(dirty);
   if(loadState)loadState.style.display='none';}
-  catch(e){renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
-  finally{if(loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
+  catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  finally{if(epoch===settingsLoadEpoch&&loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){
   const on=!!state.oobEnabled;
@@ -713,8 +733,10 @@ $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#
 }));
 
 let sessionLoaded=false;
-export async function loadSession(){const loadState=$('#sessionLoadState');if(loadState){loadState.style.display='block';loadState.textContent='Loading Session settings…';}
+let sessionLoadEpoch=0;
+export async function loadSession(){const epoch=++sessionLoadEpoch;const loadState=$('#sessionLoadState');if(loadState){loadState.style.display='block';loadState.textContent='Loading Session settings…';}
 try{const s=await api('/api/session');
+  if(epoch!==sessionLoadEpoch)return;
   const dirty=snapshotDirtySettings();
   if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
   if($('#setSessionUnscoped'))$('#setSessionUnscoped').checked=!!s.unscoped;
@@ -750,42 +772,56 @@ try{const s=await api('/api/session');
   if($('#loginMacroState'))$('#loginMacroState').textContent=lm.enabled?'Login macro configured':'';
   restoreDirtySettings(dirty);
   sessionLoaded=true;if(loadState)loadState.style.display='none';
-}catch(e){renderLoadError(loadState,'Session settings',e,loadSession,sessionLoaded);}}
+}catch(e){if(epoch===sessionLoadEpoch)renderLoadError(loadState,'Session settings',e,loadSession,sessionLoaded);}}
 function loginMacroBody(){
   return {enabled:$('#loginMacroOn').checked,target:$('#loginMacroTarget').value.trim(),request:$('#loginMacroReq').value,
     refreshSecs:parseInt(($('#loginMacroRefresh')||{}).value,10)||0,reauthOn401:!!($('#loginMacro401')||{}).checked};
 }
-// Save session headers + the token macro + per-host overrides together.
-function saveSessionAll(){
+const SESSION_DIRTY_FIELDS=['setSessionOn','setSessionUnscoped','setSessionHeaders','macroOn','macroReq','macroTarget','macroExtract','macroMode','macroName','loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'];
+function sessionFormPayload(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
-  const body={enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
+  return {enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
+}
+function sessionFieldValues(body){
+  return {setSessionOn:body.enabled,setSessionUnscoped:body.unscoped,setSessionHeaders:body.headers,macroOn:body.macro.enabled,macroReq:body.macro.request,macroTarget:body.macro.target,macroExtract:body.macro.extract,macroMode:body.macro.injectMode,macroName:body.macro.injectName,loginMacroOn:body.loginMacro.enabled,loginMacroReq:body.loginMacro.request,loginMacroTarget:body.loginMacro.target,loginMacroRefresh:body.loginMacro.refreshSecs,loginMacro401:body.loginMacro.reauthOn401};
+}
+function clearAcknowledgedSessionDirty(snapshot){
+  const current=sessionFormPayload(),ack=sessionFieldValues(snapshot),now=sessionFieldValues(current);
+  SESSION_DIRTY_FIELDS.forEach(id=>{if(Object.is(ack[id],now[id]))$('#'+id)?.removeAttribute('data-settings-dirty');});
+  if(JSON.stringify(snapshot.hostHeaders)===JSON.stringify(current.hostHeaders))$('#hostHdrList')?.removeAttribute('data-settings-dirty');
+}
+function saveSessionAll(body=sessionFormPayload()){
   return api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 }
 if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#saveSessionBtn'),async()=>{
   try{
-    await saveSessionAll();
-    clearSettingsDirty(['setSessionOn','setSessionUnscoped','setSessionHeaders','macroOn','macroReq','macroTarget','macroExtract','macroMode','macroName','loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'],['#hostHdrList']);
+    const submitted=sessionFormPayload();
+    await saveSessionAll(submitted);
+    sessionLoadEpoch++;
+    clearAcknowledgedSessionDirty(submitted);
     // Surface macro completeness (previously on the now-removed per-macro Save buttons).
-    const on=$('#macroOn').checked;
-    const complete=$('#macroTarget').value.trim()&&$('#macroReq').value.trim()&&$('#macroExtract').value.trim()&&$('#macroName').value.trim();
+    const on=submitted.macro.enabled;
+    const complete=submitted.macro.target&&submitted.macro.request.trim()&&submitted.macro.extract&&submitted.macro.injectName;
     let msg='session saved';
     if(on) msg=complete?'session saved · token macro on — fires before each send':'session saved — set target, request, extract & inject-name for the token macro to fire';
-    if($('#loginMacroOn')&&$('#loginMacroOn').checked) msg+=' · login macro on';
+    if(submitted.loginMacro.enabled) msg+=' · login macro on';
     toast(msg);loadSession();
   }catch(e){toast(e.message);}
 });
-if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{try{await saveSessionAll();const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');loadSession();}catch(e){toast(e.message);}});
+if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{try{const submitted=sessionFormPayload();await saveSessionAll(submitted);sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');await loadSession();}catch(e){toast(e.message);}});
 // Test = dry-run: run the login request and show the response + the session it
 // would capture, WITHOUT touching the live session (so you can debug it safely).
+function hasDirtyLoginMacroDraft(){return ['loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');}
 if($('#loginMacroTest'))$('#loginMacroTest').onclick=()=>runSettingsAction($('#loginMacroTest'),async()=>{
   const out=$('#loginMacroTestOut');
   try{
-    await saveSessionAll(); // test what's in the form
-    if(out){out.style.display='block';out.innerHTML='<span class="hint">testing…</span>';}
+    const draftPending=hasDirtyLoginMacroDraft();
+    if(out){out.style.display='block';out.innerHTML='<span class="hint">testing saved login macro…</span>';}
     const r=await api('/api/session/login/test',{method:'POST'});
     const sc=r.status||0,scColor=(sc>=200&&sc<400)?'var(--accent)':(sc>=400?'var(--red)':'var(--fg3)');
     const hdrs=r.headers||[];
-    let html=`<div style="margin-bottom:6px">Login responded <b style="color:${scColor}">${sc||'no response'}</b> · captured <b>${hdrs.length}</b> session header${hdrs.length===1?'':'s'} <span class="hint">(dry-run — live session unchanged)</span></div>`;
+    let html=`<div style="margin-bottom:6px">Login responded <b style="color:${scColor}">${sc||'no response'}</b> · captured <b>${hdrs.length}</b> session header${hdrs.length===1?'':'s'} <span class="hint">(saved macro dry-run — live session unchanged)</span></div>`;
+    if(draftPending)html+='<div class="hint" style="color:var(--amber);margin-bottom:6px">Unsaved login-macro edits were not included. Save Session to test those changes.</div>';
     if(hdrs.length){
       html+=hdrs.map(h=>{const v=String(h.value||'');return `<div style="font-family:var(--mono);font-size:var(--fs-xs);overflow-wrap:anywhere"><span style="color:var(--accent)">${esc(h.key)}</span>: ${esc(v.length>160?v.slice(0,160)+'…':v)}</div>`;}).join('');
     }else{

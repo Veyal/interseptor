@@ -10,15 +10,19 @@ func TestUIRepeaterHistoryIsOwnedAndPersistedByTab(t *testing.T) {
 
 	for _, contract := range []string{
 		"const REP_HISTORY_RENDER_BATCH=100",
+		"const REP_HISTORY_DB_NAME='interseptor-repeater-history'",
 		"history:[]",
+		"historyKey:newRepHistoryKey()",
 		"historyNeedsMigration:false",
 		"function normalizeRepHistory(",
 		"function normalizeRepeaterTab(t)",
 		"function serializeRepeaterTab(t)",
-		"function repRecordHistory(t,flow)",
-		"repRecordHistory(t,flow)",
-		"history:normalizeRepHistory(t.history)",
+		"async function repRecordHistory(t,flow)",
+		"await repRecordHistory(t,flow)",
+		"historyKey:t.historyKey",
 		"historyNeedsMigration:!!t.historyNeedsMigration",
+		"async function repHydrateTabHistory(t)",
+		"await repHydrateTabHistory(t)",
 		"const flows=normalizeRepHistory(t.history)",
 	} {
 		if !strings.Contains(tools, contract) {
@@ -54,6 +58,15 @@ func TestUIRepeaterHistoryIsOwnedAndPersistedByTab(t *testing.T) {
 	if strings.Contains(tools[urlWireStart:urlWireEnd], ".history=") {
 		t.Error("editing the Repeater method or URL must not replace the tab's history")
 	}
+
+	serializeStart := strings.Index(tools, "function serializeRepeaterTab(t)")
+	serializeEnd := strings.Index(tools, "function repWarningSuffix(t)")
+	if serializeStart < 0 || serializeEnd <= serializeStart {
+		t.Fatal("Repeater tab serializer not found")
+	}
+	if strings.Contains(tools[serializeStart:serializeEnd], "history:normalizeRepHistory(t.history)") {
+		t.Error("Repeater tab metadata must not inline the unbounded history")
+	}
 }
 
 func TestUIRepeaterHistoryMigrationIsOneShotAndRaceSafe(t *testing.T) {
@@ -65,7 +78,8 @@ func TestUIRepeaterHistoryMigrationIsOneShotAndRaceSafe(t *testing.T) {
 		"if(t.historyMigrationPromise)return t.historyMigrationPromise",
 		"const legacyURL=t.historyLegacyURL||t.url",
 		"t.historyMigrationPromise=(async()=>",
-		"t.history=normalizeRepHistory([...(t.history||[]),...(d.flows||[])])",
+		"await repStoreHistoryEntries(t,legacy)",
+		"t.history=normalizeRepHistory([...(t.history||[]),...legacy])",
 		"t.historyNeedsMigration=false",
 		"t.historyLegacyURL=''",
 		"t.historyMigrationPromise=null",
@@ -81,7 +95,11 @@ func TestUIRepeaterHistoryRetainsTabLifetimeAndPaginatesRendering(t *testing.T) 
 	tools := readUIAsset(t, "js/tools.js")
 
 	for _, contract := range []string{
-		"normalizeRepHistory([repHistoryEntry(flow),...(t.history||[])])",
+		"normalizeRepHistory([entry,...(t.history||[])])",
+		"await repStoreHistoryEntries(t,t.historyStoreNeedsMigration?t.history:[entry])",
+		"index.getAll(repHistoryTabKey(t))",
+		"index.openCursor(repHistoryTabKey(t))",
+		"onClose:t=>repDeleteHistory(t)",
 		"const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0))",
 		"const visible=flows.slice(0,visibleCount)",
 		"data-rep-history-more",
@@ -110,6 +128,7 @@ func TestUIRepeaterHistorySelectionRejectsStaleLoads(t *testing.T) {
 		"const loadEpoch=t.historyLoadEpoch",
 		"const editorEpoch=t.reqEditEpoch||0",
 		"const current=()=>repCur()===t&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch",
+		"t.reqEditEpoch=(t.reqEditEpoch||0)+1",
 		"if(current())toast('History item #'+id+' is no longer available",
 	} {
 		if !strings.Contains(loader, contract) {

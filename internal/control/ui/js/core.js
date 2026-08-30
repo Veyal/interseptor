@@ -130,7 +130,7 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //                 omit to leave the span unstyled)
 // Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
 export function createTabManager(opts){
-  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,tablistLabel='Tabs'}=opts;
+  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs'}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
   const mgr={tabs:[],active:null,seq:1,persistT:null};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
@@ -185,8 +185,10 @@ export function createTabManager(opts){
   };
   mgr.close=function(tid,restoreFocus=false){
     const i=mgr.tabs.findIndex(t=>t.tid===tid);if(i<0)return;
+    const closed=mgr.tabs[i];
     const wasActive=tid===mgr.active;
     mgr.tabs.splice(i,1);
+    if(typeof onClose==='function')Promise.resolve(onClose(closed)).catch(()=>{});
     if(!mgr.tabs.length)mgr.tabs.push(blank(mgr.seq++));
     if(wasActive)mgr.active=mgr.tabs[Math.min(i,mgr.tabs.length-1)].tid;
     mgr._rerender();
