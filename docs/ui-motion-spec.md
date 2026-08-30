@@ -36,6 +36,8 @@ Main-tab state, ARIA selection, focus, and panel visibility commit synchronously
 
 A newly inserted request may receive a finite accent-edge/background signal. The identity is consumed after its first DOM insertion, so virtualization and later row patches do not replay it. Signals are suppressed once a short update window becomes a burst; high-volume capture remains a stable table.
 
+Changing the selected flow clears the previous detail before the new request begins. Loading and failure are persistent text states with actions disabled, so the selected row, visible protocol data, and available cross-tool actions always refer to the same flow. Filtering or deleting that flow closes the Inspector without an exit animation. Pagination and scope failures stay inline and retryable; failure feedback does not travel or pulse.
+
 ### Intercept
 
 A newly held request or response receives one finite queue-arrival signal, capped during bursts. Forward and Drop remain pending while their real API requests are active. If an SSE removal arrives first, the row is retained briefly so its exit starts only after acknowledgement. Forward fades in the continuation direction; Drop uses a short neutral removal fade. Selection is keyed by request ID and side and is retained when possible.
@@ -51,6 +53,10 @@ Tree, table, parameter, and SVG graph views remain available. The SVG graph comp
 ### Existing live states
 
 Toast entry/exit, control state, capture-live, reconnecting, and enabled-live indicators use shared tokens. Pending response text is static rather than an infinite blink so heavy capture cannot create an animation per row.
+
+At phone widths the control-stream dot remains visible, and its text expands only for the important reconnecting state. Live Settings refreshes preserve dirty fields and dynamic rows without animating the form or moving focus. Activity refreshes, context menus, and evidence lightboxes preserve or deliberately restore focus; motion never substitutes for their accessible label, outcome, or selection state.
+
+Security context and reference data never fail into a plausible empty state. Scope, identities, projects, saved views/tags, rule packs, sharing, and device/API references keep an inline error and direct Retry action; recovery replaces that state without moving the operator to another panel.
 
 ## Reduced motion
 
@@ -74,6 +80,7 @@ Allowed:
 - a Send control that reads `Sending…`, then shows a finite success or error state;
 - a selected graph node with a persistent halo and a one-time new-edge dash;
 - an acknowledged intercept item fading a few pixels toward its outcome.
+- a persistent loading/error message replacing stale Inspector data while the correct flow is fetched.
 
 Rejected:
 
@@ -82,6 +89,7 @@ Rejected:
 - animating every node after filtering or every request during a burst;
 - fake progress, bouncing controls, animated backgrounds, particles, glow effects, or `transition: all`;
 - motion as the only signal of pending, success, failure, selection, or connection state.
+- keeping old request data visible under a newly selected row merely to avoid an abrupt content change.
 
 ## Optional 3D topology assessment
 

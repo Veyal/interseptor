@@ -353,7 +353,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-image" data-i="${i}">
       ${controls}
       <figure class="find-doc-figure">
-        <img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
+        <img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
         <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}"
           placeholder="Caption (optional)" onclick="event.stopPropagation()">
       </figure>
@@ -467,14 +467,9 @@ function renderBodyEditor(container, fid) {
     };
   });
 
-  // Flow click → open flow modal. Missing (purged) flow blocks aren't clickable.
-  container.querySelectorAll('.find-doc-flow:not(.find-block-missing) .find-poc-callout').forEach(el => {
-     el.onclick = ev => {
-       if (ev.target.closest('[data-del],[data-mv],.block-note,.find-poc-note-input,.find-send-repeater')) return;
-       const block = el.closest('.find-doc-flow');
-       if (block) openFindingFlow(Number(block.dataset.flow));
-     };
-   });
+  // Flow cards expose one explicit Inspect action. The request summary remains
+  // presentational so keyboard and pointer users do not encounter two targets
+  // with the same outcome.
   container.querySelectorAll('.find-open-flow').forEach(btn => {
     btn.onclick = event => {
       event.stopPropagation();
@@ -916,7 +911,7 @@ function renderFindReportBody(fid) {
       }
       const src = b.url || ('/api/findings/images/' + (b.hash || ''));
       return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
-        <figure class="find-doc-figure"><img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
+        <figure class="find-doc-figure"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
         ${b.caption ? `<figcaption class="hint">${esc(b.caption)}</figcaption>` : ''}</figure></div>`;
     }
     if (b.type === 'flow') {
@@ -930,10 +925,10 @@ function renderFindReportBody(fid) {
         : `flow #${esc(String(b.flowId))}`;
        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
          <div class="find-report-stepbody">
-           <button type="button" class="find-report-flow" data-flow="${b.flowId}">
+           <div class="find-report-flow">
              ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
              <div class="find-poc-req">${reqLine}</div>
-           </button>
+           </div>
            <div class="find-evidence-actions">
              <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}">Inspect request</button>
              <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
@@ -942,9 +937,6 @@ function renderFindReportBody(fid) {
     }
     return '';
   }).join('');
-  container.querySelectorAll('.find-report-flow').forEach(btn => {
-     btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
-   });
   container.querySelectorAll('.find-open-flow').forEach(btn => {
     btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
   });

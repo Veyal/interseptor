@@ -1,4 +1,26 @@
-import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, fmtBytes } from './core.js';
+import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, uiPrompt, fmtBytes, renderLoadError } from './core.js';
+
+// Keep previously fetched read-only reference data useful during a transient
+// refresh failure, but never let it look like a current server contract.
+let restReferenceLoaded=false;
+let restReferenceLoadEpoch=0;
+function markRESTReferenceStale(stale){
+  const list=$('#restList');
+  if(list){
+    if(stale){
+      list.dataset.stale='true';
+      list.setAttribute('aria-label','REST reference (stale — retry to refresh)');
+    }else{
+      list.removeAttribute('data-stale');
+      list.removeAttribute('aria-label');
+    }
+  }
+  const base=$('#apiBase');
+  if(base){
+    if(stale)base.dataset.stale='true';
+    else base.removeAttribute('data-stale');
+  }
+}
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -121,7 +143,7 @@ export async function loadShare(){
     }
     $('#shareStop').style.display=s.running?'inline-flex':'none';
     const cp=$('#shareCopy');if(cp)cp.onclick=()=>copyText(s.url,'Tunnel URL copied');
-  }catch(e){$('#shareStatus').textContent='Failed to load share status';}
+  }catch(e){renderLoadError($('#shareStatus'),'Share status',e,loadShare,false);}
 }
 async function startShare(){
   try{await api('/api/share/start',{method:'POST'});toast('tunnel starting…');setTimeout(loadShare,1500);loadShare();}
@@ -138,7 +160,7 @@ async function loadMergeStatus(){
     if(!s.lastAt){el.textContent='No peer sync yet.';return;}
     const when=new Date(Number(s.lastAt)).toLocaleString();
     el.innerHTML=`Last <b>${esc(s.lastDir||'sync')}</b> ${s.lastLabel?('· '+esc(s.lastLabel)+' '):''}· ${esc(when)}${s.lastPeer?`<div class="hint font-mono">${esc(s.lastPeer)}</div>`:''}`;
-  }catch{el.textContent='';}
+  }catch(e){renderLoadError(el,'Peer sync status',e,loadMergeStatus,false);}
 }
 async function peerMerge(dir){
   const peerUrl=$('#peerUrl').value.trim(),key=$('#peerKey').value.trim(),label=$('#peerLabel').value.trim();
@@ -243,7 +265,7 @@ async function vaultBackup(){
   }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast(e.message);}
 }
 async function vaultImport(id){
-  const name=prompt('Import as new project name:', id);
+  const name=await uiPrompt({title:'Import vault project',value:id,placeholder:'New project name'});
   if(!name) return;
   const res=$('#vaultResult');
   if(res) res.textContent='Importing…';
@@ -290,12 +312,28 @@ export async function revokeKey(id,prefix,label){
 }
 $('#keyCreate').onclick=createApiKey;
 export async function loadReference(){
-  try{const d=await api('/api/reference');$('#apiBase').textContent='Base URL: '+d.baseUrl;
+  const epoch=++restReferenceLoadEpoch;
+  const loadState=$('#restLoadState');
+  const hadData=restReferenceLoaded;
+  if(loadState){
+    if(hadData){loadState.style.display='block';loadState.textContent='Refreshing REST reference…';}
+    else loadState.style.display='none';
+  }
+  if(hadData)markRESTReferenceStale(true);
+  try{const d=await api('/api/reference');
+    if(epoch!==restReferenceLoadEpoch)return;
+    $('#apiBase').textContent='Base URL: '+d.baseUrl;
     $('#restList').innerHTML=(d.routes||[]).map(r=>`<tr>
       <td style="color:${methodColor(r.method)};font-weight:700;font-family:var(--mono)">${esc(r.method)}</td>
       <td style="font-family:var(--mono);color:var(--fg)">${esc(r.path)}</td>
       <td style="color:var(--fg2)">${esc(r.desc)}</td></tr>`).join('');
-  }catch(e){}
+    restReferenceLoaded=true;markRESTReferenceStale(false);
+    if(loadState)loadState.style.display='none';
+  }catch(e){
+    if(epoch!==restReferenceLoadEpoch)return;
+    markRESTReferenceStale(hadData);
+    renderLoadError($('#restLoadState'),'REST reference',e,loadReference,hadData);
+  }
 }
 export async function loadMCP(){
   try{const m=await api('/api/mcp');
@@ -322,5 +360,5 @@ export async function loadMCP(){
       <table class="rules-tbl"><thead><tr><th style="width:160px">Tool</th><th>Description</th></tr></thead><tbody>${tools}</tbody></table>`;
     const cpH=document.getElementById('mcpCopyHttp'); if(cpH) cpH.onclick=()=>copyText(httpCfg,'Cursor MCP config copied');
     const cpS=document.getElementById('mcpCopyStdio'); if(cpS) cpS.onclick=()=>copyText(stdioCfg,'stdio MCP config copied');
-  }catch(e){}
+  }catch(e){renderLoadError($('#mcpBody'),'MCP reference',e,loadMCP,false);}
 }

@@ -164,7 +164,7 @@ export async function loadCodecsList() {
       hint.title = lab.title;
     }
     if (!list.length) {
-      box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> (or use <b>Describe</b>) → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
+      box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> or consult <b>Docs</b> → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
       return;
     }
     box.innerHTML = list.map(codecRow).join('');
@@ -208,7 +208,7 @@ export function openCodecs() {
   $('#codecId').value = '';
   $('#codecSrc').value = TEMPLATE;
   const out = $('#codecOut');
-  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> (or use <b>Describe</b>), Test, then Save.</div>';
+  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   updateCodecFlowHint();
   codecSetMode('code');
   loadCodecsList();
@@ -220,7 +220,7 @@ function codecNew() {
   $('#codecId').value = 'aes-content-field';
   $('#codecSrc').value = TEMPLATE;
   const out = $('#codecOut');
-  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> (or use <b>Describe</b>), Test, then Save.</div>';
+  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   codecSetMode('code');
   loadCodecsList();
   $('#codecId')?.focus();

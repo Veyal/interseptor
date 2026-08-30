@@ -153,7 +153,7 @@ function renderCapStat(){
   const ago=Math.round((Date.now()-capLast)/1000);
   const d=$('#capDot');
   if(ago<3){ s.textContent='· capturing live'; }
-  else { if(d)d.classList.remove('live'); s.textContent='· idle · '+capCount+' captured this session'; }
+  else { if(d)d.classList.remove('live'); s.textContent='· idle · '+capCount+' flows this session'; }
   renderIcptStat();
 }
 function renderIcptStat(){
@@ -317,8 +317,13 @@ function setSseStatus(s){
   const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus');
   if(!dot) return;
   dot.className='sse-dot '+s;
-  if(s==='ok'){ label.textContent='live'; if(wrap) wrap.title='Live updates: connected'; }
-  else { label.textContent='reconnecting'; if(wrap) wrap.title='Live updates: reconnecting…'; }
+  const reconnecting=s!=='ok';
+  if(label)label.textContent=reconnecting?'reconnecting':'live';
+  if(wrap){
+    wrap.classList.toggle('reconnecting',reconnecting);
+    wrap.setAttribute('aria-label',reconnecting?'Live updates: reconnecting':'Live updates: connected');
+    wrap.title=reconnecting?'Live updates: reconnecting…':'Live updates: connected';
+  }
 }
 
 /* ---- command palette (Ctrl/Cmd+K) ---- */

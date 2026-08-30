@@ -977,14 +977,20 @@ export function countListLines(text, ignoreComments=false){
 /* ---- shared right-click context menu (#ctxmenu) ---- */
 export function hideCtxMenu(){
   const ctx=$('#ctxmenu');if(!ctx)return;
+  const wasOpen=ctx.classList.contains('show');
   if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
   ctx.classList.remove('show');ctx._acts=null;
+  if(wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
+    ctx._returnFocus?.focus({preventScroll:true});
+  }
+  ctx._returnFocus=null;
 }
 
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
 export function openCtxMenu(x,y,sections){
   const ctx=$('#ctxmenu');if(!ctx)return;
   closeAllUiSelects(); // ctx/Views menus and ui-select dropdowns are one mutually-exclusive group
+  ctx._returnFocus=document.activeElement;
   ctx.setAttribute('role','menu');
   const acts=[];let html='';
   sections.forEach(sec=>{
@@ -998,7 +1004,7 @@ export function openCtxMenu(x,y,sections){
       // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
       // smuggled through it.label — the icon has to be its own field.
       const glyph=it.icon?icon(it.icon):'';
-      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
+      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
       acts.push(it.act);
     });
   });
@@ -1011,15 +1017,18 @@ export function openCtxMenu(x,y,sections){
   const r=ctx.getBoundingClientRect();
   if(r.right>innerWidth)ctx.style.left=Math.max(4,x-r.width)+'px';
   if(r.bottom>innerHeight)ctx.style.top=Math.max(4,y-r.height)+'px';
-  const paintSel=()=>{items.forEach((el,i)=>el.classList.toggle('on',i===ctx._sel));const cur=items[ctx._sel];if(cur)cur.scrollIntoView({block:'nearest'});};
+  const paintSel=(moveFocus=false)=>{items.forEach((el,i)=>{const on=i===ctx._sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});const cur=items[ctx._sel];if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}};
   ctx._keyHandler=e=>{
     if(!ctx.classList.contains('show'))return;
-    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel();}
-    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel();}
+    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel(true);}
+    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel(true);}
     else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu();if(fn)fn();}
     else if(e.key==='Escape'){e.preventDefault();hideCtxMenu();}
+    else if(e.key==='Tab')hideCtxMenu();
   };
   document.addEventListener('keydown',ctx._keyHandler);
+  paintSel();
+  if(items[0])items[0].focus();
 }
 
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
@@ -1359,13 +1368,25 @@ function imgLbClickTarget(t){
   if(!img||img.closest('#imgLightbox'))return null;
   return img;
 }
+function openImageLightboxFromTarget(target){
+  const img=imgLbClickTarget(target);if(!img)return false;
+  const src=img.currentSrc||img.getAttribute('src')||img.src;if(!src)return false;
+  openImageLightbox(src,img.getAttribute('alt')||'');
+  return true;
+}
 // Capture-phase so we open even if a parent stops bubble.
 document.addEventListener('click',e=>{
-  const img=imgLbClickTarget(e.target);if(!img)return;
-  const src=img.currentSrc||img.getAttribute('src')||img.src;if(!src)return;
+  if(!imgLbClickTarget(e.target))return;
   e.preventDefault();
   e.stopPropagation();
-  openImageLightbox(src,img.getAttribute('alt')||'');
+  openImageLightboxFromTarget(e.target);
+},true);
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  if(!imgLbClickTarget(e.target))return;
+  e.preventDefault();
+  e.stopPropagation();
+  openImageLightboxFromTarget(e.target);
 },true);
 // Wire controls once DOM is ready (module scripts are deferred, but be safe).
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureImageLightbox);
@@ -1460,7 +1481,7 @@ export function renderMD(src){
   });
   s=s.replace(/(?:^|\n)((?:[-*] (?!\[[ xX]\] ).*(?:\r?\n|$))+)/g,(m,list)=>'\n<ul>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^[-*]\s?/,'')+'</li>').join('')+'</ul>');
   s=s.replace(/(?:^|\n)((?:\d+\. .*(?:\r?\n|$))+)/g,(m,list)=>'\n<ol>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^\d+\.\s?/,'')+'</li>').join('')+'</ol>');
-  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
+  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" tabindex="0" role="button" aria-label="Open screenshot: '+alt.replace(/"/g,'&quot;')+'" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
   // Explicit in-app flow links: [label](flow:123) or [label](#flow-123)

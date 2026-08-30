@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.5` release without moving its tag.
 - **Reproducible release tooling.** Pinned candidate validation and publication to the same reviewed GoReleaser version, added a regression contract, and updated the macOS packaging guide to describe the app ZIP and DMG that tagged builds now publish.
+- **Repeatable UI release audit.** Added a feature-by-feature and cross-workflow browser loop covering real data states, keyboard/focus behavior, required viewports, reduced motion, burst traffic, and Chrome performance evidence before embedded UI changes ship.
 
 ### Fixed
 - **macOS release integrity.** Stamp app binaries with the bundle version, verify the bundled CLI reports the exact tag, and publish validated checksums for the app ZIP and DMG.
+- **Tab-owned Repeater history.** Keep every send attached to its Repeater tab when the method, URL, headers, body, selected historical request, or active tab changes; long histories render 100 rows at a time with an explicit older-results control, and saved legacy tabs take one endpoint snapshot before switching to the new ownership model.
+- **Truthful live workstation state.** Clear stale Inspector data, decode strips, and actions while a newly selected flow loads, close the Inspector when filters remove its flow, preserve dirty Settings and dynamic rows across live refreshes, disable stale project actions, identify partial bulk-scope failures, and expose retryable History refresh/pagination, scope, session/auth, Authz, project, system-proxy, saved-view/tag, pack, sharing, device-discovery, REST, and MCP failures.
+- **Dense-workspace accessibility and responsiveness.** Synchronize narrow History headers with their rows, retain reconnect status on phones, keep Checks/Codecs actions reachable, roll back failed check toggles, restore complete Intruder history configuration, repair Map collapse and graph labels, make graph search actually narrow capped topologies, preserve Activity/context-menu focus, and make evidence screenshots keyboard operable.
 
 ## [2.0.5] - 2026-08-29
 

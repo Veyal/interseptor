@@ -2,7 +2,7 @@
 // (with counts + colors) from /api/tags, renders a clickable filter strip above the
 // flow list, and lets you color a tag via its right-click menu. Tag colors are also
 // applied to the per-row tag chips (rendered in proxy.js via state.tagColors).
-import { $, esc, escAttr, api, state, toast, openCtxMenu } from './core.js';
+import { $, esc, escAttr, api, state, toast, openCtxMenu, renderLoadError } from './core.js';
 import { filterByTag, renderRows } from './proxy.js';
 
 // A small preset palette using theme CSS variables (follows light/dark).
@@ -10,6 +10,7 @@ export const TAG_COLORS = [
   ['red', 'var(--red)'], ['amber', 'var(--amber)'], ['green', 'var(--green)'],
   ['blue', 'var(--blue)'], ['violet', 'var(--violet)'], ['cyan', 'var(--cyan)'], ['gray', 'var(--fg3)'],
 ];
+let tagLoadError=null;
 
 // tagChipStyle returns the inline style for a chip in a tag's color ('' = default).
 export function tagChipStyle(tag) {
@@ -20,16 +21,18 @@ export function tagChipStyle(tag) {
 export async function loadTags() {
   try {
     const d = await api('/api/tags');
+    tagLoadError=null;
     state.tags = d.tags || [];
     state.tagColors = {};
     state.tags.forEach(t => { if (t.color) state.tagColors[t.tag] = t.color; });
     renderTagBar();
     renderRows(); // recolor the per-row tag chips with any updated colors
-  } catch (e) { /* tags are non-critical; stay quiet */ }
+  } catch (e) { tagLoadError=e;renderTagBar(); }
 }
 
 export function renderTagBar() {
   const bar = $('#tagBar'); if (!bar) return;
+  if(tagLoadError){bar.style.display='flex';renderLoadError(bar,'Tags',tagLoadError,loadTags,state.tags.length>0);return;}
   if (!state.tags.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.style.display = 'flex';
   bar.innerHTML = state.tags.map(t => {

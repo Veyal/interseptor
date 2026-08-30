@@ -98,7 +98,7 @@ export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, hideNoise: restoreMapHideNoise(), noiseHiddenCount: 0, collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
   view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
-  sort: { key: 'path', dir: 1 }, _treeHosts: null, _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
+  sort: { key: 'path', dir: 1 }, _treeHosts: null, _treeSeenHosts: new Set(), _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
 
 function mapUsesServerSearch(){
@@ -457,6 +457,26 @@ function hydrateMapTreeNode(body){
   wireMapEpRows(body);
 }
 
+function wireMapHostDetails(box){
+  box.querySelectorAll('.map-host[data-host-key]').forEach(detail=>{
+    detail.addEventListener('toggle',()=>{
+      const key=detail.dataset.hostKey;
+      if(!key)return;
+      if(detail.open){
+        mapState.collapsed.delete(key);
+        const body=detail.querySelector(':scope > .map-body[data-lazy-key]');
+        if(body)hydrateMapTreeNode(body);
+      }else{
+        mapState.collapsed.add(key);
+        if(mapState.expandAll){
+          mapState.expandAll=false;
+          const button=$('#mapExpand');if(button)button.textContent='Expand all';
+        }
+      }
+    });
+  });
+}
+
 function setMapView(v){
   labelMapControls();
   if(v!=='params')loadParamsEpoch++;
@@ -633,13 +653,23 @@ export function renderMapTree(eps){
   const open = mapState.expandAll || !!mapState.search;
   const dim = !!mapState.search;
   const lazy = mapTreeLazyEnabled(eps);
-  box.innerHTML = [...mapState._treeHosts.values()].sort((a, b) => a.name.localeCompare(b.name)).map(h => {
-    if(lazy){
-      return `<details class="map-host"><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body" data-lazy-key="${escAttr(h.key)}"></div></details>`;
+  const hosts=[...mapState._treeHosts.values()].sort((a, b) => a.name.localeCompare(b.name));
+  if(lazy)hosts.forEach(h=>{
+    if(!mapState._treeSeenHosts.has(h.key)){
+      mapState._treeSeenHosts.add(h.key);
+      mapState.collapsed.add(h.key);
     }
-    return `<details class="map-host" open><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, open, dim, false)}</div></details>`;
+  });
+  box.innerHTML = hosts.map(h => {
+    const hostOpen=open||!mapState.collapsed.has(h.key);
+    if(lazy){
+      return `<details class="map-host" data-host-key="${escAttr(h.key)}"${hostOpen ? ' open' : ''}><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body" data-lazy-key="${escAttr(h.key)}"></div></details>`;
+    }
+    return `<details class="map-host" data-host-key="${escAttr(h.key)}"${hostOpen ? ' open' : ''}><summary><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg> ${esc(h.name)}<span class="map-c">${mapCount(h)}</span></summary><div class="map-body">${mapRenderNode(h, hostOpen, dim, false)}</div></details>`;
   }).join('');
   wireMapEpRows(box);
+  wireMapHostDetails(box);
+  box.querySelectorAll('.map-host[open] > .map-body[data-lazy-key]').forEach(hydrateMapTreeNode);
 }
 
 function mapSortEps(eps){
@@ -789,6 +819,8 @@ $('#mapExpand').onclick = () => {
     return;
   }
   mapState.expandAll = !mapState.expandAll;
+  if(mapState.expandAll)mapState.collapsed.clear();
+  else mapCollapseHosts();
   $('#mapExpand').textContent = mapState.expandAll ? 'Collapse all' : 'Expand all';
   mapState._needFit = true;
   renderMap();
@@ -882,7 +914,7 @@ export function gCount(n){
 let _gtKey = '', _gtCache = null;
 export function buildGraphTree(eps){
   eps = graphEps(eps);
-  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + eps.length;
+  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + mapState.searchScope + '|' + mapState.search + '|' + eps.length;
   if(key === _gtKey && _gtCache) return _gtCache;
   const root = { key: '', type: 'root', children: [], cm: new Map(), _gCount: null };
   const child = (p, k, label, type) => {
@@ -1014,14 +1046,29 @@ export function gNode(n){
   const aria=n.type==='host'
     ?`${n.label}, host, ${gCount(n)} endpoints. Enter toggles; F focuses host.`
     :n.type==='ep'
-      ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}. Enter opens the latest flow.`
+      ?`${n.ep.method} ${n.ep.scheme||'http'}://${n.ep.host}${n.ep.path||'/'}, status ${n.ep.lastStatus||'unknown'}, ${n.ep.hits||0} hit${n.ep.hits===1?'':'s'}. Enter opens the latest flow.`
       :`${n.label}, group, ${gCount(n)} endpoints. Enter toggles.`;
   return `<g class="${cls}" data-key="${escAttr(n.key)}" data-kind="${n.type}" data-host="${n.type === 'host' ? escAttr(n.label) : ''}" role="option" tabindex="${selected?'0':'-1'}" aria-label="${escAttr(aria)}" aria-selected="${selected?'true':'false'}"${extra}><title>${title}</title>${hit}${mk}${lb}</g>`;
 }
 
+// Tree/table search keeps surrounding context and marks matches. A dense graph
+// cannot do that safely: retaining thousands of dimmed nodes defeats both the
+// readability cap and the graph's own "search to narrow" recovery guidance.
+// Server-side header/body searches are already reduced before they reach here.
+function mapGraphFiltered(eps){
+  if(!mapState.search||mapUsesServerSearch())return eps;
+  return eps.filter(ep=>epMatchesSearch(ep,mapState.search));
+}
+function graphCapSignature(){
+  return [mapState.domain,mapState.method,mapState.statusClass,mapState.tag,mapState.hideNoise?'1':'0',mapState.collapseIdentical?'1':'0',mapState.search,mapState.searchScope].join('|');
+}
+
 export function renderMapGraph(eps){
+  eps=mapGraphFiltered(eps);
   const g = $('#mapGraphG'); if(!g) return;
   const warn = $('#mapWarn');
+  const capSignature=graphCapSignature();
+  if(mapState._forceGraphSignature!==capSignature)mapState._forceGraph=false;
   const focusedKey=document.activeElement?.closest?.('#mapGraphG .g-node')?.dataset.key||'';
   graphTipHide();
   if(!eps.length){
@@ -1040,7 +1087,7 @@ export function renderMapGraph(eps){
       warn.style.display = 'block';
       warn.innerHTML = `Graph capped at ${GRAPH_NODE_MAX} nodes (${lay.nodes.length.toLocaleString()} match). Filter by domain or use Table view — or <a href="#" id="mapGraphForce" style="color:var(--accent);text-decoration:underline">show graph anyway</a>.`;
       const force = $('#mapGraphForce');
-      if(force) force.onclick = ev => { ev.preventDefault(); mapState._forceGraph = true; warn.style.display = 'none'; renderMapGraph(eps); };
+      if(force) force.onclick = ev => { ev.preventDefault(); mapState._forceGraph = true;mapState._forceGraphSignature=capSignature; warn.style.display = 'none'; renderMapGraph(eps); };
     }
     return;
   }

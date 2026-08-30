@@ -40,8 +40,42 @@ function setRepSendState(stateName,label){
 }
 function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
-/* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[]};}
+/* ---- repeater (multi-tab; each tab owns its request workspace + history) ---- */
+// A Repeater tab owns every send made during its lifetime. Keep the complete
+// list in tab state, but only paint a bounded window so long sessions do not
+// turn opening History into a large synchronous DOM update.
+const REP_HISTORY_RENDER_BATCH=100;
+function repHistoryEntry(flow){
+  return {id:Number(flow&&flow.id),method:String(flow&&flow.method||''),status:Number(flow&&flow.status)||0,host:String(flow&&flow.host||''),path:String(flow&&flow.path||'')};
+}
+function normalizeRepHistory(history){
+  const out=[],seen=new Set();
+  for(const item of Array.isArray(history)?history:[]){
+    const entry=repHistoryEntry(item),id=entry.id;
+    if(!Number.isSafeInteger(id)||id<=0||seen.has(id))continue;
+    seen.add(id);
+    entry.method=entry.method.slice(0,32);
+    entry.host=entry.host.slice(0,512);
+    entry.path=entry.path.slice(0,2048);
+    out.push(entry);
+  }
+  return out;
+}
+function repRecordHistory(t,flow){
+  if(!t||!flow)return;
+  t.history=normalizeRepHistory([repHistoryEntry(flow),...(t.history||[])]);
+  t.historyLoadError='';
+}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[],history:[],historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:''};}
+function normalizeRepeaterTab(t){
+  const url=t.url||'';
+  const hasHistory=Object.prototype.hasOwnProperty.call(t,'history')&&Array.isArray(t.history);
+  const historyNeedsMigration=t.historyNeedsMigration===true||!hasHistory;
+  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history:normalizeRepHistory(t.history),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):''};
+}
+function serializeRepeaterTab(t){
+  return {tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[],history:normalizeRepHistory(t.history),historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
+}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -212,8 +246,8 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
-  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
+  normalize:normalizeRepeaterTab,
+  serialize:serializeRepeaterTab,
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
   onPersist:blob=>persistUIState('repeater',blob),
@@ -327,19 +361,19 @@ export async function repSend(){
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     t.sendPending=false;
-    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);repRecordHistory(t,flow);repPersist();
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
-    if(repCur()!==t){repPersist();return;}
+    if(repCur()!==t)return;
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
-    if(repCur()!==t){repPersist();return;}
+    if(repCur()!==t)return;
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    if(repCur()!==t){repPersist();return;}
+    if(repCur()!==t)return;
     setRepSendState('success','Sent');resetRepSend(600,t);
-    loadRepHistory();repPersist();
+    loadRepHistory();
   }catch(e){
     t.sendPending=false;
     const msg=friendlySendError(e.message);
@@ -383,38 +417,74 @@ export async function renderRepResponse(){
     $('#repResView').innerHTML=highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
   }catch(e){if(repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError)$('#repResView').textContent='(error: '+e.message+')';}
 }
+async function migrateLegacyRepHistory(t){
+  if(!t.historyNeedsMigration)return true;
+  if(t.historyMigrationPromise)return t.historyMigrationPromise;
+  const legacyURL=t.historyLegacyURL||t.url;
+  const ep=repTabEndpointParts({url:legacyURL});
+  if(!ep){t.historyNeedsMigration=false;t.historyLegacyURL='';repPersist();return true;}
+  const params=new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path});
+  t.historyMigrationPromise=(async()=>{
+    try{
+      const d=await api('/api/repeater/history?'+params.toString());
+      // A send can complete while this one-time snapshot is in flight. Keep
+      // those tab-owned rows first, merge the legacy endpoint rows behind them,
+      // and let normalization de-duplicate the result.
+      t.history=normalizeRepHistory([...(t.history||[]),...(d.flows||[])]);
+      t.historyNeedsMigration=false;t.historyLegacyURL='';t.historyLoadError='';repPersist();return true;
+    }catch(e){t.historyLoadError=e.message||'unknown error';return false;}
+    finally{t.historyMigrationPromise=null;}
+  })();
+  return t.historyMigrationPromise;
+}
 export async function loadRepHistory(){
-  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpointParts(t);
+  const box=$('#repHistory');if(!box)return;const t=repCur();if(!t)return;
   const setCount=n=>{const tg=$('#repHistToggle');if(tg)tg.textContent='⟲ History'+(n?' ('+n+')':'');};
-  if(!ep){setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';return;}
-  try{
-    const params=new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path});
-    const d=await api('/api/repeater/history?'+params.toString());
-    if(repCur()!==t)return; // tab switched mid-fetch — don't paint stale history
-    const flows=d.flows||[];
-    setCount(flows.length);
-    if(!flows.length){box.innerHTML='<div class="hint" style="padding:10px">'+(ep?'No sends to this endpoint yet.':'Send a request to start this tab’s history.')+'</div>';return;}
-    box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">
-      <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
-      <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
-    box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
-  }catch(e){}
+  let migrationError='';
+  if(t.historyNeedsMigration){
+    setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Loading this tab’s saved history…</div>';
+    const migrated=await migrateLegacyRepHistory(t);
+    if(repCur()!==t)return;
+    if(!migrated)migrationError=`<div class="state-error" style="margin:8px"><span>Could not restore older sends: ${esc(t.historyLoadError||'unknown error')}</span> <button type="button" class="btn xs" data-rep-history-retry>Retry</button></div>`;
+  }
+  const flows=normalizeRepHistory(t.history);
+  t.history=flows;setCount(flows.length);
+  if(!flows.length){box.innerHTML=migrationError||'<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';}
+  else{
+    const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0));
+    const visible=flows.slice(0,visibleCount);
+    const remaining=flows.length-visibleCount;
+    box.innerHTML=migrationError+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}">
+    <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
+    <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
+    box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
+      t.historyVisibleCount=Math.min(flows.length,visibleCount+REP_HISTORY_RENDER_BATCH);
+      loadRepHistory();
+    });
+  }
+  box.querySelector('[data-rep-history-retry]')?.addEventListener('click',loadRepHistory);
+  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
 $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{const h=$('#repHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
+  t.historyLoadEpoch=(t.historyLoadEpoch||0)+1;
+  const loadEpoch=t.historyLoadEpoch;
+  const editorEpoch=t.reqEditEpoch||0;
+  const current=()=>repCur()===t&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch;
   try{
     const d=await api('/api/flows/'+id);
+    if(!current())return;
     const raw=await api('/api/flows/'+id+'/raw?side=req');
-    if(repCur()!==t)return; // user switched tabs while loading — keep their new tab intact
+    if(!current())return;
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
     t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
-  }catch(e){toast(e.message);}
+  }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
 }
 export async function sendToRepeater(f){
   if(!await waitForWorkstationReady())return false;
@@ -830,11 +900,11 @@ function intrLoadHistory(i){
   intrDisplayedTarget=h.target||'';
   intrDisplayedResults=h.results.slice();
   if(h.cfg&&!intrLastRunning&&!intrStartPending){
-    intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
-    intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
-    intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
-    $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
-    updateIntrMode();intrTouch();}
+    // Reuse the same complete config applicator as tab navigation. History
+    // includes processing, extraction, numeric generators, and per-position
+    // payload sources—not just the visible target/template fields.
+    intrApply(h.cfg);
+    intrTouch();}
   renderIntrHistory();
   renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }

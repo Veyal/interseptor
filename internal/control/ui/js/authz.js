@@ -1,7 +1,7 @@
 // authz.js — authorization (access-control) testing. Replays captured request(s)
 // under each saved identity (role) and diffs responses to surface IDOR / broken
 // access control. Launched from History right-click or command palette.
-import { $, esc, escAttr, state, api, toast, openModal, closeModal, statusColor, fmtSize, wireRowKey } from './core.js';
+import { $, esc, escAttr, state, api, toast, openModal, closeModal, statusColor, fmtSize, wireRowKey, renderLoadError } from './core.js';
 import { selectFlow, refreshAuthzIds } from './proxy.js';
 
 let authzFlowId = null;
@@ -49,7 +49,8 @@ async function renderAuthzScopePanel(){
   const scopeMode=authzMode==='scope';
   panel.style.display=scopeMode?'':'none';
   if(!scopeMode)return;
-  try{const d=await api('/api/scope');state.scope=d.rules||[];}catch(e){}
+  try{const d=await api('/api/scope');state.scope=d.rules||[];}
+  catch(e){renderLoadError(panel,'Authorization scope',e,renderAuthzScopePanel,state.scope.length>0);return;}
   const enabled=(state.scope||[]).filter(r=>r.enabled);
   const includes=enabled.filter(r=>r.action==='include');
   const excludes=enabled.filter(r=>r.action==='exclude');
@@ -74,7 +75,7 @@ async function renderAuthzScopePanel(){
     if(!el)return;
     if(!hosts.length)el.textContent='No in-scope traffic in history yet — browse the target through the proxy first.';
     else el.textContent=`${hosts.length} host${hosts.length===1?'':'s'} in history: ${hosts.slice(0,10).join(', ')}${hosts.length>10?'…':''} (static assets skipped in bulk run)`;
-  }catch(e){const el=$('#authzScopeHosts');if(el)el.textContent='';}
+  }catch(e){const el=$('#authzScopeHosts');if(el)renderLoadError(el,'In-scope traffic',e,renderAuthzScopePanel,false);}
 }
 
 async function loadFlowAuthHint(flowId){
@@ -89,7 +90,7 @@ async function loadFlowAuthHint(flowId){
     if(hints.length)t+='Cookie hints: '+hints.map(h=>esc(h)).join('; ')+'.';
     box.innerHTML=t+' Use <b>⧉ From flow</b> to fill the baseline identity.';
     box.style.display='';
-  }catch(e){box.style.display='none';}
+  }catch(e){box.style.display='';renderLoadError(box,'Captured authentication',e,()=>loadFlowAuthHint(flowId),false);}
 }
 
 export function openAuthz(flowId){
@@ -114,7 +115,8 @@ function setAuthzMode(m){
 }
 
 async function loadAuthzIdentities(){
-  try{const d=await api('/api/authz');renderIdentities(d.identities||[]);refreshAuthzIds();}catch(e){renderIdentities([]);}
+  try{const d=await api('/api/authz');renderIdentities(d.identities||[]);refreshAuthzIds();}
+  catch(e){renderLoadError($('#authzIds'),'Saved identities',e,loadAuthzIdentities,false);}
 }
 function renderIdentities(ids){
   if(!ids.length)ids=[{name:'',headers:''}];

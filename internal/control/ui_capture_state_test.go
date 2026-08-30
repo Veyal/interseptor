@@ -83,7 +83,7 @@ func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
 		"const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch",
 		"if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return",
-		"if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}",
+		"if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}",
 		"if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}",
 	} {
 		if !strings.Contains(proxy, contract) {

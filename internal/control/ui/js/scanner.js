@@ -74,6 +74,7 @@ const checkEndpoint='/api/checks';
 let checkLoadEpoch=0;
 let checkActionEpoch=0;
 let checkActionBusy=false;
+let checkToggleEpoch=0;
 function setCheckActionState(kind,stateName){
   const test=$('#checkTest'),save=$('#checkSave');
   if(!test||!save)return;
@@ -132,6 +133,28 @@ function markChecksSelected(box){
     el.classList.toggle('sel',!!checkSelId&&el.dataset.id===checkSelId);
   });
 }
+async function saveCheckToggle(cb,box){
+  const previous=!cb.checked;
+  const epoch=++checkToggleEpoch;
+  const toggles=[...box.querySelectorAll('.check-en')];
+  const disabled=toggles.filter(x=>!x.checked).map(x=>x.dataset.id);
+  toggles.forEach(toggle=>{toggle.disabled=true;});
+  box.setAttribute('aria-busy','true');
+  try{
+    await api('/api/checks/disabled',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({disabled})});
+    if(epoch!==checkToggleEpoch)return;
+    toast('check '+(cb.checked?'enabled':'disabled'));
+  }catch(e){
+    if(epoch!==checkToggleEpoch)return;
+    cb.checked=previous;
+    toast(e.message,'error');
+  }finally{
+    if(epoch===checkToggleEpoch){
+      toggles.forEach(toggle=>{toggle.disabled=false;});
+      box.removeAttribute('aria-busy');
+    }
+  }
+}
 export async function loadChecksList(){
   try{
     const d=await api('/api/checks');const box=$('#checksList');if(!box)return;
@@ -175,12 +198,9 @@ export async function loadChecksList(){
       const open=()=>builtin?loadBuiltinCheck(id):loadCheck(id);
       el.querySelector('.checks-edit-target')?.addEventListener('click',open);
     });
-    // Any checkbox change (built-in or custom) recomputes the disabled set.
-    box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=async()=>{
-      const disabled=[...box.querySelectorAll('.check-en')].filter(x=>!x.checked).map(x=>x.dataset.id);
-      try{await api('/api/checks/disabled',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({disabled})});
-        toast('check '+(cb.checked?'enabled':'disabled'));}catch(e){toast(e.message);}
-    });
+    // Persist the whole disabled set as one acknowledged transaction. Disable
+    // sibling toggles until it resolves so rapid clicks cannot reorder writes.
+    box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=()=>saveCheckToggle(cb,box));
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
   }catch(e){const box=$('#checksList');if(box)box.innerHTML=`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">Couldn't load checks: ${esc(e.message)}</p></div>`;}
 }
@@ -325,8 +345,8 @@ async function loadPacksPanel(){
   const box=$('#checksPackList'); if(!box) return;
   try{
     const [cat, inst] = await Promise.all([
-      api('/api/packs/catalog').catch(()=>({packs:[]})),
-      api('/api/packs').catch(()=>({packs:[]})),
+      api('/api/packs/catalog'),
+      api('/api/packs'),
     ]);
     const catalog=cat.packs||[];
     const installed=inst.packs||[];
@@ -363,7 +383,7 @@ async function loadPacksPanel(){
         toast('pack removed'); loadChecksList(); loadPacksPanel();
       }catch(e){toast(e.message,'error');}
     });
-  }catch(e){box.textContent=e.message||'could not load packs';}
+  }catch(e){renderLoadError(box,'Check packs',e,loadPacksPanel,false);}
 }
 async function installPackFile(file){
   if(!file) return;

@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon, renderLoadError } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
@@ -64,6 +64,8 @@ const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
+let flowPageError=null;
+let flowLoadError=null;
 let flowLoadEpoch=0,flowPageEpoch=0;
 let flowLoadEvents=new Map();
 let flowLoadOverflow=false;
@@ -412,17 +414,50 @@ function consumeFlowSignals(){
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
   if(!b)return;
-  // No hard cap anymore — older flows stream in as you scroll. Show a subtle
-  // affordance only while a page is loading or when more remain below.
-  if(flowRefreshing){b.style.display='block';b.textContent='Refreshing flows…';}
-  else if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
-  else if(flowHasMore){b.style.display='block';b.textContent='Scroll down to load older flows.';}
-  else b.style.display='none';
+  // No hard cap anymore — older flows stream in as you scroll. Show a compact
+  // status and a retry affordance when a page request fails; the failure must
+  // remain visible until the operator retries or another page succeeds.
+  const message=$('#flowCapMessage')||b.querySelector('[data-flow-cap-message]')||b.querySelector('span')||b;
+  const retry=$('#flowCapRetry');
+  if(flowLoadError){
+    const stale=state.flows.length>0;
+    if(message!==b)message.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
+    else b.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
+    b.style.display='flex';
+    if(retry){retry.hidden=false;retry.disabled=flowRefreshing;retry.onclick=()=>loadFlows();}
+  }else if(flowPageError){
+    if(message!==b)message.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
+    else b.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
+    b.style.display='flex';
+    if(retry){retry.hidden=false;retry.disabled=loadingMore;retry.onclick=()=>loadMoreFlows();}
+  }else if(flowRefreshing){
+    if(message!==b)message.textContent='Refreshing flows…';else b.textContent='Refreshing flows…';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else if(loadingMore){
+    if(message!==b)message.textContent='Loading older flows…';else b.textContent='Loading older flows…';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else if(flowHasMore){
+    if(message!==b)message.textContent='Scroll down to load older flows.';else b.textContent='Scroll down to load older flows.';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else{b.style.display='none';if(retry)retry.hidden=true;}
 }
 // Infinite scroll: load the next older page as the History list nears its bottom.
-{const box=$('#rows');if(box)box.addEventListener('scroll',()=>{
+let flowScrollSource=null,flowScrollSyncing=false;
+function syncFlowHorizontalScroll(){
+  const head=$('#flowHead'),box=$('#rows');
+  if(!head||!box||flowScrollSyncing)return;
+  flowScrollSyncing=true;
+  if(flowScrollSource===head)box.scrollLeft=head.scrollLeft;
+  else head.scrollLeft=box.scrollLeft;
+  flowScrollSyncing=false;
+}
+{const head=$('#flowHead'),box=$('#rows');
+  if(head)head.addEventListener('scroll',()=>{flowScrollSource=head;syncFlowHorizontalScroll();},{passive:true});
+  if(box)box.addEventListener('scroll',()=>{
+  flowScrollSource=box;syncFlowHorizontalScroll();
   if(box.scrollTop+box.clientHeight>=box.scrollHeight-400)loadMoreFlows();
-});}
+  },{passive:true});
+}
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
@@ -769,6 +804,8 @@ export async function loadFlows(){
   flowLoadEvents=new Map();
   flowLoadOverflow=false;
   flowRefreshing=true;
+  flowPageError=null;
+  flowLoadError=null;
   flowHasMore=false;
   updateTruncBanner();
   const q=buildFlowParams();
@@ -788,6 +825,7 @@ export async function loadFlows(){
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
     let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
+    clearMissingInspectorSelection();
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
@@ -795,7 +833,7 @@ export async function loadFlows(){
     refreshMethodFilter();
     loadTrafficDiagnosis();
     if(!replayExact)scheduleReload();
-  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}}
+  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}}
   finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
 
@@ -805,6 +843,7 @@ export async function loadMoreFlows(){
   if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
+  flowPageError=null;
   updateTruncBanner();
   try{
     const last=state.flows[state.flows.length-1];
@@ -826,7 +865,9 @@ export async function loadMoreFlows(){
         if(box)box.scrollTop=keep;
       }
     }
-  }catch(e){/* a failed page-load is non-fatal; the user can scroll again */}
+  }catch(e){
+    if(loadEpoch===flowLoadEpoch&&pageEpoch===flowPageEpoch)flowPageError=e;
+  }
   finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
 }
 function refreshMethodFilter(){
@@ -856,17 +897,58 @@ const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
+function clearMissingInspectorSelection(){
+  if(state.selId!=null&&!flowStore.byId.has(state.selId))closeInspector();
+}
+function setInspectorActionState(disabled){
+  ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
+    const button=$(sel);if(!button)return;
+    button.disabled=disabled;
+    button.setAttribute('aria-disabled',disabled?'true':'false');
+  });
+}
+function showInspectorLoading(id){
+  setInspectorActionState(true);
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar'),reqDecode=$('#reqDecode'),resDecode=$('#resDecode');
+  if(reqDecode)reqDecode.hidden=true;
+  if(resDecode)resDecode.hidden=true;
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading flow #'+esc(id)+'…</span>';
+  if(res)res.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading request and response…</span>';
+  if(status){status.textContent='loading…';status.style.color='var(--fg3)';}
+}
+function showInspectorLoadError(id,error){
+  setInspectorActionState(true);
+  const message=error&&error.message?error.message:String(error||'unknown error');
+  const retry='<button type="button" class="btn xs" data-inspector-retry>Retry</button>';
+  const content='<span class="state-error-msg">Flow #'+esc(id)+' could not be loaded: '+esc(message)+'</span> '+retry;
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<div class="state-error" role="alert">'+content+'</div>';
+  if(res)res.innerHTML='<div class="state-error" role="alert">Select Retry to request this flow again.</div>';
+  if(status){status.textContent='load failed';status.style.color='var(--red)';}
+  $$('#reqView [data-inspector-retry]').forEach(button=>button.onclick=()=>selectFlow(id));
+}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
   const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
+  const switching=state.selId!==id;
+  const needsLoadingState=switching||!state.detail;
   const noteGeneration=noteEditorGeneration(id);
   const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
-  state.selId=id;renderRows();
+  if(switching){
+    state.detail=null;
+    const note=$('#noteInput');if(note)note.value='';
+  }
+  state.selId=id;
+  renderRows();
+  if(needsLoadingState)showInspectorLoading(id);
   try{
     const d=await api('/api/flows/'+id);
     if(!current())return;
     state.detail=d;
     if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
+    setInspectorActionState(false);
     $('#noteBar').style.display='flex';
     await renderSide('req');
     if(!current())return;
@@ -888,7 +970,7 @@ export async function selectFlow(id){
       $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
-  }catch(e){if(current())toast('flow: '+e.message);}
+  }catch(e){if(current())showInspectorLoadError(id,e);}
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
@@ -1067,6 +1149,9 @@ if(inspectFindIn){
 }
 if($('#inspectFindClose'))$('#inspectFindClose').onclick=()=>toggleInspectFind(false);
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&inspectFindBar.style.display==='flex'){
+    e.preventDefault();e.stopImmediatePropagation();toggleInspectFind(false);return;
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     const p=document.querySelector('.panel[data-panel="proxy"]');
     if(!p||!p.classList.contains('active'))return;
@@ -1173,9 +1258,11 @@ $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefa
 $('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
 $('#noteInput').addEventListener('blur',saveNote);
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
-export async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
+let viewsLoadError=null;
+export async function loadViews(){try{const d=await api('/api/views');viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){viewsLoadError=e;renderViews();}}
 export function renderViews(){
   const btn=$('#viewsBtn'); if(!btn)return;
+  if(viewsLoadError){btn.textContent='Views !';btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
   const n=state.views.length;
   const txt=n?('Views ▾ · '+n):'Views ▾';
   btn.textContent=txt;
@@ -1203,16 +1290,28 @@ function openViewsMenu(){
   {const cp=$('#colPicker');if(cp)cp.style.display='none';} // Views joins the toolbar menu group
   const r=btn.getBoundingClientRect();
   const sections=[];
-  if(state.views.length){
+  if(viewsLoadError){
+    sections.push({head:'SAVED VIEWS UNAVAILABLE',items:[{label:'Retry loading saved views',act:loadViews}]});
+  }else if(state.views.length){
     sections.push({head:'APPLY VIEW',items:state.views.map(v=>({label:v.name,act:()=>applyView(v)}))});
     sections.push({head:'DELETE VIEW',items:state.views.map(v=>({label:v.name,danger:true,act:()=>deleteView(v.id,v.name)}))});
   }
-  sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
+  if(!viewsLoadError)sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
   openCtxMenu(r.left, r.bottom+2, sections);
 }
 $('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
 /* ---- target scope ---- */
-export async function loadScope(){try{const d=await api('/api/scope');state.scope=d.rules||[];renderScope();}catch(e){}}
+export async function loadScope(){
+  const loadState=$('#scopeLoadState');
+  try{
+    const d=await api('/api/scope');
+    if(loadState)loadState.style.display='none';
+    state.scope=d.rules||[];
+    renderScope();
+  }catch(e){
+    renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
+  }
+}
 export async function addHostToScope(host){
   try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})});
     toast('added '+host+' to scope — toggle ◎ in scope to focus');loadScope();}
@@ -1654,9 +1753,19 @@ $('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRow
 $('#selScope').onclick=async()=>{
   const hosts=[...new Set([...state.selected].map(id=>{const f=flowStore.byId.get(id);return f&&f.host;}).filter(Boolean))];
   if(!hosts.length)return;
-  let added=0;
-  for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){}}
-  toast('added '+added+' host'+(added===1?'':'s')+' to scope');loadScope();
+  const button=$('#selScope');if(!button||button.disabled)return;
+  button.disabled=true;button.setAttribute('aria-busy','true');
+  let added=0;const failed=[];
+  try{
+    for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){failed.push(host);}}
+    if(failed.length){
+      const names=failed.slice(0,3).join(', ')+(failed.length>3?' +'+(failed.length-3)+' more':'');
+      toast((added?'added '+added+' of '+hosts.length+' hosts':'no hosts added')+' · failed: '+names,'warn');
+    }else toast('added '+added+' host'+(added===1?'':'s')+' to scope','success');
+    loadScope();
+  }finally{
+    button.disabled=false;button.removeAttribute('aria-busy');
+  }
 };
 export let _delArm=false,_delTimer;
 $('#selDelete').onclick=async()=>{

@@ -28,6 +28,7 @@ function passesFilter(it){
 }
 export function renderActivity(){
   const box=$('#actFeed');if(!box)return;
+  const focusedId=box.querySelector(':focus[data-activity-id]')?.dataset.activityId||'';
   const all=state.activity;
   // Filter first, then group: separators must reflect the visible subset only,
   // so sameWorkflow() compares each row against the previous *visible* row.
@@ -40,8 +41,11 @@ export function renderActivity(){
     const fid=flowIdFromActivity(it);
     const grp=i>0&&!sameWorkflow(a[i-1],it)?' act-grp':''; // separator between workflows
     const duration=it.ms == null?'—':it.ms+'ms';
-    return `<div class="act-row${fid?' act-jump':''}${grp}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr((it.tool||'activity')+': '+(it.summary||it.result||''))}" title="${fid?'Open flow #'+fid+' in History':''}">
-    <span class="ok" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${it.ok?'ok':'error'}"></span>
+    const status=it.ok?'Success':'Error';
+    const activityId=it.id!=null?String(it.id):String(it._uiId||(it._uiId='client-'+Date.now()+'-'+i));
+    const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'');
+    return `<div class="act-row${fid?' act-jump':''}${grp}" tabindex="0" data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}" title="${fid?'Open flow #'+fid+' in History':''}">
+    <span class="ok" aria-hidden="true" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${status}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
     <span class="act-res">${esc(it.result||'')}</span>
@@ -55,6 +59,12 @@ export function renderActivity(){
     document.querySelector('.tab[data-tab="proxy"]').click();
     selectFlow(id);
   };if(row.classList.contains('act-jump')){row.onclick=open;wireRowKey(row,open);}});
+  restoreActivityFocus(box,focusedId);
+}
+function restoreActivityFocus(box,focusedId){
+  if(!focusedId)return;
+  const row=box.querySelector(`[data-activity-id="${CSS.escape(focusedId)}"]`);
+  if(row)row.focus({preventScroll:true});
 }
 export function onActivity(it){
   if(!it)return;
