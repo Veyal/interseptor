@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Repeatable UI release audit.** Added a feature-by-feature and cross-workflow browser loop covering real data states, keyboard/focus behavior, required viewports, reduced motion, burst traffic, and Chrome performance evidence before embedded UI changes ship; prior audit artifacts now identify the revision they validate.
 
 ### Fixed
+- **UI audit contract coverage.** Kept the comprehensive Inspector reconciliation test aligned with its filter-generation ownership input.
 - **UI regression coverage.** Updated the origin TLS settings journey test to cover the latest-request guard before failure feedback is rendered.
 - **macOS release integrity.** Stamp app binaries with the bundle version, verify the bundled CLI reports the exact tag, and publish validated checksums for the app ZIP and DMG.
 - **Tab-owned Repeater history.** Keep every send attached to its Repeater tab in appendable browser storage until that tab closes, across method, URL, header, body, history-selection, tab-switch, and reload changes; long histories render 100 rows at a time, and saved legacy tabs migrate without growing the bounded workspace-state payload.

@@ -18,7 +18,7 @@ func requireUIContracts(t *testing.T, asset string, contracts ...string) string 
 
 func TestUIProxyInspectorNeverShowsTheWrongSelectedFlow(t *testing.T) {
 	requireUIContracts(t, "js/proxy.js",
-		"function reconcileInspectorSelectionAfterReload(previousFlow)",
+		"function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged)",
 		"if(state.selId==null)return",
 		"if(!state.detail&&previousFlow&&canIncremental()&&flowMatchesFilters(previousFlow))",
 		"selectFlow(state.selId)",
