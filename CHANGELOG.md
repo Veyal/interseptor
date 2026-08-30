@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.5` release without moving its tag.
 - **Reproducible release tooling.** Pinned candidate validation and publication to the same reviewed GoReleaser version, added a regression contract, and updated the macOS packaging guide to describe the app ZIP and DMG that tagged builds now publish.
-- **Repeatable UI release audit.** Added a feature-by-feature and cross-workflow browser loop covering real data states, keyboard/focus behavior, required viewports, reduced motion, burst traffic, and Chrome performance evidence before embedded UI changes ship.
+- **Repeatable UI release audit.** Added a feature-by-feature and cross-workflow browser loop covering real data states, keyboard/focus behavior, required viewports, reduced motion, burst traffic, and Chrome performance evidence before embedded UI changes ship; prior audit artifacts now identify the revision they validate.
 
 ### Fixed
 - **UI regression coverage.** Updated the origin TLS settings journey test to cover the latest-request guard before failure feedback is rendered.

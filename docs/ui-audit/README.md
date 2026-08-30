@@ -1,6 +1,8 @@
 # UI audit screenshots
 
-These screenshots compare the repository baseline (`ec1b79e`) with the audited UI in isolated, empty projects. They contain no captured request data.
+These screenshots document the UI audit completed at `b5dac28`. They compare the repository baseline
+(`ec1b79e`) with that audited revision in isolated, empty projects and contain no captured request
+data. They do not validate later UI revisions.
 
 | Viewport | Surface | Before | After |
 | --- | --- | --- | --- |
