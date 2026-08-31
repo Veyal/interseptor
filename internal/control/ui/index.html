@@ -1032,8 +1032,8 @@ Content-Type: application/json
               <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label for="projNew">New project</label><input id="projNew" aria-label="New project name" class="btn btn-field" style="width:100%" placeholder="acme-engagement"></div>
               <button class="btn" id="projNewBtn">Create &amp; open</button>
             </div>
-            <div class="field" style="margin-bottom:0;margin-top:8px"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-label="New project save location" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="e.g. D:\engagements\acme-2026"></div>
-            <p class="hint" id="projSwitchNote" style="margin-top:12px;display:none;color:var(--accent)"></p>
+            <div class="field" style="margin-bottom:0;margin-top:8px"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-describedby="projSwitchNote" aria-label="New project save location" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="e.g. D:\engagements\acme-2026"></div>
+            <p class="hint" id="projSwitchNote" role="status" aria-live="polite" style="margin-top:12px;display:none;color:var(--accent)"></p>
             <div class="row" style="margin-top:14px"><button class="btn" id="runSetupBtn" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg> Run setup wizard again</button><span class="hint">Replays the first-run guide (proxy, CA, scope).</span></div>
           </div>
           <div class="section">
@@ -1315,8 +1315,8 @@ Content-Type: application/json
           <input id="pmNew" class="btn btn-field field-grow" style="min-width:200px" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
           <button class="btn btn-primary" id="pmNewBtn">＋ Create &amp; open</button>
         </div>
-        <input id="pmNewPath" class="btn btn-field font-mono" style="width:100%;margin-top:6px;font-size:var(--fs-xs)" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
-        <p class="hint" id="pmSwitchNote" style="display:none;color:var(--accent)"></p>
+        <input id="pmNewPath" aria-describedby="pmSwitchNote" class="btn btn-field font-mono" style="width:100%;margin-top:6px;font-size:var(--fs-xs)" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
+        <p class="hint" id="pmSwitchNote" role="status" aria-live="polite" style="display:none;color:var(--accent)"></p>
       </div>
       <div id="pmNote" class="hint" style="display:none;color:var(--accent)"></div>
     </div>

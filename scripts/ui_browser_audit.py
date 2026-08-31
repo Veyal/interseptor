@@ -91,6 +91,7 @@ class AuditResult:
     failures: List[str] = field(default_factory=list)
     console_errors: List[str] = field(default_factory=list)
     expected_console_errors: List[str] = field(default_factory=list)
+    expected_console_request_urls: List[str] = field(default_factory=list)
     page_errors: List[str] = field(default_factory=list)
     http_errors: List[str] = field(default_factory=list)
     expected_http_errors: List[str] = field(default_factory=list)
@@ -173,14 +174,19 @@ def wait_ready(page: Page) -> None:
 
 
 def attach_observers(page: Page, result: AuditResult, base_netloc: str, expected_console_errors: bool = False) -> None:
-    console_sink = result.expected_console_errors if expected_console_errors else result.console_errors
     http_sink = result.expected_http_errors if expected_console_errors else result.http_errors
-    page.on(
-        "console",
-        lambda message: console_sink.append(message.text)
-        if message.type == "error"
-        else None,
-    )
+
+    def record_console(message: Any) -> None:
+        if message.type != "error":
+            return
+        location = message.location or {}
+        request_url = str(location.get("url") or "")
+        if expected_console_errors or request_url in result.expected_console_request_urls:
+            result.expected_console_errors.append(message.text)
+        else:
+            result.console_errors.append(message.text)
+
+    page.on("console", record_console)
     page.on("pageerror", lambda error: result.page_errors.append(str(error)))
     page.on(
         "response",
@@ -457,6 +463,341 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             fixture_base = f"http://127.0.0.1:{fixture.server_port}"
             proxy = args.proxy
 
+            def setup_action_ack_lock() -> None:
+                """A held setup-scope acknowledgement must lock dismissal/navigation."""
+                setup_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                setup_page = setup_context.new_page()
+                setup_page.set_default_timeout(10_000)
+                attach_observers(setup_page, result, base_netloc, expected_console_errors=True)
+                held_scope: List[Any] = []
+
+                def hold_scope_add(route: Any) -> None:
+                    if route.request.method == "POST":
+                        held_scope.append(route)
+                    else:
+                        route.continue_()
+
+                setup_page.route("**/api/scope", hold_scope_add)
+                try:
+                    setup_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(setup_page)
+                    setup_page.locator('.tab[data-tab="settings"]').click()
+                    setup_page.locator('#setNav button[data-sec="project"]').click()
+                    setup_page.wait_for_selector("#runSetupBtn", state="visible", timeout=10_000)
+                    setup_page.locator("#runSetupBtn").click()
+                    setup_page.wait_for_selector("#setupModal", state="visible", timeout=10_000)
+                    result.require(
+                        setup_page.locator("#setupReadiness").get_attribute("role") == "status"
+                        and setup_page.locator("#setupReadiness").get_attribute("aria-live") == "polite",
+                        "setup readiness changes were not exposed as a polite status",
+                    )
+                    setup_page.locator("#setupNext").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 4'")
+                    copy_command = setup_page.locator("#setupCopyCmd")
+                    if copy_command.count():
+                        result.require(
+                            copy_command.get_attribute("aria-label") == "Copy trust command",
+                            "setup trust-command copy control had no direct accessible name",
+                        )
+                    setup_page.locator("#setupBack").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='1 / 4'")
+                    result.require(
+                        setup_page.locator("#setupNext").is_enabled(),
+                        "setup CA trust gate remained attached after navigating Back",
+                    )
+                    setup_page.locator("#setupNext").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='2 / 4'")
+                    setup_page.locator("#setupTrusted").check()
+                    setup_page.locator("#setupNext").click()
+                    setup_page.wait_for_function("document.querySelector('#setupStep')?.textContent.trim()==='3 / 4'")
+                    result.require(
+                        setup_page.locator("#setupScopeHost").get_attribute("aria-label") == "Scope host",
+                        "setup scope textbox had no direct accessible name",
+                    )
+                    setup_page.locator("#setupScopeHost").fill("example.com")
+                    setup_page.locator("#setupScopeAdd").click()
+                    deadline = time.monotonic() + 2.0
+                    while not held_scope and time.monotonic() < deadline:
+                        setup_page.wait_for_timeout(10)
+                    result.require(held_scope, "setup Add-to-scope did not issue its POST")
+                    result.require(
+                        setup_page.evaluate(
+                            """() => ['setupNext','setupBack','setupSkip','setupScopeAdd'].every(id=>{
+                              const el=document.querySelector('#'+id);
+                              return el?.disabled===true && el?.getAttribute('aria-busy')==='true';
+                            })"""
+                        ),
+                        "setup navigation/action controls were not locked while Add-to-scope was pending",
+                    )
+                    result.require(
+                        setup_page.locator("#setupScopeHost").is_disabled()
+                        and setup_page.locator("#setupScopeHost").get_attribute("aria-busy") == "true",
+                        "setup scope input remained editable while Add-to-scope was pending",
+                    )
+                    setup_page.keyboard.press("Escape")
+                    setup_page.wait_for_timeout(80)
+                    result.require(setup_page.locator("#setupModal").is_visible(), "Escape dismissed setup during a held action")
+                    setup_page.locator("#setupModal").click(position={"x": 5, "y": 5})
+                    setup_page.wait_for_timeout(80)
+                    result.require(setup_page.locator("#setupModal").is_visible(), "backdrop dismissed setup during a held action")
+                    held_scope[0].fulfill(status=200, content_type="application/json", body='{"ok":true}')
+                    setup_page.wait_for_function(
+                        """() => {
+                          const add=document.querySelector('#setupScopeAdd');
+                          const msg=document.querySelector('#setupScopeMsg')?.textContent||'';
+                          return add?.disabled===false && !add?.hasAttribute('aria-busy') && msg.includes('added example.com to scope');
+                        }""",
+                        timeout=10_000,
+                    )
+                    result.require(
+                        setup_page.locator("#setupNext").is_enabled()
+                        and setup_page.locator("#setupBack").is_enabled()
+                        and setup_page.locator("#setupSkip").is_enabled(),
+                        "setup navigation did not restore after Add-to-scope acknowledgement",
+                    )
+                    result.require(
+                        setup_page.locator("#setupScopeHost").is_enabled()
+                        and setup_page.locator("#setupScopeHost").get_attribute("aria-busy") is None,
+                        "setup scope input did not restore after Add-to-scope acknowledgement",
+                    )
+                    setup_page.wait_for_timeout(80)
+                    result.require(len(held_scope) == 1, "setup Add-to-scope issued duplicate POST requests")
+                    setup_page.locator("#setupSkip").click()
+                    setup_page.wait_for_selector("#setupModal", state="hidden", timeout=10_000)
+                finally:
+                    for route in held_scope:
+                        try:
+                            route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+                        except Exception:
+                            pass
+                    try:
+                        setup_page.unroute("**/api/scope", hold_scope_add)
+                    except Exception:
+                        pass
+                    setup_context.close()
+
+            result.run("setup Add-to-scope locks dismissal until acknowledgement", setup_action_ack_lock)
+
+            def custom_check_load_failure() -> None:
+                """A failed custom-check GET clears stale source and blocks writes."""
+                check_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                check_page = check_context.new_page()
+                check_page.set_default_timeout(10_000)
+                attach_observers(check_page, result, base_netloc, expected_console_errors=True)
+                check_id = "ui-audit-load-failure"
+                source = "def check(flow):\n    return []\n"
+                save_requests: List[str] = []
+                load_requests = {"count": 0}
+                created = False
+
+                def observe_requests(request: Any) -> None:
+                    if request.url.endswith("/api/checks/" + check_id) and request.method == "PUT":
+                        save_requests.append(request.url)
+
+                check_page.on("request", observe_requests)
+
+                def reject_check_load(route: Any) -> None:
+                    if route.request.method == "GET":
+                        load_requests["count"] += 1
+                        route.fulfill(status=503, content_type="application/json", body='{"error":"check source unavailable"}')
+                    else:
+                        route.continue_()
+
+                try:
+                    check_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(check_page)
+                    check_page.locator('.tab[data-tab="scanner"]').click()
+                    check_page.locator("#checksBtn").click()
+                    check_page.wait_for_selector("#checksModal", state="visible", timeout=10_000)
+                    check_page.locator("#checkNew").click()
+                    check_page.locator("#checkId").fill(check_id)
+                    check_page.locator("#checkSrc").fill(source)
+                    with check_page.expect_response(
+                        lambda response: response.url.endswith("/api/checks/" + check_id)
+                        and response.request.method == "PUT",
+                        timeout=10_000,
+                    ) as check_saved:
+                        check_page.locator("#checkSave").click()
+                    result.require(check_saved.value.ok, f"custom-check create returned {check_saved.value.status}")
+                    # Record the server acknowledgement before waiting on any
+                    # UI rendering so a later assertion cannot leak the row.
+                    created = True
+                    check_page.wait_for_function(
+                        "document.querySelector('#checkOut')?.textContent.includes('Saved')",
+                        timeout=10_000,
+                    )
+                    row = check_page.locator(f'#checksList .checks-custom[data-id="{check_id}"]')
+                    check_page.wait_for_selector(f'#checksList .checks-custom[data-id="{check_id}"]', timeout=10_000)
+                    row.locator(".checks-edit-target").click()
+                    check_page.wait_for_function("value=>document.querySelector('#checkSrc')?.value===value", arg=source)
+                    check_page.route(f"**/api/checks/{check_id}", reject_check_load)
+                    row.locator(".checks-edit-target").click()
+                    check_page.wait_for_selector("#checkOut [data-check-retry]", timeout=10_000)
+                    result.require(check_page.locator("#checkSrc").input_value() == "", "failed custom-check load retained stale source")
+                    result.require(
+                        check_page.evaluate(
+                            """() => ['checkTest','checkSave','checkDelete'].every(id=>document.querySelector('#'+id)?.disabled===true)"""
+                        ),
+                        "custom-check actions remained enabled after a failed load",
+                    )
+                    result.require(check_page.locator("#checkOut [data-check-retry]").is_visible(), "custom-check load failure did not expose Retry")
+                    result.require(
+                        check_page.locator("#checkOut").get_attribute("role") == "alert"
+                        and check_page.locator("#checkOut").get_attribute("aria-live") == "assertive",
+                        "custom-check load failure was not announced",
+                    )
+                    retry = check_page.locator("#checkOut [data-check-retry]")
+                    retry.focus()
+                    retry.press("Enter")
+                    retry_deadline = time.monotonic() + 2.0
+                    while load_requests["count"] < 2 and time.monotonic() < retry_deadline:
+                        check_page.wait_for_timeout(10)
+                    result.require(load_requests["count"] >= 2, "custom-check Retry did not issue another GET")
+                    check_page.wait_for_function(
+                        "document.activeElement?.matches('#checkOut [data-check-retry]')",
+                        timeout=10_000,
+                    )
+                    result.require(
+                        check_page.locator("#checkOut [data-check-retry]").evaluate("el => document.activeElement === el"),
+                        "keyboard Retry did not restore focus after a repeated custom-check load failure",
+                    )
+                    check_page.wait_for_timeout(120)
+                    result.require(len(save_requests) == 1, "failed custom-check load issued an unexpected save")
+                finally:
+                    try:
+                        check_page.unroute(f"**/api/checks/{check_id}", reject_check_load)
+                    except Exception:
+                        pass
+                    if created:
+                        try:
+                            cleanup_status = check_page.evaluate(
+                                """async id => {
+                                  const response = await fetch('/api/checks/'+encodeURIComponent(id), {method:'DELETE'});
+                                  return response.status;
+                                }""",
+                                check_id,
+                            )
+                            # A 404 means the UI already removed it while
+                            # recovering; all other non-success statuses are
+                            # real isolation failures and must be visible.
+                            if cleanup_status not in (200, 204, 404):
+                                raise RuntimeError(f"DELETE returned {cleanup_status}")
+                        except Exception as exc:
+                            result.failures.append(
+                                f"custom-check audit cleanup failed: {type(exc).__name__}: {exc}"
+                            )
+                    check_context.close()
+
+            result.run("custom Scanner check load failure clears stale source", custom_check_load_failure)
+
+            def allowlist_initial_failure() -> None:
+                """Initial allowlist failure must remain actionable and recover."""
+                allow_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                allow_page = allow_context.new_page()
+                allow_page.set_default_timeout(10_000)
+                attach_observers(allow_page, result, base_netloc, expected_console_errors=True)
+                calls = {"count": 0}
+
+                def fail_once(route: Any) -> None:
+                    if route.request.method != "GET":
+                        route.continue_()
+                        return
+                    calls["count"] += 1
+                    if calls["count"] == 1:
+                        route.fulfill(status=503, content_type="application/json", body='{"error":"allowlist unavailable"}')
+                    else:
+                        route.fulfill(status=200, content_type="application/json", body='{"entries":[],"clientIP":"127.0.0.1"}')
+
+                allow_page.route("**/api/allowlist", fail_once)
+                try:
+                    allow_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(allow_page)
+                    allow_page.locator('.tab[data-tab="settings"]').click()
+                    allow_page.locator('#setNav button[data-sec="api"]').click()
+                    allow_page.locator('#apiSub button[data-s="allowlist"]').click()
+                    allow_page.wait_for_selector("#allowListLoadState", state="visible", timeout=10_000)
+                    allow_page.wait_for_function(
+                        "document.querySelector('#allowListLoadState')?.textContent.includes('Retry')",
+                        timeout=10_000,
+                    )
+                    result.require(allow_page.locator("#allowListLoadState").get_attribute("role") == "status", "allowlist failure state is not announced")
+                    result.require("Retry" in allow_page.locator("#allowListLoadState").inner_text(), "initial allowlist failure did not expose Retry")
+                    allow_page.locator("#allowListLoadState [data-load-retry]").click()
+                    allow_page.wait_for_function(
+                        """() => {
+                          const el=document.querySelector('#allowListLoadState');
+                          return !!el && (getComputedStyle(el).display==='none' || !el.textContent.trim());
+                        }""",
+                        timeout=10_000,
+                    )
+                    result.require(calls["count"] >= 2, "allowlist Retry did not issue a second GET")
+
+                    # A failed mutation must replace an invalidated, still-held
+                    # initial GET with an authoritative reload and persistent
+                    # recovery feedback instead of leaving "Loading…" stuck.
+                    allow_page.unroute("**/api/allowlist", fail_once)
+                    held_gets: List[Any] = []
+                    mutation_gets = {"count": 0}
+
+                    def fail_add_during_load(route: Any) -> None:
+                        if route.request.method == "POST":
+                            route.fulfill(status=409, content_type="application/json", body='{"error":"allowlist audit rejected"}')
+                            return
+                        if route.request.method == "GET":
+                            mutation_gets["count"] += 1
+                            if mutation_gets["count"] == 1:
+                                held_gets.append(route)
+                            else:
+                                route.fulfill(status=200, content_type="application/json", body='{"entries":[],"clientIP":"127.0.0.1"}')
+                            return
+                        route.continue_()
+
+                    allow_page.route("**/api/allowlist", fail_add_during_load)
+                    try:
+                        allow_page.locator('#apiSub button[data-s="allowlist"]').click()
+                        held_deadline = time.monotonic() + 2.0
+                        while not held_gets and time.monotonic() < held_deadline:
+                            allow_page.wait_for_timeout(10)
+                        result.require(held_gets, "allowlist concurrency fixture did not hold the initial GET")
+                        allow_page.locator("#allowCIDR").fill("127.0.0.253/32")
+                        allow_page.locator("#allowLabel").fill("ui-audit-rejected")
+                        allow_page.locator("#allowAdd").click()
+                        allow_page.wait_for_function(
+                            "document.querySelector('#allowListLoadState')?.textContent.includes('Allowlist update failed')",
+                            timeout=10_000,
+                        )
+                        result.require(
+                            "Refresh list" in allow_page.locator("#allowListLoadState").inner_text(),
+                            "failed allowlist mutation did not expose safe persistent recovery",
+                        )
+                        result.require(allow_page.locator("#allowAdd").is_enabled(), "allowlist controls stayed locked after mutation failure")
+                        held_gets[0].fulfill(status=200, content_type="application/json", body='{"entries":[],"clientIP":"127.0.0.1"}')
+                        allow_page.wait_for_timeout(80)
+                        result.require(
+                            "Allowlist update failed" in allow_page.locator("#allowListLoadState").inner_text(),
+                            "stale held allowlist GET erased the mutation failure",
+                        )
+                        allow_page.locator("#allowListLoadState [data-load-retry]").click()
+                        allow_page.wait_for_function(
+                            "getComputedStyle(document.querySelector('#allowListLoadState')).display==='none'",
+                            timeout=10_000,
+                        )
+                    finally:
+                        for pending in held_gets:
+                            try:
+                                pending.fulfill(status=200, content_type="application/json", body='{"entries":[],"clientIP":"127.0.0.1"}')
+                            except Exception:
+                                pass
+                        allow_page.unroute("**/api/allowlist", fail_add_during_load)
+                finally:
+                    try:
+                        allow_page.unroute("**/api/allowlist", fail_once)
+                    except Exception:
+                        pass
+                    allow_context.close()
+
+            result.run("initial allowlist failure exposes persistent Retry", allowlist_initial_failure)
+
             def seed_flow() -> None:
                 status, _ = proxy_request(proxy, fixture_base + "/audit/seed?host=example")
                 result.require(status == 200, f"seed request returned {status}")
@@ -687,6 +1028,63 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
 
             result.run("Scanner real pending-to-success lifecycle", scanner_run)
 
+            def scanner_empty_results_restore_focus() -> None:
+                """Removing the focused issue must leave focus on a stable action."""
+                scan_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                scan_page = scan_context.new_page()
+                scan_page.set_default_timeout(10_000)
+                attach_observers(scan_page, result, base_netloc)
+                empty_results = {"value": False}
+
+                def serve_scanner_issues(route: Any) -> None:
+                    if route.request.method != "GET":
+                        route.continue_()
+                        return
+                    issues = [] if empty_results["value"] else [{
+                        "id": 9001,
+                        "flowId": 0,
+                        "severity": "Info",
+                        "title": "UI audit focus issue",
+                        "target": "https://example.com/",
+                        "detail": "Generic accessibility fixture.",
+                        "evidence": "",
+                        "fix": "",
+                    }]
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps({"issues": issues}),
+                    )
+
+                scan_page.route("**/api/scanner/issues*", serve_scanner_issues)
+                try:
+                    scan_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(scan_page)
+                    scan_page.locator('.tab[data-tab="scanner"]').click()
+                    scan_page.wait_for_selector("#scanList .scan-item", timeout=10_000)
+                    issue = scan_page.locator("#scanList .scan-item").first
+                    issue.focus()
+                    result.require(
+                        issue.evaluate("el => document.activeElement === el"),
+                        "scanner issue fixture could not receive keyboard focus",
+                    )
+                    empty_results["value"] = True
+                    scan_page.evaluate("() => import('./js/scanner.js').then(module => module.loadIssues())")
+                    scan_page.wait_for_selector("#scanList .state-empty", timeout=10_000)
+                    scan_page.wait_for_function("document.activeElement?.id==='scanRun'", timeout=10_000)
+                    result.require(
+                        scan_page.locator("#scanRun").evaluate("el => document.activeElement === el"),
+                        "scanner did not restore focus when its focused issue disappeared",
+                    )
+                finally:
+                    try:
+                        scan_page.unroute("**/api/scanner/issues*", serve_scanner_issues)
+                    except Exception:
+                        pass
+                    scan_context.close()
+
+            result.run("Scanner empty results restore focused issue context", scanner_empty_results_restore_focus)
+
             def auxiliary_reversible_surfaces() -> None:
                 # Exercise auxiliary paths and validators with only reversible
                 # mutations in the isolated project. Never enable system proxy,
@@ -898,6 +1296,11 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 )
                 allow_row = page.locator("#allowList tr").filter(has_text="127.0.0.254/32").first
                 result.require(allow_row.count() == 1, "audit allowlist entry was not listed")
+                result.require(
+                    allow_row.locator("[data-allow-del]").get_attribute("aria-label")
+                    == "Remove allowlist entry 127.0.0.254/32",
+                    "allowlist Remove action did not identify its entry",
+                )
                 allow_row.locator("[data-allow-del]").click()
                 page.wait_for_selector("#confirmModal", state="visible", timeout=10_000)
                 page.locator("#confirmOk").click()
@@ -905,6 +1308,293 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 result.require(page.locator("#sysProxyToggle").get_attribute("aria-pressed") == "false", "read-only audit changed the system proxy")
 
             result.run("auxiliary surfaces, reversible actions, and validators", auxiliary_reversible_surfaces)
+
+            def rejected_scope_and_rule_mutations() -> None:
+                # Create generic rows in the isolated project, then hold both
+                # mutation acknowledgements and reject them. This exercises the
+                # real DOM event path and proves that a newer draft is not
+                # removed by an older rejected PUT when DELETE is queued.
+                def wait_route(routes: List[Any], label: str) -> None:
+                    deadline = time.monotonic() + 2.0
+                    while not routes and time.monotonic() < deadline:
+                        page.wait_for_timeout(10)
+                    result.require(routes, f"{label} request was not issued")
+
+                def wait_toast(text: str, label: str) -> None:
+                    page.wait_for_function(
+                        "needle => [...document.querySelectorAll('#toast .toast-item')].some(el=>el.textContent.includes(needle))",
+                        arg=text,
+                        timeout=10_000,
+                    )
+                    result.require(text in page.locator("#toast").inner_text(), f"{label} error feedback was not visible")
+                    error_toast = page.locator("#toast .toast-item").filter(has_text=text).last
+                    result.require("error" in (error_toast.get_attribute("class") or "").split(), f"{label} rejection was not announced as an error")
+
+                case_http_start = len(result.http_errors)
+                expected_rejection_items: List[str] = []
+                settled_rejection_routes: set[int] = set()
+
+                def absorb_expected_rejections() -> None:
+                    # Only classify response records emitted by this case.
+                    # Keep earlier identical records and all console errors;
+                    # exact browser console wording is not a stable contract.
+                    remaining = list(expected_rejection_items)
+                    for index in range(len(result.http_errors) - 1, case_http_start - 1, -1):
+                        item = result.http_errors[index]
+                        if item in remaining:
+                            remaining.remove(item)
+                            result.expected_http_errors.append(item)
+                            del result.http_errors[index]
+
+                scope_put: List[Any] = []
+                scope_delete: List[Any] = []
+
+                def reject_scope(route: Any) -> None:
+                    if route.request.method == "PUT":
+                        scope_put.append(route)
+                    elif route.request.method == "DELETE":
+                        scope_delete.append(route)
+                    else:
+                        route.continue_()
+
+                def fulfill_rejection(route: Any, label: str) -> None:
+                    route_key = id(route)
+                    if route_key in settled_rejection_routes:
+                        return
+                    item = f"409 {route.request.method} {route.request.url}"
+                    # The corresponding Chromium network-console error is
+                    # expected only for this exact injected request URL.
+                    result.expected_console_request_urls.append(route.request.url)
+                    route.fulfill(status=409, content_type="application/json", body=f'{{"error":"{label} audit rejected"}}')
+                    settled_rejection_routes.add(route_key)
+                    expected_rejection_items.append(item)
+
+                def cleanup_scope() -> None:
+                    if not scope_id:
+                        return
+                    try:
+                        row = page.locator(f'#scopeBody tr[data-id="{scope_id}"]')
+                        if row.count():
+                            row.locator("[data-del]").click()
+                            page.wait_for_function(
+                                "id => !document.querySelector(`#scopeBody tr[data-id=\\\"${id}\\\"]`)",
+                                arg=scope_id,
+                                timeout=10_000,
+                            )
+                    except Exception as exc:
+                        result.failures.append(
+                            f"scope audit cleanup failed for {scope_id}: {type(exc).__name__}: {exc}"
+                        )
+
+                page.route("**/api/scope/*", reject_scope)
+                scope_id = None
+                scope_host = "ui-audit-scope.example.com"
+                try:
+                    page.locator('.tab[data-tab="settings"]').click()
+                    page.locator('#setNav button[data-sec="scope"]').click()
+                    page.wait_for_selector('.set-sec[data-sec="scope"]', state="visible", timeout=10_000)
+                    result.require(
+                        page.locator(f'#scopeBody input[data-k="host"][value="{scope_host}"]').count() == 0,
+                        "isolated scope fixture already contained the audit marker",
+                    )
+                    page.locator("#newScopeAction").select_option("include")
+                    page.locator("#newScopeHost").fill(scope_host)
+                    page.locator("#newScopePath").fill("/audit-scope")
+                    with page.expect_response(
+                        lambda response: response.url.endswith("/api/scope") and response.request.method == "POST",
+                        timeout=10_000,
+                    ) as scope_created:
+                        page.locator("#addScopeBtn").click()
+                    scope_payload = scope_created.value.json()
+                    scope_id = str(scope_payload.get("id") or 0)
+                    result.require(scope_id != "0", "scope create response did not return its authoritative id")
+                    page.wait_for_selector(f'#scopeBody tr[data-id="{scope_id}"]', timeout=10_000)
+                    scope_row = page.locator(f'#scopeBody tr[data-id="{scope_id}"]')
+                    result.require(scope_row.count() == 1, "audit scope rule was not created")
+                    result.require(scope_row.locator('[data-k="host"]').input_value() == scope_host, "scope create selected the wrong row")
+                    result.require(
+                        scope_row.locator("[data-del]").get_attribute("aria-label")
+                        == f"Delete scope rule {scope_id}",
+                        "scope Delete action did not identify its rule",
+                    )
+                    scope_row.locator('[data-k="host"]').fill("changed.example.com")
+                    scope_row.locator('[data-k="host"]').blur()
+                    wait_route(scope_put, "scope PUT")
+                    page.locator(f'#scopeBody tr[data-id="{scope_id}"] [data-del]').click()
+                    result.require(page.locator(f'#scopeBody tr[data-id="{scope_id}"]').count() == 1, "rejected scope DELETE removed the row before acknowledgement")
+                    fulfill_rejection(scope_put[0], "scope")
+                    wait_route(scope_delete, "queued scope DELETE")
+                    fulfill_rejection(scope_delete[0], "scope")
+                    wait_toast("scope audit rejected", "scope")
+                    page.wait_for_function(
+                        "id => document.querySelector(`#scopeBody tr[data-id=\\\"${id}\\\"] [data-k=\\\"host\\\"]`)?.value==='ui-audit-scope.example.com'",
+                        arg=scope_id,
+                        timeout=10_000,
+                    )
+                    result.require(page.locator(f'#scopeBody tr[data-id="{scope_id}"]').count() == 1, "rejected scope DELETE did not restore the authoritative row")
+                    page.wait_for_function(
+                        "id => document.activeElement === document.querySelector(`#scopeBody tr[data-id=\"${id}\"] [data-del]`)",
+                        arg=scope_id,
+                        timeout=10_000,
+                    )
+                    result.require(
+                        page.locator(f'#scopeBody tr[data-id="{scope_id}"] [data-del]').evaluate("el => document.activeElement === el"),
+                        "rejected scope DELETE did not restore focus to its Delete action",
+                    )
+                    absorb_expected_rejections()
+                finally:
+                    for pending in scope_put + scope_delete:
+                        try:
+                            if id(pending) not in settled_rejection_routes:
+                                fulfill_rejection(pending, "scope")
+                        except Exception:
+                            result.failures.append("scope audit cleanup could not settle a held rejection route")
+                    try:
+                        page.unroute("**/api/scope/*", reject_scope)
+                    except Exception as exc:
+                        result.failures.append(f"scope audit route cleanup failed: {type(exc).__name__}: {exc}")
+                    cleanup_scope()
+                    absorb_expected_rejections()
+
+                rule_put: List[Any] = []
+                rule_delete: List[Any] = []
+
+                def reject_rule(route: Any) -> None:
+                    if route.request.method == "PUT":
+                        rule_put.append(route)
+                    elif route.request.method == "DELETE":
+                        rule_delete.append(route)
+                    else:
+                        route.continue_()
+
+                def cleanup_rule() -> None:
+                    if not rule_id:
+                        return
+                    try:
+                        row = page.locator(f'#rulesBody tr[data-id="{rule_id}"]')
+                        if row.count():
+                            row.locator("[data-del]").click()
+                            page.wait_for_function(
+                                "id => !document.querySelector(`#rulesBody tr[data-id=\\\"${id}\\\"]`)",
+                                arg=rule_id,
+                                timeout=10_000,
+                            )
+                    except Exception as exc:
+                        result.failures.append(
+                            f"rule audit cleanup failed for {rule_id}: {type(exc).__name__}: {exc}"
+                        )
+
+                page.route("**/api/rules/*", reject_rule)
+                rule_id = None
+                rule_match = "^X-UiAudit:"
+                try:
+                    page.locator('.tab[data-tab="intercept"]').click()
+                    details = page.locator("details.icpt-mr")
+                    if not details.get_attribute("open"):
+                        details.locator("summary").click()
+                    page.wait_for_selector("#rulesBody", state="visible", timeout=10_000)
+                    page.locator("#newRuleType").select_option("req-header")
+                    result.require(
+                        page.locator('#rulesBody input[data-k="match"]').evaluate_all(
+                            "(inputs, marker) => !inputs.some(input => input.value === marker)",
+                            rule_match,
+                        ),
+                        "isolated Match & Replace fixture already contained the audit marker",
+                    )
+                    page.locator("#newRuleMatch").fill(rule_match)
+                    page.locator("#newRuleReplace").fill("X-UiAudit: clean")
+                    with page.expect_response(
+                        lambda response: response.url.endswith("/api/rules") and response.request.method == "POST",
+                        timeout=10_000,
+                    ) as rule_created:
+                        page.locator("#addRuleBtn").click()
+                    rule_payload = rule_created.value.json()
+                    rule_id = str(rule_payload.get("id") or 0)
+                    result.require(rule_id != "0", "rule create response did not return its authoritative id")
+                    page.wait_for_selector(f'#rulesBody tr[data-id="{rule_id}"]', timeout=10_000)
+                    rule_row = page.locator(f'#rulesBody tr[data-id="{rule_id}"]')
+                    result.require(rule_row.count() == 1, "audit Match & Replace rule was not created")
+                    result.require(rule_row.locator('[data-k="match"]').input_value() == rule_match, "rule create selected the wrong row")
+                    result.require(
+                        rule_row.locator("[data-del]").get_attribute("aria-label")
+                        == f"Delete interception rule {rule_id}",
+                        "Match & Replace Delete action did not identify its rule",
+                    )
+                    rule_row.locator('[data-k="match"]').fill("^X-UiAudit-Changed:")
+                    rule_row.locator('[data-k="match"]').blur()
+                    wait_route(rule_put, "rule PUT")
+                    page.locator(f'#rulesBody tr[data-id="{rule_id}"] [data-del]').click()
+                    result.require(page.locator(f'#rulesBody tr[data-id="{rule_id}"]').count() == 1, "rejected rule DELETE removed the row before acknowledgement")
+                    fulfill_rejection(rule_put[0], "rule")
+                    wait_route(rule_delete, "queued rule DELETE")
+                    fulfill_rejection(rule_delete[0], "rule")
+                    wait_toast("rule audit rejected", "rule")
+                    page.wait_for_function(
+                        "id => document.querySelector(`#rulesBody tr[data-id=\\\"${id}\\\"] [data-k=\\\"match\\\"]`)?.value==='^X-UiAudit:'",
+                        arg=rule_id,
+                        timeout=10_000,
+                    )
+                    result.require(page.locator(f'#rulesBody tr[data-id="{rule_id}"]').count() == 1, "rejected rule DELETE did not restore the authoritative row")
+                    page.wait_for_function(
+                        "id => document.activeElement === document.querySelector(`#rulesBody tr[data-id=\"${id}\"] [data-del]`)",
+                        arg=rule_id,
+                        timeout=10_000,
+                    )
+                    result.require(
+                        page.locator(f'#rulesBody tr[data-id="{rule_id}"] [data-del]').evaluate("el => document.activeElement === el"),
+                        "rejected rule DELETE did not restore focus to its Delete action",
+                    )
+                    absorb_expected_rejections()
+                finally:
+                    for pending in rule_put + rule_delete:
+                        try:
+                            if id(pending) not in settled_rejection_routes:
+                                fulfill_rejection(pending, "rule")
+                        except Exception:
+                            result.failures.append("rule audit cleanup could not settle a held rejection route")
+                    try:
+                        page.unroute("**/api/rules/*", reject_rule)
+                    except Exception as exc:
+                        result.failures.append(f"rule audit route cleanup failed: {type(exc).__name__}: {exc}")
+                    cleanup_rule()
+                    absorb_expected_rejections()
+
+            result.run("rejected Scope and Match & Replace PUT/DELETE ownership", rejected_scope_and_rule_mutations)
+
+            def relative_project_path_is_ui_only() -> None:
+                page.locator('.tab[data-tab="settings"]').click()
+                switch_requests: List[Any] = []
+
+                def block_project_switch(route: Any) -> None:
+                    switch_requests.append(route)
+                    route.fulfill(status=400, content_type="application/json", body='{"error":"switch must not be attempted"}')
+
+                page.route("**/api/project/switch", block_project_switch)
+                try:
+                    page.locator("#projBadge").click()
+                    page.wait_for_selector("#projModal", state="visible", timeout=10_000)
+                    page.locator("#pmNew").fill("ui-audit-relative")
+                    page.locator("#pmNewPath").fill("relative/audit")
+                    page.locator("#pmNewBtn").click()
+                    page.wait_for_function(
+                        "needle => [...document.querySelectorAll('#toast .toast-item')].some(el=>el.textContent.includes(needle))",
+                        arg="absolute folder path",
+                        timeout=10_000,
+                    )
+                    page.wait_for_function(
+                        "document.querySelector('#pmSwitchNote')?.textContent.includes('absolute folder path')",
+                        timeout=10_000,
+                    )
+                    result.require(page.locator("#pmNewPath").get_attribute("aria-invalid") == "true", "relative project path was not associated with its field")
+                    result.require(page.locator("#pmSwitchNote").get_attribute("role") == "alert", "relative project path error was not persistently announced")
+                    result.require(not switch_requests, "relative project path attempted a project switch request")
+                finally:
+                    page.unroute("**/api/project/switch", block_project_switch)
+                    if page.locator("#projModal").is_visible():
+                        page.locator("#pmClose").click()
+                        page.wait_for_selector("#projModal", state="hidden", timeout=10_000)
+
+            result.run("relative project path validation stays UI-only", relative_project_path_is_ui_only)
 
             def intruder_run() -> None:
                 page.locator('.tab[data-tab="intruder"]').click()
@@ -975,6 +1665,14 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                             pending_route.continue_()
                         except Exception:
                             pass
+                    # A failed assertion must not leave the fixture request
+                    # blocked across later cases. Route continuation above is
+                    # the normal release; the bounded join covers races where
+                    # the upstream request settled just after the assertion.
+                    if thread.is_alive():
+                        thread.join(timeout=22)
+                    if thread.is_alive():
+                        result.failures.append("Forward audit cleanup left its fixture request thread alive")
                     try:
                         page.unroute(f"**/api/intercept/{request_id}/forward", delayed_forward)
                     except (UnboundLocalError, TypeError):
@@ -1031,6 +1729,10 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                             pending_route.continue_()
                         except Exception:
                             pass
+                    if thread.is_alive():
+                        thread.join(timeout=22)
+                    if thread.is_alive():
+                        result.failures.append("Drop audit cleanup left its fixture response thread alive")
                     if request_id and delayed_drop:
                         try:
                             page.unroute(f"**/api/intercept/response/{request_id}/drop", delayed_drop)

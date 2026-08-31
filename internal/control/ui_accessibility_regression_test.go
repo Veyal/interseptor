@@ -40,6 +40,7 @@ func TestUIDynamicSecurityEditorsHaveAccessibleNames(t *testing.T) {
 			`aria-label="Scope rule ${r.id} host"`,
 			`aria-label="Scope rule ${r.id} path"`,
 			`aria-label="Scope rule ${r.id} scheme"`,
+			`aria-label="Delete scope rule ${r.id}"`,
 			`aria-label="WebSocket replay message for`,
 		},
 		"js/intercept.js": {
@@ -47,6 +48,10 @@ func TestUIDynamicSecurityEditorsHaveAccessibleNames(t *testing.T) {
 			`aria-label="Interception rule ${r.id} type"`,
 			`aria-label="Interception rule ${r.id} match"`,
 			`aria-label="Interception rule ${r.id} replacement"`,
+			`aria-label="Delete interception rule ${r.id}"`,
+		},
+		"js/apipanel.js": {
+			`aria-label="Remove allowlist entry ${escAttr(e.cidr)}"`,
 		},
 		"js/findings.js": {
 			`aria-label="Finding impact"`,

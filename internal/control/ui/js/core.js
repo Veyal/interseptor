@@ -1239,7 +1239,14 @@ export function closeModal(modalEl){
     }
     return;
   }
-  if(prev&&prev.isConnected&&visibleFocusable(prev)&&typeof prev.focus==='function')prev.focus();
+  if(prev&&prev!==document.body&&prev!==document.documentElement&&prev.isConnected&&visibleFocusable(prev)&&typeof prev.focus==='function'){
+    prev.focus();
+    return;
+  }
+  // Auto-opened dialogs have no meaningful invoking control. Return keyboard
+  // users to the selected workstation tab instead of leaving focus on body.
+  const fallback=document.querySelector('.tab[aria-selected="true"]:not([disabled])');
+  fallback?.focus({preventScroll:true});
 }
 function dismissTopModal(){
   const entry=topModal();

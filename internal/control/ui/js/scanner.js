@@ -99,6 +99,9 @@ const checkEndpoint='/api/checks';
 let checkLoadEpoch=0;
 let checkActionEpoch=0;
 let checkActionBusy=false;
+let checkEditorReady=false;
+let checkEditorLoading=false;
+let checkRestoreFocus=false;
 let checkToggleEpoch=0;
 let checkListEpoch=0;
 let checkToggleBusy=false;
@@ -106,14 +109,20 @@ let checkPacksLoadEpoch=0;
 let checkPackMutationEpoch=0;
 let checkPackMutationBusy=false;
 let checkDraftEpoch=0;
+function syncCheckEditorControls(){
+  const test=$('#checkTest'),save=$('#checkSave'),del=$('#checkDelete');
+  const blocked=checkActionBusy||checkEditorLoading||!checkEditorReady;
+  [test,save].forEach(button=>{if(button){button.disabled=blocked;button.setAttribute('aria-busy',checkActionBusy?'true':'false');}});
+  ['checkId','checkSrc'].forEach(id=>{const control=$('#'+id);if(control)control.disabled=blocked;});
+  const fresh=$('#checkNew');if(fresh)fresh.disabled=checkActionBusy;
+  if(del){del.disabled=blocked||(checkBuiltin&&!checkOverridden);del.setAttribute('aria-busy',checkActionBusy?'true':'false');}
+}
 function setCheckActionState(kind,stateName){
   const test=$('#checkTest'),save=$('#checkSave'),del=$('#checkDelete');
   if(!test||!save)return;
   const busy=stateName==='pending';
   checkActionBusy=busy;
-  [test,save].forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',busy?'true':'false');});
-  ['checkId','checkSrc','checkNew'].forEach(id=>{const control=$('#'+id);if(control)control.disabled=busy;});
-  if(del){del.disabled=busy||(checkBuiltin&&!checkOverridden);del.setAttribute('aria-busy',busy&&kind==='delete'?'true':'false');}
+  syncCheckEditorControls();
   test.classList.remove('is-pending','is-success','is-error');
   save.classList.remove('is-pending','is-success','is-error');
   if(stateName!=='idle'){
@@ -137,6 +146,37 @@ function cancelCheckAction(){
   if(checkActionBusy)setCheckActionState('other','idle');
 }
 function checkSetEditorReadonly(on){const el=$('#checkId');if(el)el.readOnly=!!on;}
+function setCheckOutcome(out,html,kind='status'){
+  if(!out)return;
+  const role=kind==='error'?'alert':'status';
+  const live=kind==='error'?'assertive':'polite';
+  out.setAttribute('role',role);
+  out.setAttribute('aria-live',live);
+  out.innerHTML=html;
+}
+function restoreCheckEditorFocus(target){
+  if(!checkRestoreFocus||!target)return;
+  checkRestoreFocus=false;
+  target.focus({preventScroll:true});
+}
+function setCheckEditorLoadState(stateName,id,error,retry){
+  checkEditorLoading=stateName==='loading';
+  checkEditorReady=stateName==='ready';
+  const out=$('#checkOut');
+  if(out){
+    out.setAttribute('aria-busy',checkEditorLoading?'true':'false');
+    if(stateName==='loading'){
+      setCheckOutcome(out,'<div class="check-status check-status-pending">Loading check <b>'+esc(id)+'</b>…</div>');
+    }else if(stateName==='error'){
+      setCheckOutcome(out,'<div class="check-status check-status-error">Couldn\'t load <b>'+esc(id)+'</b>: '+esc(error||'request failed')+' <button type="button" class="btn xs" data-check-retry>Retry</button></div>','error');
+      const button=out.querySelector('[data-check-retry]');
+      if(button&&retry)button.onclick=event=>retry({restoreFocus:event.detail===0});
+      if(checkRestoreFocus&&button){checkRestoreFocus=false;button.focus({preventScroll:true});}
+    }
+  }
+  syncCheckEditorControls();
+  if(stateName==='ready')restoreCheckEditorFocus($('#checkId')||out);
+}
 function checkSetMode(mode){
   checkMode=mode;
   const seg=$('#checkModeSeg');
@@ -304,109 +344,126 @@ function updateCheckDeleteLabel(){
   }else{
     btn.innerHTML=icon('trash')+' Delete';
     btn.title='Delete this custom check';
-    btn.disabled=false;
   }
+  syncCheckEditorControls();
 }
-export async function loadBuiltinCheck(id,{preserveAction=false}={}){
+export async function loadBuiltinCheck(id,{preserveAction=false,restoreFocus=false}={}){
   const epoch=++checkLoadEpoch;
   checkDraftEpoch++;
+  checkEditorReady=false;checkEditorLoading=true;
+  checkRestoreFocus=!!restoreFocus;
   if(!preserveAction)cancelCheckAction();
   checkBuiltin=true;checkSelId=id;refreshCheckEditorMode();
+  $('#checkId').value=id;checkSetEditorReadonly(true);
+  $('#checkSrc').value='';
+  setCheckEditorLoadState('loading',id);
   try{
     const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
     if(epoch!==checkLoadEpoch||checkSelId!==id||!checkBuiltin)return;
     checkOverridden=!!d.overridden;
     $('#checkId').value=id;checkSetEditorReadonly(true);
     $('#checkSrc').value=d.source||'';
+    setCheckEditorLoadState('ready',id);
     const note=checkOverridden?'your Starlark override is active':'edit & Save to write ~/.interseptor/checks/'+id+'.star';
-    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Built-in <b>'+esc(id)+'</b> — '+note+'</div>';
+    setCheckOutcome($('#checkOut'),'<div class="check-status check-status-pending">Built-in <b>'+esc(id)+'</b> — '+note+'</div>');
     updateCheckDeleteLabel();
     markChecksSelected($('#checksList'));
-  }catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&checkBuiltin)toast(e.message);}
+  }catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&checkBuiltin){setCheckEditorLoadState('error',id,e.message,({restoreFocus=false}={})=>loadBuiltinCheck(id,{restoreFocus}));}}
 }
-export async function loadCheck(id){
+export async function loadCheck(id,{restoreFocus=false}={}){
   const epoch=++checkLoadEpoch;
   checkDraftEpoch++;
+  checkEditorReady=false;checkEditorLoading=true;
+  checkRestoreFocus=!!restoreFocus;
   cancelCheckAction();
   checkBuiltin=false;checkOverridden=false;checkSelId=id;refreshCheckEditorMode();
+  $('#checkId').value=id;checkSetEditorReadonly(false);
+  $('#checkSrc').value='';
+  setCheckEditorLoadState('loading',id);
   try{const d=await api(checkEndpoint+'/'+encodeURIComponent(id));
     if(epoch!==checkLoadEpoch||checkSelId!==id||checkBuiltin)return;
     $('#checkId').value=id;checkSetEditorReadonly(false);
     $('#checkSrc').value=d.source||'';
-    $('#checkOut').innerHTML='<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> (passive). Edit on <b>Code</b>, then Save.</div>';
+    setCheckEditorLoadState('ready',id);
+    setCheckOutcome($('#checkOut'),'<div class="check-status check-status-pending">Loaded <b>'+esc(id)+'</b> (passive). Edit on <b>Code</b>, then Save.</div>');
     updateCheckDeleteLabel();
-    markChecksSelected($('#checksList'));}catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&!checkBuiltin)toast(e.message);}
+    markChecksSelected($('#checksList'));}catch(e){if(epoch===checkLoadEpoch&&checkSelId===id&&!checkBuiltin){setCheckEditorLoadState('error',id,e.message,({restoreFocus=false}={})=>loadCheck(id,{restoreFocus}));}}
 }
 export function checkNew(){
   checkLoadEpoch++;
   checkDraftEpoch++;
   cancelCheckAction();
+  checkEditorLoading=false;checkEditorReady=true;
+  checkRestoreFocus=false;
   checkBuiltin=false;checkOverridden=false;checkSelId=null;refreshCheckEditorMode();
   checkSetEditorReadonly(false);
   $('#checkId').value='';
   $('#checkSrc').value = "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
-  $('#checkOut').innerHTML='<div class="check-status check-status-pending">New passive check — set an id, write Starlark on <b>Code</b>, Test, then Save.</div>';$('#checkId').focus();
+  setCheckOutcome($('#checkOut'),'<div class="check-status check-status-pending">New passive check — set an id, write Starlark on <b>Code</b>, Test, then Save.</div>');$('#checkId').focus();
   updateCheckDeleteLabel();
   markChecksSelected($('#checksList'));
 }
 export async function checkTest(){
   if(checkActionBusy)return;
+  if(checkEditorLoading||!checkEditorReady)return;
   const epoch=++checkActionEpoch,selection=checkSelId;
   const draftEpoch=checkDraftEpoch;
   const source=$('#checkSrc').value,flowId=state.selId||0;
   setCheckActionState('test','pending');
-  const out=$('#checkOut');out.innerHTML='<div class="check-status check-status-pending">running…</div>';
+  const out=$('#checkOut');setCheckOutcome(out,'<div class="check-status check-status-pending">running…</div>');
   try{const r=await api(checkEndpoint+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source,flowId})});
     if(epoch!==checkActionEpoch||selection!==checkSelId)return;
     if(draftEpoch!==checkDraftEpoch)return;
-    if((state.selId||0)!==flowId){out.innerHTML='<div class="check-status check-status-pending">Test result ignored — selected flow changed. Test again.</div>';setCheckActionState('test','idle');return;}
-    if(r.error){out.innerHTML='<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>';setCheckActionState('test','error');resetCheckAction('test',1000,epoch);return;}
+    if((state.selId||0)!==flowId){setCheckOutcome(out,'<div class="check-status check-status-pending">Test result ignored — selected flow changed. Test again.</div>');setCheckActionState('test','idle');return;}
+    if(r.error){setCheckOutcome(out,'<div class="check-status check-status-error"><b>Compile/runtime error</b><pre>'+esc(r.error)+'</pre></div>','error');setCheckActionState('test','error');resetCheckAction('test',1000,epoch);return;}
     // Passive checks return {findings:[...]} (testCheck in internal/control/checks.go)
     // — zero, one, or many findings on the tested flow.
     const findings=r.findings||[];
     if(!findings.length){
       const note=r.note||'no finding';
-      out.innerHTML=`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`;
+      setCheckOutcome(out,`<div class="check-status check-status-ok"><div class="hint">${esc(note)}</div><div style="color:var(--accent);margin-top:4px">✓ No finding — check compiles &amp; runs.</div></div>`);
       setCheckActionState('test','success');resetCheckAction('test',800,epoch);
       return;
     }
     const note='finding'+(findings.length===1?'':'s')+' on flow #'+(r.flowId||'?');
-    out.innerHTML=`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}</div>`
+    setCheckOutcome(out,`<div class="check-status check-status-finding"><div class="hint" style="margin-bottom:6px">${esc(note)}</div>`
       +findings.map(f=>`<div><span class="sev ${escAttr(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}${f.evidence?' <span class="hint">— '+esc(f.evidence)+'</span>':''}</div>`).join('')
-      +`</div>`;
+      +`</div>`);
     setCheckActionState('test','success');resetCheckAction('test',800,epoch);
   }catch(e){
     if(epoch!==checkActionEpoch||selection!==checkSelId||draftEpoch!==checkDraftEpoch)return;
-    if((state.selId||0)!==flowId){out.innerHTML='<div class="check-status check-status-pending">Test result ignored — selected flow changed. Test again.</div>';setCheckActionState('test','idle');return;}
-    out.innerHTML='<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>';
+    if((state.selId||0)!==flowId){setCheckOutcome(out,'<div class="check-status check-status-pending">Test result ignored — selected flow changed. Test again.</div>');setCheckActionState('test','idle');return;}
+    setCheckOutcome(out,'<div class="check-status check-status-error"><b>Request failed</b><pre>'+esc(e.message)+'</pre></div>','error');
     setCheckActionState('test','error');resetCheckAction('test',1000,epoch);
   }
 }
 export async function checkSave(){
   if(checkActionBusy)return;
+  if(checkEditorLoading||!checkEditorReady)return;
   const id=$('#checkId').value.trim();if(!id){toast('set a check id first');return;}
   const source=$('#checkSrc').value;
   const epoch=++checkActionEpoch,selection=checkSelId;
   const draftEpoch=checkDraftEpoch;
   setCheckActionState('save','pending');
   const out=$('#checkOut');
-  out.innerHTML='<div class="check-status check-status-pending">saving…</div>';
+  setCheckOutcome(out,'<div class="check-status check-status-pending">saving…</div>');
   try{await api(checkEndpoint+'/'+encodeURIComponent(id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({source})});
     loadChecksList();
     if(epoch!==checkActionEpoch||selection!==checkSelId)return;
     if(draftEpoch!==checkDraftEpoch)return;
     checkOverridden=checkBuiltin||checkOverridden;
-    out.innerHTML='<div class="check-status check-status-ok">Saved ✓ — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>';
+    setCheckOutcome(out,'<div class="check-status check-status-ok">Saved ✓ — runs on the next passive scan'+(checkBuiltin?' (replaces built-in)':'')+'.</div>');
     updateCheckDeleteLabel();
     setCheckActionState('save','success');resetCheckAction('save',800,epoch);}
   catch(e){
     if(epoch!==checkActionEpoch)return;
-    out.innerHTML='<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>';
+    setCheckOutcome(out,'<div class="check-status check-status-error"><b>Save failed</b><pre>'+esc(e.message)+'</pre></div>','error');
     setCheckActionState('save','error');resetCheckAction('save',1000,epoch);
   }
 }
 export async function checkDelete(){
   if(checkActionBusy)return;
+  if(checkEditorLoading||!checkEditorReady)return;
   const id=$('#checkId').value.trim();if(!id)return;
   if(checkBuiltin&&!checkOverridden){toast('no override saved — nothing to revert');return;}
   const label=checkBuiltin?'Revert override for built-in check':'Delete check';
@@ -683,9 +740,10 @@ export function scanGroups(){
 export function renderScan(){
   const list=$('#scanList');
   const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||'';
+  const focusedIssue=!!document.activeElement?.closest?.('#scanList .scan-item');
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
   const focusedTitle=Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
-  if(!scanState.issues.length){$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';return;}
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
   const groups=scanState.groups=scanGroups();
   const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
   $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;

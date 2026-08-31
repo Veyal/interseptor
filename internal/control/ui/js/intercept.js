@@ -505,10 +505,10 @@ export function renderRules(){
     <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
     <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
     <td><input type="text" data-k="replace" aria-label="Interception rule ${r.id} replacement" value="${escAttr(r.replace)}"></td>
-    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
+    <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete interception rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>{
+    tr.querySelectorAll('input[data-k],select[data-k]').forEach(inp=>{
       inp.addEventListener('input',()=>rememberRuleDraft(id,tr));
       inp.addEventListener('change',()=>updateRule(id,tr));
     });
@@ -533,9 +533,17 @@ export async function updateRule(id,tr){
   const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)}));
   const revision=ruleMutationRevision.get(id);
   try{await pending;if(revision===ruleMutationRevision.get(id)&&ruleDrafts.get(id)===upd){ruleDrafts.delete(id);toast('rule saved');}}
-  catch(e){if(revision===ruleMutationRevision.get(id)){if(ruleDrafts.get(id)===upd){ruleDrafts.delete(id);renderRules();}toast(e.message);}}
+  catch(e){if(revision===ruleMutationRevision.get(id)){if(ruleDrafts.get(id)===upd){ruleDrafts.delete(id);renderRules();}toast(e.message,'error');}}
 }
-export async function deleteRule(id){const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'DELETE'})),revision=ruleMutationRevision.get(id);try{await pending;if(revision===ruleMutationRevision.get(id))ruleDrafts.delete(id);}catch(e){if(revision===ruleMutationRevision.get(id))toast(e.message);}}
+export async function deleteRule(id){
+  const hadDraft=ruleDrafts.has(id),draftAtDelete=ruleDrafts.get(id);
+  const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'DELETE'})),revision=ruleMutationRevision.get(id);
+  try{await pending;if(revision===ruleMutationRevision.get(id))ruleDrafts.delete(id);}
+  catch(e){
+    if(revision===ruleMutationRevision.get(id)&&hadDraft&&ruleDrafts.get(id)===draftAtDelete){ruleDrafts.delete(id);renderRules();}
+    if(revision===ruleMutationRevision.get(id))toast(e.message,'error');
+  }
+}
 let ruleAddInFlight=false,ruleAddEpoch=0;
 function setRuleAddState(stateName){const b=$('#addRuleBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add rule';}
 $('#addRuleBtn').onclick=async()=>{

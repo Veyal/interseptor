@@ -1511,9 +1511,9 @@ export function renderScope(){
     <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
     <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"></td>
     <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
-    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
+    <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete scope rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>{inp.addEventListener('input',()=>rememberScopeDraft(id,tr));inp.addEventListener('change',()=>updateScope(id,tr));});});
+    tr.querySelectorAll('input[data-k],select[data-k]').forEach(inp=>{inp.addEventListener('input',()=>rememberScopeDraft(id,tr));inp.addEventListener('change',()=>updateScope(id,tr));});});
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteScope(Number(b.dataset.del)));
   if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
 }
@@ -1533,9 +1533,17 @@ function rememberScopeDraft(id,tr){
 async function updateScope(id,tr){
   const upd=rememberScopeDraft(id,tr),pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)})),revision=scopeMutationRevision.get(id);
   try{await pending;if(revision===scopeMutationRevision.get(id)&&scopeDrafts.get(id)===upd){scopeDrafts.delete(id);toast('scope saved');}}
-  catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toast(e.message);}}
+  catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toast(e.message,'error');}}
 }
-async function deleteScope(id){const pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'DELETE'})),revision=scopeMutationRevision.get(id);try{await pending;if(revision===scopeMutationRevision.get(id))scopeDrafts.delete(id);}catch(e){if(revision===scopeMutationRevision.get(id))toast(e.message);}}
+async function deleteScope(id){
+  const hadDraft=scopeDrafts.has(id),draftAtDelete=scopeDrafts.get(id);
+  const pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'DELETE'})),revision=scopeMutationRevision.get(id);
+  try{await pending;if(revision===scopeMutationRevision.get(id))scopeDrafts.delete(id);}
+  catch(e){
+    if(revision===scopeMutationRevision.get(id)&&hadDraft&&scopeDrafts.get(id)===draftAtDelete){scopeDrafts.delete(id);renderScope();}
+    if(revision===scopeMutationRevision.get(id))toast(e.message,'error');
+  }
+}
 let scopeAddInFlight=false,scopeAddEpoch=0;
 function setScopeAddState(stateName){const b=$('#addScopeBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add';}
 $('#addScopeBtn').onclick=async()=>{

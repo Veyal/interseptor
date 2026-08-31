@@ -32,8 +32,8 @@ func TestUIRejectedScopeAndRuleDraftsRestoreAuthoritativeState(t *testing.T) {
 		asset, start, end, owner string
 		contracts                []string
 	}{
-		{"js/proxy.js", "async function updateScope(id,tr)", "async function deleteScope(id)", "scopeDrafts.get(id)===upd", []string{"scopeDrafts.delete(id)", "renderScope()", "toast(e.message)"}},
-		{"js/intercept.js", "export async function updateRule(id,tr)", "export async function deleteRule(id)", "ruleDrafts.get(id)===upd", []string{"ruleDrafts.delete(id)", "renderRules()", "toast(e.message)"}},
+		{"js/proxy.js", "async function updateScope(id,tr)", "async function deleteScope(id)", "scopeDrafts.get(id)===upd", []string{"scopeDrafts.delete(id)", "renderScope()", "toast(e.message,'error')"}},
+		{"js/intercept.js", "export async function updateRule(id,tr)", "export async function deleteRule(id)", "ruleDrafts.get(id)===upd", []string{"ruleDrafts.delete(id)", "renderRules()", "toast(e.message,'error')"}},
 	} {
 		src := readUIAsset(t, tc.asset)
 		start := strings.Index(src, tc.start)
@@ -57,6 +57,58 @@ func TestUIRejectedScopeAndRuleDraftsRestoreAuthoritativeState(t *testing.T) {
 				t.Errorf("%s rejected draft reconciliation missing %q", tc.asset, contract)
 			}
 		}
+	}
+}
+
+func TestUIRejectedScopeAndRuleDeletesReconcileOnlyTheirOwnedDraft(t *testing.T) {
+	for _, tc := range []struct {
+		asset, start, end, drafts, revision, render string
+	}{
+		{"js/proxy.js", "async function deleteScope(id)", "let scopeAddInFlight", "scopeDrafts", "scopeMutationRevision", "renderScope()"},
+		{"js/intercept.js", "export async function deleteRule(id)", "let ruleAddInFlight", "ruleDrafts", "ruleMutationRevision", "renderRules()"},
+	} {
+		src := readUIAsset(t, tc.asset)
+		start := strings.Index(src, tc.start)
+		end := strings.Index(src, tc.end)
+		if start < 0 || end <= start {
+			t.Errorf("%s delete mutation boundary not found", tc.asset)
+			continue
+		}
+		mutation := src[start:end]
+		for _, contract := range []string{
+			"const hadDraft=" + tc.drafts + ".has(id),draftAtDelete=" + tc.drafts + ".get(id)",
+			"revision===" + tc.revision + ".get(id)&&hadDraft&&" + tc.drafts + ".get(id)===draftAtDelete",
+			tc.drafts + ".delete(id)",
+			tc.render,
+		} {
+			if !strings.Contains(mutation, contract) {
+				t.Errorf("%s rejected delete ownership missing %q", tc.asset, contract)
+			}
+		}
+	}
+}
+
+func TestUIRejectedScopeAndRuleDeletesRestoreFocusAndAnnounceFailure(t *testing.T) {
+	for _, tc := range []struct {
+		asset, renderStart, renderEnd, deleteStart, deleteEnd string
+	}{
+		{"js/proxy.js", "export function renderScope()", "function scopeMutation", "async function deleteScope(id)", "let scopeAddInFlight"},
+		{"js/intercept.js", "export function renderRules()", "export async function loadRules", "export async function deleteRule(id)", "let ruleAddInFlight"},
+	} {
+		src := readUIAsset(t, tc.asset)
+		renderStart := strings.Index(src, tc.renderStart)
+		renderEnd := strings.Index(src, tc.renderEnd)
+		deleteStart := strings.Index(src, tc.deleteStart)
+		deleteEnd := strings.Index(src, tc.deleteEnd)
+		if renderStart < 0 || renderEnd <= renderStart || deleteStart < 0 || deleteEnd <= deleteStart {
+			t.Errorf("%s focus/error mutation boundaries not found", tc.asset)
+			continue
+		}
+		requireUIContains(t, src[renderStart:renderEnd],
+			`data-k="delete"`,
+			"input[data-k],select[data-k]",
+		)
+		requireUIContains(t, src[deleteStart:deleteEnd], "toast(e.message,'error')")
 	}
 }
 

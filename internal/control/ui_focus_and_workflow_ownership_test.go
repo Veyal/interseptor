@@ -1,6 +1,8 @@
 package control
 
 import (
+	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -17,9 +19,11 @@ func TestUIHighFrequencyListsPreserveKeyboardFocus(t *testing.T) {
 	)
 	requireUIContracts(t, "js/scanner.js",
 		"const previousSelectedTitle=(scanState.groups||[])[scanState.sel]?.title||''",
+		"const focusedIssue=!!document.activeElement?.closest?.('#scanList .scan-item')",
 		"const focusedTitle=",
 		"groups.findIndex(group=>group.title===previousSelectedTitle)",
 		"focus({preventScroll:true})",
+		"if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}))",
 	)
 	requireUIContracts(t, "js/tools.js",
 		"const focusedHistoryID=focusedHistory?.dataset.id||''",
@@ -87,18 +91,74 @@ func TestUISSEHeavyPanelUpdatesAreVisibilityGated(t *testing.T) {
 func TestUIProjectSwitchWaitsForTheAcceptedIdentity(t *testing.T) {
 	settings := requireUIContracts(t, "js/settings.js",
 		"let projectSwitchEpoch=0,projectSwitchTimer=null,projectSwitchPending=false",
+		"projectPathFlavor=projectPathFlavorFor(d.dir)",
 		"expected=String(accepted.switching)",
-		"expectedPath=path?projectPathKey(accepted.path):''",
+		"expectedPath=path?projectPathKey(path):''",
+		"Custom save location must be an absolute folder path.",
 		"const reached=path?projectPathKey(d.dir)===expectedPath:String(d.current||'')===expected",
 		"if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}",
 		"Project switch was not confirmed within 30 seconds",
 	)
-	if strings.Contains(settings, "projectPathKey(d.dir)===projectPathKey(path)") {
-		t.Fatal("custom project switching must compare the server-canonicalized path")
+	if strings.Contains(settings, "accepted.path") {
+		t.Fatal("custom project switching must not expand the switch API response contract")
 	}
 	if strings.Contains(settings, "graceTries") {
 		t.Fatal("project switching must never accept an old-project response after a grace period")
 	}
+
+	start := strings.Index(settings, "function projectPathFlavorFor(value)")
+	end := strings.Index(settings, "export async function doSwitchProject")
+	if start < 0 || end <= start {
+		t.Fatal("project path normalizer not found")
+	}
+	cases := [][3]string{
+		{"/tmp/engagement/../acme/", "posix", "/tmp/acme"},
+		{"/tmp//acme/./", "posix", "/tmp/acme"},
+		{"//tmp/../acme", "posix", "/acme"},
+		{`\tmp\acme`, "posix", ""},
+		{`C:\engagements\draft\..\acme`, "windows", "C:/engagements/acme"},
+		{`\\server\share\draft\..\acme`, "windows", "//server/share/acme"},
+		{`\\server\share\..\..\acme`, "windows", "//server/share/acme"},
+		{"relative/acme", "posix", ""},
+		{"../acme", "posix", ""},
+	}
+	encoded, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := settings[start:end] + "\nconst cases=" + string(encoded) + "; for (const [input,flavor,want] of cases) { const got=projectPathKey(input,flavor); if (got!==want) throw new Error(JSON.stringify({input,flavor,want,got})); }"
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("project path normalization contract failed: %v\n%s", err, out)
+	}
+}
+
+func TestUIProjectPathFailuresAreOwnedByBothProjectSurfaces(t *testing.T) {
+	settings := readUIAsset(t, "js/settings.js")
+	requireUIContains(t, settings,
+		"function setProjectSwitchFeedback(text,kind='status')",
+		"['projNewPath','pmNewPath']",
+		"field.setAttribute('aria-invalid','true')",
+		"setProjectSwitchFeedback(message,'error')",
+		"toast(message,'error')",
+		"#pmSwitchNote",
+	)
+
+	start := strings.Index(settings, "async function renderProjModal()")
+	end := strings.Index(settings, "export async function openProjectModal")
+	if start < 0 || end <= start {
+		t.Fatal("project modal render boundary not found")
+	}
+	requireUIContains(t, settings[start:end],
+		"projectPathFlavor=projectPathFlavorFor(d.dir)",
+		"if(epoch!==projectModalLoadEpoch)return false",
+	)
+
+	requireUIContracts(t, "index.html",
+		`id="projNewPath" aria-describedby="projSwitchNote"`,
+		`id="projSwitchNote" role="status" aria-live="polite"`,
+		`id="pmNewPath" aria-describedby="pmSwitchNote"`,
+		`id="pmSwitchNote" role="status" aria-live="polite"`,
+	)
 }
 
 func TestUIIntruderPresetSnapshotsBeforePrompt(t *testing.T) {

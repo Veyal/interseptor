@@ -120,15 +120,12 @@ func TestSwitchProjectAcceptsExplicitPath(t *testing.T) {
 	if code != http.StatusAccepted {
 		t.Fatalf("absolute path: expected 202, got %d", code)
 	}
-	var accepted struct {
-		Switching string `json:"switching"`
-		Path      string `json:"path"`
-	}
+	var accepted map[string]any
 	if err := json.Unmarshal([]byte(response), &accepted); err != nil {
 		t.Fatalf("decode switch response: %v", err)
 	}
-	if accepted.Switching != filepath.Base(custom) || accepted.Path != custom {
-		t.Fatalf("switch response = %+v, want name %q and canonical path %q", accepted, filepath.Base(custom), custom)
+	if accepted["switching"] != filepath.Base(custom) || len(accepted) != 1 {
+		t.Fatalf("switch response = %+v, want the existing switching-only contract for %q", accepted, filepath.Base(custom))
 	}
 	select {
 	case got := <-gotTarget:

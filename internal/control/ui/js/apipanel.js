@@ -5,6 +5,7 @@ import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, uiPrompt
 let restReferenceLoaded=false;
 let restReferenceLoadEpoch=0;
 let allowlistLoadEpoch=0;
+let allowlistLoaded=false;
 let apiKeysLoadEpoch=0;
 let shareLoadEpoch=0;
 let mergeStatusLoadEpoch=0;
@@ -32,6 +33,31 @@ function markRESTReferenceStale(stale){
   }
 }
 
+function allowlistLoadState(){
+  const list=$('#allowList');if(!list)return null;
+  let loadState=$('#allowListLoadState');if(loadState)return loadState;
+  loadState=document.createElement('div');
+  loadState.id='allowListLoadState';
+  loadState.className='tls-diag-banner';
+  loadState.setAttribute('role','status');
+  loadState.setAttribute('aria-live','polite');
+  const table=list.closest('table'),parent=table?.parentNode;
+  if(parent)parent.insertBefore(loadState,table);
+  return loadState;
+}
+
+function showAllowlistMutationError(error){
+  const loadState=allowlistLoadState();
+  if(loadState){
+    loadState.removeAttribute('data-allowlist-stale');
+    loadState.style.display='block';
+    loadState.innerHTML='<span class="state-error-msg" role="alert">Allowlist update failed: '+esc(error?.message||'request failed')+' — Review the values and try the action again.</span> <button type="button" class="btn xs" data-load-retry>Refresh list</button>';
+    // Refresh only reconciles the list. The operator must press Add/Remove
+    // again (and reconfirm removal), so recovery cannot duplicate a mutation.
+    const retry=loadState.querySelector('[data-load-retry]');if(retry)retry.onclick=loadAllowlist;
+  }else toast(error?.message||'allowlist update failed','error');
+}
+
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#apiSub').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
@@ -41,6 +67,9 @@ $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
 });
 export async function loadAllowlist(){
   const epoch=++allowlistLoadEpoch;
+  const loadState=allowlistLoadState();
+  const hadData=allowlistLoaded;
+  if(loadState){loadState.style.display='block';loadState.textContent='Loading allowlist…';}
   try{
     const d=await api('/api/allowlist');
     if(epoch!==allowlistLoadEpoch)return;
@@ -54,11 +83,20 @@ export async function loadAllowlist(){
       <td style="font-family:var(--mono)">${esc(e.cidr)}</td>
       <td>${esc(e.label||'')}</td>
       <td style="color:var(--fg3)">${e.created?esc(new Date(e.created).toLocaleString()):'—'}</td>
-      <td><button class="btn danger" data-allow-del="${e.id}">Remove</button></td></tr>`).join('')
+      <td><button class="btn danger" data-allow-del="${e.id}" aria-label="Remove allowlist entry ${escAttr(e.cidr)}">Remove</button></td></tr>`).join('')
       :'<tr><td colspan="4" class="hint" style="padding:10px">No allowlisted IPs — remote access still needs an API key.</td></tr>';
     $('#allowList').querySelectorAll('[data-allow-del]').forEach(b=>b.onclick=()=>deleteAllowEntry(Number(b.dataset.allowDel)));
     if(allowlistMutationPending)setAllowlistMutationPending(true);
-  }catch(e){if(epoch!==allowlistLoadEpoch)return;toast(e.message||'allowlist failed');}
+    allowlistLoaded=true;
+    if(loadState){loadState.style.display='none';loadState.textContent='';loadState.removeAttribute('data-allowlist-stale');}
+  }catch(e){
+    if(epoch!==allowlistLoadEpoch)return;
+    if(loadState){
+      if(hadData)loadState.setAttribute('data-allowlist-stale','true');
+      else loadState.removeAttribute('data-allowlist-stale');
+      renderLoadError(loadState,'Allowlist',e,loadAllowlist,hadData);
+    }else toast(e.message||'allowlist failed');
+  }
 }
 function setAllowlistMutationPending(pending){
   allowlistMutationPending=pending;
@@ -76,14 +114,23 @@ async function createAllowEntry(){
     await api('/api/allowlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cidr,label})});
     $('#allowCIDR').value='';$('#allowLabel').value='';
     toast('allowlist updated');loadAllowlist();
-  }catch(e){toast(e.message);}
+  }catch(e){
+    await loadAllowlist();
+    showAllowlistMutationError(e);
+    toast(e.message,'error');
+  }
   finally{setAllowlistMutationPending(false);}
 }
 async function deleteAllowEntry(id){
   if(!await uiConfirm('Remove allowlist entry','Clients from this IP will need an API key again.','Remove','btn danger','var(--red)'))return;
   if(allowlistMutationPending)return;
   setAllowlistMutationPending(true);
-  try{allowlistLoadEpoch++;await api('/api/allowlist/'+id,{method:'DELETE'});toast('removed');loadAllowlist();}catch(e){toast(e.message);}
+  try{allowlistLoadEpoch++;await api('/api/allowlist/'+id,{method:'DELETE'});toast('removed');loadAllowlist();}
+  catch(e){
+    await loadAllowlist();
+    showAllowlistMutationError(e);
+    toast(e.message,'error');
+  }
   finally{setAllowlistMutationPending(false);}
 }
 {const ab=$('#allowAdd');if(ab)ab.onclick=createAllowEntry;}

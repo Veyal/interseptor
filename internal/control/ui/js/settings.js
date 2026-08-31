@@ -599,6 +599,7 @@ let projectDataLoaded=false;
 let projectModalDataLoaded=false;
 let projectLoadEpoch=0;
 let projectModalLoadEpoch=0;
+let projectPathFlavor='posix';
 
 function setProjectControlsDisabled(disabled,title=''){
   ['projSelect','projSwitchBtn','projNewBtn'].forEach(id=>{
@@ -1358,6 +1359,7 @@ export async function loadProject(){
   if(loadState&&hadData){loadState.style.display='block';loadState.textContent='Refreshing Projects…';}
   try{const d=await api('/api/project');
     if(epoch!==projectLoadEpoch)return;
+    projectPathFlavor=projectPathFlavorFor(d.dir);
     if(loadState)loadState.style.display='none';
     const n=$('#projNameHint');if(n)n.textContent=d.current||'default';
     const dir=$('#projDirHint');if(dir&&d.dir)dir.textContent=d.dir;
@@ -1380,17 +1382,63 @@ export async function loadProject(){
   }
 }
 let projectSwitchEpoch=0,projectSwitchTimer=null,projectSwitchPending=false;
-function projectPathKey(value){return String(value||'').trim().replace(/\\/g,'/').replace(/\/+$/,'');}
+function projectPathFlavorFor(value){
+  const raw=String(value||'').trim();
+  return /^[A-Za-z]:[\\/]/.test(raw)||raw.startsWith('\\\\')?'windows':'posix';
+}
+function projectPathKey(value,flavor=projectPathFlavor){
+  const source=String(value||'').trim();
+  if(!source)return '';
+  const windows=flavor==='windows';
+  const raw=windows?source.replace(/\\/g,'/'):source;
+  const drive=windows?(raw.match(/^[A-Za-z]:/)||[])[0]||'':'';
+  const unc=windows&&!drive&&raw.startsWith('//');
+  const rooted=windows?(unc||(drive&&raw.slice(drive.length).startsWith('/'))):raw.startsWith('/');
+  if(!rooted)return '';
+  const parts=raw.slice(drive.length).split('/'),out=[],rootDepth=unc?2:0;
+  for(const part of parts){
+    if(!part||part==='.')continue;
+    if(part==='..'){if(out.length>rootDepth)out.pop();continue;}
+    out.push(part);
+  }
+  return (unc?'//':drive?drive+'/':'/')+out.join('/');
+}
+function setProjectSwitchFeedback(text,kind='status'){
+  const error=kind==='error';
+  ['#projSwitchNote','#pmSwitchNote'].map(selector=>$(selector)).filter(Boolean).forEach(note=>{
+    note.style.display='block';note.style.color=error?'var(--red)':'var(--accent)';note.textContent=text;
+    note.setAttribute('role',error?'alert':'status');note.setAttribute('aria-live',error?'assertive':'polite');
+  });
+}
+function setProjectPathInvalid(path,invalid){
+  ['projNewPath','pmNewPath'].map(id=>$('#'+id)).filter(Boolean).forEach(field=>{
+    if(invalid&&field.value.trim()===path)field.setAttribute('aria-invalid','true');
+    else if(!invalid)field.removeAttribute('aria-invalid');
+  });
+}
+function clearProjectPathFeedback(){
+  if(projectSwitchPending)return;
+  setProjectPathInvalid('',false);
+  ['#projSwitchNote','#pmSwitchNote'].map(selector=>$(selector)).filter(Boolean).forEach(note=>{
+    note.style.display='none';note.textContent='';note.style.color='var(--accent)';
+    note.setAttribute('role','status');note.setAttribute('aria-live','polite');
+  });
+}
 export async function doSwitchProject(target,path){
   if(!target&&!path)return;
   if(projectSwitchPending){toast('a project switch is already in progress');return;}
+  const expectedPath=path?projectPathKey(path):'';
+  if(path&&!expectedPath){
+    const message='Custom save location must be an absolute folder path.';
+    setProjectPathInvalid(path,true);setProjectSwitchFeedback(message,'error');toast(message,'error');return;
+  }
+  setProjectPathInvalid('',false);
   const switchEpoch=++projectSwitchEpoch;
   projectSwitchPending=true;
   if(projectSwitchTimer){clearTimeout(projectSwitchTimer);projectSwitchTimer=null;}
   // Surface the "restarting…" message wherever it's visible — the Settings panel
   // note and the top-bar Projects modal share this one switch path.
-  const notes=['#projSwitchNote','#pmNote'].map(s=>$(s)).filter(Boolean);
-  const setNote=t=>notes.forEach(n=>{n.style.display='block';n.textContent=t;});
+  const setNote=(text,kind='status')=>setProjectSwitchFeedback(text,kind);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
   // /api/version can't tell them apart and would reload straight back into the
@@ -1399,13 +1447,11 @@ export async function doSwitchProject(target,path){
   // reload merely because the old process still answers: that can put the UI
   // straight back into the project the operator just left.
   setProjectControlsDisabled(true,'project switch is in progress');
-  let expected='',expectedPath='';
+  let expected='';
   try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
     expected=String(accepted.switching);
-    expectedPath=path?projectPathKey(accepted.path):'';
-    if(path&&!expectedPath)throw new Error('project switch did not return its canonical path');
-  }catch(e){projectSwitchPending=false;setNote('Project switch failed: '+e.message);toast(e.message);loadProject();return;}
+  }catch(e){projectSwitchPending=false;setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
   setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   const deadline=Date.now()+30000;
   const poll=async()=>{
@@ -1416,7 +1462,7 @@ export async function doSwitchProject(target,path){
       if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}
     }
     catch(e){}
-    if(Date.now()>=deadline){projectSwitchPending=false;projectSwitchTimer=null;setNote('Project switch was not confirmed within 30 seconds. Retry the switch, or reload manually after the new process is ready.');loadProject();return;}
+    if(Date.now()>=deadline){projectSwitchPending=false;projectSwitchTimer=null;setNote('Project switch was not confirmed within 30 seconds. Retry the switch, or reload manually after the new process is ready.','error');loadProject();return;}
     projectSwitchTimer=setTimeout(poll,500);
   };
   projectSwitchTimer=setTimeout(poll,500);
@@ -1446,6 +1492,7 @@ async function renderProjModal(){
   setProjectModalActionsDisabled(true);
   try{const d=await api('/api/project');
     if(epoch!==projectModalLoadEpoch)return false;
+    projectPathFlavor=projectPathFlavorFor(d.dir);
     const cur=$('#pmCurrent');if(cur)cur.textContent=d.current||'default';
     const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
     if(!list)return false;
@@ -1470,6 +1517,7 @@ async function renderProjModal(){
 export async function openProjectModal(){
   const m=$('#projModal');if(!m)return;
   const note=$('#pmNote');if(note){note.style.display='none';note.textContent='';}
+  clearProjectPathFeedback();
   const inp=$('#pmNew');if(inp)inp.value='';
   const pinp=$('#pmNewPath');if(pinp)pinp.value='';
   openModal(m);
@@ -1485,6 +1533,7 @@ export async function openProjectModal(){
 };}
 {const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 {const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
+['projNewPath','pmNewPath'].forEach(id=>$('#'+id)?.addEventListener('input',clearProjectPathFeedback));
 $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
   const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();

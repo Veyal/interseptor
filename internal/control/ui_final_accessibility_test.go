@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func TestUIModalWithoutInvokerRestoresStableNavigationFocus(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	for _, contract := range []string{
+		"prev!==document.body",
+		"prev!==document.documentElement",
+		".tab[aria-selected=\"true\"]:not([disabled])",
+		"fallback?.focus({preventScroll:true})",
+	} {
+		if !strings.Contains(core, contract) {
+			t.Errorf("modal fallback-focus contract missing %q", contract)
+		}
+	}
+}
+
 func TestUIDisclosureControlsHaveStableExpandedRelationships(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, want := range []string{

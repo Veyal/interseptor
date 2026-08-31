@@ -417,7 +417,7 @@ func (h *projectAPI) switchProject(w http.ResponseWriter, r *http.Request) {
 			httpInternalErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name, "path": abs})
+		writeJSON(w, http.StatusAccepted, map[string]any{"switching": name})
 		h.scheduleProjectSwitch(abs, 300*time.Millisecond)
 		return
 	}
