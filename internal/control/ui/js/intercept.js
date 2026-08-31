@@ -195,6 +195,8 @@ function showHeldLoadError(h,error){
 export function renderIntercept(){
   const ic=state.intercept||{};
   const rq=ic.queue||[], rrq=ic.responseQueue||[];
+  const focusedHeld=document.activeElement?.closest?.('#heldList .icpt-item[data-id][data-side]');
+  const heldFocus=focusedHeld?{id:focusedHeld.dataset.id,side:focusedHeld.dataset.side}:null;
   setSwitch('#interceptToggle','#icptReqState',ic.enabled);
   setSwitch('#respInterceptToggle','#icptResState',ic.responseEnabled);
   // conditional-intercept filter (don't clobber fields the user is editing)
@@ -228,7 +230,7 @@ export function renderIntercept(){
   const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
   const list=$('#heldList');
   if(!total){list.innerHTML='';state.heldSel=null;showEditor(null);return;}
-  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}" data-id="${h.id}" data-side="${h.side}">
+  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}" data-id="${h.id}" data-side="${h.side}" aria-current="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
     <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
     ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
     <span class="u">${esc(h.host)}${esc(h.path)}</span></div>`).join('');
@@ -243,6 +245,10 @@ export function renderIntercept(){
   const cur=state.heldSel&&items.find(h=>h.id===state.heldSel.id&&h.side===state.heldSel.side);
   if(cur)selectHeld(cur.id,cur.side,{keepEditor:true});
   else selectHeld(items[0].id,items[0].side);
+  if(heldFocus){
+    const target=list.querySelector(`.icpt-item[data-id="${CSS.escape(heldFocus.id)}"][data-side="${CSS.escape(heldFocus.side)}"]`);
+    target?.focus({preventScroll:true});
+  }
 }
 function setSwitch(btnSel,stateSel,on){
   const b=$(btnSel);if(b){b.disabled=false;b.classList.toggle('on',!!on);b.setAttribute('aria-pressed',on?'true':'false');}
@@ -281,7 +287,7 @@ export async function selectHeld(id,side,opts={}){
   if(previousKey!==nextKey){
     if(!heldActionInFlight)restoreHeldActionControls();
   }
-  $$('#heldList .icpt-item').forEach(el=>el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side));
+  $$('#heldList .icpt-item').forEach(el=>{const selected=Number(el.dataset.id)===id&&el.dataset.side===side;el.classList.toggle('sel',selected);el.setAttribute('aria-current',selected?'true':'false');});
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
    let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
@@ -484,12 +490,17 @@ function scheduleInterceptFilter(){
 });
 
 /* ---- rules ---- */
+let rulesLoadEpoch=0,ruleMutationEpoch=0,ruleMutationLanes=new Map(),ruleMutationRevision=new Map(),ruleDrafts=new Map();
 export function renderRules(){
   const body=$('#rulesBody');
+  const active=document.activeElement;
+  const activeRow=active?.closest?.('#rulesBody tr[data-id]');
+  const focus={id:activeRow?.dataset.id||'',key:active?.dataset?.k||'',start:active?.selectionStart,end:active?.selectionEnd};
   const det=document.querySelector('details.icpt-mr');
   if(det&&state.rules.length)det.open=true;
   if(!state.rules.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No rules. Add one below.</td></tr>';return;}
-  body.innerHTML=state.rules.map(r=>`<tr data-id="${r.id}">
+  const rows=state.rules.map(r=>({...r,...(ruleDrafts.get(r.id)||{})}));
+  body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable interception rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
     <td><select data-k="type" aria-label="Interception rule ${r.id} type">${['req-header','req-body','res-header','res-body'].map(tp=>`<option value="${tp}" ${r.type===tp?'selected':''}>${tp}</option>`).join('')}</select></td>
     <td><input type="text" data-k="match" aria-label="Interception rule ${r.id} match" value="${escAttr(r.match)}"></td>
@@ -498,19 +509,33 @@ export function renderRules(){
   body.querySelectorAll('tr').forEach(tr=>{
     const id=Number(tr.dataset.id);
     tr.querySelectorAll('[data-k]').forEach(inp=>{
+      inp.addEventListener('input',()=>rememberRuleDraft(id,tr));
       inp.addEventListener('change',()=>updateRule(id,tr));
     });
   });
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteRule(Number(b.dataset.del)));
+  if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
 }
-export async function loadRules(){try{const d=await api('/api/rules');state.rules=d.rules||[];renderRules();}catch(e){toast(e.message);}}
-export async function updateRule(id,tr){
-  const r=state.rules.find(x=>x.id===id);if(!r)return;
+export async function loadRules(){const epoch=++rulesLoadEpoch,mutationSnapshot=ruleMutationEpoch;try{const d=await api('/api/rules');if(epoch!==rulesLoadEpoch||mutationSnapshot!==ruleMutationEpoch||ruleMutationLanes.size)return;state.rules=d.rules||[];renderRules();}catch(e){if(epoch===rulesLoadEpoch&&!ruleMutationLanes.size)toast(e.message);}}
+function ruleMutation(id,work){
+  ruleMutationEpoch++;const rev=(ruleMutationRevision.get(id)||0)+1;ruleMutationRevision.set(id,rev);
+  const prior=ruleMutationLanes.get(id)||Promise.resolve();const next=prior.catch(()=>{}).then(work);ruleMutationLanes.set(id,next);
+  return next.finally(()=>{if(ruleMutationLanes.get(id)!==next)return;ruleMutationLanes.delete(id);if(!ruleMutationLanes.size)loadRules();});
+}
+function rememberRuleDraft(id,tr){
+  const r=state.rules.find(x=>x.id===id);if(!r)return null;
   const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const upd={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
-  try{await api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('rule saved');}catch(e){toast(e.message);loadRules();}
+  const draft={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
+  ruleDrafts.set(id,draft);return draft;
 }
-export async function deleteRule(id){try{await api('/api/rules/'+id,{method:'DELETE'});loadRules();}catch(e){toast(e.message);}}
+export async function updateRule(id,tr){
+  const upd=rememberRuleDraft(id,tr);if(!upd)return;
+  const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)}));
+  const revision=ruleMutationRevision.get(id);
+  try{await pending;if(revision===ruleMutationRevision.get(id)){ruleDrafts.delete(id);toast('rule saved');}}
+  catch(e){if(revision===ruleMutationRevision.get(id))toast(e.message);}
+}
+export async function deleteRule(id){const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'DELETE'})),revision=ruleMutationRevision.get(id);try{await pending;if(revision===ruleMutationRevision.get(id))ruleDrafts.delete(id);}catch(e){if(revision===ruleMutationRevision.get(id))toast(e.message);}}
 let ruleAddInFlight=false,ruleAddEpoch=0;
 function setRuleAddState(stateName){const b=$('#addRuleBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add rule';}
 $('#addRuleBtn').onclick=async()=>{
@@ -518,7 +543,7 @@ $('#addRuleBtn').onclick=async()=>{
   const rule={type:$('#newRuleType').value,match:$('#newRuleMatch').value,replace:$('#newRuleReplace').value,enabled:true};
   if(!rule.match){toast('match regex required');return;}
   ruleAddInFlight=true;const addEpoch=++ruleAddEpoch;setRuleAddState('pending');
-  try{await api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newRuleMatch').value='';$('#newRuleReplace').value='';loadRules();toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
+  try{await ruleMutation(0,()=>api('/api/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
+    $('#newRuleMatch').value='';$('#newRuleReplace').value='';toast('rule added');setRuleAddState('success');}catch(e){toast(e.message);setRuleAddState('idle');}
   finally{ruleAddInFlight=false;if($('#addRuleBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===ruleAddEpoch)setRuleAddState('idle');},600);}
 };

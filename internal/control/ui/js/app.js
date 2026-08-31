@@ -64,8 +64,9 @@ function activateTab(t){
     try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
     updateCrumb(t);
     if(t.dataset.tab==='proxy')renderRows();
-    if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-    if(t.dataset.tab==='scanner')loadScanTargets();
+    if(t.dataset.tab==='activity'){clearActSeen();loadActivity();}
+    if(t.dataset.tab==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
+    if(t.dataset.tab==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
     if(t.dataset.tab==='findings')loadFindings();
     if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
     if(t.dataset.tab==='notes')loadNotes();
@@ -211,7 +212,7 @@ function resyncAfterStaleReconnect(){
   if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
   if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
   if(document.querySelector('.tab[data-tab="notes"]')?.classList.contains('active'))loadNotes();
-  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))renderActivity();
+  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))loadActivity();
   if(document.querySelector('.tab[data-tab="map"]')?.classList.contains('active'))loadMapModule().then(m=>m.loadEndpoints());
 
   refreshIntercept().then(()=>renderIcptStat());
@@ -260,6 +261,11 @@ function onModalUpdate(modalId,reloadFn){
   const m=$('#'+modalId);
   if(m&&m.style.display==='flex')reloadFn();
 }
+function onPanelUpdate(panelName,reloadFn,badgeId){
+  const panel=document.querySelector(`.panel[data-panel="${panelName}"]`);
+  if(panel?.classList.contains('active'))reloadFn();
+  else if(badgeId)setNavDot(badgeId,true);
+}
 // SSE_HANDLERS documents (and, for the modal-gated group, implements) each
 // event's contract in one place. Events not listed here are still handled
 // directly in the es.onmessage dispatcher below — this is a partial migration,
@@ -268,6 +274,8 @@ const SSE_HANDLERS={
   'checks.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('checksModal',loadChecksList)},
   'codecs.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('codecsModal',loadCodecsList)},
   'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
+  'intruder.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('intruder',scheduleIntr,'intrBadge')},
+  'scanner.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('scanner',loadIssues,'scanBadge')},
   'notes.update':{contract:'always-reload',run:loadNotes},
   'findings.update':{contract:'always-reload',run:loadFindings},
   'tags.update':{contract:'always-reload',run:loadTags},
@@ -299,8 +307,6 @@ function connectEvents(){
     else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
-    else if(m.type==='intruder.update')scheduleIntr();
-    else if(m.type==='scanner.update')loadIssues();
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
     else if(m.type==='views.update')loadViews();
@@ -606,5 +612,5 @@ async function bootFirstRunUI(){
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}

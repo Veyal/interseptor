@@ -601,6 +601,8 @@ async function migrateLegacyRepHistory(t){
 }
 export async function loadRepHistory(){
   const box=$('#repHistory');if(!box)return;const t=repCur();if(!t)return;
+  const focusedHistory=document.activeElement?.closest?.('#repHistory .h[data-id]');
+  const focusedHistoryID=focusedHistory?.dataset.id||'';
   await repHydrateTabHistory(t);
   if(repCur()!==t)return;
   let migrationError=t.historyStorageError?`<div class="state-error" style="margin:8px"><span>History reload storage unavailable: ${esc(t.historyStorageError)}</span> <button type="button" class="btn xs" data-rep-history-storage-retry>Retry</button></div>`:'';
@@ -612,12 +614,13 @@ export async function loadRepHistory(){
   }
   const flows=normalizeRepHistory(t.history);
   t.history=flows;repSetHistoryCount(t);
+  const restoreHistoryFocus=!!focusedHistory&&document.activeElement===focusedHistory;
   if(!flows.length){box.innerHTML=migrationError||'<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';}
   else{
     const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0));
     const visible=flows.slice(0,visibleCount);
     const remaining=flows.length-visibleCount;
-    box.innerHTML=migrationError+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}">
+    box.innerHTML=migrationError+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-current="${f.id===t.resId?'true':'false'}">
     <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
     <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
     box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
@@ -628,6 +631,7 @@ export async function loadRepHistory(){
   box.querySelector('[data-rep-history-storage-retry]')?.addEventListener('click',async()=>{t.historyHydrationPromise=null;await repHydrateTabHistory(t);if(repCur()===t){repPersist();loadRepHistory();}});
   box.querySelector('[data-rep-history-retry]')?.addEventListener('click',loadRepHistory);
   box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
+  if(restoreHistoryFocus)box.querySelector(`.h[data-id="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
 $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
@@ -659,15 +663,18 @@ export async function repLoadSend(id){
 export async function sendToRepeater(f){
   if(!await waitForWorkstationReady())return false;
   repSaveEditor();
-  const tabEditEpochs=new Map(repTabs.tabs.map(t=>[t.tid,t.reqEditEpoch||0]));
+  const tabSnapshots=repTabs.tabs.map(tab=>({tab,endpoint:repTabEndpoint(tab),editEpoch:tab.reqEditEpoch||0}));
   try{
     const d=await api('/api/flows/'+f.id);
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
     // Findings and other callers may pass only {id}. Resolve metadata before
     // choosing a tab so requests do not collapse into an "undefined" endpoint.
     const fep=repFlowEndpoint(d);
-    let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
-    if(t&&tabEditEpochs.get(t.tid)!==(t.reqEditEpoch||0))t=null;
+    const reusable=tabSnapshots.find(snapshot=>snapshot.endpoint===fep
+      &&repTabs.tabs.includes(snapshot.tab)
+      &&repTabEndpoint(snapshot.tab)===snapshot.endpoint
+      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0));
+    let t=reusable?.tab||null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
@@ -714,10 +721,14 @@ export async function repInit(){
 }
 
 async function repEncodeSel(el,op){
+  const ownerTab=repCur();if(!ownerTab)return;
+  const ownerEditEpoch=ownerTab.reqEditEpoch||0;
+  const ownerValue=el.value;
   const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
   if(!s){toast('select text first');return;}
   try{
     const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:s})});
+    if(repCur()!==ownerTab||!el.isConnected||ownerTab.reqEditEpoch!==ownerEditEpoch||el.value!==ownerValue)return;
     if(r.error){toast(r.error);return;}
     el.value=el.value.slice(0,a)+r.output+el.value.slice(b);
     el.selectionStart=a;el.selectionEnd=a+r.output.length;
@@ -991,6 +1002,7 @@ function intrApply(t){if(!t)return;
   updateIntrMode();}
 function intrTabForStorage(t){
   const o={...t};
+  delete o._editEpoch;
   if(o.sniperLines?.length>500){o.sniperLarge=true;o.sniperCount=o.sniperLines.length;delete o.sniperLines;}
   if(o.posLines?.length){
     o.posCounts=o.posLines.map(a=>a?.length||0);
@@ -1005,14 +1017,14 @@ const intrTabs=createTabManager({
   blank:intrBlank,
   title:intrTitle,
   onSave:()=>intrSaveCur(),
-  onLoad:t=>intrApply(t),
+  onLoad:t=>intrLoadTab(t),
   normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
   tablistLabel:'Intruder tabs',
   tabPanelId:'intrTabPanel',
   onPersist:blob=>persistUIState('intruder',blob),
 });
-function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
+function intrTouch(){const t=intrTabs.cur();if(t)t._editEpoch=(t._editEpoch||0)+1;intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return intruderReady; intrInit._done=true;
@@ -1037,7 +1049,7 @@ export async function intrInit(){
 }
 
 /* ---- intruder run history (this session) ---- */
-const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
+const intrHistory=[]; let intrHistorySeq=0,intrCapturePending=false, intrRunCfg=null;
 let intrStartPending=false;
 let intrRunTabId=null;
 let intrPollError='';
@@ -1052,18 +1064,27 @@ function syncIntrTabLock(locked){
   bar.querySelectorAll('.rt-close,.rep-tab-add').forEach(button=>{button.disabled=!!locked;});
   bar.title=locked?'Attack tabs are locked until the active run finishes':'';
 }
+function activeIntrHistory(){
+  const activeId=intrTabs.cur()?.tid??null;
+  return intrHistory.filter(h=>h.tid===activeId);
+}
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
-  if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
+  const visibleHistory=activeIntrHistory();
+  if(tg)tg.textContent='⟲ History'+(visibleHistory.length?' ('+visibleHistory.length+')':'');
   if(!box)return;
-  if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
+  const focusedLive=!!document.activeElement?.closest?.('#intrHistory [data-intr-live]');
+  const focusedHistoryID=document.activeElement?.closest?.('#intrHistory .h[data-hid]')?.dataset.hid||'';
+  if(!visibleHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks for this tab yet this session.</div>';return;}
   const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
-  box.innerHTML=liveRow+intrHistory.map((h,i)=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-i="${i}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
   const live=box.querySelector('[data-intr-live]');if(live){live.onclick=showIntrLiveResults;wireRowKey(live,showIntrLiveResults);}
-  box.querySelectorAll('.h[data-i]').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
+  box.querySelectorAll('.h[data-hid]').forEach(el=>{const open=()=>intrLoadHistory(Number(el.dataset.hid));el.onclick=open;wireRowKey(el,open);});
+  if(focusedLive)live?.focus({preventScroll:true});
+  else if(focusedHistoryID)box.querySelector(`.h[data-hid="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
 }
-function intrLoadHistory(i){
-  const h=intrHistory[i];if(!h)return;
+function intrLoadHistory(id){
+  const h=intrHistory.find(item=>item.id===id);if(!h||h.tid!==(intrTabs.cur()?.tid??null))return;
   // History is a display choice, not a replacement for the authoritative
   // server snapshot. Keep polling, locks, and recovery tied to the active run
   // while filters and finding creation operate on what the operator chose.
@@ -1099,9 +1120,11 @@ function intrModeText(){
 }
 const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
 async function intrLoadPayloadFile(ta, append){
+  const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
   try{
     const got=await pickTextFile();
     if(!got||!ta) return;
+    if(!ownerTab||intrTabs.cur()!==ownerTab||(ownerTab._editEpoch||0)!==ownerEditEpoch||!ta.isConnected)return;
     const p=ta.dataset.pos;
     const incoming=parseListLines(got.text);
     const merged=append?[...intrGetPayloadLines(p),...incoming]:incoming;
@@ -1247,10 +1270,13 @@ function renderPayloadInputs(){
   updateIntrCount();
 }
 async function intrLoadTemplateFile(){
+  const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
+  const template= $('#intrTemplate');
   try{
     const got=await pickTextFile({accept:'.txt,.http,.req,text/plain'});
     if(!got) return;
-    $('#intrTemplate').value=normalizeListText(got.text);
+    if(!ownerTab||intrTabs.cur()!==ownerTab||(ownerTab._editEpoch||0)!==ownerEditEpoch||template!==$('#intrTemplate')||!template.isConnected)return;
+    template.value=normalizeListText(got.text);
     intrTemplateChanged();
     intrTouch();
     toast('loaded template from '+got.name);
@@ -1385,7 +1411,9 @@ export async function intrStart(){
     if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
   }
   intrTouch();                       // persist the launched config to the active tab
-  intrRunCfg=intrReadEditor();       // snapshot for the history entry
+  intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
+  intrLastResults=[];intrDisplayedResults=[];
+  intrLastRunning=false;intrLastTotal=0;intrLastDone=0;
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
   intrRunTabId=intrTabs.cur()?.tid??null;
@@ -1434,13 +1462,14 @@ function loadIntrPresets(){
   };
 }
 if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
+  const snapshot=intrReadEditor();
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
   let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
-  list.unshift({name,target:$('#intrTarget').value,template:$('#intrTemplate').value,type:intrState.type,
-    sniper:intrState.sniper,pos:intrState.pos.slice(),sniperSource:intrState.sniperSource,sniperNums:intrState.sniperNums,
-    posSources:(intrState.posSources||[]).slice(),posNums:(intrState.posNums||[]).map(n=>({...n})),
-    threads:$('#intrThreads').value,delay:$('#intrDelay').value,
-    repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
+  list.unshift({name,target:snapshot.target,template:snapshot.template,type:snapshot.type,
+    sniper:snapshot.sniper,pos:snapshot.pos.slice(),sniperSource:snapshot.sniperSource,sniperNums:{...snapshot.sniperNums},
+    posSources:snapshot.posSources.slice(),posNums:snapshot.posNums.map(n=>({...n})),
+    threads:snapshot.threads,delay:snapshot.delay,
+    repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
   if(list.length>20)list.length=20;
   try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
   const serverSyncQueued=persistUIState('intruder-presets',list);
@@ -1451,12 +1480,23 @@ let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOw
 let intrPollEpoch=0;
 let intrPollInFlight=false,intrPollQueued=false;
 function showIntrLiveResults(){
+  const activeId=intrTabs.cur()?.tid??null;
+  const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===activeId;
   intrDisplayOwner='live';
   intrDisplayedHistory=null;
-  intrDisplayedResults=intrLastResults.slice();
-  intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+  intrDisplayedResults=belongsHere?intrLastResults.slice():[];
+  intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:($('#intrTarget').value||'');
   renderIntrHistory();
-  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+  renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
+}
+function intrLoadTab(t){
+  intrApply(t);
+  if(intrDisplayedHistory?.tid!==t.tid){intrDisplayOwner='live';intrDisplayedHistory=null;}
+  const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===t.tid;
+  intrDisplayedResults=belongsHere?intrLastResults.slice():[];
+  intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:(t.target||'');
+  renderIntrHistory();
+  renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
 }
 function invalidateIntrPoll(){
   clearTimeout(intrTimer);
@@ -1494,12 +1534,14 @@ export function scheduleIntr(){
 }
 export function renderIntr(st,{authoritative=true}={}){
   const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
+  const activeTabId=intrTabs.cur()?.tid??null;
+  const liveBelongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===activeTabId;
   if(authoritative){
     if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
     if(!st.pollFailed){
       intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
       intrLastResults=res.slice();
-      if(intrDisplayOwner==='live'){
+      if(intrDisplayOwner==='live'&&liveBelongsHere){
         intrDisplayedResults=res.slice();
         intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
       }
@@ -1508,14 +1550,14 @@ export function renderIntr(st,{authoritative=true}={}){
     if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
     if(!running&&total>0&&intrCapturePending){
       intrCapturePending=false;
-      intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
+      intrHistory.unshift({id:++intrHistorySeq,tid:intrRunCfg?.tid??intrRunTabId,ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
       if(intrHistory.length>30)intrHistory.length=30;
       renderIntrHistory();
     }
     if(running&&!st.pollFailed)scheduleIntr();
   }
   const displayRes=authoritative
-    ?(intrDisplayOwner==='live'?res:intrDisplayedResults)
+    ?(intrDisplayOwner==='live'?(liveBelongsHere?res:[]):intrDisplayedResults)
     :(Array.isArray(st.results)?st.results:intrDisplayedResults);
   syncIntrTabLock(intrLastRunning||intrStartPending);
   $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
@@ -1559,28 +1601,41 @@ if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
 });}
 wireButtonGroupKeys($('#intrResFilter'));
+let intrToFindingPending=false;
 async function intrToFinding(){
+  if(intrToFindingPending)return;
   const pool=intrApplyFilter(intrDisplayedResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
   const interesting=withFlow.filter(intrIsInteresting);
   const pick=interesting.length?interesting:withFlow.slice(0,10);
   if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
   const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
-  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
-  if(!title)return;
+  const flowIds=pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20);
+  const button=$('#intrToFinding');
+  intrToFindingPending=true;
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Preparing…';}
   try{
+    const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
+    if(!title)return;
+    if(button)button.textContent='Creating…';
     const body={
       title, severity:'medium', status:'needs_verification', source:'human',
       target:displayTarget,
       why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
       impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
       verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
-      flowIds:pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20),
+      flowIds,
     };
     const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    toast('finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s'));
+    const warnings=Array.isArray(f.warnings)?f.warnings:[];
+    const success='finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s');
+    toast(warnings.length?success+' · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):success,warnings.length?'warn':'success');
     document.querySelector('.tab[data-tab="findings"]')?.click();
   }catch(e){toast(e.message||'could not create finding','error');}
+  finally{
+    intrToFindingPending=false;
+    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='To Finding';}
+  }
 }
 if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;
 // Virtualized Intruder results: rendering thousands of result rows on every poll
@@ -1687,9 +1742,11 @@ export async function sendToIntruder(f){
   // the fetch can't make intrTouch() save the request into the wrong tab.
   document.querySelector('.tab[data-tab="intruder"]').click();
   const target=intrTabs.cur();
+  if(!target)return false;
+  const targetEditEpoch=target._editEpoch||0;
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
-    if(intrTabs.cur()!==target)return;
+    if(intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch)return;
     intrLastFlowId=f.id;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;

@@ -536,7 +536,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .chip b{color:var(--accent);font-weight:600}
 .chip.not{border-color:var(--red)}
 .chip.not b{color:var(--red)}
-.chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border-radius:50%;background:var(--bg2);color:var(--fg2);font-size:var(--fs-xs);cursor:pointer}
+.chip .x{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border:0;padding:0;border-radius:50%;background:var(--bg2);color:var(--fg2);font:inherit;font-size:var(--fs-xs);line-height:1;cursor:pointer}
 .chip .x:hover{color:var(--red);background:var(--bg1)}
 .chip-clear{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-xs);font-weight:600;background:transparent;border:1px dashed var(--line2);border-radius:var(--r-xl);padding:3px 11px;color:var(--fg2);cursor:pointer}
 .chip-clear:hover{border-color:var(--red);border-style:solid;color:var(--red)}
@@ -929,8 +929,6 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-poc-note-input:focus{color:var(--fg2)}
 .find-block-controls{position:absolute;top:0;right:0;display:flex;gap:1px;opacity:0;pointer-events:none;transition:opacity var(--motion-fast) var(--motion-standard);background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-sm);padding:1px;z-index:1}
 .find-doc-actions{display:flex;gap:8px;margin:16px 0 24px;padding-top:12px;border-top:1px dashed var(--line2)}
-.find-block-flash{animation:findFlash 1.2s ease}
-@keyframes findFlash{0%,100%{background:transparent}30%{background:var(--accentDim)}}
 .find-poc{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs)}
 .find-poc:hover{background:var(--bg3)}
 .find-poc .m{font-weight:700;font-family:var(--mono)}

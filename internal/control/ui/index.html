@@ -79,7 +79,7 @@
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg></button>
 </div>
 
-
+<div id="humanInputBar" role="region" aria-label="AI is asking for your input" aria-live="polite" hidden></div>
 
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
@@ -92,11 +92,11 @@
   <div class="nav-rail-group" data-nav-group="test">
     <div class="nav-rail-group-label">Test</div>
     <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test">Repeater</button>
-    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test">Intruder</button>
+    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test">Intruder<span id="intrBadge" class="nav-dot" aria-label="Unread Intruder updates"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
-    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon">Scanner</button>
+    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon">Scanner<span id="scanBadge" class="nav-dot" aria-label="Unread scanner updates"></span></button>
     <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon">Map<span id="mapBadge" class="nav-dot" aria-label="Unread map updates"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="report">
@@ -275,7 +275,7 @@
   <!-- REPEATER -->
   <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert>
     <div class="rep-tabs" id="repTabs"></div>
-    <div id="repTabPanel" role="tabpanel" aria-labelledby="tab-repeater" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div id="repTabPanel" role="tabpanel" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <!-- request line: method · url · history · send -->
     <div class="rep-line">
       <select id="repMethod" class="rep-method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option><option>CONNECT</option><option>TRACE</option><option>COPY</option><option>LINK</option><option>UNLINK</option><option>PURGE</option><option>LOCK</option><option>UNLOCK</option><option>PROPFIND</option><option>VIEW</option></select>
@@ -317,7 +317,7 @@
   <!-- INTRUDER -->
   <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert>
     <div class="rep-tabs" id="intrTabs"></div>
-    <div id="intrTabPanel" role="tabpanel" aria-labelledby="tab-intruder" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div id="intrTabPanel" role="tabpanel" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <!-- run bar: grouped by intent (target · mode · runtime · start) -->
     <div class="intr-bar">
       <input id="intrTarget" class="repurl" style="flex:1 1 240px;min-width:200px;max-width:420px" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
@@ -951,8 +951,8 @@ Content-Type: application/json
               <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
                 <input id="vaultBackupId" class="repurl" style="max-width:160px" aria-label="Vault project id" placeholder="project id">
                 <input id="vaultBackupLabel" class="repurl" style="max-width:140px" aria-label="Backup label" placeholder="label (optional)">
-                <button class="btn btn-primary" id="vaultBackup">Backup ↑</button>
-                <button class="btn" id="vaultRefresh">Refresh list</button>
+                <button class="btn btn-primary" id="vaultBackup" disabled>Backup ↑</button>
+                <button class="btn" id="vaultRefresh" disabled>Refresh list</button>
               </div>
               <div id="vaultCfgHint" class="hint" style="margin-bottom:8px"></div>
               <table class="rules-tbl"><thead><tr><th>Id</th><th>Latest</th><th>Size</th><th style="width:220px"></th></tr></thead><tbody id="vaultList"></tbody></table>

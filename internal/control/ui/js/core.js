@@ -134,7 +134,7 @@ export function renderLoadError(el, label, err, retry, stale=false){
 export function createTabManager(opts){
   const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs',tabPanelId=''}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
-  const mgr={tabs:[],active:null,seq:1,persistT:null};
+  const mgr={tabs:[],active:null,seq:1,persistT:null,focusEpoch:0};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
   mgr.persist=function(){
     const blob={seq:mgr.seq,active:mgr.active,tabs:mgr.tabs.map(serialize)};
@@ -144,6 +144,7 @@ export function createTabManager(opts){
   };
   mgr.persistDebounced=function(){clearTimeout(mgr.persistT);mgr.persistT=setTimeout(mgr.persist,400);};
   mgr.render=function(barSel){
+    mgr.focusEpoch++;
     const bar=$(barSel);if(!bar)return;
     bar.setAttribute('role','tablist');bar.setAttribute('aria-label',tablistLabel);bar.setAttribute('aria-orientation','horizontal');
     bar.innerHTML=mgr.tabs.map(t=>{
@@ -211,7 +212,13 @@ export function createTabManager(opts){
   // the same bar without every caller having to pass it again.
   mgr.init=function(barSel){
     mgr._rerender=()=>mgr.render(barSel);
-    mgr._focusTab=tid=>requestAnimationFrame(()=>$(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus());
+    mgr._focusTab=tid=>{
+      const epoch=++mgr.focusEpoch;
+      requestAnimationFrame(()=>{
+        if(epoch!==mgr.focusEpoch||mgr.active!==tid)return;
+        $(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus();
+      });
+    };
     let ok=false;
     try{
       const d=JSON.parse(localStorage.getItem(storageKey())||'null');
@@ -1404,16 +1411,21 @@ document.addEventListener('keydown',e=>{
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureImageLightbox);
 else ensureImageLightbox();
 
+let activePromptFinish=null;
+let activeConfirmFinish=null;
+
 // uiPrompt: an in-app replacement for the browser's prompt() — themed, consistent,
 // resolves to the entered string or null (Cancel / Escape / backdrop / empty).
 export function uiPrompt(opts){
   opts=opts||{};
+  if(activePromptFinish)activePromptFinish(null);
   return new Promise(resolve=>{
     const m=$('#promptModal'),inp=$('#promptInput');
     $('#promptTitle').textContent=opts.title||'Enter a value';
     inp.placeholder=opts.placeholder||'';inp.value=opts.value||'';
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);inp.onkeydown=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;if(activePromptFinish===finish)activePromptFinish=null;closeModal(m);inp.onkeydown=null;resolve(v);};
+    activePromptFinish=finish;
     openModal(m,{initialFocus:inp,onEscape:()=>finish(null),onDismiss:()=>finish(null)});
     setTimeout(()=>inp.select(),0);
     $('#promptOk').onclick=()=>finish(inp.value.trim()||null);
@@ -1425,6 +1437,7 @@ export function uiPrompt(opts){
 // uiConfirm: themed confirm dialog reusing the promptModal structure.
 // Returns a Promise<boolean>.
 export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
+  if(activeConfirmFinish)activeConfirmFinish(false);
   return new Promise(resolve=>{
     const m=$('#confirmModal');
     if(!m){resolve(window.confirm(title+'\n\n'+htmlMsg.replace(/<[^>]+>/g,'')));return;}
@@ -1435,7 +1448,8 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
     ok.className=(okClass||'btn accent');
     if(okColor)ok.style.color=okColor; else ok.style.color='';
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;if(activeConfirmFinish===finish)activeConfirmFinish=null;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;resolve(v);};
+    activeConfirmFinish=finish;
     openModal(m,{initialFocus:$('#confirmCancel'),onEscape:()=>finish(false),onDismiss:()=>finish(false)});
     ok.onclick=()=>finish(true);
     $('#confirmCancel').onclick=()=>finish(false);

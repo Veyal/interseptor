@@ -15,9 +15,9 @@ func TestUIIntruderHistoryOwnsDisplayedResultsSeparatelyFromActiveRun(t *testing
 		"intrDisplayedResults=h.results.slice()",
 		"function showIntrLiveResults()",
 		"intrDisplayedHistory=null",
-		"intrDisplayedResults=intrLastResults.slice()",
+		"intrDisplayedResults=belongsHere?intrLastResults.slice():[]",
 		"data-intr-live",
-		"if(intrDisplayOwner==='live'){",
+		"if(intrDisplayOwner==='live'&&liveBelongsHere){",
 		"intrDisplayedResults=res.slice()",
 		"const pool=intrApplyFilter(intrDisplayedResults)",
 		"const displayTarget=intrDisplayedTarget||$('#intrTarget').value||''",
@@ -37,14 +37,14 @@ func TestUIIntruderHistoryProvidesDirectReturnToLiveResults(t *testing.T) {
 	if !strings.Contains(tools, "live.onclick=showIntrLiveResults") {
 		t.Error("Intruder history must provide a direct keyboard-wired return to current live results")
 	}
-	if !strings.Contains(tools, "box.querySelectorAll('.h[data-i]')") {
+	if !strings.Contains(tools, "box.querySelectorAll('.h[data-hid]')") {
 		t.Error("Intruder history row wiring must not overwrite the live-results action")
 	}
 	start := strings.Index(tools, "function showIntrLiveResults()")
 	if start < 0 {
 		t.Fatal("Intruder live-results restoration function not found")
 	}
-	end := strings.Index(tools[start:], "function invalidateIntrPoll()")
+	end := strings.Index(tools[start:], "function intrLoadTab(t)")
 	if end < 0 {
 		t.Fatal("Intruder live-results restoration function is not bounded")
 	}
@@ -56,7 +56,7 @@ func TestUIIntruderHistoryProvidesDirectReturnToLiveResults(t *testing.T) {
 
 func TestUIIntruderHistoryDoesNotOverwriteAuthoritativeRunLifecycle(t *testing.T) {
 	tools := executableJS(readUIAsset(t, "js/tools.js"))
-	start := strings.Index(tools, "function intrLoadHistory(i)")
+	start := strings.Index(tools, "function intrLoadHistory(id)")
 	end := strings.Index(tools[start:], "$('#intrHistToggle')")
 	if start < 0 || end < 0 {
 		t.Fatal("Intruder history loader not found")

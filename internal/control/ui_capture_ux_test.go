@@ -74,7 +74,7 @@ func TestUICaptureSourceFilterEmptyStateCanRecover(t *testing.T) {
 		"!state.showManual||!state.showAI",
 		"state.showManual=true;state.showAI=true",
 		"syncSourceFilters();",
-		"syncControls();renderChips();loadFlows();",
+		"syncControls();renderChips();renderTagBar();loadFlows();",
 	)
 }
 

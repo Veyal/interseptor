@@ -12,6 +12,7 @@ export const BANNER_HIDDEN_KEY = 'tlsDiagBannerHidden';
 let lastDiag = null;
 let bannerDismissedVerdict = null;
 let diagRefreshTimer=null;
+let trafficDiagnosisEpoch=0;
 
 // Capture SSE can arrive in large bursts. Coalesce diagnosis refreshes so a
 // busy HTTP-only target does not turn one flow into one control-plane request.
@@ -112,14 +113,14 @@ export function renderTrafficDiagnosis(rep) {
       banner.style.display = '';
       banner.style.cssText = 'display:block;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-sm);line-height:1.55';
       banner.innerHTML = body;
-      wireTrafficDiagnosisActions(banner);
+      wireTrafficDiagnosisActions(banner,rep);
       wireBannerDismiss(banner, rep);
     }
   }
 
   if (panel) {
     panel.innerHTML = body;
-    wireTrafficDiagnosisActions(panel);
+    wireTrafficDiagnosisActions(panel,rep);
   }
 
   // Refresh empty-state card when diagnosis arrives after loadFlows.
@@ -128,7 +129,7 @@ export function renderTrafficDiagnosis(rep) {
   }
 }
 
-function wireTrafficDiagnosisActions(root) {
+function wireTrafficDiagnosisActions(root,rep) {
   if (!root) return;
   const pin = root.querySelector('[data-tls-action="filter-pin"]');
   if (pin) pin.onclick = () => {
@@ -144,7 +145,7 @@ function wireTrafficDiagnosisActions(root) {
     document.querySelector('#setNav button[data-sec="tls"]')?.click();
   };
   const pass = root.querySelector('[data-tls-action="passthrough"]');
-  if (pass) pass.onclick = () => addHostsToPassthrough((lastDiag && lastDiag.hostsBlocked) || []);
+  if (pass) pass.onclick = () => addHostsToPassthrough((rep && rep.hostsBlocked) || []);
 }
 
 // addHostsToPassthrough merges the given hosts into the TLS-bypass list so the
@@ -161,12 +162,15 @@ async function addHostsToPassthrough(hosts) {
 }
 
 export async function loadTrafficDiagnosis(host) {
+  const epoch=++trafficDiagnosisEpoch;
   try {
     const q = host ? '?host=' + encodeURIComponent(host) : '';
     const rep = await api('/api/tls-diagnosis' + q);
+    if(epoch!==trafficDiagnosisEpoch)return null;
     renderTrafficDiagnosis(rep);
     return rep;
   } catch (e) {
+    if(epoch!==trafficDiagnosisEpoch)return null;
     const panel = $('#tlsDiagPanel');
     if (panel) panel.textContent = 'Could not load traffic diagnosis: ' + e.message;
     return null;

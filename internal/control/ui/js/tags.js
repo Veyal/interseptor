@@ -11,6 +11,9 @@ export const TAG_COLORS = [
   ['blue', 'var(--blue)'], ['violet', 'var(--violet)'], ['cyan', 'var(--cyan)'], ['gray', 'var(--fg3)'],
 ];
 let tagLoadError=null;
+let tagLoadEpoch=0;
+let tagReloadPending=false;
+const tagColorLanes=new Map();
 
 // tagChipStyle returns the inline style for a chip in a tag's color ('' = default).
 export function tagChipStyle(tag) {
@@ -19,15 +22,21 @@ export function tagChipStyle(tag) {
 }
 
 export async function loadTags() {
+  const epoch=++tagLoadEpoch;
   try {
     const d = await api('/api/tags');
+    if(epoch!==tagLoadEpoch)return;
+    if(tagColorLanes.size){tagReloadPending=true;return;}
     tagLoadError=null;
     state.tags = d.tags || [];
     state.tagColors = {};
     state.tags.forEach(t => { if (t.color) state.tagColors[t.tag] = t.color; });
     renderTagBar();
     renderRows(); // recolor the per-row tag chips with any updated colors
-  } catch (e) { tagLoadError=e;renderTagBar(); }
+  } catch (e) {
+    if(epoch!==tagLoadEpoch)return;
+    tagLoadError=e;renderTagBar();
+  }
 }
 
 export function renderTagBar() {
@@ -59,13 +68,27 @@ function openColorMenu(x, y, tag) {
 }
 
 async function setTagColor(tag, color) {
-  try {
-    await api('/api/tags/' + encodeURIComponent(tag) + '/color', {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color }),
-    });
-    // The server broadcasts tags.update, but refresh locally too for snappiness.
+  let lane=tagColorLanes.get(tag);
+  if(!lane){lane={running:false,next:null,revision:0,promise:null};tagColorLanes.set(tag,lane);}
+  lane.next={color,revision:++lane.revision};
+  if(lane.running)return lane.promise;
+  lane.running=true;
+  lane.promise=(async()=>{
+    while(lane.next){
+      const mutation=lane.next;
+      lane.next=null;
+      tagLoadEpoch++;
+      try{
+        await api('/api/tags/' + encodeURIComponent(tag) + '/color', {
+          method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color:mutation.color }),
+        });
+      }catch(e){if(mutation.revision===lane.revision)toast(e.message);}
+    }
+    tagColorLanes.delete(tag);
+    tagReloadPending=false;
     await loadTags();
-  } catch (e) { toast(e.message); }
+  })();
+  return lane.promise;
 }
 
 // tagActionTargets returns flow ids for a tag mutation: the whole multi-selection

@@ -9,6 +9,7 @@ Interseptor uses motion to explain state changes in a dense security workspace. 
 - **Once before continuous.** New-data signals run once. Infinite animation is reserved for capture, reconnecting, and enabled live indicators.
 - **Stable geometry.** Dense rows do not translate or scale on hover. Response updates do not resize the surrounding workspace.
 - **Truthful timing.** Exit motion follows a successful acknowledgement. Pending states reflect a real request. No simulated progress is shown.
+- **Owned completion.** A delayed response, timer, file picker, or focus callback belongs to the exact tab, object, editor generation, and action that started it. If that context changes, the completion is discarded without repainting newer work.
 
 ## Tokens
 
@@ -46,6 +47,8 @@ A newly held request or response receives one finite queue-arrival signal, cappe
 
 The action control exposes idle, pending, success, and error state through text, color, `aria-busy`, and disabled state. Response content receives a local opacity transition after real data or an error arrives. Raw status and error information remain visible. Scanner progress continues to use backend-reported progress only.
 
+Repeater send history belongs to the task tab rather than the current URL or request fields. Method, URL, header, body, response selection, top-level navigation, and reload changes do not move or clear it; closing the task tab removes its durable history. Cross-tool loads and Intruder file pickers validate their originating tab and editor generation before updating controls.
+
 ### Map
 
 Tree, table, parameter, and SVG graph views remain available. The SVG graph compares stable node/edge identities with the preceding render and signals only new or changed items, with a cap that suppresses bulk redraw animation. New edges use a short directional dash signal. Nodes are keyboard-operable, expose selection state, and show a focus/selection halo. Fit and host-focus pan/zoom are finite user-initiated transforms; initial layout and bulk filtering do not animate every node.
@@ -69,6 +72,7 @@ Security context and reference data never fail into a plausible empty state. Sco
 - Consume one-shot row/node identities and cancel superseded element animations.
 - Do not animate large DOM subtrees, every SVG item after a filter, or a continuous graph simulation.
 - Skip non-essential motion while the document is hidden.
+- Cancel or ignore delayed callbacks whose initiating action, tab, selection, or editor generation is no longer current.
 - Keep map readability caps and history virtualization in force.
 - Add no animation runtime, external request, font, or hosted asset.
 

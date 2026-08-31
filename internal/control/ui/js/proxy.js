@@ -3,7 +3,7 @@ import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from '.
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
-import { openAuthz } from './authz.js';
+import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -19,8 +19,10 @@ const focusMapSearch=(...args)=>loadMapModule().then(m=>m.focusMapSearch(...args
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.
 let _authzIdsCache = [];
+let _authzIdsEpoch=0;
 export function refreshAuthzIds(){
-  api('/api/authz').then(d=>{ _authzIdsCache=(d.identities||[]).filter(id=>id.name||id.headers); }).catch(()=>{});
+  const epoch=++_authzIdsEpoch;
+  api('/api/authz').then(d=>{ if(epoch===_authzIdsEpoch)_authzIdsCache=(d.identities||[]).filter(id=>id.name||id.headers); }).catch(()=>{});
 }
 refreshAuthzIds();
 
@@ -37,13 +39,15 @@ async function sendAsIdentity(f, id){
   if(!await waitForWorkstationReady())return false;
   document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
+  const editEpoch=t.reqEditEpoch||0;
+  const current=()=>!t._closed&&(t.reqEditEpoch||0)===editEpoch;
   try{
-    const d=await api('/api/flows/'+f.id);
+    const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
+    if(!current()){if(!t._closed)toast('identity load skipped because the Repeater tab changed','warn');return false;}
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     t.method=d.method;
     t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
     t.headers=applyIdentityToHeaders(headersToText(d.reqHeaders),id.headers||'');
-    const raw=await api('/api/flows/'+f.id+'/raw?side=req');
     const i2=raw.indexOf('\r\n\r\n');t.body=i2>=0?raw.slice(i2+4):'';
     t.resId=null;t.status='';t.color='';
     t.title=repTitle(t)+(id.name?' ['+id.name+']':'');
@@ -350,7 +354,7 @@ function flowRowHTML(f){
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
     time:`<div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>`,
   };
-  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" title="${escAttr(rowTitle)}">
+  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}" title="${escAttr(rowTitle)}">
       ${state.flowCols.map(k=>cells[k]).join('')}
     </div>`;
 }
@@ -580,7 +584,7 @@ function reconcileFlowLoadEvent(event){
     if(!flowMatchesFilters(f)){
       removeFlow(flowStore,f.id);
       if(state.selected)state.selected.delete(f.id);
-      if(state.selId===f.id){state.selId=null;state.detail=null;}
+      if(state.selId===f.id){state.selId=null;state.detail=null;onAuthzSelectionChanged();}
       return true;
     }
     storeUpsertFlow(flowStore,f);
@@ -676,6 +680,7 @@ export function syncInspectorVisibility(){
 export function closeInspector(){
   if(state.selId==null)return false;
   state.selId=null;state.detail=null;
+  onAuthzSelectionChanged();
   renderRows();
   return true;
 }
@@ -690,9 +695,22 @@ const flowVirt=createVirtualList({container:$('#rows'),itemHeight:ROW_H,threshol
 // from the current in-memory state.flows) and guarantees the visible window
 // can never stay stale after a background period.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive())renderRows();});
+function captureFlowListFocus(box){
+  const active=document.activeElement,row=active?.closest?.('#rows .trow[data-id]');
+  if(!row||!box.contains(row))return null;
+  const tag=active.closest?.('.flowtag');
+  return {id:row.dataset.id,tag:tag?.dataset.tagchip||''};
+}
+function restoreFlowListFocus(box,focus){
+  if(!focus)return;
+  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);if(!row)return;
+  const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
+  target?.focus({preventScroll:true});
+}
 export function renderRows(){
   syncInspectorVisibility();
   const box=$('#rows');
+  const focus=captureFlowListFocus(box);
   applyFlowGrid();
   const flows=state.flows;
   if(!flows.length){
@@ -712,11 +730,13 @@ export function renderRows(){
     box.innerHTML=`<div style="height:${win.topPad}px" aria-hidden="true"></div>`+flows.slice(win.start,win.end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
     $$('#rows .trow').forEach(wireFlowRow);
     consumeFlowSignals();
+    restoreFlowListFocus(box,focus);
     return;
   }
   box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
   $$('#rows .trow').forEach(wireFlowRow);
   consumeFlowSignals();
+  restoreFlowListFocus(box,focus);
 }
 export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
@@ -940,7 +960,7 @@ let methodsDirty=true; // build the method filter once initially
 const flowStore=createFlowStore(state.flows);
 let reloadTimer=null;
 const renderSideEpoch={req:0,res:0};
-let wsRenderEpoch=0;
+let wsRenderEpoch=0,wsReplayEpoch=0;
 let selectFlowEpoch=0;
 // A full History reload can replace the page cache while an Inspector detail
 // request is in flight. Keep that request owned by the filter generation that
@@ -1052,6 +1072,7 @@ export async function selectFlow(id){
     const note=$('#noteInput');if(note)note.value='';
   }
   state.selId=id;
+  onAuthzSelectionChanged();
   renderRows();
   if(needsLoadingState)showInspectorLoading(id);
   try{
@@ -1128,14 +1149,21 @@ export async function renderWSFrames(id){
   }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
 }
 async function wsReplay(url){
+  const out=$('#wsReplayOut'),button=$('#wsSendBtn');
+  if(!out||!button||button.disabled)return;
+  const epoch=++wsReplayEpoch,flowId=state.selId,detail=state.detail,selectionEpoch=selectFlowEpoch;
+  const current=()=>epoch===wsReplayEpoch&&selectFlowEpoch===selectionEpoch&&state.selId===flowId&&state.detail===detail&&out.isConnected&&button.isConnected&&$('#wsReplayOut')===out&&$('#wsSendBtn')===button;
   const msg=($('#wsMsg')||{}).value||'';
-  const out=$('#wsReplayOut');if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Sending…';}
+  if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
   try{
     const r=await api('/api/ws/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,message:msg})});
     const frames=r.frames||[];
     const head=`<div class="micro-label" style="margin:4px 0 4px">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
+    if(!current())return;
     if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
-  }catch(e){if(out)out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+  }catch(e){if(current())out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';
+  }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='▲ Send';}}
 }
 // markFindInHtml wraps occurrences of the find query in <mark>, but only inside
 // *text runs* of an already-escaped/highlighted HTML string — never inside a tag
@@ -1293,11 +1321,11 @@ if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
-let flowSearchSourceEpoch=0;
+let flowSearchSourceEpoch=0,flowSearchLoadEpoch=0,flowSearchEditEpoch=0,flowSearchTestEpoch=0,flowSearchTestPending=false,flowSearchMutationPending=false;
 function flowSearchStatus(text,error=false){const el=$('#flowSearchScriptError'),status=$('#flowSearchScriptStatus');if(el)el.textContent=error?String(text||''):'';if(status)status.textContent=error?'':String(text||'');}
 function flowSearchPayload(){return {name:($('#flowSearchScriptName')||{}).value.trim(),scope:'anywhere',script:($('#flowSearchScriptEditor')||{}).value||'',flowId:state.selId||0};}
 function renderFlowSearches(){const list=$('#flowSearchScriptList');if(!list)return;list.innerHTML='<option value="">new search…</option>'+flowSearchUI.items.map(x=>`<option value="${escAttr(x.name)}">${esc(x.name)} · ${esc(x.scope||'anywhere')}</option>`).join('');list.value=flowSearchUI.name;}
-async function loadFlowSearches(){try{const d=await api('/api/flow-searches');flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
+async function loadFlowSearches(){const epoch=++flowSearchLoadEpoch;try{const d=await api('/api/flow-searches');if(epoch!==flowSearchLoadEpoch||flowSearchMutationPending)return;flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){if(epoch===flowSearchLoadEpoch&&!flowSearchMutationPending)flowSearchStatus(e.message,true);}}
 async function loadFlowSearchSource(name){
   const epoch=++flowSearchSourceEpoch;
   const current=()=>epoch===flowSearchSourceEpoch&&$('#flowSearchScriptList')?.value===name;
@@ -1308,11 +1336,36 @@ async function loadFlowSearchSource(name){
     state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();
   }catch(e){if(current())flowSearchStatus(e.message,true);}
 }
-async function testFlowSearch(){const p=flowSearchPayload();if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchStatus(d.valid?'valid':'invalid');}catch(e){flowSearchStatus(e.message,true);}}
-async function saveFlowSearch(){const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchUI.name=p.name;flowSearchStatus('saved');await loadFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
-async function deleteFlowSearch(){const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name)return;try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';renderFlowSearches();flowSearchStatus('deleted');}catch(e){flowSearchStatus(e.message,true);}}
-$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
-['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;});});
+async function testFlowSearch(){
+  const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}if(flowSearchTestPending)return;
+  const epoch=++flowSearchTestEpoch,editEpoch=flowSearchEditEpoch,button=$('#flowSearchScriptTest');
+  const current=()=>epoch===flowSearchTestEpoch&&editEpoch===flowSearchEditEpoch;
+  flowSearchTestPending=true;if(button){button.disabled=true;button.setAttribute('aria-busy','true');}flowSearchStatus('testing…');
+  try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});if(current())flowSearchStatus(d.valid?'valid':'invalid',!d.valid);}
+  catch(e){if(current())flowSearchStatus(e.message,true);}
+  finally{if(epoch===flowSearchTestEpoch){flowSearchTestPending=false;if(button){button.disabled=flowSearchMutationPending;button.setAttribute('aria-busy',flowSearchMutationPending?'true':'false');}}}
+}
+function setFlowSearchMutationPending(pending){flowSearchMutationPending=pending;['#flowSearchScriptTest','#flowSearchScriptSave','#flowSearchScriptDelete'].forEach(sel=>{const button=$(sel),busy=pending||(sel==='#flowSearchScriptTest'&&flowSearchTestPending);if(button){button.disabled=busy;button.setAttribute('aria-busy',busy?'true':'false');}});}
+async function saveFlowSearch(){
+  const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}if(flowSearchMutationPending)return;
+  const sourceEpoch=flowSearchSourceEpoch;setFlowSearchMutationPending(true);flowSearchLoadEpoch++;flowSearchStatus('saving…');
+  let saved=false;
+  try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});saved=true;if(sourceEpoch===flowSearchSourceEpoch&&$('#flowSearchScriptName')?.value.trim()===p.name){flowSearchUI.name=p.name;flowSearchStatus('saved');}}
+  catch(e){if(sourceEpoch===flowSearchSourceEpoch)flowSearchStatus(e.message,true);}
+  finally{setFlowSearchMutationPending(false);}
+  if(saved)await loadFlowSearches();
+}
+async function deleteFlowSearch(){
+  const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name||flowSearchMutationPending)return;
+  const sourceEpoch=flowSearchSourceEpoch;setFlowSearchMutationPending(true);flowSearchLoadEpoch++;
+  let deleted=false;
+  try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});deleted=true;flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);if(sourceEpoch===flowSearchSourceEpoch){flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';flowSearchStatus('deleted');}}
+  catch(e){if(sourceEpoch===flowSearchSourceEpoch)flowSearchStatus(e.message,true);}
+  finally{setFlowSearchMutationPending(false);}
+  if(deleted)await loadFlowSearches();else renderFlowSearches();
+}
+$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{flowSearchEditEpoch++;if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;flowSearchEditEpoch++;flowSearchStatus(flowSearchMutationPending?'edited while save pending — save again':'unsaved');});});
 $('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
 $('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
 $('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
@@ -1372,8 +1425,8 @@ $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefa
 $('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
 $('#noteInput').addEventListener('blur',saveNote);
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
-let viewsLoadError=null;
-export async function loadViews(){try{const d=await api('/api/views');viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){viewsLoadError=e;renderViews();}}
+let viewsLoadError=null,viewsLoadEpoch=0,viewsMutationPending=false;
+export async function loadViews(){const epoch=++viewsLoadEpoch;try{const d=await api('/api/views');if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=e;renderViews();}}
 export function renderViews(){
   const btn=$('#viewsBtn'); if(!btn)return;
   if(viewsLoadError){btn.textContent='Views !';btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
@@ -1384,20 +1437,33 @@ export function renderViews(){
 }
 function applyView(v){
   let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
-  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
+  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',searchScope:f.searchScope||'anywhere',host:f.host||'',tag:f.tag||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
   state.inScopeOnly=!!f.inScope;
+  state.notesOnly=!!f.notesOnly;
+  state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;
+  state.hideTlsFailed=f.hideTlsFailed!==false;
+  const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
+  syncSourceFilters();syncHideTlsFilter();
   syncControls();$('#scopeToggle').classList.toggle('on',state.inScopeOnly);$('#scopeToggle').setAttribute('aria-pressed',state.inScopeOnly?'true':'false');$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
-  renderChips();loadFlows();
+  renderChips();renderTagBar();loadFlows();
   toast('applied view: '+v.name);
 }
 async function saveCurrentView(){
   const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
-  const data={...state.filters,inScope:state.inScopeOnly};
-  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');loadViews();}catch(e){toast(e.message);}
+  if(viewsMutationPending)return;
+  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,hideTlsFailed:state.hideTlsFailed};
+  viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
+  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
+  catch(e){toast(e.message);}
+  finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 async function deleteView(id,name){
   if(!await uiConfirm('Delete view','Delete saved view <b>'+esc(name)+'</b>?','Delete','btn danger','var(--red)'))return;
-  try{await api('/api/views/'+id,{method:'DELETE'});loadViews();toast('view deleted');}catch(e){toast(e.message);}
+  if(viewsMutationPending)return;
+  viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
+  try{await api('/api/views/'+id,{method:'DELETE'});toast('view deleted');}
+  catch(e){toast(e.message);}
+  finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 function openViewsMenu(){
   const btn=$('#viewsBtn'); if(!btn)return;
@@ -1415,26 +1481,33 @@ function openViewsMenu(){
 }
 $('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
 /* ---- target scope ---- */
+let scopeLoadEpoch=0,scopeMutationEpoch=0,scopeMutationLanes=new Map(),scopeMutationRevision=new Map(),scopeDrafts=new Map();
 export async function loadScope(){
+  const epoch=++scopeLoadEpoch,mutationSnapshot=scopeMutationEpoch;
   const loadState=$('#scopeLoadState');
   try{
     const d=await api('/api/scope');
+    if(epoch!==scopeLoadEpoch||mutationSnapshot!==scopeMutationEpoch||scopeMutationLanes.size)return;
     if(loadState)loadState.style.display='none';
     state.scope=d.rules||[];
     renderScope();
   }catch(e){
-    renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
+    if(epoch===scopeLoadEpoch&&!scopeMutationLanes.size)renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
   }
 }
 export async function addHostToScope(host){
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})});
-    toast('added '+host+' to scope — toggle ◎ in scope to focus');loadScope();}
+  try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})}));
+    toast('added '+host+' to scope — toggle ◎ in scope to focus');}
   catch(e){toast(e.message);}
 }
 export function renderScope(){
   const body=$('#scopeBody');if(!body)return;
+  const active=document.activeElement;
+  const activeRow=active?.closest?.('#scopeBody tr[data-id]');
+  const focus={id:activeRow?.dataset.id||'',key:active?.dataset?.k||'',start:active?.selectionStart,end:active?.selectionEnd};
   const warn=$('#scopeDupWarn');
-  const enabled=state.scope.filter(r=>r.enabled);
+  const rows=state.scope.map(r=>({...r,...(scopeDrafts.get(r.id)||{})}));
+  const enabled=rows.filter(r=>r.enabled);
   const dup=enabled.filter((r,i,a)=>a.findIndex(x=>x.action===r.action&&x.host===r.host&&x.path===r.path&&x.scheme===r.scheme&&x.port===r.port)!==i);
   if(warn){
     if(dup.length){
@@ -1443,7 +1516,7 @@ export function renderScope(){
     }else warn.style.display='none';
   }
   if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
-  body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
+  body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
     <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
     <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
@@ -1451,15 +1524,29 @@ export function renderScope(){
     <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
     <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>updateScope(id,tr)));});
+    tr.querySelectorAll('[data-k]').forEach(inp=>{inp.addEventListener('input',()=>rememberScopeDraft(id,tr));inp.addEventListener('change',()=>updateScope(id,tr));});});
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteScope(Number(b.dataset.del)));
+  if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
+}
+function scopeMutation(id,work){
+  scopeMutationEpoch++;
+  const rev=(scopeMutationRevision.get(id)||0)+1;scopeMutationRevision.set(id,rev);
+  const prior=scopeMutationLanes.get(id)||Promise.resolve();
+  const next=prior.catch(()=>{}).then(work);
+  scopeMutationLanes.set(id,next);
+  return next.finally(()=>{if(scopeMutationLanes.get(id)!==next)return;scopeMutationLanes.delete(id);if(!scopeMutationLanes.size)loadScope();});
+}
+function rememberScopeDraft(id,tr){
+  const get=k=>tr.querySelector(`[data-k="${k}"]`);
+  const draft={id,action:get('action').value,host:get('host').value.trim(),path:get('path').value.trim(),scheme:get('scheme').value.trim(),enabled:get('enabled').checked,port:0};
+  scopeDrafts.set(id,draft);return draft;
 }
 async function updateScope(id,tr){
-  const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const upd={id,action:get('action').value,host:get('host').value.trim(),path:get('path').value.trim(),scheme:get('scheme').value.trim(),enabled:get('enabled').checked,port:0};
-  try{await api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('scope saved');}catch(e){toast(e.message);loadScope();}
+  const upd=rememberScopeDraft(id,tr),pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)})),revision=scopeMutationRevision.get(id);
+  try{await pending;if(revision===scopeMutationRevision.get(id)){scopeDrafts.delete(id);toast('scope saved');}}
+  catch(e){if(revision===scopeMutationRevision.get(id))toast(e.message);}
 }
-async function deleteScope(id){try{await api('/api/scope/'+id,{method:'DELETE'});loadScope();}catch(e){toast(e.message);}}
+async function deleteScope(id){const pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'DELETE'})),revision=scopeMutationRevision.get(id);try{await pending;if(revision===scopeMutationRevision.get(id))scopeDrafts.delete(id);}catch(e){if(revision===scopeMutationRevision.get(id))toast(e.message);}}
 let scopeAddInFlight=false,scopeAddEpoch=0;
 function setScopeAddState(stateName){const b=$('#addScopeBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add';}
 $('#addScopeBtn').onclick=async()=>{
@@ -1467,8 +1554,8 @@ $('#addScopeBtn').onclick=async()=>{
   const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
   if(!rule.host&&!rule.path){toast('host or path required');return;}
   scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
+  try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
+    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
   finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
@@ -1477,6 +1564,7 @@ export function syncControls(){
   $('#fStatus').value=state.filters.status;
   $('#fSearch').value=state.filters.search;
   const ss=$('#fSearchScope');if(ss)ss.value=state.filters.searchScope||'anywhere';
+  syncSearchPlaceholder();
 }
 export function setFilter(key,val){
   if(key==='tag'&&val==='tls-failed'){
@@ -1488,11 +1576,14 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;state.showManual=true;state.showAI=true;syncSourceFilters();
+  state.notesOnly=false;state.showManual=true;state.showAI=true;state.inScopeOnly=false;state.hideTlsFailed=false;
+  try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
+  syncSourceFilters();syncHideTlsFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
-  syncControls();renderChips();loadFlows();
+  {const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
+  syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||!state.showManual||!state.showAI);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -1534,15 +1625,15 @@ export function addExclude(field,value){
 export function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
 export function renderChips(){
   const f=state.filters,box=$('#chips'),items=[];
-  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><span class="x" data-clear="${k}" title="remove">✕</span></span>`);};
+  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><button type="button" class="x" data-clear="${k}" title="Remove filter" aria-label="Remove ${escAttr(k)} filter">✕</button></span>`);};
   add('scheme','scheme',f.scheme);
   add('method','method',f.method);
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
   add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
-  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><span class="x" id="chipHideTlsClear" title="show TLS failures">✕</span></span>`);
-  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
+  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">✕</button></span>`);
+  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">✕</button></span>`);});
   const hasFilters=items.length>0;
   if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
   box.innerHTML=items.join('');
@@ -1835,34 +1926,44 @@ function compareLineDiff(a,b){
   }
   return rows.join('')+(n>300?'<div class="hint">…line diff truncated</div>':'');
 }
-export async function openCompare(){
+let compareEpoch=0,compareMode='words';
+function compareModalOpen(modal,box){return modal?.style.display==='flex'&&box?.isConnected&&$('#compareBody')===box;}
+function closeCompare(){++compareEpoch;closeModal($('#compareModal'));}
+export async function openCompare(restoreModeFocus=''){
+  const epoch=++compareEpoch;
   const ids=[...state.selected].sort((a,b)=>a-b);
   if(ids.length!==2){toast('select exactly 2 flows');return;}
-  openModal($('#compareModal'));
-  const box=$('#compareBody');if(box)box.innerHTML='<div class="hint">loading…</div>';
+  const modal=$('#compareModal'),box=$('#compareBody');
+  if(!compareModalOpen(modal,box))openModal(modal,{onEscape:closeCompare,onDismiss:closeCompare});
+  const current=()=>epoch===compareEpoch&&compareModalOpen(modal,box)&&state.selected.size===2&&ids.every(id=>state.selected.has(id));
+  $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
+  if(box)box.innerHTML='<div class="hint">loading…</div>';
   try{
     const [fa,fb]=await Promise.all(ids.map(id=>api('/api/flows/'+id)));
+    if(!current())return;
     const [ra,rb]=await Promise.all(ids.map(id=>api('/api/flows/'+id+'/raw?side=res')));
     const split=s=>{const i=s.indexOf('\r\n\r\n');return i>=0?s.slice(i+4):s;};
     const limit=512*1024;
     const ba=split(ra).slice(0,limit),bb=split(rb).slice(0,limit);
-    const mode=($('#compareMode')&&$('#compareMode').querySelector('.on')?.dataset.m)||'words';
+    if(!current())return;
+    const mode=compareMode;
     const bodyHtml=mode==='lines'?compareLineDiff(ba,bb):compareWordDiff(ba,bb);
     $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
     if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:var(--fs-xs);flex-wrap:wrap">
       <span><b style="color:var(--red)">#${ids[0]}</b> ${esc(fa.method)} ${esc(fa.status||'—')} · ${fmtSize(fa.resLen)}</span>
       <span><b style="color:var(--accent)">#${ids[1]}</b> ${esc(fb.method)} ${esc(fb.status||'—')} · ${fmtSize(fb.resLen)}</span>
-      <div class="seg" id="compareMode" style="margin-left:auto"><button class="on" data-m="words">Words</button><button data-m="lines">Lines</button></div>
+      <div class="seg" id="compareMode" role="group" aria-label="Response comparison mode" style="margin-left:auto"><button type="button" class="${mode==='words'?'on':''}" data-m="words" aria-pressed="${mode==='words'?'true':'false'}">Words</button><button type="button" class="${mode==='lines'?'on':''}" data-m="lines" aria-pressed="${mode==='lines'?'true':'false'}">Lines</button></div>
     </div>
     <div class="micro-label" style="margin:8px 0 4px">RESPONSE HEADERS</div>
     ${compareHeaderDiff(fa.resHeaders,fb.resHeaders)}
     <div class="micro-label" style="margin:12px 0 4px">RESPONSE BODY</div>
     ${bodyHtml}`;
-    $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{ $('#compareMode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); openCompare(); };});
-  }catch(e){if(box)box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+    $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{compareMode=b.dataset.m;openCompare(compareMode);};});
+    if(restoreModeFocus)requestAnimationFrame(()=>{if(current())$('#compareMode')?.querySelector(`[data-m="${restoreModeFocus}"]`)?.focus({preventScroll:true});});
+  }catch(e){if(current())box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
 }
-if($('#selCompare'))$('#selCompare').onclick=openCompare;
-if($('#compareClose'))$('#compareClose').onclick=()=>closeModal($('#compareModal'));
+if($('#selCompare'))$('#selCompare').onclick=()=>openCompare();
+if($('#compareClose'))$('#compareClose').onclick=closeCompare;
 $('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
 
 $('#selScope').onclick=async()=>{
@@ -1872,12 +1973,11 @@ $('#selScope').onclick=async()=>{
   button.disabled=true;button.setAttribute('aria-busy','true');
   let added=0;const failed=[];
   try{
-    for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){failed.push(host);}}
+    await scopeMutation(0,async()=>{for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){failed.push(host);}}});
     if(failed.length){
       const names=failed.slice(0,3).join(', ')+(failed.length>3?' +'+(failed.length-3)+' more':'');
       toast((added?'added '+added+' of '+hosts.length+' hosts':'no hosts added')+' · failed: '+names,'warn');
     }else toast('added '+added+' host'+(added===1?'':'s')+' to scope','success');
-    loadScope();
   }finally{
     button.disabled=false;button.removeAttribute('aria-busy');
   }
@@ -1889,7 +1989,7 @@ $('#selDelete').onclick=async()=>{
   clearTimeout(_delTimer);_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';
   try{
     const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
-    if(state.selected.has(state.selId))state.selId=null;
+    if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
     state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
     toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
   }catch(e){toast('delete: '+e.message);}

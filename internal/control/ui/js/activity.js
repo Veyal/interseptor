@@ -27,6 +27,19 @@ const actFilter={intent:''};
 // replace a useful Retry action with a misleading empty state.
 let activityLoadError=false;
 let activityLoadGeneration=0;
+let activityPendingEvents=[];
+function activityEventKey(it){
+  if(it&&it.id!=null)return 'id:'+it.id;
+  return 'event:'+String(it?.ts||'')+'\u0000'+String(it?.tool||'')+'\u0000'+String(it?.summary||'')+'\u0000'+String(it?.result||'');
+}
+function mergeActivitySnapshot(snapshot){
+  const merged=[],seen=new Set();
+  [...activityPendingEvents,...(snapshot||[])].forEach(it=>{
+    const key=activityEventKey(it);if(seen.has(key))return;seen.add(key);merged.push(it);
+  });
+  activityPendingEvents=[];
+  return merged.slice(0,ACT_MAX);
+}
 function passesFilter(it){
   if(actFilter.intent&&!(it.intent||'').toLowerCase().includes(actFilter.intent))return false;
   return true;
@@ -50,7 +63,7 @@ export function renderActivity(){
     const status=it.ok?'Success':'Error';
     const activityId=it.id!=null?String(it.id):String(it._uiId||(it._uiId='client-'+Date.now()+'-'+i));
     const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'');
-    return `<div class="act-row${fid?' act-jump':''}${grp}" tabindex="0" data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}" title="${fid?'Open flow #'+fid+' in History':''}">
+    return `<div class="act-row${fid?' act-jump':''}${grp}"${fid?' tabindex="0" role="button"':''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}" title="${fid?'Open flow #'+fid+' in History':''}">
     <span class="ok" aria-hidden="true" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${status}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
@@ -74,6 +87,8 @@ function restoreActivityFocus(box,focusedId){
 }
 export function onActivity(it){
   if(!it)return;
+  activityPendingEvents.unshift(it);
+  if(activityPendingEvents.length>ACT_MAX)activityPendingEvents.length=ACT_MAX;
   state.activity.unshift(it);
   if(state.activity.length>ACT_MAX)state.activity.length=ACT_MAX;
   const onTab=document.querySelector('.tab[data-tab="activity"]').classList.contains('active');
@@ -87,7 +102,7 @@ export async function loadActivity(){
     const d=await api('/api/activity');
     if(generation!==activityLoadGeneration)return;
     activityLoadError=false;
-    state.activity=d.activity||[];
+    state.activity=mergeActivitySnapshot(d.activity||[]);
     renderActivity();
   }
   catch(e){
@@ -101,6 +116,7 @@ export function clearActSeen(){state.actUnseen=0;const b=$('#actBadge');if(b)b.s
 export function clearActivityLoadError(){
   activityLoadError=false;
   activityLoadGeneration++;
+  activityPendingEvents=[];
   const box=$('#actFeed');
   if(box)delete box.dataset.loading;
 }
@@ -112,8 +128,10 @@ $('#actClear').onclick=async()=>{
   actClearInFlight=true;
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Clearing…';}
   try{
+    activityLoadGeneration++;
+    activityPendingEvents=[];
     await api('/api/activity',{method:'DELETE'});
-    state.activity=[];clearActivityLoadError();renderActivity();clearActSeen();
+    state.activity=mergeActivitySnapshot([]);clearActivityLoadError();renderActivity();clearActSeen();
   }catch(e){toast('clear failed: '+e.message,'error');}
   finally{
     actClearInFlight=false;
