@@ -334,6 +334,7 @@ function mapAssignClusters(eps){
 
 export function mapVisibleEps(eps){
   const clustered = mapAssignClusters(eps);
+  mapExpandClustersForSearch(clustered);
   const out = [];
   for(const e of clustered){
     out.push(e);
@@ -391,7 +392,7 @@ function epOrClusterMatchesSearch(e, q){
 function mapExpandClustersForSearch(eps){
   const q = mapState.search;
   if(!q || !mapState.collapseIdentical) return;
-  for(const e of mapAssignClusters(eps)){
+  for(const e of eps){
     if(e._cluster && epOrClusterMatchesSearch(e, q)) mapState.expandedClusters.add(e._cluster.key);
   }
 }
@@ -780,7 +781,6 @@ function mapApplySearch(){
   const filtered = mapFiltered();
   if(mapState.search){
     mapExpandForSearch(filtered);
-    mapExpandClustersForSearch(filtered);
   }
   mapState._needFit = true;
   renderMap();

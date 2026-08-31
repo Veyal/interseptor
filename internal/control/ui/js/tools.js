@@ -180,11 +180,12 @@ async function repHydrateTabHistory(t){
     const embedded=normalizeRepHistory(t.history);
     try{
       const stored=await repReadHistory(t);
-      const merged=normalizeRepHistory([...embedded,...stored]).sort((a,b)=>b.id-a.id);
-      if(t.historyStoreNeedsMigration&&merged.length)await repStoreHistoryEntries(t,merged);
-      t.history=merged;t.historyStoreNeedsMigration=false;t.historyStorageError='';
+      t.history=normalizeRepHistory([...(t.history||[]),...embedded,...stored]).sort((a,b)=>b.id-a.id);
+      if(t.historyStoreNeedsMigration&&t.history.length)await repStoreHistoryEntries(t,t.history);
+      t.historyStoreNeedsMigration=false;t.historyStorageError='';
     }catch(e){
-      t.history=embedded;t.historyStorageError=e.message||'unknown error';
+      t.history=normalizeRepHistory([...(t.history||[]),...embedded]).sort((a,b)=>b.id-a.id);
+      t.historyStorageError=e.message||'unknown error';
     }
   })();
   await t.historyHydrationPromise;
@@ -395,6 +396,9 @@ export function repSwitch(tid){repTabs.switchTo(tid);}
 export function repCloseTab(tid){repTabs.close(tid);}
 export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
+function repHistoryVisible(){const box=$('#repHistory');return !!box&&box.style.display!=='none';}
+function repSetHistoryCount(t){const toggle=$('#repHistToggle'),count=normalizeRepHistory(t?.history).length;if(toggle)toggle.textContent='⟲ History'+(count?' ('+count+')':'');}
+function refreshRepHistory(t=repCur()){if(repCur()!==t)return;if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t);}
 export function repSaveEditor(){
   const t=repCur();if(!t)return;
   const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
@@ -438,7 +442,7 @@ export function repLoadEditor(){
   if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
   else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
-  loadRepHistory();
+  refreshRepHistory(t);
 }
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
@@ -510,7 +514,7 @@ export async function repSend(){
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
     if(repCur()!==t)return;
     setRepSendState('success','Sent');resetRepSend(600,t);
-    loadRepHistory();
+    refreshRepHistory(t);
   }catch(e){
     t.sendPending=false;
     const msg=friendlySendError(e.message);
@@ -578,18 +582,17 @@ async function migrateLegacyRepHistory(t){
 }
 export async function loadRepHistory(){
   const box=$('#repHistory');if(!box)return;const t=repCur();if(!t)return;
-  const setCount=n=>{const tg=$('#repHistToggle');if(tg)tg.textContent='⟲ History'+(n?' ('+n+')':'');};
   await repHydrateTabHistory(t);
   if(repCur()!==t)return;
   let migrationError=t.historyStorageError?`<div class="state-error" style="margin:8px"><span>History reload storage unavailable: ${esc(t.historyStorageError)}</span> <button type="button" class="btn xs" data-rep-history-storage-retry>Retry</button></div>`:'';
   if(t.historyNeedsMigration){
-    setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Loading this tab’s saved history…</div>';
+    repSetHistoryCount({history:[]});box.innerHTML='<div class="hint" style="padding:10px">Loading this tab’s saved history…</div>';
     const migrated=await migrateLegacyRepHistory(t);
     if(repCur()!==t)return;
     if(!migrated)migrationError=`<div class="state-error" style="margin:8px"><span>Could not restore older sends: ${esc(t.historyLoadError||'unknown error')}</span> <button type="button" class="btn xs" data-rep-history-retry>Retry</button></div>`;
   }
   const flows=normalizeRepHistory(t.history);
-  t.history=flows;setCount(flows.length);
+  t.history=flows;repSetHistoryCount(t);
   if(!flows.length){box.innerHTML=migrationError||'<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';}
   else{
     const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0));
@@ -612,6 +615,7 @@ $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
   const h=$('#repHistory');if(!h)return;
   const show=h.style.display==='none';h.style.display=show?'':'none';
   $('#repHistToggle').setAttribute('aria-expanded',show?'true':'false');
+  if(show)loadRepHistory();
 });
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
@@ -664,9 +668,7 @@ export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
-  await repRetryHistoryCleanup(repTabs.tabs);
-  await Promise.all(repTabs.tabs.map(repHydrateTabHistory));
-  if(repCur())loadRepHistory();
+  repRetryHistoryCleanup(repTabs.tabs).catch(()=>{});
   // First persist migrates localStorage drafts into the project DB.
   if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{

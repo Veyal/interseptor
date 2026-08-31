@@ -116,6 +116,33 @@ func TestUIRepeaterHistoryRetainsTabLifetimeAndPaginatesRendering(t *testing.T) 
 	}
 }
 
+func TestUIRepeaterHistoryHydratesOnDemandWithoutBlockingStartup(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+
+	for _, contract := range []string{
+		"function repHistoryVisible()",
+		"function refreshRepHistory(t=repCur())",
+		"if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t)",
+		"if(show)loadRepHistory()",
+		"t.history=normalizeRepHistory([...(t.history||[]),...embedded,...stored])",
+		"repRetryHistoryCleanup(repTabs.tabs).catch(()=>{})",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("on-demand Repeater history contract missing %q", contract)
+		}
+	}
+
+	start := strings.Index(tools, "export async function repInit()")
+	end := strings.Index(tools, "export async function intrInit()")
+	if start < 0 || end <= start {
+		t.Fatal("Repeater initialization boundary not found")
+	}
+	init := tools[start:end]
+	if strings.Contains(init, "await repRetryHistoryCleanup") || strings.Contains(init, "repTabs.tabs.map(repHydrateTabHistory)") {
+		t.Error("Repeater initialization must not await cleanup or hydrate every tab history")
+	}
+}
+
 func TestUIRepeaterHistorySelectionRejectsStaleLoads(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	start := strings.Index(tools, "export async function repLoadSend(id)")

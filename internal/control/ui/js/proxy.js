@@ -1753,8 +1753,8 @@ if(inspectMoreActions)inspectMoreActions.onclick=()=>{
   const r=inspectMoreActions.getBoundingClientRect();
   showCtx(r.left,r.bottom+2,f,'');
 };
-document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx();return;}closeInspector();}});
+document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx({restoreFocus:false});});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}closeInspector();}});
 // Suppress the browser's native context menu app-wide, but keep it where it's
 // genuinely useful: editable fields (paste/cut) and over a live text selection (copy).
 document.addEventListener('contextmenu',e=>{

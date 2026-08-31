@@ -96,6 +96,22 @@ func TestUISettingsAcknowledgementsRetainNewerEdits(t *testing.T) {
 	}
 }
 
+func TestUIContextMenuPointerDismissalKeepsTheNewFocusTarget(t *testing.T) {
+	core := requireUIContracts(t, "js/core.js",
+		"export function hideCtxMenu({restoreFocus=false}={})",
+		"if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected",
+		"hideCtxMenu({restoreFocus:true})",
+		"else if(e.key==='Tab')hideCtxMenu()",
+	)
+	if strings.Count(core, "hideCtxMenu({restoreFocus:true})") < 3 {
+		t.Error("context menu activation and keyboard cancellation must restore opener focus")
+	}
+	requireUIContracts(t, "js/proxy.js",
+		"if(!ctx.contains(e.target))hideCtx({restoreFocus:false})",
+		"if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}",
+	)
+}
+
 func TestUICheckToggleOwnsListReconciliation(t *testing.T) {
 	requireUIContracts(t, "js/scanner.js",
 		"let checkListEpoch=0",
@@ -318,6 +334,18 @@ func TestUIRESTAndProjectRefreshesMarkPreviousDataStale(t *testing.T) {
 		"renderLoadError($('#projectLoadState'),'Projects',e,loadProject,hadData)",
 		"markProjectDataStale(false)",
 	)
+	settings := readUIAsset(t, "js/settings.js")
+	projectStart := strings.Index(settings, "export async function loadProject()")
+	projectEnd := strings.Index(settings, "export async function doSwitchProject")
+	if projectStart < 0 || projectEnd <= projectStart {
+		t.Fatal("project loader boundary not found")
+	}
+	projectLoader := settings[projectStart:projectEnd]
+	disable := strings.Index(projectLoader, "setProjectControlsDisabled(true,hadData?")
+	request := strings.Index(projectLoader, "await api('/api/project')")
+	if disable < 0 || request < 0 || disable > request {
+		t.Error("project actions must fail closed before the initial project request")
+	}
 }
 
 func TestUIProjectModalDisablesExistingRowsDuringRefresh(t *testing.T) {

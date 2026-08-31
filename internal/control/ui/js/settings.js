@@ -1102,10 +1102,8 @@ if(importBurpFile)importBurpFile.onchange=async e=>{
 export async function loadProject(){
   const epoch=++projectLoadEpoch;
   const hadData=projectDataLoaded;
-  if(hadData){
-    markProjectDataStale(true);
-    setProjectControlsDisabled(true,'Project data is stale — retry before switching or creating a project');
-  }
+  if(hadData)markProjectDataStale(true);
+  setProjectControlsDisabled(true,hadData?'Project data is stale — retry before switching or creating a project':'Project data is loading — wait before switching or creating a project');
   const loadState=$('#projectLoadState');
   if(loadState&&hadData){loadState.style.display='block';loadState.textContent='Refreshing Projects…';}
   try{const d=await api('/api/project');

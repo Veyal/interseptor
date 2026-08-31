@@ -68,6 +68,22 @@ func TestFindingsMapStateContracts(t *testing.T) {
 	}
 }
 
+func TestMapClusterSearchExpansionPrecedesEveryVisibilityRebuild(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	start := strings.Index(mapJS, "export function mapVisibleEps(eps){")
+	end := strings.Index(mapJS, "export function mapCount(node)")
+	if start < 0 || end <= start {
+		t.Fatal("Map visibility boundary not found")
+	}
+	renderer := mapJS[start:end]
+	clustered := strings.Index(renderer, "const clustered = mapAssignClusters(eps)")
+	expand := strings.Index(renderer, "mapExpandClustersForSearch(clustered)")
+	visible := strings.Index(renderer, "for(const e of clustered)")
+	if clustered < 0 || expand < clustered || visible < expand {
+		t.Error("Map cluster matches must expand before visible endpoints are rebuilt")
+	}
+}
+
 func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 	findings := readUIAsset(t, "js/findings.js")
 	for _, contract := range []string{

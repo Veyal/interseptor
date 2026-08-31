@@ -987,12 +987,12 @@ export function countListLines(text, ignoreComments=false){
 }
 
 /* ---- shared right-click context menu (#ctxmenu) ---- */
-export function hideCtxMenu(){
+export function hideCtxMenu({restoreFocus=false}={}){
   const ctx=$('#ctxmenu');if(!ctx)return;
   const wasOpen=ctx.classList.contains('show');
   if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
   ctx.classList.remove('show');ctx._acts=null;
-  if(wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
+  if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
     ctx._returnFocus?.focus({preventScroll:true});
   }
   ctx._returnFocus=null;
@@ -1024,7 +1024,7 @@ export function openCtxMenu(x,y,sections){
   ctx.innerHTML=html;ctx._acts=acts;ctx._sel=0;
   const items=ctx.querySelectorAll('.ctx-item');
   items.forEach((el,i)=>el.classList.toggle('on',i===0));
-  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu();if(fn)fn();});
+  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu({restoreFocus:true});if(fn)fn();});
   ctx.style.left=x+'px';ctx.style.top=y+'px';ctx.classList.add('show');
   const r=ctx.getBoundingClientRect();
   if(r.right>innerWidth)ctx.style.left=Math.max(4,x-r.width)+'px';
@@ -1034,8 +1034,8 @@ export function openCtxMenu(x,y,sections){
     if(!ctx.classList.contains('show'))return;
     if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel(true);}
     else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel(true);}
-    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu();if(fn)fn();}
-    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu();}
+    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu({restoreFocus:true});if(fn)fn();}
+    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu({restoreFocus:true});}
     else if(e.key==='Tab')hideCtxMenu();
   };
   document.addEventListener('keydown',ctx._keyHandler);
