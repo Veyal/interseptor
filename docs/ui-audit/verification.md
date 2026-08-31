@@ -2,9 +2,9 @@
 
 ## Revision and environment
 
-- Application source: `46eccdfac320eb2348d11f2394b19e56c6ff9b09`
-- Build: `CGO_ENABLED=0 go build ./cmd/interseptor`
-- Browser: Playwright Chromium, with Chrome DevTools Protocol performance metrics
+- Application source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
+- Launch: fresh `go run ./cmd/interseptor` build of that checkout
+- Browser: Playwright 1.55.0, Chromium 140.0.7339.16, with Chrome DevTools Protocol metrics
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
@@ -50,11 +50,11 @@ created it. In particular:
 
 ### Repeater history contract
 
-A browser loop sent 105 requests from one Repeater tab while changing method, URL, headers, and
-body. History remained `105` after all field edits, a switch to another tab and back, and a page
-reload. Rendering stayed bounded to 100 entries with a direct “Show 5 older” action. A separate
-close-vs-send race confirmed that closing the owning tab removes its durable IndexedDB rows even
-when the send response arrives later.
+The exact-target browser recheck sent a request from one Repeater tab, then changed its method, URL,
+headers, and body. History remained attached to the tab after every edit and a page reload; the
+edited request also survived the reload. The durable IndexedDB row count stayed at one until the
+tab closed, then reached zero. The larger 105-request render and close-vs-send race remain covered
+by the focused Repeater regression tests.
 
 ## Browser and accessibility checks
 
@@ -72,21 +72,16 @@ when the send response arrives later.
 
 ## Performance findings
 
-The complete profile was repeated after the exact source rebuild.
+The missing exact-target profile was repeated after a fresh launch of source `42461e1`.
 
 | Scenario | Result |
 | --- | --- |
-| Main-panel transition | CSS animation duration `180 ms`; selection and focus commit synchronously |
-| 240-request live History burst | `104–140 ms` network wall time, 100 observed rows at 1440 × 900, about 3.1k DOM nodes, `16.8 ms` max sampled frame gap, 0 long tasks |
-| 360-request full-workflow burst | `186 ms` send wall time, 100 observed rows at 1440 × 900, 0 long tasks |
-| Intercept Forward acknowledgement | row removed in `246–247 ms`, target response `200` |
-| Map render, pan/zoom, and Fit | render `291 ms`; wheel-pan `17.9 ms`; modified-wheel zoom `29.9 ms`; pointer-drag observation `128.9 ms`; Fit `349 ms`; 0 long tasks/active gesture animations; one roving tab stop |
-| Whole 240-request profile (CDP delta) | task `0.295–0.321 s`, script `0.047–0.059 s`, layout `0.038–0.043 s`, heap `+2.0–2.4 MB` |
+| 240-request live History burst | `505.2 ms` network wall time, 101 observed rows at 1440 × 900, 3,087 DOM nodes, 0 long tasks, no visible stuck busy state |
+| Map hydration after the burst | `970.1 ms` from tab activation to the first rendered host |
+| Whole 240-request profile (CDP delta) | task `0.115 s`, script `0.057 s`, layout `0.015 s`, heap `-0.6 MB` after collection |
 
-A legacy harness initially waited on the dormant text content of a hidden History status node and
-timed out after a below-threshold burst. The UI banner was `display:none`, the virtualized table was
-interactive, and the flow request had completed in about 2 ms. Verification now treats only a
-*visible* busy banner as busy; repeated threshold and full-profile runs showed no visible lock.
+The target recheck treats only a visible busy surface as busy. The virtualized table remained
+interactive after the burst and no visible busy surface remained.
 
 ## Competitive review
 
@@ -115,9 +110,9 @@ or a component-library visual language.
 - Native assistive-technology testing is still a useful release follow-up. This pass covered browser
   semantics, keyboard behavior, focus ownership, reduced motion, and accessible status text.
 
-## Source gates
+## Required source gates
 
-The source revision passed:
+The release branch must pass these source gates in their owning validation phases:
 
 ```text
 go test ./... -count=1

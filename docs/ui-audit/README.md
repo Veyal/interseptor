@@ -1,10 +1,10 @@
 # UI audit screenshots
 
 The **After** screenshots validate UI source revision
-[`46eccdf`](https://github.com/Veyal/interseptor/commit/46eccdfac320eb2348d11f2394b19e56c6ff9b09).
-They were captured from a fresh `CGO_ENABLED=0` static binary in the isolated
-`evidence-final` project on 2026-08-31. The evidence commit that contains the images changes only
-documentation and screenshots, so `46eccdf` remains the exact application source under test.
+[`42461e1`](https://github.com/Veyal/interseptor/commit/42461e18fd13e72047cb81d99716fa6f18e8241a).
+They were captured from a fresh build of that checkout in the isolated
+`evidence-target-42461e1` project on 2026-08-31. The evidence change contains only documentation,
+screenshots, and the changelog, so `42461e1` remains the exact application source under test.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. Both sets use empty,
 generic projects; they contain no captured request data or target information.
@@ -21,15 +21,15 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-Playwright exercised every top-level panel, cross-feature state ownership, keyboard/focus behavior,
-the three required viewport sizes, failure/retry states, reduced motion, Repeater tab history, and
-live traffic bursts against the embedded UI. Normal runs reported no unexpected console or page
-errors, no external asset hosts, and no document-level horizontal overflow.
+The final Playwright recheck ran Chromium 140 against source `42461e1`. The 1440 × 900 Proxy,
+1024 × 768 Map, and 390 × 844 Scanner views each had zero document-level horizontal overflow.
+Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
+history stayed tab-owned after method, URL, header, and body edits and a reload, then its IndexedDB
+row was removed when the tab closed. No unexpected console or page errors were reported.
 
-Chrome DevTools Protocol performance measurements covered the 180 ms panel transition, repeated
-240- and 360-request History bursts, acknowledged Intercept queue removal, and Map render,
-pan/zoom, and Fit. The tested 1440 × 900 burst window stayed at approximately 100 rendered rows,
-with a 16.8 ms maximum sampled frame gap and no long tasks.
+Chrome DevTools Protocol metrics covered a fresh 240-request proxy burst and the resulting Map
+hydration. The 1440 × 900 History window stayed bounded at 101 rendered rows and about 3.1k DOM
+nodes, with no long tasks or visible stuck busy state.
 
 See [`verification.md`](verification.md) for the revision, feature matrix, measurements, failure
 injections, competitive review, and intentionally deferred ideas.
