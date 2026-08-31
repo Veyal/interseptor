@@ -3,9 +3,8 @@
 The **After** screenshots validate UI source revision
 [`3ac5891`](https://github.com/Veyal/interseptor/commit/3ac5891c25d11f4e38499b0f3629b243ec6260ad).
 They were captured from a fresh build of that checkout in the isolated
-`ui-independent-3ac5891` project on 2026-08-31. This evidence follow-up contains only
-documentation, screenshots, and the changelog, so `3ac5891` remains the exact application source
-under test.
+`ui-independent-3ac5891` project on 2026-08-31. The screenshots and measurements remain scoped to
+that checkout; later application commits on the release branch are outside this evidence.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
 the audit's local loopback fixture and generic project records; neither set contains real request
