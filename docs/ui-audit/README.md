@@ -1,13 +1,14 @@
 # UI audit screenshots
 
 The **After** screenshots validate UI source revision
-[`bd6a790`](https://github.com/Veyal/interseptor/commit/bd6a790c5984b08ed95b104b46adcccb16fbe70a).
+[`0db243d`](https://github.com/Veyal/interseptor/commit/0db243da77f26a9fb4a4a2598af622d17d4faa4d).
 They were captured from a fresh build of that checkout in the isolated
-`exact-source-bd6a790` project on 2026-08-31. The evidence change contains only documentation,
-screenshots, and the changelog, so `bd6a790` remains the exact application source under test.
+`ui-exact` project on 2026-08-31. The evidence change contains only documentation,
+screenshots, and the changelog, so `0db243d` remains the exact application source under test.
 
-The retained **Before** screenshots are from repository baseline `ec1b79e`. Both sets use empty,
-generic projects; they contain no captured request data or target information.
+The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
+the audit's local loopback fixture and generic project records; neither set contains real request
+data, personal data, or target information.
 
 | Viewport | Surface | Before | After |
 | --- | --- | --- | --- |
@@ -21,17 +22,18 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The final Playwright recheck ran Chromium 148 against source `bd6a790`. The 1440 × 900 Proxy,
-1024 × 768 Map, and 390 × 844 Scanner views each had zero document-level horizontal overflow.
+The final Playwright recheck ran Chromium 148 against source `0db243d`. All 17 independent and
+cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
-history stayed tab-owned after method, URL, header, and body edits and a reload, then its IndexedDB
-row was removed when the tab closed. Delayed Settings refreshes and acknowledgements preserved the
-latest toggle intent and newer TLS draft, while Setup shared the Settings-owned system-proxy
-mutation. No unexpected console or page errors were reported.
+history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
+tab closures. The audit also exercised real Scanner and Intruder runs, delayed Intercept
+acknowledgements, Authz retargeting, reversible API-key/allowlist actions, unconfigured Vault
+behavior, and every Settings section. No unexpected console, page, HTTP, or external-request errors
+were reported.
 
-Chrome DevTools Protocol metrics covered a fresh 240-request proxy burst and the resulting Map
-hydration. The 1440 × 900 History window stayed bounded at 101 rendered rows and about 3.1k DOM
-nodes, with no long tasks or visible stuck busy state.
+Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
+hydration and gestures. The 1440 × 900 History window stayed bounded at 82 rendered rows and 4,825
+DOM nodes, with no long tasks or visible stuck busy state.
 
 See [`verification.md`](verification.md) for the revision, feature matrix, measurements, failure
 injections, competitive review, and intentionally deferred ideas.
