@@ -1,6 +1,8 @@
 package version
 
 import (
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -69,6 +71,23 @@ func TestStringUsesLinkerSettableFallback_whenBuildVersionIsNotReleaseTag(t *tes
 	// Then
 	if got != "1.7.13-test" {
 		t.Fatalf("String()=%q, want linker-settable fallback %q", got, "1.7.13-test")
+	}
+}
+
+func TestVersionFallbackMatchesLatestMaintenanceNote(t *testing.T) {
+	t.Parallel()
+
+	changelog, err := os.ReadFile("../../CHANGELOG.md")
+	if err != nil {
+		t.Fatalf("read changelog: %v", err)
+	}
+	maintenanceVersion := regexp.MustCompile(`(?m)^- \*\*Post-release maintenance\.\*\* Advanced the dev-build fallback to (?:the )?published \x60([0-9]+\.[0-9]+\.[0-9]+)\x60`)
+	match := maintenanceVersion.FindSubmatch(changelog)
+	if len(match) != 2 {
+		t.Fatal("changelog must record the latest post-release fallback maintenance version")
+	}
+	if got, want := Version, string(match[1]); got != want {
+		t.Fatalf("Version=%q, want latest post-release maintenance version %q", got, want)
 	}
 }
 
