@@ -324,7 +324,7 @@ func TestUIJourneyRepeaterDoesNotPaintAResponseIntoAnotherTab(t *testing.T) {
 	if start < 0 {
 		t.Fatal("Repeater send request is missing")
 	}
-	guard := strings.Index(tools[start:], "if(repCur()!==t)")
+	guard := strings.Index(tools[start:], "if(repCur()!==t||!current())return;")
 	assign := strings.Index(tools[start:], "t.resId=flow.id")
 	paint := strings.Index(tools[start:], "$('#repStatus').textContent=t.status")
 	if guard < 0 || assign < 0 || paint < 0 || guard < assign || guard > paint {

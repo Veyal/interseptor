@@ -2,15 +2,15 @@
 
 ## Revision and environment
 
-- Final application source: `0db243da77f26a9fb4a4a2598af622d17d4faa4d`
+- Audited application source: `0db243da77f26a9fb4a4a2598af622d17d4faa4d`
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
-- Launch: fresh `go run ./cmd/interseptor` build of the exact final source
+- Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-The complete 17-case matrix and three-run performance profile were executed against the exact final
+The complete 17-case matrix and three-run performance profile were executed against the exact audited
 source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. Two preceding isolated
 passes and one independent-agent pass also completed the same matrix without a failure. The
 screenshots are committed separately so this document can name the exact application revision they
@@ -25,7 +25,7 @@ and feedback rather than changing that identity.
 
 The highest-value defects were async ownership gaps: delayed responses could repaint a newer
 selection, hide a real failure behind a plausible empty state, or overwrite edits made while a save
-was pending. The final fixes bind each acknowledgement to the object, generation, tab, editor, or
+was pending. The audited fixes bind each acknowledgement to the object, generation, tab, editor, or
 field that created it. In particular:
 
 - History reconciles selection across successful and failed server-side filters and never leaves a
