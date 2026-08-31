@@ -38,7 +38,7 @@ function setRepSendState(stateName,label){
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
 }
-function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
+function resetRepSend(delay,t,sendEpoch){setTimeout(()=>{if(repCur()===t&&t.sendEpoch===sendEpoch&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
 /* ---- repeater (multi-tab; each tab owns its request workspace + history) ---- */
 // A Repeater tab owns every send made during its lifetime. Keep the complete
@@ -296,6 +296,7 @@ function repSyncReqSeg(view){
 const uiPersistenceReady=new Map();
 const uiPersistenceQueues=new Map();
 let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
+let repRequestActionEpoch=0;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
@@ -514,27 +515,34 @@ export async function repSend(){
   }
   repRefreshHL();
   t.sendError='';
+  t.sendEpoch=(t.sendEpoch||0)+1;
+  const sendEpoch=t.sendEpoch;
+  const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
   t.sendPending=true;
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    t.sendPending=false;
-    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);await repRecordHistory(t,flow);repPersist();
+    if(!current())return;
+    t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    await repRecordHistory(t,flow);
+    if(!current())return;
+    t.sendPending=false;repPersist();
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
-    if(repCur()!==t)return;
+    if(repCur()!==t||!current())return;
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
-    if(repCur()!==t)return;
+    if(repCur()!==t||!current())return;
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    if(repCur()!==t)return;
-    setRepSendState('success','Sent');resetRepSend(600,t);
+    if(repCur()!==t||!current())return;
+    setRepSendState('success','Sent');resetRepSend(600,t,sendEpoch);
     refreshRepHistory(t);
   }catch(e){
+    if(!current())return;
     t.sendPending=false;
     const msg=friendlySendError(e.message);
     t.sendError=msg;t.status='send failed';t.color='var(--red)';
@@ -542,8 +550,8 @@ export async function repSend(){
     $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
     $('#repResView').textContent='(error: '+msg+')';
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
-    if(repCur()!==t){repPersist();return;}
-    setRepSendState('error','Send failed');resetRepSend(900,t);toast(msg);
+    if(repCur()!==t||!current()){repPersist();return;}
+    setRepSendState('error','Send failed');resetRepSend(900,t,sendEpoch);toast(msg);
   }
 }
 export async function renderRepResponse(){
@@ -642,10 +650,11 @@ $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
 });
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
+  const actionEpoch=++repRequestActionEpoch;
   t.historyLoadEpoch=(t.historyLoadEpoch||0)+1;
   const loadEpoch=t.historyLoadEpoch;
   const editorEpoch=t.reqEditEpoch||0;
-  const current=()=>repCur()===t&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch;
+  const current=()=>repCur()===t&&actionEpoch===repRequestActionEpoch&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch;
   try{
     const d=await api('/api/flows/'+id);
     if(!current())return;
@@ -661,7 +670,9 @@ export async function repLoadSend(id){
   }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
 }
 export async function sendToRepeater(f){
+  const actionEpoch=++repRequestActionEpoch;
   if(!await waitForWorkstationReady())return false;
+  if(actionEpoch!==repRequestActionEpoch)return false;
   repSaveEditor();
   const tabSnapshots=repTabs.tabs.map(tab=>({tab,endpoint:repTabEndpoint(tab),editEpoch:tab.reqEditEpoch||0}));
   try{
@@ -669,6 +680,7 @@ export async function sendToRepeater(f){
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
     // Findings and other callers may pass only {id}. Resolve metadata before
     // choosing a tab so requests do not collapse into an "undefined" endpoint.
+    if(actionEpoch!==repRequestActionEpoch)return false;
     const fep=repFlowEndpoint(d);
     const reusable=tabSnapshots.find(snapshot=>snapshot.endpoint===fep
       &&repTabs.tabs.includes(snapshot.tab)
@@ -677,6 +689,7 @@ export async function sendToRepeater(f){
     let t=reusable?.tab||null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
+    t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
     t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
@@ -1559,8 +1572,11 @@ export function renderIntr(st,{authoritative=true}={}){
   const displayRes=authoritative
     ?(intrDisplayOwner==='live'?(liveBelongsHere?res:[]):intrDisplayedResults)
     :(Array.isArray(st.results)?st.results:intrDisplayedResults);
+  const displayState=intrDisplayOwner==='history'&&intrDisplayedHistory
+    ?{running:false,total:intrDisplayedHistory.total||0,done:intrDisplayedHistory.total||0,capped:!!intrDisplayedHistory.capped}
+    :(liveBelongsHere?{running,total,done,capped:!!st.capped}:{running:false,total:0,done:0,capped:false});
   syncIntrTabLock(intrLastRunning||intrStartPending);
-  $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
+  $('#intrProgress').textContent=displayState.running?`running ${displayState.done}/${displayState.total}`:(displayState.total?`done ${displayState.done}/${displayState.total}${displayState.capped?' (capped)':''}`:'');
   const pollStatus=$('#intrPollStatus');
   if(pollStatus){
     if(intrPollError){
@@ -1571,7 +1587,7 @@ export function renderIntr(st,{authoritative=true}={}){
   }
   // progress bar
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
-  if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
+  if(bar&&fill){bar.style.display=(displayState.running||displayState.total)?'block':'none';fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0';}
   // results summary (flagged count)
   const stats=$('#intrStats');
   if(stats){
@@ -1582,7 +1598,7 @@ export function renderIntr(st,{authoritative=true}={}){
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!displayRes.length){
-    box.innerHTML=running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
+    box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
   const view=intrApplyFilter(displayRes);

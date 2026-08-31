@@ -8,15 +8,19 @@ let oobLoadEpoch=0;
 let oobClearEpoch=0;
 let oobGenerateEpoch=0;
 let oobBaseEditEpoch=0;
-export async function loadOob(){
+let oobBaseSaveEpoch=0;
+let oobBaseSaveQueue=Promise.resolve();
+export async function loadOob(baseOwner=null){
   const epoch=++oobLoadEpoch;
-  const baseEditEpoch=oobBaseEditEpoch;
+  const baseEditEpoch=baseOwner?.editEpoch??oobBaseEditEpoch;
+  const baseValue=baseOwner?.value??null;
   const status=$('#oobLoadState');
   if(status)status.textContent='Loading interactions…';
   try{
     const d=await api('/api/oob/state');
     if(epoch!==oobLoadEpoch)return;
-    if(baseEditEpoch===oobBaseEditEpoch&&document.activeElement!==$('#oobBase'))$('#oobBase').value=d.baseUrl||'';
+    const base=$('#oobBase');
+    if(baseEditEpoch===oobBaseEditEpoch&&(baseValue===null||base.value.trim()===baseValue)&&document.activeElement!==base)base.value=d.baseUrl||'';
     renderOobList(d.interactions||[]);
     if(status)status.textContent='';
   }catch(e){
@@ -53,7 +57,21 @@ $('#oobGen')&&($('#oobGen').onclick=async()=>{
   finally{if(epoch===oobGenerateEpoch){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='＋ Generate payload URL';}}
 });
 $('#oobCopy')&&($('#oobCopy').onclick=()=>{const u=$('#oobUrl').value;if(u)copyText(u,'OOB URL copied');else toast('generate a URL first');});
-$('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{try{await api('/api/oob/base',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({baseUrl:$('#oobBase').value.trim()})});toast('OOB base saved');loadOob();}catch(e){toast(e.message);}});
+$('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{
+  const input=$('#oobBase'),button=$('#oobSaveBase');
+  const submitted={editEpoch:oobBaseEditEpoch,value:input.value.trim()};
+  const saveEpoch=++oobBaseSaveEpoch;
+  button.setAttribute('aria-busy','true');button.textContent='Saving…';
+  const task=oobBaseSaveQueue.catch(()=>{}).then(()=>api('/api/oob/base',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({baseUrl:submitted.value})}));
+  oobBaseSaveQueue=task.catch(()=>{});
+  try{
+    await task;
+    if(saveEpoch!==oobBaseSaveEpoch)return;
+    toast('OOB base saved');
+    await loadOob(submitted);
+  }catch(e){if(saveEpoch===oobBaseSaveEpoch)toast(e.message,'error');}
+  finally{if(saveEpoch===oobBaseSaveEpoch){button.setAttribute('aria-busy','false');button.textContent='Save';}}
+});
 $('#oobBase')?.addEventListener('input',()=>{oobBaseEditEpoch++;});
 $('#oobClear')&&($('#oobClear').onclick=async()=>{
   const button=$('#oobClear');

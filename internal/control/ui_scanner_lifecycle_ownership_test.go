@@ -89,8 +89,16 @@ func TestUIOOBBaseLoadPreservesBlurredDrafts(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/scanner.js"))
 	for _, want := range []string{
 		"let oobBaseEditEpoch=0",
-		"const baseEditEpoch=oobBaseEditEpoch",
+		"let oobBaseSaveEpoch=0",
+		"let oobBaseSaveQueue=Promise.resolve()",
+		"const submitted={editEpoch:oobBaseEditEpoch,value:input.value.trim()}",
+		"const baseEditEpoch=baseOwner?.editEpoch??oobBaseEditEpoch",
 		"baseEditEpoch===oobBaseEditEpoch",
+		"base.value.trim()===baseValue",
+		"oobBaseSaveQueue.catch(()=>{}).then(()=>api('/api/oob/base'",
+		"oobBaseSaveQueue=task.catch(()=>{})",
+		"if(saveEpoch!==oobBaseSaveEpoch)return",
+		"await loadOob(submitted)",
 		"addEventListener('input',()=>{oobBaseEditEpoch++;})",
 	} {
 		if !strings.Contains(src, want) {

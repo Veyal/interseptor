@@ -86,6 +86,22 @@ func TestUIIntruderPollFailurePreservesDisplayedResultOwnership(t *testing.T) {
 	}
 }
 
+func TestUIIntruderProgressUsesDisplayedResultOwnership(t *testing.T) {
+	tools := executableJS(readUIAsset(t, "js/tools.js"))
+	for _, contract := range []string{
+		"const displayState=intrDisplayOwner==='history'&&intrDisplayedHistory",
+		"liveBelongsHere?{running,total,done,capped:!!st.capped}:{running:false,total:0,done:0,capped:false}",
+		"$('#intrProgress').textContent=displayState.running",
+		"bar.style.display=(displayState.running||displayState.total)?'block':'none'",
+		"fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0'",
+		"box.innerHTML=displayState.running?",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("Intruder displayed-progress ownership contract missing %q", contract)
+		}
+	}
+}
+
 func TestUIIntruderPollingRejectsOutOfOrderResponses(t *testing.T) {
 	tools := executableJS(readUIAsset(t, "js/tools.js"))
 	for _, contract := range []string{

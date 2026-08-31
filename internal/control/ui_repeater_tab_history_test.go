@@ -171,10 +171,12 @@ func TestUIRepeaterHistorySelectionRejectsStaleLoads(t *testing.T) {
 	}
 	loader := tools[start:end]
 	for _, contract := range []string{
+		"const actionEpoch=++repRequestActionEpoch",
+		"actionEpoch===repRequestActionEpoch",
 		"t.historyLoadEpoch=(t.historyLoadEpoch||0)+1",
 		"const loadEpoch=t.historyLoadEpoch",
 		"const editorEpoch=t.reqEditEpoch||0",
-		"const current=()=>repCur()===t&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch",
+		"const current=()=>repCur()===t&&actionEpoch===repRequestActionEpoch&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch",
 		"t.reqEditEpoch=(t.reqEditEpoch||0)+1",
 		"if(current())toast('History item #'+id+' is no longer available",
 	} {
@@ -184,5 +186,59 @@ func TestUIRepeaterHistorySelectionRejectsStaleLoads(t *testing.T) {
 	}
 	if strings.Count(loader, "if(!current())return") < 2 {
 		t.Error("Repeater history selection must reject stale metadata and raw-request completions")
+	}
+}
+
+func TestUIRepeaterSendCompletionOwnsItsGeneration(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "export async function repSend()")
+	end := strings.Index(tools, "export async function renderRepResponse()")
+	if start < 0 || end <= start {
+		t.Fatal("Repeater send function not found")
+	}
+	send := tools[start:end]
+	for _, contract := range []string{
+		"t.sendEpoch=(t.sendEpoch||0)+1",
+		"const sendEpoch=t.sendEpoch",
+		"const current=()=>!t._closed&&t.sendEpoch===sendEpoch",
+		"await repRecordHistory(t,flow)",
+		"resetRepSend(600,t,sendEpoch)",
+		"resetRepSend(900,t,sendEpoch)",
+	} {
+		if !strings.Contains(send, contract) {
+			t.Errorf("Repeater send ownership contract missing %q", contract)
+		}
+	}
+	historyWrite := strings.Index(send, "await repRecordHistory(t,flow)")
+	clearPending := strings.Index(send, "t.sendPending=false;repPersist()")
+	if historyWrite < 0 || clearPending < historyWrite {
+		t.Error("Repeater send must remain pending until tab-owned history persistence settles")
+	}
+	if strings.Count(send, "if(!current())return") < 3 || strings.Count(send, "||!current())return") < 3 {
+		t.Error("Repeater send continuations must reject stale generations after every asynchronous boundary")
+	}
+}
+
+func TestUIRepeaterRequestAdoptionUsesSharedLatestActionOwnership(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "export async function sendToRepeater(f)")
+	end := strings.Index(tools, "export async function repInit()")
+	if start < 0 || end <= start {
+		t.Fatal("send-to-Repeater function not found")
+	}
+	transfer := tools[start:end]
+	for _, contract := range []string{
+		"const actionEpoch=++repRequestActionEpoch",
+		"if(actionEpoch!==repRequestActionEpoch)return false",
+		"t.reqEditEpoch=(t.reqEditEpoch||0)+1",
+	} {
+		if !strings.Contains(transfer, contract) {
+			t.Errorf("send-to-Repeater ownership contract missing %q", contract)
+		}
+	}
+	guard := strings.LastIndex(transfer, "if(actionEpoch!==repRequestActionEpoch)return false")
+	paint := strings.Index(transfer, "t.method=d.method")
+	if guard < 0 || paint < 0 || guard > paint {
+		t.Error("send-to-Repeater must reject stale actions before committing or focusing a request")
 	}
 }
