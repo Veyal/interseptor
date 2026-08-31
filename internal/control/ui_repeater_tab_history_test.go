@@ -242,3 +242,32 @@ func TestUIRepeaterRequestAdoptionUsesSharedLatestActionOwnership(t *testing.T) 
 		t.Error("send-to-Repeater must reject stale actions before committing or focusing a request")
 	}
 }
+
+func TestUIRepeaterCloseAttemptsHistoryDeletionWhenCleanupLedgerIsUnavailable(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	start := strings.Index(tools, "async function repDeleteHistory(t)")
+	end := strings.Index(tools, "async function repRetryHistoryCleanup(openTabs)")
+	if start < 0 || end <= start {
+		t.Fatal("Repeater history deletion function not found")
+	}
+	cleanup := tools[start:end]
+	for _, contract := range []string{
+		"const tabKey=repHistoryTabKey(t)",
+		"try{repMarkHistoryCleanup(t);}catch(e){}",
+		"await repDeleteHistoryKey(tabKey)",
+		"try{repClearHistoryCleanup(tabKey);}catch(e){}",
+	} {
+		if !strings.Contains(cleanup, contract) {
+			t.Errorf("Repeater best-effort cleanup-ledger contract missing %q", contract)
+		}
+	}
+	if strings.Contains(cleanup, "const tabKey=repMarkHistoryCleanup(t)") {
+		t.Error("cleanup-ledger failure must not prevent the IndexedDB deletion attempt")
+	}
+	derive := strings.Index(cleanup, "const tabKey=repHistoryTabKey(t)")
+	mark := strings.Index(cleanup, "try{repMarkHistoryCleanup(t);}catch(e){}")
+	remove := strings.Index(cleanup, "await repDeleteHistoryKey(tabKey)")
+	if derive < 0 || mark < derive || remove < mark {
+		t.Error("history cleanup must derive the key, attempt the ledger best-effort, then delete IndexedDB rows")
+	}
+}

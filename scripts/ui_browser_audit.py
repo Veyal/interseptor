@@ -596,25 +596,46 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.wait_for_selector("#repHistory .h")
                 result.require(page.locator("#repHistory .h").count() == 1, "closing tab A removed tab B history")
 
-                page.locator("#repTabs .rep-tab.on .rt-close").click()
-                wait_stage("second-tab history cleanup",
-                    """async () => await new Promise(resolve=>{
-                      const request=indexedDB.open('interseptor-repeater-history',1);
-                      request.onupgradeneeded=()=>{
-                        const db=request.result;
-                        const store=db.objectStoreNames.contains('entries')
-                          ? request.transaction.objectStore('entries')
-                          : db.createObjectStore('entries',{keyPath:'key'});
-                        if(!store.indexNames.contains('tabKey'))store.createIndex('tabKey','tabKey',{unique:false});
+                page.evaluate(
+                    """() => {
+                      window.__uiAuditStorageGetItem=Storage.prototype.getItem;
+                      Storage.prototype.getItem=function(key){
+                        if(String(key).includes('rep.history.cleanup')){
+                          throw new DOMException('audit cleanup ledger unavailable','SecurityError');
+                        }
+                        return window.__uiAuditStorageGetItem.call(this,key);
                       };
-                      request.onsuccess=()=>{
-                        const count=request.result.transaction('entries','readonly').objectStore('entries').count();
-                        count.onsuccess=()=>resolve(count.result===0);
-                      };
-                      request.onerror=()=>resolve(false);
-                    })""",
-                    timeout=10_000,
+                    }"""
                 )
+                try:
+                    page.locator("#repTabs .rep-tab.on .rt-close").click()
+                    wait_stage("second-tab history cleanup without localStorage ledger",
+                        """async () => await new Promise(resolve=>{
+                          const request=indexedDB.open('interseptor-repeater-history',1);
+                          request.onupgradeneeded=()=>{
+                            const db=request.result;
+                            const store=db.objectStoreNames.contains('entries')
+                              ? request.transaction.objectStore('entries')
+                              : db.createObjectStore('entries',{keyPath:'key'});
+                            if(!store.indexNames.contains('tabKey'))store.createIndex('tabKey','tabKey',{unique:false});
+                          };
+                          request.onsuccess=()=>{
+                            const count=request.result.transaction('entries','readonly').objectStore('entries').count();
+                            count.onsuccess=()=>resolve(count.result===0);
+                          };
+                          request.onerror=()=>resolve(false);
+                        })""",
+                        timeout=10_000,
+                    )
+                finally:
+                    page.evaluate(
+                        """() => {
+                          if(window.__uiAuditStorageGetItem){
+                            Storage.prototype.getItem=window.__uiAuditStorageGetItem;
+                            delete window.__uiAuditStorageGetItem;
+                          }
+                        }"""
+                    )
 
             result.run("tab-owned Repeater history across every request edit", repeater_history_contract)
 

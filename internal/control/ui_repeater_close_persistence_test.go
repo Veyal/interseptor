@@ -36,9 +36,10 @@ func TestUIRepeaterCloseSuppressesLateHistoryWrites(t *testing.T) {
 		"if(!t._closed)return;",
 		"function repMarkHistoryCleanup(t)",
 		"function repRetryHistoryCleanup(openTabs)",
-		"const tabKey=repMarkHistoryCleanup(t)",
+		"const tabKey=repHistoryTabKey(t)",
+		"try{repMarkHistoryCleanup(t);}catch(e){}",
 		"repRetryHistoryCleanup(repTabs.tabs).catch(()=>{})",
-		"repClearHistoryCleanup(tabKey)",
+		"try{repClearHistoryCleanup(tabKey);}catch(e){}",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("Repeater close-vs-late-write contract missing %q", contract)

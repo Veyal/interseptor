@@ -176,11 +176,15 @@ async function repDeleteHistoryKey(tabKey){
   }while(deleted===REP_HISTORY_DELETE_BATCH);
 }
 async function repDeleteHistory(t){
-  const tabKey=repMarkHistoryCleanup(t);
+  const tabKey=repHistoryTabKey(t);
+  // The retry ledger is a resilience aid, not a prerequisite for deletion.
+  // Browsers can deny localStorage while leaving IndexedDB usable; closing a
+  // task must still attempt to remove that tab's durable history.
+  try{repMarkHistoryCleanup(t);}catch(e){}
   return repHistoryOperation(t,async()=>{
     if(!t._closed)return;
     await repDeleteHistoryKey(tabKey);
-    repClearHistoryCleanup(tabKey);
+    try{repClearHistoryCleanup(tabKey);}catch(e){}
   },true);
 }
 async function repRetryHistoryCleanup(openTabs){
