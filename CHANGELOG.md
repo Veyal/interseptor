@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - **Serialized Settings ownership.** Coalesce rapid security-toggle changes through per-setting mutation lanes; prevent stale refreshes from repainting acknowledged listener, upstream, TLS-list, and device-endpoint saves; serialize cross-surface TLS additions; and keep Setup and Settings bound to one authoritative system-proxy mutation state with explicit retry feedback.
-- **Exact-revision UI evidence.** Recaptured the required desktop, tablet, and mobile screenshots and repeated reduced-motion, Repeater reload/IndexedDB cleanup, and Chrome performance checks against application source `42461e1`.
+- **Exact-revision UI evidence.** Recaptured the required desktop, tablet, and mobile screenshots and repeated reduced-motion, Repeater reload/IndexedDB cleanup, and final Settings ownership checks against application source `bd6a790`.
 - **UI audit contract coverage.** Kept the comprehensive Inspector reconciliation test aligned with its filter-generation ownership input.
 - **UI regression coverage.** Updated the origin TLS settings journey test to cover the latest-request guard before failure feedback is rendered.
 - **macOS release integrity.** Stamp app binaries with the bundle version, verify the bundled CLI reports the exact tag, and publish validated checksums for the app ZIP and DMG.

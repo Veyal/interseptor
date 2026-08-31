@@ -2,15 +2,19 @@
 
 ## Revision and environment
 
-- Application source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
-- Launch: fresh `go run ./cmd/interseptor` build of that checkout
-- Browser: Playwright 1.55.0, Chromium 140.0.7339.16, with Chrome DevTools Protocol metrics
+- Final application source: `bd6a790c5984b08ed95b104b46adcccb16fbe70a`
+- Full-audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
+- Launch: fresh `go run ./cmd/interseptor` build of the final source
+- Browser: Playwright 1.60.0, Chromium 148.0.7778.96
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-The screenshots are committed separately from the source so this document can name the exact UI
-revision it validates.
+The exhaustive feature matrix and performance profile were completed at the baseline source. The
+final source changes only Settings mutation ownership, so the required viewport, reduced-motion,
+Repeater persistence, and affected Settings/Setup ownership journeys were repeated after a fresh
+final-source build. The screenshots are committed separately so this document can name the exact
+application revision they validate.
 
 ## Audit outcome
 
@@ -56,6 +60,16 @@ edited request also survived the reload. The durable IndexedDB row count stayed 
 tab closed, then reached zero. The larger 105-request render and close-vs-send race remain covered
 by the focused Repeater regression tests.
 
+### Settings ownership contract
+
+The final-source browser recheck injected delayed Settings reads and acknowledgements. A stale read
+could not repaint a newer certificate-policy choice; rapid strict/compatible changes issued one
+write at a time and settled on the latest intent. A live refresh preserved an unfocused dirty TLS
+passthrough draft, and a delayed save acknowledgement could not overwrite edits made after submit.
+The Setup wizard and Settings panel also shared one mocked system-proxy mutation while it was in
+flight and converged on the acknowledged state without a duplicate write or operating-system
+change.
+
 ## Browser and accessibility checks
 
 - All ten top-level tabs committed `aria-selected`, active-panel state, and focus together.
@@ -72,7 +86,9 @@ by the focused Repeater regression tests.
 
 ## Performance findings
 
-The missing exact-target profile was repeated after a fresh launch of source `42461e1`.
+The full profile was captured after a fresh launch of baseline source `42461e1`; the final-source
+delta is confined to Settings mutation ownership. The focused final-source Settings and Repeater
+recheck produced no browser long tasks or stuck busy controls.
 
 | Scenario | Result |
 | --- | --- |
