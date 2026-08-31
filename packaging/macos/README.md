@@ -17,6 +17,12 @@ The server binary is stamped with the same numeric version written to
 `Info.plist`; tagged releases verify that `interseptor version` reports the
 exact tag before publishing the bundle.
 
+An explicit numeric `VERSION` override takes precedence. Otherwise the build
+uses `git describe --tags --dirty`, so normal tagged and dirty describes remain
+supported. When no tag is reachable, it falls back to the compiled-in
+`internal/version.Version` value. This keeps a decimal-only abbreviated commit
+SHA from being mistaken for `CFBundleShortVersionString`.
+
 ## What's inside
 
 ```

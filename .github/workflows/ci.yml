@@ -51,8 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Tags are needed for `git describe` to yield a real version; a shallow
-          # checkout would stamp a bare commit SHA into CFBundleShortVersionString.
+          # Keep tags available so CI exercises the `git describe` path; shallow
+          # or no-tag builds fall back to internal/version for bundle metadata.
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
