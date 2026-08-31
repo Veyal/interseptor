@@ -68,3 +68,38 @@ func TestUIProxyInspectorDoesNotRepaintForUnknownServerFilterMatch(t *testing.T)
 		}
 	}
 }
+
+// A server-only filter load may still leave the old rows clickable. If the
+// operator selects one of those rows while the load is pending, the winning
+// list commit must reconcile that *current* selection too; otherwise its
+// in-flight detail response can repaint an Inspector for a flow excluded by
+// the new result.
+func TestUIProxyReconcilesSelectionChangedDuringServerFilterLoad(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"const committedSelected=state.selId",
+		"const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail)",
+		"else if(state.selId===committedSelected)reconcileInspectorSelectionAfterReload(committedFlow,filterChanged)",
+		"selectFlowEpoch++",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("server-filter selection race contract missing %q", contract)
+		}
+	}
+}
+
+// If the operator changes selection while a server-only filter refresh is in
+// flight, a failed refresh must settle the new selection instead of leaving
+// its Inspector spinner forever. A confirmed detail already visible before
+// the failed refresh remains intact.
+func TestUIProxySettlesSelectionChangedDuringFailedServerFilterLoad(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"if(epoch===flowLoadEpoch&&state.selId!==previousSelected&&state.selId!=null&&!state.detail)",
+		"selectFlowEpoch++;\n      state.detail=null;\n      showInspectorFilterLoadError(state.selId,e);",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("failed server-filter selection race contract missing %q", contract)
+		}
+	}
+}

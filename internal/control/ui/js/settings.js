@@ -690,6 +690,15 @@ $('#originTLSVerifyBypassSelected')&&($('#originTLSVerifyBypassSelected').onclic
 $('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>runSettingsAction($('#originTLSVerifyBypassSave'),()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText())));
 
 const upstreamDefaultPorts={http:'80',https:'443',socks5:'1080',socks5h:'1080'};
+const upstreamProxyFieldIds=['setUpstreamScheme','setUpstreamHost','setUpstreamPort','setUpstreamUser','setUpstreamPassword','setUpstreamCA'];
+function upstreamProxyFieldSnapshot(){
+  const snapshot={};
+  upstreamProxyFieldIds.forEach(id=>{
+    const el=$('#'+id);
+    if(el)snapshot[id]={generation:settingsEditGeneration(el),value:el.value};
+  });
+  return snapshot;
+}
 function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   scheme=scheme||$('#setUpstreamScheme')?.value||'direct';
   const fields=$('#upstreamProxyFields');if(fields)fields.hidden=scheme==='direct';
@@ -709,20 +718,25 @@ function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   }
 }
 function decodeURLCredential(value){try{return decodeURIComponent(value);}catch(_){return value;}}
-function parseUpstreamProxyURL(raw){
-  const scheme=$('#setUpstreamScheme'),host=$('#setUpstreamHost'),port=$('#setUpstreamPort'),user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');
-  if(host)host.value='';if(port)port.value='';if(user)user.value='';if(pass)pass.value='';
-  if(!raw){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');return;}
+function upstreamProxyValues(raw){
+  const values={setUpstreamScheme:'direct',setUpstreamHost:'',setUpstreamPort:'',setUpstreamUser:'',setUpstreamPassword:'',invalid:false};
+  if(!raw)return values;
   try{
     const parsed=new URL(raw),mode=parsed.protocol.replace(':','').toLowerCase();
     if(!upstreamDefaultPorts[mode])throw new Error('unsupported mode');
-    if(scheme)scheme.value=mode;
-    if(host)host.value=parsed.hostname.replace(/^\[|\]$/g,'');
-    if(port)port.value=parsed.port||upstreamDefaultPorts[mode];
-    if(user)user.value=decodeURLCredential(parsed.username);
-    if(pass)pass.value=decodeURLCredential(parsed.password);
-    renderUpstreamProxyFields(mode);
-  }catch(_){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
+    values.setUpstreamScheme=mode;
+    values.setUpstreamHost=parsed.hostname.replace(/^\[|\]$/g,'');
+    values.setUpstreamPort=parsed.port||upstreamDefaultPorts[mode];
+    values.setUpstreamUser=decodeURLCredential(parsed.username);
+    values.setUpstreamPassword=decodeURLCredential(parsed.password);
+  }catch(_){values.invalid=true;}
+  return values;
+}
+function parseUpstreamProxyURL(raw){
+  const values=upstreamProxyValues(raw);
+  upstreamProxyFieldIds.slice(0,5).forEach(id=>{const el=$('#'+id);if(el)el.value=values[id]||'';});
+  renderUpstreamProxyFields(values.setUpstreamScheme);
+  if(values.invalid){const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
 }
 function buildUpstreamProxyURL(){
   const scheme=$('#setUpstreamScheme')?.value||'direct';
@@ -742,11 +756,21 @@ function buildUpstreamProxyURL(){
 $('#setUpstreamScheme')&&($('#setUpstreamScheme').onchange=e=>renderUpstreamProxyFields(e.currentTarget.value,true));
 ['setUpstreamHost','setUpstreamPort'].forEach(id=>{$('#'+id)?.addEventListener('input',()=>renderUpstreamProxyFields());});
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#saveUpstreamBtn'),async()=>{
+  const submitted=upstreamProxyFieldSnapshot();
   const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
-  try{const upstreamProxy=buildUpstreamProxyURL();await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy,upstreamProxyCA})});
-    if($('#setUpstreamCA'))$('#setUpstreamCA').value=upstreamProxyCA;
-    clearSettingsDirty(['setUpstreamScheme','setUpstreamHost','setUpstreamPort','setUpstreamUser','setUpstreamPassword','setUpstreamCA']);
-    parseUpstreamProxyURL(upstreamProxy);toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
+  try{const upstreamProxy=buildUpstreamProxyURL();const acknowledged=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy,upstreamProxyCA})});
+    const saved=upstreamProxyValues(typeof acknowledged?.upstreamProxy==='string'?acknowledged.upstreamProxy:upstreamProxy);
+    const savedCA=typeof acknowledged?.upstreamProxyCA==='string'?acknowledged.upstreamProxyCA:upstreamProxyCA;
+    upstreamProxyFieldIds.forEach(id=>{
+      const el=$('#'+id),snapshot=submitted[id];
+      if(!el||!snapshot)return;
+      if(settingsEditOwned(el,snapshot.generation,snapshot.value)){
+        el.value=id==='setUpstreamCA'?savedCA:(saved[id]||'');
+        clearSettingsDirty([id]);
+      }
+    });
+    renderUpstreamProxyFields($('#setUpstreamScheme')?.value||'direct');
+    toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
 }));
 
 let sessionLoaded=false;

@@ -834,6 +834,12 @@ export async function loadFlows(){
     const replayOverflow=flowLoadOverflow;
     flowLoadEvents=new Map();
     flowLoadOverflow=false;
+    // Rows remain clickable while a server-side filter request is pending.
+    // Snapshot the selection at commit time, not only at request start, so a
+    // user who selected a different old row during the request is reconciled
+    // against the winning result too.
+    const committedSelected=state.selId;
+    const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail);
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
@@ -850,6 +856,7 @@ export async function loadFlows(){
       const filterChanged=filterEpoch!==flowFilterReconciledEpoch;
       flowFilterReconciledEpoch=filterEpoch;
       if(state.selId===previousSelected)reconcileInspectorSelectionAfterReload(previousFlow,filterChanged);
+      else if(state.selId===committedSelected)reconcileInspectorSelectionAfterReload(committedFlow,filterChanged);
     }
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
@@ -867,6 +874,14 @@ export async function loadFlows(){
     // confirmed snapshot, and the persistent History error still tells the
     // operator that the newer filter result is unconfirmed.
     if(epoch===flowLoadEpoch&&state.selId===previousSelected&&previousSelected!=null&&!state.detail){state.detail=null;showInspectorFilterLoadError(previousSelected,e);}
+    // The operator can select another old row while the server-only refresh
+    // is pending. If that row's detail is still loading, settle it into the
+    // same explicit retry state; otherwise the old spinner would never end.
+    else if(epoch===flowLoadEpoch&&state.selId!==previousSelected&&state.selId!=null&&!state.detail){
+      selectFlowEpoch++;
+      state.detail=null;
+      showInspectorFilterLoadError(state.selId,e);
+    }
   }
   finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
@@ -955,6 +970,10 @@ function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   // does not contain the selected flow, do not repaint retained detail as if
   // it matched; provide an explicit state instead.
   if(!canIncremental()&&!flowStore.byId.has(state.selId)){
+    // Invalidate an in-flight detail response for an old row that the
+    // server-only result excluded. The unavailable state must remain the
+    // authoritative Inspector until the operator changes or clears filters.
+    selectFlowEpoch++;
     state.detail=null;
     showInspectorSelectionUnavailable(state.selId);
     return;
