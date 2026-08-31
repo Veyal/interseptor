@@ -3,7 +3,7 @@
 The **After** screenshots validate only the audited runtime source identified by
 `application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). See
 [`verification.md`](verification.md#current-source-applicability) for whether that retained
-evidence applies to the current release candidate; never carry it forward across a runtime-source
+evidence applies to the current runtime source; never carry it forward across a runtime-source
 change.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
