@@ -45,7 +45,9 @@ VERSION="${VERSION#v}"
 # stamping something Apple will reject.
 SHORT_VERSION="$(printf '%s' "$VERSION" | sed -E 's/[-+].*$//')"
 if [[ ! "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
-	SHORT_VERSION="$(sed -n 's/^const Version = "\(.*\)"$/\1/p' "$REPO_ROOT/internal/version/version.go" | head -1)"
+	SHORT_VERSION="$(sed -nE \
+		's/^[[:space:]]*(const|var)[[:space:]]+Version[[:space:]]*=[[:space:]]*"([^"]*)".*$/\2/p' \
+		"$REPO_ROOT/internal/version/version.go" | head -1)"
 	echo "==> git describe gave no usable version ('$VERSION'); using internal/version: ${SHORT_VERSION:-0.0.0}"
 fi
 [[ "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]] || SHORT_VERSION="0.0.0"
