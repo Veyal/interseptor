@@ -70,6 +70,19 @@ func TestFindingsMapStateContracts(t *testing.T) {
 
 func TestMapClusterSearchExpansionPrecedesEveryVisibilityRebuild(t *testing.T) {
 	mapJS := readUIAsset(t, "js/map.js")
+	for _, contract := range []string{
+		"searchExpandedClusters: new Set()",
+		"mapState.searchExpandedClusters.clear()",
+		"mapState.searchExpandedClusters.add(e._cluster.key)",
+		"mapState.expandedClusters.has(e._cluster.key)||mapState.searchExpandedClusters.has(e._cluster.key)",
+		"if(mapState.searchExpandedClusters.has(k))return",
+		"const searchExpanded=mapState.searchExpandedClusters.has(e._cluster.key)",
+		"searchExpanded?' disabled aria-disabled=\"true\"':''",
+	} {
+		if !strings.Contains(mapJS, contract) {
+			t.Errorf("Map search-owned cluster expansion contract missing %q", contract)
+		}
+	}
 	start := strings.Index(mapJS, "export function mapVisibleEps(eps){")
 	end := strings.Index(mapJS, "export function mapCount(node)")
 	if start < 0 || end <= start {

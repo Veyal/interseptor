@@ -97,7 +97,7 @@ function restoreMapView(){
 export const mapState = {
   eps: [], total: 0, truncated: false, domain: restoreMapDomain(), method: '', search: '', searchScope: 'path', searchNote: '', tag: '',
   statusClass: 0, hideNoise: restoreMapHideNoise(), noiseHiddenCount: 0, collapseIdentical: restoreMapCollapseIdentical(), expandAll: false,
-  view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
+  view: restoreMapView(), collapsed: new Set(), expandedClusters: new Set(), searchExpandedClusters: new Set(), zoom: { k: 1, x: 12, y: 12 }, _needFit: true,
   sort: { key: 'path', dir: 1 }, _treeHosts: null, _treeSeenHosts: new Set(), _dataVersion: 0, selectedNodeKey: '', _animateNextFit: false,
 };
 
@@ -338,7 +338,7 @@ export function mapVisibleEps(eps){
   const out = [];
   for(const e of clustered){
     out.push(e);
-    if(e._cluster && mapState.expandedClusters.has(e._cluster.key)){
+    if(e._cluster && (mapState.expandedClusters.has(e._cluster.key)||mapState.searchExpandedClusters.has(e._cluster.key))){
       e._cluster.members.slice(1).forEach(m => out.push({ ...m, _clusterChild: true }));
     }
   }
@@ -391,9 +391,10 @@ function epOrClusterMatchesSearch(e, q){
 
 function mapExpandClustersForSearch(eps){
   const q = mapState.search;
+  mapState.searchExpandedClusters.clear();
   if(!q || !mapState.collapseIdentical) return;
   for(const e of eps){
-    if(e._cluster && epOrClusterMatchesSearch(e, q)) mapState.expandedClusters.add(e._cluster.key);
+    if(e._cluster && epOrClusterMatchesSearch(e, q)) mapState.searchExpandedClusters.add(e._cluster.key);
   }
 }
 
@@ -403,6 +404,7 @@ function wireMapEpRows(root){
     btn.onclick = ev => {
       ev.stopPropagation();
       const k = btn.dataset.cluster;
+      if(mapState.searchExpandedClusters.has(k))return;
       if(mapState.expandedClusters.has(k)) mapState.expandedClusters.delete(k);
       else mapState.expandedClusters.add(k);
       renderMap();
@@ -419,8 +421,11 @@ export function mapEpRow(e, dim){
   if(e._cluster && !e._clusterChild){
     const label = e._cluster.kind === 'soft404' ? 'soft-404' : 'identical';
     const extra = e._cluster.count - 1;
-    const expanded = mapState.expandedClusters.has(e._cluster.key);
-    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}">${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
+    const searchExpanded=mapState.searchExpandedClusters.has(e._cluster.key);
+    const expanded = searchExpanded||mapState.expandedClusters.has(e._cluster.key);
+    const badgeTitle=searchExpanded?'Expanded to show current search matches':`${extra} endpoint${extra === 1 ? '' : 's'} with ${label === 'soft-404' ? 'a soft-404 (200 OK but not-found content)' : 'the same response body'} — click to ${expanded ? 'collapse' : 'expand'}`;
+    const badgeLabel=searchExpanded?`Expanded ${extra} ${label} endpoint${extra === 1 ? '' : 's'} to show search matches`:`${expanded ? 'Collapse' : 'Expand'} ${extra} ${label} endpoint${extra === 1 ? '' : 's'}`;
+    clusterBadge = `<button type="button" class="map-cluster-badge" data-cluster="${escAttr(e._cluster.key)}" title="${escAttr(badgeTitle)}" aria-label="${escAttr(badgeLabel)}"${searchExpanded?' disabled aria-disabled="true"':''}>${label === 'soft-404' ? 'soft-404' : '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bolt"/></svg>'} +${extra}</button>`;
   }
   const childCls = e._clusterChild ? ' map-cluster-child' : '';
   return `<div class="map-ep${dim && !hit ? ' map-dim' : ''}${hit ? ' map-hit' : ''}${childCls}${e.soft404 && !e._cluster ? ' map-soft404' : ''}"${e.lastFlowId ? ` data-flow="${e.lastFlowId}"` : ''} title="${escAttr(e.method+' '+(e.scheme||'http')+'://'+e.host+path)}">
@@ -894,6 +899,7 @@ $('#mapDscCopyFfuf')&&($('#mapDscCopyFfuf').onclick=()=>copyMapDiscovery('ffuf')
 $('#mapCollapseIdentical')&&($('#mapCollapseIdentical').onclick=()=>{
   mapState.collapseIdentical=!mapState.collapseIdentical;
   mapState.expandedClusters.clear();
+  mapState.searchExpandedClusters.clear();
   try{localStorage.setItem(projectStorageKey(MAP_COLLAPSE_IDENTICAL_KEY),mapState.collapseIdentical?'1':'0');}catch(e){}
   syncMapCollapseIdentical();
   mapState._needFit = true;

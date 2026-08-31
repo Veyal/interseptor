@@ -37,7 +37,7 @@ func TestUIRepeaterCloseSuppressesLateHistoryWrites(t *testing.T) {
 		"function repMarkHistoryCleanup(t)",
 		"function repRetryHistoryCleanup(openTabs)",
 		"const tabKey=repMarkHistoryCleanup(t)",
-		"await repRetryHistoryCleanup(repTabs.tabs)",
+		"repRetryHistoryCleanup(repTabs.tabs).catch(()=>{})",
 		"repClearHistoryCleanup(tabKey)",
 	} {
 		if !strings.Contains(tools, contract) {

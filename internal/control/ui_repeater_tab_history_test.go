@@ -143,6 +143,25 @@ func TestUIRepeaterHistoryHydratesOnDemandWithoutBlockingStartup(t *testing.T) {
 	}
 }
 
+func TestUIRepeaterCleanupYieldsBetweenBoundedBatches(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+
+	for _, contract := range []string{
+		"const REP_HISTORY_DELETE_BATCH=64",
+		"function repHistoryCleanupTurn()",
+		"globalThis.requestIdleCallback(()=>resolve(),{timeout:250})",
+		"async function repDeleteHistoryBatch(tabKey)",
+		"if(!cursor||deleted>=REP_HISTORY_DELETE_BATCH)return",
+		"await repHistoryCleanupTurn()",
+		"deleted=await repDeleteHistoryBatch(tabKey)",
+		"while(deleted===REP_HISTORY_DELETE_BATCH)",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("bounded Repeater cleanup contract missing %q", contract)
+		}
+	}
+}
+
 func TestUIRepeaterHistorySelectionRejectsStaleLoads(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	start := strings.Index(tools, "export async function repLoadSend(id)")

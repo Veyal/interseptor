@@ -45,6 +45,7 @@ function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&
 // list in tab state, but only paint a bounded window so long sessions do not
 // turn opening History into a large synchronous DOM update.
 const REP_HISTORY_RENDER_BATCH=100;
+const REP_HISTORY_DELETE_BATCH=64;
 const REP_HISTORY_DB_NAME='interseptor-repeater-history';
 const REP_HISTORY_DB_VERSION=1;
 const REP_HISTORY_STORE='entries';
@@ -149,12 +150,30 @@ async function repReadHistory(t){
   await repHistoryTxnDone(tx);
   return normalizeRepHistory(rows.map(row=>row.entry)).sort((a,b)=>b.id-a.id);
 }
-async function repDeleteHistoryKey(tabKey){
+function repHistoryCleanupTurn(){
+  return new Promise(resolve=>{
+    if(typeof globalThis.requestIdleCallback==='function'){
+      globalThis.requestIdleCallback(()=>resolve(),{timeout:250});
+      return;
+    }
+    setTimeout(resolve,0);
+  });
+}
+async function repDeleteHistoryBatch(tabKey){
   const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
   const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+  let deleted=0;
   const request=index.openCursor(tabKey);
-  request.onsuccess=()=>{const cursor=request.result;if(cursor){cursor.delete();cursor.continue();}};
+  request.onsuccess=()=>{const cursor=request.result;if(!cursor||deleted>=REP_HISTORY_DELETE_BATCH)return;cursor.delete();deleted++;cursor.continue();};
   await repHistoryTxnDone(tx);
+  return deleted;
+}
+async function repDeleteHistoryKey(tabKey){
+  let deleted;
+  do{
+    await repHistoryCleanupTurn();
+    deleted=await repDeleteHistoryBatch(tabKey);
+  }while(deleted===REP_HISTORY_DELETE_BATCH);
 }
 async function repDeleteHistory(t){
   const tabKey=repMarkHistoryCleanup(t);
