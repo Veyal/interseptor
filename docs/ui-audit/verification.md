@@ -2,7 +2,10 @@
 
 ## Revision and environment
 
-- Audited application source: `3ac5891c25d11f4e38499b0f3629b243ec6260ad`
+- Audited release-candidate base: `00cc3392676b1fb20567541dc36d648506c85067`
+- Exact application identity: `application_source.runtime_sha256` in
+  [`browser-audit.json`](browser-audit.json), computed from every runtime file under `cmd/` and
+  `internal/` plus `go.mod` and `go.sum`
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
 - Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
@@ -10,13 +13,13 @@
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-This record validates only application source `3ac5891`. Later application changes on the release
-branch are outside this evidence and require a fresh exact-target browser run before release.
+This record validates only the exact runtime-source digest retained in `browser-audit.json`. Any
+later runtime-source change requires a fresh browser run and replacement evidence before release.
 
-The complete 17-case matrix and three-run performance profile were executed against the exact audited
-source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. The no-mistakes test gate
-and a separate clean-room agent each completed the same matrix without a failure. The screenshots
-are committed separately so this document can name the exact application revision they validate.
+The complete 26-case matrix and three-run performance profile were executed against that exact source
+with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3 --output-dir docs/ui-audit`.
+The machine-readable result and screenshots are retained together so the pass, measurements, and
+application-source identity cannot drift apart.
 
 ## Audit outcome
 
@@ -69,7 +72,7 @@ field that created it. In particular:
 
 ### Repeater history contract
 
-The audited-source browser recheck sent a request from one Repeater tab, then changed its method, URL,
+The exact-target browser recheck sent a request from one Repeater tab, then changed its method, URL,
 headers, and body. History remained attached to the tab after every edit, top-level navigation, and
 a page reload; the edited request also survived the reload. A second task tab received a distinct
 history. Closing the first tab removed only its IndexedDB rows. Before closing the second, the audit
@@ -79,7 +82,7 @@ race remain covered by focused Repeater regression tests.
 
 ### Settings ownership contract
 
-The exact-source browser pass opened every Settings section, refreshed both device panels, exercised
+The exact-target browser pass opened every Settings section, refreshed both device panels, exercised
 the project modal and reversible API-key/allowlist mutations, and verified that an unconfigured
 Vault made no remote request. It held a Vault configuration PUT, typed a newer token draft, then
 released the acknowledgement; the newer draft remained. Focused Go UI contracts additionally
@@ -89,7 +92,7 @@ system change.
 
 ### OOB draft ownership contract
 
-The exact-source browser pass temporarily enabled OOB only in its isolated project, opened the
+The exact-target browser pass temporarily enabled OOB only in its isolated project, opened the
 local interaction modal, entered and blurred a newer base-URL draft, then cleared interactions. The
 authoritative interaction refresh did not overwrite the draft. The pass closed the modal and
 restored OOB disabled; it made no external callback or system-proxy change.
@@ -115,21 +118,22 @@ restored OOB disabled; it made no external callback or system-proxy change.
 
 ## Performance findings
 
-The full profile was captured after a fresh launch of exact source `3ac5891`. Performance sampling
+The full profile was captured after a fresh launch of the exact runtime source identified in
+`browser-audit.json`. Performance sampling
 used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
 runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
 control was observed.
 
-| Scenario | Result |
+| Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `159.4 ms`; 82 rendered rows at 1440 × 900; 4,825 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | CSS duration `180 ms`; measured completion p95 `214.4 ms` across nine panel changes |
-| Delayed Intercept acknowledgement | `334.9 ms` verification window, including the deliberate route hold; row remained present until acknowledgement |
-| Map after the burst | first host `80.2 ms`; Fit plus wheel/drag verification window `442.3 ms`; graph transform changed |
-| Whole three-burst profile (CDP delta) | task `0.391 s`, script `0.103 s`, layout `0.040 s` |
-| Map interaction (CDP delta) | task `0.046 s`, script `0.0020 s`, layout `0.0005 s` |
+| Three 240-request live History bursts | `burst_network_p95_ms`, bounded rendered rows/DOM nodes, and `long_task_p95_ms` |
+| Main-panel transitions | declared transition samples and measured `panel_interaction_p95_ms` |
+| Delayed Intercept acknowledgement | `intercept_ack_ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | `map_ready_ms`, Fit/wheel/drag samples, and changed graph transform |
+| Whole three-burst profile | CDP task, script, and layout duration deltas |
+| Map interaction | separate CDP task, script, and layout duration deltas |
 
-The audited-source recheck treats only a visible busy surface as busy. The virtualized table remained
+The exact-target recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
 visible busy surface behind.
 

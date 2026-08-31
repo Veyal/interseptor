@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import http.client
 import json
+import subprocess
 import sys
 import threading
 import time
@@ -153,6 +155,35 @@ def png_dimensions(path: Path) -> Tuple[int, int]:
     return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
 
 
+def runtime_source_identity() -> Dict[str, Any]:
+    repo_root = Path(__file__).resolve().parents[1]
+    paths = [repo_root / "go.mod", repo_root / "go.sum"]
+    for source_root in (repo_root / "cmd", repo_root / "internal"):
+        paths.extend(
+            path
+            for path in source_root.rglob("*")
+            if path.is_file() and not path.name.endswith("_test.go")
+        )
+    digest = hashlib.sha256()
+    unique_paths = sorted(set(paths), key=lambda path: path.relative_to(repo_root).as_posix())
+    for path in unique_paths:
+        relative = path.relative_to(repo_root).as_posix()
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        "base_commit": completed.stdout.strip(),
+        "runtime_sha256": digest.hexdigest(),
+        "runtime_files": len(unique_paths),
+    }
+
+
 def percentile(values: List[float], percentile_value: float) -> Optional[float]:
     if not values:
         return None
@@ -274,6 +305,7 @@ def metric_delta(before: Dict[str, float], after: Dict[str, float], name: str) -
 
 def run_audit(args: argparse.Namespace) -> AuditResult:
     result = AuditResult()
+    application_source = runtime_source_identity()
     base = args.base_url.rstrip("/")
     base_netloc = urlsplit(base).netloc
     output = Path(args.output_dir)
@@ -690,6 +722,101 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
 
             result.run("custom Scanner check load failure clears stale source", custom_check_load_failure)
 
+            def codec_latest_load_ownership() -> None:
+                codec_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                codec_page = codec_context.new_page()
+                codec_page.set_default_timeout(10_000)
+                attach_observers(codec_page, result, base_netloc)
+                list_routes: List[Any] = []
+                docs_routes: List[Any] = []
+
+                def hold_codec_list(route: Any) -> None:
+                    list_routes.append(route)
+
+                def hold_codec_docs(route: Any) -> None:
+                    docs_routes.append(route)
+
+                codec_page.route("**/api/codecs", hold_codec_list)
+                codec_page.route("**/api/codecs/reference", hold_codec_docs)
+                try:
+                    codec_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(codec_page)
+                    codec_page.locator('.tab[data-tab="scanner"]').click()
+                    codec_page.locator("#codecsBtn").click()
+                    codec_page.wait_for_selector("#codecsModal", state="visible", timeout=10_000)
+                    deadline = time.monotonic() + 2.0
+                    while len(list_routes) < 1 and time.monotonic() < deadline:
+                        codec_page.wait_for_timeout(10)
+                    result.require(len(list_routes) == 1, "opening Codecs did not issue its initial list request")
+
+                    codec_page.locator("#codecModeDocs").click()
+                    deadline = time.monotonic() + 2.0
+                    while len(docs_routes) < 1 and time.monotonic() < deadline:
+                        codec_page.wait_for_timeout(10)
+                    result.require(len(docs_routes) == 1, "opening codec Docs did not issue its initial request")
+                    codec_page.locator("#codecModeCode").click()
+                    codec_page.locator("#codecModeDocs").click()
+                    deadline = time.monotonic() + 2.0
+                    while len(docs_routes) < 2 and time.monotonic() < deadline:
+                        codec_page.wait_for_timeout(10)
+                    result.require(len(docs_routes) == 2, "reopening codec Docs did not issue a latest-owner request")
+                    docs_routes[1].fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"markdown":"# Latest codec reference"}',
+                    )
+                    codec_page.wait_for_function(
+                        "document.querySelector('#codecDocs')?.textContent.includes('Latest codec reference')"
+                    )
+                    docs_routes[0].fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"markdown":"# Stale codec reference"}',
+                    )
+                    codec_page.wait_for_timeout(120)
+                    result.require(
+                        "Latest codec reference" in codec_page.locator("#codecDocs").inner_text()
+                        and "Stale codec reference" not in codec_page.locator("#codecDocs").inner_text(),
+                        "an older codec Docs response replaced the latest reference",
+                    )
+
+                    codec_page.locator("#codecNew").click()
+                    deadline = time.monotonic() + 2.0
+                    while len(list_routes) < 2 and time.monotonic() < deadline:
+                        codec_page.wait_for_timeout(10)
+                    result.require(len(list_routes) == 2, "New codec did not issue a latest-owner list request")
+                    list_routes[1].fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"codecs":[{"id":"latest-codec","meta":{"title":"Latest codec"}}],"dir":"/tmp/ui-audit/codecs"}',
+                    )
+                    codec_page.wait_for_selector('#codecsList .codecs-row[data-id="latest-codec"]')
+                    list_routes[0].fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"codecs":[{"id":"stale-codec","meta":{"title":"Stale codec"}}],"dir":"/tmp/ui-audit/codecs"}',
+                    )
+                    codec_page.wait_for_timeout(120)
+                    result.require(
+                        codec_page.locator('#codecsList .codecs-row[data-id="latest-codec"]').count() == 1
+                        and codec_page.locator('#codecsList .codecs-row[data-id="stale-codec"]').count() == 0,
+                        "an older codec list response replaced the latest list",
+                    )
+                finally:
+                    for route in list_routes + docs_routes:
+                        try:
+                            route.fulfill(status=200, content_type="application/json", body='{"codecs":[],"markdown":""}')
+                        except Exception:
+                            pass
+                    try:
+                        codec_page.unroute("**/api/codecs", hold_codec_list)
+                        codec_page.unroute("**/api/codecs/reference", hold_codec_docs)
+                    except Exception:
+                        pass
+                    codec_context.close()
+
+            result.run("Codecs Docs and list loads retain their latest owners", codec_latest_load_ownership)
+
             def allowlist_initial_failure() -> None:
                 """Initial allowlist failure must remain actionable and recover."""
                 allow_context = browser.new_context(viewport={"width": 1024, "height": 768})
@@ -1018,6 +1145,191 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 result.require(page.evaluate("document.activeElement?.id") == "findGuide", "Finding guide did not restore focus")
 
             result.run("Notes save/preview and Findings creation/focus", notes_and_findings)
+
+            def mutation_modals_lock_dismissal() -> None:
+                def wait_for_route(routes: List[Any], label: str) -> None:
+                    deadline = time.monotonic() + 2.0
+                    while not routes and time.monotonic() < deadline:
+                        page.wait_for_timeout(10)
+                    result.require(bool(routes), f"{label} request was not issued")
+
+                finding_title = "UI audit held finding"
+                held_findings: List[Any] = []
+
+                def hold_finding_create(route: Any) -> None:
+                    if route.request.method == "POST":
+                        held_findings.append(route)
+                    else:
+                        route.continue_()
+
+                page.route("**/api/findings", hold_finding_create)
+                try:
+                    page.locator('.tab[data-tab="findings"]').click()
+                    page.locator("#findNew").click()
+                    page.locator("#fcTitle").fill(finding_title)
+                    page.locator("#fcSave").click()
+                    wait_for_route(held_findings, "held finding create")
+                    result.require(
+                        page.locator("#fcTitle").is_disabled()
+                        and page.locator("#fcSeverity").is_disabled()
+                        and page.locator("#fcSave").is_disabled()
+                        and page.locator("#fcClose").is_disabled(),
+                        "finding controls did not lock while creation was pending",
+                    )
+                    page.keyboard.press("Escape")
+                    page.locator("#findCreateModal").click(position={"x": 5, "y": 5})
+                    page.wait_for_timeout(80)
+                    result.require(page.locator("#findCreateModal").is_visible(), "finding creation was dismissible before acknowledgement")
+                    held_findings[0].continue_()
+                    page.wait_for_selector("#findCreateModal", state="hidden", timeout=10_000)
+                    page.wait_for_function(
+                        "title => document.querySelector('#findDetail')?.textContent.includes(title)",
+                        arg=finding_title,
+                    )
+                finally:
+                    for route in held_findings:
+                        try:
+                            route.continue_()
+                        except Exception:
+                            pass
+                    try:
+                        page.unroute("**/api/findings", hold_finding_create)
+                    except Exception:
+                        pass
+                    try:
+                        cleanup_status = page.evaluate(
+                            """async title => {
+                              const response=await fetch('/api/findings');
+                              const data=await response.json();
+                              const finding=(data.findings||[]).find(item=>item.title===title);
+                              if(!finding)return 404;
+                              return (await fetch('/api/findings/'+finding.id,{method:'DELETE'})).status;
+                            }""",
+                            finding_title,
+                        )
+                        if cleanup_status not in (200, 204, 404):
+                            raise RuntimeError(f"DELETE returned {cleanup_status}")
+                    except Exception as exc:
+                        result.failures.append(f"held-finding audit cleanup failed: {type(exc).__name__}: {exc}")
+
+                check_id = "ui-audit-held-check"
+                held_checks: List[Any] = []
+
+                def hold_check_save(route: Any) -> None:
+                    if route.request.method == "PUT":
+                        held_checks.append(route)
+                    else:
+                        route.continue_()
+
+                page.route(f"**/api/checks/{check_id}", hold_check_save)
+                try:
+                    page.locator('.tab[data-tab="scanner"]').click()
+                    page.locator("#checksBtn").click()
+                    page.wait_for_selector("#checksModal", state="visible", timeout=10_000)
+                    page.locator("#checkNew").click()
+                    page.locator("#checkId").fill(check_id)
+                    page.locator("#checkSrc").fill("def check(flow):\n    return []\n")
+                    page.locator("#checkSave").click()
+                    wait_for_route(held_checks, "held Scanner check save")
+                    result.require(
+                        page.locator("#checksClose").is_disabled()
+                        and page.locator("#checkId").is_disabled()
+                        and page.locator("#checkSrc").is_disabled(),
+                        "Scanner check controls did not lock while save was pending",
+                    )
+                    page.keyboard.press("Escape")
+                    page.locator("#checksModal").click(position={"x": 5, "y": 5})
+                    page.wait_for_timeout(80)
+                    result.require(page.locator("#checksModal").is_visible(), "Scanner check save was dismissible before acknowledgement")
+                    held_checks[0].continue_()
+                    page.wait_for_function(
+                        "document.querySelector('#checkOut')?.textContent.includes('Saved')",
+                        timeout=10_000,
+                    )
+                    result.require(page.locator("#checksClose").is_enabled(), "Scanner close control did not restore after acknowledgement")
+                finally:
+                    for route in held_checks:
+                        try:
+                            route.continue_()
+                        except Exception:
+                            pass
+                    try:
+                        page.unroute(f"**/api/checks/{check_id}", hold_check_save)
+                    except Exception:
+                        pass
+                    try:
+                        cleanup_status = page.evaluate(
+                            "async id => (await fetch('/api/checks/'+encodeURIComponent(id),{method:'DELETE'})).status",
+                            check_id,
+                        )
+                        if cleanup_status not in (200, 204, 404):
+                            raise RuntimeError(f"DELETE returned {cleanup_status}")
+                    except Exception as exc:
+                        result.failures.append(f"held-check audit cleanup failed: {type(exc).__name__}: {exc}")
+                    if page.locator("#checksModal").is_visible() and page.locator("#checksClose").is_enabled():
+                        page.locator("#checksClose").click()
+
+                page.locator('.tab[data-tab="proxy"]').click()
+                page.wait_for_function("document.querySelectorAll('#rows .trow').length>0", timeout=10_000)
+                original_identities = page.evaluate("async () => (await (await fetch('/api/authz')).json()).identities||[]")
+                held_authz: List[Any] = []
+
+                def hold_authz_save(route: Any) -> None:
+                    if route.request.method == "POST":
+                        held_authz.append(route)
+                    else:
+                        route.continue_()
+
+                first_flow = page.locator("#rows .trow").first.get_attribute("data-id")
+                page.locator(f'#rows .trow[data-id="{first_flow}"]').click(button="right", force=True)
+                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(force=True)
+                page.wait_for_selector("#authzModal", state="visible", timeout=10_000)
+                page.wait_for_selector("#authzIds .authz-name", timeout=10_000)
+                page.route("**/api/authz", hold_authz_save)
+                try:
+                    page.locator("#authzIds .authz-name").first.fill("ui-audit-held-identity")
+                    page.locator("#authzSave").click()
+                    wait_for_route(held_authz, "held Authz identity save")
+                    result.require(
+                        page.locator("#authzClose").is_disabled()
+                        and page.locator("#authzIds .authz-name").first.is_disabled(),
+                        "Authz controls did not lock while identities were saving",
+                    )
+                    page.keyboard.press("Escape")
+                    page.locator("#authzModal").click(position={"x": 5, "y": 5})
+                    page.wait_for_timeout(80)
+                    result.require(page.locator("#authzModal").is_visible(), "Authz identity save was dismissible before acknowledgement")
+                    held_authz[0].continue_()
+                    page.wait_for_function(
+                        "document.querySelector('#authzStatus')?.textContent.includes('Identities saved')",
+                        timeout=10_000,
+                    )
+                    result.require(page.locator("#authzClose").is_enabled(), "Authz close control did not restore after acknowledgement")
+                finally:
+                    for route in held_authz:
+                        try:
+                            route.continue_()
+                        except Exception:
+                            pass
+                    try:
+                        page.unroute("**/api/authz", hold_authz_save)
+                    except Exception:
+                        pass
+                    try:
+                        restore_status = page.evaluate(
+                            """async identities => (await fetch('/api/authz',{
+                              method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identities})
+                            })).status""",
+                            original_identities,
+                        )
+                        if restore_status not in (200, 204):
+                            raise RuntimeError(f"POST returned {restore_status}")
+                    except Exception as exc:
+                        result.failures.append(f"held-Authz audit cleanup failed: {type(exc).__name__}: {exc}")
+                    if page.locator("#authzModal").is_visible() and page.locator("#authzClose").is_enabled():
+                        page.locator("#authzClose").click()
+
+            result.run("non-cancelable Finding, Checks, and Authz mutations lock dismissal", mutation_modals_lock_dismissal)
 
             def scanner_run() -> None:
                 page.locator('.tab[data-tab="scanner"]').click()
@@ -1772,6 +2084,73 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
 
             result.run("Authz explicit context and A-to-B-to-A retargeting", authz_context_target)
 
+            def flow_note_read_waits_for_save() -> None:
+                page.locator('.tab[data-tab="proxy"]').click()
+                page.wait_for_function("document.querySelectorAll('#rows .trow').length>=2", timeout=10_000)
+                rows = page.locator("#rows .trow")
+                flow_a = rows.nth(0).get_attribute("data-id")
+                flow_b = rows.nth(1).get_attribute("data-id")
+                page.locator(f'#rows .trow[data-id="{flow_a}"]').click(force=True)
+                page.wait_for_selector("#noteBar", state="visible", timeout=10_000)
+                original_note = page.locator("#noteInput").input_value()
+                marker = "UI audit acknowledged note"
+                held_note_saves: List[Any] = []
+                detail_reads: List[str] = []
+
+                def hold_note_save(route: Any) -> None:
+                    held_note_saves.append(route)
+
+                def observe_detail_read(route: Any) -> None:
+                    detail_reads.append(route.request.url)
+                    route.continue_()
+
+                page.route(f"**/api/flows/{flow_a}/note", hold_note_save)
+                page.route(f"**/api/flows/{flow_a}", observe_detail_read)
+                try:
+                    page.locator("#noteInput").fill(marker)
+                    page.locator(f'#rows .trow[data-id="{flow_b}"]').click(force=True)
+                    deadline = time.monotonic() + 2.0
+                    while not held_note_saves and time.monotonic() < deadline:
+                        page.wait_for_timeout(10)
+                    result.require(bool(held_note_saves), "flow-note blur did not issue its PUT")
+                    page.locator(f'#rows .trow[data-id="{flow_a}"]').click(force=True)
+                    page.wait_for_timeout(120)
+                    result.require(
+                        not detail_reads,
+                        "Inspector fetched a flow snapshot before its queued note save acknowledged",
+                    )
+                    held_note_saves[0].continue_()
+                    page.wait_for_function(
+                        "value => document.querySelector('#noteInput')?.value===value",
+                        arg=marker,
+                        timeout=10_000,
+                    )
+                    result.require(bool(detail_reads), "Inspector did not refetch the flow after its note save acknowledged")
+                finally:
+                    for route in held_note_saves:
+                        try:
+                            route.continue_()
+                        except Exception:
+                            pass
+                    try:
+                        page.unroute(f"**/api/flows/{flow_a}/note", hold_note_save)
+                        page.unroute(f"**/api/flows/{flow_a}", observe_detail_read)
+                    except Exception:
+                        pass
+                    try:
+                        cleanup_status = page.evaluate(
+                            """async owner => (await fetch('/api/flows/'+owner.id+'/note',{
+                              method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({note:owner.note})
+                            })).status""",
+                            {"id": flow_a, "note": original_note},
+                        )
+                        if cleanup_status not in (200, 204):
+                            raise RuntimeError(f"PUT returned {cleanup_status}")
+                    except Exception as exc:
+                        result.failures.append(f"flow-note audit cleanup failed: {type(exc).__name__}: {exc}")
+
+            result.run("Inspector reads wait for their flow's acknowledged note save", flow_note_read_waits_for_save)
+
             def burst_and_map_performance() -> None:
                 page.set_viewport_size({"width": 1440, "height": 900})
                 page.locator('.tab[data-tab="proxy"]').click()
@@ -1999,6 +2378,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
         fixture.server_close()
 
     report = {
+        "application_source": application_source,
         "base_url": base,
         "mode": "full" if args.full else "smoke",
         "viewports": [list(viewport) for viewport in VIEWPORTS],

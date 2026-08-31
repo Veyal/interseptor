@@ -1054,8 +1054,6 @@ export async function selectFlow(id){
   const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&flowFilterEpoch===filterEpoch;
   const switching=state.selId!==id;
   const needsLoadingState=switching||!state.detail;
-  const noteGeneration=noteEditorGeneration(id);
-  const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
   if(switching){
     state.detail=null;
     const note=$('#noteInput');if(note)note.value='';
@@ -1065,6 +1063,10 @@ export async function selectFlow(id){
   renderRows();
   if(needsLoadingState)showInspectorLoading(id);
   try{
+    const pendingNoteSave=noteSaveTails.get(id);
+    if(pendingNoteSave){await pendingNoteSave;if(!current())return;}
+    const noteGeneration=noteEditorGeneration(id);
+    const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
     const d=await api('/api/flows/'+id);
     if(!current())return;
     if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}

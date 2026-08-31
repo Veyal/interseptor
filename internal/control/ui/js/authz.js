@@ -15,7 +15,7 @@ let authzScopeEpoch=0,authzHintEpoch=0,authzRunEpoch=0,authzIdentityLoadEpoch=0,
 let authzIdentityMutationTail=Promise.resolve();
 function setAuthzActionBusy(busy) {
   authzActionBusy = !!busy;
-  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd'].forEach(sel => {
+  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose'].forEach(sel => {
     const b = $(sel); if (!b) return;
     b.disabled = authzActionBusy;
     b.setAttribute('aria-busy', authzActionBusy ? 'true' : 'false');
@@ -51,6 +51,7 @@ function authzActionCurrent(epoch,mode,target,requiresTarget=true){
   return !requiresTarget||authzTarget()===target;
 }
 function closeAuthz(){
+  if(authzActionBusy)return;
   ++authzRunEpoch;++authzHintEpoch;++authzScopeEpoch;++authzIdentityLoadEpoch;
   authzHintTarget=null;
   setAuthzActionBusy(false);

@@ -35,6 +35,8 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 		"const noteEditorGenerations=new Map()",
 		"const flowId=state.selId,detail=state.detail",
 		"const editorGeneration=noteEditorGeneration(flowId)",
+		"const pendingNoteSave=noteSaveTails.get(id)",
+		"if(pendingNoteSave){await pendingNoteSave;if(!current())return;}",
 		"const noteGeneration=noteEditorGeneration(id)",
 		"const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'')",
 		"const previous=noteSaveTails.get(flowId)||Promise.resolve()",

@@ -165,6 +165,11 @@ func TestUISingletonPromptAndConfirmSettleSupersededCallers(t *testing.T) {
 func TestUIFindingCreateAndAsyncEditorActionsRetainTheirOwners(t *testing.T) {
 	requireUIContracts(t, "js/findings.js",
 		"let findingCreateEpoch=0",
+		"let findingCreateBusy=false",
+		"function closeFindingCreate()",
+		"if(findingCreateBusy)return",
+		"onEscape:closeFindingCreate,onDismiss:closeFindingCreate",
+		"'#fcTitle','#fcSeverity','#fcSave','#fcClose'",
 		"const createEpoch=++findingCreateEpoch",
 		"if(createEpoch!==findingCreateEpoch",
 		"findingCreateEpoch++",
@@ -177,6 +182,23 @@ func TestUIFindingCreateAndAsyncEditorActionsRetainTheirOwners(t *testing.T) {
 		"let intrToFindingPending=false",
 		"if(intrToFindingPending)return",
 	)
+}
+
+func TestUICodecReferenceAndListLoadsHaveIndependentLatestOwners(t *testing.T) {
+	codecs := requireUIContracts(t, "js/codecs.js",
+		"let codecDocsLoadEpoch = 0",
+		"let codecListLoadEpoch = 0",
+		"const epoch = ++codecDocsLoadEpoch",
+		"if (epoch !== codecDocsLoadEpoch) return",
+		"const epoch = ++codecListLoadEpoch",
+		"if (epoch !== codecListLoadEpoch) return",
+	)
+	if strings.Count(codecs, "if (epoch !== codecDocsLoadEpoch) return") < 2 {
+		t.Error("codec Docs loading must guard both success and failure effects")
+	}
+	if strings.Count(codecs, "if (epoch !== codecListLoadEpoch) return") < 2 {
+		t.Error("codec list loading must guard both success and failure effects")
+	}
 }
 
 func TestUIFlowSearchTestValidatesTheRequiredNameBeforeRequesting(t *testing.T) {

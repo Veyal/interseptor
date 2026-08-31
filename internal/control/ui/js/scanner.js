@@ -115,6 +115,8 @@ function syncCheckEditorControls(){
   [test,save].forEach(button=>{if(button){button.disabled=blocked;button.setAttribute('aria-busy',checkActionBusy?'true':'false');}});
   ['checkId','checkSrc'].forEach(id=>{const control=$('#'+id);if(control)control.disabled=blocked;});
   const fresh=$('#checkNew');if(fresh)fresh.disabled=checkActionBusy;
+  const close=$('#checksClose');if(close)close.disabled=checkActionBusy;
+  $('#checksList')?.querySelectorAll('button,input').forEach(control=>{control.disabled=checkActionBusy;});
   if(del){del.disabled=blocked||(checkBuiltin&&!checkOverridden);del.setAttribute('aria-busy',checkActionBusy?'true':'false');}
 }
 function setCheckActionState(kind,stateName){
@@ -300,6 +302,7 @@ export async function loadChecksList(){
     // Persist the whole disabled set as one acknowledged transaction. Disable
     // sibling toggles until it resolves so rapid clicks cannot reorder writes.
     box.querySelectorAll('.check-en').forEach(cb=>cb.onchange=()=>saveCheckToggle(cb,box));
+    syncCheckEditorControls();
     checksApplyFilter(); // re-apply an active filter across the freshly rendered rows
   }catch(e){
     if(epoch!==checkListEpoch||checkToggleBusy)return;
@@ -563,7 +566,7 @@ async function installPackFile(file){
   }catch(e){if(mutationEpoch===checkPackMutationEpoch)toast(e.message||'install failed','error');}
   finally{if(mutationEpoch===checkPackMutationEpoch){checkPackMutationBusy=false;if(box)box.removeAttribute('aria-busy');loadPacksPanel();}}
 }
-function closeChecks(){checkLoadEpoch++;checkDraftEpoch++;cancelCheckAction();closeModal($('#checksModal'));}
+function closeChecks(){if(checkActionBusy)return;checkLoadEpoch++;checkDraftEpoch++;cancelCheckAction();closeModal($('#checksModal'));}
 export function openChecks(){openModal($('#checksModal'),{onEscape:closeChecks,onDismiss:closeChecks});const s=$('#checksSearch');if(s)s.value='';loadChecksList();loadPacksPanel();updateCheckFlowHint();if(!$('#checkSrc').value)checkNew();checkSetMode('code');}
 if($('#checksBtn'))$('#checksBtn').onclick=openChecks;
 if($('#checksPackFile'))$('#checksPackFile').onchange=e=>{const f=e.target.files&&e.target.files[0]; if(f) installPackFile(f); e.target.value='';};

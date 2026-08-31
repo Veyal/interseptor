@@ -1,10 +1,11 @@
 # UI audit screenshots
 
-The **After** screenshots validate UI source revision
-[`3ac5891`](https://github.com/Veyal/interseptor/commit/3ac5891c25d11f4e38499b0f3629b243ec6260ad).
-They were captured from a fresh build of that checkout in the isolated
-`ui-independent-3ac5891` project on 2026-08-31. The screenshots and measurements remain scoped to
-that checkout; later application commits on the release branch are outside this evidence.
+The **After** screenshots validate the exact release-candidate runtime source identified by
+`application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). They were captured
+from a fresh build based on
+[`00cc339`](https://github.com/Veyal/interseptor/commit/00cc3392676b1fb20567541dc36d648506c85067)
+plus the gate review fixes in this change. The screenshots and measurements remain scoped to that
+digest; any later runtime-source change requires a fresh run.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
 the audit's local loopback fixture and generic project records; neither set contains real request
@@ -22,7 +23,7 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The audited-source Playwright recheck ran Chromium 148 against source `3ac5891`. All 17 independent
+The exact-target Playwright recheck ran Chromium 148. All 26 independent
 and cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
 history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
@@ -33,8 +34,8 @@ behavior, and every Settings section. No unexpected console, page, HTTP, or exte
 were reported.
 
 Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
-hydration and gestures. The 1440 × 900 History window stayed bounded at 82 rendered rows and 4,825
-DOM nodes, with no long tasks or visible stuck busy state.
+hydration and gestures. Exact timing, bounded-DOM, long-task, and interaction measurements are
+retained in `browser-audit.json` with the runtime-source digest.
 
-See [`verification.md`](verification.md) for the revision, feature matrix, measurements, failure
+See [`verification.md`](verification.md) for the source identity, feature matrix, measurements, failure
 injections, competitive review, and intentionally deferred ideas.

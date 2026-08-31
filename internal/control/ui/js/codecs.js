@@ -38,6 +38,8 @@ let codecMode = 'code';
 let codecDocsLoaded = false;
 let codecBusy = false;
 let codecLoadEpoch = 0;
+let codecDocsLoadEpoch = 0;
+let codecListLoadEpoch = 0;
 
 function codecEditorMatches(epoch, id, source) {
   return epoch === codecLoadEpoch
@@ -98,11 +100,14 @@ async function loadCodecDocs() {
   if (codecDocsLoaded) return;
   const box = $('#codecDocs');
   if (!box) return;
+  const epoch = ++codecDocsLoadEpoch;
   try {
     const d = await api('/api/codecs/reference');
+    if (epoch !== codecDocsLoadEpoch) return;
     box.innerHTML = renderMD(d.markdown || '');
     codecDocsLoaded = true;
   } catch (e) {
+    if (epoch !== codecDocsLoadEpoch) return;
     box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-codec-docs-retry]');if(retry)retry.onclick=loadCodecDocs;
   }
@@ -168,8 +173,10 @@ function codecsApplyFilter() {
 export async function loadCodecsList() {
   const box = $('#codecsList');
   if (!box) return;
+  const epoch = ++codecListLoadEpoch;
   try {
     const d = await api('/api/codecs');
+    if (epoch !== codecListLoadEpoch) return;
     const list = d.codecs || [];
     const hint = $('#codecsDirHint');
     if (hint) {
@@ -190,6 +197,7 @@ export async function loadCodecsList() {
     });
     codecsApplyFilter();
   } catch (e) {
+    if (epoch !== codecListLoadEpoch) return;
     box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load codecs: ${esc(e.message)}</p><button type="button" class="btn" data-codecs-list-retry>Retry</button></div>`;
     box.querySelector('[data-codecs-list-retry]')?.addEventListener('click', loadCodecsList);
   }

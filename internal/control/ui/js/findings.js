@@ -1124,9 +1124,21 @@ async function openFlowPickForFinding(findingId) {
 
 /* ---- create finding ---- */
 let findingCreateEpoch=0;
-function resetFindingCreateButton(){
+let findingCreateBusy=false;
+function setFindingCreateBusy(busy){
+  findingCreateBusy=!!busy;
+  ['#fcTitle','#fcSeverity','#fcSave','#fcClose'].forEach(sel=>{const control=$(sel);if(control)control.disabled=findingCreateBusy;});
   const button=$('#fcSave');if(!button)return;
-  button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Create finding';
+  button.setAttribute('aria-busy',findingCreateBusy?'true':'false');
+  button.textContent=findingCreateBusy?'Creating…':'Create finding';
+}
+function closeFindingCreate(){
+  if(findingCreateBusy)return;
+  findingCreateEpoch++;
+  closeModal($('#findCreateModal'));
+}
+function resetFindingCreateButton(){
+  setFindingCreateBusy(false);
 }
 function openFindCreate(event) {
   findingCreateEpoch++;
@@ -1135,11 +1147,11 @@ function openFindCreate(event) {
   $('#fcTitle').value = '';
   $('#fcSeverity').value = 'Medium';
   resetFindingCreateButton();
-  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle')});
+  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle'),onEscape:closeFindingCreate,onDismiss:closeFindingCreate});
 }
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
-$('#fcClose') && ($('#fcClose').onclick = () => {findingCreateEpoch++;closeModal($('#findCreateModal'));});
+$('#fcClose') && ($('#fcClose').onclick = closeFindingCreate);
 $('#fcSave') && ($('#fcSave').onclick = async () => {
   const button = $('#fcSave');
   const title = ($('#fcTitle')?.value || '').trim();
@@ -1148,13 +1160,10 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
     $('#fcTitle')?.focus();
     return;
   }
-  if (button.disabled) return;
+  if (findingCreateBusy) return;
   const createEpoch=++findingCreateEpoch;
   const modal=$('#findCreateModal');
-  const label = button.textContent;
-  button.disabled = true;
-  button.setAttribute('aria-busy', 'true');
-  button.textContent = 'Creating…';
+  setFindingCreateBusy(true);
   try {
     const created = await api('/api/findings', {
       method: 'POST',
@@ -1177,9 +1186,7 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
     toast(err.message || 'could not create finding', 'error');
   } finally {
     if (createEpoch===findingCreateEpoch&&button.isConnected) {
-      button.disabled = false;
-      button.setAttribute('aria-busy', 'false');
-      button.textContent = label;
+      setFindingCreateBusy(false);
     }
   }
 });

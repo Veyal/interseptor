@@ -157,6 +157,8 @@ func TestUIAuthzModalOwnsLoadsEditsAndActions(t *testing.T) {
 		"authzIdentityEditEpoch",
 		"authzIdentityMutationTail",
 		"onEscape:closeAuthz,onDismiss:closeAuthz",
+		"'#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose'",
+		"function closeAuthz(){\n  if(authzActionBusy)return",
 		"function authzActionCurrent(epoch,mode,target,requiresTarget=true)",
 		"$('#authzIds')?.querySelectorAll('input,textarea,button')",
 		"finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}",
