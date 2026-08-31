@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Current UI release evidence.** Refreshed the retained 26-case browser/CDP report and desktop, tablet, and mobile screenshots against the final runtime fixes, and added a focused regression that rejects stale exact-source audit evidence.
 
 ### Fixed
-- **Reliable macOS fallback versioning.** Shallow or no-tag app builds now read either the `var` or `const` form of the compiled-in version instead of silently stamping `0.0.0` into the bundle.
+- **Provenance-safe macOS fallback versioning.** Builds with no reachable tag no longer mistake a decimal-only abbreviated commit SHA for a bundle version; they fall back to the compiled-in `Version`, extracted from either its `var` or `const` form, instead of silently stamping `0.0.0`. Explicit numeric `VERSION` overrides and normal tagged or dirty describes remain supported.
 - **Reconnect and action ownership.** Reconcile the visible allowlist after every SSE reconnect, keep in-flight Repeater sends isolated from request adoption, and prevent incidental device refreshes from invalidating Android or iOS action reconciliation.
 - **Live allowlist reconciliation.** Refresh the visible Settings allowlist after another UI or API client changes it, while preserving the API panel's lazy-loading boundary when that pane is hidden.
 - **Repeater edit-epoch regression contract.** Keep decoded-view stale-result coverage aligned with the shared request-change predicate that also revokes pristine cross-feature adoption.
