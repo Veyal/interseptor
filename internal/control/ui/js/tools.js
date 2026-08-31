@@ -38,10 +38,203 @@ function setRepSendState(stateName,label){
   if(labelEl)labelEl.textContent=label;
   else button.textContent=label;
 }
-function resetRepSend(delay,t){setTimeout(()=>{if(repCur()===t&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
+function resetRepSend(delay,t,sendEpoch){setTimeout(()=>{if(repCur()===t&&t.sendEpoch===sendEpoch&&!t.sendPending&&!t.sendError)setRepSendState('idle','Send ▸');},delay);}
 
-/* ---- repeater (multi-tab; each tab = an endpoint with its own history) ---- */
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[]};}
+/* ---- repeater (multi-tab; each tab owns its request workspace + history) ---- */
+// A Repeater tab owns every send made during its lifetime. Keep the complete
+// list in tab state, but only paint a bounded window so long sessions do not
+// turn opening History into a large synchronous DOM update.
+const REP_HISTORY_RENDER_BATCH=100;
+const REP_HISTORY_DELETE_BATCH=64;
+const REP_HISTORY_DB_NAME='interseptor-repeater-history';
+const REP_HISTORY_DB_VERSION=1;
+const REP_HISTORY_STORE='entries';
+let repHistoryDBPromise=null,repHistoryKeySeq=0;
+function newRepHistoryKey(){
+  if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+  repHistoryKeySeq++;
+  return Date.now().toString(36)+'-'+repHistoryKeySeq.toString(36)+'-'+Math.random().toString(36).slice(2);
+}
+function repHistoryEntry(flow){
+  return {id:Number(flow&&flow.id),method:String(flow&&flow.method||''),status:Number(flow&&flow.status)||0,host:String(flow&&flow.host||''),path:String(flow&&flow.path||'')};
+}
+function normalizeRepHistory(history){
+  const out=[],seen=new Set();
+  for(const item of Array.isArray(history)?history:[]){
+    const entry=repHistoryEntry(item),id=entry.id;
+    if(!Number.isSafeInteger(id)||id<=0||seen.has(id))continue;
+    seen.add(id);
+    entry.method=entry.method.slice(0,32);
+    entry.host=entry.host.slice(0,512);
+    entry.path=entry.path.slice(0,2048);
+    out.push(entry);
+  }
+  return out;
+}
+function repHistoryDB(){
+  if(repHistoryDBPromise)return repHistoryDBPromise;
+  repHistoryDBPromise=new Promise((resolve,reject)=>{
+    if(!globalThis.indexedDB){reject(new Error('IndexedDB is unavailable'));return;}
+    const request=indexedDB.open(REP_HISTORY_DB_NAME,REP_HISTORY_DB_VERSION);
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      const store=db.objectStoreNames.contains(REP_HISTORY_STORE)?request.transaction.objectStore(REP_HISTORY_STORE):db.createObjectStore(REP_HISTORY_STORE,{keyPath:'key'});
+      if(!store.indexNames.contains('tabKey'))store.createIndex('tabKey','tabKey',{unique:false});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('Could not open Repeater history storage'));
+    request.onblocked=()=>reject(new Error('Repeater history storage is blocked by another window'));
+  }).catch(error=>{repHistoryDBPromise=null;throw error;});
+  return repHistoryDBPromise;
+}
+function repHistoryTabKey(t){return projectStorageKey('rep.history')+'|'+t.historyKey;}
+function repHistoryCleanupStorageKey(){return projectStorageKey('rep.history.cleanup');}
+function repHistoryCleanupKeys(){
+  const raw=localStorage.getItem(repHistoryCleanupStorageKey());
+  if(!raw)return[];
+  try{
+    const prefix=projectStorageKey('rep.history')+'|';
+    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&key.startsWith(prefix)&&key.length<=512))];
+  }catch(e){return[];}
+}
+function repWriteHistoryCleanupKeys(keys){
+  if(keys.length)localStorage.setItem(repHistoryCleanupStorageKey(),JSON.stringify(keys));
+  else localStorage.removeItem(repHistoryCleanupStorageKey());
+}
+function repMarkHistoryCleanup(t){
+  const tabKey=repHistoryTabKey(t),keys=repHistoryCleanupKeys();
+  if(!keys.includes(tabKey))keys.push(tabKey);
+  repWriteHistoryCleanupKeys(keys);
+  return tabKey;
+}
+function repClearHistoryCleanup(tabKey){repWriteHistoryCleanupKeys(repHistoryCleanupKeys().filter(key=>key!==tabKey));}
+function repHistoryTxnDone(tx){
+  return new Promise((resolve,reject)=>{
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error||new Error('Repeater history transaction failed'));
+    tx.onabort=()=>reject(tx.error||new Error('Repeater history transaction was aborted'));
+  });
+}
+// IndexedDB transactions are ordered per connection, but a send, hydration,
+// and tab-close cleanup can all reach the database from different async
+// continuations. Serialize every tab-owned history operation so cleanup is
+// queued behind an in-flight writer and late writers become no-ops after the
+// manager marks the tab closed.
+function repHistoryOperation(t,work,allowClosed=false){
+  if(!t||(!allowClosed&&t._closed))return Promise.resolve(false);
+  const previous=t.historyOperation||Promise.resolve();
+  const next=previous.catch(()=>{}).then(async()=>{
+    if(!allowClosed&&t._closed)return false;
+    await work();
+    return true;
+  });
+  t.historyOperation=next.catch(()=>{});
+  return next;
+}
+async function repStoreHistoryEntries(t,entries){
+  const normalized=normalizeRepHistory(entries);if(!normalized.length)return;
+  return repHistoryOperation(t,async()=>{
+    const db=await repHistoryDB();
+    if(t._closed)return false;
+    const tabKey=repHistoryTabKey(t);
+    const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE);
+    normalized.forEach(entry=>store.put({key:tabKey+'|'+entry.id,tabKey,entry}));
+    await repHistoryTxnDone(tx);
+  });
+}
+async function repReadHistory(t){
+  const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readonly');
+  const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+  const request=index.getAll(repHistoryTabKey(t));
+  const rows=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result||[]);request.onerror=()=>reject(request.error||new Error('Could not read Repeater history'));});
+  await repHistoryTxnDone(tx);
+  return normalizeRepHistory(rows.map(row=>row.entry)).sort((a,b)=>b.id-a.id);
+}
+function repHistoryCleanupTurn(){
+  return new Promise(resolve=>{
+    if(typeof globalThis.requestIdleCallback==='function'){
+      globalThis.requestIdleCallback(()=>resolve(),{timeout:250});
+      return;
+    }
+    setTimeout(resolve,0);
+  });
+}
+async function repDeleteHistoryBatch(tabKey){
+  const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readwrite');
+  const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
+  let deleted=0;
+  const request=index.openCursor(tabKey);
+  request.onsuccess=()=>{const cursor=request.result;if(!cursor||deleted>=REP_HISTORY_DELETE_BATCH)return;cursor.delete();deleted++;cursor.continue();};
+  await repHistoryTxnDone(tx);
+  return deleted;
+}
+async function repDeleteHistoryKey(tabKey){
+  let deleted;
+  do{
+    await repHistoryCleanupTurn();
+    deleted=await repDeleteHistoryBatch(tabKey);
+  }while(deleted===REP_HISTORY_DELETE_BATCH);
+}
+async function repDeleteHistory(t){
+  const tabKey=repHistoryTabKey(t);
+  // The retry ledger is a resilience aid, not a prerequisite for deletion.
+  // Browsers can deny localStorage while leaving IndexedDB usable; closing a
+  // task must still attempt to remove that tab's durable history.
+  try{repMarkHistoryCleanup(t);}catch(e){}
+  return repHistoryOperation(t,async()=>{
+    if(!t._closed)return;
+    await repDeleteHistoryKey(tabKey);
+    try{repClearHistoryCleanup(tabKey);}catch(e){}
+  },true);
+}
+async function repRetryHistoryCleanup(openTabs){
+  const openKeys=new Set(openTabs.map(repHistoryTabKey));
+  let cleanupKeys;
+  try{cleanupKeys=repHistoryCleanupKeys();}catch(e){return;}
+  for(const tabKey of cleanupKeys){
+    if(openKeys.has(tabKey)){try{repClearHistoryCleanup(tabKey);}catch(e){}continue;}
+    try{await repDeleteHistoryKey(tabKey);}catch(e){continue;}
+    try{repClearHistoryCleanup(tabKey);}catch(e){}
+  }
+}
+async function repHydrateTabHistory(t){
+  if(t.historyHydrationPromise)return t.historyHydrationPromise;
+  t.historyHydrationPromise=(async()=>{
+    const embedded=normalizeRepHistory(t.history);
+    try{
+      const stored=await repReadHistory(t);
+      t.history=normalizeRepHistory([...(t.history||[]),...embedded,...stored]).sort((a,b)=>b.id-a.id);
+      if(t.historyStoreNeedsMigration&&t.history.length)await repStoreHistoryEntries(t,t.history);
+      t.historyStoreNeedsMigration=false;t.historyStorageError='';
+    }catch(e){
+      t.history=normalizeRepHistory([...(t.history||[]),...embedded]).sort((a,b)=>b.id-a.id);
+      t.historyStorageError=e.message||'unknown error';
+    }
+  })();
+  await t.historyHydrationPromise;
+}
+async function repRecordHistory(t,flow){
+  if(!t||!flow)return;
+  const entry=repHistoryEntry(flow);
+  t.history=normalizeRepHistory([entry,...(t.history||[])]);
+  t.historyLoadError='';
+  try{await repStoreHistoryEntries(t,t.historyStoreNeedsMigration?t.history:[entry]);t.historyStoreNeedsMigration=false;t.historyStorageError='';}
+  catch(e){const first=!t.historyStorageError;t.historyStoreNeedsMigration=true;t.historyStorageError=e.message||'unknown error';if(first)toast('Repeater history could not be saved for reload: '+t.historyStorageError,'error');}
+}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,requestAdoptionPristine:false,warnings:[],history:[],historyKey:newRepHistoryKey(),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:'',historyStoreNeedsMigration:false};}
+function normalizeRepeaterTab(t){
+  const url=t.url||'';
+  const hasHistory=Object.prototype.hasOwnProperty.call(t,'history')&&Array.isArray(t.history);
+  const historyKey=typeof t.historyKey==='string'&&t.historyKey?t.historyKey.slice(0,160):newRepHistoryKey();
+  const historyNeedsMigration=t.historyNeedsMigration===true||(!t.historyKey&&!hasHistory);
+  const history=normalizeRepHistory(t.history);
+  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
+}
+function serializeRepeaterTab(t){
+  const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',requestAdoptionPristine:!!t.requestAdoptionPristine,warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
+  if(t.historyStoreNeedsMigration)out.history=normalizeRepHistory(t.history);
+  return out;
+}
 function repWarningSuffix(t){const warnings=Array.isArray(t&&t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[];return warnings.length?' [warning] '+warnings.join(' · '):'';}
 // repReqContentType reads Content-Type from the editable headers pane so the body
 // overlay highlights with the right syntax (JSON/markup/CSS) even before a send.
@@ -107,6 +300,7 @@ function repSyncReqSeg(view){
 const uiPersistenceReady=new Map();
 const uiPersistenceQueues=new Map();
 let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
+let repRequestActionEpoch=0;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
@@ -212,11 +406,13 @@ export const repTabs=createTabManager({
   title:repTitle,
   onSave:()=>repSaveEditor(),
   onLoad:()=>repLoadEditor(),
-  normalize:t=>({tid:t.tid,method:t.method||'GET',url:t.url||'',headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[]}),
-  serialize:t=>({tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[]}),
+  normalize:normalizeRepeaterTab,
+  serialize:serializeRepeaterTab,
   labelStyle:(t,active)=>`color:${active?methodColor(t.method):'inherit'}`,
   tablistLabel:'Repeater tabs',
+  tabPanelId:'repTabPanel',
   onPersist:blob=>persistUIState('repeater',blob),
+  onClose:t=>repDeleteHistory(t),
 });
 export function repCur(){return repTabs.cur();}
 export function renderRepTabs(){repTabs.render('#repTabs');}
@@ -224,12 +420,17 @@ export function repSwitch(tid){repTabs.switchTo(tid);}
 export function repCloseTab(tid){repTabs.close(tid);}
 export function repPersist(){repTabs.persist();}
 export function repPersistDebounced(){repTabs.persistDebounced();}
-export function repSaveEditor(){
+function repHistoryVisible(){const box=$('#repHistory');return !!box&&box.style.display!=='none';}
+function repSetHistoryCount(t){const toggle=$('#repHistToggle'),count=normalizeRepHistory(t?.history).length;if(toggle)toggle.textContent='⟲ History'+(count?' ('+count+')':'');}
+function refreshRepHistory(t=repCur()){if(repCur()!==t)return;if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t);}
+export function repSaveEditor({operatorEdit=false}={}){
   const t=repCur();if(!t)return;
   const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
   const v=$('#repBody').value;
   const previous=((t.reqView||'raw')==='decoded'?t.decodedPlain:t.body)||'';
-  if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  const changed=method!==t.method||url!==t.url||headers!==t.headers||v!==previous;
+  if(changed)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  if(changed&&operatorEdit)t.requestAdoptionPristine=false;
   t.method=method;t.url=url;t.headers=headers;
   if((t.reqView||'raw')==='decoded')t.decodedPlain=v;
   else t.body=v;
@@ -267,7 +468,7 @@ export function repLoadEditor(){
   if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
   else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
-  loadRepHistory();
+  refreshRepHistory(t);
 }
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
@@ -320,27 +521,34 @@ export async function repSend(){
   }
   repRefreshHL();
   t.sendError='';
+  t.sendEpoch=(t.sendEpoch||0)+1;
+  const sendEpoch=t.sendEpoch;
+  const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
   t.sendPending=true;
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
   try{
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    t.sendPending=false;
+    if(!current())return;
     t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    await repRecordHistory(t,flow);
+    if(!current())return;
+    t.sendPending=false;repPersist();
     // The editor panes are shared between tabs. A slow send can finish after
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
-    if(repCur()!==t){repPersist();return;}
+    if(repCur()!==t||!current())return;
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
-    if(repCur()!==t){repPersist();return;}
+    if(repCur()!==t||!current())return;
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.base,easing:MOTION.enter});
-    if(repCur()!==t){repPersist();return;}
-    setRepSendState('success','Sent');resetRepSend(600,t);
-    loadRepHistory();repPersist();
+    if(repCur()!==t||!current())return;
+    setRepSendState('success','Sent');resetRepSend(600,t,sendEpoch);
+    refreshRepHistory(t);
   }catch(e){
+    if(!current())return;
     t.sendPending=false;
     const msg=friendlySendError(e.message);
     t.sendError=msg;t.status='send failed';t.color='var(--red)';
@@ -348,8 +556,8 @@ export async function repSend(){
     $('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';
     $('#repResView').textContent='(error: '+msg+')';
     await animateOnce($('#repResView'),[{opacity:.55},{opacity:1}],{duration:MOTION.fast,easing:MOTION.enter});
-    if(repCur()!==t){repPersist();return;}
-    setRepSendState('error','Send failed');resetRepSend(900,t);toast(msg);
+    if(repCur()!==t||!current()){repPersist();return;}
+    setRepSendState('error','Send failed');resetRepSend(900,t,sendEpoch);toast(msg);
   }
 }
 export async function renderRepResponse(){
@@ -383,56 +591,117 @@ export async function renderRepResponse(){
     $('#repResView').innerHTML=highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
   }catch(e){if(repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError)$('#repResView').textContent='(error: '+e.message+')';}
 }
+async function migrateLegacyRepHistory(t){
+  if(!t.historyNeedsMigration)return true;
+  if(t.historyMigrationPromise)return t.historyMigrationPromise;
+  const legacyURL=t.historyLegacyURL||t.url;
+  const ep=repTabEndpointParts({url:legacyURL});
+  if(!ep){t.historyNeedsMigration=false;t.historyLegacyURL='';repPersist();return true;}
+  const params=new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path});
+  t.historyMigrationPromise=(async()=>{
+    try{
+      const d=await api('/api/repeater/history?'+params.toString());
+      // A send can complete while this one-time snapshot is in flight. Keep
+      // those tab-owned rows first, merge the legacy endpoint rows behind them,
+      // and let normalization de-duplicate the result.
+      const legacy=normalizeRepHistory(d.flows||[]);
+      t.history=normalizeRepHistory([...(t.history||[]),...legacy]);
+      await repStoreHistoryEntries(t,legacy);
+      t.historyNeedsMigration=false;t.historyLegacyURL='';t.historyLoadError='';repPersist();return true;
+    }catch(e){t.historyLoadError=e.message||'unknown error';return false;}
+    finally{t.historyMigrationPromise=null;}
+  })();
+  return t.historyMigrationPromise;
+}
 export async function loadRepHistory(){
-  const box=$('#repHistory');if(!box)return;const t=repCur();const ep=repTabEndpointParts(t);
-  const setCount=n=>{const tg=$('#repHistToggle');if(tg)tg.textContent='⟲ History'+(n?' ('+n+')':'');};
-  if(!ep){setCount(0);box.innerHTML='<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';return;}
-  try{
-    const params=new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path});
-    const d=await api('/api/repeater/history?'+params.toString());
-    if(repCur()!==t)return; // tab switched mid-fetch — don't paint stale history
-    const flows=d.flows||[];
-    setCount(flows.length);
-    if(!flows.length){box.innerHTML='<div class="hint" style="padding:10px">'+(ep?'No sends to this endpoint yet.':'Send a request to start this tab’s history.')+'</div>';return;}
-    box.innerHTML=flows.map(f=>`<div class="h ${t&&f.id===t.resId?'sel':''}" data-id="${f.id}">
-      <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method)}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
-      <div class="u">${esc(f.host)}${esc(f.path)}</div></div>`).join('');
-    box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
-  }catch(e){}
+  const box=$('#repHistory');if(!box)return;const t=repCur();if(!t)return;
+  const focusedHistory=document.activeElement?.closest?.('#repHistory .h[data-id]');
+  const focusedHistoryID=focusedHistory?.dataset.id||'';
+  await repHydrateTabHistory(t);
+  if(repCur()!==t)return;
+  let migrationError=t.historyStorageError?`<div class="state-error" style="margin:8px"><span>History reload storage unavailable: ${esc(t.historyStorageError)}</span> <button type="button" class="btn xs" data-rep-history-storage-retry>Retry</button></div>`:'';
+  if(t.historyNeedsMigration){
+    repSetHistoryCount({history:[]});box.innerHTML='<div class="hint" style="padding:10px">Loading this tab’s saved history…</div>';
+    const migrated=await migrateLegacyRepHistory(t);
+    if(repCur()!==t)return;
+    if(!migrated)migrationError=`<div class="state-error" style="margin:8px"><span>Could not restore older sends: ${esc(t.historyLoadError||'unknown error')}</span> <button type="button" class="btn xs" data-rep-history-retry>Retry</button></div>`;
+  }
+  const flows=normalizeRepHistory(t.history);
+  t.history=flows;repSetHistoryCount(t);
+  const restoreHistoryFocus=!!focusedHistory&&document.activeElement===focusedHistory;
+  if(!flows.length){box.innerHTML=migrationError||'<div class="hint" style="padding:10px">Send a request to start this tab’s history.</div>';}
+  else{
+    const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0));
+    const visible=flows.slice(0,visibleCount);
+    const remaining=flows.length-visibleCount;
+    box.innerHTML=migrationError+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-current="${f.id===t.resId?'true':'false'}">
+    <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
+    <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
+    box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
+      t.historyVisibleCount=Math.min(flows.length,visibleCount+REP_HISTORY_RENDER_BATCH);
+      loadRepHistory();
+    });
+  }
+  box.querySelector('[data-rep-history-storage-retry]')?.addEventListener('click',async()=>{t.historyHydrationPromise=null;await repHydrateTabHistory(t);if(repCur()===t){repPersist();loadRepHistory();}});
+  box.querySelector('[data-rep-history-retry]')?.addEventListener('click',loadRepHistory);
+  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
+  if(restoreHistoryFocus)box.querySelector(`.h[data-id="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
-$('#repHistToggle')&&($('#repHistToggle').onclick=()=>{const h=$('#repHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
+$('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
+  const h=$('#repHistory');if(!h)return;
+  const show=h.style.display==='none';h.style.display=show?'':'none';
+  $('#repHistToggle').setAttribute('aria-expanded',show?'true':'false');
+  if(show)loadRepHistory();
+});
 export async function repLoadSend(id){
   const t=repCur();if(!t)return;
+  const actionEpoch=++repRequestActionEpoch;
+  t.historyLoadEpoch=(t.historyLoadEpoch||0)+1;
+  const loadEpoch=t.historyLoadEpoch;
+  const editorEpoch=t.reqEditEpoch||0;
+  const current=()=>repCur()===t&&actionEpoch===repRequestActionEpoch&&t.historyLoadEpoch===loadEpoch&&(t.reqEditEpoch||0)===editorEpoch;
   try{
     const d=await api('/api/flows/'+id);
+    if(!current())return;
     const raw=await api('/api/flows/'+id+'/raw?side=req');
-    if(repCur()!==t)return; // user switched tabs while loading — keep their new tab intact
+    if(!current())return;
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
-    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=false;
+    t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
-  }catch(e){toast(e.message);}
+  }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
 }
 export async function sendToRepeater(f){
+  const actionEpoch=++repRequestActionEpoch;
   if(!await waitForWorkstationReady())return false;
+  if(actionEpoch!==repRequestActionEpoch)return false;
   repSaveEditor();
-  const tabEditEpochs=new Map(repTabs.tabs.map(t=>[t.tid,t.reqEditEpoch||0]));
+  const tabSnapshots=repTabs.tabs.map(tab=>({tab,endpoint:repTabEndpoint(tab),editEpoch:tab.reqEditEpoch||0,pristine:tab.requestAdoptionPristine===true}));
   try{
     const d=await api('/api/flows/'+f.id);
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
     // Findings and other callers may pass only {id}. Resolve metadata before
     // choosing a tab so requests do not collapse into an "undefined" endpoint.
+    if(actionEpoch!==repRequestActionEpoch)return false;
     const fep=repFlowEndpoint(d);
-    let t=repTabs.tabs.find(x=>repTabEndpoint(x)===fep);
-    if(t&&tabEditEpochs.get(t.tid)!==(t.reqEditEpoch||0))t=null;
+    const reusable=tabSnapshots.find(snapshot=>snapshot.endpoint===fep
+      &&snapshot.pristine
+      &&repTabs.tabs.includes(snapshot.tab)
+      &&repTabEndpoint(snapshot.tab)===snapshot.endpoint
+      &&snapshot.tab.requestAdoptionPristine===true
+      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
+      &&snapshot.tab.sendPending!==true);
+    let t=reusable?.tab||null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;
+    t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=true;
     t.resId=null;t.status='';t.color='';t.sendError='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
@@ -447,10 +716,11 @@ export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   const hydration=await hydrateUIState('repeater','rep.tabs');
   repTabs.init('#repTabs');
+  repRetryHistoryCleanup(repTabs.tabs).catch(()=>{});
   // First persist migrates localStorage drafts into the project DB.
   if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{
-    repSaveEditor();
+    repSaveEditor({operatorEdit:true});
     // Typing in method/url only changes the active tab's label — don't rebuild the
     // whole tab bar (and re-wire every tab) on every keystroke. Update the label.
     const t=repCur(); if(t){
@@ -460,7 +730,7 @@ export async function repInit(){
     }
     repPersistDebounced();
   });});
-  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();repRefreshHL();repPersistDebounced();});});
+  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor({operatorEdit:true});repRefreshHL();repPersistDebounced();});});
   // Keep each colored overlay scrolled in lockstep with its textarea.
   [['#repHeaders','#repHeadersHL'],['#repBody','#repBodyHL']].forEach(([ta,hl])=>{
     const t=$(ta),p=$(hl);if(t&&p)t.addEventListener('scroll',()=>{p.scrollTop=t.scrollTop;p.scrollLeft=t.scrollLeft;});
@@ -473,14 +743,18 @@ export async function repInit(){
 }
 
 async function repEncodeSel(el,op){
+  const ownerTab=repCur();if(!ownerTab)return;
+  const ownerEditEpoch=ownerTab.reqEditEpoch||0;
+  const ownerValue=el.value;
   const a=el.selectionStart,b=el.selectionEnd,s=el.value.substring(a,b);
   if(!s){toast('select text first');return;}
   try{
     const r=await api('/api/decode',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op,input:s})});
+    if(repCur()!==ownerTab||!el.isConnected||ownerTab.reqEditEpoch!==ownerEditEpoch||el.value!==ownerValue)return;
     if(r.error){toast(r.error);return;}
     el.value=el.value.slice(0,a)+r.output+el.value.slice(b);
     el.selectionStart=a;el.selectionEnd=a+r.output.length;
-    repSaveEditor();repRefreshHL();repPersistDebounced();
+    repSaveEditor({operatorEdit:true});repRefreshHL();repPersistDebounced();
   }catch(e){toast(e.message);}
 }
 
@@ -750,6 +1024,7 @@ function intrApply(t){if(!t)return;
   updateIntrMode();}
 function intrTabForStorage(t){
   const o={...t};
+  delete o._editEpoch;
   if(o.sniperLines?.length>500){o.sniperLarge=true;o.sniperCount=o.sniperLines.length;delete o.sniperLines;}
   if(o.posLines?.length){
     o.posCounts=o.posLines.map(a=>a?.length||0);
@@ -764,13 +1039,14 @@ const intrTabs=createTabManager({
   blank:intrBlank,
   title:intrTitle,
   onSave:()=>intrSaveCur(),
-  onLoad:t=>intrApply(t),
+  onLoad:t=>intrLoadTab(t),
   normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
   serialize:intrTabForStorage,
   tablistLabel:'Intruder tabs',
+  tabPanelId:'intrTabPanel',
   onPersist:blob=>persistUIState('intruder',blob),
 });
-function intrTouch(){intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
+function intrTouch(){const t=intrTabs.cur();if(t)t._editEpoch=(t._editEpoch||0)+1;intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return intruderReady; intrInit._done=true;
@@ -795,7 +1071,7 @@ export async function intrInit(){
 }
 
 /* ---- intruder run history (this session) ---- */
-const intrHistory=[]; let intrCapturePending=false, intrRunCfg=null;
+const intrHistory=[]; let intrHistorySeq=0,intrCapturePending=false, intrRunCfg=null;
 let intrStartPending=false;
 let intrRunTabId=null;
 let intrPollError='';
@@ -810,18 +1086,27 @@ function syncIntrTabLock(locked){
   bar.querySelectorAll('.rt-close,.rep-tab-add').forEach(button=>{button.disabled=!!locked;});
   bar.title=locked?'Attack tabs are locked until the active run finishes':'';
 }
+function activeIntrHistory(){
+  const activeId=intrTabs.cur()?.tid??null;
+  return intrHistory.filter(h=>h.tid===activeId);
+}
 function renderIntrHistory(){
   const box=$('#intrHistory'),tg=$('#intrHistToggle');
-  if(tg)tg.textContent='⟲ History'+(intrHistory.length?' ('+intrHistory.length+')':'');
+  const visibleHistory=activeIntrHistory();
+  if(tg)tg.textContent='⟲ History'+(visibleHistory.length?' ('+visibleHistory.length+')':'');
   if(!box)return;
-  if(!intrHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks yet this session.</div>';return;}
+  const focusedLive=!!document.activeElement?.closest?.('#intrHistory [data-intr-live]');
+  const focusedHistoryID=document.activeElement?.closest?.('#intrHistory .h[data-hid]')?.dataset.hid||'';
+  if(!visibleHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks for this tab yet this session.</div>';return;}
   const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
-  box.innerHTML=liveRow+intrHistory.map((h,i)=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-i="${i}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
   const live=box.querySelector('[data-intr-live]');if(live){live.onclick=showIntrLiveResults;wireRowKey(live,showIntrLiveResults);}
-  box.querySelectorAll('.h[data-i]').forEach(el=>{el.onclick=()=>intrLoadHistory(Number(el.dataset.i));wireRowKey(el,()=>intrLoadHistory(Number(el.dataset.i)));});
+  box.querySelectorAll('.h[data-hid]').forEach(el=>{const open=()=>intrLoadHistory(Number(el.dataset.hid));el.onclick=open;wireRowKey(el,open);});
+  if(focusedLive)live?.focus({preventScroll:true});
+  else if(focusedHistoryID)box.querySelector(`.h[data-hid="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
 }
-function intrLoadHistory(i){
-  const h=intrHistory[i];if(!h)return;
+function intrLoadHistory(id){
+  const h=intrHistory.find(item=>item.id===id);if(!h||h.tid!==(intrTabs.cur()?.tid??null))return;
   // History is a display choice, not a replacement for the authoritative
   // server snapshot. Keep polling, locks, and recovery tied to the active run
   // while filters and finding creation operate on what the operator chose.
@@ -830,15 +1115,19 @@ function intrLoadHistory(i){
   intrDisplayedTarget=h.target||'';
   intrDisplayedResults=h.results.slice();
   if(h.cfg&&!intrLastRunning&&!intrStartPending){
-    intrState.type=h.cfg.type;intrState.sniper=h.cfg.sniper;intrState.pos=(h.cfg.pos||[]).slice();
-    intrState.sniperLines=h.cfg.sniperLines||null;intrState.posLines=(h.cfg.posLines||[]).slice();
-    intrState.sniperFile=h.cfg.sniperFile||null;intrState.posFiles=(h.cfg.posFiles||[]).slice();
-    $('#intrTarget').value=h.cfg.target||'';$('#intrTemplate').value=h.cfg.template||'';$('#intrThreads').value=h.cfg.threads||1;$('#intrDelay').value=h.cfg.delay||0;$('#intrRepeat').value=h.cfg.repeat||20;
-    updateIntrMode();intrTouch();}
+    // Reuse the same complete config applicator as tab navigation. History
+    // includes processing, extraction, numeric generators, and per-position
+    // payload sources—not just the visible target/template fields.
+    intrApply(h.cfg);
+    intrTouch();}
   renderIntrHistory();
   renderIntr({running:false,total:h.total,done:h.total,results:intrDisplayedResults,capped:h.capped},{authoritative:false});
 }
-$('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{const h=$('#intrHistory');if(h)h.style.display=(h.style.display==='none'?'':'none');});
+$('#intrHistToggle')&&($('#intrHistToggle').onclick=()=>{
+  const h=$('#intrHistory');if(!h)return;
+  const show=h.style.display==='none';h.style.display=show?'':'none';
+  $('#intrHistToggle').setAttribute('aria-expanded',show?'true':'false');
+});
 
 function intrModeText(){
   if(intrState.type==='repeat')
@@ -853,9 +1142,11 @@ function intrModeText(){
 }
 const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
 async function intrLoadPayloadFile(ta, append){
+  const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
   try{
     const got=await pickTextFile();
     if(!got||!ta) return;
+    if(!ownerTab||intrTabs.cur()!==ownerTab||(ownerTab._editEpoch||0)!==ownerEditEpoch||!ta.isConnected)return;
     const p=ta.dataset.pos;
     const incoming=parseListLines(got.text);
     const merged=append?[...intrGetPayloadLines(p),...incoming]:incoming;
@@ -1001,10 +1292,13 @@ function renderPayloadInputs(){
   updateIntrCount();
 }
 async function intrLoadTemplateFile(){
+  const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
+  const template= $('#intrTemplate');
   try{
     const got=await pickTextFile({accept:'.txt,.http,.req,text/plain'});
     if(!got) return;
-    $('#intrTemplate').value=normalizeListText(got.text);
+    if(!ownerTab||intrTabs.cur()!==ownerTab||(ownerTab._editEpoch||0)!==ownerEditEpoch||template!==$('#intrTemplate')||!template.isConnected)return;
+    template.value=normalizeListText(got.text);
     intrTemplateChanged();
     intrTouch();
     toast('loaded template from '+got.name);
@@ -1046,6 +1340,7 @@ function updateIntrMode(){
   const repeat=intrState.type==='repeat';
   const primary=intrPrimary();
   $('#intrType').querySelectorAll('button').forEach(x=>{const on=x.dataset.t===primary;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  syncButtonGroupTabStops($('#intrType'));
   const lm=document.getElementById('intrListMode');
   if(lm){
     const isList=primary==='__lists__';
@@ -1064,6 +1359,27 @@ $('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   else intrState.type=t;
   updateIntrMode();intrTouch();
 });
+function syncButtonGroupTabStops(group){
+  if(!group)return;
+  const buttons=[...group.querySelectorAll('button')];
+  const active=buttons.find(b=>b.getAttribute('aria-pressed')==='true')||buttons[0];
+  buttons.forEach(b=>b.tabIndex=b===active?0:-1);
+}
+function wireButtonGroupKeys(group){
+  if(!group)return;
+  const buttons=[...group.querySelectorAll('button')];
+  syncButtonGroupTabStops(group);
+  buttons.forEach((button,i)=>button.addEventListener('keydown',e=>{
+    let next=-1;
+    if(e.key==='ArrowRight'||e.key==='ArrowDown')next=(i+1)%buttons.length;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=(i-1+buttons.length)%buttons.length;
+    else if(e.key==='Home')next=0;
+    else if(e.key==='End')next=buttons.length-1;
+    else return;
+    e.preventDefault();buttons[next].focus();buttons[next].click();
+  }));
+}
+wireButtonGroupKeys($('#intrType'));
 const _intrListMode=document.getElementById('intrListMode');
 if(_intrListMode)_intrListMode.onchange=()=>{intrState.type=_intrListMode.value;updateIntrMode();intrTouch();};
 $('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();};
@@ -1117,7 +1433,9 @@ export async function intrStart(){
     if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
   }
   intrTouch();                       // persist the launched config to the active tab
-  intrRunCfg=intrReadEditor();       // snapshot for the history entry
+  intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
+  intrLastResults=[];intrDisplayedResults=[];
+  intrLastRunning=false;intrLastTotal=0;intrLastDone=0;
   intrCapturePending=true;           // capture this run into history on completion
   intrStartPending=true;
   intrRunTabId=intrTabs.cur()?.tid??null;
@@ -1166,13 +1484,14 @@ function loadIntrPresets(){
   };
 }
 if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
+  const snapshot=intrReadEditor();
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
   let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
-  list.unshift({name,target:$('#intrTarget').value,template:$('#intrTemplate').value,type:intrState.type,
-    sniper:intrState.sniper,pos:intrState.pos.slice(),sniperSource:intrState.sniperSource,sniperNums:intrState.sniperNums,
-    posSources:(intrState.posSources||[]).slice(),posNums:(intrState.posNums||[]).map(n=>({...n})),
-    threads:$('#intrThreads').value,delay:$('#intrDelay').value,
-    repeat:$('#intrRepeat').value,grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value});
+  list.unshift({name,target:snapshot.target,template:snapshot.template,type:snapshot.type,
+    sniper:snapshot.sniper,pos:snapshot.pos.slice(),sniperSource:snapshot.sniperSource,sniperNums:{...snapshot.sniperNums},
+    posSources:snapshot.posSources.slice(),posNums:snapshot.posNums.map(n=>({...n})),
+    threads:snapshot.threads,delay:snapshot.delay,
+    repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
   if(list.length>20)list.length=20;
   try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
   const serverSyncQueued=persistUIState('intruder-presets',list);
@@ -1183,12 +1502,23 @@ let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOw
 let intrPollEpoch=0;
 let intrPollInFlight=false,intrPollQueued=false;
 function showIntrLiveResults(){
+  const activeId=intrTabs.cur()?.tid??null;
+  const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===activeId;
   intrDisplayOwner='live';
   intrDisplayedHistory=null;
-  intrDisplayedResults=intrLastResults.slice();
-  intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
+  intrDisplayedResults=belongsHere?intrLastResults.slice():[];
+  intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:($('#intrTarget').value||'');
   renderIntrHistory();
-  renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+  renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
+}
+function intrLoadTab(t){
+  intrApply(t);
+  if(intrDisplayedHistory?.tid!==t.tid){intrDisplayOwner='live';intrDisplayedHistory=null;}
+  const belongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===t.tid;
+  intrDisplayedResults=belongsHere?intrLastResults.slice():[];
+  intrDisplayedTarget=belongsHere&&intrRunCfg?intrRunCfg.target:(t.target||'');
+  renderIntrHistory();
+  renderIntr({running:belongsHere&&intrLastRunning,total:belongsHere?intrLastTotal:0,done:belongsHere?intrLastDone:0,results:intrDisplayedResults},{authoritative:false});
 }
 function invalidateIntrPoll(){
   clearTimeout(intrTimer);
@@ -1226,12 +1556,14 @@ export function scheduleIntr(){
 }
 export function renderIntr(st,{authoritative=true}={}){
   const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
+  const activeTabId=intrTabs.cur()?.tid??null;
+  const liveBelongsHere=intrRunCfg?.tid==null||intrRunCfg.tid===activeTabId;
   if(authoritative){
     if(running&&intrRunTabId==null)intrRunTabId=intrTabs.cur()?.tid??null;
     if(!st.pollFailed){
       intrPollError='';intrLastRunning=running;intrLastTotal=total;intrLastDone=done;
       intrLastResults=res.slice();
-      if(intrDisplayOwner==='live'){
+      if(intrDisplayOwner==='live'&&liveBelongsHere){
         intrDisplayedResults=res.slice();
         intrDisplayedTarget=(intrRunCfg&&intrRunCfg.target)||$('#intrTarget').value||'';
       }
@@ -1240,17 +1572,20 @@ export function renderIntr(st,{authoritative=true}={}){
     if(!intrStartPending)setIntrStartState(running?'pending':'idle',running?'Running…':'Start ▸');
     if(!running&&total>0&&intrCapturePending){
       intrCapturePending=false;
-      intrHistory.unshift({ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
+      intrHistory.unshift({id:++intrHistorySeq,tid:intrRunCfg?.tid??intrRunTabId,ts:Date.now(),target:(intrRunCfg&&intrRunCfg.target)||'',type:(intrRunCfg&&intrRunCfg.type)||intrState.type,total,flagged:res.filter(r=>r.flagged).length,results:res.slice(),capped:!!st.capped,cfg:intrRunCfg});
       if(intrHistory.length>30)intrHistory.length=30;
       renderIntrHistory();
     }
     if(running&&!st.pollFailed)scheduleIntr();
   }
   const displayRes=authoritative
-    ?(intrDisplayOwner==='live'?res:intrDisplayedResults)
+    ?(intrDisplayOwner==='live'?(liveBelongsHere?res:[]):intrDisplayedResults)
     :(Array.isArray(st.results)?st.results:intrDisplayedResults);
+  const displayState=intrDisplayOwner==='history'&&intrDisplayedHistory
+    ?{running:false,total:intrDisplayedHistory.total||0,done:intrDisplayedHistory.total||0,capped:!!intrDisplayedHistory.capped}
+    :(liveBelongsHere?{running,total,done,capped:!!st.capped}:{running:false,total:0,done:0,capped:false});
   syncIntrTabLock(intrLastRunning||intrStartPending);
-  $('#intrProgress').textContent=running?`running ${done}/${total}`:(total?`done ${done}/${total}${st.capped?' (capped)':''}`:'');
+  $('#intrProgress').textContent=displayState.running?`running ${displayState.done}/${displayState.total}`:(displayState.total?`done ${displayState.done}/${displayState.total}${displayState.capped?' (capped)':''}`:'');
   const pollStatus=$('#intrPollStatus');
   if(pollStatus){
     if(intrPollError){
@@ -1261,7 +1596,7 @@ export function renderIntr(st,{authoritative=true}={}){
   }
   // progress bar
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
-  if(bar&&fill){bar.style.display=(running||total)?'block':'none';fill.style.width=total?Math.round(done/total*100)+'%':'0';}
+  if(bar&&fill){bar.style.display=(displayState.running||displayState.total)?'block':'none';fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0';}
   // results summary (flagged count)
   const stats=$('#intrStats');
   if(stats){
@@ -1272,7 +1607,7 @@ export function renderIntr(st,{authoritative=true}={}){
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
   if(!displayRes.length){
-    box.innerHTML=running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
+    box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
   const view=intrApplyFilter(displayRes);
@@ -1283,51 +1618,49 @@ export function renderIntr(st,{authoritative=true}={}){
   if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);
   else{box.innerHTML=view.map(intrRowHTML).join('');wireIntrResultRows(box);}
 }
-function wireTabListKeys(seg){
-  if(!seg)return;
-  const tabs=[...seg.querySelectorAll('[role="tab"]')];
-  tabs.forEach((tab,i)=>{
-    tab.tabIndex=tab.getAttribute('aria-selected')==='true'?0:-1;
-    tab.addEventListener('keydown',e=>{
-      let next=-1;
-      if(e.key==='ArrowRight')next=(i+1)%tabs.length;
-      else if(e.key==='ArrowLeft')next=(i-1+tabs.length)%tabs.length;
-      else if(e.key==='Home')next=0;
-      else if(e.key==='End')next=tabs.length-1;
-      else return;
-      e.preventDefault();tabs[next].focus();tabs[next].click();
-    });
-  });
-}
 {const seg=$('#intrResFilter');
 if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   intrFilter=b.dataset.f||'all';
-  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;});
+  seg.querySelectorAll('button').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+  syncButtonGroupTabStops(seg);
   renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
 });}
-wireTabListKeys($('#intrResFilter'));
+wireButtonGroupKeys($('#intrResFilter'));
+let intrToFindingPending=false;
 async function intrToFinding(){
+  if(intrToFindingPending)return;
   const pool=intrApplyFilter(intrDisplayedResults);
   const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
   const interesting=withFlow.filter(intrIsInteresting);
   const pick=interesting.length?interesting:withFlow.slice(0,10);
   if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
   const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
-  const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
-  if(!title)return;
+  const flowIds=pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20);
+  const button=$('#intrToFinding');
+  intrToFindingPending=true;
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Preparing…';}
   try{
+    const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
+    if(!title)return;
+    if(button)button.textContent='Creating…';
     const body={
       title, severity:'medium', status:'needs_verification', source:'human',
       target:displayTarget,
       why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
       impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
       verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
-      flowIds:pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20),
+      flowIds,
     };
     const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    toast('finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s'));
+    const warnings=Array.isArray(f.warnings)?f.warnings:[];
+    const success='finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s');
+    toast(warnings.length?success+' · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):success,warnings.length?'warn':'success');
     document.querySelector('.tab[data-tab="findings"]')?.click();
   }catch(e){toast(e.message||'could not create finding','error');}
+  finally{
+    intrToFindingPending=false;
+    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='To Finding';}
+  }
 }
 if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;
 // Virtualized Intruder results: rendering thousands of result rows on every poll
@@ -1434,9 +1767,11 @@ export async function sendToIntruder(f){
   // the fetch can't make intrTouch() save the request into the wrong tab.
   document.querySelector('.tab[data-tab="intruder"]').click();
   const target=intrTabs.cur();
+  if(!target)return false;
+  const targetEditEpoch=target._editEpoch||0;
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
-    if(intrTabs.cur()!==target)return;
+    if(intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch)return;
     intrLastFlowId=f.id;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;

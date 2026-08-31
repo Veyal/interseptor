@@ -38,6 +38,8 @@ let codecMode = 'code';
 let codecDocsLoaded = false;
 let codecBusy = false;
 let codecLoadEpoch = 0;
+let codecDocsLoadEpoch = 0;
+let codecListLoadEpoch = 0;
 
 function codecEditorMatches(epoch, id, source) {
   return epoch === codecLoadEpoch
@@ -74,22 +76,39 @@ function codecSetMode(mode) {
     const on = b.dataset.mode === mode;
     b.classList.toggle('on', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.tabIndex = on ? 0 : -1;
   });
   const panes = { code: '#codecPaneCode', docs: '#codecPaneDocs' };
-  Object.entries(panes).forEach(([m, sel]) => { const el = $(sel); if (el) el.style.display = m === mode ? '' : 'none'; });
+  Object.entries(panes).forEach(([m, sel]) => { const el = $(sel); if (el) { const on = m === mode; el.style.display = on ? '' : 'none'; el.hidden = !on; } });
   if (mode === 'docs') loadCodecDocs();
+}
+function wireCodecModeKeys(seg) {
+  if (!seg) return;
+  const tabs = [...seg.querySelectorAll('[role="tab"]')];
+  tabs.forEach((tab, i) => tab.addEventListener('keydown', e => {
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault(); tabs[next].focus(); tabs[next].click();
+  }));
 }
 
 async function loadCodecDocs() {
   if (codecDocsLoaded) return;
   const box = $('#codecDocs');
   if (!box) return;
+  const epoch = ++codecDocsLoadEpoch;
   try {
     const d = await api('/api/codecs/reference');
+    if (epoch !== codecDocsLoadEpoch) return;
     box.innerHTML = renderMD(d.markdown || '');
     codecDocsLoaded = true;
   } catch (e) {
-    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
+    if (epoch !== codecDocsLoadEpoch) return;
+    box.innerHTML = '<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">' + esc(e.message) + '</p><button type="button" class="btn" data-codec-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-codec-docs-retry]');if(retry)retry.onclick=loadCodecDocs;
   }
 }
@@ -154,8 +173,10 @@ function codecsApplyFilter() {
 export async function loadCodecsList() {
   const box = $('#codecsList');
   if (!box) return;
+  const epoch = ++codecListLoadEpoch;
   try {
     const d = await api('/api/codecs');
+    if (epoch !== codecListLoadEpoch) return;
     const list = d.codecs || [];
     const hint = $('#codecsDirHint');
     if (hint) {
@@ -164,7 +185,7 @@ export async function loadCodecsList() {
       hint.title = lab.title;
     }
     if (!list.length) {
-      box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> (or use <b>Describe</b>) → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
+      box.innerHTML = '<div class="state-empty" style="padding:18px 14px"><div class="state-empty-title">No codecs yet</div><p class="state-empty-hint">New → edit Starlark on <b>Code</b> or consult <b>Docs</b> → Save. Files land under this project\'s <code>codecs/</code>.</p></div>';
       return;
     }
     box.innerHTML = list.map(codecRow).join('');
@@ -176,7 +197,9 @@ export async function loadCodecsList() {
     });
     codecsApplyFilter();
   } catch (e) {
-    box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg">Couldn't load codecs: ${esc(e.message)}</p></div>`;
+    if (epoch !== codecListLoadEpoch) return;
+    box.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">Couldn't load codecs: ${esc(e.message)}</p><button type="button" class="btn" data-codecs-list-retry>Retry</button></div>`;
+    box.querySelector('[data-codecs-list-retry]')?.addEventListener('click', loadCodecsList);
   }
 }
 
@@ -208,7 +231,7 @@ export function openCodecs() {
   $('#codecId').value = '';
   $('#codecSrc').value = TEMPLATE;
   const out = $('#codecOut');
-  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> (or use <b>Describe</b>), Test, then Save.</div>';
+  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   updateCodecFlowHint();
   codecSetMode('code');
   loadCodecsList();
@@ -220,7 +243,7 @@ function codecNew() {
   $('#codecId').value = 'aes-content-field';
   $('#codecSrc').value = TEMPLATE;
   const out = $('#codecOut');
-  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> (or use <b>Describe</b>), Test, then Save.</div>';
+  if (out) out.innerHTML = '<div class="check-status check-status-pending">New codec — set an id, write Starlark on <b>Code</b> or consult <b>Docs</b>, Test, then Save.</div>';
   codecSetMode('code');
   loadCodecsList();
   $('#codecId')?.focus();
@@ -324,4 +347,5 @@ if ($('#codecSave')) $('#codecSave').onclick = codecSave;
 if ($('#codecDelete')) $('#codecDelete').onclick = codecDelete;
 if ($('#codecTest')) $('#codecTest').onclick = codecTest;
 if ($('#codecModeSeg')) $('#codecModeSeg').querySelectorAll('[data-mode]').forEach(b => b.onclick = () => codecSetMode(b.dataset.mode));
+wireCodecModeKeys($('#codecModeSeg'));
 if ($('#codecsSearch')) $('#codecsSearch').addEventListener('input', codecsApplyFilter);

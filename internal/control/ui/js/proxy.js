@@ -1,9 +1,9 @@
-import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon, renderLoadError } from './core.js';
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
-import { openAuthz } from './authz.js';
+import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
@@ -19,8 +19,10 @@ const focusMapSearch=(...args)=>loadMapModule().then(m=>m.focusMapSearch(...args
 // Authz identity cache for the "Send as" context-menu section. Loaded once at
 // startup and refreshed whenever identities are saved in the authz modal.
 let _authzIdsCache = [];
+let _authzIdsEpoch=0;
 export function refreshAuthzIds(){
-  api('/api/authz').then(d=>{ _authzIdsCache=(d.identities||[]).filter(id=>id.name||id.headers); }).catch(()=>{});
+  const epoch=++_authzIdsEpoch;
+  api('/api/authz').then(d=>{ if(epoch===_authzIdsEpoch)_authzIdsCache=(d.identities||[]).filter(id=>id.name||id.headers); }).catch(()=>{});
 }
 refreshAuthzIds();
 
@@ -37,13 +39,15 @@ async function sendAsIdentity(f, id){
   if(!await waitForWorkstationReady())return false;
   document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
+  const editEpoch=t.reqEditEpoch||0;
+  const current=()=>!t._closed&&(t.reqEditEpoch||0)===editEpoch;
   try{
-    const d=await api('/api/flows/'+f.id);
+    const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
+    if(!current()){if(!t._closed)toast('identity load skipped because the Repeater tab changed','warn');return false;}
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     t.method=d.method;
     t.url=`${d.scheme}://${d.host}${def?'':':'+d.port}${d.path}`;
     t.headers=applyIdentityToHeaders(headersToText(d.reqHeaders),id.headers||'');
-    const raw=await api('/api/flows/'+f.id+'/raw?side=req');
     const i2=raw.indexOf('\r\n\r\n');t.body=i2>=0?raw.slice(i2+4):'';
     t.resId=null;t.status='';t.color='';
     t.title=repTitle(t)+(id.name?' ['+id.name+']':'');
@@ -64,6 +68,8 @@ const FLOW_SIGNAL_WINDOW=800;
 let flowHasMore=false;         // the server may have older flows past what's loaded
 let loadingMore=false;         // a scroll-triggered page fetch is in flight
 let flowRefreshing=false;
+let flowPageError=null;
+let flowLoadError=null;
 let flowLoadEpoch=0,flowPageEpoch=0;
 let flowLoadEvents=new Map();
 let flowLoadOverflow=false;
@@ -348,7 +354,7 @@ function flowRowHTML(f){
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
     time:`<div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>`,
   };
-  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" title="${escAttr(rowTitle)}">
+  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}" title="${escAttr(rowTitle)}">
       ${state.flowCols.map(k=>cells[k]).join('')}
     </div>`;
 }
@@ -412,17 +418,50 @@ function consumeFlowSignals(){
 function updateTruncBanner(){
   const b=$('#flowCapBanner');
   if(!b)return;
-  // No hard cap anymore — older flows stream in as you scroll. Show a subtle
-  // affordance only while a page is loading or when more remain below.
-  if(flowRefreshing){b.style.display='block';b.textContent='Refreshing flows…';}
-  else if(loadingMore){b.style.display='block';b.textContent='Loading older flows…';}
-  else if(flowHasMore){b.style.display='block';b.textContent='Scroll down to load older flows.';}
-  else b.style.display='none';
+  // No hard cap anymore — older flows stream in as you scroll. Show a compact
+  // status and a retry affordance when a page request fails; the failure must
+  // remain visible until the operator retries or another page succeeds.
+  const message=$('#flowCapMessage')||b.querySelector('[data-flow-cap-message]')||b.querySelector('span')||b;
+  const retry=$('#flowCapRetry');
+  if(flowLoadError){
+    const stale=state.flows.length>0;
+    if(message!==b)message.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
+    else b.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
+    b.style.display='flex';
+    if(retry){retry.hidden=false;retry.disabled=flowRefreshing;retry.onclick=()=>loadFlows();}
+  }else if(flowPageError){
+    if(message!==b)message.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
+    else b.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
+    b.style.display='flex';
+    if(retry){retry.hidden=false;retry.disabled=loadingMore;retry.onclick=()=>loadMoreFlows();}
+  }else if(flowRefreshing){
+    if(message!==b)message.textContent='Refreshing flows…';else b.textContent='Refreshing flows…';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else if(loadingMore){
+    if(message!==b)message.textContent='Loading older flows…';else b.textContent='Loading older flows…';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else if(flowHasMore){
+    if(message!==b)message.textContent='Scroll down to load older flows.';else b.textContent='Scroll down to load older flows.';
+    b.style.display='flex';if(retry)retry.hidden=true;
+  }else{b.style.display='none';if(retry)retry.hidden=true;}
 }
 // Infinite scroll: load the next older page as the History list nears its bottom.
-{const box=$('#rows');if(box)box.addEventListener('scroll',()=>{
+let flowScrollSource=null,flowScrollSyncing=false;
+function syncFlowHorizontalScroll(){
+  const head=$('#flowHead'),box=$('#rows');
+  if(!head||!box||flowScrollSyncing)return;
+  flowScrollSyncing=true;
+  if(flowScrollSource===head)box.scrollLeft=head.scrollLeft;
+  else head.scrollLeft=box.scrollLeft;
+  flowScrollSyncing=false;
+}
+{const head=$('#flowHead'),box=$('#rows');
+  if(head)head.addEventListener('scroll',()=>{flowScrollSource=head;syncFlowHorizontalScroll();},{passive:true});
+  if(box)box.addEventListener('scroll',()=>{
+  flowScrollSource=box;syncFlowHorizontalScroll();
   if(box.scrollTop+box.clientHeight>=box.scrollHeight-400)loadMoreFlows();
-});}
+  },{passive:true});
+}
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
@@ -545,7 +584,7 @@ function reconcileFlowLoadEvent(event){
     if(!flowMatchesFilters(f)){
       removeFlow(flowStore,f.id);
       if(state.selected)state.selected.delete(f.id);
-      if(state.selId===f.id){state.selId=null;state.detail=null;}
+      if(state.selId===f.id){state.selId=null;state.detail=null;onAuthzSelectionChanged();}
       return true;
     }
     storeUpsertFlow(flowStore,f);
@@ -641,6 +680,7 @@ export function syncInspectorVisibility(){
 export function closeInspector(){
   if(state.selId==null)return false;
   state.selId=null;state.detail=null;
+  onAuthzSelectionChanged();
   renderRows();
   return true;
 }
@@ -655,9 +695,22 @@ const flowVirt=createVirtualList({container:$('#rows'),itemHeight:ROW_H,threshol
 // from the current in-memory state.flows) and guarantees the visible window
 // can never stay stale after a background period.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive())renderRows();});
+function captureFlowListFocus(box){
+  const active=document.activeElement,row=active?.closest?.('#rows .trow[data-id]');
+  if(!row||!box.contains(row))return null;
+  const tag=active.closest?.('.flowtag');
+  return {id:row.dataset.id,tag:tag?.dataset.tagchip||''};
+}
+function restoreFlowListFocus(box,focus){
+  if(!focus)return;
+  const row=box.querySelector(`.trow[data-id="${CSS.escape(focus.id)}"]`);if(!row)return;
+  const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
+  target?.focus({preventScroll:true});
+}
 export function renderRows(){
   syncInspectorVisibility();
   const box=$('#rows');
+  const focus=captureFlowListFocus(box);
   applyFlowGrid();
   const flows=state.flows;
   if(!flows.length){
@@ -677,11 +730,13 @@ export function renderRows(){
     box.innerHTML=`<div style="height:${win.topPad}px" aria-hidden="true"></div>`+flows.slice(win.start,win.end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
     $$('#rows .trow').forEach(wireFlowRow);
     consumeFlowSignals();
+    restoreFlowListFocus(box,focus);
     return;
   }
   box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
   $$('#rows .trow').forEach(wireFlowRow);
   consumeFlowSignals();
+  restoreFlowListFocus(box,focus);
 }
 export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
@@ -762,13 +817,32 @@ function buildFlowParams(){
 }
 function bodySearchActive(){return false;}
 
+function inspectorFilterSignature(){
+  const f=state.filters;
+  return JSON.stringify({
+    scheme:f.scheme||'',search:f.search||'',searchScope:f.searchScope||'anywhere',
+    method:f.method||'',status:f.status||'',host:f.host||'',tag:f.tag||'',
+    exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
+    hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
+    showManual:!!state.showManual,showAI:!!state.showAI,
+  });
+}
+
 export async function loadFlows(){
+  const filterSignature=inspectorFilterSignature();
+  const signatureChanged=filterSignature!==flowFilterSignature;
+  if(signatureChanged){flowFilterSignature=filterSignature;flowFilterEpoch++;}
+  const filterEpoch=flowFilterEpoch;
+  const previousSelected=state.selId;
+  const previousFlow=previousSelected==null?null:(flowStore.byId.get(previousSelected)||state.detail);
   const epoch=++flowLoadEpoch;
   flowPageEpoch++;
   loadingMore=false;
   flowLoadEvents=new Map();
   flowLoadOverflow=false;
   flowRefreshing=true;
+  flowPageError=null;
+  flowLoadError=null;
   flowHasMore=false;
   updateTruncBanner();
   const q=buildFlowParams();
@@ -780,6 +854,12 @@ export async function loadFlows(){
     const replayOverflow=flowLoadOverflow;
     flowLoadEvents=new Map();
     flowLoadOverflow=false;
+    // Rows remain clickable while a server-side filter request is pending.
+    // Snapshot the selection at commit time, not only at request start, so a
+    // user who selected a different old row during the request is reconciled
+    // against the winning result too.
+    const committedSelected=state.selId;
+    const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail);
     let flows=d.flows||[];
     flowHasMore=flows.length>FLOW_FETCH&&!bodySearchActive();
     if(flows.length>FLOW_FETCH)flows=flows.slice(0,FLOW_FETCH);
@@ -788,6 +868,16 @@ export async function loadFlows(){
     seenMethods.clear(); flows.forEach(f=>{ if(f.method) seenMethods.add(f.method); }); methodsDirty=true;
     let replayExact=!replayOverflow;
     for(const event of replay)if(!reconcileFlowLoadEvent(event))replayExact=false;
+    // Reconcile against the replacement cache only after the latest response
+    // wins. This preserves an older paged selection when its known flow still
+    // matches, while restarting an invalidated pending detail request for a
+    // flow that remains visible in the new cache.
+    if(filterEpoch===flowFilterEpoch){
+      const filterChanged=filterEpoch!==flowFilterReconciledEpoch;
+      flowFilterReconciledEpoch=filterEpoch;
+      if(state.selId===previousSelected)reconcileInspectorSelectionAfterReload(previousFlow,filterChanged);
+      else if(state.selId===committedSelected)reconcileInspectorSelectionAfterReload(committedFlow,filterChanged);
+    }
     state.flowSearchNote=d.searchNote||'';
     const box=$('#rows');if(box)box.scrollTop=0;
     renderRows();
@@ -795,7 +885,13 @@ export async function loadFlows(){
     refreshMethodFilter();
     loadTrafficDiagnosis();
     if(!replayExact)scheduleReload();
-  }catch(e){if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}}
+  }catch(e){
+    if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}
+    if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){
+      selectFlowEpoch++;
+      showInspectorFilterLoadError(state.selId,e);
+    }
+  }
   finally{if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}}
 }
 
@@ -805,6 +901,7 @@ export async function loadMoreFlows(){
   if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return;
   const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch;
   loadingMore=true;
+  flowPageError=null;
   updateTruncBanner();
   try{
     const last=state.flows[state.flows.length-1];
@@ -826,7 +923,9 @@ export async function loadMoreFlows(){
         if(box)box.scrollTop=keep;
       }
     }
-  }catch(e){/* a failed page-load is non-fatal; the user can scroll again */}
+  }catch(e){
+    if(loadEpoch===flowLoadEpoch&&pageEpoch===flowPageEpoch)flowPageError=e;
+  }
   finally{if(pageEpoch===flowPageEpoch){loadingMore=false;updateTruncBanner();}}
 }
 function refreshMethodFilter(){
@@ -850,23 +949,130 @@ let methodsDirty=true; // build the method filter once initially
 const flowStore=createFlowStore(state.flows);
 let reloadTimer=null;
 const renderSideEpoch={req:0,res:0};
-let wsRenderEpoch=0;
+let wsRenderEpoch=0,wsReplayEpoch=0;
 let selectFlowEpoch=0;
+// A full History reload can replace the page cache while an Inspector detail
+// request is in flight. Keep that request owned by the filter generation that
+// started it, so a response for a flow excluded by the newer filter cannot
+// repaint the Inspector after the selection has gone stale.
+let flowFilterEpoch=0;
+let flowFilterSignature='';
+let flowFilterReconciledEpoch=0;
 const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
+function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
+  if(state.selId==null)return;
+  if(!state.detail&&flowStore.byId.has(state.selId)){selectFlow(state.selId);return;}
+  if(!state.detail&&!flowStore.byId.has(state.selId)&&canIncremental()&&!previousFlow){selectFlow(state.selId);return;}
+  if(!state.detail&&previousFlow&&canIncremental()&&flowMatchesFilters(previousFlow)){
+    // If a filter refresh invalidated the first detail request, resume it
+    // under the new generation even when the selected older page was evicted
+    // from the replacement's first page. The retained snapshot is enough for
+    // these client-decidable filters.
+    selectFlow(state.selId);
+    return;
+  }
+  // Server-only filters (text search and in-scope matching) cannot be
+  // reconstructed from a retained client snapshot. If the replacement page
+  // does not contain the selected flow, do not repaint retained detail as if
+  // it matched; provide an explicit state instead.
+  if(!canIncremental()&&!flowStore.byId.has(state.selId)){
+    // Invalidate an in-flight detail response for an old row that the
+    // server-only result excluded. The unavailable state must remain the
+    // authoritative Inspector until the operator changes or clears filters.
+    selectFlowEpoch++;
+    state.detail=null;
+    showInspectorSelectionUnavailable(state.selId);
+    return;
+  }
+  if(flowStore.byId.has(state.selId)){
+    if(filterChanged&&state.detail)selectFlow(state.selId);
+    return;
+  }
+  // A page-cache replacement can legitimately evict an older selected flow;
+  // preserve that selection while its known snapshot still matches filters.
+  // For client-decidable filters, an explicit mismatch is authoritative and
+  // should close the Inspector instead of leaving a stale loading pane.
+  if(previousFlow&&canIncremental()&&!flowMatchesFilters(previousFlow))closeInspector();
+  else if(previousFlow&&canIncremental()&&filterChanged&&state.detail)selectFlow(state.selId);
+  else if(!state.detail)showInspectorSelectionUnavailable(state.selId);
+}
+function setInspectorActionState(disabled){
+  ['#inspectSendRepeater','#inspectSendIntruder','#inspectMoreActions'].forEach(sel=>{
+    const button=$(sel);if(!button)return;
+    button.disabled=disabled;
+    button.setAttribute('aria-disabled',disabled?'true':'false');
+  });
+}
+function showInspectorLoading(id){
+  setInspectorActionState(true);
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar'),reqDecode=$('#reqDecode'),resDecode=$('#resDecode');
+  if(reqDecode)reqDecode.hidden=true;
+  if(resDecode)resDecode.hidden=true;
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading flow #'+esc(id)+'…</span>';
+  if(res)res.innerHTML='<span class="inspector-state" role="status" aria-live="polite">Loading request and response…</span>';
+  if(status){status.textContent='loading…';status.style.color='var(--fg3)';}
+}
+function showInspectorLoadError(id,error){
+  setInspectorActionState(true);
+  const message=error&&error.message?error.message:String(error||'unknown error');
+  const retry='<button type="button" class="btn xs" data-inspector-retry>Retry</button>';
+  const content='<span class="state-error-msg">Flow #'+esc(id)+' could not be loaded: '+esc(message)+'</span> '+retry;
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<div class="state-error" role="alert">'+content+'</div>';
+  if(res)res.innerHTML='<div class="state-error" role="alert">Select Retry to request this flow again.</div>';
+  if(status){status.textContent='load failed';status.style.color='var(--red)';}
+  $$('#reqView [data-inspector-retry]').forEach(button=>button.onclick=()=>selectFlow(id));
+}
+function showInspectorFilterLoadError(id,error){
+  setInspectorActionState(true);
+  const message=error&&error.message?error.message:String(error||'unknown error');
+  const retry='<button type="button" class="btn xs" data-inspector-filter-retry>Retry History refresh</button>';
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  const content='History filters could not be refreshed: '+esc(message)+' — Inspector paused for flow #'+esc(id)+'. '+retry;
+  if(req)req.innerHTML='<div class="state-error" role="alert">'+content+'</div>';
+  if(res)res.innerHTML='<div class="state-error" role="alert">Retry the History refresh to confirm whether this flow matches the current filters.</div>';
+  if(status){status.textContent='History refresh failed';status.style.color='var(--red)';}
+  $$('#reqView [data-inspector-filter-retry]').forEach(button=>button.onclick=()=>loadFlows());
+}
+function showInspectorSelectionUnavailable(id){
+  setInspectorActionState(true);
+  const req=$('#reqView'),res=$('#resView'),status=$('#resStatus'),noteBar=$('#noteBar');
+  if(noteBar)noteBar.style.display='none';
+  if(req)req.innerHTML='<div class="state-empty" role="status"><div class="state-empty-title">Flow #'+esc(id)+' is not available under the current search or scope filters.</div><p class="state-empty-hint">Clear or adjust the History filters to inspect this flow.</p></div>';
+  if(res)res.innerHTML='<div class="state-empty" role="status"><p class="state-empty-hint">No response can be shown until the selected flow matches the current filters.</p></div>';
+  if(status){status.textContent='not in current filters';status.style.color='var(--fg3)';}
+}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
-  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id;
-  const noteGeneration=noteEditorGeneration(id);
-  const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
-  state.selId=id;renderRows();
+  const filterEpoch=flowFilterEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&flowFilterEpoch===filterEpoch;
+  const switching=state.selId!==id;
+  const needsLoadingState=switching||!state.detail;
+  if(switching){
+    state.detail=null;
+    const note=$('#noteInput');if(note)note.value='';
+  }
+  state.selId=id;
+  if(switching)onAuthzSelectionChanged();
+  renderRows();
+  if(needsLoadingState)showInspectorLoading(id);
   try{
+    const pendingNoteSave=noteSaveTails.get(id);
+    if(pendingNoteSave){await pendingNoteSave;if(!current())return;}
+    const noteGeneration=noteEditorGeneration(id);
+    const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'');
     const d=await api('/api/flows/'+id);
     if(!current())return;
+    if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}
     state.detail=d;
     if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
+    setInspectorActionState(false);
     $('#noteBar').style.display='flex';
     await renderSide('req');
     if(!current())return;
@@ -888,7 +1094,7 @@ export async function selectFlow(id){
       $('#resStatus').textContent=(d.status?`${d.status} ${statusText(d.status)}`:(d.error||''))+(d.durationMs?` · ${fmtDur(d.durationMs)}`:'');
       $('#resStatus').style.color=statusColor(d.status);
     }
-  }catch(e){if(current())toast('flow: '+e.message);}
+  }catch(e){if(current())showInspectorLoadError(id,e);}
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
@@ -915,7 +1121,8 @@ export async function renderWSFrames(id){
   const epoch=++wsRenderEpoch;
   const detail=state.detail;
   const selectEpoch=selectFlowEpoch;
-  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&wsRenderEpoch===epoch;
+  const filterEpoch=flowFilterEpoch;
+  const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&state.detail===detail&&flowFilterEpoch===filterEpoch&&wsRenderEpoch===epoch;
   try{
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
     if(!current())return;
@@ -933,14 +1140,21 @@ export async function renderWSFrames(id){
   }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
 }
 async function wsReplay(url){
+  const out=$('#wsReplayOut'),button=$('#wsSendBtn');
+  if(!out||!button||button.disabled)return;
+  const epoch=++wsReplayEpoch,flowId=state.selId,detail=state.detail,selectionEpoch=selectFlowEpoch;
+  const current=()=>epoch===wsReplayEpoch&&selectFlowEpoch===selectionEpoch&&state.selId===flowId&&state.detail===detail&&out.isConnected&&button.isConnected&&$('#wsReplayOut')===out&&$('#wsSendBtn')===button;
   const msg=($('#wsMsg')||{}).value||'';
-  const out=$('#wsReplayOut');if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Sending…';}
+  if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
   try{
     const r=await api('/api/ws/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,message:msg})});
     const frames=r.frames||[];
     const head=`<div class="micro-label" style="margin:4px 0 4px">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
+    if(!current())return;
     if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
-  }catch(e){if(out)out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+  }catch(e){if(current())out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';
+  }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='▲ Send';}}
 }
 // markFindInHtml wraps occurrences of the find query in <mark>, but only inside
 // *text runs* of an already-escaped/highlighted HTML string — never inside a tag
@@ -963,6 +1177,7 @@ export async function renderSide(side){
   const flowId=state.selId;
   const detail=state.detail;
   const selectEpoch=selectFlowEpoch;
+  const filterEpoch=flowFilterEpoch;
   const epoch=++renderSideEpoch[side];
   if(!flowId||!detail){return;}
   const len=side==='req'?detail.reqLen:detail.resLen;
@@ -982,7 +1197,7 @@ export async function renderSide(side){
     }
   }
   const view=state.view[side];
-  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&state.view[side]===view;
+  const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch&&state.view[side]===view;
   const draw=async()=>{
     try{
       if(view==='decoded'){
@@ -1067,6 +1282,9 @@ if(inspectFindIn){
 }
 if($('#inspectFindClose'))$('#inspectFindClose').onclick=()=>toggleInspectFind(false);
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&inspectFindBar.style.display==='flex'){
+    e.preventDefault();e.stopImmediatePropagation();toggleInspectFind(false);return;
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
     const p=document.querySelector('.panel[data-panel="proxy"]');
     if(!p||!p.classList.contains('active'))return;
@@ -1094,11 +1312,11 @@ if($('#fSearchScope'))$('#fSearchScope').onchange=e=>{state.filters.searchScope=
 syncSearchPlaceholder();
 const defaultFlowSearch={searchScope:'anywhere'};
 const flowSearchUI={items:[],name:''};
-let flowSearchSourceEpoch=0;
+let flowSearchSourceEpoch=0,flowSearchLoadEpoch=0,flowSearchEditEpoch=0,flowSearchTestEpoch=0,flowSearchTestPending=false,flowSearchMutationPending=false;
 function flowSearchStatus(text,error=false){const el=$('#flowSearchScriptError'),status=$('#flowSearchScriptStatus');if(el)el.textContent=error?String(text||''):'';if(status)status.textContent=error?'':String(text||'');}
 function flowSearchPayload(){return {name:($('#flowSearchScriptName')||{}).value.trim(),scope:'anywhere',script:($('#flowSearchScriptEditor')||{}).value||'',flowId:state.selId||0};}
 function renderFlowSearches(){const list=$('#flowSearchScriptList');if(!list)return;list.innerHTML='<option value="">new search…</option>'+flowSearchUI.items.map(x=>`<option value="${escAttr(x.name)}">${esc(x.name)} · ${esc(x.scope||'anywhere')}</option>`).join('');list.value=flowSearchUI.name;}
-async function loadFlowSearches(){try{const d=await api('/api/flow-searches');flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
+async function loadFlowSearches(){const epoch=++flowSearchLoadEpoch;try{const d=await api('/api/flow-searches');if(epoch!==flowSearchLoadEpoch||flowSearchMutationPending)return;flowSearchUI.items=d.searches||[];renderFlowSearches();}catch(e){if(epoch===flowSearchLoadEpoch&&!flowSearchMutationPending)flowSearchStatus(e.message,true);}}
 async function loadFlowSearchSource(name){
   const epoch=++flowSearchSourceEpoch;
   const current=()=>epoch===flowSearchSourceEpoch&&$('#flowSearchScriptList')?.value===name;
@@ -1109,11 +1327,36 @@ async function loadFlowSearchSource(name){
     state.filters.search=name;state.filters.searchScope='script';syncControls();renderChips();renderFlowSearches();flowSearchStatus('loaded');loadFlows();
   }catch(e){if(current())flowSearchStatus(e.message,true);}
 }
-async function testFlowSearch(){const p=flowSearchPayload();if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchStatus(d.valid?'valid':'invalid');}catch(e){flowSearchStatus(e.message,true);}}
-async function saveFlowSearch(){const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});flowSearchUI.name=p.name;flowSearchStatus('saved');await loadFlowSearches();}catch(e){flowSearchStatus(e.message,true);}}
-async function deleteFlowSearch(){const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name)return;try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';renderFlowSearches();flowSearchStatus('deleted');}catch(e){flowSearchStatus(e.message,true);}}
-$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
-['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;});});
+async function testFlowSearch(){
+  const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}if(flowSearchTestPending)return;
+  const epoch=++flowSearchTestEpoch,editEpoch=flowSearchEditEpoch,button=$('#flowSearchScriptTest');
+  const current=()=>epoch===flowSearchTestEpoch&&editEpoch===flowSearchEditEpoch;
+  flowSearchTestPending=true;if(button){button.disabled=true;button.setAttribute('aria-busy','true');}flowSearchStatus('testing…');
+  try{const d=await api('/api/flow-searches/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});if(current())flowSearchStatus(d.valid?'valid':'invalid',!d.valid);}
+  catch(e){if(current())flowSearchStatus(e.message,true);}
+  finally{if(epoch===flowSearchTestEpoch){flowSearchTestPending=false;if(button){button.disabled=flowSearchMutationPending;button.setAttribute('aria-busy',flowSearchMutationPending?'true':'false');}}}
+}
+function setFlowSearchMutationPending(pending){flowSearchMutationPending=pending;['#flowSearchScriptTest','#flowSearchScriptSave','#flowSearchScriptDelete'].forEach(sel=>{const button=$(sel),busy=pending||(sel==='#flowSearchScriptTest'&&flowSearchTestPending);if(button){button.disabled=busy;button.setAttribute('aria-busy',busy?'true':'false');}});}
+async function saveFlowSearch(){
+  const p=flowSearchPayload();if(!p.name){flowSearchStatus('name required',true);return;}if(!p.script.trim()){flowSearchStatus('script required',true);return;}if(flowSearchMutationPending)return;
+  const sourceEpoch=flowSearchSourceEpoch;setFlowSearchMutationPending(true);flowSearchLoadEpoch++;flowSearchStatus('saving…');
+  let saved=false;
+  try{const exists=flowSearchUI.items.some(x=>x.name===p.name);await api(exists?'/api/flow-searches/'+encodeURIComponent(p.name):'/api/flow-searches',{method:exists?'PUT':'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});saved=true;if(sourceEpoch===flowSearchSourceEpoch&&$('#flowSearchScriptName')?.value.trim()===p.name){flowSearchUI.name=p.name;flowSearchStatus('saved');}}
+  catch(e){if(sourceEpoch===flowSearchSourceEpoch)flowSearchStatus(e.message,true);}
+  finally{setFlowSearchMutationPending(false);}
+  if(saved)await loadFlowSearches();
+}
+async function deleteFlowSearch(){
+  const name=flowSearchUI.name||($('#flowSearchScriptName')||{}).value.trim();if(!name||flowSearchMutationPending)return;
+  const sourceEpoch=flowSearchSourceEpoch;setFlowSearchMutationPending(true);flowSearchLoadEpoch++;
+  let deleted=false;
+  try{await api('/api/flow-searches/'+encodeURIComponent(name),{method:'DELETE'});deleted=true;flowSearchUI.items=flowSearchUI.items.filter(x=>x.name!==name);if(sourceEpoch===flowSearchSourceEpoch){flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='';flowSearchStatus('deleted');}}
+  catch(e){if(sourceEpoch===flowSearchSourceEpoch)flowSearchStatus(e.message,true);}
+  finally{setFlowSearchMutationPending(false);}
+  if(deleted)await loadFlowSearches();else renderFlowSearches();
+}
+$('#flowSearchScriptList')&&($('#flowSearchScriptList').onchange=e=>{flowSearchEditEpoch++;if(e.target.value)loadFlowSearchSource(e.target.value);else{++flowSearchSourceEpoch;flowSearchUI.name='';$('#flowSearchScriptName').value='';$('#flowSearchScriptEditor').value='def match(flow):\\n  return False';state.filters.search='';state.filters.searchScope='anywhere';syncControls();renderChips();flowSearchStatus('');renderFlowSearches();loadFlows();}});
+['#flowSearchScriptName','#flowSearchScriptEditor'].forEach(sel=>{$(sel)?.addEventListener('input',()=>{flowSearchSourceEpoch++;flowSearchEditEpoch++;flowSearchStatus(flowSearchMutationPending?'edited while save pending — save again':'unsaved');});});
 $('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
 $('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
 $('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
@@ -1173,9 +1416,11 @@ $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefa
 $('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
 $('#noteInput').addEventListener('blur',saveNote);
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
-export async function loadViews(){try{const d=await api('/api/views');state.views=d.views||[];renderViews();}catch(e){}}
+let viewsLoadError=null,viewsLoadEpoch=0,viewsMutationPending=false;
+export async function loadViews(){const epoch=++viewsLoadEpoch;try{const d=await api('/api/views');if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=e;renderViews();}}
 export function renderViews(){
   const btn=$('#viewsBtn'); if(!btn)return;
+  if(viewsLoadError){btn.textContent='Views !';btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
   const n=state.views.length;
   const txt=n?('Views ▾ · '+n):'Views ▾';
   btn.textContent=txt;
@@ -1183,45 +1428,77 @@ export function renderViews(){
 }
 function applyView(v){
   let f={};try{f=JSON.parse(v.data||'{}');}catch(e){}
-  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',host:f.host||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
+  state.filters={scheme:f.scheme||'',method:f.method||'',status:f.status||'',search:f.search||'',searchScope:f.searchScope||'anywhere',host:f.host||'',tag:f.tag||'',exclude:Array.isArray(f.exclude)?f.exclude:[]};
   state.inScopeOnly=!!f.inScope;
+  state.notesOnly=!!f.notesOnly;
+  state.showManual=f.showManual!==false;state.showAI=f.showAI!==false;
+  state.hideTlsFailed=f.hideTlsFailed!==false;
+  const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
+  syncSourceFilters();syncHideTlsFilter();
   syncControls();$('#scopeToggle').classList.toggle('on',state.inScopeOnly);$('#scopeToggle').setAttribute('aria-pressed',state.inScopeOnly?'true':'false');$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
-  renderChips();loadFlows();
+  renderChips();renderTagBar();loadFlows();
   toast('applied view: '+v.name);
 }
 async function saveCurrentView(){
   const name=await uiPrompt({title:'Save current filters as a view',placeholder:'view name'});if(!name)return;
-  const data={...state.filters,inScope:state.inScopeOnly};
-  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');loadViews();}catch(e){toast(e.message);}
+  if(viewsMutationPending)return;
+  const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,hideTlsFailed:state.hideTlsFailed};
+  viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
+  try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
+  catch(e){toast(e.message);}
+  finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 async function deleteView(id,name){
   if(!await uiConfirm('Delete view','Delete saved view <b>'+esc(name)+'</b>?','Delete','btn danger','var(--red)'))return;
-  try{await api('/api/views/'+id,{method:'DELETE'});loadViews();toast('view deleted');}catch(e){toast(e.message);}
+  if(viewsMutationPending)return;
+  viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
+  try{await api('/api/views/'+id,{method:'DELETE'});toast('view deleted');}
+  catch(e){toast(e.message);}
+  finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 function openViewsMenu(){
   const btn=$('#viewsBtn'); if(!btn)return;
   {const cp=$('#colPicker');if(cp)cp.style.display='none';} // Views joins the toolbar menu group
   const r=btn.getBoundingClientRect();
   const sections=[];
-  if(state.views.length){
+  if(viewsLoadError){
+    sections.push({head:'SAVED VIEWS UNAVAILABLE',items:[{label:'Retry loading saved views',act:loadViews}]});
+  }else if(state.views.length){
     sections.push({head:'APPLY VIEW',items:state.views.map(v=>({label:v.name,act:()=>applyView(v)}))});
     sections.push({head:'DELETE VIEW',items:state.views.map(v=>({label:v.name,danger:true,act:()=>deleteView(v.id,v.name)}))});
   }
-  sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
+  if(!viewsLoadError)sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
   openCtxMenu(r.left, r.bottom+2, sections);
 }
 $('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
 /* ---- target scope ---- */
-export async function loadScope(){try{const d=await api('/api/scope');state.scope=d.rules||[];renderScope();}catch(e){}}
+let scopeLoadEpoch=0,scopeMutationEpoch=0,scopeMutationLanes=new Map(),scopeMutationRevision=new Map(),scopeDrafts=new Map();
+export async function loadScope(){
+  const epoch=++scopeLoadEpoch,mutationSnapshot=scopeMutationEpoch;
+  const loadState=$('#scopeLoadState');
+  try{
+    const d=await api('/api/scope');
+    if(epoch!==scopeLoadEpoch||mutationSnapshot!==scopeMutationEpoch||scopeMutationLanes.size)return;
+    if(loadState)loadState.style.display='none';
+    state.scope=d.rules||[];
+    renderScope();
+  }catch(e){
+    if(epoch===scopeLoadEpoch&&!scopeMutationLanes.size)renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
+  }
+}
 export async function addHostToScope(host){
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})});
-    toast('added '+host+' to scope — toggle ◎ in scope to focus');loadScope();}
+  try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})}));
+    toast('added '+host+' to scope — toggle ◎ in scope to focus');}
   catch(e){toast(e.message);}
 }
 export function renderScope(){
   const body=$('#scopeBody');if(!body)return;
+  const active=document.activeElement;
+  const activeRow=active?.closest?.('#scopeBody tr[data-id]');
+  const focus={id:activeRow?.dataset.id||'',key:active?.dataset?.k||'',start:active?.selectionStart,end:active?.selectionEnd};
   const warn=$('#scopeDupWarn');
-  const enabled=state.scope.filter(r=>r.enabled);
+  const rows=state.scope.map(r=>({...r,...(scopeDrafts.get(r.id)||{})}));
+  const enabled=rows.filter(r=>r.enabled);
   const dup=enabled.filter((r,i,a)=>a.findIndex(x=>x.action===r.action&&x.host===r.host&&x.path===r.path&&x.scheme===r.scheme&&x.port===r.port)!==i);
   if(warn){
     if(dup.length){
@@ -1230,23 +1507,45 @@ export function renderScope(){
     }else warn.style.display='none';
   }
   if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
-  body.innerHTML=state.scope.map(r=>`<tr data-id="${r.id}">
+  body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
     <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>
     <td><input type="text" data-k="host" aria-label="Scope rule ${r.id} host" value="${escAttr(r.host)}" placeholder="*.example.com"></td>
     <td><input type="text" data-k="path" aria-label="Scope rule ${r.id} path" value="${escAttr(r.path)}" placeholder="/"></td>
     <td><input type="text" data-k="scheme" aria-label="Scope rule ${r.id} scheme" value="${escAttr(r.scheme)}" placeholder="any"></td>
-    <td><button class="btn danger" data-del="${r.id}">Delete</button></td></tr>`).join('');
+    <td><button class="btn danger" data-del="${r.id}" data-k="delete" aria-label="Delete scope rule ${r.id}">Delete</button></td></tr>`).join('');
   body.querySelectorAll('tr').forEach(tr=>{const id=Number(tr.dataset.id);
-    tr.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>updateScope(id,tr)));});
+    tr.querySelectorAll('input[data-k],select[data-k]').forEach(inp=>{inp.addEventListener('input',()=>rememberScopeDraft(id,tr));inp.addEventListener('change',()=>updateScope(id,tr));});});
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteScope(Number(b.dataset.del)));
+  if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
+}
+function scopeMutation(id,work){
+  scopeMutationEpoch++;
+  const rev=(scopeMutationRevision.get(id)||0)+1;scopeMutationRevision.set(id,rev);
+  const prior=scopeMutationLanes.get(id)||Promise.resolve();
+  const next=prior.catch(()=>{}).then(work);
+  scopeMutationLanes.set(id,next);
+  return next.finally(()=>{if(scopeMutationLanes.get(id)!==next)return;scopeMutationLanes.delete(id);if(!scopeMutationLanes.size)loadScope();});
+}
+function rememberScopeDraft(id,tr){
+  const get=k=>tr.querySelector(`[data-k="${k}"]`);
+  const draft={id,action:get('action').value,host:get('host').value.trim(),path:get('path').value.trim(),scheme:get('scheme').value.trim(),enabled:get('enabled').checked,port:0};
+  scopeDrafts.set(id,draft);return draft;
 }
 async function updateScope(id,tr){
-  const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const upd={id,action:get('action').value,host:get('host').value.trim(),path:get('path').value.trim(),scheme:get('scheme').value.trim(),enabled:get('enabled').checked,port:0};
-  try{await api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)});toast('scope saved');}catch(e){toast(e.message);loadScope();}
+  const upd=rememberScopeDraft(id,tr),pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)})),revision=scopeMutationRevision.get(id);
+  try{await pending;if(revision===scopeMutationRevision.get(id)&&scopeDrafts.get(id)===upd){scopeDrafts.delete(id);toast('scope saved');}}
+  catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toast(e.message,'error');}}
 }
-async function deleteScope(id){try{await api('/api/scope/'+id,{method:'DELETE'});loadScope();}catch(e){toast(e.message);}}
+async function deleteScope(id){
+  const hadDraft=scopeDrafts.has(id),draftAtDelete=scopeDrafts.get(id);
+  const pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'DELETE'})),revision=scopeMutationRevision.get(id);
+  try{await pending;if(revision===scopeMutationRevision.get(id))scopeDrafts.delete(id);}
+  catch(e){
+    if(revision===scopeMutationRevision.get(id)&&hadDraft&&scopeDrafts.get(id)===draftAtDelete){scopeDrafts.delete(id);renderScope();}
+    if(revision===scopeMutationRevision.get(id))toast(e.message,'error');
+  }
+}
 let scopeAddInFlight=false,scopeAddEpoch=0;
 function setScopeAddState(stateName){const b=$('#addScopeBtn');if(!b)return;b.disabled=stateName==='pending';b.setAttribute('aria-busy',stateName==='pending'?'true':'false');b.textContent=stateName==='pending'?'Adding…':stateName==='success'?'Added':'+ Add';}
 $('#addScopeBtn').onclick=async()=>{
@@ -1254,8 +1553,8 @@ $('#addScopeBtn').onclick=async()=>{
   const rule={action:$('#newScopeAction').value,host:$('#newScopeHost').value.trim(),path:$('#newScopePath').value.trim(),scheme:'',enabled:true,port:0};
   if(!rule.host&&!rule.path){toast('host or path required');return;}
   scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
-  try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)});
-    $('#newScopeHost').value='';$('#newScopePath').value='';loadScope();toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
+  try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
+    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
   finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
@@ -1264,6 +1563,7 @@ export function syncControls(){
   $('#fStatus').value=state.filters.status;
   $('#fSearch').value=state.filters.search;
   const ss=$('#fSearchScope');if(ss)ss.value=state.filters.searchScope||'anywhere';
+  syncSearchPlaceholder();
 }
 export function setFilter(key,val){
   if(key==='tag'&&val==='tls-failed'){
@@ -1275,11 +1575,14 @@ export function setFilter(key,val){
 export function clearFilter(key){setFilter(key,'');}
 export function clearAllFilters(){
   state.filters={scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]};
-  state.notesOnly=false;state.showManual=true;state.showAI=true;syncSourceFilters();
+  state.notesOnly=false;state.showManual=true;state.showAI=true;state.inScopeOnly=false;state.hideTlsFailed=false;
+  try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
+  syncSourceFilters();syncHideTlsFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
-  syncControls();renderChips();loadFlows();
+  {const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
+  syncControls();renderChips();renderTagBar();loadFlows();
 }
-export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||!state.showManual||!state.showAI);}
+export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI);}
 // filterByTag toggles the History tag filter (click a tag chip to filter; click the
 // active one again to clear).
 export function filterByTag(t){setFilter('tag',state.filters.tag===t?'':t);}
@@ -1321,15 +1624,15 @@ export function addExclude(field,value){
 export function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
 export function renderChips(){
   const f=state.filters,box=$('#chips'),items=[];
-  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><span class="x" data-clear="${k}" title="remove">✕</span></span>`);};
+  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><button type="button" class="x" data-clear="${k}" title="Remove filter" aria-label="Remove ${escAttr(k)} filter">✕</button></span>`);};
   add('scheme','scheme',f.scheme);
   add('method','method',f.method);
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
   add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
-  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><span class="x" id="chipHideTlsClear" title="show TLS failures">✕</span></span>`);
-  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><span class="x" data-ex="${i}" title="remove">✕</span></span>`);});
+  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">✕</button></span>`);
+  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">✕</button></span>`);});
   const hasFilters=items.length>0;
   if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
   box.innerHTML=items.join('');
@@ -1368,6 +1671,7 @@ function deleteHost(f){
     try{
       const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[f.host],mode:'delete'})});
       toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s'));
+      if(state.detail?.host===f.host)closeInspector();
       loadRetention();loadFlows();
     }catch(e){toast('purge: '+e.message);}
   };
@@ -1539,8 +1843,8 @@ if(inspectMoreActions)inspectMoreActions.onclick=()=>{
   const r=inspectMoreActions.getBoundingClientRect();
   showCtx(r.left,r.bottom+2,f,'');
 };
-document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx();return;}closeInspector();}});
+document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx({restoreFocus:false});});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}closeInspector();}});
 // Suppress the browser's native context menu app-wide, but keep it where it's
 // genuinely useful: editable fields (paste/cut) and over a live text selection (copy).
 document.addEventListener('contextmenu',e=>{
@@ -1621,42 +1925,61 @@ function compareLineDiff(a,b){
   }
   return rows.join('')+(n>300?'<div class="hint">…line diff truncated</div>':'');
 }
-export async function openCompare(){
+let compareEpoch=0,compareMode='words';
+function compareModalOpen(modal,box){return modal?.style.display==='flex'&&box?.isConnected&&$('#compareBody')===box;}
+function closeCompare(){++compareEpoch;closeModal($('#compareModal'));}
+export async function openCompare(restoreModeFocus=''){
+  const epoch=++compareEpoch;
   const ids=[...state.selected].sort((a,b)=>a-b);
   if(ids.length!==2){toast('select exactly 2 flows');return;}
-  openModal($('#compareModal'));
-  const box=$('#compareBody');if(box)box.innerHTML='<div class="hint">loading…</div>';
+  const modal=$('#compareModal'),box=$('#compareBody');
+  if(!compareModalOpen(modal,box))openModal(modal,{onEscape:closeCompare,onDismiss:closeCompare});
+  const current=()=>epoch===compareEpoch&&compareModalOpen(modal,box)&&state.selected.size===2&&ids.every(id=>state.selected.has(id));
+  $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
+  if(box)box.innerHTML='<div class="hint">loading…</div>';
   try{
     const [fa,fb]=await Promise.all(ids.map(id=>api('/api/flows/'+id)));
+    if(!current())return;
     const [ra,rb]=await Promise.all(ids.map(id=>api('/api/flows/'+id+'/raw?side=res')));
     const split=s=>{const i=s.indexOf('\r\n\r\n');return i>=0?s.slice(i+4):s;};
     const limit=512*1024;
     const ba=split(ra).slice(0,limit),bb=split(rb).slice(0,limit);
-    const mode=($('#compareMode')&&$('#compareMode').querySelector('.on')?.dataset.m)||'words';
+    if(!current())return;
+    const mode=compareMode;
     const bodyHtml=mode==='lines'?compareLineDiff(ba,bb):compareWordDiff(ba,bb);
     $('#compareTitle').textContent='Compare responses · #'+ids[0]+' vs #'+ids[1];
     if(box)box.innerHTML=`<div class="row" style="gap:12px;margin-bottom:8px;font-size:var(--fs-xs);flex-wrap:wrap">
       <span><b style="color:var(--red)">#${ids[0]}</b> ${esc(fa.method)} ${esc(fa.status||'—')} · ${fmtSize(fa.resLen)}</span>
       <span><b style="color:var(--accent)">#${ids[1]}</b> ${esc(fb.method)} ${esc(fb.status||'—')} · ${fmtSize(fb.resLen)}</span>
-      <div class="seg" id="compareMode" style="margin-left:auto"><button class="on" data-m="words">Words</button><button data-m="lines">Lines</button></div>
+      <div class="seg" id="compareMode" role="group" aria-label="Response comparison mode" style="margin-left:auto"><button type="button" class="${mode==='words'?'on':''}" data-m="words" aria-pressed="${mode==='words'?'true':'false'}">Words</button><button type="button" class="${mode==='lines'?'on':''}" data-m="lines" aria-pressed="${mode==='lines'?'true':'false'}">Lines</button></div>
     </div>
     <div class="micro-label" style="margin:8px 0 4px">RESPONSE HEADERS</div>
     ${compareHeaderDiff(fa.resHeaders,fb.resHeaders)}
     <div class="micro-label" style="margin:12px 0 4px">RESPONSE BODY</div>
     ${bodyHtml}`;
-    $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{ $('#compareMode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); openCompare(); };});
-  }catch(e){if(box)box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
+    $('#compareMode')?.querySelectorAll('button').forEach(b=>{b.onclick=()=>{compareMode=b.dataset.m;openCompare(compareMode);};});
+    if(restoreModeFocus)requestAnimationFrame(()=>{if(current())$('#compareMode')?.querySelector(`[data-m="${restoreModeFocus}"]`)?.focus({preventScroll:true});});
+  }catch(e){if(current())box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
 }
-if($('#selCompare'))$('#selCompare').onclick=openCompare;
-if($('#compareClose'))$('#compareClose').onclick=()=>closeModal($('#compareModal'));
+if($('#selCompare'))$('#selCompare').onclick=()=>openCompare();
+if($('#compareClose'))$('#compareClose').onclick=closeCompare;
 $('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
 
 $('#selScope').onclick=async()=>{
   const hosts=[...new Set([...state.selected].map(id=>{const f=flowStore.byId.get(id);return f&&f.host;}).filter(Boolean))];
   if(!hosts.length)return;
-  let added=0;
-  for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){}}
-  toast('added '+added+' host'+(added===1?'':'s')+' to scope');loadScope();
+  const button=$('#selScope');if(!button||button.disabled)return;
+  button.disabled=true;button.setAttribute('aria-busy','true');
+  let added=0;const failed=[];
+  try{
+    await scopeMutation(0,async()=>{for(const host of hosts){try{await api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host,enabled:true})});added++;}catch(e){failed.push(host);}}});
+    if(failed.length){
+      const names=failed.slice(0,3).join(', ')+(failed.length>3?' +'+(failed.length-3)+' more':'');
+      toast((added?'added '+added+' of '+hosts.length+' hosts':'no hosts added')+' · failed: '+names,'warn');
+    }else toast('added '+added+' host'+(added===1?'':'s')+' to scope','success');
+  }finally{
+    button.disabled=false;button.removeAttribute('aria-busy');
+  }
 };
 export let _delArm=false,_delTimer;
 $('#selDelete').onclick=async()=>{
@@ -1665,7 +1988,7 @@ $('#selDelete').onclick=async()=>{
   clearTimeout(_delTimer);_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';
   try{
     const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
-    if(state.selected.has(state.selId))state.selId=null;
+    if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
     state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
     toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
   }catch(e){toast('delete: '+e.message);}

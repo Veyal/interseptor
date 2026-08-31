@@ -68,6 +68,75 @@ func TestFindingsMapStateContracts(t *testing.T) {
 	}
 }
 
+func TestMapClusterSearchExpansionPrecedesEveryVisibilityRebuild(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	for _, contract := range []string{
+		"searchExpandedClusters: new Set()",
+		"mapState.searchExpandedClusters.clear()",
+		"mapState.searchExpandedClusters.add(e._cluster.key)",
+		"mapState.expandedClusters.has(e._cluster.key)||mapState.searchExpandedClusters.has(e._cluster.key)",
+		"if(mapState.searchExpandedClusters.has(k))return",
+		"const searchExpanded=mapState.searchExpandedClusters.has(e._cluster.key)",
+		"searchExpanded?' disabled aria-disabled=\"true\"':''",
+	} {
+		if !strings.Contains(mapJS, contract) {
+			t.Errorf("Map search-owned cluster expansion contract missing %q", contract)
+		}
+	}
+	start := strings.Index(mapJS, "export function mapVisibleEps(eps){")
+	end := strings.Index(mapJS, "export function mapCount(node)")
+	if start < 0 || end <= start {
+		t.Fatal("Map visibility boundary not found")
+	}
+	renderer := mapJS[start:end]
+	clustered := strings.Index(renderer, "const clustered = mapAssignClusters(eps)")
+	expand := strings.Index(renderer, "mapExpandClustersForSearch(clustered)")
+	visible := strings.Index(renderer, "for(const e of clustered)")
+	if clustered < 0 || expand < clustered || visible < expand {
+		t.Error("Map cluster matches must expand before visible endpoints are rebuilt")
+	}
+}
+
+func TestMapTreeCacheIncludesClusterExpansionIdentity(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	for _, contract := range []string{
+		"function mapTreeExpansionSignature()",
+		"[...mapState.expandedClusters].sort()",
+		"[...mapState.searchExpandedClusters].sort()",
+		"mapTreeExpansionSignature() + '|' + eps.length",
+	} {
+		if !strings.Contains(mapJS, contract) {
+			t.Errorf("Map Tree cache identity contract missing %q", contract)
+		}
+	}
+	start := strings.Index(mapJS, "export function buildMapTree(eps){")
+	end := strings.Index(mapJS, "export function findMapTreeNode(key)")
+	if start < 0 || end <= start {
+		t.Fatal("Map Tree cache boundary not found")
+	}
+	cache := mapJS[start:end]
+	key := strings.Index(cache, "mapTreeExpansionSignature()")
+	reuse := strings.Index(cache, "if(key === _btKey && _btCache)")
+	if key < 0 || reuse < 0 || key > reuse {
+		t.Error("Map Tree expansion identity must be captured before cache reuse")
+	}
+}
+
+func TestMapGraphCacheIncludesClusterExpansionIdentity(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	start := strings.Index(mapJS, "export function buildGraphTree(eps){")
+	end := strings.Index(mapJS, "function mapExpandForSearch(eps)")
+	if start < 0 || end <= start {
+		t.Fatal("Map Graph cache boundary not found")
+	}
+	cache := mapJS[start:end]
+	key := strings.Index(cache, "mapTreeExpansionSignature()")
+	reuse := strings.Index(cache, "if(key === _gtKey && _gtCache)")
+	if key < 0 || reuse < 0 || key > reuse {
+		t.Error("Map Graph expansion identity must be captured before cache reuse")
+	}
+}
+
 func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 	findings := readUIAsset(t, "js/findings.js")
 	for _, contract := range []string{
@@ -103,7 +172,9 @@ func TestRepeaterDecodeCompletionDistinguishesStaleFromFallback(t *testing.T) {
 	for _, contract := range []string{
 		"const editorEpoch=t.reqEditEpoch||0",
 		"t.reqEditEpoch===editorEpoch",
-		"if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
+		"const changed=method!==t.method||url!==t.url||headers!==t.headers||v!==previous",
+		"if(changed)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
+		"if(changed&&operatorEdit)t.requestAdoptionPristine=false",
 		"if(!current())return null",
 		"if(ok===null)return",
 		"if(repCur()!==t)return",

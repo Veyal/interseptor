@@ -9,9 +9,9 @@ import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, 
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
-import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI, loadDeviceProxyEndpoint } from './settings.js';
+import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
-import { renderActivity, onActivity, loadActivity, clearActSeen } from './activity.js';
+import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
 import { loadFindings } from './findings.js';
 import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
@@ -64,8 +64,9 @@ function activateTab(t){
     try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
     updateCrumb(t);
     if(t.dataset.tab==='proxy')renderRows();
-    if(t.dataset.tab==='activity'){renderActivity();clearActSeen();}
-    if(t.dataset.tab==='scanner')loadScanTargets();
+    if(t.dataset.tab==='activity'){clearActSeen();loadActivity();}
+    if(t.dataset.tab==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
+    if(t.dataset.tab==='scanner'){clearNavDot('scanBadge');loadScanTargets();loadIssues();}
     if(t.dataset.tab==='findings')loadFindings();
     if(t.dataset.tab==='map'){clearNavDot('mapBadge');loadMapModule().then(m=>m.loadEndpoints());}
     if(t.dataset.tab==='notes')loadNotes();
@@ -153,7 +154,7 @@ function renderCapStat(){
   const ago=Math.round((Date.now()-capLast)/1000);
   const d=$('#capDot');
   if(ago<3){ s.textContent='· capturing live'; }
-  else { if(d)d.classList.remove('live'); s.textContent='· idle · '+capCount+' captured this session'; }
+  else { if(d)d.classList.remove('live'); s.textContent='· idle · '+capCount+' flows this session'; }
   renderIcptStat();
 }
 function renderIcptStat(){
@@ -211,7 +212,7 @@ function resyncAfterStaleReconnect(){
   if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
   if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
   if(document.querySelector('.tab[data-tab="notes"]')?.classList.contains('active'))loadNotes();
-  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))renderActivity();
+  if(document.querySelector('.tab[data-tab="activity"]')?.classList.contains('active'))loadActivity();
   if(document.querySelector('.tab[data-tab="map"]')?.classList.contains('active'))loadMapModule().then(m=>m.loadEndpoints());
 
   refreshIntercept().then(()=>renderIcptStat());
@@ -260,6 +261,18 @@ function onModalUpdate(modalId,reloadFn){
   const m=$('#'+modalId);
   if(m&&m.style.display==='flex')reloadFn();
 }
+function onPanelUpdate(panelName,reloadFn,badgeId){
+  const panel=document.querySelector(`.panel[data-panel="${panelName}"]`);
+  if(panel?.classList.contains('active'))reloadFn();
+  else if(badgeId)setNavDot(badgeId,true);
+}
+function refreshVisibleAllowlist(){
+  const panel=document.querySelector('.panel[data-panel="settings"]');
+  const section=document.querySelector('.set-sec[data-sec="api"]');
+  const pane=$('#apiAllowlist');
+  if(!panel?.classList.contains('active')||section?.hidden!==false||pane?.style.display!=='block')return;
+  import('./apipanel.js').then(module=>module.loadAllowlist());
+}
 // SSE_HANDLERS documents (and, for the modal-gated group, implements) each
 // event's contract in one place. Events not listed here are still handled
 // directly in the es.onmessage dispatcher below — this is a partial migration,
@@ -268,9 +281,12 @@ const SSE_HANDLERS={
   'checks.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('checksModal',loadChecksList)},
   'codecs.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('codecsModal',loadCodecsList)},
   'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
+  'intruder.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('intruder',scheduleIntr,'intrBadge')},
+  'scanner.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('scanner',loadIssues,'scanBadge')},
   'notes.update':{contract:'always-reload',run:loadNotes},
   'findings.update':{contract:'always-reload',run:loadFindings},
   'tags.update':{contract:'always-reload',run:loadTags},
+  'allowlist.update':{contract:'visible-pane nudge',run:refreshVisibleAllowlist},
 };
 function connectEvents(){
   const es=new EventSource('/api/events');
@@ -286,6 +302,7 @@ function connectEvents(){
     setSseStatus('ok');
     const now=Date.now();
     const gap=lastSSEMsgAt?now-lastSSEMsgAt:Infinity;
+    if(sseConnectedOnce)refreshVisibleAllowlist();
     if(sseConnectedOnce&&gap>STALE_GAP_MS)resyncAfterStaleReconnect();
     sseConnectedOnce=true;
     lastSSEMsgAt=now;
@@ -296,17 +313,15 @@ function connectEvents(){
     if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
     else if(m.type==='flow.update'){if(m.flow)handleFlowUpdate(m.flow);else scheduleReload();if(m.flow&&m.flow.id===state.selId)selectFlow(state.selId);}
     else if(m.type==='activity')onActivity(m.item);
-    else if(m.type==='activity.clear'){state.activity=[];if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
+    else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
-    else if(m.type==='intruder.update')scheduleIntr();
-    else if(m.type==='scanner.update')loadIssues();
     else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
 
-    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadDeviceProxyEndpoint();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
+    else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };
@@ -317,8 +332,13 @@ function setSseStatus(s){
   const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus');
   if(!dot) return;
   dot.className='sse-dot '+s;
-  if(s==='ok'){ label.textContent='live'; if(wrap) wrap.title='Live updates: connected'; }
-  else { label.textContent='reconnecting'; if(wrap) wrap.title='Live updates: reconnecting…'; }
+  const reconnecting=s!=='ok';
+  if(label)label.textContent=reconnecting?'reconnecting':'live';
+  if(wrap){
+    wrap.classList.toggle('reconnecting',reconnecting);
+    wrap.setAttribute('aria-label',reconnecting?'Live updates: reconnecting':'Live updates: connected');
+    wrap.title=reconnecting?'Live updates: reconnecting…':'Live updates: connected';
+  }
 }
 
 /* ---- command palette (Ctrl/Cmd+K) ---- */
@@ -601,5 +621,5 @@ async function bootFirstRunUI(){
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadIssues();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}

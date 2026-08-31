@@ -91,7 +91,7 @@ func TestUIFindingsReadModeAndNotesRecoveryContracts(t *testing.T) {
 
 func TestUIReportingAsyncActionsHaveTruthfulFeedback(t *testing.T) {
 	codecs := executableJS(readUIAsset(t, "js/codecs.js"))
-	for _, want := range []string{"role=\"option\"", "wireCodecRow", "codecBusy", "aria-busy", "ArrowDown", "tabindex=", "codecLoadEpoch", "epoch!==codecLoadEpoch", "codecSel!==id"} {
+	for _, want := range []string{"role=\"option\"", "wireCodecRow", "codecBusy", "aria-busy", "ArrowDown", "tabindex=", "codecLoadEpoch", "epoch!==codecLoadEpoch", "codecSel!==id", "codecDocsLoadEpoch", "codecListLoadEpoch"} {
 		if !strings.Contains(codecs, want) {
 			t.Errorf("codec list/editor must keep listbox semantics and expose pending state: missing %q", want)
 		}

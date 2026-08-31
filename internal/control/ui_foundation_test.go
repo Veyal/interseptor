@@ -184,6 +184,7 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 	)
 	requireUIRegex(t, core, `(?s)function syncModalZOrder\(\)\{.*?modalStack\.forEach.*?setProperty\('z-index'`)
 	requireUIRegex(t, core, `(?s)function restoreModalZIndex\(entry\)\{.*?(setProperty|removeProperty)\('z-index'`)
+	requireUIRegex(t, core, `(?s)modalEl\.addEventListener\('mousedown'.*?e\.preventDefault\(\).*?entry\.onDismiss`)
 	if strings.Contains(core, `$$('[role="dialog"]').find(`) {
 		t.Error("modal focus trap still discovers the first open dialog by DOM order")
 	}

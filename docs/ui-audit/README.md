@@ -1,6 +1,14 @@
 # UI audit screenshots
 
-These screenshots compare the repository baseline (`ec1b79e`) with the audited UI in isolated, empty projects. They contain no captured request data.
+The **After** screenshots validate only the audited runtime source identified by
+`application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). See
+[`verification.md`](verification.md#release-candidate-applicability) for whether that retained
+evidence applies to the current release candidate; never carry it forward across a runtime-source
+change.
+
+The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
+the audit's local loopback fixture and generic project records; neither set contains real request
+data, personal data, or target information.
 
 | Viewport | Surface | Before | After |
 | --- | --- | --- | --- |
@@ -8,19 +16,28 @@ These screenshots compare the repository baseline (`ec1b79e`) with the audited U
 | 1024 × 768 | Map | [`before-1024x768-map.png`](before-1024x768-map.png) | [`after-1024x768-map.png`](after-1024x768-map.png) |
 | 390 × 844 | Scanner | [`before-390x844-scanner.png`](before-390x844-scanner.png) | [`after-390x844-scanner.png`](after-390x844-scanner.png) |
 
-The narrow Scanner pair shows the most visible geometry correction: the issue list and detail pane now stack instead of compressing the detail to an unreadable rail. History retains its intentionally horizontal, scrollable dense-table surface while its controls wrap within the viewport.
+The narrow Scanner pair shows the most visible geometry correction: the issue list and detail pane
+stack instead of compressing the detail to an unreadable rail. History keeps its intentionally
+horizontal, scrollable dense-table surface while its controls wrap inside the viewport.
 
-## Browser and performance evidence
+## Verification summary
 
-Playwright exercised every top-level panel at all three viewports. The final sweep reported no unexpected console errors, page errors, failed requests, duplicate IDs, nested interactive controls, unnamed visible controls, or document-level horizontal overflow. A reduced-motion context committed the same selected tab and focus state with zero panel animations.
+The retained exact-source Playwright recheck ran Chromium 148 and all 26 independent and
+cross-feature cases passed. Dedicated viewport and control-reachability sweeps at 1440 × 900,
+1024 × 768, and 390 × 844 found no document overflow.
+Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
+history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
+tab closures, including when its localStorage cleanup ledger was forced unavailable. The audit also
+exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed
+Intercept acknowledgements, Authz retargeting, mutation rejection/retry focus, blocked busy-modal
+navigation, reversible API-key/allowlist actions, unconfigured Vault behavior, and every Settings
+section. A direct API mutation also proved the visible Allowlist pane reconciles another client's
+addition and deletion over SSE without eagerly loading the API module. No unexpected console, page,
+HTTP, or external-request errors were reported.
 
-Chrome DevTools Protocol `Performance` metrics were collected from headless Chromium for the required state changes:
+Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
+hydration and gestures. Exact timing, bounded-DOM, long-task, and interaction measurements are
+retained in `browser-audit.json` with the runtime-source digest.
 
-| Scenario | Renderer task | Script | Layout | Long tasks |
-| --- | ---: | ---: | ---: | ---: |
-| 180 ms panel transition | 36.863 ms | 1.508 ms | 1.881 ms | 0 |
-| 240-request live History burst | 81.860 ms total | 29.597 ms | 13.733 ms | 0 |
-| acknowledged Intercept queue update | 12.138 ms | 0.926 ms | 0.538 ms | 0 |
-| 110-node Map render + Fit + zoom | 29.664 ms | 4.788 ms | 4.787 ms | 0 |
-
-The live History burst retained a bounded 101-row virtualized DOM window. Separate functional runs captured 360 requests with no long tasks, verified Repeater single-flight behavior, ran the passive Scanner, rendered and keyboard-navigated the Map graph, exercised Finding failure rollback, and forwarded/dropped held requests. Delayed-response tests also confirmed latest-request-wins History/Map/Findings behavior, bounded project-state hydration, and project-scoped tab restoration.
+See [`verification.md`](verification.md) for the source identity, feature matrix, measurements, failure
+injections, competitive review, and intentionally deferred ideas.

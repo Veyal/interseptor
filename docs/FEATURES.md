@@ -10,7 +10,7 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   Starlark predicates for custom Anywhere searches. See [history search](history-search.md).
 - **Intercept workflow** — hold / forward (with edits) / drop **requests *and* responses**, plus
   ordered **match-&-replace** rules.
-- **Repeater** — multi-tab; re-send any request, edit it freely, inspect the response, per-tab history.
+- **Repeater** — multi-tab; re-send any request, edit it freely, inspect the response, and keep every send with its owning tab across request edits, tab switches, and reloads until that tab closes (long histories expose older sends in bounded rendering batches).
 - **Intruder** — Sniper / Pitchfork (one payload list per `§` marker) / **Race** (no-payload concurrent
   resends for race conditions), with thread + delay controls, payload processing (url/base64/…),
   **grep-match/extract**, anomaly flagging, attack tabs and run history.

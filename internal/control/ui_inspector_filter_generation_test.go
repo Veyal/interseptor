@@ -1,0 +1,102 @@
+package control
+
+import (
+	"strings"
+	"testing"
+)
+
+// A filter reload can replace the History page cache while a selected flow's
+// detail request is still in flight. The response belongs to the selection and
+// the filter generation that started it; it must not paint after a newer filter
+// generation has made that selection stale.
+func TestUIProxyInspectorRejectsDetailAfterFilterReload(t *testing.T) {
+	source := readUIAsset(t, "js/proxy.js")
+	proxy := executableJS(source)
+	for _, contract := range []string{
+		"let flowFilterEpoch=0",
+		"let flowFilterSignature=''",
+		"let flowFilterReconciledEpoch=0",
+		"function inspectorFilterSignature()",
+		"if(signatureChanged){flowFilterSignature=filterSignature;flowFilterEpoch++;}",
+		"const filterChanged=filterEpoch!==flowFilterReconciledEpoch",
+		"flowFilterReconciledEpoch=filterEpoch",
+		"const filterEpoch=flowFilterEpoch",
+		"flowFilterEpoch===filterEpoch",
+		"function showInspectorFilterLoadError(id,error)",
+		"function showInspectorSelectionUnavailable(id)",
+		"if(!state.detail&&previousFlow&&canIncremental()&&flowMatchesFilters(previousFlow))",
+		"if(!state.detail&&flowStore.byId.has(state.selId)){selectFlow(state.selId);return;}",
+		"if(!state.detail&&!flowStore.byId.has(state.selId)&&canIncremental()&&!previousFlow){selectFlow(state.selId);return;}",
+		"selectFlow(state.selId)",
+		"if(!canIncremental()&&!flowStore.byId.has(state.selId))",
+		"showInspectorSelectionUnavailable(state.selId)",
+		"if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail)",
+		"showInspectorFilterLoadError(state.selId,e)",
+		"if(filterChanged&&state.detail)selectFlow(state.selId)",
+		"else if(previousFlow&&canIncremental()&&filterChanged&&state.detail)selectFlow(state.selId)",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("Inspector/filter ownership contract missing %q", contract)
+		}
+	}
+	if strings.Contains(proxy, "const filterEpoch=++flowFilterEpoch") {
+		t.Error("background History refreshes must not invalidate Inspector subloads")
+	}
+	if !strings.Contains(proxy, "const current=()=>selectFlowEpoch===selectEpoch&&state.selId===id&&flowFilterEpoch===filterEpoch") {
+		t.Error("selected-flow detail responses must be rejected after a newer filter reload")
+	}
+	if !strings.Contains(proxy, "if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}") {
+		t.Error("client-decidable filters must be revalidated before painting returned Inspector detail")
+	}
+	if !strings.Contains(proxy, "if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){\n      selectFlowEpoch++;\n      showInspectorFilterLoadError(state.selId,e);") {
+		t.Error("only an unreconciled filter generation may replace pending Inspector content with a retry state")
+	}
+}
+
+func TestUIProxyInspectorDoesNotRepaintForUnknownServerFilterMatch(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"// Server-only filters (text search and in-scope matching) cannot be",
+		"If the replacement page",
+		"// does not contain the selected flow, do not repaint retained detail as if",
+		"showInspectorSelectionUnavailable(state.selId)",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("server-only Inspector ownership contract missing %q", contract)
+		}
+	}
+}
+
+// A server-only filter load may still leave the old rows clickable. If the
+// operator selects one of those rows while the load is pending, the winning
+// list commit must reconcile that *current* selection too; otherwise its
+// in-flight detail response can repaint an Inspector for a flow excluded by
+// the new result.
+func TestUIProxyReconcilesSelectionChangedDuringServerFilterLoad(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"const committedSelected=state.selId",
+		"const committedFlow=committedSelected==null?null:(flowStore.byId.get(committedSelected)||state.detail)",
+		"else if(state.selId===committedSelected)reconcileInspectorSelectionAfterReload(committedFlow,filterChanged)",
+		"selectFlowEpoch++",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("server-filter selection race contract missing %q", contract)
+		}
+	}
+}
+
+// A failed refresh only owns pending Inspector work when the active filter
+// generation has not been reconciled. Same-filter background failures leave
+// an independently selected flow's valid detail request intact.
+func TestUIProxyFailedBackgroundRefreshPreservesReconciledSelectionLoads(t *testing.T) {
+	proxy := readUIAsset(t, "js/proxy.js")
+	for _, contract := range []string{
+		"if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail)",
+		"selectFlowEpoch++;\n      showInspectorFilterLoadError(state.selId,e);",
+	} {
+		if !strings.Contains(proxy, contract) {
+			t.Errorf("failed History refresh ownership contract missing %q", contract)
+		}
+	}
+}

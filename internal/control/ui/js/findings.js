@@ -10,6 +10,7 @@ const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'w
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
 let findingsLoadEpoch=0;
+const findingAttachPending=new Set();
 
 function findingsLoadState() {
   if (findingsLoadStateEl?.isConnected) return findingsLoadStateEl;
@@ -251,7 +252,7 @@ function renderFindings() {
     selFinding = null; renderFindingDetail(); return;
   }
   if (!selFinding || !list.some(f => f.id === selFinding)) selFinding = list[0].id;
-  box.innerHTML = list.map(f => `<div class="find-row${f.id === selFinding ? ' sel' : ''}${!(f.ready) ? ' find-row-empty' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}">
+  box.innerHTML = list.map(f => `<div class="find-row${f.id === selFinding ? ' sel' : ''}${!(f.ready) ? ' find-row-empty' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
     <span class="find-id">#${f.id}</span>
     <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
     <span class="find-title">${esc(f.title)}</span>
@@ -322,9 +323,9 @@ function finishTextEdit(block, ta, fid) {
 
 function renderBlockEl(b, i, total) {
   const isFirst = i === 0, isLast = i === total - 1;
-  const upBtn = isFirst ? '' : `<button class="btn xs" data-mv="${i}" data-dir="-1" title="Move up" style="padding:1px 5px;font-size:var(--fs-xs)">↑</button>`;
-  const dnBtn = isLast ? '' : `<button class="btn xs" data-mv="${i}" data-dir="1" title="Move down" style="padding:1px 5px;font-size:var(--fs-xs)">↓</button>`;
-  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" style="padding:1px 5px;font-size:var(--fs-xs)">✕</button>`;
+  const upBtn = isFirst ? '' : `<button class="btn xs" data-mv="${i}" data-dir="-1" title="Move up" aria-label="Move evidence block ${i+1} up" style="padding:1px 5px;font-size:var(--fs-xs)">↑</button>`;
+  const dnBtn = isLast ? '' : `<button class="btn xs" data-mv="${i}" data-dir="1" title="Move down" aria-label="Move evidence block ${i+1} down" style="padding:1px 5px;font-size:var(--fs-xs)">↓</button>`;
+  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" aria-label="Remove evidence block ${i+1}" style="padding:1px 5px;font-size:var(--fs-xs)">✕</button>`;
   const controls = `<div class="find-block-controls">${upBtn}${dnBtn}${delBtn}</div>`;
 
   if (b.type === 'text') {
@@ -353,7 +354,7 @@ function renderBlockEl(b, i, total) {
     return `<div class="find-block find-doc-image" data-i="${i}">
       ${controls}
       <figure class="find-doc-figure">
-        <img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
+        <img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}" title="Click to enlarge">
         <input class="find-poc-note-input block-caption" data-i="${i}" aria-label="Screenshot caption" value="${escAttr(b.caption || '')}"
           placeholder="Caption (optional)" onclick="event.stopPropagation()">
       </figure>
@@ -467,14 +468,9 @@ function renderBodyEditor(container, fid) {
     };
   });
 
-  // Flow click → open flow modal. Missing (purged) flow blocks aren't clickable.
-  container.querySelectorAll('.find-doc-flow:not(.find-block-missing) .find-poc-callout').forEach(el => {
-     el.onclick = ev => {
-       if (ev.target.closest('[data-del],[data-mv],.block-note,.find-poc-note-input,.find-send-repeater')) return;
-       const block = el.closest('.find-doc-flow');
-       if (block) openFindingFlow(Number(block.dataset.flow));
-     };
-   });
+  // Flow cards expose one explicit Inspect action. The request summary remains
+  // presentational so keyboard and pointer users do not encounter two targets
+  // with the same outcome.
   container.querySelectorAll('.find-open-flow').forEach(btn => {
     btn.onclick = event => {
       event.stopPropagation();
@@ -916,7 +912,7 @@ function renderFindReportBody(fid) {
       }
       const src = b.url || ('/api/findings/images/' + (b.hash || ''));
       return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
-        <figure class="find-doc-figure"><img class="md-img find-doc-img" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
+        <figure class="find-doc-figure"><img class="md-img find-doc-img" tabindex="0" role="button" aria-label="Open screenshot: ${escAttr(b.caption || 'screenshot')}" src="${escAttr(src)}" alt="${escAttr(b.caption || 'screenshot')}">
         ${b.caption ? `<figcaption class="hint">${esc(b.caption)}</figcaption>` : ''}</figure></div>`;
     }
     if (b.type === 'flow') {
@@ -930,10 +926,10 @@ function renderFindReportBody(fid) {
         : `flow #${esc(String(b.flowId))}`;
        return `<div class="find-report-step"><div class="find-report-stepn">${step}</div>
          <div class="find-report-stepbody">
-           <button type="button" class="find-report-flow" data-flow="${b.flowId}">
+           <div class="find-report-flow">
              ${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
              <div class="find-poc-req">${reqLine}</div>
-           </button>
+           </div>
            <div class="find-evidence-actions">
              <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}">Inspect request</button>
              <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
@@ -942,9 +938,6 @@ function renderFindReportBody(fid) {
     }
     return '';
   }).join('');
-  container.querySelectorAll('.find-report-flow').forEach(btn => {
-     btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
-   });
   container.querySelectorAll('.find-open-flow').forEach(btn => {
     btn.onclick = () => { const id = Number(btn.dataset.flow); if (id) flowPopup(id); };
   });
@@ -965,16 +958,29 @@ export function updateFindPocBtn() {
 }
 
 async function attachFlowsToFinding(findingId, ids) {
-  if (!ids.length) return;
+  if (!ids.length) return {attached:0,failed:[]};
+  findingId=Number(findingId);
+  if(findingAttachPending.has(findingId)){toast('flow attachment already in progress');return {attached:0,failed:ids.slice(),pending:true};}
+  findingAttachPending.add(findingId);
+  const failed=[];
+  let attached=0;
+  toast('attaching '+ids.length+' flow'+(ids.length===1?'':'s')+'…');
   try {
     for (const fid of ids) {
-      await api('/api/findings/' + findingId + '/flows', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ flowId: fid }),
-      });
+      try{
+        await api('/api/findings/' + findingId + '/flows', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ flowId: fid }),
+        });
+        attached++;
+      }catch(error){failed.push({id:fid,error});}
     }
-    toast('attached ' + ids.length + ' flow' + (ids.length === 1 ? '' : 's'));
-  } catch (e) { toast(e.message); }
+    await loadFindings();
+    if(!failed.length)toast('attached '+attached+' flow'+(attached===1?'':'s'),'success');
+    else if(attached)toast('attached '+attached+' of '+ids.length+' flows · '+failed.length+' failed','warn');
+    else toast('could not attach flows: '+(failed[0]?.error?.message||'request failed'),'error');
+    return {attached,failed};
+  } finally { findingAttachPending.delete(findingId); }
 }
 
 async function addPoCFlowsToFinding(findingId) {
@@ -1117,29 +1123,71 @@ async function openFlowPickForFinding(findingId) {
 }
 
 /* ---- create finding ---- */
+let findingCreateEpoch=0;
+let findingCreateBusy=false;
+let findingCreateFocus=null;
+function setFindingCreateStatus(message,kind='status'){
+  const status=$('#fcStatus');if(!status)return;
+  status.textContent=message||'';
+  status.setAttribute('role',kind==='error'?'alert':'status');
+  status.setAttribute('aria-live',kind==='error'?'assertive':'polite');
+}
+function setFindingCreateBusy(busy){
+  const modal=$('#findCreateModal');
+  if(busy&&!findingCreateBusy){
+    const active=document.activeElement;
+    findingCreateFocus=modal?.contains(active)?active:null;
+  }
+  const restore=!busy&&findingCreateBusy?findingCreateFocus:null;
+  if(!busy)findingCreateFocus=null;
+  findingCreateBusy=!!busy;
+  ['#fcTitle','#fcSeverity','#fcSave','#fcClose'].forEach(sel=>{const control=$(sel);if(control)control.disabled=findingCreateBusy;});
+  const button=$('#fcSave');if(!button)return;
+  button.setAttribute('aria-busy',findingCreateBusy?'true':'false');
+  button.textContent=findingCreateBusy?'Creating…':'Create finding';
+  const status=$('#fcStatus');
+  if(status)status.setAttribute('aria-busy',findingCreateBusy?'true':'false');
+  if(findingCreateBusy&&findingCreateFocus&&status){
+    setFindingCreateStatus('Creating finding…');
+    status.focus({preventScroll:true});
+  }else if(restore&&modal?.style.display==='flex'&&restore.isConnected&&!restore.disabled){
+    restore.focus({preventScroll:true});
+  }
+}
+function closeFindingCreate(){
+  if(findingCreateBusy)return;
+  findingCreateEpoch++;
+  closeModal($('#findCreateModal'));
+}
+function resetFindingCreateButton(){
+  setFindingCreateBusy(false);
+}
 function openFindCreate(event) {
+  findingCreateEpoch++;
   const trigger=event?.currentTarget;
   if(trigger?.focus)trigger.focus({preventScroll:true});
   $('#fcTitle').value = '';
   $('#fcSeverity').value = 'Medium';
-  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle')});
+  resetFindingCreateButton();
+  setFindingCreateStatus('');
+  openModal($('#findCreateModal'),{initialFocus:$('#fcTitle'),onEscape:closeFindingCreate,onDismiss:closeFindingCreate});
 }
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
 $('#findEmptyNew') && ($('#findEmptyNew').onclick = openFindCreate);
-$('#fcClose') && ($('#fcClose').onclick = () => closeModal($('#findCreateModal')));
+$('#fcClose') && ($('#fcClose').onclick = closeFindingCreate);
 $('#fcSave') && ($('#fcSave').onclick = async () => {
   const button = $('#fcSave');
   const title = ($('#fcTitle')?.value || '').trim();
   if (!title) {
     toast('finding title is required', 'error');
+    setFindingCreateStatus('Finding title is required.','error');
     $('#fcTitle')?.focus();
     return;
   }
-  if (button.disabled) return;
-  const label = button.textContent;
-  button.disabled = true;
-  button.setAttribute('aria-busy', 'true');
-  button.textContent = 'Creating…';
+  if (findingCreateBusy) return;
+  const createEpoch=++findingCreateEpoch;
+  const modal=$('#findCreateModal');
+  setFindingCreateBusy(true);
   try {
     const created = await api('/api/findings', {
       method: 'POST',
@@ -1150,18 +1198,20 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
         source: 'human',
       }),
     });
-    closeModal($('#findCreateModal'));
+    if(createEpoch!==findingCreateEpoch||modal?.style.display!=='flex')return;
+    closeModal(modal);
     selFinding = Number(created.id) || null;
     findEditMode = true;
     await loadFindings();
+    if(createEpoch!==findingCreateEpoch)return;
     toast('finding created');
   } catch (err) {
+    if(createEpoch!==findingCreateEpoch||modal?.style.display!=='flex')return;
+    setFindingCreateStatus(err.message || 'Could not create finding.','error');
     toast(err.message || 'could not create finding', 'error');
   } finally {
-    if (button.isConnected) {
-      button.disabled = false;
-      button.setAttribute('aria-busy', 'false');
-      button.textContent = label;
+    if (createEpoch===findingCreateEpoch&&button.isConnected) {
+      setFindingCreateBusy(false);
     }
   }
 });
@@ -1230,17 +1280,18 @@ function pickFindingForFlows(ids) {
   openModal($('#findPickModal'));
   list.querySelectorAll('.find-pick').forEach(b => b.onclick = async () => {
     closeModal($('#findPickModal'));
-    for (const fid of ids) {
-      await api('/api/findings/' + b.dataset.id + '/flows', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ flowId: fid }) }).catch(e => toast(e.message));
-    }
-    toast('attached ' + ids.length + ' flow' + (ids.length === 1 ? '' : 's'));
+    await attachFlowsToFinding(Number(b.dataset.id),ids);
   });
   list.querySelector('.find-pick-new').onclick = async () => {
     closeModal($('#findPickModal'));
     const title = await uiPrompt({ title: 'Name the new finding', placeholder: 'e.g. IDOR on /api/user/{id}' });
     if (title == null) return;
     const f = await api('/api/findings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, severity: 'Medium', source: 'human', flowIds: ids }) }).catch(e => { toast(e.message); return null; });
-    if (f) { selFinding = f.id; document.querySelector('.tab[data-tab="findings"]')?.click(); loadFindings(); toast('finding created'); }
+    if (f) {
+      const warnings=Array.isArray(f.warnings)?f.warnings:[];
+      selFinding = f.id; document.querySelector('.tab[data-tab="findings"]')?.click(); loadFindings();
+      toast(warnings.length?'finding created · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):'finding created',warnings.length?'warn':'success');
+    }
   };
 }
 $('#fpClose') && ($('#fpClose').onclick = () => closeModal($('#findPickModal')));

@@ -101,7 +101,9 @@ export function renderLoadError(el, label, err, retry, stale=false){
   if(!el)return;
   const message=err&&err.message?err.message:String(err||'unknown error');
   el.style.display='block';
-  el.innerHTML=`<span class="state-error-msg">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
+  // Keep the alert scoped to the newly rendered error message. The host may be
+  // a high-volume list, so making it live would announce every recovery render.
+  el.innerHTML=`<span class="state-error-msg" role="alert">${esc(label)} ${stale?'is stale — ':'failed: '}${esc(message)}</span> <button type="button" class="btn xs" data-load-retry>Retry</button>`;
   const btn=el.querySelector('[data-load-retry]');
   if(btn)btn.onclick=retry;
 }
@@ -130,9 +132,9 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //                 omit to leave the span unstyled)
 // Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
 export function createTabManager(opts){
-  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,tablistLabel='Tabs'}=opts;
+  const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs',tabPanelId=''}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;
-  const mgr={tabs:[],active:null,seq:1,persistT:null};
+  const mgr={tabs:[],active:null,seq:1,persistT:null,focusEpoch:0};
   mgr.cur=()=>mgr.tabs.find(t=>t.tid===mgr.active)||null;
   mgr.persist=function(){
     const blob={seq:mgr.seq,active:mgr.active,tabs:mgr.tabs.map(serialize)};
@@ -142,6 +144,7 @@ export function createTabManager(opts){
   };
   mgr.persistDebounced=function(){clearTimeout(mgr.persistT);mgr.persistT=setTimeout(mgr.persist,400);};
   mgr.render=function(barSel){
+    mgr.focusEpoch++;
     const bar=$(barSel);if(!bar)return;
     bar.setAttribute('role','tablist');bar.setAttribute('aria-label',tablistLabel);bar.setAttribute('aria-orientation','horizontal');
     bar.innerHTML=mgr.tabs.map(t=>{
@@ -149,11 +152,14 @@ export function createTabManager(opts){
       const style=labelStyle?labelStyle(t,active):'';
       const label=title(t);
       return `<div class="rep-tab${active?' on':''}" data-tid="${t.tid}" title="${escAttr(label)}">
-    <button type="button" class="rt-select" role="tab" aria-selected="${active?'true':'false'}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
+    <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
     <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
     }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-label="New ${escAttr(tablistLabel.replace(/ tabs?$/i,' tab'))}" title="New tab">＋</button>`;
+    const tabPanel=document.getElementById(tabPanelId);
+    const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
+    if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
     const tabButtons=[...bar.querySelectorAll('.rt-select')];
     tabButtons.forEach((el,i)=>{
       const item=el.closest('.rep-tab'),tid=Number(item.dataset.tid);
@@ -185,8 +191,15 @@ export function createTabManager(opts){
   };
   mgr.close=function(tid,restoreFocus=false){
     const i=mgr.tabs.findIndex(t=>t.tid===tid);if(i<0)return;
+    const closed=mgr.tabs[i];
     const wasActive=tid===mgr.active;
+    closed._closed=true;
+    let closeResult;
+    if(typeof onClose==='function'){
+      try{closeResult=onClose(closed);}catch(e){closed._closed=false;toast(e.message||'Could not close tab');return;}
+    }
     mgr.tabs.splice(i,1);
+    if(closeResult)Promise.resolve(closeResult).catch(()=>{});
     if(!mgr.tabs.length)mgr.tabs.push(blank(mgr.seq++));
     if(wasActive)mgr.active=mgr.tabs[Math.min(i,mgr.tabs.length-1)].tid;
     mgr._rerender();
@@ -199,7 +212,13 @@ export function createTabManager(opts){
   // the same bar without every caller having to pass it again.
   mgr.init=function(barSel){
     mgr._rerender=()=>mgr.render(barSel);
-    mgr._focusTab=tid=>requestAnimationFrame(()=>$(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus());
+    mgr._focusTab=tid=>{
+      const epoch=++mgr.focusEpoch;
+      requestAnimationFrame(()=>{
+        if(epoch!==mgr.focusEpoch||mgr.active!==tid)return;
+        $(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus();
+      });
+    };
     let ok=false;
     try{
       const d=JSON.parse(localStorage.getItem(storageKey())||'null');
@@ -975,16 +994,22 @@ export function countListLines(text, ignoreComments=false){
 }
 
 /* ---- shared right-click context menu (#ctxmenu) ---- */
-export function hideCtxMenu(){
+export function hideCtxMenu({restoreFocus=false}={}){
   const ctx=$('#ctxmenu');if(!ctx)return;
+  const wasOpen=ctx.classList.contains('show');
   if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
   ctx.classList.remove('show');ctx._acts=null;
+  if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
+    ctx._returnFocus?.focus({preventScroll:true});
+  }
+  ctx._returnFocus=null;
 }
 
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
 export function openCtxMenu(x,y,sections){
   const ctx=$('#ctxmenu');if(!ctx)return;
   closeAllUiSelects(); // ctx/Views menus and ui-select dropdowns are one mutually-exclusive group
+  ctx._returnFocus=document.activeElement;
   ctx.setAttribute('role','menu');
   const acts=[];let html='';
   sections.forEach(sec=>{
@@ -998,7 +1023,7 @@ export function openCtxMenu(x,y,sections){
       // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
       // smuggled through it.label — the icon has to be its own field.
       const glyph=it.icon?icon(it.icon):'';
-      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
+      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
       acts.push(it.act);
     });
   });
@@ -1006,20 +1031,23 @@ export function openCtxMenu(x,y,sections){
   ctx.innerHTML=html;ctx._acts=acts;ctx._sel=0;
   const items=ctx.querySelectorAll('.ctx-item');
   items.forEach((el,i)=>el.classList.toggle('on',i===0));
-  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu();if(fn)fn();});
+  ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu({restoreFocus:true});if(fn)fn();});
   ctx.style.left=x+'px';ctx.style.top=y+'px';ctx.classList.add('show');
   const r=ctx.getBoundingClientRect();
   if(r.right>innerWidth)ctx.style.left=Math.max(4,x-r.width)+'px';
   if(r.bottom>innerHeight)ctx.style.top=Math.max(4,y-r.height)+'px';
-  const paintSel=()=>{items.forEach((el,i)=>el.classList.toggle('on',i===ctx._sel));const cur=items[ctx._sel];if(cur)cur.scrollIntoView({block:'nearest'});};
+  const paintSel=(moveFocus=false)=>{items.forEach((el,i)=>{const on=i===ctx._sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});const cur=items[ctx._sel];if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}};
   ctx._keyHandler=e=>{
     if(!ctx.classList.contains('show'))return;
-    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel();}
-    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel();}
-    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu();if(fn)fn();}
-    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu();}
+    if(e.key==='ArrowDown'){e.preventDefault();ctx._sel=Math.min(items.length-1,ctx._sel+1);paintSel(true);}
+    else if(e.key==='ArrowUp'){e.preventDefault();ctx._sel=Math.max(0,ctx._sel-1);paintSel(true);}
+    else if(e.key==='Enter'){e.preventDefault();const fn=ctx._acts[ctx._sel];hideCtxMenu({restoreFocus:true});if(fn)fn();}
+    else if(e.key==='Escape'){e.preventDefault();hideCtxMenu({restoreFocus:true});}
+    else if(e.key==='Tab')hideCtxMenu();
   };
   document.addEventListener('keydown',ctx._keyHandler);
+  paintSel();
+  if(items[0])items[0].focus();
 }
 
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
@@ -1153,6 +1181,10 @@ function registerModal(modalEl){
   modalRegistry.set(modalEl,entry);
   modalEl.addEventListener('mousedown',e=>{
     if(e.target!==modalEl||topModal()!==entry)return;
+    // The dismissal owner may intentionally refuse while a non-cancelable
+    // request is pending. Keep focus inside the dialog either way; a real
+    // close restores its invoker through closeModal().
+    e.preventDefault();
     if(entry.onDismiss)entry.onDismiss();
     else if(entry.onEscape)entry.onEscape();
     else closeModal(modalEl);
@@ -1211,7 +1243,14 @@ export function closeModal(modalEl){
     }
     return;
   }
-  if(prev&&prev.isConnected&&visibleFocusable(prev)&&typeof prev.focus==='function')prev.focus();
+  if(prev&&prev!==document.body&&prev!==document.documentElement&&prev.isConnected&&visibleFocusable(prev)&&typeof prev.focus==='function'){
+    prev.focus();
+    return;
+  }
+  // Auto-opened dialogs have no meaningful invoking control. Return keyboard
+  // users to the selected workstation tab instead of leaving focus on body.
+  const fallback=document.querySelector('.tab[aria-selected="true"]:not([disabled])');
+  fallback?.focus({preventScroll:true});
 }
 function dismissTopModal(){
   const entry=topModal();
@@ -1359,28 +1398,45 @@ function imgLbClickTarget(t){
   if(!img||img.closest('#imgLightbox'))return null;
   return img;
 }
+function openImageLightboxFromTarget(target){
+  const img=imgLbClickTarget(target);if(!img)return false;
+  const src=img.currentSrc||img.getAttribute('src')||img.src;if(!src)return false;
+  openImageLightbox(src,img.getAttribute('alt')||'');
+  return true;
+}
 // Capture-phase so we open even if a parent stops bubble.
 document.addEventListener('click',e=>{
-  const img=imgLbClickTarget(e.target);if(!img)return;
-  const src=img.currentSrc||img.getAttribute('src')||img.src;if(!src)return;
+  if(!imgLbClickTarget(e.target))return;
   e.preventDefault();
   e.stopPropagation();
-  openImageLightbox(src,img.getAttribute('alt')||'');
+  openImageLightboxFromTarget(e.target);
+},true);
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  if(!imgLbClickTarget(e.target))return;
+  e.preventDefault();
+  e.stopPropagation();
+  openImageLightboxFromTarget(e.target);
 },true);
 // Wire controls once DOM is ready (module scripts are deferred, but be safe).
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureImageLightbox);
 else ensureImageLightbox();
 
+let activePromptFinish=null;
+let activeConfirmFinish=null;
+
 // uiPrompt: an in-app replacement for the browser's prompt() — themed, consistent,
 // resolves to the entered string or null (Cancel / Escape / backdrop / empty).
 export function uiPrompt(opts){
   opts=opts||{};
+  if(activePromptFinish)activePromptFinish(null);
   return new Promise(resolve=>{
     const m=$('#promptModal'),inp=$('#promptInput');
     $('#promptTitle').textContent=opts.title||'Enter a value';
     inp.placeholder=opts.placeholder||'';inp.value=opts.value||'';
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);inp.onkeydown=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;if(activePromptFinish===finish)activePromptFinish=null;closeModal(m);inp.onkeydown=null;resolve(v);};
+    activePromptFinish=finish;
     openModal(m,{initialFocus:inp,onEscape:()=>finish(null),onDismiss:()=>finish(null)});
     setTimeout(()=>inp.select(),0);
     $('#promptOk').onclick=()=>finish(inp.value.trim()||null);
@@ -1392,6 +1448,7 @@ export function uiPrompt(opts){
 // uiConfirm: themed confirm dialog reusing the promptModal structure.
 // Returns a Promise<boolean>.
 export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
+  if(activeConfirmFinish)activeConfirmFinish(false);
   return new Promise(resolve=>{
     const m=$('#confirmModal');
     if(!m){resolve(window.confirm(title+'\n\n'+htmlMsg.replace(/<[^>]+>/g,'')));return;}
@@ -1402,7 +1459,8 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
     ok.className=(okClass||'btn accent');
     if(okColor)ok.style.color=okColor; else ok.style.color='';
     let done=false;
-    const finish=v=>{if(done)return;done=true;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;resolve(v);};
+    const finish=v=>{if(done)return;done=true;if(activeConfirmFinish===finish)activeConfirmFinish=null;closeModal(m);ok.onclick=null;$('#confirmCancel').onclick=null;resolve(v);};
+    activeConfirmFinish=finish;
     openModal(m,{initialFocus:$('#confirmCancel'),onEscape:()=>finish(false),onDismiss:()=>finish(false)});
     ok.onclick=()=>finish(true);
     $('#confirmCancel').onclick=()=>finish(false);
@@ -1460,7 +1518,7 @@ export function renderMD(src){
   });
   s=s.replace(/(?:^|\n)((?:[-*] (?!\[[ xX]\] ).*(?:\r?\n|$))+)/g,(m,list)=>'\n<ul>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^[-*]\s?/,'')+'</li>').join('')+'</ul>');
   s=s.replace(/(?:^|\n)((?:\d+\. .*(?:\r?\n|$))+)/g,(m,list)=>'\n<ol>'+list.trim().split(/\r?\n/).map(l=>'<li>'+l.replace(/^\d+\.\s?/,'')+'</li>').join('')+'</ol>');
-  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
+  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s")]+|\/api\/notes\/images\/\d+|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)/g,(m,alt,src)=>'<img class="md-img" tabindex="0" role="button" aria-label="Open screenshot: '+alt.replace(/"/g,'&quot;')+'" alt="'+alt.replace(/"/g,'&quot;')+'" src="'+src.replace(/"/g,'&quot;')+'">');
   s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
   s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
   // Explicit in-app flow links: [label](flow:123) or [label](#flow-123)

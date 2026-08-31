@@ -1,0 +1,194 @@
+# UI audit verification — 2026-08-31
+
+## Revision and environment
+
+- Audited source base: `af887b19e0d329e65369381aa6679b739fa6abbc`
+- Exact application identity: `application_source.runtime_sha256` in
+  [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
+  file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
+- Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
+- Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
+- Browser: Playwright 1.60.0, Chromium 148.0.7778.96
+- Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
+- Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
+- Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
+
+## Release-candidate applicability
+
+The retained audit digest is `b46a84146dd5884d0891f8f825a8b908100d571a89566300438d6100d823fde8`
+across 249 runtime files. It matches the current release-candidate runtime exactly, including the
+final Authz, mobile-action, Repeater-adoption, and visible-Allowlist SSE fixes. Documentation-only
+commits made after the audited base do not change this identity; any later change under `cmd/`,
+`internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
+
+The complete 26-case matrix and three-run performance profile were executed against that exact source
+with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`; the validated machine-readable
+result and screenshots were retained together in this directory so the pass, measurements, and
+application-source identity cannot drift apart.
+
+## Audit outcome
+
+Interseptor already had a strong foundation: a compact technical identity, direct navigation,
+stable data hierarchy, native controls, visible raw protocol data, project-scoped state, and no
+frontend runtime or external asset dependency. The release audit concentrated on state integrity
+and feedback rather than changing that identity.
+
+The highest-value defects were async ownership gaps: delayed responses could repaint a newer
+selection, hide a real failure behind a plausible empty state, or overwrite edits made while a save
+was pending. The audited fixes bind each acknowledgement to the object, generation, tab, editor, or
+field that created it. In particular:
+
+- History reconciles selection across successful and failed server-side filters and never leaves a
+  stale Inspector spinner; a failed same-filter background refresh cannot cancel an independently
+  selected detail request.
+- Intercept removes Forward/Drop rows only after acknowledgement and keeps request/response lane
+  ownership stable across SSE refreshes.
+- Repeater history belongs to the tab, not to the current URL or request contents, and is removed
+  only when that tab closes; IndexedDB cleanup is attempted even when its localStorage retry ledger
+  is unavailable.
+- Settings acknowledgements update only fields that the operator has not changed since submission.
+- Session full-object saves and login runs share one mutation lane, so rapid cross-action use cannot
+  restore an older form snapshot.
+- Findings, Intruder, Scanner, Notes, Map, Session, and project hydration use latest-request or
+  entity-scoped ownership instead of repainting newer work.
+- Share no longer probes an unconfigured remote Vault, a completed Vault save cannot clear a newer
+  token draft, and the flow-search Test action validates its API-required name locally.
+- Captured and replayed WebSocket frames retain their distinct endpoint contracts, and selected
+  records expose consistent current-state semantics to assistive technology.
+- Repeater sends, cross-feature request adoption, OOB saves/refreshes, and Intruder progress each
+  retain the exact action, draft, and task-tab owner that initiated them.
+- Cross-feature Repeater adoption reuses only a genuinely pristine task tab; a request edited before
+  or during adoption remains untouched and receives a separate incoming tab.
+- Same-flow SSE refreshes cannot retarget an explicit Authz request, and Map graph summaries count
+  the same filtered, collapsed, and capped endpoints that the graph actually renders.
+- Finding creation, Scanner check actions, and Authz actions move pending focus to an in-dialog
+  status, restore the initiating action after rejection, and keep every dismissal or scope-navigation
+  exit locked until the non-cancelable request acknowledges; Authz failures use assertive alerts.
+
+## Feature and dependency matrix
+
+| Surface | Independent checks | Cross-feature checks |
+| --- | --- | --- |
+| Proxy / History | filtering, selection, Inspector loading/error, pagination retry, saved-search validation, live virtualization, keyboard row/context actions | send/search actions wait for project identity; Map search receives the selected evidence; selected detail loads remain consistent during filters, failures, and SSE |
+| Intercept | request/response queues, filters, Match & Replace, pending/acknowledged Forward and Drop, typing-safe shortcuts | queue refreshes cannot overwrite filter edits; operation results cannot mutate a newer selected queue item |
+| Repeater | tab lifecycle, Send states, response ownership, decode races, persistence and cleanup | send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
+| Intruder | duplicate-start lock, history selection, live polling errors, result filters | returning from historical evidence to live evidence preserves the configured target; finding creation uses the displayed run |
+| Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
+| Findings | creation and pending-status focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
+| Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
+| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; external allowlist changes reconcile only the visible pane; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
+| Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
+| Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting/error announcements, WebSocket capture/replay contracts | close paths restore focus; pending modal actions retain focus; busy Authz scope navigation cannot switch the underlying panel; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
+
+### Repeater history contract
+
+The retained exact-source browser recheck sent a request from one Repeater tab, then changed its
+method, URL, headers, and body. History remained attached to the tab after every edit, top-level
+navigation, and a page reload; the edited request also survived the reload. A second task tab
+received a distinct history. Closing the first tab removed only its IndexedDB rows. Before closing
+the second, the audit forced cleanup-ledger localStorage reads to throw; IndexedDB still reached
+zero, proving that the best-effort ledger cannot block tab-owned deletion. The larger 105-request
+render and close-vs-send race remain covered by focused Repeater regression tests.
+
+### Settings ownership contract
+
+The retained exact-source browser pass opened every Settings section, refreshed both device panels,
+exercised the project modal and reversible API-key/allowlist mutations, and verified that an
+unconfigured Vault made no remote request. A direct API mutation then simulated another client:
+the visible Allowlist pane reconciled both its addition and deletion through `allowlist.update`.
+The pass also held a Vault configuration PUT, typed a newer token draft, then released the
+acknowledgement; the newer draft remained. Focused Go UI contracts additionally inject delayed
+Settings reads and acknowledgements, rapid strict/compatible changes, live refresh over dirty TLS
+drafts, and shared Setup/Settings system-proxy mutations without making an operating-system change.
+
+### OOB draft ownership contract
+
+The retained exact-source browser pass temporarily enabled OOB only in its isolated project, opened the
+local interaction modal, entered and blurred a newer base-URL draft, then cleared interactions. The
+authoritative interaction refresh did not overwrite the draft. The pass closed the modal and
+restored OOB disabled; it made no external callback or system-proxy change.
+
+## Browser and accessibility checks
+
+- All ten top-level tabs committed `aria-selected`, active-panel state, and focus together.
+- Every primary panel and its key control remained reachable at 390 × 844; 1440 × 900,
+  1024 × 768, and 390 × 844 had `0 px` document overflow.
+- Reduced motion produced `0` active animations, `0s` panel/row transitions, and automatic rather
+  than smooth scrolling. The shared JavaScript helper also returned without creating an Animation;
+  selection, text, color, border, and status still communicated the result.
+- Map retained one roving graph tab stop, keyboard movement, `aria-selected`, and a persistent
+  selection halo; Fit plus wheel/drag changed the graph transform without a continuous simulation.
+- Activity kept focus on the same record during live insertion and announced success/error outcome
+  text. The evidence lightbox opened from the keyboard and restored focus on Escape.
+- Real Scanner and Intruder runs reached pending and success states. Rejected Finding, Scanner-check,
+  and Authz mutations retained in-modal focus, announced the failure, restored their initiating
+  action for retry, and kept Escape/backdrop/scope exits locked until acknowledgement. Intercept Forward and response
+  Drop kept their queue items until deliberately delayed server acknowledgements completed. Authz
+  retained its explicit context target and followed later A→B→A selection changes exactly.
+- The normal sweep had no unexpected console, page, or HTTP errors and no external browser request.
+  Fault contexts intentionally returned fourteen exact `409`/`503` responses across recovery and
+  ownership paths; their expected HTTP and network-console messages were classified separately.
+
+## Performance findings
+
+The full profile was captured after a fresh launch of the exact runtime source identified in
+`browser-audit.json`. Performance sampling
+used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
+runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
+control was observed.
+
+| Scenario | Retained evidence |
+| --- | --- |
+| Three 240-request live History bursts | network p95 `141.9 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `328.5 ms` |
+| Delayed Intercept acknowledgement | `569.2 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `182.6 ms`; Fit/wheel/drag interaction `894.5 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.272765 s`; script `0.081255 s`; layout `0.026744 s` |
+| Map interaction | CDP task `0.044674 s`; script `0.002216 s`; layout `0.001110 s` |
+
+The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
+interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
+visible busy surface behind.
+
+## Competitive review
+
+The audit compared Interseptor's workflows with official documentation for
+[Burp Suite tools](https://portswigger.net/burp/documentation/desktop/tools) and
+[Organizer](https://portswigger.net/burp/documentation/desktop/tools/organizer),
+[OWASP ZAP Sites](https://www.zaproxy.org/docs/desktop/ui/tabs/sites/),
+[Caido Replay](https://docs.caido.io/app/quickstart/replay),
+[Caido interception](https://docs.caido.io/app/guides/intercept_traffic) and
+[shortcuts](https://docs.caido.io/app/reference/command_shortcuts), and
+[mitmproxy](https://docs.mitmproxy.org/stable/).
+
+The useful common pattern is a dense primary evidence surface with stable per-task ownership,
+keyboard access, and direct transitions into replay/topology/reporting tools. That supports the
+tab-owned Repeater history, retained History/Map tables, explicit queue acknowledgement, and direct
+shortcuts implemented here. It does not justify adopting a generic dashboard, decorative motion,
+or a component-library visual language.
+
+## Intentionally deferred
+
+- An optional 3D topology remains unjustified until it demonstrates better host/cluster/path
+  comprehension than the accessible table, tree, and SVG graph. See `docs/ui-motion-spec.md`.
+- A richer query language, workflow engine, advanced breakpoint rules, and forced-browsing features
+  need separate product/API design and evidence of demand; they were not added during a UI integrity
+  pass.
+- Native assistive-technology testing is still a useful release follow-up. This pass covered browser
+  semantics, keyboard behavior, focus ownership, reduced motion, and accessible status text.
+
+## Required source gates
+
+The release branch must pass these source gates in their owning validation phases:
+
+```text
+go test ./... -count=1
+go test -race ./... -count=1
+go vet ./...
+CGO_ENABLED=0 go build ./cmd/interseptor
+go run ./tools/docscheck check .
+for file in internal/control/ui/js/*.js; do node --check "$file"; done
+```
+
+The release branch is additionally required to pass the no-mistakes review and repository CI before
+merge and tagging.

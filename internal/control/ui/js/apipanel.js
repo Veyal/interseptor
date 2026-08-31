@@ -1,4 +1,62 @@
-import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, fmtBytes } from './core.js';
+import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, uiPrompt, fmtBytes, renderLoadError } from './core.js';
+
+// Keep previously fetched read-only reference data useful during a transient
+// refresh failure, but never let it look like a current server contract.
+let restReferenceLoaded=false;
+let restReferenceLoadEpoch=0;
+let allowlistLoadEpoch=0;
+let allowlistLoaded=false;
+let apiKeysLoadEpoch=0;
+let shareLoadEpoch=0;
+let mergeStatusLoadEpoch=0;
+let vaultPanelLoadEpoch=0;
+let vaultListLoadEpoch=0;
+let vaultConfigured=false;
+let allowlistMutationPending=false;
+let peerMergePending=false;
+let vaultActionPending=false;
+function markRESTReferenceStale(stale){
+  const list=$('#restList');
+  if(list){
+    if(stale){
+      list.dataset.stale='true';
+      list.setAttribute('aria-label','REST reference (stale — retry to refresh)');
+    }else{
+      list.removeAttribute('data-stale');
+      list.removeAttribute('aria-label');
+    }
+  }
+  const base=$('#apiBase');
+  if(base){
+    if(stale)base.dataset.stale='true';
+    else base.removeAttribute('data-stale');
+  }
+}
+
+function allowlistLoadState(){
+  const list=$('#allowList');if(!list)return null;
+  let loadState=$('#allowListLoadState');if(loadState)return loadState;
+  loadState=document.createElement('div');
+  loadState.id='allowListLoadState';
+  loadState.className='tls-diag-banner';
+  loadState.setAttribute('role','status');
+  loadState.setAttribute('aria-live','polite');
+  const table=list.closest('table'),parent=table?.parentNode;
+  if(parent)parent.insertBefore(loadState,table);
+  return loadState;
+}
+
+function showAllowlistMutationError(error){
+  const loadState=allowlistLoadState();
+  if(loadState){
+    loadState.removeAttribute('data-allowlist-stale');
+    loadState.style.display='block';
+    loadState.innerHTML='<span class="state-error-msg" role="alert">Allowlist update failed: '+esc(error?.message||'request failed')+' — Review the values and try the action again.</span> <button type="button" class="btn xs" data-load-retry>Refresh list</button>';
+    // Refresh only reconciles the list. The operator must press Add/Remove
+    // again (and reconfirm removal), so recovery cannot duplicate a mutation.
+    const retry=loadState.querySelector('[data-load-retry]');if(retry)retry.onclick=loadAllowlist;
+  }else toast(error?.message||'allowlist update failed','error');
+}
 
 /* ---- api module ---- */
 $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -8,40 +66,77 @@ $('#apiSub').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   if(b.dataset.s==='allowlist')loadAllowlist();
 });
 export async function loadAllowlist(){
+  const epoch=++allowlistLoadEpoch;
+  const loadState=allowlistLoadState();
+  const hadData=allowlistLoaded;
+  if(loadState){loadState.style.display='block';loadState.textContent='Loading allowlist…';}
   try{
     const d=await api('/api/allowlist');
+    if(epoch!==allowlistLoadEpoch)return;
     const entries=d.entries||[];
     const cip=d.clientIP||'';
     const hint=$('#allowClientIP');
     if(hint)hint.innerHTML=cip?('This request’s client IP: <b style="font-family:var(--mono)">'+esc(cip)+'</b>'):'';
     const btn=$('#allowThisIP');
-    if(btn){btn.disabled=!cip;btn.onclick=()=>{if(!cip)return;$('#allowCIDR').value=cip;createAllowEntry();};}
+    if(btn){btn.disabled=!cip||allowlistMutationPending;btn.onclick=()=>{if(!cip)return;$('#allowCIDR').value=cip;createAllowEntry();};}
     $('#allowList').innerHTML=entries.length?entries.map(e=>`<tr>
       <td style="font-family:var(--mono)">${esc(e.cidr)}</td>
       <td>${esc(e.label||'')}</td>
       <td style="color:var(--fg3)">${e.created?esc(new Date(e.created).toLocaleString()):'—'}</td>
-      <td><button class="btn danger" data-allow-del="${e.id}">Remove</button></td></tr>`).join('')
+      <td><button class="btn danger" data-allow-del="${e.id}" aria-label="Remove allowlist entry ${escAttr(e.cidr)}">Remove</button></td></tr>`).join('')
       :'<tr><td colspan="4" class="hint" style="padding:10px">No allowlisted IPs — remote access still needs an API key.</td></tr>';
     $('#allowList').querySelectorAll('[data-allow-del]').forEach(b=>b.onclick=()=>deleteAllowEntry(Number(b.dataset.allowDel)));
-  }catch(e){toast(e.message||'allowlist failed');}
+    if(allowlistMutationPending)setAllowlistMutationPending(true);
+    allowlistLoaded=true;
+    if(loadState){loadState.style.display='none';loadState.textContent='';loadState.removeAttribute('data-allowlist-stale');}
+  }catch(e){
+    if(epoch!==allowlistLoadEpoch)return;
+    if(loadState){
+      if(hadData)loadState.setAttribute('data-allowlist-stale','true');
+      else loadState.removeAttribute('data-allowlist-stale');
+      renderLoadError(loadState,'Allowlist',e,loadAllowlist,hadData);
+    }else toast(e.message||'allowlist failed');
+  }
+}
+function setAllowlistMutationPending(pending){
+  allowlistMutationPending=pending;
+  ['allowAdd','allowThisIP','allowCIDR','allowLabel'].forEach(id=>{const control=$('#'+id);if(control){control.disabled=pending||(id==='allowThisIP'&&!($('#allowClientIP')?.textContent||'').trim());control.setAttribute('aria-busy',pending&&id==='allowAdd'?'true':'false');}});
+  document.querySelectorAll('#allowList [data-allow-del]').forEach(button=>{button.disabled=pending;});
 }
 async function createAllowEntry(){
+  if(allowlistMutationPending)return;
   const cidr=$('#allowCIDR').value.trim();
   const label=$('#allowLabel').value.trim();
   if(!cidr){toast('IP or CIDR required');return;}
+  setAllowlistMutationPending(true);
   try{
+    allowlistLoadEpoch++;
     await api('/api/allowlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cidr,label})});
     $('#allowCIDR').value='';$('#allowLabel').value='';
     toast('allowlist updated');loadAllowlist();
-  }catch(e){toast(e.message);}
+  }catch(e){
+    await loadAllowlist();
+    showAllowlistMutationError(e);
+    toast(e.message,'error');
+  }
+  finally{setAllowlistMutationPending(false);}
 }
 async function deleteAllowEntry(id){
   if(!await uiConfirm('Remove allowlist entry','Clients from this IP will need an API key again.','Remove','btn danger','var(--red)'))return;
-  try{await api('/api/allowlist/'+id,{method:'DELETE'});toast('removed');loadAllowlist();}catch(e){toast(e.message);}
+  if(allowlistMutationPending)return;
+  setAllowlistMutationPending(true);
+  try{allowlistLoadEpoch++;await api('/api/allowlist/'+id,{method:'DELETE'});toast('removed');loadAllowlist();}
+  catch(e){
+    await loadAllowlist();
+    showAllowlistMutationError(e);
+    toast(e.message,'error');
+  }
+  finally{setAllowlistMutationPending(false);}
 }
 {const ab=$('#allowAdd');if(ab)ab.onclick=createAllowEntry;}
 export async function loadApiKeys(){
-  try{const d=await api('/api/keys');const keys=d.keys||[];
+  const epoch=++apiKeysLoadEpoch;
+  try{const d=await api('/api/keys');if(epoch!==apiKeysLoadEpoch)return;const keys=d.keys||[];
     $('#keyList').innerHTML=keys.length?keys.map(k=>`<tr>
       <td style="font-family:var(--mono);color:var(--accent)">${esc(k.prefix)}…</td>
       <td>${esc(k.label)}</td>
@@ -51,8 +146,9 @@ export async function loadApiKeys(){
       :'<tr><td colspan="5" class="hint" style="padding:10px">No keys yet.</td></tr>';
     $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke),b.dataset.kp,b.dataset.kl));
   }catch(e){
+    if(epoch!==apiKeysLoadEpoch)return;
     const list=$('#keyList');if(!list)return;
-    list.innerHTML='<tr><td colspan="5" class="state-error-msg" style="padding:10px">Keys unavailable: '+esc(e.message||'request failed')+' <button type="button" class="btn xs" data-key-list-retry>Retry</button></td></tr>';
+    list.innerHTML='<tr><td colspan="5" class="state-error-msg" style="padding:10px"><span role="alert">Keys unavailable: '+esc(e.message||'request failed')+'</span> <button type="button" class="btn xs" data-key-list-retry>Retry</button></td></tr>';
     const retry=list.querySelector('[data-key-list-retry]');if(retry)retry.onclick=loadApiKeys;
   }
 }
@@ -65,7 +161,7 @@ export async function createApiKey(){
   const expiresIn=Number(($('#keyExpiry')||{}).value||0);
   apiKeyCreatePending=true;
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Creating…';}
-  try{const d=await api('/api/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label,scope,expiresIn})});
+  try{apiKeysLoadEpoch++;const d=await api('/api/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label,scope,expiresIn})});
     $('#keyNew').style.display='block';
     $('#keyNew').innerHTML='New '+esc(scope)+' token — copy now, it is shown only once:<br><b style="color:var(--accent);user-select:all">'+esc(d.token)+'</b>';
     $('#keyLabel').value='';loadApiKeys();
@@ -93,7 +189,10 @@ export async function revealSessionKey(){
 
 /* ---- Share (Cloudflare tunnel) + peer sync ---- */
 export async function loadShare(){
+  const epoch=++shareLoadEpoch;
   try{const s=await api('/api/share/status');
+    if(epoch!==shareLoadEpoch)return;
+    lastShareStatus=s;
     let html;
     if(s.running&&s.url){
       html='<div class="row" style="gap:8px;align-items:center"><span class="sev Low">live</span> <b style="color:var(--accent);user-select:all">'+esc(s.url)+'</b> <button class="btn" id="shareCopy" style="padding:2px 10px">Copy</button></div>'+
@@ -111,7 +210,7 @@ export async function loadShare(){
     $('#shareStatus').innerHTML=html;
     const start=$('#shareStart');
     start.style.display=s.running?'none':'inline-flex';
-    start.disabled=!s.running&&(!s.installed||!s.hasKeys);
+    start.disabled=shareActionPending||(!s.running&&(!s.installed||!s.hasKeys));
     const prereq=$('#sharePrereq');
     if(prereq){
       if(!s.hasKeys)prereq.innerHTML='Create an access key before sharing. <button class="btn xs" id="shareGoKeys">Go to Keys</button>';
@@ -120,30 +219,62 @@ export async function loadShare(){
       const go=$('#shareGoKeys');if(go)go.onclick=()=>$('#apiSub button[data-s="keys"]')?.click();
     }
     $('#shareStop').style.display=s.running?'inline-flex':'none';
+    $('#shareStop').disabled=shareActionPending;
     const cp=$('#shareCopy');if(cp)cp.onclick=()=>copyText(s.url,'Tunnel URL copied');
-  }catch(e){$('#shareStatus').textContent='Failed to load share status';}
+  }catch(e){if(epoch!==shareLoadEpoch)return;renderLoadError($('#shareStatus'),'Share status',e,loadShare,false);}
+}
+let shareActionPending=false;
+let shareActionEpoch=0,shareRefreshTimer=null;
+let lastShareStatus=null;
+function setShareActionPending(pending){
+  shareActionPending=pending;
+  const start=$('#shareStart'),stop=$('#shareStop');
+  if(start){start.disabled=pending||!!(lastShareStatus&&!lastShareStatus.running&&(!lastShareStatus.installed||!lastShareStatus.hasKeys));start.setAttribute('aria-busy',pending?'true':'false');}
+  if(stop){stop.disabled=pending;stop.setAttribute('aria-busy',pending?'true':'false');}
 }
 async function startShare(){
-  try{await api('/api/share/start',{method:'POST'});toast('tunnel starting…');setTimeout(loadShare,1500);loadShare();}
-  catch(e){toast(e.message);loadShare();}
+  if(shareActionPending)return;
+  clearTimeout(shareRefreshTimer);shareRefreshTimer=null;
+  const epoch=++shareActionEpoch;
+  setShareActionPending(true);shareLoadEpoch++;
+  try{
+    await api('/api/share/start',{method:'POST'});
+    if(epoch!==shareActionEpoch)return;
+    toast('tunnel starting…');
+    shareRefreshTimer=setTimeout(()=>{if(epoch!==shareActionEpoch)return;shareRefreshTimer=null;loadShare();},1500);
+  }catch(e){if(epoch===shareActionEpoch)toast(e.message);}
+  finally{if(epoch===shareActionEpoch){await loadShare();if(epoch===shareActionEpoch)setShareActionPending(false);}}
 }
 async function stopShare(){
-  try{await api('/api/share/stop',{method:'POST'});toast('tunnel stopped');loadShare();}
-  catch(e){toast(e.message);}
+  if(shareActionPending)return;
+  clearTimeout(shareRefreshTimer);shareRefreshTimer=null;
+  const epoch=++shareActionEpoch;
+  setShareActionPending(true);shareLoadEpoch++;
+  try{await api('/api/share/stop',{method:'POST'});if(epoch===shareActionEpoch)toast('tunnel stopped');}
+  catch(e){if(epoch===shareActionEpoch)toast(e.message);}
+  finally{if(epoch===shareActionEpoch){await loadShare();if(epoch===shareActionEpoch)setShareActionPending(false);}}
 }
 async function loadMergeStatus(){
   const el=$('#mergePresence'); if(!el) return;
+  const epoch=++mergeStatusLoadEpoch;
   try{
     const s=await api('/api/merge/status');
+    if(epoch!==mergeStatusLoadEpoch)return;
     if(!s.lastAt){el.textContent='No peer sync yet.';return;}
     const when=new Date(Number(s.lastAt)).toLocaleString();
     el.innerHTML=`Last <b>${esc(s.lastDir||'sync')}</b> ${s.lastLabel?('· '+esc(s.lastLabel)+' '):''}· ${esc(when)}${s.lastPeer?`<div class="hint font-mono">${esc(s.lastPeer)}</div>`:''}`;
-  }catch{el.textContent='';}
+  }catch(e){if(epoch!==mergeStatusLoadEpoch)return;renderLoadError(el,'Peer sync status',e,loadMergeStatus,false);}
+}
+function setPeerMergePending(pending){
+  peerMergePending=pending;
+  ['peerPull','peerPush','peerUrl','peerKey','peerLabel'].forEach(id=>{const control=$('#'+id);if(control){control.disabled=pending;control.setAttribute('aria-busy',pending&&id.startsWith('peer')&&['peerPull','peerPush'].includes(id)?'true':'false');}});
 }
 async function peerMerge(dir){
+  if(peerMergePending)return;
   const peerUrl=$('#peerUrl').value.trim(),key=$('#peerKey').value.trim(),label=$('#peerLabel').value.trim();
   if(!peerUrl||!key){toast('peer URL and key are required');return;}
   const verb=dir==='pull'?'Pull from':'Push to';
+  setPeerMergePending(true);
   $('#mergeResult').textContent='Previewing…';
   let previewMsg='';
   try{
@@ -157,20 +288,17 @@ async function peerMerge(dir){
         +(prev.note?` <span class="hint">${esc(prev.note)}</span>`:'');
     }
     $('#mergeResult').innerHTML=previewMsg;
-  }catch(e){
-    $('#mergeResult').innerHTML='<span style="color:var(--red)">preview: '+esc(e.message)+'</span>';
-    return;
-  }
-  if(!await uiConfirm(verb+' peer',previewMsg+'<br><br>'+verb+' <b>'+esc(peerUrl)+'</b>?',verb.split(' ')[0],'btn accent','var(--accent)')){
-    $('#mergeResult').textContent='Cancelled.';
-    return;
-  }
-  $('#mergeResult').textContent=verb.toLowerCase()+'ing…';
-  try{const r=await api('/api/merge/'+dir,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({peerUrl,key,label})});
+    if(!await uiConfirm(verb+' peer',previewMsg+'<br><br>'+verb+' <b>'+esc(peerUrl)+'</b>?',verb.split(' ')[0],'btn accent','var(--accent)')){
+      $('#mergeResult').textContent='Cancelled.';
+      return;
+    }
+    $('#mergeResult').textContent=verb.toLowerCase()+'ing…';
+    const r=await api('/api/merge/'+dir,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({peerUrl,key,label})});
     $('#mergeResult').innerHTML='<span style="color:var(--accent)">Done.</span> '+r.flowsAdded+' flows + '+r.findingsAdded+' findings added ('+r.flowsSkipped+'/'+r.findingsSkipped+' already present).';
     toast('sync complete');
     loadMergeStatus();
   }catch(e){$('#mergeResult').innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+  finally{setPeerMergePending(false);}
 }
 // Live tunnel URL arrival (SSE) refreshes the panel if it's open.
 window.addEventListener('interceptor:tunnel',()=>{const p=$('#apiShare');if(p&&p.style.display!=='none')loadShare();});
@@ -181,35 +309,56 @@ const pu=$('#peerPush');if(pu)pu.onclick=()=>peerMerge('push');
 
 /* ---- Project vault (always-on remote archive store) ---- */
 async function loadVaultPanel(){
+  const epoch=++vaultPanelLoadEpoch;
   const hint=$('#vaultCfgHint');
   try{
     const c=await api('/api/vault/config');
+    if(epoch!==vaultPanelLoadEpoch)return;
+    vaultConfigured=!!(c.url&&c.hasKey);
     const urlEl=$('#vaultUrl'); if(urlEl&&!urlEl.value) urlEl.value=c.url||'';
     if(hint) hint.textContent=c.hasKey?(c.url?'Configured → '+c.url:'Key saved — set URL'):'Save vault URL + token (iv_…) first.';
     const idEl=$('#vaultBackupId');
     if(idEl&&!idEl.value){
-      try{const p=await api('/api/project');idEl.placeholder=p.current||'project id';}catch{}
+      try{const p=await api('/api/project');if(epoch!==vaultPanelLoadEpoch)return;idEl.placeholder=p.current||'project id';}catch{}
+    }
+    if(epoch!==vaultPanelLoadEpoch)return;
+    setVaultActionPending(vaultActionPending);
+    if(!vaultConfigured){
+      vaultListLoadEpoch++;
+      const tb=$('#vaultList');
+      if(tb)tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px">Configure vault URL and token to list backups.</td></tr>';
+      return;
     }
     await refreshVaultList();
-  }catch(e){if(hint)hint.textContent=e.message||'';}
+  }catch(e){if(epoch!==vaultPanelLoadEpoch)return;if(hint)hint.textContent=e.message||'';}
 }
 async function saveVaultCfg(){
+  if(vaultActionPending)return;
   const url=$('#vaultUrl').value.trim();
   const key=$('#vaultKey').value.trim();
   const body={}; if(url) body.url=url; if(key) body.key=key;
   if(!url&&!key){toast('enter URL and/or key');return;}
+  setVaultActionPending(true);
   try{
+    vaultPanelLoadEpoch++;vaultListLoadEpoch++;
     await api('/api/vault/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    if(key) $('#vaultKey').value='';
+    if(key&&$('#vaultKey').value.trim()===key)$('#vaultKey').value='';
     toast('vault config saved');
     loadVaultPanel();
   }catch(e){toast(e.message);}
+  finally{setVaultActionPending(false);}
 }
 async function refreshVaultList(){
   const tb=$('#vaultList'); if(!tb) return;
+  if(!vaultConfigured){
+    tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px">Configure vault URL and token to list backups.</td></tr>';
+    return;
+  }
+  const epoch=++vaultListLoadEpoch;
   tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px">Loading…</td></tr>';
   try{
     const d=await api('/api/vault/remote');
+    if(epoch!==vaultListLoadEpoch)return;
     const projects=d.projects||[];
     tb.innerHTML=projects.length?projects.map(p=>{
       const id=esc(p.id||'');
@@ -226,34 +375,50 @@ async function refreshVaultList(){
     }).join(''):'<tr><td colspan="4" class="hint" style="padding:10px">No projects in vault yet.</td></tr>';
     tb.querySelectorAll('[data-vimp]').forEach(b=>b.onclick=()=>vaultImport(b.dataset.vimp));
     tb.querySelectorAll('[data-vmerge]').forEach(b=>b.onclick=()=>vaultMerge(b.dataset.vmerge));
+    if(vaultActionPending)setVaultActionPending(true);
   }catch(e){
+    if(epoch!==vaultListLoadEpoch)return;
     tb.innerHTML='<tr><td colspan="4" class="hint" style="padding:10px;color:var(--amber)">'+esc(e.message||'failed')+'</td></tr>';
   }
 }
+function setVaultActionPending(pending){
+  vaultActionPending=pending;
+  ['vaultBackup','vaultSaveCfg','vaultRefresh'].forEach(id=>{const button=$('#'+id);if(button){button.disabled=pending||(id!=='vaultSaveCfg'&&!vaultConfigured);button.setAttribute('aria-busy',pending&&id==='vaultBackup'?'true':'false');}});
+  document.querySelectorAll('#vaultList [data-vimp],#vaultList [data-vmerge]').forEach(button=>{button.disabled=pending;});
+}
 async function vaultBackup(){
+  if(vaultActionPending)return;
   const id=$('#vaultBackupId').value.trim();
   const label=$('#vaultBackupLabel').value.trim();
   const res=$('#vaultResult');
+  setVaultActionPending(true);
   if(res) res.textContent='Backing up…';
   try{
+    vaultListLoadEpoch++;
     const r=await api('/api/vault/backup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:id||undefined,label:label||undefined})});
     if(res) res.innerHTML='<span style="color:var(--accent)">Backed up</span> '+(id||'')+(r.rev!=null?' rev #'+r.rev:'')+(r.size!=null?' · '+fmtBytes(r.size):'');
     toast('vault backup complete');
     refreshVaultList();
   }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast(e.message);}
+  finally{setVaultActionPending(false);}
 }
 async function vaultImport(id){
-  const name=prompt('Import as new project name:', id);
-  if(!name) return;
+  if(vaultActionPending)return;
+  setVaultActionPending(true);
   const res=$('#vaultResult');
-  if(res) res.textContent='Importing…';
   try{
+    const name=await uiPrompt({title:'Import vault project',value:id,placeholder:'New project name'});
+    if(!name)return;
+    if(res) res.textContent='Importing…';
     const r=await api('/api/vault/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,name})});
     if(res) res.innerHTML='<span style="color:var(--accent)">Imported</span> as <b>'+esc(r.name||name)+'</b> — switch to it from Projects.';
     toast('imported '+ (r.name||name));
   }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast(e.message);}
+  finally{setVaultActionPending(false);}
 }
 async function vaultMerge(id){
+  if(vaultActionPending)return;
+  setVaultActionPending(true);
   const res=$('#vaultResult');
   if(res) res.textContent='Previewing…';
   let previewMsg='';
@@ -263,21 +428,17 @@ async function vaultMerge(id){
       +` (skip ${prev.flowsSkipped||0}/${prev.findingsSkipped||0} already present`
       +(prev.bodiesAdded?`; ${prev.bodiesAdded} new bodies`:'')+`).`;
     if(res) res.innerHTML=previewMsg;
-  }catch(e){
-    if(res) res.innerHTML='<span style="color:var(--red)">preview: '+esc(e.message)+'</span>';
-    return;
-  }
-  if(!await uiConfirm('Merge from vault',previewMsg+'<br><br>Merge <b>'+esc(id)+'</b> into the active project?','Merge','btn accent','var(--accent)')){
-    if(res) res.textContent='Cancelled.';
-    return;
-  }
-  if(res) res.textContent='Merging…';
-  try{
+    if(!await uiConfirm('Merge from vault',previewMsg+'<br><br>Merge <b>'+esc(id)+'</b> into the active project?','Merge','btn accent','var(--accent)')){
+      if(res) res.textContent='Cancelled.';
+      return;
+    }
+    if(res) res.textContent='Merging…';
     const r=await api('/api/vault/merge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
     if(res) res.innerHTML='<span style="color:var(--accent)">Done.</span> '+r.flowsAdded+' flows + '+r.findingsAdded+' findings added ('+r.flowsSkipped+'/'+r.findingsSkipped+' already present).';
     toast('vault merge complete');
     loadMergeStatus();
   }catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';}
+  finally{setVaultActionPending(false);}
 }
 {const vs=$('#vaultSaveCfg'); if(vs)vs.onclick=saveVaultCfg;}
 {const vb=$('#vaultBackup'); if(vb)vb.onclick=vaultBackup;}
@@ -286,16 +447,32 @@ async function vaultMerge(id){
 export async function revokeKey(id,prefix,label){
   const who=(prefix?esc(prefix)+'…':'')+(label?' <b>'+esc(label)+'</b>':'');
   if(!await uiConfirm('Revoke API key',`Revoke key ${who||'#'+id}? Any client using it stops working immediately, and this can't be undone.`,'Revoke','btn danger','var(--red)'))return;
-  try{await api('/api/keys/'+id,{method:'DELETE'});loadApiKeys();toast('key revoked');}catch(e){toast(e.message);}
+  try{apiKeysLoadEpoch++;await api('/api/keys/'+id,{method:'DELETE'});loadApiKeys();toast('key revoked');}catch(e){toast(e.message);}
 }
 $('#keyCreate').onclick=createApiKey;
 export async function loadReference(){
-  try{const d=await api('/api/reference');$('#apiBase').textContent='Base URL: '+d.baseUrl;
+  const epoch=++restReferenceLoadEpoch;
+  const loadState=$('#restLoadState');
+  const hadData=restReferenceLoaded;
+  if(loadState){
+    if(hadData){loadState.style.display='block';loadState.textContent='Refreshing REST reference…';}
+    else loadState.style.display='none';
+  }
+  if(hadData)markRESTReferenceStale(true);
+  try{const d=await api('/api/reference');
+    if(epoch!==restReferenceLoadEpoch)return;
+    $('#apiBase').textContent='Base URL: '+d.baseUrl;
     $('#restList').innerHTML=(d.routes||[]).map(r=>`<tr>
       <td style="color:${methodColor(r.method)};font-weight:700;font-family:var(--mono)">${esc(r.method)}</td>
       <td style="font-family:var(--mono);color:var(--fg)">${esc(r.path)}</td>
       <td style="color:var(--fg2)">${esc(r.desc)}</td></tr>`).join('');
-  }catch(e){}
+    restReferenceLoaded=true;markRESTReferenceStale(false);
+    if(loadState)loadState.style.display='none';
+  }catch(e){
+    if(epoch!==restReferenceLoadEpoch)return;
+    markRESTReferenceStale(hadData);
+    renderLoadError($('#restLoadState'),'REST reference',e,loadReference,hadData);
+  }
 }
 export async function loadMCP(){
   try{const m=await api('/api/mcp');
@@ -322,5 +499,5 @@ export async function loadMCP(){
       <table class="rules-tbl"><thead><tr><th style="width:160px">Tool</th><th>Description</th></tr></thead><tbody>${tools}</tbody></table>`;
     const cpH=document.getElementById('mcpCopyHttp'); if(cpH) cpH.onclick=()=>copyText(httpCfg,'Cursor MCP config copied');
     const cpS=document.getElementById('mcpCopyStdio'); if(cpS) cpS.onclick=()=>copyText(stdioCfg,'stdio MCP config copied');
-  }catch(e){}
+  }catch(e){renderLoadError($('#mcpBody'),'MCP reference',e,loadMCP,false);}
 }

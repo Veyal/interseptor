@@ -1,4 +1,4 @@
-import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
 import { prefersReducedMotion } from './motion.js';
@@ -53,8 +53,10 @@ function renderHostHdrList(hostHeaders) {
   const list = $('#hostHdrList');
   if (!list) return;
   list.innerHTML = '';
-  if (!hostHeaders || !Object.keys(hostHeaders).length) return;
-  for (const [host, hdrs] of Object.entries(hostHeaders)) {
+  const entries = Array.isArray(hostHeaders)
+    ? hostHeaders.map(row => [row?.host || '', row?.headers || ''])
+    : Object.entries(hostHeaders || {});
+  for (const [host, hdrs] of entries) {
     list.appendChild(makeHostHdrRow(host, hdrs));
   }
 }
@@ -65,9 +67,241 @@ function makeHostHdrRow(host, hdrs) {
   row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
   row.innerHTML = `<input class="btn host-hdr-host" aria-label="Host override hostname" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
     `<textarea class="host-hdr-headers" aria-label="Headers for host override" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
-    `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override">×</button>`;
-  row.querySelector('.host-hdr-del').onclick = () => row.remove();
+    `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override" aria-label="Remove host header override for ${escAttr(host||'new host')}">×</button>`;
+  row.querySelector('.host-hdr-del').onclick = () => {
+    row.remove();
+    markSettingsDirty($('#hostHdrList'));
+  };
   return row;
+}
+
+// Live settings.refresh events can arrive while an operator is editing. Keep
+// the dirty DOM values keyed by stable control IDs and snapshot dynamic rows
+// separately, so a response never silently wins over in-progress work.
+function markSettingsDirty(el,edited=true) {
+  if (el) {
+    el.dataset.settingsDirty = '1';
+    if(edited)el.dataset.settingsEditGeneration = String((Number(el.dataset.settingsEditGeneration)||0)+1);
+  }
+}
+
+function settingsEditGeneration(el) {
+  return Number(el?.dataset.settingsEditGeneration)||0;
+}
+
+function settingsEditOwned(el,generation,value) {
+  if(!el||settingsEditGeneration(el)!==generation)return false;
+  return value===undefined||el.value===value;
+}
+
+function clearSettingsDirty(ids=[], lists=[]) {
+  ids.forEach(id => $('#'+id)?.removeAttribute('data-settings-dirty'));
+  lists.forEach(sel => $(sel)?.removeAttribute('data-settings-dirty'));
+}
+
+let settingsLoadEpoch=0;
+let settingsReconcileTimer=null;
+const settingsMutationLanes=new Map();
+const settingsAcknowledgedValues=new Map();
+let settingsMutationRevision=0;
+
+function scheduleSettingsReconcile() {
+  if(settingsReconcileTimer!==null)clearTimeout(settingsReconcileTimer);
+  settingsReconcileTimer=setTimeout(()=>{
+    settingsReconcileTimer=null;
+    void loadSettings();
+  },0);
+}
+
+function invalidateSettingsLoads({reconcile=true}={}) {
+  settingsLoadEpoch++;
+  const loadState=$('#settingsLoadState');
+  if(loadState?.textContent==='Loading Settings…')loadState.style.display='none';
+  if(reconcile)scheduleSettingsReconcile();
+}
+
+export async function saveSettingsPatch(patch,{invalidate=true,reconcile=true}={}) {
+  const result=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(patch)});
+  if(invalidate)invalidateSettingsLoads({reconcile});
+  return result;
+}
+
+function settingsMutationValue(key,fallback,loadRevision) {
+  const lane=settingsMutationLanes.get(key);
+  const mutation=lane?.pending||lane?.active;
+  if(mutation)return mutation.value;
+  const acknowledged=settingsAcknowledgedValues.get(key);
+  return acknowledged&&acknowledged.revision>loadRevision?acknowledged.value:fallback;
+}
+
+function setSettingsMutationBusy(lane,mutation) {
+  const control=mutation.control;
+  if(!control)return;
+  if(!lane.controls.has(control))lane.controls.set(control,!!control.disabled);
+  lane.lockControl=lane.lockControl||!!mutation.lockControl;
+  lane.controls.forEach((_wasDisabled,current)=>{
+    current.setAttribute('aria-busy','true');
+    if(lane.lockControl)current.disabled=true;
+  });
+}
+
+function clearSettingsMutationBusy(lane) {
+  lane.controls.forEach((wasDisabled,control)=>{
+    control.removeAttribute('aria-busy');
+    if(lane.lockControl)control.disabled=wasDisabled;
+  });
+}
+
+function queueSettingsMutation(key,value,options) {
+  let lane=settingsMutationLanes.get(key);
+  if(!lane){
+    lane={generation:0,running:false,pending:null,active:null,controls:new Map(),lockControl:false};
+    settingsMutationLanes.set(key,lane);
+  }
+  if(lane.pending)lane.pending.resolve(false);
+  const mutation={...options,value,generation:++lane.generation,revision:++settingsMutationRevision,resolve:null};
+  const completion=new Promise(resolve=>{mutation.resolve=resolve;});
+  lane.pending=mutation;
+  setSettingsMutationBusy(lane,mutation);
+  if(!lane.running)void drainSettingsMutation(key,lane);
+  return completion;
+}
+
+async function drainSettingsMutation(key,lane) {
+  lane.running=true;
+  while(lane.pending){
+    const mutation=lane.pending;
+    lane.pending=null;
+    lane.active=mutation;
+    let result,error;
+    try{result=await mutation.request(mutation.value);}
+    catch(err){error=err;}
+    const latest=!lane.pending&&lane.active===mutation&&lane.generation===mutation.generation;
+    if(!latest){mutation.resolve(false);continue;}
+    lane.active=null;
+    lane.running=false;
+    settingsMutationLanes.delete(key);
+    clearSettingsMutationBusy(lane);
+    try{
+      if(error)mutation.failure?.(error,mutation.value);
+      else{
+        settingsAcknowledgedValues.set(key,{revision:++settingsMutationRevision,value:mutation.value});
+        mutation.success?.(result,mutation.value);
+      }
+    }finally{mutation.resolve(!error);}
+    return;
+  }
+  lane.active=null;
+  lane.running=false;
+  settingsMutationLanes.delete(key);
+  clearSettingsMutationBusy(lane);
+}
+
+function saveBooleanSetting(key,value,options) {
+  return queueSettingsMutation(key,value,{
+    control:options.control,
+    lockControl:options.lockControl,
+    request:current=>saveSettingsPatch({[key]:current},{invalidate:false}),
+    success:(_result,current)=>options.success?.(current),
+    failure:(error,current)=>options.failure?.(error,current),
+  });
+}
+
+function collectHostHeaderRows() {
+  return [...document.querySelectorAll('.host-hdr-row')].map(row => ({
+    host: row.querySelector('.host-hdr-host')?.value || '',
+    headers: row.querySelector('.host-hdr-headers')?.value || '',
+  }));
+}
+
+function snapshotDirtySettings() {
+  const snapshot = {fields: {}, proxyListeners: null, hostHeaders: null, deviceProxyMode: null};
+  document.querySelectorAll('#panel-settings [data-settings-dirty="1"]').forEach(el => {
+    if (el.type === 'file') return;
+    if (el.id && el.id !== 'proxyListenersList' && el.id !== 'hostHdrList') {
+      snapshot.fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    }
+  });
+  if ($('#proxyListenersList')?.dataset.settingsDirty === '1') snapshot.proxyListeners=collectProxyAddrs();
+  if ($('#hostHdrList')?.dataset.settingsDirty === '1') snapshot.hostHeaders=collectHostHeaderRows();
+  if ($('#deviceProxyModeSeg')?.dataset.settingsDirty === '1') {
+    const selected=$('#deviceProxyModeSeg').querySelector('button.on[data-mode]');
+    if(selected)snapshot.deviceProxyMode=selected.dataset.mode;
+  }
+  return snapshot;
+}
+
+function restoreDirtySettings(snapshot) {
+  if (!snapshot) return;
+  Object.entries(snapshot.fields || {}).forEach(([id, value]) => {
+    const el = $('#'+id);
+    if (!el) return;
+    if (el.type === 'file') return;
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value;
+    markSettingsDirty(el,false);
+  });
+  if (snapshot.proxyListeners) {
+    renderProxyListeners(snapshot.proxyListeners);
+    markSettingsDirty($('#proxyListenersList'),false);
+  }
+  if (snapshot.hostHeaders) {
+    renderHostHdrList(snapshot.hostHeaders);
+    markSettingsDirty($('#hostHdrList'),false);
+  }
+  if(snapshot.deviceProxyMode){
+    const seg=$('#deviceProxyModeSeg');
+    if(seg){
+      seg.querySelectorAll('button[data-mode]').forEach(button=>setSeg(button,button.dataset.mode===snapshot.deviceProxyMode));
+      markSettingsDirty(seg,false);
+    }
+    const manual=$('#deviceProxyManualField');
+    if(manual)manual.style.display=snapshot.deviceProxyMode==='manual'?'':'none';
+  }
+}
+
+function restoreDirtySettingsDerived(snapshot) {
+  const fields=snapshot?.fields||{};
+  const dirty=id=>Object.prototype.hasOwnProperty.call(fields,id);
+  if(dirty('setOobEnabled')){
+    state.oobEnabled=!!$('#setOobEnabled')?.checked;
+    applyOobDisabledUI();
+  }
+  if(['setUpstreamScheme','setUpstreamHost','setUpstreamPort','setUpstreamUser','setUpstreamPassword','setUpstreamCA'].some(dirty)){
+    renderUpstreamProxyFields($('#setUpstreamScheme').value);
+  }
+  if(dirty('originTLSVerifyMode'))setOriginTLSVerify($('#originTLSVerifyMode').value==='strict');
+  if(dirty('tlsBypassList'))updateBypassCount();
+  if(dirty('originTLSVerifyBypassList'))updateOriginTLSVerifyBypassCount();
+}
+
+function runSettingsAction(button, action) {
+  if (!button || button.dataset.pending === '1') return Promise.resolve(false);
+  const wasDisabled = button.disabled;
+  button.dataset.pending = '1';
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  return Promise.resolve().then(action).finally(() => {
+    button.dataset.pending = '0';
+    button.disabled = wasDisabled;
+    button.removeAttribute('aria-busy');
+  });
+}
+
+const settingsBody = $('#panel-settings');
+if (settingsBody) {
+  settingsBody.addEventListener('input', event => {
+    const el = event.target.closest('input,select,textarea');
+    if (el) markSettingsDirty(el);
+    const list = event.target.closest('#proxyListenersList,#hostHdrList');
+    if (list) markSettingsDirty(list);
+  });
+  settingsBody.addEventListener('change', event => {
+    const el = event.target.closest('input,select,textarea');
+    if (el) markSettingsDirty(el);
+    const list = event.target.closest('#proxyListenersList,#hostHdrList');
+    if (list) markSettingsDirty(list);
+  });
 }
 
 function collectHostHeaders() {
@@ -83,6 +317,7 @@ function collectHostHeaders() {
 if ($('#addHostHdrBtn')) $('#addHostHdrBtn').onclick = () => {
   const row = makeHostHdrRow('', '');
   $('#hostHdrList').appendChild(row);
+  markSettingsDirty($('#hostHdrList'));
   row.querySelector('.host-hdr-host').focus();
 };
 
@@ -128,10 +363,17 @@ function renderHostSelect(sel,selectedHost){
   syncUiSelectStyles(sel);
 }
 
-async function loadNetworkHosts(){
-  try{networkHosts=await api('/api/network/hosts');}catch(e){networkHosts=null;}
+async function loadNetworkHosts({deferRender=false}={}){
+  let result=null;
+  try{result=await api('/api/network/hosts');}catch(e){}
+  if(deferRender)return result;
+  networkHosts=result;
   $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
   $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
+  // A live settings refresh may finish while the operator is editing the
+  // control bind. Leave that select untouched; loadSettings snapshots the
+  // dirty value after this request completes.
+  if ($('#setControlHost')?.dataset.settingsDirty === '1' || $('#setControlPort')?.dataset.settingsDirty === '1') return;
   renderHostSelect($('#setControlHost'),parseListenAddr(state.controlAddr).host);
 }
 
@@ -146,7 +388,7 @@ function makeProxyListenerRow(addr){
   renderHostSelect(row.querySelector('.proxy-host-select'),host);
   row.querySelector('.proxy-listener-del').onclick=()=>{
     const list=$('#proxyListenersList');
-    if(list&&list.querySelectorAll('.proxy-listener-row').length>1)row.remove();
+    if(list&&list.querySelectorAll('.proxy-listener-row').length>1){row.remove();markSettingsDirty(list);}
     else toast('at least one proxy listener required');
   };
   return row;
@@ -182,6 +424,7 @@ if($('#addProxyListenerBtn'))$('#addProxyListenerBtn').onclick=()=>{
   const suggested=networkHosts?.suggested||'127.0.0.1';
   const port=parseListenAddr(state.proxyAddr).port||'8080';
   list.appendChild(makeProxyListenerRow(joinListenAddr(suggested,port)));
+  markSettingsDirty(list);
 };
 
 function renderDeviceProxyUI(ep){
@@ -210,37 +453,70 @@ function renderDeviceProxyUI(ep){
     resolved.innerHTML=endpoint?`Resolved: <b style="font-family:var(--mono);color:var(--accent)">${esc(endpoint)}</b>${src}`:'';
   }
   const seg=$('#deviceProxyModeSeg');
-  if(seg)seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.mode===mode));
+  if(seg)seg.querySelectorAll('button').forEach(b=>setSeg(b,b.dataset.mode===mode));
   const manual=$('#deviceProxyManualField');
   if(manual)manual.style.display=mode==='manual'?'':'none';
   if($('#deviceProxyManualHost')&&ep?.manualHost!=null)$('#deviceProxyManualHost').value=ep.manualHost;
 }
 
-async function loadDeviceProxyEndpoint(){
+function snapshotDeviceProxyDirty(){
+  const snapshot=snapshotDirtySettings(),fields={};
+  if(Object.prototype.hasOwnProperty.call(snapshot.fields,'deviceProxyManualHost'))fields.deviceProxyManualHost=snapshot.fields.deviceProxyManualHost;
+  return {fields,proxyListeners:null,hostHeaders:null,deviceProxyMode:snapshot.deviceProxyMode};
+}
+
+let deviceProxyLoadEpoch=0;
+let deviceProxyMutationPending=false;
+async function loadDeviceProxyEndpoint({deferRender=false}={}){
+  const epoch=++deviceProxyLoadEpoch;
   try{
     const ep=await api('/api/proxy/device-endpoint');
-    renderDeviceProxyUI(ep);
+    if(epoch!==deviceProxyLoadEpoch)return null;
+    if(deviceProxyMutationPending)return null;
+    if(!deferRender){
+      const dirty=snapshotDeviceProxyDirty();
+      renderDeviceProxyUI(ep);
+      restoreDirtySettings(dirty);
+    }
+    return ep;
   }catch(e){/* non-fatal */}
+  return null;
 }
 
 async function saveDeviceProxyEndpoint(){
   const mode=$('#deviceProxyModeSeg')?.querySelector('.on')?.dataset.mode||'auto';
   const host=($('#deviceProxyManualHost')?.value||'').trim();
+  deviceProxyMutationPending=true;
+  deviceProxyLoadEpoch++;
+  invalidateSettingsLoads({reconcile:false});
   try{
     const ep=await api('/api/proxy/device-endpoint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,host})});
+    deviceProxyLoadEpoch++;
+    const dirty=snapshotDeviceProxyDirty();
+    const currentMode=$('#deviceProxyModeSeg')?.querySelector('.on')?.dataset.mode||'auto';
+    const currentHost=($('#deviceProxyManualHost')?.value||'').trim();
     renderDeviceProxyUI(ep);
+    if(currentMode!==mode||currentHost!==host)restoreDirtySettings(dirty);
+    else clearSettingsDirty(['deviceProxyManualHost','deviceProxyModeSeg']);
     toast('device proxy → '+ep.endpoint+(ep.mode==='auto'?' (auto)':' (manual)'));
-  }catch(e){toast(e.message);}
+  }catch(e){
+    deviceProxyLoadEpoch++;
+    toast(e.message);
+  }finally{
+    deviceProxyMutationPending=false;
+    invalidateSettingsLoads({reconcile:true});
+  }
 }
 
 if($('#deviceProxyModeSeg'))$('#deviceProxyModeSeg').querySelectorAll('button').forEach(b=>{
   b.onclick=()=>{
-    $('#deviceProxyModeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    $('#deviceProxyModeSeg').querySelectorAll('button').forEach(x=>setSeg(x,x===b));
+    markSettingsDirty($('#deviceProxyModeSeg'));
     const manual=$('#deviceProxyManualField');
     if(manual)manual.style.display=b.dataset.mode==='manual'?'':'none';
   };
 });
-if($('#saveDeviceProxyBtn'))$('#saveDeviceProxyBtn').onclick=saveDeviceProxyEndpoint;
+if($('#saveDeviceProxyBtn'))$('#saveDeviceProxyBtn').onclick=()=>runSettingsAction($('#saveDeviceProxyBtn'),saveDeviceProxyEndpoint);
 if($('#deviceProxyChip'))$('#deviceProxyChip').onclick=()=>openSettingsProxy();
 
 export { loadDeviceProxyEndpoint };
@@ -265,17 +541,20 @@ function syncSettingsNavA11y(active) {
       if (!sec.id) sec.id = 'settings-section-'+button.dataset.sec;
       button.setAttribute('aria-controls', sec.id);
     }
+    // Section navigation is a page-navigation list, not a toggle group. Keep
+    // stale markup/runtime state from exposing the wrong ARIA model.
+    button.removeAttribute('aria-pressed');
     button.setAttribute('aria-current', button === active ? 'page' : 'false');
   });
 }
 
 $$('#setNav button').forEach(b=>b.onclick=()=>{
-  $$('#setNav button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
+  $$('#setNav button').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   syncSettingsNavA11y(b);
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
-  if(b.dataset.sec==='project'&&!retentionLoaded){retentionLoaded=true;loadRetention();}
+  if(b.dataset.sec==='project'){retentionLoaded=true;loadRetention();}
   if(b.dataset.sec==='tls'){import('./tlsdiag.js').then(m=>m.loadTrafficDiagnosis());}
   if(b.dataset.sec==='devices'){loadAndroid();loadIOS();loadIOSSsh();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
@@ -316,6 +595,36 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on')||document.queryS
 
 /* ---- settings ---- */
 let apiLoaded=false;
+let projectDataLoaded=false;
+let projectModalDataLoaded=false;
+let projectLoadEpoch=0;
+let projectModalLoadEpoch=0;
+let projectPathFlavor='posix';
+
+function setProjectControlsDisabled(disabled,title=''){
+  ['projSelect','projSwitchBtn','projNewBtn'].forEach(id=>{
+    const el=$('#'+id);if(!el)return;
+    el.disabled=!!disabled;
+    if(title)el.title=title;else el.removeAttribute('title');
+  });
+}
+function markProjectDataStale(stale){
+  const sel=$('#projSelect');
+  if(!sel)return;
+  if(stale){
+    sel.dataset.stale='true';
+    sel.setAttribute('aria-label','Saved project (stale — retry to refresh)');
+  }else{
+    sel.removeAttribute('data-stale');
+    sel.setAttribute('aria-label','Saved project');
+  }
+}
+function setProjectModalActionsDisabled(disabled){
+  const b=$('#pmNewBtn');if(!b)return;
+  b.disabled=!!disabled;
+  if(disabled)b.title='Project data is stale — retry before creating or opening a project';
+  else b.removeAttribute('title');
+}
 
 function settingsLoadState(){
   let el=$('#settingsLoadState');if(el)return el;
@@ -341,22 +650,38 @@ export function setOriginTLSVerify(on){
 $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
   const mode=$('#originTLSVerifyMode');
   const on=mode.value==='strict';
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerify:on})});
-    setOriginTLSVerify(on);
-    toast(on?'Strict origin certificate verification enabled':'Compatibility mode enabled');
-  }catch(e){
-    toast('origin TLS: '+e.message);
-    loadSettings();
-  }
+  return saveBooleanSetting('originTLSVerify',on,{
+    control:mode,
+    success:current=>{
+      clearSettingsDirty(['originTLSVerifyMode']);
+      setOriginTLSVerify(current);
+      toast(current?'Strict origin certificate verification enabled':'Compatibility mode enabled');
+    },
+    failure:e=>{
+      toast('origin TLS: '+e.message);
+      clearSettingsDirty(['originTLSVerifyMode']);
+      loadSettings();
+    },
+  });
 });
-export async function loadSettings(){const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
-  try{const s=await api('/api/settings');setOriginTLSVerify(!!s.originTLSVerify);state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
-  await loadNetworkHosts();
+export async function loadSettings(){const epoch=++settingsLoadEpoch;const settingsRevision=settingsMutationRevision;const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
+  try{const s=await api('/api/settings');
+  if(epoch!==settingsLoadEpoch)return;
+  const networkHostsResult=await loadNetworkHosts({deferRender:true});
+  if(epoch!==settingsLoadEpoch)return;
+  const deviceProxyEndpoint=await loadDeviceProxyEndpoint({deferRender:true});
+  if(epoch!==settingsLoadEpoch)return;
+  const dirty=snapshotDirtySettings();
+  networkHosts=networkHostsResult;
+  $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
+  $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
+  setOriginTLSVerify(settingsMutationValue('originTLSVerify',!!s.originTLSVerify,settingsRevision));state.proxyAddr=s.proxyAddr;
+  if(!deviceProxyMutationPending){state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';}
+  state.controlAddr=s.controlAddr||'127.0.0.1:9966';
   renderProxyListeners(s.proxyAddrs||[s.proxyAddr]);
   if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
   $('#proxyAddr').textContent=s.proxyAddr;
-  await loadDeviceProxyEndpoint();
+  if(deviceProxyEndpoint)renderDeviceProxyUI(deviceProxyEndpoint);
   $('#controlAddr').textContent=state.controlAddr;
   const c=parseListenAddr(state.controlAddr);
   if($('#setControlPort'))$('#setControlPort').value=c.port;
@@ -365,13 +690,13 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
    if($('#setUpstreamCA')&&document.activeElement!==$('#setUpstreamCA'))$('#setUpstreamCA').value=s.upstreamProxyCA||'';
    parseUpstreamProxyURL(s.upstreamProxy||'');
-  state.oobEnabled=!!s.oobEnabled;
+  state.oobEnabled=settingsMutationValue('oobEnabled',!!s.oobEnabled,settingsRevision);
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
-  if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
-  if($('#suppressTelemetryToggle'))setSuppressTelemetry(s.suppressBrowserTelemetry!==false);
-  if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(s.suppressAndroidTelemetry!==false);
-  if($('#invisibleProxyToggle'))setInvisibleProxy(!!s.invisibleProxy);
-  if($('#autoBypassToggle'))setAutoBypass(!!s.autoBypassOnPinFailure);
+  if($('#capScopeToggle'))setCapScope(settingsMutationValue('captureScopeOnly',!!s.captureScopeOnly,settingsRevision));
+  if($('#suppressTelemetryToggle'))setSuppressTelemetry(settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision));
+  if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision));
+  if($('#invisibleProxyToggle'))setInvisibleProxy(settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision));
+  if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
    const bl=$('#tlsBypassList');
@@ -380,9 +705,12 @@ export async function loadSettings(){const loadState=settingsLoadState();if(load
    if(ol&&document.activeElement!==ol){ol.value=(s.originTLSVerifyBypassHosts||[]).join('\n');updateOriginTLSVerifyBypassCount();}
 
   applyOobDisabledUI();
-  state.intercept.enabled=s.interceptEnabled;if(loadState)loadState.style.display='none';}
-  catch(e){renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
-  finally{if(loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
+  state.intercept.enabled=s.interceptEnabled;
+  restoreDirtySettings(dirty);
+  restoreDirtySettingsDerived(dirty);
+  if(loadState)loadState.style.display='none';}
+  catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  finally{if(epoch===settingsLoadEpoch&&loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){
   const on=!!state.oobEnabled;
@@ -393,64 +721,116 @@ export function applyOobDisabledUI(){
 }
 
 $('#setOobEnabled')&&($('#setOobEnabled').onchange=async()=>{
-  const enabled=$('#setOobEnabled').checked;
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({oobEnabled:enabled})});
-    state.oobEnabled=enabled;
-    applyOobDisabledUI();
-    toast(enabled?'OOB catcher enabled':'OOB catcher disabled');
-  }catch(e){toast(e.message);loadSettings();}
+  const control=$('#setOobEnabled');
+  const enabled=control.checked;
+  return saveBooleanSetting('oobEnabled',enabled,{
+    control,
+    success:current=>{
+      state.oobEnabled=current;
+      control.checked=current;
+      clearSettingsDirty(['setOobEnabled']);
+      applyOobDisabledUI();
+      toast(current?'OOB catcher enabled':'OOB catcher disabled');
+    },
+    failure:e=>{toast(e.message);clearSettingsDirty(['setOobEnabled']);loadSettings();},
+  });
 });
 
 export function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Saving in-scope only':'Saving all traffic';}
 $('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
-  const on=!$('#capScopeToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
-  catch(e){toast('capture: '+e.message);}
+  const control=$('#capScopeToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('captureScopeOnly',on,{control,lockControl:true,
+    success:current=>{setCapScope(current);toast(current?'Now saving only in-scope traffic':'Now saving all traffic');},
+    failure:e=>{toast('capture: '+e.message);loadSettings();},
+  });
 });
 export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser telemetry':'Allowing browser telemetry';}
 $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressBrowserTelemetry:on})});setSuppressTelemetry(on);toast(on?'Browser telemetry suppressed':'Browser telemetry now visible in history');}
-  catch(e){toast('telemetry: '+e.message);}
+  const control=$('#suppressTelemetryToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('suppressBrowserTelemetry',on,{control,lockControl:true,
+    success:current=>{setSuppressTelemetry(current);toast(current?'Browser telemetry suppressed':'Browser telemetry now visible in history');},
+    failure:e=>{toast('telemetry: '+e.message);loadSettings();},
+  });
 });
 export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
 $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressAndroidTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressAndroidTelemetry:on})});setSuppressAndroidTelemetry(on);toast(on?'Android telemetry suppressed':'Android telemetry now visible in history');}
-  catch(e){toast('android telemetry: '+e.message);}
+  const control=$('#suppressAndroidTelemetryToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('suppressAndroidTelemetry',on,{control,lockControl:true,
+    success:current=>{setSuppressAndroidTelemetry(current);toast(current?'Android telemetry suppressed':'Android telemetry now visible in history');},
+    failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
+  });
 });
 export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
 $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
-  const on=!$('#invisibleProxyToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({invisibleProxy:on})});setInvisibleProxy(on);toast(on?'Invisible proxy enabled':'Invisible proxy disabled');}
-  catch(e){toast('invisible: '+e.message);}
+  const control=$('#invisibleProxyToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('invisibleProxy',on,{control,lockControl:true,
+    success:current=>{setInvisibleProxy(current);toast(current?'Invisible proxy enabled':'Invisible proxy disabled');},
+    failure:e=>{toast('invisible: '+e.message);loadSettings();},
+  });
 });
 
 // ---- TLS passthrough / SSL-pinning bypass ----
 export function setAutoBypass(on){const b=$('#autoBypassToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Auto-bypass on pinning failure is on':'Auto-bypass on pinning failure is off';}
+const settingsListWriteTails=new Map();
+function queueSettingsListWrite(key,action){
+  const previous=settingsListWriteTails.get(key)||Promise.resolve();
+  const current=previous.catch(()=>{}).then(action);
+  settingsListWriteTails.set(key,current);
+  return current.finally(()=>{if(settingsListWriteTails.get(key)===current)settingsListWriteTails.delete(key);});
+}
 function bypassHostsFromText(){return ($('#tlsBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
 function updateBypassCount(){const el=$('#tlsBypassCount');if(el)el.textContent=(n=>n?n+' domain'+(n>1?'s':'')+' passed through':'No passthrough domains')(bypassHostsFromText().length);}
 $('#tlsBypassList')&&($('#tlsBypassList').addEventListener('input',updateBypassCount));
 $('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
-  const on=!$('#autoBypassToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({autoBypassOnPinFailure:on})});setAutoBypass(on);toast(on?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');}
-  catch(e){toast('auto-bypass: '+e.message);}
+  const control=$('#autoBypassToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('autoBypassOnPinFailure',on,{control,lockControl:true,
+    success:current=>{setAutoBypass(current);toast(current?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');},
+    failure:e=>{toast('auto-bypass: '+e.message);loadSettings();},
+  });
 });
-$('#tlsBypassSave')&&($('#tlsBypassSave').onclick=async()=>{
+$('#tlsBypassSave')&&($('#tlsBypassSave').onclick=()=>runSettingsAction($('#tlsBypassSave'),async()=>{
+  const list=$('#tlsBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
   const hosts=bypassHostsFromText();
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tlsBypassHosts:hosts})});
-    if($('#tlsBypassList'))$('#tlsBypassList').value=hosts.join('\n');updateBypassCount();
-    toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
+  try{const savedHosts=await queueSettingsListWrite('tlsBypassHosts',async()=>{
+      const next=hosts;
+      await saveSettingsPatch({tlsBypassHosts:next});
+      return next;
+    });
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=savedHosts.join('\n');clearSettingsDirty(['tlsBypassList']);}updateBypassCount();
+    toast(savedHosts.length?('Passing through '+savedHosts.length+' domain'+(savedHosts.length>1?'s':'')):'Passthrough list cleared');}
   catch(e){toast('passthrough: '+e.message);}
-});
+}));
+export function addTLSBypassHosts(hosts){
+  const additions=[...new Set((hosts||[]).map(h=>String(h).trim().toLowerCase()).filter(Boolean))];
+  if(!additions.length)return Promise.resolve([]);
+  return queueSettingsListWrite('tlsBypassHosts',async()=>{
+    const current=await api('/api/settings');
+    const merged=[...new Set([...(current.tlsBypassHosts||[]),...additions])];
+    await saveSettingsPatch({tlsBypassHosts:merged});
+    return merged;
+  });
+}
 function originTLSVerifyBypassHostsFromText(){return ($('#originTLSVerifyBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
 function updateOriginTLSVerifyBypassCount(){const el=$('#originTLSVerifyBypassCount');if(el)el.textContent=(n=>n?n+' verification exception'+(n>1?'s':''):'No verification exceptions')(originTLSVerifyBypassHostsFromText().length);}
 $('#originTLSVerifyBypassList')&&($('#originTLSVerifyBypassList').addEventListener('input',updateOriginTLSVerifyBypassCount));
-async function saveOriginTLSVerifyExceptions(hosts,message){
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerifyBypassHosts:hosts})});
-    if($('#originTLSVerifyBypassList'))$('#originTLSVerifyBypassList').value=hosts.join('\n');updateOriginTLSVerifyBypassCount();
-    toast(message||(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared'));
+async function saveOriginTLSVerifyExceptions(hosts,message,{merge=false}={}){
+  const list=$('#originTLSVerifyBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
+  try{const savedHosts=await queueSettingsListWrite('originTLSVerifyBypassHosts',async()=>{
+      let next=hosts;
+      if(merge){
+        const current=await api('/api/settings');
+        next=[...new Set([...(current.originTLSVerifyBypassHosts||[]),...hosts])];
+      }
+      await saveSettingsPatch({originTLSVerifyBypassHosts:next});
+      return next;
+    });
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=savedHosts.join('\n');clearSettingsDirty(['originTLSVerifyBypassList']);}updateOriginTLSVerifyBypassCount();
+    toast(message||(savedHosts.length?('Saved '+savedHosts.length+' origin verification exception'+(savedHosts.length>1?'s':'')):'Verification exceptions cleared'));
     return true;
   }catch(e){toast('origin TLS: '+e.message,'error');return false;}
 }
@@ -473,7 +853,7 @@ async function addOriginTLSVerifyException(raw){
   if(!host){toast('Enter a valid host, IP address, or *.example.com pattern','error');return false;}
   const hosts=originTLSVerifyBypassHostsFromText();
   if(!hosts.includes(host))hosts.push(host);
-  const saved=await saveOriginTLSVerifyExceptions(hosts,'Origin TLS exception added for '+host);
+  const saved=await saveOriginTLSVerifyExceptions(hosts,'Origin TLS exception added for '+host,{merge:true});
   if(saved&&$('#originTLSVerifyBypassHost'))$('#originTLSVerifyBypassHost').value='';
   return saved;
 }
@@ -484,9 +864,18 @@ $('#originTLSVerifyBypassSelected')&&($('#originTLSVerifyBypassSelected').onclic
   if(!host){toast('Select a request in History first','error');return;}
   addOriginTLSVerifyException(host);
 });
-$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText()));
+$('#originTLSVerifyBypassSave')&&($('#originTLSVerifyBypassSave').onclick=()=>runSettingsAction($('#originTLSVerifyBypassSave'),()=>saveOriginTLSVerifyExceptions(originTLSVerifyBypassHostsFromText())));
 
 const upstreamDefaultPorts={http:'80',https:'443',socks5:'1080',socks5h:'1080'};
+const upstreamProxyFieldIds=['setUpstreamScheme','setUpstreamHost','setUpstreamPort','setUpstreamUser','setUpstreamPassword','setUpstreamCA'];
+function upstreamProxyFieldSnapshot(){
+  const snapshot={};
+  upstreamProxyFieldIds.forEach(id=>{
+    const el=$('#'+id);
+    if(el)snapshot[id]={generation:settingsEditGeneration(el),value:el.value};
+  });
+  return snapshot;
+}
 function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   scheme=scheme||$('#setUpstreamScheme')?.value||'direct';
   const fields=$('#upstreamProxyFields');if(fields)fields.hidden=scheme==='direct';
@@ -506,20 +895,25 @@ function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   }
 }
 function decodeURLCredential(value){try{return decodeURIComponent(value);}catch(_){return value;}}
-function parseUpstreamProxyURL(raw){
-  const scheme=$('#setUpstreamScheme'),host=$('#setUpstreamHost'),port=$('#setUpstreamPort'),user=$('#setUpstreamUser'),pass=$('#setUpstreamPassword');
-  if(host)host.value='';if(port)port.value='';if(user)user.value='';if(pass)pass.value='';
-  if(!raw){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');return;}
+function upstreamProxyValues(raw){
+  const values={setUpstreamScheme:'direct',setUpstreamHost:'',setUpstreamPort:'',setUpstreamUser:'',setUpstreamPassword:'',invalid:false};
+  if(!raw)return values;
   try{
     const parsed=new URL(raw),mode=parsed.protocol.replace(':','').toLowerCase();
     if(!upstreamDefaultPorts[mode])throw new Error('unsupported mode');
-    if(scheme)scheme.value=mode;
-    if(host)host.value=parsed.hostname.replace(/^\[|\]$/g,'');
-    if(port)port.value=parsed.port||upstreamDefaultPorts[mode];
-    if(user)user.value=decodeURLCredential(parsed.username);
-    if(pass)pass.value=decodeURLCredential(parsed.password);
-    renderUpstreamProxyFields(mode);
-  }catch(_){if(scheme)scheme.value='direct';renderUpstreamProxyFields('direct');const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
+    values.setUpstreamScheme=mode;
+    values.setUpstreamHost=parsed.hostname.replace(/^\[|\]$/g,'');
+    values.setUpstreamPort=parsed.port||upstreamDefaultPorts[mode];
+    values.setUpstreamUser=decodeURLCredential(parsed.username);
+    values.setUpstreamPassword=decodeURLCredential(parsed.password);
+  }catch(_){values.invalid=true;}
+  return values;
+}
+function parseUpstreamProxyURL(raw){
+  const values=upstreamProxyValues(raw);
+  upstreamProxyFieldIds.slice(0,5).forEach(id=>{const el=$('#'+id);if(el)el.value=values[id]||'';});
+  renderUpstreamProxyFields(values.setUpstreamScheme);
+  if(values.invalid){const summary=$('#upstreamProxySummary');if(summary)summary.textContent='Saved proxy URL is invalid — choose a connection type and replace it';}
 }
 function buildUpstreamProxyURL(){
   const scheme=$('#setUpstreamScheme')?.value||'direct';
@@ -538,14 +932,30 @@ function buildUpstreamProxyURL(){
 }
 $('#setUpstreamScheme')&&($('#setUpstreamScheme').onchange=e=>renderUpstreamProxyFields(e.currentTarget.value,true));
 ['setUpstreamHost','setUpstreamPort'].forEach(id=>{$('#'+id)?.addEventListener('input',()=>renderUpstreamProxyFields());});
-$('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=async()=>{
+$('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#saveUpstreamBtn'),async()=>{
+  const submitted=upstreamProxyFieldSnapshot();
   const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
-  try{const upstreamProxy=buildUpstreamProxyURL();await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy,upstreamProxyCA})});
-    if($('#setUpstreamCA'))$('#setUpstreamCA').value=upstreamProxyCA;
-    parseUpstreamProxyURL(upstreamProxy);toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
-});
+  try{const upstreamProxy=buildUpstreamProxyURL();const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA});
+    const saved=upstreamProxyValues(typeof acknowledged?.upstreamProxy==='string'?acknowledged.upstreamProxy:upstreamProxy);
+    const savedCA=typeof acknowledged?.upstreamProxyCA==='string'?acknowledged.upstreamProxyCA:upstreamProxyCA;
+    upstreamProxyFieldIds.forEach(id=>{
+      const el=$('#'+id),snapshot=submitted[id];
+      if(!el||!snapshot)return;
+      if(settingsEditOwned(el,snapshot.generation,snapshot.value)){
+        el.value=id==='setUpstreamCA'?savedCA:(saved[id]||'');
+        clearSettingsDirty([id]);
+      }
+    });
+    renderUpstreamProxyFields($('#setUpstreamScheme')?.value||'direct');
+    toast(upstreamProxy?'Upstream proxy saved':'Direct connection saved');}catch(e){toast(e.message,'error');}
+}));
 
-export async function loadSession(){try{const s=await api('/api/session');
+let sessionLoaded=false;
+let sessionLoadEpoch=0;
+export async function loadSession(){const epoch=++sessionLoadEpoch;const loadState=$('#sessionLoadState');if(loadState){loadState.style.display='block';loadState.textContent='Loading Session settings…';}
+try{const s=await api('/api/session');
+  if(epoch!==sessionLoadEpoch)return;
+  const dirty=snapshotDirtySettings();
   if($('#setSessionOn'))$('#setSessionOn').checked=!!s.enabled;
   if($('#setSessionUnscoped'))$('#setSessionUnscoped').checked=!!s.unscoped;
   if($('#setSessionHeaders'))$('#setSessionHeaders').value=s.headers||'';
@@ -578,41 +988,82 @@ export async function loadSession(){try{const s=await api('/api/session');
   if($('#loginMacroRefresh'))$('#loginMacroRefresh').value=lm.refreshSecs||0;
   if($('#loginMacro401'))$('#loginMacro401').checked=lm.reauthOn401!==false;
   if($('#loginMacroState'))$('#loginMacroState').textContent=lm.enabled?'Login macro configured':'';
-}catch(e){}}
+  restoreDirtySettings(dirty);
+  sessionLoaded=true;if(loadState)loadState.style.display='none';
+}catch(e){if(epoch===sessionLoadEpoch)renderLoadError(loadState,'Session settings',e,loadSession,sessionLoaded);}}
 function loginMacroBody(){
   return {enabled:$('#loginMacroOn').checked,target:$('#loginMacroTarget').value.trim(),request:$('#loginMacroReq').value,
     refreshSecs:parseInt(($('#loginMacroRefresh')||{}).value,10)||0,reauthOn401:!!($('#loginMacro401')||{}).checked};
 }
-// Save session headers + the token macro + per-host overrides together.
-function saveSessionAll(){
+const SESSION_DIRTY_FIELDS=['setSessionOn','setSessionUnscoped','setSessionHeaders','macroOn','macroReq','macroTarget','macroExtract','macroMode','macroName','loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'];
+function sessionFormPayload(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
-  const body={enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
+  return {enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
+}
+function sessionFieldValues(body){
+  return {setSessionOn:body.enabled,setSessionUnscoped:body.unscoped,setSessionHeaders:body.headers,macroOn:body.macro.enabled,macroReq:body.macro.request,macroTarget:body.macro.target,macroExtract:body.macro.extract,macroMode:body.macro.injectMode,macroName:body.macro.injectName,loginMacroOn:body.loginMacro.enabled,loginMacroReq:body.loginMacro.request,loginMacroTarget:body.loginMacro.target,loginMacroRefresh:body.loginMacro.refreshSecs,loginMacro401:body.loginMacro.reauthOn401};
+}
+function clearAcknowledgedSessionDirty(snapshot){
+  const current=sessionFormPayload(),ack=sessionFieldValues(snapshot),now=sessionFieldValues(current);
+  SESSION_DIRTY_FIELDS.forEach(id=>{if(Object.is(ack[id],now[id]))$('#'+id)?.removeAttribute('data-settings-dirty');});
+  if(JSON.stringify(snapshot.hostHeaders)===JSON.stringify(current.hostHeaders))$('#hostHdrList')?.removeAttribute('data-settings-dirty');
+}
+let sessionMutationTail=Promise.resolve();
+function queueSessionMutation(work){
+  const mutation=sessionMutationTail.catch(()=>{}).then(work);
+  sessionMutationTail=mutation;
+  return mutation;
+}
+function writeSessionAll(body){
   return api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 }
-if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=async()=>{
+function saveSessionAll(body=sessionFormPayload()){
+  return queueSessionMutation(()=>writeSessionAll(body));
+}
+function runLoginMacroWithSession(body,onSaveAcknowledged){
+  return queueSessionMutation(async()=>{
+    await writeSessionAll(body);
+    if(onSaveAcknowledged)onSaveAcknowledged();
+    return api('/api/session/login/run',{method:'POST'});
+  });
+}
+if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#saveSessionBtn'),async()=>{
   try{
-    await saveSessionAll();
+    const submitted=sessionFormPayload();
+    await saveSessionAll(submitted);
+    sessionLoadEpoch++;
+    clearAcknowledgedSessionDirty(submitted);
     // Surface macro completeness (previously on the now-removed per-macro Save buttons).
-    const on=$('#macroOn').checked;
-    const complete=$('#macroTarget').value.trim()&&$('#macroReq').value.trim()&&$('#macroExtract').value.trim()&&$('#macroName').value.trim();
+    const on=submitted.macro.enabled;
+    const complete=submitted.macro.target&&submitted.macro.request.trim()&&submitted.macro.extract&&submitted.macro.injectName;
     let msg='session saved';
     if(on) msg=complete?'session saved · token macro on — fires before each send':'session saved — set target, request, extract & inject-name for the token macro to fire';
-    if($('#loginMacroOn')&&$('#loginMacroOn').checked) msg+=' · login macro on';
+    if(submitted.loginMacro.enabled) msg+=' · login macro on';
     toast(msg);loadSession();
   }catch(e){toast(e.message);}
-};
-if($('#loginMacroRun'))$('#loginMacroRun').onclick=async()=>{try{await saveSessionAll();const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');loadSession();}catch(e){toast(e.message);}};
+});
+if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{
+  let saveAcknowledged=false;
+  try{
+    const submitted=sessionFormPayload();
+    const r=await runLoginMacroWithSession(submitted,()=>{saveAcknowledged=true;sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);});
+    toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');
+  }catch(e){toast(e.message);}
+  finally{if(saveAcknowledged)await loadSession();}
+});
 // Test = dry-run: run the login request and show the response + the session it
 // would capture, WITHOUT touching the live session (so you can debug it safely).
-if($('#loginMacroTest'))$('#loginMacroTest').onclick=async()=>{
+function hasDirtyLoginMacroDraft(){return ['loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');}
+if($('#loginMacroTest'))$('#loginMacroTest').onclick=()=>runSettingsAction($('#loginMacroTest'),async()=>{
   const out=$('#loginMacroTestOut');
   try{
-    await saveSessionAll(); // test what's in the form
-    if(out){out.style.display='block';out.innerHTML='<span class="hint">testing…</span>';}
+    const draftPending=hasDirtyLoginMacroDraft();
+    if(out){out.style.display='block';out.innerHTML='<span class="hint">testing saved login macro…</span>';}
     const r=await api('/api/session/login/test',{method:'POST'});
     const sc=r.status||0,scColor=(sc>=200&&sc<400)?'var(--accent)':(sc>=400?'var(--red)':'var(--fg3)');
     const hdrs=r.headers||[];
-    let html=`<div style="margin-bottom:6px">Login responded <b style="color:${scColor}">${sc||'no response'}</b> · captured <b>${hdrs.length}</b> session header${hdrs.length===1?'':'s'} <span class="hint">(dry-run — live session unchanged)</span></div>`;
+    let html=`<div style="margin-bottom:6px">Login responded <b style="color:${scColor}">${sc||'no response'}</b> · captured <b>${hdrs.length}</b> session header${hdrs.length===1?'':'s'} <span class="hint">(saved macro dry-run — live session unchanged)</span></div>`;
+    if(draftPending)html+='<div class="hint" style="color:var(--amber);margin-bottom:6px">Unsaved login-macro edits were not included. Save Session to test those changes.</div>';
     if(hdrs.length){
       html+=hdrs.map(h=>{const v=String(h.value||'');return `<div style="font-family:var(--mono);font-size:var(--fs-xs);overflow-wrap:anywhere"><span style="color:var(--accent)">${esc(h.key)}</span>: ${esc(v.length>160?v.slice(0,160)+'…':v)}</div>`;}).join('');
     }else{
@@ -623,39 +1074,85 @@ if($('#loginMacroTest'))$('#loginMacroTest').onclick=async()=>{
     if(out){out.style.display='block';out.innerHTML='<span style="color:var(--red)">Test failed: '+esc(e.message)+'</span>';}
     else toast(e.message);
   }
-};
+});
 
 /* ---- data retention panel ---- */
 export let retentionStats=null; // cached from last fetch
-export let retentionLoaded=false; // lazy: load on first show
+export let retentionLoaded=false; // set after the Project section has been visited
+let retentionLoadEpoch=0;
+let retentionPolicyLoadEpoch=0;
+let retentionMutationPromise=null;
+let retentionSelectionSnapshot=new Set();
+let retentionRefreshPending=false;
+
+function setRetentionMutationBusy(busy){
+  const section=$('#retentionSection');if(section)section.setAttribute('aria-busy',busy?'true':'false');
+  ['retPolicySave','retPolicyRun','retDeleteSelected','retKeepOnly','retPurgePattern','retGc','retMaxAge','retMaxFlows','retPatternInput','retSelectAll']
+    .forEach(id=>{const control=$('#'+id);if(control)control.disabled=busy;});
+  document.querySelectorAll('#retentionBody button,#retentionBody input').forEach(control=>{control.disabled=busy;});
+}
+
+function snapshotRetentionSelection(){
+  const boxes=[...document.querySelectorAll('.ret-chk')];
+  return boxes.length?new Set(boxes.filter(cb=>cb.checked).map(cb=>cb.dataset.host)):null;
+}
+function restoreRetentionSelection(selection){
+  if(!selection)return;
+  document.querySelectorAll('.ret-chk').forEach(cb=>{cb.checked=selection.has(cb.dataset.host);});
+  const sa=$('#retSelectAll');if(sa)syncRetSelectAll(sa);
+}
 
 export async function loadRetentionPolicy(){
+  const epoch=++retentionPolicyLoadEpoch;
   const hint=$('#retentionPolicyHint');
   try{
     const p=await api('/api/flows/retention');
+    if(epoch!==retentionPolicyLoadEpoch)return null;
     const age=$('#retMaxAge'), flows=$('#retMaxFlows');
-    if(age) age.value=String(p.maxAgeHours||0);
-    if(flows) flows.value=String(p.maxFlows||0);
+    if(age&&age.dataset.settingsDirty!=='1'&&document.activeElement!==age)age.value=String(p.maxAgeHours||0);
+    if(flows&&flows.dataset.settingsDirty!=='1'&&document.activeElement!==flows)flows.value=String(p.maxFlows||0);
     if(hint){
       const parts=[];
       if(p.maxAgeHours>0) parts.push('drop flows older than '+p.maxAgeHours+'h');
       if(p.maxFlows>0) parts.push('keep newest '+p.maxFlows+' flows');
       hint.textContent=parts.length?('Auto: '+parts.join(' · ')+' (every ~30m)'):'Auto policy off — set max age and/or max flows above.';
     }
-  }catch(e){ if(hint) hint.textContent=e.message||''; }
+  }catch(e){if(epoch!==retentionPolicyLoadEpoch)return null;if(hint)hint.textContent=e.message||'';}
 }
 
 export async function loadRetention(){
+  if(retentionMutationPromise){retentionRefreshPending=true;return null;}
+  const epoch=++retentionLoadEpoch;
+  const selection=snapshotRetentionSelection();
+  retentionSelectionSnapshot=selection||new Set();
   const body=$('#retentionBody');
   if(body)body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">Loading…</td></tr>';
-  loadRetentionPolicy();
+  void loadRetentionPolicy();
   try{
     const d=await api('/api/hosts/stats');
+    if(epoch!==retentionLoadEpoch||retentionMutationPromise)return null;
     retentionStats=d;
     renderRetention(d);
+    restoreRetentionSelection(retentionSelectionSnapshot);
   }catch(e){
+    if(epoch!==retentionLoadEpoch)return null;
     if(body)body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px;color:var(--red)">'+esc(e.message)+'</td></tr>';
   }
+}
+
+function runRetentionMutation(action){
+  retentionRefreshPending=true;
+  retentionLoadEpoch++;retentionPolicyLoadEpoch++;
+  setRetentionMutationBusy(true);
+  const previous=retentionMutationPromise||Promise.resolve();
+  const current=previous.catch(()=>{}).then(action);
+  const settled=current.finally(()=>{
+    if(retentionMutationPromise!==settled)return;
+    retentionMutationPromise=null;setRetentionMutationBusy(false);
+    if(retentionRefreshPending){retentionRefreshPending=false;void loadRetention();}
+  });
+  retentionMutationPromise=settled;
+  return settled;
 }
 
 export function renderRetention(d){
@@ -698,9 +1195,9 @@ export async function retDeleteOne(host,flows){
   const confirmed=await uiConfirm('Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
-    const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})});
+    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadRetention();loadFlows();
+    loadFlows();
   }catch(e){toast('purge: '+e.message);}
 }
 
@@ -714,9 +1211,9 @@ $('#retDeleteSelected').onclick=async()=>{
   const confirmed=await uiConfirm('Delete selected hosts',msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
-    const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})});
+    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadRetention();loadFlows();
+    loadFlows();
   }catch(e){toast('purge: '+e.message);}
 };
 
@@ -731,9 +1228,9 @@ $('#retKeepOnly').onclick=async()=>{
   const confirmed=await uiConfirm('Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
   if(!confirmed)return;
   try{
-    const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})});
+    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
-    loadRetention();loadFlows();
+    loadFlows();
   }catch(e){toast('purge: '+e.message);}
 };
 
@@ -744,10 +1241,10 @@ $('#retPurgePattern').onclick=async()=>{
     'Delete all flows matching <b style="color:var(--accent)">'+esc(pat)+'</b>? This is permanent.','Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
-    const r=await api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[pat],mode:'delete'})});
+    const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[pat],mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     if($('#retPatternInput'))$('#retPatternInput').value='';
-    loadRetention();loadFlows();
+    loadFlows();
   }catch(e){toast('purge: '+e.message);}
 };
 
@@ -756,26 +1253,30 @@ $('#retGc').onclick=async()=>{
     'Run garbage collection to remove body files no longer referenced by any flow? This is safe but permanent.','Run GC','btn accent','');
   if(!confirmed)return;
   try{
-    const r=await api('/api/flows/gc',{method:'POST'});
+    const r=await runRetentionMutation(()=>api('/api/flows/gc',{method:'POST'}));
     toast('GC done · removed '+r.removedFiles+' file'+(r.removedFiles===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
-    loadRetention();
   }catch(e){toast('gc: '+e.message);}
 };
 
 $('#retPolicySave')&&($('#retPolicySave').onclick=async()=>{
-  const maxAgeHours=Number(($('#retMaxAge')||{}).value||0);
-  const maxFlows=Number(($('#retMaxFlows')||{}).value||0);
+  const age=$('#retMaxAge'),flows=$('#retMaxFlows');
+  const ageValue=age?.value||'0',flowsValue=flows?.value||'0';
+  const ageGeneration=settingsEditGeneration(age),flowsGeneration=settingsEditGeneration(flows);
+  const maxAgeHours=Number(ageValue||0);
+  const maxFlows=Number(flowsValue||0);
   try{
-    await api('/api/flows/retention',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({maxAgeHours,maxFlows})});
+    retentionPolicyLoadEpoch++;
+    await runRetentionMutation(()=>api('/api/flows/retention',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({maxAgeHours,maxFlows})}));
+    if(settingsEditOwned(age,ageGeneration,ageValue))age.removeAttribute('data-settings-dirty');
+    if(settingsEditOwned(flows,flowsGeneration,flowsValue))flows.removeAttribute('data-settings-dirty');
     toast('auto retention saved');
-    loadRetentionPolicy();
   }catch(e){toast(e.message);}
 });
 $('#retPolicyRun')&&($('#retPolicyRun').onclick=async()=>{
   try{
-    const r=await api('/api/flows/retention/run',{method:'POST'});
+    const r=await runRetentionMutation(()=>api('/api/flows/retention/run',{method:'POST'}));
     toast('retention run · deleted '+(r.deleted||0)+' flow'+(r.deleted===1?'':'s'));
-    loadRetention();loadFlows();
+    loadFlows();
   }catch(e){toast(e.message);}
 });
 
@@ -793,7 +1294,7 @@ const importFullFile=$('#importFullFile');
 if(importFullFile)importFullFile.onchange=async e=>{
   const f=e.target.files[0];if(!f){return;}
   const def=(f.name||'project').replace(/\.zip$/i,'').replace(/[^A-Za-z0-9._-]/g,'-')||'imported';
-  const name=prompt('Import as a new project named:',def);
+  const name=await uiPrompt({title:'Import full project',value:def,placeholder:'New project name'});
   if(name){
     try{
       const r=await api('/api/import/full?name='+encodeURIComponent(name.trim()),{method:'POST',body:f});
@@ -850,7 +1351,16 @@ if(importBurpFile)importBurpFile.onchange=async e=>{
 // GlobalDir/projects (switch via {target: name}), or set for an external
 // folder the operator chose explicitly (switch via {path}).
 export async function loadProject(){
+  const epoch=++projectLoadEpoch;
+  const hadData=projectDataLoaded;
+  if(hadData)markProjectDataStale(true);
+  setProjectControlsDisabled(true,hadData?'Project data is stale — retry before switching or creating a project':'Project data is loading — wait before switching or creating a project');
+  const loadState=$('#projectLoadState');
+  if(loadState&&hadData){loadState.style.display='block';loadState.textContent='Refreshing Projects…';}
   try{const d=await api('/api/project');
+    if(epoch!==projectLoadEpoch)return;
+    projectPathFlavor=projectPathFlavorFor(d.dir);
+    if(loadState)loadState.style.display='none';
     const n=$('#projNameHint');if(n)n.textContent=d.current||'default';
     const dir=$('#projDirHint');if(dir&&d.dir)dir.textContent=d.dir;
     const sel=$('#projSelect');
@@ -862,37 +1372,100 @@ export async function loadProject(){
         return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${label}${isCur?' (current)':''}</option>`;
       }).join('');
     }
-    if(!d.canSwitch)['projSwitchBtn','projNewBtn'].forEach(id=>{const b=$('#'+id);if(b){b.disabled=true;b.title='project switching is unavailable in this build';}});
-  }catch(e){}
+    projectDataLoaded=true;markProjectDataStale(false);
+    setProjectControlsDisabled(!d.canSwitch,d.canSwitch?'':'project switching is unavailable in this build');
+  }catch(e){
+    if(epoch!==projectLoadEpoch)return;
+    markProjectDataStale(hadData);
+    setProjectControlsDisabled(true,'Project data is stale — retry before switching or creating a project');
+    renderLoadError($('#projectLoadState'),'Projects',e,loadProject,hadData);
+  }
+}
+let projectSwitchEpoch=0,projectSwitchTimer=null,projectSwitchPending=false;
+function projectPathFlavorFor(value){
+  const raw=String(value||'').trim();
+  return /^[A-Za-z]:[\\/]/.test(raw)||raw.startsWith('\\\\')?'windows':'posix';
+}
+function projectPathKey(value,flavor=projectPathFlavor){
+  const source=String(value||'').trim();
+  if(!source)return '';
+  const windows=flavor==='windows';
+  const raw=windows?source.replace(/\\/g,'/'):source;
+  const drive=windows?(raw.match(/^[A-Za-z]:/)||[])[0]||'':'';
+  const unc=windows&&!drive&&raw.startsWith('//');
+  const rooted=windows?(unc||(drive&&raw.slice(drive.length).startsWith('/'))):raw.startsWith('/');
+  if(!rooted)return '';
+  const parts=raw.slice(drive.length).split('/'),out=[],rootDepth=unc?2:0;
+  for(const part of parts){
+    if(!part||part==='.')continue;
+    if(part==='..'){if(out.length>rootDepth)out.pop();continue;}
+    out.push(part);
+  }
+  return (unc?'//':drive?drive+'/':'/')+out.join('/');
+}
+function setProjectSwitchFeedback(text,kind='status'){
+  const error=kind==='error';
+  ['#projSwitchNote','#pmSwitchNote'].map(selector=>$(selector)).filter(Boolean).forEach(note=>{
+    note.style.display='block';note.style.color=error?'var(--red)':'var(--accent)';note.textContent=text;
+    note.setAttribute('role',error?'alert':'status');note.setAttribute('aria-live',error?'assertive':'polite');
+  });
+}
+function setProjectPathInvalid(path,invalid){
+  ['projNewPath','pmNewPath'].map(id=>$('#'+id)).filter(Boolean).forEach(field=>{
+    if(invalid&&field.value.trim()===path)field.setAttribute('aria-invalid','true');
+    else if(!invalid)field.removeAttribute('aria-invalid');
+  });
+}
+function clearProjectPathFeedback(){
+  if(projectSwitchPending)return;
+  setProjectPathInvalid('',false);
+  ['#projSwitchNote','#pmSwitchNote'].map(selector=>$(selector)).filter(Boolean).forEach(note=>{
+    note.style.display='none';note.textContent='';note.style.color='var(--accent)';
+    note.setAttribute('role','status');note.setAttribute('aria-live','polite');
+  });
 }
 export async function doSwitchProject(target,path){
   if(!target&&!path)return;
+  if(projectSwitchPending){toast('a project switch is already in progress');return;}
+  const expectedPath=path?projectPathKey(path):'';
+  if(path&&!expectedPath){
+    const message='Custom save location must be an absolute folder path.';
+    setProjectPathInvalid(path,true);setProjectSwitchFeedback(message,'error');toast(message,'error');return;
+  }
+  setProjectPathInvalid('',false);
+  const switchEpoch=++projectSwitchEpoch;
+  projectSwitchPending=true;
+  if(projectSwitchTimer){clearTimeout(projectSwitchTimer);projectSwitchTimer=null;}
   // Surface the "restarting…" message wherever it's visible — the Settings panel
   // note and the top-bar Projects modal share this one switch path.
-  const notes=['#projSwitchNote','#pmNote'].map(s=>$(s)).filter(Boolean);
-  const setNote=t=>notes.forEach(n=>{n.style.display='block';n.textContent=t;});
+  const setNote=(text,kind='status')=>setProjectSwitchFeedback(text,kind);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
   // /api/version can't tell them apart and would reload straight back into the
   // OLD project's data. Remember which project we're leaving and poll /api/project
-  // instead, waiting for `current` to actually flip before reloading. Bounded by a
-  // grace period so re-selecting the *same* project (current never changes) doesn't
-  // hang forever — after that we accept any live reply, same as before.
-  let prevProject=null;
-  try{prevProject=(await api('/api/project?_t='+Date.now())).current;}catch(e){}
+  // instead, waiting for the exact accepted project identity to appear. Never
+  // reload merely because the old process still answers: that can put the UI
+  // straight back into the project the operator just left.
+  setProjectControlsDisabled(true,'project switch is in progress');
+  let expected='';
   try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
-  }catch(e){setNote('Project switch failed: '+e.message);toast(e.message);return;}
+    expected=String(accepted.switching);
+  }catch(e){projectSwitchPending=false;setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
   setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
-  const graceTries=10; // ~5s worth of polls
-  let tries=0;const poll=setInterval(async()=>{tries++;
+  const deadline=Date.now()+30000;
+  const poll=async()=>{
+    if(switchEpoch!==projectSwitchEpoch)return;
     try{
       const d=await api('/api/project?_t='+Date.now());
-      if(prevProject!=null&&d.current===prevProject&&tries<=graceTries)return; // still the old process — keep waiting
-      clearInterval(poll);location.reload();
+      const reached=path?projectPathKey(d.dir)===expectedPath:String(d.current||'')===expected;
+      if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}
     }
-    catch(e){if(tries>60){clearInterval(poll);setNote('Still restarting… reload the page manually if it doesn\'t return.');}}
-  },500);
+    catch(e){}
+    if(Date.now()>=deadline){projectSwitchPending=false;projectSwitchTimer=null;setNote('Project switch was not confirmed within 30 seconds. Retry the switch, or reload manually after the new process is ready.','error');loadProject();return;}
+    projectSwitchTimer=setTimeout(poll,500);
+  };
+  projectSwitchTimer=setTimeout(poll,500);
 }
 $('#projSwitchBtn').onclick=()=>{
   const sel=$('#projSelect');const opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
@@ -910,11 +1483,20 @@ $('#projNewBtn').onclick=()=>{
 // Same data + switch endpoint as the Settings panel, surfaced as a prominent,
 // first-class action so choosing a project never means opening Settings.
 async function renderProjModal(){
+  const epoch=++projectModalLoadEpoch;
+  const list=$('#pmList');
+  if(list){
+    list.setAttribute('aria-busy','true');
+    list.querySelectorAll('.pm-row').forEach(button=>button.disabled=true);
+  }
+  setProjectModalActionsDisabled(true);
   try{const d=await api('/api/project');
+    if(epoch!==projectModalLoadEpoch)return false;
+    projectPathFlavor=projectPathFlavorFor(d.dir);
     const cur=$('#pmCurrent');if(cur)cur.textContent=d.current||'default';
     const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
-    const list=$('#pmList');if(!list)return;
-    if(!d.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';const nb=$('#pmNewBtn');if(nb)nb.disabled=true;return;}
+    if(!list)return false;
+    if(!d.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';list.removeAttribute('aria-busy');setProjectModalActionsDisabled(true);projectModalDataLoaded=true;return true;}
     const others=(d.projects||[]).filter(p=>p.name!==d.current);
     list.innerHTML=others.length
       ?others.map(p=>{
@@ -923,16 +1505,24 @@ async function renderProjModal(){
       }).join('')
       :'<div class="hint">No other saved projects yet — create one below.</div>';
     list.querySelectorAll('.pm-row').forEach(b=>b.onclick=()=>doSwitchProject(b.dataset.proj,b.dataset.path||''));
-  }catch(e){}
+    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(false);return true;
+  }catch(e){
+    if(epoch!==projectModalLoadEpoch)return false;
+    setProjectModalActionsDisabled(true);
+    renderLoadError(list,'Projects',e,renderProjModal,projectModalDataLoaded);
+    if(list)list.removeAttribute('aria-busy');
+    return false;
+  }
 }
 export async function openProjectModal(){
   const m=$('#projModal');if(!m)return;
   const note=$('#pmNote');if(note){note.style.display='none';note.textContent='';}
+  clearProjectPathFeedback();
   const inp=$('#pmNew');if(inp)inp.value='';
   const pinp=$('#pmNewPath');if(pinp)pinp.value='';
   openModal(m);
-  await renderProjModal();
-  if(inp)inp.focus();
+  const rendered=await renderProjModal();
+  if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();
 }
 {const c=$('#pmClose');if(c)c.onclick=()=>closeModal($('#projModal'));}
 {const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{
@@ -943,54 +1533,160 @@ export async function openProjectModal(){
 };}
 {const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 {const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
-$('#saveAddrBtn').onclick=async()=>{
+['projNewPath','pmNewPath'].forEach(id=>$('#'+id)?.addEventListener('input',clearProjectPathFeedback));
+$('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
+  const list=$('#proxyListenersList'),generation=settingsEditGeneration(list);
   const addrs=collectProxyAddrs();
   if(!addrs.length){toast('enter at least one listener');return;}
   try{
-    const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddrs:addrs})});
+    const s=await saveSettingsPatch({proxyAddrs:addrs});
     state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;
     if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
-    renderProxyListeners(s.proxyAddrs||addrs);
+    if(settingsEditOwned(list,generation)){renderProxyListeners(s.proxyAddrs||addrs);clearSettingsDirty([],['#proxyListenersList']);}
     await loadDeviceProxyEndpoint();
     toast('proxy now on '+s.proxyAddr);
   }catch(e){toast(e.message);}
-};
-$('#saveControlAddrBtn').onclick=async()=>{
+});
+$('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),async()=>{
+  const host=$('#setControlHost'),port=$('#setControlPort');
+  const hostGeneration=settingsEditGeneration(host),portGeneration=settingsEditGeneration(port);
+  const submittedHost=host?.value,submittedPort=port?.value;
   const controlAddr=syncControlAddrFields();
   if(!controlAddr){toast('enter control host and port');return;}
   try{
-    const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({controlAddr})});
+    const s=await saveSettingsPatch({controlAddr},{reconcile:false});
     state.controlAddr=s.controlAddr;$('#controlAddr').textContent=s.controlAddr;
-    const c=parseListenAddr(s.controlAddr);
-    if($('#setControlPort'))$('#setControlPort').value=c.port;
-    renderHostSelect($('#setControlHost'),c.host);
+    if(settingsEditOwned(host,hostGeneration,submittedHost)&&settingsEditOwned(port,portGeneration,submittedPort)){
+      const c=parseListenAddr(s.controlAddr);
+      if(port)port.value=c.port;
+      renderHostSelect(host,c.host);
+      clearSettingsDirty(['setControlHost','setControlPort','setControlAddr']);
+    }
     const newUrl='http://'+s.controlAddr;
     if(location.host!==s.controlAddr)toast('Control UI now on '+newUrl+' — open that URL if this page stops updating');
-    else toast('control UI now on '+s.controlAddr);
+    else{toast('control UI now on '+s.controlAddr);scheduleSettingsReconcile();}
     const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url '+newUrl;
   }catch(e){toast(e.message);}
-};
-export async function loadSysProxy(){
-  try{const s=await api('/api/sysproxy');const sec=$('#sysProxySection');const b=$('#sysProxyToggle');
-    if(!s.supported){
-      if(sec)sec.style.display='none';
-      return;
-    }
-    if(sec)sec.style.display='';
-    b.classList.toggle('on',s.enabled);b.setAttribute('aria-pressed',s.enabled?'true':'false');b.textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';
-  }catch(e){}
+});
+let sysProxyLoadEpoch=0;
+let sysProxyMutationPromise=null;
+let sysProxyDesired=null;
+let sysProxyActiveDesired=null;
+let sysProxyState=null;
+let sysProxyLoadFailed=false;
+
+function renderSystemProxyState(s){
+  if(!s)return;
+  sysProxyState=s;
+  sysProxyLoadFailed=false;
+  const sec=$('#sysProxySection'),button=$('#sysProxyToggle'),hint=$('#sysProxyHint');
+  if(!s.supported){
+    if(sec)sec.style.display='none';
+    return;
+  }
+  if(sec)sec.style.display='';
+  if(button){
+    button.disabled=!!sysProxyMutationPromise;
+    button.classList.toggle('on',!!s.enabled);
+    button.setAttribute('aria-pressed',s.enabled?'true':'false');
+    button.textContent=s.enabled?'System proxy is on':'System proxy is off';
+  }
+  if(hint)hint.textContent=s.enabled?'Traffic routes through '+s.proxy:'';
 }
+
+function setSystemProxyBusy(busy){
+  const button=$('#sysProxyToggle');
+  if(!button)return;
+  button.disabled=busy||sysProxyLoadFailed;
+  if(busy)button.setAttribute('aria-busy','true');
+  else button.removeAttribute('aria-busy');
+}
+
+async function readSystemProxyStatus({render=true,throwOnError=false}={}){const epoch=++sysProxyLoadEpoch;
+  try{
+    const s=await api('/api/sysproxy');
+    if(epoch!==sysProxyLoadEpoch)return sysProxyState;
+    sysProxyState=s;
+    sysProxyLoadFailed=false;
+    if(render)renderSystemProxyState(s);
+    return s;
+  }catch(e){
+    if(epoch!==sysProxyLoadEpoch)return sysProxyState;
+    sysProxyLoadFailed=true;
+    if(render){
+      const sec=$('#sysProxySection'),button=$('#sysProxyToggle');
+      if(sec)sec.style.display='';
+      if(button)button.disabled=true;
+      renderLoadError($('#sysProxyHint'),'System proxy',e,loadSysProxy,false);
+    }
+    if(throwOnError)throw e;
+    return null;
+  }
+}
+
+export function getSystemProxyStatus(options={}){
+  if(sysProxyMutationPromise)return sysProxyMutationPromise;
+  return readSystemProxyStatus(options);
+}
+
+export async function loadSysProxy(){
+  try{return await getSystemProxyStatus();}
+  catch(_){return sysProxyState;}
+}
+
+async function drainSystemProxyMutations(){
+  let result=sysProxyState;
+  while(sysProxyDesired!==null){
+    const desired=sysProxyDesired;
+    sysProxyDesired=null;
+    sysProxyActiveDesired=desired;
+    let current,error;
+    try{current=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:desired})});}
+    catch(e){error=e;}
+    if(sysProxyDesired!==null)continue;
+    if(error)throw error;
+    result=current;
+    renderSystemProxyState(result);
+  }
+  return result;
+}
+
+async function runSystemProxyMutations(){
+  try{return await drainSystemProxyMutations();}
+  catch(e){await readSystemProxyStatus();throw e;}
+  finally{
+    sysProxyActiveDesired=null;
+    sysProxyMutationPromise=null;
+    sysProxyLoadEpoch++;
+    setSystemProxyBusy(false);
+  }
+}
+
+export function setSystemProxyEnabled(enabled){
+  const desired=!!enabled;
+  if(sysProxyMutationPromise){
+    if(sysProxyDesired===desired||(sysProxyDesired===null&&sysProxyActiveDesired===desired))return sysProxyMutationPromise;
+  }
+  sysProxyDesired=!!enabled;
+  sysProxyLoadEpoch++;
+  setSystemProxyBusy(true);
+  if(!sysProxyMutationPromise)sysProxyMutationPromise=runSystemProxyMutations();
+  return sysProxyMutationPromise;
+}
+
 $('#sysProxyToggle').onclick=async()=>{
-  const on=$('#sysProxyToggle').classList.contains('on');$('#sysProxyToggle').disabled=true;
-  try{const s=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!on})});
-    $('#sysProxyToggle').classList.toggle('on',s.enabled);$('#sysProxyToggle').setAttribute('aria-pressed',s.enabled?'true':'false');$('#sysProxyToggle').textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';toast(s.enabled?'system proxy enabled':'system proxy disabled');}
-  catch(e){toast(e.message);}
-  $('#sysProxyToggle').disabled=false;
+  const button=$('#sysProxyToggle');
+  const on=button.classList.contains('on');
+  try{
+    const s=await setSystemProxyEnabled(!on);
+    toast(s?.enabled?'system proxy enabled':'system proxy disabled');
+  }catch(e){toast(e.message);}
 };
 
 let androidDeviceSerial='';
+let androidLoadEpoch=0;
+let androidActionPending=false;
+let androidDeviceActionsReady=false;
 
 function androidSerial(){
   return androidDeviceSerial||'';
@@ -1000,6 +1696,17 @@ function setAndroidDeviceActionsEnabled(enabled){
   ['androidSetupAllBtn','androidInstallUserBtn','androidInstallSystemBtn','androidProxyBtn','androidUnproxyBtn']
     .forEach(id=>{const button=$('#'+id);if(button){button.disabled=!enabled;button.title=enabled?'':'Connect and authorize an Android device first';}});
   const remove=$('#androidRemoveSystemCa');if(remove)remove.disabled=!enabled;
+}
+function setAriaBusy(control,busy){
+  if(busy)control.setAttribute('aria-busy','true');
+  else control.removeAttribute('aria-busy');
+}
+function setAndroidActionBusy(busy){
+  ['androidRefreshBtn','androidSetupAllBtn','androidInstallUserBtn','androidInstallSystemBtn','androidProxyBtn','androidUnproxyBtn']
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);if(busy)button.disabled=true;else if(id==='androidRefreshBtn')button.disabled=false;}});
+  const trigger=$('#androidDeviceTrigger');if(trigger)trigger.disabled=busy||!androidDeviceActionsReady||!$('#androidDeviceMenu')?.querySelector('[role="option"]:not(:disabled)');
+  $('#androidProxyMode')?.querySelectorAll('button').forEach(button=>{button.disabled=busy;});
+  if(!busy)setAndroidDeviceActionsEnabled(androidDeviceActionsReady);
 }
 
 function androidDeviceTitle(d){
@@ -1114,10 +1821,14 @@ async function androidPost(path,body){
   const payload={serial:androidSerial(),proxyMode:androidProxyMode(),...body};
   return api(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
 }
+const mobileReadinessEpochs=new Map();
 async function mobileReadiness(hintSel){
+  const epoch=(mobileReadinessEpochs.get(hintSel)||0)+1;
+  mobileReadinessEpochs.set(hintSel,epoch);
   const hint=$(hintSel);if(hint)hint.textContent='Checking TLS and captured traffic…';
   try{
     const [tls,readiness]=await Promise.all([api('/api/tls-diagnosis'),api('/api/readiness')]);
+    if(mobileReadinessEpochs.get(hintSel)!==epoch)return null;
     const traffic=(readiness.checks||[]).find(c=>c.id==='traffic');
     const tlsCheck=(readiness.checks||[]).find(c=>c.id==='tls_intercept');
     const observed=!traffic?.ok?'no captured traffic yet'
@@ -1128,7 +1839,7 @@ async function mobileReadiness(hintSel){
       :'open Proxy History and identify the new device request';
     if(hint)hint.textContent='Project-wide readiness: '+observed+'; this does not verify the selected device. After setup, send a new HTTPS request from this device, then '+nextAction+'.';
     return {tls,readiness};
-  }catch(e){renderLoadError(hint,'Mobile readiness',e,()=>mobileReadiness(hintSel),false);return null;}
+  }catch(e){if(mobileReadinessEpochs.get(hintSel)===epoch)renderLoadError(hint,'Mobile readiness',e,()=>mobileReadiness(hintSel),false);return null;}
 }
 
 function isLoopbackProxyBind(addr){
@@ -1146,21 +1857,26 @@ function androidWifiNeedsProxyBind(s){
   return androidProxyMode()==='wifi'&&(!s.externalBindAllowed||!proxyHasExternalBind(s));
 }
 
-export async function loadAndroid(){
+export async function loadAndroid({allowDuringAction=false}={}){
+  if(androidActionPending&&!allowDuringAction)return null;
+  const epoch=++androidLoadEpoch;
   const sec=$('#androidAdbSection'),hint=$('#androidAdbHint');
   const lanHint=$('#androidLanHint'),caHint=$('#androidCaHint');
-  if(!sec)return;
+  if(!sec){androidDeviceActionsReady=false;return {ok:false,ready:false};}
   try{
     const s=await api('/api/android/status');
+    if(epoch!==androidLoadEpoch||(androidActionPending&&!allowDuringAction))return null;
     if(!s.available){
+      androidDeviceActionsReady=false;
       setAndroidDeviceActionsEnabled(false);
       sec.style.display='none';
-      return;
+      return {ok:true,ready:false};
     }
     sec.style.display='';
     const devs=s.devices||[];
     renderAndroidDevicePicker(devs);
-    setAndroidDeviceActionsEnabled(devs.some(d=>d.state==='device')&&!!androidSerial());
+    androidDeviceActionsReady=devs.some(d=>d.state==='device')&&!!androidSerial();
+    setAndroidDeviceActionsEnabled(androidDeviceActionsReady);
     if(lanHint){
       let html='';
       if(s.lanHost)html=`<span>LAN host: ${esc(s.lanHost)}</span>`;
@@ -1185,15 +1901,31 @@ export async function loadAndroid(){
       else if(devs.some(d=>d.state==='unauthorized'))msg='Accept the USB debugging authorization prompt on the device.';
     }
     if(hint)hint.textContent=msg;
+    return {ok:true,ready:androidDeviceActionsReady};
   }catch(e){
-    if(hint)hint.textContent='';
+    if(epoch!==androidLoadEpoch||(androidActionPending&&!allowDuringAction))return null;
+    androidDeviceActionsReady=false;
+    sec.style.display='';
+    renderLoadError(hint,'Android device discovery',e,loadAndroid,false);
     setAndroidDeviceActionsEnabled(false);
-    sec.style.display='none';
+    return {ok:false,ready:false};
   }
 }
 
 async function androidAction(fn){
-  try{await fn();await loadAndroid();await mobileReadiness('#androidAdbHint');}catch(e){toast(e.message);}
+  if(androidActionPending)return false;
+  androidActionPending=true;androidDeviceActionsReady=false;androidLoadEpoch++;setAndroidActionBusy(true);
+  let error=null;
+  try{
+    try{await fn();}catch(e){toast(e.message);error=e;}
+    const status=await loadAndroid({allowDuringAction:true});
+    setAndroidActionBusy(true);
+    if(error||!status?.ok)return false;
+    await mobileReadiness('#androidAdbHint');
+    return true;
+  }finally{
+    androidActionPending=false;androidLoadEpoch++;setAndroidActionBusy(false);
+  }
 }
 
 $('#androidProxyMode')&&$('#androidProxyMode').addEventListener('click',e=>{
@@ -1216,7 +1948,7 @@ document.addEventListener('click',()=>closeAndroidDeviceMenu());
 });}
 wireDeviceMenuKeyboard($('#androidDeviceMenu'),$('#androidDeviceTrigger'),toggleAndroidDeviceMenu,closeAndroidDeviceMenu);
 {const lh=$('#androidLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#androidOpenProxyBtn'))openSettingsProxy();});}
-$('#androidRefreshBtn')&&($('#androidRefreshBtn').onclick=()=>androidAction(loadAndroid));
+$('#androidRefreshBtn')&&($('#androidRefreshBtn').onclick=()=>androidAction(async()=>{}));
 $('#androidSetupAllBtn')&&($('#androidSetupAllBtn').onclick=()=>androidAction(async()=>{
   const r=await androidPost('/api/android/setup',{caMode:'auto'});
   toast(r.message||'Android setup complete');
@@ -1241,6 +1973,8 @@ $('#androidUnproxyBtn')&&($('#androidUnproxyBtn').onclick=()=>androidAction(asyn
 
 /* ---- iOS (simulator + device profile) ---- */
 let iosDeviceUDID='';
+let iosLoadEpoch=0;
+let iosActionPending=false;
 
 function iosUDID(){return iosDeviceUDID||'';}
 
@@ -1286,14 +2020,15 @@ function renderIOSDevicePicker(devs){
   trigger.setAttribute('aria-controls','iosDeviceMenu');
   trigger.setAttribute('aria-haspopup','listbox');
   closeIOSDeviceMenu();
-  trigger.disabled=false;
   if(!devs.length){
     iosDeviceUDID='';
     valueEl.textContent='Manual profile (no simulator/device detected)';
+    trigger.disabled=true;
     menu.innerHTML='';
     if(meta)meta.textContent='Download profile and open on iPhone Safari, or boot a simulator.';
     return;
   }
+  trigger.disabled=iosActionPending;
   if(!devs.some(d=>d.udid===iosDeviceUDID)){
     const booted=devs.find(d=>d.booted)||devs.find(d=>d.kind==='physical')||devs[0];
     iosDeviceUDID=booted?booted.udid:'';
@@ -1316,11 +2051,14 @@ function iosWifiNeedsProxyBind(s){
   return iosProxyMode()==='wifi'&&(!s.externalBindAllowed||!proxyHasExternalBind(s));
 }
 
-export async function loadIOS(){
+export async function loadIOS({allowDuringAction=false}={}){
+  if(iosActionPending&&!allowDuringAction)return null;
+  const epoch=++iosLoadEpoch;
   const sec=$('#iosSection'),hint=$('#iosHint'),lanHint=$('#iosLanHint'),profileLink=$('#iosProfileLink');
-  if(!sec)return;
+  if(!sec)return {ok:false};
   try{
     const s=await api('/api/ios/status');
+    if(epoch!==iosLoadEpoch||(iosActionPending&&!allowDuringAction))return null;
     sec.style.display='';
     const devs=s.devices||[];
     renderIOSDevicePicker(devs);
@@ -1346,13 +2084,35 @@ export async function loadIOS(){
     else if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
     else if(!s.simctlAvailable)msg='Simulator automation needs Xcode on macOS. Physical devices: download profile → open in Safari on the phone.';
     if(hint)hint.textContent=msg;
+    return {ok:!s.deviceError};
   }catch(e){
-    if(hint)hint.textContent='';
+    if(epoch!==iosLoadEpoch||(iosActionPending&&!allowDuringAction))return null;
+    sec.style.display='';
+    renderLoadError(hint,'iOS device discovery',e,loadIOS,false);
+    return {ok:false};
   }
 }
 
 async function iosAction(fn){
-  try{await fn();await loadIOS();await mobileReadiness('#iosHint');}catch(e){toast(e.message);}
+  if(iosActionPending)return false;
+  iosActionPending=true;iosLoadEpoch++;setIOSActionBusy(true);
+  let error=null;
+  try{
+    try{await fn();}catch(e){toast(e.message);error=e;}
+    const status=await loadIOS({allowDuringAction:true});
+    if(error||!status?.ok)return false;
+    await mobileReadiness('#iosHint');
+    return true;
+  }finally{
+    iosActionPending=false;iosLoadEpoch++;setIOSActionBusy(false);
+  }
+}
+
+function setIOSActionBusy(busy){
+  ['iosRefreshBtn','iosSetupAllBtn','iosInstallCaBtn','iosOpenProfileBtn']
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);button.disabled=busy;}});
+  const trigger=$('#iosDeviceTrigger');if(trigger)trigger.disabled=busy||!$('#iosDeviceMenu')?.querySelector('[role="option"]');
+  $('#iosProxyMode')?.querySelectorAll('button').forEach(button=>{button.disabled=busy;});
 }
 
 $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
@@ -1372,7 +2132,7 @@ $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
 document.addEventListener('click',()=>closeIOSDeviceMenu());
 {const lh=$('#iosLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosOpenProxyBtn'))openSettingsProxy();});}
 wireDeviceMenuKeyboard($('#iosDeviceMenu'),$('#iosDeviceTrigger'),toggleIOSDeviceMenu,closeIOSDeviceMenu);
-$('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(loadIOS));
+$('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(async()=>{}));
 $('#iosSetupAllBtn')&&($('#iosSetupAllBtn').onclick=()=>iosAction(async()=>{
   const r=await iosPost('/api/ios/setup',{});
   toast(r.message||'iOS setup started');
@@ -1389,6 +2149,10 @@ $('#iosOpenProfileBtn')&&($('#iosOpenProfileBtn').onclick=()=>iosAction(async()=
 
 /* ---- iOS jailbroken SSH ---- */
 const iosSshSessionKey='interceptor.iosSsh';
+let iosSshLoadEpoch=0;
+let iosSshActionPending=false;
+let iosSshRestored=false;
+let iosSshDirty=false;
 
 function iosSshFields(){
   return {
@@ -1410,6 +2174,8 @@ function iosSshRemember(){
 }
 
 function iosSshRestore(){
+  if(iosSshRestored||iosSshDirty)return;
+  iosSshRestored=true;
   try{
     const raw=sessionStorage.getItem(iosSshSessionKey);
     if(!raw)return;
@@ -1432,12 +2198,15 @@ async function iosSshPost(path,extra){
   return api(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 }
 
-export async function loadIOSSsh(){
+export async function loadIOSSsh({allowDuringAction=false}={}){
+  if(iosSshActionPending&&!allowDuringAction)return null;
+  const epoch=++iosSshLoadEpoch;
   const sec=$('#iosSshSection'),hint=$('#iosSshHint'),lanHint=$('#iosSshLanHint');
-  if(!sec)return;
+  if(!sec)return {ok:false};
   iosSshRestore();
   try{
     const s=await api('/api/ios/ssh/status');
+    if(epoch!==iosSshLoadEpoch||(iosSshActionPending&&!allowDuringAction))return null;
     sec.style.display='';
     if(lanHint){
       let html='';
@@ -1450,23 +2219,39 @@ export async function loadIOSSsh(){
       lanHint.style.display=html?'':'none';
     }
     if(hint&&!iosSshFields().host)hint.textContent='Enter the jailbroken device IP and SSH credentials, then Check SSH status or Setup all.';
+    return {ok:true};
   }catch(e){
-    if(hint)hint.textContent='';
+    if(epoch!==iosSshLoadEpoch||(iosSshActionPending&&!allowDuringAction))return null;
+    sec.style.display='';
+    renderLoadError(hint,'iOS SSH discovery',e,loadIOSSsh,false);
+    return {ok:false};
   }
 }
 
 async function iosSshAction(fn){
+  if(iosSshActionPending)return false;
+  iosSshActionPending=true;iosSshLoadEpoch++;setIOSSshActionBusy(true);
+  let error=null;
   try{
-    await fn();
-    await loadIOSSsh();
+    try{await fn();}catch(e){toast(e.message);error=e;}
+    const status=await loadIOSSsh({allowDuringAction:true});
+    if(error||!status?.ok)return false;
     await mobileReadiness('#iosSshHint');
-  }catch(e){toast(e.message);}
+    return true;
+  }finally{
+    iosSshActionPending=false;iosSshLoadEpoch++;setIOSSshActionBusy(false);
+  }
+}
+
+function setIOSSshActionBusy(busy){
+  ['iosSshStatusBtn','iosSshSetupBtn','iosSshInstallCaBtn']
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);button.disabled=busy;}});
 }
 
 {const lh=$('#iosSshLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosSshOpenProxyBtn'))openSettingsProxy();});}
 ['iosSshHost','iosSshPort','iosSshUser','iosSshKeyPath'].forEach(id=>{
   const el=$('#'+id);
-  if(el)el.addEventListener('change',iosSshRemember);
+  if(el){el.addEventListener('input',()=>{iosSshDirty=true;});el.addEventListener('change',iosSshRemember);}
 });
 $('#iosSshStatusBtn')&&($('#iosSshStatusBtn').onclick=()=>iosSshAction(async()=>{
   const r=await iosSshPost('/api/ios/ssh/status',{});

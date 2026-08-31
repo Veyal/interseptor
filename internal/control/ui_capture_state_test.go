@@ -35,6 +35,8 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 		"const noteEditorGenerations=new Map()",
 		"const flowId=state.selId,detail=state.detail",
 		"const editorGeneration=noteEditorGeneration(flowId)",
+		"const pendingNoteSave=noteSaveTails.get(id)",
+		"if(pendingNoteSave){await pendingNoteSave;if(!current())return;}",
 		"const noteGeneration=noteEditorGeneration(id)",
 		"const preserveNoteDraft=state.selId===id&&state.detail&&$('#noteInput').value!==(state.detail.note||'')",
 		"const previous=noteSaveTails.get(flowId)||Promise.resolve()",
@@ -83,7 +85,7 @@ func TestUIHistoryLoadsRejectStaleFilterAndPageResponses(t *testing.T) {
 		"if(flowRefreshing||loadingMore||!flowHasMore||!state.flows.length)return",
 		"const loadEpoch=flowLoadEpoch,pageEpoch=++flowPageEpoch",
 		"if(loadEpoch!==flowLoadEpoch||pageEpoch!==flowPageEpoch)return",
-		"if(epoch===flowLoadEpoch){flowHasMore=false;toast('flows: '+e.message);}",
+		"if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}",
 		"if(epoch===flowLoadEpoch){flowRefreshing=false;updateTruncBanner();}",
 	} {
 		if !strings.Contains(proxy, contract) {

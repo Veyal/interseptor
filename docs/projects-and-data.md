@@ -17,6 +17,12 @@ Map view preferences, setup-wizard completion, and codecs are project-scoped. Pr
 preferences—such as theme, the last open top-level panel and Settings section, History columns,
 and inspector height—remain browser-wide. Device-helper form state may remain in the current
 browser tab.
+
+A Repeater tab's send list is project-keyed but browser-local. It survives request edits, tab
+switches, and reloads, and is deleted when that Repeater tab closes. The corresponding request and
+response flows remain in the project store; project export and peer sync do not preserve their
+browser-local tab grouping.
+
 Switching projects restarts/re-executes the application so proxy and control listeners move to the
 new store together. Finish unsaved edits and check the project badge before sending traffic.
 

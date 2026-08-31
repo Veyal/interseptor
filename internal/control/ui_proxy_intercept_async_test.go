@@ -13,7 +13,7 @@ func TestUISavedSearchSourceRejectsStaleSelection(t *testing.T) {
 		"const current=()=>epoch===flowSearchSourceEpoch&&$('#flowSearchScriptList')?.value===name",
 		"if(!current())return",
 		"if(current())flowSearchStatus(e.message,true)",
-		"addEventListener('input',()=>{flowSearchSourceEpoch++;})",
+		"addEventListener('input',()=>{flowSearchSourceEpoch++;flowSearchEditEpoch++;",
 		"++flowSearchSourceEpoch",
 	} {
 		if !strings.Contains(proxy, contract) {

@@ -99,8 +99,10 @@ func TestRepeaterCommitsDecodedModeOnlyAfterCurrentDecodeSucceeds(t *testing.T) 
 func TestSendToRepeaterRejectsStaleEditorOwnership(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
-		"const tabEditEpochs=new Map(repTabs.tabs.map",
-		"tabEditEpochs.get(t.tid)!==(t.reqEditEpoch||0)",
+		"const tabSnapshots=repTabs.tabs.map",
+		"repTabs.tabs.includes(snapshot.tab)",
+		"snapshot.endpoint===fep",
+		"snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("async editor ownership contract missing %q", contract)

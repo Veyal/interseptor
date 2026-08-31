@@ -184,12 +184,12 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 		"function setSuppressAndroidTelemetry(",
 		"function setInvisibleProxy(",
 		"function setAutoBypass(",
-		"captureScopeOnly:on",
-		"suppressBrowserTelemetry:on",
-		"suppressAndroidTelemetry:on",
-		"invisibleProxy:on",
-		"autoBypassOnPinFailure:on",
-		"tlsBypassHosts:hosts",
+		"saveBooleanSetting('captureScopeOnly',on",
+		"saveBooleanSetting('suppressBrowserTelemetry',on",
+		"saveBooleanSetting('suppressAndroidTelemetry',on",
+		"saveBooleanSetting('invisibleProxy',on",
+		"saveBooleanSetting('autoBypassOnPinFailure',on",
+		"saveSettingsPatch({tlsBypassHosts:next})",
 		"buildUpstreamProxyURL()",
 		"upstreamProxyCA",
 	)
@@ -215,13 +215,13 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 	)
 	requireUIContains(t, settings,
 		"s.originTLSVerify",
-		"originTLSVerify:on",
+		"saveBooleanSetting('originTLSVerify',on",
 		"setOriginTLSVerify(",
 		"addOriginTLSVerifyException(",
 		"selectedOriginHost(",
 		"loadSettings();",
 		"document.activeElement!==ol",
-		"catch(e){renderOriginTLSVerifyWarning(true)",
+		"catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true)",
 	)
 }
 
@@ -270,27 +270,20 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 	}
 }
 
-func TestUIJourneyRepeaterHistoryUsesFullEndpointIdentity(t *testing.T) {
+func TestUIJourneyRepeaterRoutingUsesFullEndpointIdentity(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 
-	// Repeater tabs must distinguish scheme, host, port, and queryless path.
-	// History is filtered by the API so an older request outside the global page
-	// cannot hide a matching send from the active tab.
+	// Cross-tool routing may reuse an unedited Repeater tab for the same
+	// endpoint, so that identity must distinguish scheme, host, port, and
+	// queryless path. The tab's send history itself is deliberately not keyed by
+	// this mutable endpoint; that contract lives in ui_repeater_tab_history_test.
 	requireUIContains(t, tools,
 		"function repEndpointParts(",
 		"function repEndpointAuthority(",
 		"authority.replace(/%/g,'%25')",
 		"export function repTabEndpoint(",
 		"export function repFlowEndpoint(",
-		"new URLSearchParams({scheme:ep.scheme,host:ep.host,port:String(ep.port),path:ep.path})",
-		"'/api/repeater/history?'+params.toString()",
 	)
-	if strings.Contains(tools, "api('/api/repeater/history')") {
-		t.Error("Repeater history must not fetch the global unfiltered history page")
-	}
-	if strings.Contains(tools, ".filter(f=>repFlowEndpoint(f)===ep)") {
-		t.Error("Repeater history must rely on endpoint filtering from the API")
-	}
 	if strings.Count(tools, "repEndpointAuthority(d.scheme,d.host,d.port)") != 2 {
 		t.Error("Repeater flow-loading paths must use the shared endpoint authority formatter")
 	}
@@ -320,7 +313,7 @@ func TestUIJourneyToolTabsExposeUnambiguousTabSemantics(t *testing.T) {
 	requireUIContains(t, tools,
 		"tablistLabel:'Repeater tabs'",
 		"tablistLabel:'Intruder tabs'",
-		"function wireTabListKeys(",
+		"function wireButtonGroupKeys(",
 		"intrResFilter",
 	)
 }
@@ -331,7 +324,7 @@ func TestUIJourneyRepeaterDoesNotPaintAResponseIntoAnotherTab(t *testing.T) {
 	if start < 0 {
 		t.Fatal("Repeater send request is missing")
 	}
-	guard := strings.Index(tools[start:], "if(repCur()!==t)")
+	guard := strings.Index(tools[start:], "if(repCur()!==t||!current())return;")
 	assign := strings.Index(tools[start:], "t.resId=flow.id")
 	paint := strings.Index(tools[start:], "$('#repStatus').textContent=t.status")
 	if guard < 0 || assign < 0 || paint < 0 || guard < assign || guard > paint {

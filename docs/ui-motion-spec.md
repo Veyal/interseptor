@@ -9,6 +9,7 @@ Interseptor uses motion to explain state changes in a dense security workspace. 
 - **Once before continuous.** New-data signals run once. Infinite animation is reserved for capture, reconnecting, and enabled live indicators.
 - **Stable geometry.** Dense rows do not translate or scale on hover. Response updates do not resize the surrounding workspace.
 - **Truthful timing.** Exit motion follows a successful acknowledgement. Pending states reflect a real request. No simulated progress is shown.
+- **Owned completion.** A delayed response, timer, file picker, or focus callback belongs to the exact tab, object, editor generation, and action that started it. If that context changes, the completion is discarded without repainting newer work.
 
 ## Tokens
 
@@ -36,6 +37,8 @@ Main-tab state, ARIA selection, focus, and panel visibility commit synchronously
 
 A newly inserted request may receive a finite accent-edge/background signal. The identity is consumed after its first DOM insertion, so virtualization and later row patches do not replay it. Signals are suppressed once a short update window becomes a burst; high-volume capture remains a stable table.
 
+Changing the selected flow clears the previous detail before the new request begins. Loading and failure are persistent text states with actions disabled, so the selected row, visible protocol data, and available cross-tool actions always refer to the same flow. A known client-decidable filter mismatch or deletion closes the Inspector without an exit animation. When server-side search or scope matching cannot prove whether an older paged selection still belongs, the Inspector pauses on an explicit unavailable state instead of displaying unconfirmed data; clearing the filter can recover the selection. Failed History refreshes leave a direct Retry state rather than an indefinite loading indicator. Pagination and scope failures stay inline and retryable; failure feedback does not travel or pulse.
+
 ### Intercept
 
 A newly held request or response receives one finite queue-arrival signal, capped during bursts. Forward and Drop remain pending while their real API requests are active. If an SSE removal arrives first, the row is retained briefly so its exit starts only after acknowledgement. Forward fades in the continuation direction; Drop uses a short neutral removal fade. Selection is keyed by request ID and side and is retained when possible.
@@ -44,6 +47,8 @@ A newly held request or response receives one finite queue-arrival signal, cappe
 
 The action control exposes idle, pending, success, and error state through text, color, `aria-busy`, and disabled state. Response content receives a local opacity transition after real data or an error arrives. Raw status and error information remain visible. Scanner progress continues to use backend-reported progress only.
 
+Repeater send history belongs to the task tab rather than the current URL or request fields. Method, URL, header, body, response selection, top-level navigation, and reload changes do not move or clear it; closing the task tab removes its durable history. Cross-tool loads and Intruder file pickers validate their originating tab and editor generation before updating controls.
+
 ### Map
 
 Tree, table, parameter, and SVG graph views remain available. The SVG graph compares stable node/edge identities with the preceding render and signals only new or changed items, with a cap that suppresses bulk redraw animation. New edges use a short directional dash signal. Nodes are keyboard-operable, expose selection state, and show a focus/selection halo. Fit and host-focus pan/zoom are finite user-initiated transforms; initial layout and bulk filtering do not animate every node.
@@ -51,6 +56,10 @@ Tree, table, parameter, and SVG graph views remain available. The SVG graph comp
 ### Existing live states
 
 Toast entry/exit, control state, capture-live, reconnecting, and enabled-live indicators use shared tokens. Pending response text is static rather than an infinite blink so heavy capture cannot create an animation per row.
+
+At phone widths the control-stream dot remains visible, and its text expands only for the important reconnecting state. Live Settings refreshes preserve dirty fields and dynamic rows without animating the form or moving focus. Activity refreshes, context menus, and evidence lightboxes preserve or deliberately restore focus; motion never substitutes for their accessible label, outcome, or selection state.
+
+Security context and reference data never fail into a plausible empty state. Scope, identities, projects, saved views/tags, rule packs, sharing, and device/API references keep an inline error and direct Retry action; recovery replaces that state without moving the operator to another panel.
 
 ## Reduced motion
 
@@ -63,6 +72,7 @@ Toast entry/exit, control state, capture-live, reconnecting, and enabled-live in
 - Consume one-shot row/node identities and cancel superseded element animations.
 - Do not animate large DOM subtrees, every SVG item after a filter, or a continuous graph simulation.
 - Skip non-essential motion while the document is hidden.
+- Cancel or ignore delayed callbacks whose initiating action, tab, selection, or editor generation is no longer current.
 - Keep map readability caps and history virtualization in force.
 - Add no animation runtime, external request, font, or hosted asset.
 
@@ -74,6 +84,7 @@ Allowed:
 - a Send control that reads `Sending…`, then shows a finite success or error state;
 - a selected graph node with a persistent halo and a one-time new-edge dash;
 - an acknowledged intercept item fading a few pixels toward its outcome.
+- a persistent loading/error message replacing stale Inspector data while the correct flow is fetched.
 
 Rejected:
 
@@ -82,6 +93,7 @@ Rejected:
 - animating every node after filtering or every request during a burst;
 - fake progress, bouncing controls, animated backgrounds, particles, glow effects, or `transition: all`;
 - motion as the only signal of pending, success, failure, selection, or connection state.
+- keeping old request data visible under a newly selected row merely to avoid an abrupt content change.
 
 ## Optional 3D topology assessment
 
