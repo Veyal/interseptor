@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -46,6 +47,9 @@ func TestMacOSBuildStampsBundleVersionIntoBinaries(t *testing.T) {
 }
 
 func TestMacOSBuildFallbackAcceptsDeclaredVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("BSD/POSIX sed extractor is not available on Windows")
+	}
 	t.Parallel()
 
 	script, err := os.ReadFile("../../packaging/macos/build-app.sh")
