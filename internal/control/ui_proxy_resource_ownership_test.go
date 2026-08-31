@@ -165,6 +165,7 @@ func TestUIAuthzModalOwnsLoadsEditsAndActions(t *testing.T) {
 		"kind==='error'?'alert':'status'",
 		"kind==='error'?'assertive':'polite'",
 		"function openSettingsScope(){\n  if(authzActionBusy)return",
+		"setAuthzActionBusy(authzActionBusy)",
 		"setAuthzStatus('Loading captured authentication…')",
 		"function closeAuthz(){\n  if(authzActionBusy)return",
 		"function authzActionCurrent(epoch,mode,target,requiresTarget=true)",

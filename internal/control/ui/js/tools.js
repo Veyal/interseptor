@@ -221,17 +221,17 @@ async function repRecordHistory(t,flow){
   try{await repStoreHistoryEntries(t,t.historyStoreNeedsMigration?t.history:[entry]);t.historyStoreNeedsMigration=false;t.historyStorageError='';}
   catch(e){const first=!t.historyStorageError;t.historyStoreNeedsMigration=true;t.historyStorageError=e.message||'unknown error';if(first)toast('Repeater history could not be saved for reload: '+t.historyStorageError,'error');}
 }
-export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,warnings:[],history:[],historyKey:newRepHistoryKey(),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:'',historyStoreNeedsMigration:false};}
+export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,requestAdoptionPristine:false,warnings:[],history:[],historyKey:newRepHistoryKey(),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:'',historyStoreNeedsMigration:false};}
 function normalizeRepeaterTab(t){
   const url=t.url||'';
   const hasHistory=Object.prototype.hasOwnProperty.call(t,'history')&&Array.isArray(t.history);
   const historyKey=typeof t.historyKey==='string'&&t.historyKey?t.historyKey.slice(0,160):newRepHistoryKey();
   const historyNeedsMigration=t.historyNeedsMigration===true||(!t.historyKey&&!hasHistory);
   const history=normalizeRepHistory(t.history);
-  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
+  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
 }
 function serializeRepeaterTab(t){
-  const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
+  const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',requestAdoptionPristine:!!t.requestAdoptionPristine,warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
   if(t.historyStoreNeedsMigration)out.history=normalizeRepHistory(t.history);
   return out;
 }
@@ -423,12 +423,14 @@ export function repPersistDebounced(){repTabs.persistDebounced();}
 function repHistoryVisible(){const box=$('#repHistory');return !!box&&box.style.display!=='none';}
 function repSetHistoryCount(t){const toggle=$('#repHistToggle'),count=normalizeRepHistory(t?.history).length;if(toggle)toggle.textContent='⟲ History'+(count?' ('+count+')':'');}
 function refreshRepHistory(t=repCur()){if(repCur()!==t)return;if(repHistoryVisible())loadRepHistory();else repSetHistoryCount(t);}
-export function repSaveEditor(){
+export function repSaveEditor({operatorEdit=false}={}){
   const t=repCur();if(!t)return;
   const method=$('#repMethod').value,url=$('#repUrl').value,headers=$('#repHeaders').value;
   const v=$('#repBody').value;
   const previous=((t.reqView||'raw')==='decoded'?t.decodedPlain:t.body)||'';
-  if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  const changed=method!==t.method||url!==t.url||headers!==t.headers||v!==previous;
+  if(changed)t.reqEditEpoch=(t.reqEditEpoch||0)+1;
+  if(changed&&operatorEdit)t.requestAdoptionPristine=false;
   t.method=method;t.url=url;t.headers=headers;
   if((t.reqView||'raw')==='decoded')t.decodedPlain=v;
   else t.body=v;
@@ -667,7 +669,7 @@ export async function repLoadSend(id){
     const i=raw.indexOf('\r\n\r\n');
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     t.body=i>=0?raw.slice(i+4):'';
-    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=false;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
     renderRepTabs();repLoadEditor();repPersist();
@@ -678,7 +680,7 @@ export async function sendToRepeater(f){
   if(!await waitForWorkstationReady())return false;
   if(actionEpoch!==repRequestActionEpoch)return false;
   repSaveEditor();
-  const tabSnapshots=repTabs.tabs.map(tab=>({tab,endpoint:repTabEndpoint(tab),editEpoch:tab.reqEditEpoch||0}));
+  const tabSnapshots=repTabs.tabs.map(tab=>({tab,endpoint:repTabEndpoint(tab),editEpoch:tab.reqEditEpoch||0,pristine:tab.requestAdoptionPristine===true}));
   try{
     const d=await api('/api/flows/'+f.id);
     const raw=await api('/api/flows/'+f.id+'/raw?side=req');
@@ -687,8 +689,10 @@ export async function sendToRepeater(f){
     if(actionEpoch!==repRequestActionEpoch)return false;
     const fep=repFlowEndpoint(d);
     const reusable=tabSnapshots.find(snapshot=>snapshot.endpoint===fep
+      &&snapshot.pristine
       &&repTabs.tabs.includes(snapshot.tab)
       &&repTabEndpoint(snapshot.tab)===snapshot.endpoint
+      &&snapshot.tab.requestAdoptionPristine===true
       &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0));
     let t=reusable?.tab||null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
@@ -696,7 +700,7 @@ export async function sendToRepeater(f){
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
     const i=raw.indexOf('\r\n\r\n');t.body=i>=0?raw.slice(i+4):'';
-    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';
+    t.reqView='pretty';t.sourceFlowId=f.id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=true;
     t.resId=null;t.status='';t.color='';t.sendError='';t.title=repTitle(t);
     renderRepTabs();repPersist();
     // Stay on the source panel when either read fails. Navigating now confirms
@@ -715,7 +719,7 @@ export async function repInit(){
   // First persist migrates localStorage drafts into the project DB.
   if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{
-    repSaveEditor();
+    repSaveEditor({operatorEdit:true});
     // Typing in method/url only changes the active tab's label — don't rebuild the
     // whole tab bar (and re-wire every tab) on every keystroke. Update the label.
     const t=repCur(); if(t){
@@ -725,7 +729,7 @@ export async function repInit(){
     }
     repPersistDebounced();
   });});
-  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor();repRefreshHL();repPersistDebounced();});});
+  ['#repHeaders','#repBody'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{repSaveEditor({operatorEdit:true});repRefreshHL();repPersistDebounced();});});
   // Keep each colored overlay scrolled in lockstep with its textarea.
   [['#repHeaders','#repHeadersHL'],['#repBody','#repBodyHL']].forEach(([ta,hl])=>{
     const t=$(ta),p=$(hl);if(t&&p)t.addEventListener('scroll',()=>{p.scrollTop=t.scrollTop;p.scrollLeft=t.scrollLeft;});
@@ -749,7 +753,7 @@ async function repEncodeSel(el,op){
     if(r.error){toast(r.error);return;}
     el.value=el.value.slice(0,a)+r.output+el.value.slice(b);
     el.selectionStart=a;el.selectionEnd=a+r.output.length;
-    repSaveEditor();repRefreshHL();repPersistDebounced();
+    repSaveEditor({operatorEdit:true});repRefreshHL();repPersistDebounced();
   }catch(e){toast(e.message);}
 }
 

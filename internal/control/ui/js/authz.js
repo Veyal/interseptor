@@ -111,6 +111,7 @@ async function renderAuthzScopePanel(){
   }
   html+=`<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" id="authzScopeEdit">Settings → Target scope</button><span class="hint" id="authzScopeHosts">checking captured traffic…</span></div>`;
   panel.innerHTML=html;
+  setAuthzActionBusy(authzActionBusy);
   $('#authzScopeEdit')?.addEventListener('click',openSettingsScope);
   try{
     const d=await api('/api/flows?limit=500&inScope=1');

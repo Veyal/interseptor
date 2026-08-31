@@ -195,12 +195,25 @@ func TestUICreatedFindingsSurfacePartialAttachmentWarnings(t *testing.T) {
 }
 
 func TestUISendToRepeaterOnlyReusesPreexistingUneditedTabs(t *testing.T) {
-	requireUIContracts(t, "js/tools.js",
+	tools := requireUIContracts(t, "js/tools.js",
+		"requestAdoptionPristine:false",
+		"requestAdoptionPristine:t.requestAdoptionPristine===true",
+		"requestAdoptionPristine:!!t.requestAdoptionPristine",
+		"repSaveEditor({operatorEdit:true})",
+		"if(changed&&operatorEdit)t.requestAdoptionPristine=false",
+		"t.requestAdoptionPristine=false",
 		"const tabSnapshots=repTabs.tabs.map",
+		"pristine:tab.requestAdoptionPristine===true",
 		"repTabs.tabs.includes(snapshot.tab)",
 		"snapshot.endpoint===fep",
+		"snapshot.pristine",
+		"snapshot.tab.requestAdoptionPristine===true",
 		"snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)",
+		"t.requestAdoptionPristine=true",
 	)
+	if strings.Count(tools, "repSaveEditor({operatorEdit:true})") < 3 {
+		t.Error("every direct Repeater request edit path must clear adoption-pristine state")
+	}
 }
 
 func TestUIAuthzContextActionRetainsItsExplicitFlow(t *testing.T) {

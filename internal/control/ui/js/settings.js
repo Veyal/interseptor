@@ -1686,6 +1686,7 @@ $('#sysProxyToggle').onclick=async()=>{
 let androidDeviceSerial='';
 let androidLoadEpoch=0;
 let androidActionPending=false;
+let androidDeviceActionsReady=false;
 
 function androidSerial(){
   return androidDeviceSerial||'';
@@ -1696,12 +1697,16 @@ function setAndroidDeviceActionsEnabled(enabled){
     .forEach(id=>{const button=$('#'+id);if(button){button.disabled=!enabled;button.title=enabled?'':'Connect and authorize an Android device first';}});
   const remove=$('#androidRemoveSystemCa');if(remove)remove.disabled=!enabled;
 }
+function setAriaBusy(control,busy){
+  if(busy)control.setAttribute('aria-busy','true');
+  else control.removeAttribute('aria-busy');
+}
 function setAndroidActionBusy(busy){
   ['androidRefreshBtn','androidSetupAllBtn','androidInstallUserBtn','androidInstallSystemBtn','androidProxyBtn','androidUnproxyBtn']
-    .forEach(id=>{const button=$('#'+id);if(button){button.toggleAttribute('aria-busy',busy);if(busy)button.disabled=true;else if(id==='androidRefreshBtn')button.disabled=false;}});
-  const trigger=$('#androidDeviceTrigger');if(trigger)trigger.disabled=busy||!$('#androidDeviceMenu')?.querySelector('[role="option"]:not(:disabled)');
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);if(busy)button.disabled=true;else if(id==='androidRefreshBtn')button.disabled=false;}});
+  const trigger=$('#androidDeviceTrigger');if(trigger)trigger.disabled=busy||!androidDeviceActionsReady||!$('#androidDeviceMenu')?.querySelector('[role="option"]:not(:disabled)');
   $('#androidProxyMode')?.querySelectorAll('button').forEach(button=>{button.disabled=busy;});
-  if(!busy)setAndroidDeviceActionsEnabled(!!androidSerial());
+  if(!busy)setAndroidDeviceActionsEnabled(androidDeviceActionsReady);
 }
 
 function androidDeviceTitle(d){
@@ -1856,19 +1861,21 @@ export async function loadAndroid({allowDuringAction=false}={}){
   const epoch=++androidLoadEpoch;
   const sec=$('#androidAdbSection'),hint=$('#androidAdbHint');
   const lanHint=$('#androidLanHint'),caHint=$('#androidCaHint');
-  if(!sec)return;
+  if(!sec){androidDeviceActionsReady=false;return {ok:false,ready:false};}
   try{
     const s=await api('/api/android/status');
     if(epoch!==androidLoadEpoch||(androidActionPending&&!allowDuringAction))return null;
     if(!s.available){
+      androidDeviceActionsReady=false;
       setAndroidDeviceActionsEnabled(false);
       sec.style.display='none';
-      return;
+      return {ok:true,ready:false};
     }
     sec.style.display='';
     const devs=s.devices||[];
     renderAndroidDevicePicker(devs);
-    setAndroidDeviceActionsEnabled(devs.some(d=>d.state==='device')&&!!androidSerial());
+    androidDeviceActionsReady=devs.some(d=>d.state==='device')&&!!androidSerial();
+    setAndroidDeviceActionsEnabled(androidDeviceActionsReady);
     if(lanHint){
       let html='';
       if(s.lanHost)html=`<span>LAN host: ${esc(s.lanHost)}</span>`;
@@ -1893,23 +1900,26 @@ export async function loadAndroid({allowDuringAction=false}={}){
       else if(devs.some(d=>d.state==='unauthorized'))msg='Accept the USB debugging authorization prompt on the device.';
     }
     if(hint)hint.textContent=msg;
+    return {ok:true,ready:androidDeviceActionsReady};
   }catch(e){
     if(epoch!==androidLoadEpoch||(androidActionPending&&!allowDuringAction))return null;
+    androidDeviceActionsReady=false;
     sec.style.display='';
     renderLoadError(hint,'Android device discovery',e,loadAndroid,false);
     setAndroidDeviceActionsEnabled(false);
+    return {ok:false,ready:false};
   }
 }
 
 async function androidAction(fn){
   if(androidActionPending)return false;
-  androidActionPending=true;androidLoadEpoch++;setAndroidActionBusy(true);
+  androidActionPending=true;androidDeviceActionsReady=false;androidLoadEpoch++;setAndroidActionBusy(true);
   let error=null;
   try{
     try{await fn();}catch(e){toast(e.message);error=e;}
-    await loadAndroid({allowDuringAction:true});
+    const status=await loadAndroid({allowDuringAction:true});
     setAndroidActionBusy(true);
-    if(error)return false;
+    if(error||!status?.ok)return false;
     await mobileReadiness('#androidAdbHint');
     return true;
   }finally{
@@ -2096,7 +2106,7 @@ async function iosAction(fn){
 
 function setIOSActionBusy(busy){
   ['iosRefreshBtn','iosSetupAllBtn','iosInstallCaBtn','iosOpenProfileBtn']
-    .forEach(id=>{const button=$('#'+id);if(button){button.toggleAttribute('aria-busy',busy);button.disabled=busy;}});
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);button.disabled=busy;}});
   const trigger=$('#iosDeviceTrigger');if(trigger)trigger.disabled=busy||!$('#iosDeviceMenu')?.querySelector('[role="option"]');
   $('#iosProxyMode')?.querySelectorAll('button').forEach(button=>{button.disabled=busy;});
 }
@@ -2228,7 +2238,7 @@ async function iosSshAction(fn){
 
 function setIOSSshActionBusy(busy){
   ['iosSshStatusBtn','iosSshSetupBtn','iosSshInstallCaBtn']
-    .forEach(id=>{const button=$('#'+id);if(button){button.toggleAttribute('aria-busy',busy);button.disabled=busy;}});
+    .forEach(id=>{const button=$('#'+id);if(button){setAriaBusy(button,busy);button.disabled=busy;}});
 }
 
 {const lh=$('#iosSshLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosSshOpenProxyBtn'))openSettingsProxy();});}
