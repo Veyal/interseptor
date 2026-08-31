@@ -2053,7 +2053,7 @@ function iosWifiNeedsProxyBind(s){
 export async function loadIOS({allowDuringAction=false}={}){
   const epoch=++iosLoadEpoch;
   const sec=$('#iosSection'),hint=$('#iosHint'),lanHint=$('#iosLanHint'),profileLink=$('#iosProfileLink');
-  if(!sec)return;
+  if(!sec)return {ok:false};
   try{
     const s=await api('/api/ios/status');
     if(epoch!==iosLoadEpoch||(iosActionPending&&!allowDuringAction))return null;
@@ -2082,10 +2082,12 @@ export async function loadIOS({allowDuringAction=false}={}){
     else if(!devs.length)msg='Boot an iOS Simulator or connect an iPhone — or download the profile for manual install.';
     else if(!s.simctlAvailable)msg='Simulator automation needs Xcode on macOS. Physical devices: download profile → open in Safari on the phone.';
     if(hint)hint.textContent=msg;
+    return {ok:!s.deviceError};
   }catch(e){
     if(epoch!==iosLoadEpoch||(iosActionPending&&!allowDuringAction))return null;
     sec.style.display='';
     renderLoadError(hint,'iOS device discovery',e,loadIOS,false);
+    return {ok:false};
   }
 }
 
@@ -2095,8 +2097,8 @@ async function iosAction(fn){
   let error=null;
   try{
     try{await fn();}catch(e){toast(e.message);error=e;}
-    await loadIOS({allowDuringAction:true});
-    if(error)return false;
+    const status=await loadIOS({allowDuringAction:true});
+    if(error||!status?.ok)return false;
     await mobileReadiness('#iosHint');
     return true;
   }finally{
@@ -2197,7 +2199,7 @@ async function iosSshPost(path,extra){
 export async function loadIOSSsh({allowDuringAction=false}={}){
   const epoch=++iosSshLoadEpoch;
   const sec=$('#iosSshSection'),hint=$('#iosSshHint'),lanHint=$('#iosSshLanHint');
-  if(!sec)return;
+  if(!sec)return {ok:false};
   iosSshRestore();
   try{
     const s=await api('/api/ios/ssh/status');
@@ -2214,10 +2216,12 @@ export async function loadIOSSsh({allowDuringAction=false}={}){
       lanHint.style.display=html?'':'none';
     }
     if(hint&&!iosSshFields().host)hint.textContent='Enter the jailbroken device IP and SSH credentials, then Check SSH status or Setup all.';
+    return {ok:true};
   }catch(e){
     if(epoch!==iosSshLoadEpoch||(iosSshActionPending&&!allowDuringAction))return null;
     sec.style.display='';
     renderLoadError(hint,'iOS SSH discovery',e,loadIOSSsh,false);
+    return {ok:false};
   }
 }
 
@@ -2227,8 +2231,8 @@ async function iosSshAction(fn){
   let error=null;
   try{
     try{await fn();}catch(e){toast(e.message);error=e;}
-    await loadIOSSsh({allowDuringAction:true});
-    if(error)return false;
+    const status=await loadIOSSsh({allowDuringAction:true});
+    if(error||!status?.ok)return false;
     await mobileReadiness('#iosSshHint');
     return true;
   }finally{
