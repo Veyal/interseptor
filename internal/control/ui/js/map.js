@@ -353,10 +353,15 @@ export function mapCount(node){
   return n;
 }
 
-// Memoized: tree structure depends on filters + clustering, not the search term.
 let _btKey = '', _btCache = null;
+function mapTreeExpansionSignature(){
+  return JSON.stringify([
+    [...mapState.expandedClusters].sort(),
+    [...mapState.searchExpandedClusters].sort(),
+  ]);
+}
 export function buildMapTree(eps){
-  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + eps.length;
+  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + mapTreeExpansionSignature() + '|' + eps.length;
   if(key === _btKey && _btCache) return _btCache;
   const hosts = new Map();
   eps.forEach(e => {

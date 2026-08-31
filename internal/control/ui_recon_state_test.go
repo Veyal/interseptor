@@ -97,6 +97,31 @@ func TestMapClusterSearchExpansionPrecedesEveryVisibilityRebuild(t *testing.T) {
 	}
 }
 
+func TestMapTreeCacheIncludesClusterExpansionIdentity(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	for _, contract := range []string{
+		"function mapTreeExpansionSignature()",
+		"[...mapState.expandedClusters].sort()",
+		"[...mapState.searchExpandedClusters].sort()",
+		"mapTreeExpansionSignature() + '|' + eps.length",
+	} {
+		if !strings.Contains(mapJS, contract) {
+			t.Errorf("Map Tree cache identity contract missing %q", contract)
+		}
+	}
+	start := strings.Index(mapJS, "export function buildMapTree(eps){")
+	end := strings.Index(mapJS, "export function findMapTreeNode(key)")
+	if start < 0 || end <= start {
+		t.Fatal("Map Tree cache boundary not found")
+	}
+	cache := mapJS[start:end]
+	key := strings.Index(cache, "mapTreeExpansionSignature()")
+	reuse := strings.Index(cache, "if(key === _btKey && _btCache)")
+	if key < 0 || reuse < 0 || key > reuse {
+		t.Error("Map Tree expansion identity must be captured before cache reuse")
+	}
+}
+
 func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 	findings := readUIAsset(t, "js/findings.js")
 	for _, contract := range []string{
