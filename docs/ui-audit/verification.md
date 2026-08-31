@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited source base: `6dae3ae2f189bd42a173aa7571b29c760b12d2a6`
+- Audited source base: `efdd882627c02b48da3121ad9ff27ec6e45af8d4`
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -15,16 +15,15 @@
 
 ## Release-candidate applicability
 
-The retained audit digest is `52246051b09543584ed9e6f2c9828963c85154c6ef34c9dc7db2d6f7b8ad64d7`.
-The target runtime source now hashes to
-`ec594e8dba2361fceb84cdf743cb241ac9a3db1baa1e065aa20a820b5d23a1e7`, after the
-later Authz, mobile-action, and Repeater-adoption fixes. Therefore the retained browser record is
-prior evidence only: it does not validate the current release candidate and must be replaced by a
-fresh full browser run before release.
+The retained audit digest is `0edb3235b769318caa9308afe43dfc5ada4a96b420832528fb1921f5bd10ae12`
+across 249 runtime files. It matches the current release-candidate runtime exactly, including the
+final Authz, mobile-action, Repeater-adoption, and visible-Allowlist SSE fixes. Documentation-only
+commits made after the audited base do not change this identity; any later change under `cmd/`,
+`internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
 The complete 26-case matrix and three-run performance profile were executed against that exact source
-with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3 --output-dir docs/ui-audit`.
-The machine-readable result and screenshots are retained together so the pass, measurements, and
+with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`; the validated machine-readable
+result and screenshots were retained together in this directory so the pass, measurements, and
 application-source identity cannot drift apart.
 
 ## Audit outcome
@@ -58,6 +57,8 @@ field that created it. In particular:
   records expose consistent current-state semantics to assistive technology.
 - Repeater sends, cross-feature request adoption, OOB saves/refreshes, and Intruder progress each
   retain the exact action, draft, and task-tab owner that initiated them.
+- Cross-feature Repeater adoption reuses only a genuinely pristine task tab; a request edited before
+  or during adoption remains untouched and receives a separate incoming tab.
 - Same-flow SSE refreshes cannot retarget an explicit Authz request, and Map graph summaries count
   the same filtered, collapsed, and capped endpoints that the graph actually renders.
 - Finding creation, Scanner check actions, and Authz actions move pending focus to an in-dialog
@@ -75,7 +76,7 @@ field that created it. In particular:
 | Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
 | Findings | creation and pending-status focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
 | Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
-| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
+| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; external allowlist changes reconcile only the visible pane; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
 | Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
 | Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting/error announcements, WebSocket capture/replay contracts | close paths restore focus; pending modal actions retain focus; busy Authz scope navigation cannot switch the underlying panel; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
 
@@ -93,11 +94,12 @@ render and close-vs-send race remain covered by focused Repeater regression test
 
 The retained exact-source browser pass opened every Settings section, refreshed both device panels,
 exercised the project modal and reversible API-key/allowlist mutations, and verified that an
-unconfigured Vault made no remote request. It held a Vault configuration PUT, typed a newer token
-draft, then released the acknowledgement; the newer draft remained. Focused Go UI contracts
-additionally inject delayed Settings reads and acknowledgements, rapid strict/compatible changes,
-live refresh over dirty TLS drafts, and shared Setup/Settings system-proxy mutations without making
-an operating-system change.
+unconfigured Vault made no remote request. A direct API mutation then simulated another client:
+the visible Allowlist pane reconciled both its addition and deletion through `allowlist.update`.
+The pass also held a Vault configuration PUT, typed a newer token draft, then released the
+acknowledgement; the newer draft remained. Focused Go UI contracts additionally inject delayed
+Settings reads and acknowledgements, rapid strict/compatible changes, live refresh over dirty TLS
+drafts, and shared Setup/Settings system-proxy mutations without making an operating-system change.
 
 ### OOB draft ownership contract
 
@@ -137,12 +139,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | `burst_network_p95_ms`, bounded rendered rows/DOM nodes, and `long_task_p95_ms` |
-| Main-panel transitions | declared transition samples and measured `panel_interaction_p95_ms` |
-| Delayed Intercept acknowledgement | `intercept_ack_ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | `map_ready_ms`, Fit/wheel/drag samples, and changed graph transform |
-| Whole three-burst profile | CDP task, script, and layout duration deltas |
-| Map interaction | separate CDP task, script, and layout duration deltas |
+| Three 240-request live History bursts | network p95 `121.3 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `197.1 ms` |
+| Delayed Intercept acknowledgement | `318.8 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `77.1 ms`; Fit/wheel/drag interaction `428.6 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.299028 s`; script `0.100878 s`; layout `0.040815 s` |
+| Map interaction | CDP task `0.020780 s`; script `0.001078 s`; layout `0.000517 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

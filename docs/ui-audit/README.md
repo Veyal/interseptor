@@ -31,7 +31,9 @@ tab closures, including when its localStorage cleanup ledger was forced unavaila
 exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed
 Intercept acknowledgements, Authz retargeting, mutation rejection/retry focus, blocked busy-modal
 navigation, reversible API-key/allowlist actions, unconfigured Vault behavior, and every Settings
-section. No unexpected console, page, HTTP, or external-request errors were reported.
+section. A direct API mutation also proved the visible Allowlist pane reconciles another client's
+addition and deletion over SSE without eagerly loading the API module. No unexpected console, page,
+HTTP, or external-request errors were reported.
 
 Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
 hydration and gestures. Exact timing, bounded-DOM, long-task, and interaction measurements are
