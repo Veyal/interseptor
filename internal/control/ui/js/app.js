@@ -266,6 +266,13 @@ function onPanelUpdate(panelName,reloadFn,badgeId){
   if(panel?.classList.contains('active'))reloadFn();
   else if(badgeId)setNavDot(badgeId,true);
 }
+function refreshVisibleAllowlist(){
+  const panel=document.querySelector('.panel[data-panel="settings"]');
+  const section=document.querySelector('.set-sec[data-sec="api"]');
+  const pane=$('#apiAllowlist');
+  if(!panel?.classList.contains('active')||section?.hidden!==false||pane?.style.display!=='block')return;
+  import('./apipanel.js').then(module=>module.loadAllowlist());
+}
 // SSE_HANDLERS documents (and, for the modal-gated group, implements) each
 // event's contract in one place. Events not listed here are still handled
 // directly in the es.onmessage dispatcher below — this is a partial migration,
@@ -279,6 +286,7 @@ const SSE_HANDLERS={
   'notes.update':{contract:'always-reload',run:loadNotes},
   'findings.update':{contract:'always-reload',run:loadFindings},
   'tags.update':{contract:'always-reload',run:loadTags},
+  'allowlist.update':{contract:'visible-pane nudge',run:refreshVisibleAllowlist},
 };
 function connectEvents(){
   const es=new EventSource('/api/events');

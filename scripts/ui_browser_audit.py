@@ -1750,6 +1750,39 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.wait_for_selector("#confirmModal", state="visible", timeout=10_000)
                 page.locator("#confirmOk").click()
                 page.wait_for_function("!document.querySelector('#allowList tr')?.textContent.includes('127.0.0.254/32')", timeout=10_000)
+
+                # Simulate a second UI/API client. The active Allowlist pane
+                # must consume allowlist.update and reconcile itself; hidden
+                # panes remain lazy and do no background work.
+                external_allow = page.evaluate(
+                    """async () => {
+                      const response = await fetch('/api/allowlist', {
+                        method: 'POST',
+                        headers: {'content-type': 'application/json'},
+                        body: JSON.stringify({cidr: '127.0.0.253/32', label: 'external-audit'})
+                      });
+                      if (!response.ok) throw new Error(`allowlist POST ${response.status}`);
+                      return response.json();
+                    }"""
+                )
+                external_allow_id = int(external_allow.get("id", 0))
+                result.require(external_allow_id > 0, "external allowlist mutation returned no id")
+                page.wait_for_function(
+                    """() => [...document.querySelectorAll('#allowList tr')]
+                      .some(row=>row.textContent.includes('127.0.0.253/32'))""",
+                    timeout=10_000,
+                )
+                page.evaluate(
+                    """async id => {
+                      const response = await fetch(`/api/allowlist/${id}`, {method: 'DELETE'});
+                      if (!response.ok) throw new Error(`allowlist DELETE ${response.status}`);
+                    }""",
+                    external_allow_id,
+                )
+                page.wait_for_function(
+                    "!document.querySelector('#allowList tr')?.textContent.includes('127.0.0.253/32')",
+                    timeout=10_000,
+                )
                 result.require(page.locator("#sysProxyToggle").get_attribute("aria-pressed") == "false", "read-only audit changed the system proxy")
 
             result.run("auxiliary surfaces, reversible actions, and validators", auxiliary_reversible_surfaces)

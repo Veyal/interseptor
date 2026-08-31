@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Repeatable UI release audit.** Added `scripts/ui_browser_audit.py`, a feature-by-feature and cross-workflow Playwright/Chrome DevTools Protocol loop covering real data states, keyboard/focus behavior, every Settings section, required viewports, reduced motion, burst traffic, screenshots, external-request detection, and performance evidence before embedded UI changes ship; tracked audit artifacts carry an exact runtime-source digest.
 
 ### Fixed
+- **Live allowlist reconciliation.** Refresh the visible Settings allowlist after another UI or API client changes it, while preserving the API panel's lazy-loading boundary when that pane is hidden.
 - **Repeater edit-epoch regression contract.** Keep decoded-view stale-result coverage aligned with the shared request-change predicate that also revokes pristine cross-feature adoption.
 - **Review follow-up safeguards.** Preserve edited Repeater requests during cross-feature adoption, keep asynchronously rendered Authz scope navigation locked during runs, fail Android, iOS, and iOS SSH actions closed after discovery errors, and expose valid mobile pending-state tokens.
 - **Pending modal keyboard ownership.** Keep focus on an in-dialog status while Finding creation, Scanner check actions, or Authz actions are pending; restore the initiating action after failure; keep captured-auth loading text truthful; announce Authz failures assertively; and prevent busy Authz scope navigation from switching the underlying workspace.

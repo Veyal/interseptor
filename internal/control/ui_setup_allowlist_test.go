@@ -78,6 +78,21 @@ func TestUIAllowlistMutationFailureReconcilesInvalidatedLoad(t *testing.T) {
 	)
 }
 
+func TestUIAllowlistSSERefreshesOnlyTheVisiblePane(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app,
+		"'allowlist.update'",
+		"function refreshVisibleAllowlist()",
+		"panel?.classList.contains('active')",
+		"section?.hidden!==false",
+		"pane?.style.display!=='block'",
+		"import('./apipanel.js').then(module=>module.loadAllowlist())",
+	)
+	if strings.Contains(app, "import { loadAllowlist") {
+		t.Fatal("allowlist SSE refresh must preserve the API panel's lazy-loading boundary")
+	}
+}
+
 func TestUISetupAsyncReadsOwnTheirRenderedStepAndNode(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/setup.js"))
 	requireUIContains(t, src,
