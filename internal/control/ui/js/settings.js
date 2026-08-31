@@ -99,6 +99,114 @@ function clearSettingsDirty(ids=[], lists=[]) {
   lists.forEach(sel => $(sel)?.removeAttribute('data-settings-dirty'));
 }
 
+let settingsLoadEpoch=0;
+let settingsReconcileTimer=null;
+const settingsMutationLanes=new Map();
+const settingsAcknowledgedValues=new Map();
+let settingsMutationRevision=0;
+
+function scheduleSettingsReconcile() {
+  if(settingsReconcileTimer!==null)clearTimeout(settingsReconcileTimer);
+  settingsReconcileTimer=setTimeout(()=>{
+    settingsReconcileTimer=null;
+    void loadSettings();
+  },0);
+}
+
+function invalidateSettingsLoads({reconcile=true}={}) {
+  settingsLoadEpoch++;
+  const loadState=$('#settingsLoadState');
+  if(loadState?.textContent==='Loading Settings…')loadState.style.display='none';
+  if(reconcile)scheduleSettingsReconcile();
+}
+
+export async function saveSettingsPatch(patch,{invalidate=true,reconcile=true}={}) {
+  const result=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(patch)});
+  if(invalidate)invalidateSettingsLoads({reconcile});
+  return result;
+}
+
+function settingsMutationValue(key,fallback,loadRevision) {
+  const lane=settingsMutationLanes.get(key);
+  const mutation=lane?.pending||lane?.active;
+  if(mutation)return mutation.value;
+  const acknowledged=settingsAcknowledgedValues.get(key);
+  return acknowledged&&acknowledged.revision>loadRevision?acknowledged.value:fallback;
+}
+
+function setSettingsMutationBusy(lane,mutation) {
+  const control=mutation.control;
+  if(!control)return;
+  if(!lane.controls.has(control))lane.controls.set(control,!!control.disabled);
+  lane.lockControl=lane.lockControl||!!mutation.lockControl;
+  lane.controls.forEach((_wasDisabled,current)=>{
+    current.setAttribute('aria-busy','true');
+    if(lane.lockControl)current.disabled=true;
+  });
+}
+
+function clearSettingsMutationBusy(lane) {
+  lane.controls.forEach((wasDisabled,control)=>{
+    control.removeAttribute('aria-busy');
+    if(lane.lockControl)control.disabled=wasDisabled;
+  });
+}
+
+function queueSettingsMutation(key,value,options) {
+  let lane=settingsMutationLanes.get(key);
+  if(!lane){
+    lane={generation:0,running:false,pending:null,active:null,controls:new Map(),lockControl:false};
+    settingsMutationLanes.set(key,lane);
+  }
+  if(lane.pending)lane.pending.resolve(false);
+  const mutation={...options,value,generation:++lane.generation,revision:++settingsMutationRevision,resolve:null};
+  const completion=new Promise(resolve=>{mutation.resolve=resolve;});
+  lane.pending=mutation;
+  setSettingsMutationBusy(lane,mutation);
+  if(!lane.running)void drainSettingsMutation(key,lane);
+  return completion;
+}
+
+async function drainSettingsMutation(key,lane) {
+  lane.running=true;
+  while(lane.pending){
+    const mutation=lane.pending;
+    lane.pending=null;
+    lane.active=mutation;
+    let result,error;
+    try{result=await mutation.request(mutation.value);}
+    catch(err){error=err;}
+    const latest=!lane.pending&&lane.active===mutation&&lane.generation===mutation.generation;
+    if(!latest){mutation.resolve(false);continue;}
+    lane.active=null;
+    lane.running=false;
+    settingsMutationLanes.delete(key);
+    clearSettingsMutationBusy(lane);
+    try{
+      if(error)mutation.failure?.(error,mutation.value);
+      else{
+        settingsAcknowledgedValues.set(key,{revision:++settingsMutationRevision,value:mutation.value});
+        mutation.success?.(result,mutation.value);
+      }
+    }finally{mutation.resolve(!error);}
+    return;
+  }
+  lane.active=null;
+  lane.running=false;
+  settingsMutationLanes.delete(key);
+  clearSettingsMutationBusy(lane);
+}
+
+function saveBooleanSetting(key,value,options) {
+  return queueSettingsMutation(key,value,{
+    control:options.control,
+    lockControl:options.lockControl,
+    request:current=>saveSettingsPatch({[key]:current},{invalidate:false}),
+    success:(_result,current)=>options.success?.(current),
+    failure:(error,current)=>options.failure?.(error,current),
+  });
+}
+
 function collectHostHeaderRows() {
   return [...document.querySelectorAll('.host-hdr-row')].map(row => ({
     host: row.querySelector('.host-hdr-host')?.value || '',
@@ -357,9 +465,14 @@ function snapshotDeviceProxyDirty(){
   return {fields,proxyListeners:null,hostHeaders:null,deviceProxyMode:snapshot.deviceProxyMode};
 }
 
+let deviceProxyLoadEpoch=0;
+let deviceProxyMutationPending=false;
 async function loadDeviceProxyEndpoint({deferRender=false}={}){
+  const epoch=++deviceProxyLoadEpoch;
   try{
     const ep=await api('/api/proxy/device-endpoint');
+    if(epoch!==deviceProxyLoadEpoch)return null;
+    if(deviceProxyMutationPending)return null;
     if(!deferRender){
       const dirty=snapshotDeviceProxyDirty();
       renderDeviceProxyUI(ep);
@@ -373,8 +486,12 @@ async function loadDeviceProxyEndpoint({deferRender=false}={}){
 async function saveDeviceProxyEndpoint(){
   const mode=$('#deviceProxyModeSeg')?.querySelector('.on')?.dataset.mode||'auto';
   const host=($('#deviceProxyManualHost')?.value||'').trim();
+  deviceProxyMutationPending=true;
+  deviceProxyLoadEpoch++;
+  invalidateSettingsLoads({reconcile:false});
   try{
     const ep=await api('/api/proxy/device-endpoint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,host})});
+    deviceProxyLoadEpoch++;
     const dirty=snapshotDeviceProxyDirty();
     const currentMode=$('#deviceProxyModeSeg')?.querySelector('.on')?.dataset.mode||'auto';
     const currentHost=($('#deviceProxyManualHost')?.value||'').trim();
@@ -382,7 +499,13 @@ async function saveDeviceProxyEndpoint(){
     if(currentMode!==mode||currentHost!==host)restoreDirtySettings(dirty);
     else clearSettingsDirty(['deviceProxyManualHost','deviceProxyModeSeg']);
     toast('device proxy → '+ep.endpoint+(ep.mode==='auto'?' (auto)':' (manual)'));
-  }catch(e){toast(e.message);}
+  }catch(e){
+    deviceProxyLoadEpoch++;
+    toast(e.message);
+  }finally{
+    deviceProxyMutationPending=false;
+    invalidateSettingsLoads({reconcile:true});
+  }
 }
 
 if($('#deviceProxyModeSeg'))$('#deviceProxyModeSeg').querySelectorAll('button').forEach(b=>{
@@ -526,19 +649,21 @@ export function setOriginTLSVerify(on){
 $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
   const mode=$('#originTLSVerifyMode');
   const on=mode.value==='strict';
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerify:on})});
-    clearSettingsDirty(['originTLSVerifyMode']);
-    setOriginTLSVerify(on);
-    toast(on?'Strict origin certificate verification enabled':'Compatibility mode enabled');
-  }catch(e){
-    toast('origin TLS: '+e.message);
-    clearSettingsDirty(['originTLSVerifyMode']);
-    loadSettings();
-  }
+  return saveBooleanSetting('originTLSVerify',on,{
+    control:mode,
+    success:current=>{
+      clearSettingsDirty(['originTLSVerifyMode']);
+      setOriginTLSVerify(current);
+      toast(current?'Strict origin certificate verification enabled':'Compatibility mode enabled');
+    },
+    failure:e=>{
+      toast('origin TLS: '+e.message);
+      clearSettingsDirty(['originTLSVerifyMode']);
+      loadSettings();
+    },
+  });
 });
-let settingsLoadEpoch=0;
-export async function loadSettings(){const epoch=++settingsLoadEpoch;const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
+export async function loadSettings(){const epoch=++settingsLoadEpoch;const settingsRevision=settingsMutationRevision;const loadState=settingsLoadState();if(loadState){loadState.style.display='block';loadState.textContent='Loading Settings…';}
   try{const s=await api('/api/settings');
   if(epoch!==settingsLoadEpoch)return;
   const networkHostsResult=await loadNetworkHosts({deferRender:true});
@@ -549,7 +674,9 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const loadS
   networkHosts=networkHostsResult;
   $('#setControlHost')?.setAttribute('aria-label','Control UI bind host');
   $('#setControlPort')?.setAttribute('aria-label','Control UI bind port');
-  setOriginTLSVerify(!!s.originTLSVerify);state.proxyAddr=s.proxyAddr;state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';state.controlAddr=s.controlAddr||'127.0.0.1:9966';
+  setOriginTLSVerify(settingsMutationValue('originTLSVerify',!!s.originTLSVerify,settingsRevision));state.proxyAddr=s.proxyAddr;
+  if(!deviceProxyMutationPending){state.deviceProxy=s.deviceProxy||s.proxyAddr;state.deviceProxyMode=s.deviceProxyMode||'auto';}
+  state.controlAddr=s.controlAddr||'127.0.0.1:9966';
   renderProxyListeners(s.proxyAddrs||[s.proxyAddr]);
   if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
   $('#proxyAddr').textContent=s.proxyAddr;
@@ -562,13 +689,13 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const loadS
   const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url http://'+state.controlAddr;
    if($('#setUpstreamCA')&&document.activeElement!==$('#setUpstreamCA'))$('#setUpstreamCA').value=s.upstreamProxyCA||'';
    parseUpstreamProxyURL(s.upstreamProxy||'');
-  state.oobEnabled=!!s.oobEnabled;
+  state.oobEnabled=settingsMutationValue('oobEnabled',!!s.oobEnabled,settingsRevision);
   if($('#setOobEnabled'))$('#setOobEnabled').checked=state.oobEnabled;
-  if($('#capScopeToggle'))setCapScope(!!s.captureScopeOnly);
-  if($('#suppressTelemetryToggle'))setSuppressTelemetry(s.suppressBrowserTelemetry!==false);
-  if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(s.suppressAndroidTelemetry!==false);
-  if($('#invisibleProxyToggle'))setInvisibleProxy(!!s.invisibleProxy);
-  if($('#autoBypassToggle'))setAutoBypass(!!s.autoBypassOnPinFailure);
+  if($('#capScopeToggle'))setCapScope(settingsMutationValue('captureScopeOnly',!!s.captureScopeOnly,settingsRevision));
+  if($('#suppressTelemetryToggle'))setSuppressTelemetry(settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision));
+  if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision));
+  if($('#invisibleProxyToggle'))setInvisibleProxy(settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision));
+  if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
    const bl=$('#tlsBypassList');
@@ -593,67 +720,116 @@ export function applyOobDisabledUI(){
 }
 
 $('#setOobEnabled')&&($('#setOobEnabled').onchange=async()=>{
-  const enabled=$('#setOobEnabled').checked;
-  try{
-    await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({oobEnabled:enabled})});
-    state.oobEnabled=enabled;
-    clearSettingsDirty(['setOobEnabled']);
-    applyOobDisabledUI();
-    toast(enabled?'OOB catcher enabled':'OOB catcher disabled');
-  }catch(e){toast(e.message);clearSettingsDirty(['setOobEnabled']);loadSettings();}
+  const control=$('#setOobEnabled');
+  const enabled=control.checked;
+  return saveBooleanSetting('oobEnabled',enabled,{
+    control,
+    success:current=>{
+      state.oobEnabled=current;
+      control.checked=current;
+      clearSettingsDirty(['setOobEnabled']);
+      applyOobDisabledUI();
+      toast(current?'OOB catcher enabled':'OOB catcher disabled');
+    },
+    failure:e=>{toast(e.message);clearSettingsDirty(['setOobEnabled']);loadSettings();},
+  });
 });
 
 export function setCapScope(on){const b=$('#capScopeToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Saving in-scope only':'Saving all traffic';}
 $('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
-  const on=!$('#capScopeToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({captureScopeOnly:on})});setCapScope(on);toast(on?'Now saving only in-scope traffic':'Now saving all traffic');}
-  catch(e){toast('capture: '+e.message);}
+  const control=$('#capScopeToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('captureScopeOnly',on,{control,lockControl:true,
+    success:current=>{setCapScope(current);toast(current?'Now saving only in-scope traffic':'Now saving all traffic');},
+    failure:e=>{toast('capture: '+e.message);loadSettings();},
+  });
 });
 export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser telemetry':'Allowing browser telemetry';}
 $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressBrowserTelemetry:on})});setSuppressTelemetry(on);toast(on?'Browser telemetry suppressed':'Browser telemetry now visible in history');}
-  catch(e){toast('telemetry: '+e.message);}
+  const control=$('#suppressTelemetryToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('suppressBrowserTelemetry',on,{control,lockControl:true,
+    success:current=>{setSuppressTelemetry(current);toast(current?'Browser telemetry suppressed':'Browser telemetry now visible in history');},
+    failure:e=>{toast('telemetry: '+e.message);loadSettings();},
+  });
 });
 export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
 $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').onclick=async()=>{
-  const on=!$('#suppressAndroidTelemetryToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({suppressAndroidTelemetry:on})});setSuppressAndroidTelemetry(on);toast(on?'Android telemetry suppressed':'Android telemetry now visible in history');}
-  catch(e){toast('android telemetry: '+e.message);}
+  const control=$('#suppressAndroidTelemetryToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('suppressAndroidTelemetry',on,{control,lockControl:true,
+    success:current=>{setSuppressAndroidTelemetry(current);toast(current?'Android telemetry suppressed':'Android telemetry now visible in history');},
+    failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
+  });
 });
 export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
 $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
-  const on=!$('#invisibleProxyToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({invisibleProxy:on})});setInvisibleProxy(on);toast(on?'Invisible proxy enabled':'Invisible proxy disabled');}
-  catch(e){toast('invisible: '+e.message);}
+  const control=$('#invisibleProxyToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('invisibleProxy',on,{control,lockControl:true,
+    success:current=>{setInvisibleProxy(current);toast(current?'Invisible proxy enabled':'Invisible proxy disabled');},
+    failure:e=>{toast('invisible: '+e.message);loadSettings();},
+  });
 });
 
 // ---- TLS passthrough / SSL-pinning bypass ----
 export function setAutoBypass(on){const b=$('#autoBypassToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Auto-bypass on pinning failure is on':'Auto-bypass on pinning failure is off';}
+const settingsListWriteTails=new Map();
+function queueSettingsListWrite(key,action){
+  const previous=settingsListWriteTails.get(key)||Promise.resolve();
+  const current=previous.catch(()=>{}).then(action);
+  settingsListWriteTails.set(key,current);
+  return current.finally(()=>{if(settingsListWriteTails.get(key)===current)settingsListWriteTails.delete(key);});
+}
 function bypassHostsFromText(){return ($('#tlsBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
 function updateBypassCount(){const el=$('#tlsBypassCount');if(el)el.textContent=(n=>n?n+' domain'+(n>1?'s':'')+' passed through':'No passthrough domains')(bypassHostsFromText().length);}
 $('#tlsBypassList')&&($('#tlsBypassList').addEventListener('input',updateBypassCount));
 $('#autoBypassToggle')&&($('#autoBypassToggle').onclick=async()=>{
-  const on=!$('#autoBypassToggle').classList.contains('on');
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({autoBypassOnPinFailure:on})});setAutoBypass(on);toast(on?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');}
-  catch(e){toast('auto-bypass: '+e.message);}
+  const control=$('#autoBypassToggle');
+  const on=!control.classList.contains('on');
+  return saveBooleanSetting('autoBypassOnPinFailure',on,{control,lockControl:true,
+    success:current=>{setAutoBypass(current);toast(current?'Auto-bypass on pinning failure enabled':'Auto-bypass disabled');},
+    failure:e=>{toast('auto-bypass: '+e.message);loadSettings();},
+  });
 });
 $('#tlsBypassSave')&&($('#tlsBypassSave').onclick=()=>runSettingsAction($('#tlsBypassSave'),async()=>{
   const list=$('#tlsBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
   const hosts=bypassHostsFromText();
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tlsBypassHosts:hosts})});
-    if(settingsEditOwned(list,generation,submittedValue)){list.value=hosts.join('\n');clearSettingsDirty(['tlsBypassList']);}updateBypassCount();
-    toast(hosts.length?('Passing through '+hosts.length+' domain'+(hosts.length>1?'s':'')):'Passthrough list cleared');}
+  try{const savedHosts=await queueSettingsListWrite('tlsBypassHosts',async()=>{
+      const next=hosts;
+      await saveSettingsPatch({tlsBypassHosts:next});
+      return next;
+    });
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=savedHosts.join('\n');clearSettingsDirty(['tlsBypassList']);}updateBypassCount();
+    toast(savedHosts.length?('Passing through '+savedHosts.length+' domain'+(savedHosts.length>1?'s':'')):'Passthrough list cleared');}
   catch(e){toast('passthrough: '+e.message);}
 }));
+export function addTLSBypassHosts(hosts){
+  const additions=[...new Set((hosts||[]).map(h=>String(h).trim().toLowerCase()).filter(Boolean))];
+  if(!additions.length)return Promise.resolve([]);
+  return queueSettingsListWrite('tlsBypassHosts',async()=>{
+    const current=await api('/api/settings');
+    const merged=[...new Set([...(current.tlsBypassHosts||[]),...additions])];
+    await saveSettingsPatch({tlsBypassHosts:merged});
+    return merged;
+  });
+}
 function originTLSVerifyBypassHostsFromText(){return ($('#originTLSVerifyBypassList')?.value||'').split(/[\n,]/).map(x=>x.trim().toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)===i);}
 function updateOriginTLSVerifyBypassCount(){const el=$('#originTLSVerifyBypassCount');if(el)el.textContent=(n=>n?n+' verification exception'+(n>1?'s':''):'No verification exceptions')(originTLSVerifyBypassHostsFromText().length);}
 $('#originTLSVerifyBypassList')&&($('#originTLSVerifyBypassList').addEventListener('input',updateOriginTLSVerifyBypassCount));
-async function saveOriginTLSVerifyExceptions(hosts,message){
+async function saveOriginTLSVerifyExceptions(hosts,message,{merge=false}={}){
   const list=$('#originTLSVerifyBypassList'),generation=settingsEditGeneration(list),submittedValue=list?.value||'';
-  try{await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({originTLSVerifyBypassHosts:hosts})});
-    if(settingsEditOwned(list,generation,submittedValue)){list.value=hosts.join('\n');clearSettingsDirty(['originTLSVerifyBypassList']);}updateOriginTLSVerifyBypassCount();
-    toast(message||(hosts.length?('Saved '+hosts.length+' origin verification exception'+(hosts.length>1?'s':'')):'Verification exceptions cleared'));
+  try{const savedHosts=await queueSettingsListWrite('originTLSVerifyBypassHosts',async()=>{
+      let next=hosts;
+      if(merge){
+        const current=await api('/api/settings');
+        next=[...new Set([...(current.originTLSVerifyBypassHosts||[]),...hosts])];
+      }
+      await saveSettingsPatch({originTLSVerifyBypassHosts:next});
+      return next;
+    });
+    if(settingsEditOwned(list,generation,submittedValue)){list.value=savedHosts.join('\n');clearSettingsDirty(['originTLSVerifyBypassList']);}updateOriginTLSVerifyBypassCount();
+    toast(message||(savedHosts.length?('Saved '+savedHosts.length+' origin verification exception'+(savedHosts.length>1?'s':'')):'Verification exceptions cleared'));
     return true;
   }catch(e){toast('origin TLS: '+e.message,'error');return false;}
 }
@@ -676,7 +852,7 @@ async function addOriginTLSVerifyException(raw){
   if(!host){toast('Enter a valid host, IP address, or *.example.com pattern','error');return false;}
   const hosts=originTLSVerifyBypassHostsFromText();
   if(!hosts.includes(host))hosts.push(host);
-  const saved=await saveOriginTLSVerifyExceptions(hosts,'Origin TLS exception added for '+host);
+  const saved=await saveOriginTLSVerifyExceptions(hosts,'Origin TLS exception added for '+host,{merge:true});
   if(saved&&$('#originTLSVerifyBypassHost'))$('#originTLSVerifyBypassHost').value='';
   return saved;
 }
@@ -758,7 +934,7 @@ $('#setUpstreamScheme')&&($('#setUpstreamScheme').onchange=e=>renderUpstreamProx
 $('#saveUpstreamBtn')&&($('#saveUpstreamBtn').onclick=()=>runSettingsAction($('#saveUpstreamBtn'),async()=>{
   const submitted=upstreamProxyFieldSnapshot();
   const upstreamProxyCA=$('#setUpstreamCA')?.value.trim()||'';
-  try{const upstreamProxy=buildUpstreamProxyURL();const acknowledged=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({upstreamProxy,upstreamProxyCA})});
+  try{const upstreamProxy=buildUpstreamProxyURL();const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA});
     const saved=upstreamProxyValues(typeof acknowledged?.upstreamProxy==='string'?acknowledged.upstreamProxy:upstreamProxy);
     const savedCA=typeof acknowledged?.upstreamProxyCA==='string'?acknowledged.upstreamProxyCA:upstreamProxyCA;
     upstreamProxyFieldIds.forEach(id=>{
@@ -1226,7 +1402,7 @@ $('#saveAddrBtn').onclick=()=>runSettingsAction($('#saveAddrBtn'),async()=>{
   const addrs=collectProxyAddrs();
   if(!addrs.length){toast('enter at least one listener');return;}
   try{
-    const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({proxyAddrs:addrs})});
+    const s=await saveSettingsPatch({proxyAddrs:addrs});
     state.proxyAddr=s.proxyAddr;$('#proxyAddr').textContent=s.proxyAddr;
     if($('#setAddr'))$('#setAddr').value=s.proxyAddr;
     if(settingsEditOwned(list,generation)){renderProxyListeners(s.proxyAddrs||addrs);clearSettingsDirty([],['#proxyListenersList']);}
@@ -1241,7 +1417,7 @@ $('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),
   const controlAddr=syncControlAddrFields();
   if(!controlAddr){toast('enter control host and port');return;}
   try{
-    const s=await api('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({controlAddr})});
+    const s=await saveSettingsPatch({controlAddr},{reconcile:false});
     state.controlAddr=s.controlAddr;$('#controlAddr').textContent=s.controlAddr;
     if(settingsEditOwned(host,hostGeneration,submittedHost)&&settingsEditOwned(port,portGeneration,submittedPort)){
       const c=parseListenAddr(s.controlAddr);
@@ -1251,29 +1427,123 @@ $('#saveControlAddrBtn').onclick=()=>runSettingsAction($('#saveControlAddrBtn'),
     }
     const newUrl='http://'+s.controlAddr;
     if(location.host!==s.controlAddr)toast('Control UI now on '+newUrl+' — open that URL if this page stops updating');
-    else toast('control UI now on '+s.controlAddr);
+    else{toast('control UI now on '+s.controlAddr);scheduleSettingsReconcile();}
     const tun=$('#oobModalTunnelCmd');if(tun)tun.textContent='cloudflared tunnel --url '+newUrl;
   }catch(e){toast(e.message);}
 });
-export async function loadSysProxy(){
-  try{const s=await api('/api/sysproxy');const sec=$('#sysProxySection');const b=$('#sysProxyToggle');
-    if(!s.supported){
-      if(sec)sec.style.display='none';
-      return;
-    }
-    if(sec)sec.style.display='';
-    if(b)b.disabled=false;
-    b.classList.toggle('on',s.enabled);b.setAttribute('aria-pressed',s.enabled?'true':'false');b.textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';
-  }catch(e){const sec=$('#sysProxySection'),button=$('#sysProxyToggle');if(sec)sec.style.display='';if(button)button.disabled=true;renderLoadError($('#sysProxyHint'),'System proxy',e,loadSysProxy,false);}
+let sysProxyLoadEpoch=0;
+let sysProxyMutationPromise=null;
+let sysProxyDesired=null;
+let sysProxyActiveDesired=null;
+let sysProxyState=null;
+let sysProxyLoadFailed=false;
+
+function renderSystemProxyState(s){
+  if(!s)return;
+  sysProxyState=s;
+  sysProxyLoadFailed=false;
+  const sec=$('#sysProxySection'),button=$('#sysProxyToggle'),hint=$('#sysProxyHint');
+  if(!s.supported){
+    if(sec)sec.style.display='none';
+    return;
+  }
+  if(sec)sec.style.display='';
+  if(button){
+    button.disabled=!!sysProxyMutationPromise;
+    button.classList.toggle('on',!!s.enabled);
+    button.setAttribute('aria-pressed',s.enabled?'true':'false');
+    button.textContent=s.enabled?'System proxy is on':'System proxy is off';
+  }
+  if(hint)hint.textContent=s.enabled?'Traffic routes through '+s.proxy:'';
 }
+
+function setSystemProxyBusy(busy){
+  const button=$('#sysProxyToggle');
+  if(!button)return;
+  button.disabled=busy||sysProxyLoadFailed;
+  if(busy)button.setAttribute('aria-busy','true');
+  else button.removeAttribute('aria-busy');
+}
+
+async function readSystemProxyStatus({render=true,throwOnError=false}={}){const epoch=++sysProxyLoadEpoch;
+  try{
+    const s=await api('/api/sysproxy');
+    if(epoch!==sysProxyLoadEpoch)return sysProxyState;
+    sysProxyState=s;
+    sysProxyLoadFailed=false;
+    if(render)renderSystemProxyState(s);
+    return s;
+  }catch(e){
+    if(epoch!==sysProxyLoadEpoch)return sysProxyState;
+    sysProxyLoadFailed=true;
+    if(render){
+      const sec=$('#sysProxySection'),button=$('#sysProxyToggle');
+      if(sec)sec.style.display='';
+      if(button)button.disabled=true;
+      renderLoadError($('#sysProxyHint'),'System proxy',e,loadSysProxy,false);
+    }
+    if(throwOnError)throw e;
+    return null;
+  }
+}
+
+export function getSystemProxyStatus(options={}){
+  if(sysProxyMutationPromise)return sysProxyMutationPromise;
+  return readSystemProxyStatus(options);
+}
+
+export async function loadSysProxy(){
+  try{return await getSystemProxyStatus();}
+  catch(_){return sysProxyState;}
+}
+
+async function drainSystemProxyMutations(){
+  let result=sysProxyState;
+  while(sysProxyDesired!==null){
+    const desired=sysProxyDesired;
+    sysProxyDesired=null;
+    sysProxyActiveDesired=desired;
+    let current,error;
+    try{current=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:desired})});}
+    catch(e){error=e;}
+    if(sysProxyDesired!==null)continue;
+    if(error)throw error;
+    result=current;
+    renderSystemProxyState(result);
+  }
+  return result;
+}
+
+async function runSystemProxyMutations(){
+  try{return await drainSystemProxyMutations();}
+  catch(e){await readSystemProxyStatus();throw e;}
+  finally{
+    sysProxyActiveDesired=null;
+    sysProxyMutationPromise=null;
+    sysProxyLoadEpoch++;
+    setSystemProxyBusy(false);
+  }
+}
+
+export function setSystemProxyEnabled(enabled){
+  const desired=!!enabled;
+  if(sysProxyMutationPromise){
+    if(sysProxyDesired===desired||(sysProxyDesired===null&&sysProxyActiveDesired===desired))return sysProxyMutationPromise;
+  }
+  sysProxyDesired=!!enabled;
+  sysProxyLoadEpoch++;
+  setSystemProxyBusy(true);
+  if(!sysProxyMutationPromise)sysProxyMutationPromise=runSystemProxyMutations();
+  return sysProxyMutationPromise;
+}
+
 $('#sysProxyToggle').onclick=async()=>{
-  const on=$('#sysProxyToggle').classList.contains('on');$('#sysProxyToggle').disabled=true;
-  try{const s=await api('/api/sysproxy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:!on})});
-    $('#sysProxyToggle').classList.toggle('on',s.enabled);$('#sysProxyToggle').setAttribute('aria-pressed',s.enabled?'true':'false');$('#sysProxyToggle').textContent=s.enabled?'System proxy is on':'System proxy is off';
-    $('#sysProxyHint').textContent=s.enabled?'Traffic routes through '+s.proxy:'';toast(s.enabled?'system proxy enabled':'system proxy disabled');}
-  catch(e){toast(e.message);}
-  $('#sysProxyToggle').disabled=false;
+  const button=$('#sysProxyToggle');
+  const on=button.classList.contains('on');
+  try{
+    const s=await setSystemProxyEnabled(!on);
+    toast(s?.enabled?'system proxy enabled':'system proxy disabled');
+  }catch(e){toast(e.message);}
 };
 
 let androidDeviceSerial='';

@@ -10,7 +10,7 @@ func TestUIUpstreamProxySaveReconcilesOnlyUnchangedFields(t *testing.T) {
 	for _, contract := range []string{
 		"function upstreamProxyFieldSnapshot()",
 		"const submitted=upstreamProxyFieldSnapshot()",
-		"const acknowledged=await api('/api/settings'",
+		"const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA})",
 		"upstreamProxyValues(typeof acknowledged?.upstreamProxy==='string'?acknowledged.upstreamProxy:upstreamProxy)",
 		"settingsEditOwned(el,snapshot.generation,snapshot.value)",
 		"if(settingsEditOwned(el,snapshot.generation,snapshot.value))",
@@ -37,7 +37,7 @@ func TestUIUpstreamProxySaveKeepsDirtyFieldsOnFailure(t *testing.T) {
 	handler := settings[start:end]
 	for _, contract := range []string{
 		"const submitted=upstreamProxyFieldSnapshot()",
-		"const acknowledged=await api('/api/settings'",
+		"const acknowledged=await saveSettingsPatch({upstreamProxy,upstreamProxyCA})",
 		"catch(e){toast(e.message,'error');}",
 	} {
 		if !strings.Contains(handler, contract) {

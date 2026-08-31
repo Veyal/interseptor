@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Repeatable UI release audit.** Added a feature-by-feature and cross-workflow browser loop covering real data states, keyboard/focus behavior, required viewports, reduced motion, burst traffic, and Chrome performance evidence before embedded UI changes ship; the tracked audit artifacts are now bound to the exact application-source revision they validate.
 
 ### Fixed
+- **Serialized Settings ownership.** Coalesce rapid security-toggle changes through per-setting mutation lanes; prevent stale refreshes from repainting acknowledged listener, upstream, TLS-list, and device-endpoint saves; serialize cross-surface TLS additions; and keep Setup and Settings bound to one authoritative system-proxy mutation state with explicit retry feedback.
 - **Exact-revision UI evidence.** Recaptured the required desktop, tablet, and mobile screenshots and repeated reduced-motion, Repeater reload/IndexedDB cleanup, and Chrome performance checks against application source `42461e1`.
 - **UI audit contract coverage.** Kept the comprehensive Inspector reconciliation test aligned with its filter-generation ownership input.
 - **UI regression coverage.** Updated the origin TLS settings journey test to cover the latest-request guard before failure feedback is rendered.

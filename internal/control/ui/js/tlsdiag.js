@@ -153,9 +153,8 @@ async function addHostsToPassthrough(hosts) {
   hosts = (hosts || []).map(h => String(h).trim().toLowerCase()).filter(Boolean);
   if (!hosts.length) return;
   try {
-    const cur = await api('/api/settings');
-    const merged = [...new Set([...(cur.tlsBypassHosts || []), ...hosts])];
-    await api('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tlsBypassHosts: merged }) });
+    const { addTLSBypassHosts } = await import('./settings.js');
+    await addTLSBypassHosts(hosts);
     toast('Passing through ' + hosts.length + ' pinned host' + (hosts.length > 1 ? 's' : '') + ' — reconnect the app');
     loadTrafficDiagnosis();
   } catch (e) { toast('passthrough: ' + e.message); }

@@ -3,6 +3,7 @@
 // them hunt across the Settings sections. Shown once on boot unless skipped, and
 // reopenable from Settings → Project & data.
 import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, projectStorageKey } from './core.js';
+import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
@@ -14,6 +15,28 @@ function setSetupActionBusy(button, busy, label) {
   button.disabled = setupActionBusy;
   button.setAttribute('aria-busy', setupActionBusy ? 'true' : 'false');
   if (label) button.textContent = label;
+}
+
+function renderSetupSystemProxyState(button,status){
+  if(!button||!status)return;
+  if(!status.supported){
+    button.style.display='none';
+    return;
+  }
+  button.style.display='';
+  button.removeAttribute('title');
+  button.disabled=!!status.enabled;
+  button.setAttribute('aria-pressed',status.enabled?'true':'false');
+  button.textContent=status.enabled?'System proxy is on':'Set as system proxy';
+}
+
+function renderSetupSystemProxyError(button,error){
+  if(!button)return;
+  button.style.display='';
+  button.disabled=false;
+  button.removeAttribute('aria-pressed');
+  button.textContent='Retry system proxy status';
+  button.title=error?.message||'Could not read system proxy status';
 }
 
 function osHint() {
@@ -72,21 +95,32 @@ function renderStep() {
       <div id="setupReadiness" class="evidence" style="margin-top:10px"></div>`;
     $('#setupChooseProject').onclick=()=>import('./settings.js').then(m=>m.openProjectModal());
      $('#setupCopyAddr').onclick = () => copyText(state.proxyAddr || '127.0.0.1:8080', 'proxy address copied');
-     api('/api/sysproxy').then(st => {
-       if (!st.supported) $('#setupSysProxy').style.display = 'none';
-     }).catch(() => {});
+     getSystemProxyStatus({throwOnError:true})
+       .then(st=>renderSetupSystemProxyState($('#setupSysProxy'),st))
+       .catch(error=>renderSetupSystemProxyError($('#setupSysProxy'),error));
      $('#setupSysProxy').onclick = async () => {
       if (setupActionBusy) return;
       const button = $('#setupSysProxy');
       const label = button.textContent;
       setSetupActionBusy(button, true, 'Setting proxy…');
+      let acknowledged=null;
+      let statusError=null;
       try {
-        const st = await api('/api/sysproxy');
-        if (!st.supported) { toast('automatic system-proxy is macOS-only — set it manually on Windows/Linux'); return; }
-        await api('/api/sysproxy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
+        const st = await getSystemProxyStatus({throwOnError:true});
+        acknowledged=st;
+        if (!st?.supported) { toast('automatic system-proxy is macOS-only — set it manually on Windows/Linux'); return; }
+        acknowledged=st.enabled?st:await setSystemProxyEnabled(true);
         toast('system proxy on — point your browser at the proxy now');
-      } catch (e) { toast(e.message); }
-      finally { setSetupActionBusy(button, false, label); }
+      } catch (e) {
+        toast(e.message);
+        try{acknowledged=await getSystemProxyStatus({render:false,throwOnError:true});}
+        catch(statusErr){statusError=statusErr;}
+      }
+      finally {
+        setSetupActionBusy(button, false, label);
+        if(acknowledged)renderSetupSystemProxyState(button,acknowledged);
+        else if(statusError)renderSetupSystemProxyError(button,statusError);
+      }
     };
     setupReadiness();
   } else if (step === 1) {

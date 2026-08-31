@@ -186,7 +186,7 @@ func TestOriginTLSVerifySettingsJourney(t *testing.T) {
 	requireUIContains(t, settings,
 		"originTLSVerifyMode",
 		"originTLSVerifyWarning",
-		"originTLSVerify:on",
+		"saveBooleanSetting('originTLSVerify',on",
 		"s.originTLSVerify",
 		"setOriginTLSVerify(",
 		"loadSettings();",
