@@ -42,6 +42,35 @@ func TestUIDeviceDiscoveryUsesIndependentLoadOwnership(t *testing.T) {
 	}
 }
 
+func TestUIDeviceDiscoveryRejectsRefreshBeforeClaimingGeneration(t *testing.T) {
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	for _, tc := range []struct {
+		name  string
+		start string
+		end   string
+		guard string
+		epoch string
+		read  string
+	}{
+		{"Android", "export async function loadAndroid(", "async function androidAction(fn)", "if(androidActionPending&&!allowDuringAction)return null", "const epoch=++androidLoadEpoch", "api('/api/android/status')"},
+		{"iOS", "export async function loadIOS(", "async function iosAction(fn)", "if(iosActionPending&&!allowDuringAction)return null", "const epoch=++iosLoadEpoch", "api('/api/ios/status')"},
+		{"iOS SSH", "export async function loadIOSSsh(", "async function iosSshAction(fn)", "if(iosSshActionPending&&!allowDuringAction)return null", "const epoch=++iosSshLoadEpoch", "api('/api/ios/ssh/status')"},
+	} {
+		start := strings.Index(settings, tc.start)
+		end := strings.Index(settings, tc.end)
+		if start < 0 || end <= start {
+			t.Fatalf("%s discovery boundary not found", tc.name)
+		}
+		loader := settings[start:end]
+		guard := strings.Index(loader, tc.guard)
+		epoch := strings.Index(loader, tc.epoch)
+		read := strings.Index(loader, tc.read)
+		if guard < 0 || epoch <= guard || read <= epoch {
+			t.Errorf("%s refresh must reject action-owned work before claiming a generation or reading status", tc.name)
+		}
+	}
+}
+
 func TestUIRetentionRefreshAndDestructiveActionsHaveOwnership(t *testing.T) {
 	settings := requireUIContracts(t, "js/settings.js",
 		"let retentionLoadEpoch=0",

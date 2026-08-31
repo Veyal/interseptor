@@ -693,7 +693,8 @@ export async function sendToRepeater(f){
       &&repTabs.tabs.includes(snapshot.tab)
       &&repTabEndpoint(snapshot.tab)===snapshot.endpoint
       &&snapshot.tab.requestAdoptionPristine===true
-      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0));
+      &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
+      &&snapshot.tab.sendPending!==true);
     let t=reusable?.tab||null;
     if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
     repTabs.active=t.tid;

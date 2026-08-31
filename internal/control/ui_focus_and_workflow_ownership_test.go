@@ -209,10 +209,16 @@ func TestUISendToRepeaterOnlyReusesPreexistingUneditedTabs(t *testing.T) {
 		"snapshot.pristine",
 		"snapshot.tab.requestAdoptionPristine===true",
 		"snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)",
+		"snapshot.tab.sendPending!==true",
 		"t.requestAdoptionPristine=true",
 	)
 	if strings.Count(tools, "repSaveEditor({operatorEdit:true})") < 3 {
 		t.Error("every direct Repeater request edit path must clear adoption-pristine state")
+	}
+	reuseStart := strings.Index(tools, "const reusable=tabSnapshots.find")
+	reuseEnd := strings.Index(tools, "let t=reusable?.tab||null")
+	if reuseStart < 0 || reuseEnd <= reuseStart || !strings.Contains(tools[reuseStart:reuseEnd], "snapshot.tab.sendPending!==true") {
+		t.Error("send-to-Repeater must not reuse a tab with an owned send in flight")
 	}
 }
 

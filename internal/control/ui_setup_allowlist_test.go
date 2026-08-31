@@ -91,6 +91,17 @@ func TestUIAllowlistSSERefreshesOnlyTheVisiblePane(t *testing.T) {
 	if strings.Contains(app, "import { loadAllowlist") {
 		t.Fatal("allowlist SSE refresh must preserve the API panel's lazy-loading boundary")
 	}
+	helloStart := strings.Index(app, "es.addEventListener('hello'")
+	helloEnd := strings.Index(app, "es.onmessage=")
+	if helloStart < 0 || helloEnd <= helloStart {
+		t.Fatal("SSE hello handler boundary not found")
+	}
+	hello := app[helloStart:helloEnd]
+	reconcile := strings.Index(hello, "if(sseConnectedOnce)refreshVisibleAllowlist()")
+	markConnected := strings.Index(hello, "sseConnectedOnce=true")
+	if reconcile < 0 || markConnected < reconcile {
+		t.Fatal("every non-initial SSE connection must reconcile the visible allowlist")
+	}
 }
 
 func TestUISetupAsyncReadsOwnTheirRenderedStepAndNode(t *testing.T) {

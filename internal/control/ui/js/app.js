@@ -302,6 +302,7 @@ function connectEvents(){
     setSseStatus('ok');
     const now=Date.now();
     const gap=lastSSEMsgAt?now-lastSSEMsgAt:Infinity;
+    if(sseConnectedOnce)refreshVisibleAllowlist();
     if(sseConnectedOnce&&gap>STALE_GAP_MS)resyncAfterStaleReconnect();
     sseConnectedOnce=true;
     lastSSEMsgAt=now;

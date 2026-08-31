@@ -1858,6 +1858,7 @@ function androidWifiNeedsProxyBind(s){
 }
 
 export async function loadAndroid({allowDuringAction=false}={}){
+  if(androidActionPending&&!allowDuringAction)return null;
   const epoch=++androidLoadEpoch;
   const sec=$('#androidAdbSection'),hint=$('#androidAdbHint');
   const lanHint=$('#androidLanHint'),caHint=$('#androidCaHint');
@@ -2051,6 +2052,7 @@ function iosWifiNeedsProxyBind(s){
 }
 
 export async function loadIOS({allowDuringAction=false}={}){
+  if(iosActionPending&&!allowDuringAction)return null;
   const epoch=++iosLoadEpoch;
   const sec=$('#iosSection'),hint=$('#iosHint'),lanHint=$('#iosLanHint'),profileLink=$('#iosProfileLink');
   if(!sec)return {ok:false};
@@ -2197,6 +2199,7 @@ async function iosSshPost(path,extra){
 }
 
 export async function loadIOSSsh({allowDuringAction=false}={}){
+  if(iosSshActionPending&&!allowDuringAction)return null;
   const epoch=++iosSshLoadEpoch;
   const sec=$('#iosSshSection'),hint=$('#iosSshHint'),lanHint=$('#iosSshLanHint');
   if(!sec)return {ok:false};
