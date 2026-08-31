@@ -1,10 +1,10 @@
 # UI audit screenshots
 
 The **After** screenshots validate UI source revision
-[`c9a01ae`](https://github.com/Veyal/interseptor/commit/c9a01ae283c77f6ce831ed3b25a5f753d2769370).
+[`3ac5891`](https://github.com/Veyal/interseptor/commit/3ac5891c25d11f4e38499b0f3629b243ec6260ad).
 They were captured from a fresh build of that checkout in the isolated
-`ui-oob-exact` project on 2026-08-31. The evidence change contains only the audit harness,
-documentation, screenshots, and the changelog, so `c9a01ae` remains the exact application source
+`ui-independent-3ac5891` project on 2026-08-31. This evidence follow-up contains only
+documentation, screenshots, and the changelog, so `3ac5891` remains the exact application source
 under test.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
@@ -23,13 +23,13 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The audited-source Playwright recheck ran Chromium 148 against source `c9a01ae`. All 17 independent and
-cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
+The audited-source Playwright recheck ran Chromium 148 against source `3ac5891`. All 17 independent
+and cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
 history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
 tab closures, including when its localStorage cleanup ledger was forced unavailable. The audit also
-exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed Intercept
-acknowledgements, Authz retargeting, reversible API-key/allowlist actions, unconfigured Vault
+exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed
+Intercept acknowledgements, Authz retargeting, reversible API-key/allowlist actions, unconfigured Vault
 behavior, and every Settings section. No unexpected console, page, HTTP, or external-request errors
 were reported.
 

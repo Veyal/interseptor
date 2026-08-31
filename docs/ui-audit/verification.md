@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited application source: `c9a01ae283c77f6ce831ed3b25a5f753d2769370`
+- Audited application source: `3ac5891c25d11f4e38499b0f3629b243ec6260ad`
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
 - Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
@@ -10,14 +10,13 @@
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-This record validates only application source `c9a01ae`. Later application changes on the release
+This record validates only application source `3ac5891`. Later application changes on the release
 branch are outside this evidence and require a fresh exact-target browser run before release.
 
 The complete 17-case matrix and three-run performance profile were executed against the exact audited
-source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. One preceding isolated
-pass and one independent-agent pass also completed the same matrix without a failure. The
-screenshots are committed separately so this document can name the exact application revision they
-validate.
+source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. The no-mistakes test gate
+and a separate clean-room agent each completed the same matrix without a failure. The screenshots
+are committed separately so this document can name the exact application revision they validate.
 
 ## Audit outcome
 
@@ -32,13 +31,16 @@ was pending. The audited fixes bind each acknowledgement to the object, generati
 field that created it. In particular:
 
 - History reconciles selection across successful and failed server-side filters and never leaves a
-  stale Inspector spinner.
+  stale Inspector spinner; a failed same-filter background refresh cannot cancel an independently
+  selected detail request.
 - Intercept removes Forward/Drop rows only after acknowledgement and keeps request/response lane
   ownership stable across SSE refreshes.
 - Repeater history belongs to the tab, not to the current URL or request contents, and is removed
   only when that tab closes; IndexedDB cleanup is attempted even when its localStorage retry ledger
   is unavailable.
 - Settings acknowledgements update only fields that the operator has not changed since submission.
+- Session full-object saves and login runs share one mutation lane, so rapid cross-action use cannot
+  restore an older form snapshot.
 - Findings, Intruder, Scanner, Notes, Map, Session, and project hydration use latest-request or
   entity-scoped ownership instead of repainting newer work.
 - Share no longer probes an unconfigured remote Vault, a completed Vault save cannot clear a newer
@@ -47,19 +49,21 @@ field that created it. In particular:
   records expose consistent current-state semantics to assistive technology.
 - Repeater sends, cross-feature request adoption, OOB saves/refreshes, and Intruder progress each
   retain the exact action, draft, and task-tab owner that initiated them.
+- Same-flow SSE refreshes cannot retarget an explicit Authz request, and Map graph summaries count
+  the same filtered, collapsed, and capped endpoints that the graph actually renders.
 
 ## Feature and dependency matrix
 
 | Surface | Independent checks | Cross-feature checks |
 | --- | --- | --- |
-| Proxy / History | filtering, selection, Inspector loading/error, pagination retry, saved-search validation, live virtualization, keyboard row/context actions | send/search actions wait for project identity; Map search receives the selected evidence; selected flows remain consistent during filters and SSE |
+| Proxy / History | filtering, selection, Inspector loading/error, pagination retry, saved-search validation, live virtualization, keyboard row/context actions | send/search actions wait for project identity; Map search receives the selected evidence; selected detail loads remain consistent during filters, failures, and SSE |
 | Intercept | request/response queues, filters, Match & Replace, pending/acknowledged Forward and Drop, typing-safe shortcuts | queue refreshes cannot overwrite filter edits; operation results cannot mutate a newer selected queue item |
 | Repeater | tab lifecycle, Send states, response ownership, decode races, persistence and cleanup | send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
 | Intruder | duplicate-start lock, history selection, live polling errors, result filters | returning from historical evidence to live evidence preserves the configured target; finding creation uses the displayed run |
 | Scanner | real pending/success/error state, latest issues response, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
 | Findings | creation focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
-| Map | tree hydration, table/graph/search replacement, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
-| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
+| Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
+| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
 | Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
 | Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting, WebSocket capture/replay contracts | close paths restore focus; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
 
@@ -111,19 +115,19 @@ restored OOB disabled; it made no external callback or system-proxy change.
 
 ## Performance findings
 
-The full profile was captured after a fresh launch of exact source `c9a01ae`. Performance sampling
+The full profile was captured after a fresh launch of exact source `3ac5891`. Performance sampling
 used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
 runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
 control was observed.
 
 | Scenario | Result |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `168.0 ms`; 82 rendered rows at 1440 × 900; 4,825 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | CSS duration `180 ms`; measured completion p95 `201.1 ms` across nine panel changes |
-| Delayed Intercept acknowledgement | `334.6 ms` verification window, including the deliberate route hold; row remained present until acknowledgement |
-| Map after the burst | first host `78.4 ms`; Fit plus wheel/drag verification window `426.8 ms`; graph transform changed |
-| Whole three-burst profile (CDP delta) | task `0.382 s`, script `0.098 s`, layout `0.040 s` |
-| Map interaction (CDP delta) | task `0.040 s`, script `0.0014 s`, layout `0.0006 s` |
+| Three 240-request live History bursts | network p95 `159.4 ms`; 82 rendered rows at 1440 × 900; 4,825 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | CSS duration `180 ms`; measured completion p95 `214.4 ms` across nine panel changes |
+| Delayed Intercept acknowledgement | `334.9 ms` verification window, including the deliberate route hold; row remained present until acknowledgement |
+| Map after the burst | first host `80.2 ms`; Fit plus wheel/drag verification window `442.3 ms`; graph transform changed |
+| Whole three-burst profile (CDP delta) | task `0.391 s`, script `0.103 s`, layout `0.040 s` |
+| Map interaction (CDP delta) | task `0.046 s`, script `0.0020 s`, layout `0.0005 s` |
 
 The audited-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
