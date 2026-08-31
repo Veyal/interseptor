@@ -1007,8 +1007,24 @@ function clearAcknowledgedSessionDirty(snapshot){
   SESSION_DIRTY_FIELDS.forEach(id=>{if(Object.is(ack[id],now[id]))$('#'+id)?.removeAttribute('data-settings-dirty');});
   if(JSON.stringify(snapshot.hostHeaders)===JSON.stringify(current.hostHeaders))$('#hostHdrList')?.removeAttribute('data-settings-dirty');
 }
-function saveSessionAll(body=sessionFormPayload()){
+let sessionMutationTail=Promise.resolve();
+function queueSessionMutation(work){
+  const mutation=sessionMutationTail.catch(()=>{}).then(work);
+  sessionMutationTail=mutation;
+  return mutation;
+}
+function writeSessionAll(body){
   return api('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+}
+function saveSessionAll(body=sessionFormPayload()){
+  return queueSessionMutation(()=>writeSessionAll(body));
+}
+function runLoginMacroWithSession(body,onSaveAcknowledged){
+  return queueSessionMutation(async()=>{
+    await writeSessionAll(body);
+    if(onSaveAcknowledged)onSaveAcknowledged();
+    return api('/api/session/login/run',{method:'POST'});
+  });
 }
 if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#saveSessionBtn'),async()=>{
   try{
@@ -1025,7 +1041,15 @@ if($('#saveSessionBtn'))$('#saveSessionBtn').onclick=()=>runSettingsAction($('#s
     toast(msg);loadSession();
   }catch(e){toast(e.message);}
 });
-if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{let saveAcknowledged=false;try{const submitted=sessionFormPayload();await saveSessionAll(submitted);saveAcknowledged=true;sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);const r=await api('/api/session/login/run',{method:'POST'});toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');}catch(e){toast(e.message);}finally{if(saveAcknowledged)await loadSession();}});
+if($('#loginMacroRun'))$('#loginMacroRun').onclick=()=>runSettingsAction($('#loginMacroRun'),async()=>{
+  let saveAcknowledged=false;
+  try{
+    const submitted=sessionFormPayload();
+    const r=await runLoginMacroWithSession(submitted,()=>{saveAcknowledged=true;sessionLoadEpoch++;clearAcknowledgedSessionDirty(submitted);});
+    toast('session refreshed ('+r.applied+' header'+(r.applied===1?'':'s')+')');
+  }catch(e){toast(e.message);}
+  finally{if(saveAcknowledged)await loadSession();}
+});
 // Test = dry-run: run the login request and show the response + the session it
 // would capture, WITHOUT touching the live session (so you can debug it safely).
 function hasDirtyLoginMacroDraft(){return ['loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');}

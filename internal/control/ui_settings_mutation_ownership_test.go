@@ -84,6 +84,35 @@ func TestUIAcknowledgedSettingsWritesInvalidateOlderRefreshes(t *testing.T) {
 	}
 }
 
+func TestUISessionFullWritesShareAtomicMutationLane(t *testing.T) {
+	settings := requireUIContracts(t, "js/settings.js",
+		"let sessionMutationTail=Promise.resolve()",
+		"function queueSessionMutation(work)",
+		"sessionMutationTail.catch(()=>{}).then(work)",
+		"function writeSessionAll(body)",
+		"return queueSessionMutation(()=>writeSessionAll(body))",
+		"function runLoginMacroWithSession(body,onSaveAcknowledged)",
+		"await writeSessionAll(body)",
+		"if(onSaveAcknowledged)onSaveAcknowledged()",
+		"return api('/api/session/login/run',{method:'POST'})",
+	)
+	if got := strings.Count(settings, "api('/api/session',{method:'POST'"); got != 1 {
+		t.Fatalf("all full Session writes must cross one mutation lane; found %d POST call sites", got)
+	}
+
+	start := strings.Index(settings, "function runLoginMacroWithSession(body,onSaveAcknowledged)")
+	end := strings.Index(settings[start:], "\n}")
+	if start < 0 || end < 0 {
+		t.Fatal("queued login-macro helper not found")
+	}
+	helper := settings[start : start+end]
+	write := strings.Index(helper, "await writeSessionAll(body)")
+	run := strings.Index(helper, "return api('/api/session/login/run'")
+	if write < 0 || run < 0 || write > run {
+		t.Error("Login Macro Run must save its queued snapshot before running it")
+	}
+}
+
 func TestUISystemProxyRefreshCannotSupersedeItsMutation(t *testing.T) {
 	settings := requireUIContracts(t, "js/settings.js",
 		"let sysProxyLoadEpoch=0",

@@ -149,6 +149,16 @@ func TestUIAuthzContextActionRetainsItsExplicitFlow(t *testing.T) {
 		"authzSelectionChanged=true",
 		"authzFlowId=flowId||authzSelectionAtOpen||null",
 	)
+	proxy := readUIAsset(t, "js/proxy.js")
+	start := strings.Index(proxy, "export async function selectFlow(id)")
+	end := strings.Index(proxy, "export async function renderSide(side)")
+	if start < 0 || end <= start {
+		t.Fatal("selected-flow handler not found")
+	}
+	handler := proxy[start:end]
+	if !strings.Contains(handler, "state.selId=id;\n  if(switching)onAuthzSelectionChanged();") {
+		t.Error("same-flow refreshes must not retarget an explicit Authz context action")
+	}
 }
 
 func TestUIIntruderClearsOldEvidenceBeforeStartingAnotherRun(t *testing.T) {

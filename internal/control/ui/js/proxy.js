@@ -887,19 +887,8 @@ export async function loadFlows(){
     if(!replayExact)scheduleReload();
   }catch(e){
     if(epoch===flowLoadEpoch){flowHasMore=false;flowLoadError=e;}
-    // The failed refresh already invalidated any pending detail request owned
-    // by the previous filter generation. Never leave its Inspector spinner in
-    // place; stale content is worse than an explicit retry state. Preserve
-    // already-loaded detail when a background refresh fails: it is the last
-    // confirmed snapshot, and the persistent History error still tells the
-    // operator that the newer filter result is unconfirmed.
-    if(epoch===flowLoadEpoch&&state.selId===previousSelected&&previousSelected!=null&&!state.detail){state.detail=null;showInspectorFilterLoadError(previousSelected,e);}
-    // The operator can select another old row while the server-only refresh
-    // is pending. If that row's detail is still loading, settle it into the
-    // same explicit retry state; otherwise the old spinner would never end.
-    else if(epoch===flowLoadEpoch&&state.selId!==previousSelected&&state.selId!=null&&!state.detail){
+    if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){
       selectFlowEpoch++;
-      state.detail=null;
       showInspectorFilterLoadError(state.selId,e);
     }
   }
@@ -1072,7 +1061,7 @@ export async function selectFlow(id){
     const note=$('#noteInput');if(note)note.value='';
   }
   state.selId=id;
-  onAuthzSelectionChanged();
+  if(switching)onAuthzSelectionChanged();
   renderRows();
   if(needsLoadingState)showInspectorLoading(id);
   try{

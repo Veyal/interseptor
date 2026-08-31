@@ -30,7 +30,8 @@ func TestUIProxyInspectorRejectsDetailAfterFilterReload(t *testing.T) {
 		"selectFlow(state.selId)",
 		"if(!canIncremental()&&!flowStore.byId.has(state.selId))",
 		"showInspectorSelectionUnavailable(state.selId)",
-		"showInspectorFilterLoadError(previousSelected,e)",
+		"if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail)",
+		"showInspectorFilterLoadError(state.selId,e)",
 		"if(filterChanged&&state.detail)selectFlow(state.selId)",
 		"else if(previousFlow&&canIncremental()&&filterChanged&&state.detail)selectFlow(state.selId)",
 	} {
@@ -47,11 +48,8 @@ func TestUIProxyInspectorRejectsDetailAfterFilterReload(t *testing.T) {
 	if !strings.Contains(proxy, "if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}") {
 		t.Error("client-decidable filters must be revalidated before painting returned Inspector detail")
 	}
-	if !strings.Contains(proxy, "if(epoch===flowLoadEpoch&&state.selId===previousSelected&&previousSelected!=null&&!state.detail){state.detail=null;showInspectorFilterLoadError(previousSelected,e);") {
-		t.Error("a failed filter reload must replace pending Inspector content with a concrete retry state")
-	}
-	if !strings.Contains(source, "Preserve\n    // already-loaded detail when a background refresh fails") {
-		t.Error("failed background refreshes must not erase already-loaded Inspector detail")
+	if !strings.Contains(proxy, "if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail){\n      selectFlowEpoch++;\n      showInspectorFilterLoadError(state.selId,e);") {
+		t.Error("only an unreconciled filter generation may replace pending Inspector content with a retry state")
 	}
 }
 
@@ -88,18 +86,17 @@ func TestUIProxyReconcilesSelectionChangedDuringServerFilterLoad(t *testing.T) {
 	}
 }
 
-// If the operator changes selection while a server-only filter refresh is in
-// flight, a failed refresh must settle the new selection instead of leaving
-// its Inspector spinner forever. A confirmed detail already visible before
-// the failed refresh remains intact.
-func TestUIProxySettlesSelectionChangedDuringFailedServerFilterLoad(t *testing.T) {
+// A failed refresh only owns pending Inspector work when the active filter
+// generation has not been reconciled. Same-filter background failures leave
+// an independently selected flow's valid detail request intact.
+func TestUIProxyFailedBackgroundRefreshPreservesReconciledSelectionLoads(t *testing.T) {
 	proxy := readUIAsset(t, "js/proxy.js")
 	for _, contract := range []string{
-		"if(epoch===flowLoadEpoch&&state.selId!==previousSelected&&state.selId!=null&&!state.detail)",
-		"selectFlowEpoch++;\n      state.detail=null;\n      showInspectorFilterLoadError(state.selId,e);",
+		"if(epoch===flowLoadEpoch&&filterEpoch!==flowFilterReconciledEpoch&&state.selId!=null&&!state.detail)",
+		"selectFlowEpoch++;\n      showInspectorFilterLoadError(state.selId,e);",
 	} {
 		if !strings.Contains(proxy, contract) {
-			t.Errorf("failed server-filter selection race contract missing %q", contract)
+			t.Errorf("failed History refresh ownership contract missing %q", contract)
 		}
 	}
 }

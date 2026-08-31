@@ -24,10 +24,9 @@ func TestUILoginMacroRunReconcilesSessionAfterAcknowledgedSaveFailure(t *testing
 		}
 	}
 
-	saved := strings.Index(handler, "await saveSessionAll(submitted)")
+	saved := strings.Index(handler, "await runLoginMacroWithSession(submitted")
 	acknowledged := strings.Index(handler, "saveAcknowledged=true")
-	run := strings.Index(handler, "await api('/api/session/login/run'")
-	if saved < 0 || acknowledged < 0 || run < 0 || !(saved < acknowledged && acknowledged < run) {
-		t.Error("Session reconciliation must distinguish an acknowledged save from a failed login run")
+	if saved < 0 || acknowledged < 0 || saved > acknowledged {
+		t.Error("Session reconciliation must be notified when the queued save is acknowledged")
 	}
 }

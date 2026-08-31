@@ -600,7 +600,8 @@ function mapPerfNote(eps){
 export function renderMap(){
   if(mapState.view === 'params') return;
   const filtered = mapFiltered();
-  const eps = mapVisibleEps(filtered);
+  const visible=mapVisibleEps(filtered);
+  const eps=mapState.view==='graph'?mapGraphDisplayEps(visible):visible;
   const hostN = new Set(eps.map(e => e.host)).size;
   const hasFilters = !!(mapState.search || mapState.method || mapState.statusClass || mapState.domain);
   const hiddenByNoise = !eps.length && mapState.noiseHiddenCount > 0;
@@ -1072,12 +1073,15 @@ function mapGraphFiltered(eps){
   if(!mapState.search||mapUsesServerSearch())return eps;
   return eps.filter(ep=>epMatchesSearch(ep,mapState.search));
 }
+function mapGraphDisplayEps(eps){
+  return graphEps(mapGraphFiltered(eps));
+}
 function graphCapSignature(){
   return [mapState.domain,mapState.method,mapState.statusClass,mapState.tag,mapState.hideNoise?'1':'0',mapState.collapseIdentical?'1':'0',mapState.search,mapState.searchScope].join('|');
 }
 
 export function renderMapGraph(eps){
-  eps=mapGraphFiltered(eps);
+  eps=mapGraphDisplayEps(eps);
   const g = $('#mapGraphG'); if(!g) return;
   const warn = $('#mapWarn');
   const capSignature=graphCapSignature();
