@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited source base: `efdd882627c02b48da3121ad9ff27ec6e45af8d4`
+- Audited source base: `af887b19e0d329e65369381aa6679b739fa6abbc`
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -15,7 +15,7 @@
 
 ## Release-candidate applicability
 
-The retained audit digest is `0edb3235b769318caa9308afe43dfc5ada4a96b420832528fb1921f5bd10ae12`
+The retained audit digest is `b46a84146dd5884d0891f8f825a8b908100d571a89566300438d6100d823fde8`
 across 249 runtime files. It matches the current release-candidate runtime exactly, including the
 final Authz, mobile-action, Repeater-adoption, and visible-Allowlist SSE fixes. Documentation-only
 commits made after the audited base do not change this identity; any later change under `cmd/`,
@@ -139,12 +139,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `121.3 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `197.1 ms` |
-| Delayed Intercept acknowledgement | `318.8 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `77.1 ms`; Fit/wheel/drag interaction `428.6 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.299028 s`; script `0.100878 s`; layout `0.040815 s` |
-| Map interaction | CDP task `0.020780 s`; script `0.001078 s`; layout `0.000517 s` |
+| Three 240-request live History bursts | network p95 `141.9 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `328.5 ms` |
+| Delayed Intercept acknowledgement | `569.2 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `182.6 ms`; Fit/wheel/drag interaction `894.5 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.272765 s`; script `0.081255 s`; layout `0.026744 s` |
+| Map interaction | CDP task `0.044674 s`; script `0.002216 s`; layout `0.001110 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.5` release without moving its tag.
 - **Reproducible release tooling.** Pinned candidate validation and publication to the same reviewed GoReleaser version, added a regression contract, and updated the macOS packaging guide to describe the app ZIP and DMG that tagged builds now publish.
 - **Repeatable UI release audit.** Added `scripts/ui_browser_audit.py`, a feature-by-feature and cross-workflow Playwright/Chrome DevTools Protocol loop covering real data states, keyboard/focus behavior, every Settings section, required viewports, reduced motion, burst traffic, screenshots, external-request detection, and performance evidence before embedded UI changes ship; tracked audit artifacts carry an exact runtime-source digest.
+- **Current UI release evidence.** Refreshed the retained 26-case browser/CDP report and desktop, tablet, and mobile screenshots against the final runtime fixes, and added a focused regression that rejects stale exact-source audit evidence.
 
 ### Fixed
 - **Reconnect and action ownership.** Reconcile the visible allowlist after every SSE reconnect, keep in-flight Repeater sends isolated from request adoption, and prevent incidental device refreshes from invalidating Android or iOS action reconciliation.
