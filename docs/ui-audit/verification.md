@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited application source: `0db243da77f26a9fb4a4a2598af622d17d4faa4d`
+- Audited application source: `c9a01ae283c77f6ce831ed3b25a5f753d2769370`
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
 - Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
@@ -10,12 +10,12 @@
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-This record validates only application source `0db243d`. Later application changes on the release
+This record validates only application source `c9a01ae`. Later application changes on the release
 branch are outside this evidence and require a fresh exact-target browser run before release.
 
 The complete 17-case matrix and three-run performance profile were executed against the exact audited
-source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. Two preceding isolated
-passes and one independent-agent pass also completed the same matrix without a failure. The
+source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. One preceding isolated
+pass and one independent-agent pass also completed the same matrix without a failure. The
 screenshots are committed separately so this document can name the exact application revision they
 validate.
 
@@ -36,7 +36,8 @@ field that created it. In particular:
 - Intercept removes Forward/Drop rows only after acknowledgement and keeps request/response lane
   ownership stable across SSE refreshes.
 - Repeater history belongs to the tab, not to the current URL or request contents, and is removed
-  only when that tab closes.
+  only when that tab closes; IndexedDB cleanup is attempted even when its localStorage retry ledger
+  is unavailable.
 - Settings acknowledgements update only fields that the operator has not changed since submission.
 - Findings, Intruder, Scanner, Notes, Map, Session, and project hydration use latest-request or
   entity-scoped ownership instead of repainting newer work.
@@ -44,6 +45,8 @@ field that created it. In particular:
   token draft, and the flow-search Test action validates its API-required name locally.
 - Captured and replayed WebSocket frames retain their distinct endpoint contracts, and selected
   records expose consistent current-state semantics to assistive technology.
+- Repeater sends, cross-feature request adoption, OOB saves/refreshes, and Intruder progress each
+  retain the exact action, draft, and task-tab owner that initiated them.
 
 ## Feature and dependency matrix
 
@@ -65,9 +68,10 @@ field that created it. In particular:
 The audited-source browser recheck sent a request from one Repeater tab, then changed its method, URL,
 headers, and body. History remained attached to the tab after every edit, top-level navigation, and
 a page reload; the edited request also survived the reload. A second task tab received a distinct
-history. Closing the first tab removed only its IndexedDB rows, and closing the second removed its
-remaining rows. The larger 105-request render and close-vs-send race remain covered by focused
-Repeater regression tests.
+history. Closing the first tab removed only its IndexedDB rows. Before closing the second, the audit
+forced cleanup-ledger localStorage reads to throw; IndexedDB still reached zero, proving that the
+best-effort ledger cannot block tab-owned deletion. The larger 105-request render and close-vs-send
+race remain covered by focused Repeater regression tests.
 
 ### Settings ownership contract
 
@@ -78,6 +82,13 @@ released the acknowledgement; the newer draft remained. Focused Go UI contracts 
 inject delayed Settings reads and acknowledgements, rapid strict/compatible changes, live refresh
 over dirty TLS drafts, and shared Setup/Settings system-proxy mutations without making an operating-
 system change.
+
+### OOB draft ownership contract
+
+The exact-source browser pass temporarily enabled OOB only in its isolated project, opened the
+local interaction modal, entered and blurred a newer base-URL draft, then cleared interactions. The
+authoritative interaction refresh did not overwrite the draft. The pass closed the modal and
+restored OOB disabled; it made no external callback or system-proxy change.
 
 ## Browser and accessibility checks
 
@@ -100,19 +111,19 @@ system change.
 
 ## Performance findings
 
-The full profile was captured after a fresh launch of exact source `0db243d`. Performance sampling
+The full profile was captured after a fresh launch of exact source `c9a01ae`. Performance sampling
 used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
 runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
 control was observed.
 
 | Scenario | Result |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `164.2 ms`; 82 rendered rows at 1440 × 900; 4,825 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | CSS duration `180 ms`; measured completion p95 `196.8 ms` across nine panel changes |
-| Delayed Intercept acknowledgement | `319.3 ms` verification window, including the deliberate route hold; row remained present until acknowledgement |
-| Map after the burst | first host `75.9 ms`; Fit plus wheel/drag verification window `443.8 ms`; graph transform changed |
-| Whole three-burst profile (CDP delta) | task `0.407 s`, script `0.109 s`, layout `0.044 s` |
-| Map interaction (CDP delta) | task `0.046 s`, script `0.0017 s`, layout `0.0005 s` |
+| Three 240-request live History bursts | network p95 `168.0 ms`; 82 rendered rows at 1440 × 900; 4,825 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | CSS duration `180 ms`; measured completion p95 `201.1 ms` across nine panel changes |
+| Delayed Intercept acknowledgement | `334.6 ms` verification window, including the deliberate route hold; row remained present until acknowledgement |
+| Map after the burst | first host `78.4 ms`; Fit plus wheel/drag verification window `426.8 ms`; graph transform changed |
+| Whole three-burst profile (CDP delta) | task `0.382 s`, script `0.098 s`, layout `0.040 s` |
+| Map interaction (CDP delta) | task `0.040 s`, script `0.0014 s`, layout `0.0006 s` |
 
 The audited-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
@@ -154,7 +165,7 @@ go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
 CGO_ENABLED=0 go build ./cmd/interseptor
-go run ./tools/docscheck check
+go run ./tools/docscheck check .
 for file in internal/control/ui/js/*.js; do node --check "$file"; done
 ```
 

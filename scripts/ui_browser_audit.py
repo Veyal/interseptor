@@ -687,11 +687,10 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
 
             result.run("Scanner real pending-to-success lifecycle", scanner_run)
 
-            def auxiliary_read_only_surfaces() -> None:
-                # Exercise the read paths and harmless validators without
-                # creating keys, enabling OOB/system proxy, contacting peers,
-                # or writing real target data. The full run uses an isolated
-                # project, so opening these surfaces is still representative.
+            def auxiliary_reversible_surfaces() -> None:
+                # Exercise auxiliary paths and validators with only reversible
+                # mutations in the isolated project. Never enable system proxy,
+                # contact peers, or write real target data.
                 page.locator('.tab[data-tab="proxy"]').click()
                 page.locator("#flowSearchScripts summary").click()
                 page.wait_for_selector("#flowSearchScriptEditor")
@@ -714,21 +713,42 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.wait_for_selector('.set-sec[data-sec="scanner"]', state="visible", timeout=10_000)
                 page.wait_for_selector("#settingsLoadState", state="hidden", timeout=10_000)
                 oob_enabled = page.locator("#setOobEnabled").is_checked()
+                restore_oob_disabled = not oob_enabled
                 if not oob_enabled:
                     result.require(
                         page.locator("#oobDisabledHint").is_visible(),
                         "Settings does not explain that OOB is disabled",
                     )
-                page.locator('.tab[data-tab="scanner"]').click()
-                # OOB is intentionally disabled on a fresh project.  Verify
-                # that state is explicit and safe; if the fixture has OOB
-                # enabled, exercise only the local modal and close it again.
-                oob_button = page.locator("#oobBtn")
-                if oob_enabled:
+                    with page.expect_response(
+                        lambda response: response.url.endswith("/api/settings")
+                        and response.request.method == "PUT",
+                        timeout=10_000,
+                    ) as enabled_response:
+                        page.locator("#setOobEnabled").check()
+                    result.require(enabled_response.value.ok, f"OOB enable returned {enabled_response.value.status}")
+                    page.wait_for_function("!document.documentElement.classList.contains('oob-disabled')")
+                    oob_enabled = True
+                try:
+                    page.locator('.tab[data-tab="scanner"]').click()
+                    oob_button = page.locator("#oobBtn")
                     result.require(oob_button.is_visible(), "enabled OOB action is hidden")
                     if oob_button.is_enabled():
                         oob_button.click()
                         page.wait_for_selector("#oobModal", state="visible", timeout=10_000)
+                        draft = "http://127.0.0.1:9/audit-draft"
+                        page.locator("#oobBase").fill(draft)
+                        page.locator("#oobBase").blur()
+                        page.locator("#oobClear").click()
+                        page.wait_for_selector("#confirmModal", state="visible", timeout=10_000)
+                        with page.expect_response(
+                            lambda response: response.url.endswith("/api/oob/interactions")
+                            and response.request.method == "DELETE",
+                            timeout=10_000,
+                        ) as cleared_response:
+                            page.locator("#confirmOk").click()
+                        result.require(cleared_response.value.ok, f"OOB clear returned {cleared_response.value.status}")
+                        page.wait_for_function("document.querySelector('#oobClear')?.getAttribute('aria-busy')==='false'", timeout=10_000)
+                        result.require(page.locator("#oobBase").input_value() == draft, "OOB interaction refresh overwrote a blurred base-URL draft")
                         page.locator("#oobClose").click()
                         page.wait_for_selector("#oobModal", state="hidden", timeout=10_000)
                     else:
@@ -736,11 +756,21 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                             oob_button.is_disabled(),
                             "unavailable OOB action is not exposed as disabled",
                         )
-                else:
-                    result.require(
-                        not oob_button.is_visible(),
-                        "disabled OOB action remained visible in the Scanner toolbar",
-                    )
+                finally:
+                    if page.locator("#oobModal").is_visible():
+                        page.locator("#oobClose").click()
+                    if restore_oob_disabled:
+                        page.locator('.tab[data-tab="settings"]').click()
+                        page.locator('#setNav button[data-sec="scanner"]').click()
+                        if page.locator("#setOobEnabled").is_checked():
+                            with page.expect_response(
+                                lambda response: response.url.endswith("/api/settings")
+                                and response.request.method == "PUT",
+                                timeout=10_000,
+                            ) as disabled_response:
+                                page.locator("#setOobEnabled").uncheck()
+                            result.require(disabled_response.value.ok, f"OOB disable returned {disabled_response.value.status}")
+                            page.wait_for_function("document.documentElement.classList.contains('oob-disabled')")
 
                 page.locator("#cmdkBtn").click()
                 page.wait_for_selector("#cmdkInput", state="visible")
@@ -874,7 +904,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.wait_for_function("!document.querySelector('#allowList tr')?.textContent.includes('127.0.0.254/32')", timeout=10_000)
                 result.require(page.locator("#sysProxyToggle").get_attribute("aria-pressed") == "false", "read-only audit changed the system proxy")
 
-            result.run("read-only auxiliary surfaces and validators", auxiliary_read_only_surfaces)
+            result.run("auxiliary surfaces, reversible actions, and validators", auxiliary_reversible_surfaces)
 
             def intruder_run() -> None:
                 page.locator('.tab[data-tab="intruder"]').click()
