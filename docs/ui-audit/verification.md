@@ -2,7 +2,8 @@
 
 ## Revision and environment
 
-- Audited source base: `af887b19e0d329e65369381aa6679b739fa6abbc`
+- Audited worktree base: `056fa2f0b347a2b37bf9bdf4fe467276705eacae`, plus the post-release
+  fallback, regression, and changelog changes captured by the exact digest below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -13,13 +14,14 @@
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-## Release-candidate applicability
+## Current-source applicability
 
-The retained audit digest is `b46a84146dd5884d0891f8f825a8b908100d571a89566300438d6100d823fde8`
-across 249 runtime files. It matches the current release-candidate runtime exactly, including the
-final Authz, mobile-action, Repeater-adoption, and visible-Allowlist SSE fixes. Documentation-only
-commits made after the audited base do not change this identity; any later change under `cmd/`,
-`internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
+The retained audit digest is `616b49e6a142491a1ed73007acf3b01ae25701675aff3376ba09fd7266b45a76`
+across 249 runtime files. It matches the current post-release runtime exactly, including the
+published `2.0.6` dev-build fallback and the final Authz, mobile-action, Repeater-adoption, and
+visible-Allowlist SSE fixes. Documentation-only commits made after the audited base do not change
+this identity; any later change under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh
+full run and replacement evidence.
 
 The complete 26-case matrix and three-run performance profile were executed against that exact source
 with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`; the validated machine-readable
@@ -139,12 +141,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `141.9 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `328.5 ms` |
-| Delayed Intercept acknowledgement | `569.2 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `182.6 ms`; Fit/wheel/drag interaction `894.5 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.272765 s`; script `0.081255 s`; layout `0.026744 s` |
-| Map interaction | CDP task `0.044674 s`; script `0.002216 s`; layout `0.001110 s` |
+| Three 240-request live History bursts | network p95 `142.0 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `195.6 ms` |
+| Delayed Intercept acknowledgement | `334.9 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `77.7 ms`; Fit/wheel/drag interaction `428.1 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.322931 s`; script `0.104679 s`; layout `0.044039 s` |
+| Map interaction | CDP task `0.021898 s`; script `0.001176 s`; layout `0.000507 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
