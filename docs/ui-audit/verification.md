@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited release-candidate base: `6dae3ae2f189bd42a173aa7571b29c760b12d2a6`
+- Audited source base: `6dae3ae2f189bd42a173aa7571b29c760b12d2a6`
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -13,8 +13,14 @@
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
-This record validates only the exact runtime-source digest retained in `browser-audit.json`. Any
-later runtime-source change requires a fresh browser run and replacement evidence before release.
+## Release-candidate applicability
+
+The retained audit digest is `52246051b09543584ed9e6f2c9828963c85154c6ef34c9dc7db2d6f7b8ad64d7`.
+The target runtime source now hashes to
+`ec594e8dba2361fceb84cdf743cb241ac9a3db1baa1e065aa20a820b5d23a1e7`, after the
+later Authz, mobile-action, and Repeater-adoption fixes. Therefore the retained browser record is
+prior evidence only: it does not validate the current release candidate and must be replaced by a
+fresh full browser run before release.
 
 The complete 26-case matrix and three-run performance profile were executed against that exact source
 with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3 --output-dir docs/ui-audit`.
@@ -75,27 +81,27 @@ field that created it. In particular:
 
 ### Repeater history contract
 
-The exact-target browser recheck sent a request from one Repeater tab, then changed its method, URL,
-headers, and body. History remained attached to the tab after every edit, top-level navigation, and
-a page reload; the edited request also survived the reload. A second task tab received a distinct
-history. Closing the first tab removed only its IndexedDB rows. Before closing the second, the audit
-forced cleanup-ledger localStorage reads to throw; IndexedDB still reached zero, proving that the
-best-effort ledger cannot block tab-owned deletion. The larger 105-request render and close-vs-send
-race remain covered by focused Repeater regression tests.
+The retained exact-source browser recheck sent a request from one Repeater tab, then changed its
+method, URL, headers, and body. History remained attached to the tab after every edit, top-level
+navigation, and a page reload; the edited request also survived the reload. A second task tab
+received a distinct history. Closing the first tab removed only its IndexedDB rows. Before closing
+the second, the audit forced cleanup-ledger localStorage reads to throw; IndexedDB still reached
+zero, proving that the best-effort ledger cannot block tab-owned deletion. The larger 105-request
+render and close-vs-send race remain covered by focused Repeater regression tests.
 
 ### Settings ownership contract
 
-The exact-target browser pass opened every Settings section, refreshed both device panels, exercised
-the project modal and reversible API-key/allowlist mutations, and verified that an unconfigured
-Vault made no remote request. It held a Vault configuration PUT, typed a newer token draft, then
-released the acknowledgement; the newer draft remained. Focused Go UI contracts additionally
-inject delayed Settings reads and acknowledgements, rapid strict/compatible changes, live refresh
-over dirty TLS drafts, and shared Setup/Settings system-proxy mutations without making an operating-
-system change.
+The retained exact-source browser pass opened every Settings section, refreshed both device panels,
+exercised the project modal and reversible API-key/allowlist mutations, and verified that an
+unconfigured Vault made no remote request. It held a Vault configuration PUT, typed a newer token
+draft, then released the acknowledgement; the newer draft remained. Focused Go UI contracts
+additionally inject delayed Settings reads and acknowledgements, rapid strict/compatible changes,
+live refresh over dirty TLS drafts, and shared Setup/Settings system-proxy mutations without making
+an operating-system change.
 
 ### OOB draft ownership contract
 
-The exact-target browser pass temporarily enabled OOB only in its isolated project, opened the
+The retained exact-source browser pass temporarily enabled OOB only in its isolated project, opened the
 local interaction modal, entered and blurred a newer base-URL draft, then cleared interactions. The
 authoritative interaction refresh did not overwrite the draft. The pass closed the modal and
 restored OOB disabled; it made no external callback or system-proxy change.
@@ -138,7 +144,7 @@ control was observed.
 | Whole three-burst profile | CDP task, script, and layout duration deltas |
 | Map interaction | separate CDP task, script, and layout duration deltas |
 
-The exact-target recheck treats only a visible busy surface as busy. The virtualized table remained
+The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
 visible busy surface behind.
 

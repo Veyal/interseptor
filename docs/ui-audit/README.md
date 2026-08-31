@@ -1,11 +1,10 @@
 # UI audit screenshots
 
-The **After** screenshots validate the exact release-candidate runtime source identified by
-`application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). They were captured
-from a fresh build based on
-[`6dae3ae`](https://github.com/Veyal/interseptor/commit/6dae3ae2f189bd42a173aa7571b29c760b12d2a6)
-plus the final focus-ownership fixes in this change. The screenshots and measurements remain scoped to that
-digest; any later runtime-source change requires a fresh run.
+The **After** screenshots validate only the audited runtime source identified by
+`application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). See
+[`verification.md`](verification.md#release-candidate-applicability) for whether that retained
+evidence applies to the current release candidate; never carry it forward across a runtime-source
+change.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
 the audit's local loopback fixture and generic project records; neither set contains real request
@@ -23,9 +22,9 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The exact-target Playwright recheck ran Chromium 148 and all 26 independent and cross-feature cases
-passed. Dedicated viewport and control-reachability sweeps at 1440 × 900, 1024 × 768, and 390 × 844
-found no document overflow.
+The retained exact-source Playwright recheck ran Chromium 148 and all 26 independent and
+cross-feature cases passed. Dedicated viewport and control-reachability sweeps at 1440 × 900,
+1024 × 768, and 390 × 844 found no document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
 history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
 tab closures, including when its localStorage cleanup ledger was forced unavailable. The audit also
