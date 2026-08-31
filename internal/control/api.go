@@ -227,7 +227,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/activity", "MCP-only activity transport; external HTTP requests are rejected."},
 	{"DELETE", "/api/activity", "Clear activity feed"},
 	{"GET", "/api/project", "Active project + switch targets"},
-	{"POST", "/api/project/switch", "Switch to another named project (re-exec). Body: {target} (plain project name) or {path} (absolute external folder) — mutually exclusive; target rejects path-like strings"},
+	{"POST", "/api/project/switch", "Switch to another named project (re-exec). Body: {target} (plain project name) or {path} (absolute external folder) — mutually exclusive; target rejects path-like strings. Response includes {switching, path?}, with path canonicalized for external folders"},
 	{"GET", "/api/oob/state", "OOB catcher state + interactions"},
 	{"POST", "/api/oob/new", "Generate a new OOB callback token (no body). Response: {token, url}"},
 	{"POST", "/api/oob/base", "Set public OOB base URL. Body: {baseUrl}"},

@@ -1399,10 +1399,12 @@ export async function doSwitchProject(target,path){
   // reload merely because the old process still answers: that can put the UI
   // straight back into the project the operator just left.
   setProjectControlsDisabled(true,'project switch is in progress');
-  let expected='';
+  let expected='',expectedPath='';
   try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
     expected=String(accepted.switching);
+    expectedPath=path?projectPathKey(accepted.path):'';
+    if(path&&!expectedPath)throw new Error('project switch did not return its canonical path');
   }catch(e){projectSwitchPending=false;setNote('Project switch failed: '+e.message);toast(e.message);loadProject();return;}
   setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   const deadline=Date.now()+30000;
@@ -1410,7 +1412,7 @@ export async function doSwitchProject(target,path){
     if(switchEpoch!==projectSwitchEpoch)return;
     try{
       const d=await api('/api/project?_t='+Date.now());
-      const reached=path?projectPathKey(d.dir)===projectPathKey(path):String(d.current||'')===expected;
+      const reached=path?projectPathKey(d.dir)===expectedPath:String(d.current||'')===expected;
       if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}
     }
     catch(e){}

@@ -27,6 +27,39 @@ func TestUIProxyResourceOwnershipContracts(t *testing.T) {
 	}
 }
 
+func TestUIRejectedScopeAndRuleDraftsRestoreAuthoritativeState(t *testing.T) {
+	for _, tc := range []struct {
+		asset, start, end, owner string
+		contracts                []string
+	}{
+		{"js/proxy.js", "async function updateScope(id,tr)", "async function deleteScope(id)", "scopeDrafts.get(id)===upd", []string{"scopeDrafts.delete(id)", "renderScope()", "toast(e.message)"}},
+		{"js/intercept.js", "export async function updateRule(id,tr)", "export async function deleteRule(id)", "ruleDrafts.get(id)===upd", []string{"ruleDrafts.delete(id)", "renderRules()", "toast(e.message)"}},
+	} {
+		src := readUIAsset(t, tc.asset)
+		start := strings.Index(src, tc.start)
+		end := strings.Index(src, tc.end)
+		if start < 0 || end <= start {
+			t.Errorf("%s mutation boundary not found", tc.asset)
+			continue
+		}
+		mutation := src[start:end]
+		catch := strings.Index(mutation, "catch(e)")
+		if catch < 0 {
+			t.Errorf("%s mutation rejection boundary not found", tc.asset)
+			continue
+		}
+		failure := mutation[catch:]
+		if strings.Count(mutation, tc.owner) != 2 {
+			t.Errorf("%s must preserve newer drafts across both acknowledgement paths", tc.asset)
+		}
+		for _, contract := range tc.contracts {
+			if !strings.Contains(failure, contract) {
+				t.Errorf("%s rejected draft reconciliation missing %q", tc.asset, contract)
+			}
+		}
+	}
+}
+
 func TestUIProxySavedViewsRestoreEveryVisibleFilter(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{

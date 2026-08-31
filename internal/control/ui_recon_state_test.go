@@ -122,6 +122,21 @@ func TestMapTreeCacheIncludesClusterExpansionIdentity(t *testing.T) {
 	}
 }
 
+func TestMapGraphCacheIncludesClusterExpansionIdentity(t *testing.T) {
+	mapJS := readUIAsset(t, "js/map.js")
+	start := strings.Index(mapJS, "export function buildGraphTree(eps){")
+	end := strings.Index(mapJS, "function mapExpandForSearch(eps)")
+	if start < 0 || end <= start {
+		t.Fatal("Map Graph cache boundary not found")
+	}
+	cache := mapJS[start:end]
+	key := strings.Index(cache, "mapTreeExpansionSignature()")
+	reuse := strings.Index(cache, "if(key === _gtKey && _gtCache)")
+	if key < 0 || reuse < 0 || key > reuse {
+		t.Error("Map Graph expansion identity must be captured before cache reuse")
+	}
+}
+
 func TestFindingsLoadsAndSavesKeepAuthoritativeState(t *testing.T) {
 	findings := readUIAsset(t, "js/findings.js")
 	for _, contract := range []string{

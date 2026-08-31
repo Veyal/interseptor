@@ -110,9 +110,25 @@ func TestSwitchProjectAcceptsExplicitPath(t *testing.T) {
 		return resp.StatusCode, readAll(resp.Body)
 	}
 
-	custom := filepath.Join(t.TempDir(), "acme-engagement")
-	if code, _ := postPath(custom); code != http.StatusAccepted {
+	parent := t.TempDir()
+	rawCustom := filepath.Join(parent, "unused") + string(filepath.Separator) + ".." + string(filepath.Separator) + "acme-engagement"
+	custom, err := filepath.Abs(rawCustom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, response := postPath(rawCustom)
+	if code != http.StatusAccepted {
 		t.Fatalf("absolute path: expected 202, got %d", code)
+	}
+	var accepted struct {
+		Switching string `json:"switching"`
+		Path      string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(response), &accepted); err != nil {
+		t.Fatalf("decode switch response: %v", err)
+	}
+	if accepted.Switching != filepath.Base(custom) || accepted.Path != custom {
+		t.Fatalf("switch response = %+v, want name %q and canonical path %q", accepted, filepath.Base(custom), custom)
 	}
 	select {
 	case got := <-gotTarget:

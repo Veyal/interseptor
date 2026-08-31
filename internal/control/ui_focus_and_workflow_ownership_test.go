@@ -88,10 +88,14 @@ func TestUIProjectSwitchWaitsForTheAcceptedIdentity(t *testing.T) {
 	settings := requireUIContracts(t, "js/settings.js",
 		"let projectSwitchEpoch=0,projectSwitchTimer=null,projectSwitchPending=false",
 		"expected=String(accepted.switching)",
-		"const reached=path?projectPathKey(d.dir)===projectPathKey(path):String(d.current||'')===expected",
+		"expectedPath=path?projectPathKey(accepted.path):''",
+		"const reached=path?projectPathKey(d.dir)===expectedPath:String(d.current||'')===expected",
 		"if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}",
 		"Project switch was not confirmed within 30 seconds",
 	)
+	if strings.Contains(settings, "projectPathKey(d.dir)===projectPathKey(path)") {
+		t.Fatal("custom project switching must compare the server-canonicalized path")
+	}
 	if strings.Contains(settings, "graceTries") {
 		t.Fatal("project switching must never accept an old-project response after a grace period")
 	}

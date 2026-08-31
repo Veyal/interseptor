@@ -928,7 +928,7 @@ export function gCount(n){
 let _gtKey = '', _gtCache = null;
 export function buildGraphTree(eps){
   eps = graphEps(eps);
-  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + mapState.searchScope + '|' + mapState.search + '|' + eps.length;
+  const key = mapState._dataVersion + '|' + mapState.domain + '|' + mapState.method + '|' + mapState.statusClass + '|' + mapState.collapseIdentical + '|' + mapState.searchScope + '|' + mapState.search + '|' + mapTreeExpansionSignature() + '|' + eps.length;
   if(key === _gtKey && _gtCache) return _gtCache;
   const root = { key: '', type: 'root', children: [], cm: new Map(), _gCount: null };
   const child = (p, k, label, type) => {

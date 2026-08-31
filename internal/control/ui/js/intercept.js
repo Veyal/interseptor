@@ -532,8 +532,8 @@ export async function updateRule(id,tr){
   const upd=rememberRuleDraft(id,tr);if(!upd)return;
   const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)}));
   const revision=ruleMutationRevision.get(id);
-  try{await pending;if(revision===ruleMutationRevision.get(id)){ruleDrafts.delete(id);toast('rule saved');}}
-  catch(e){if(revision===ruleMutationRevision.get(id))toast(e.message);}
+  try{await pending;if(revision===ruleMutationRevision.get(id)&&ruleDrafts.get(id)===upd){ruleDrafts.delete(id);toast('rule saved');}}
+  catch(e){if(revision===ruleMutationRevision.get(id)){if(ruleDrafts.get(id)===upd){ruleDrafts.delete(id);renderRules();}toast(e.message);}}
 }
 export async function deleteRule(id){const pending=ruleMutation(id,()=>api('/api/rules/'+id,{method:'DELETE'})),revision=ruleMutationRevision.get(id);try{await pending;if(revision===ruleMutationRevision.get(id))ruleDrafts.delete(id);}catch(e){if(revision===ruleMutationRevision.get(id))toast(e.message);}}
 let ruleAddInFlight=false,ruleAddEpoch=0;
