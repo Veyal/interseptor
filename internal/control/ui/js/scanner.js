@@ -8,19 +8,22 @@ let oobLoadEpoch=0;
 let oobClearEpoch=0;
 let oobGenerateEpoch=0;
 let oobBaseEditEpoch=0;
+let oobBaseAcknowledgedEditEpoch=0;
 let oobBaseSaveEpoch=0;
 let oobBaseSaveQueue=Promise.resolve();
 export async function loadOob(baseOwner=null){
   const epoch=++oobLoadEpoch;
-  const baseEditEpoch=baseOwner?.editEpoch??oobBaseEditEpoch;
-  const baseValue=baseOwner?.value??null;
+  const baseLoadEditEpoch=oobBaseEditEpoch;
   const status=$('#oobLoadState');
   if(status)status.textContent='Loading interactions…';
   try{
     const d=await api('/api/oob/state');
     if(epoch!==oobLoadEpoch)return;
     const base=$('#oobBase');
-    if(baseEditEpoch===oobBaseEditEpoch&&(baseValue===null||base.value.trim()===baseValue)&&document.activeElement!==base)base.value=d.baseUrl||'';
+    const ownsBase=baseOwner
+      ?baseOwner.editEpoch===oobBaseEditEpoch&&base.value.trim()===baseOwner.value
+      :baseLoadEditEpoch===oobBaseEditEpoch&&oobBaseEditEpoch===oobBaseAcknowledgedEditEpoch;
+    if(ownsBase&&document.activeElement!==base)base.value=d.baseUrl||'';
     renderOobList(d.interactions||[]);
     if(status)status.textContent='';
   }catch(e){
@@ -66,6 +69,7 @@ $('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{
   oobBaseSaveQueue=task.catch(()=>{});
   try{
     await task;
+    oobBaseAcknowledgedEditEpoch=submitted.editEpoch;
     if(saveEpoch!==oobBaseSaveEpoch)return;
     toast('OOB base saved');
     await loadOob(submitted);
