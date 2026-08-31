@@ -2,6 +2,8 @@ package version
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -50,23 +52,35 @@ func TestMacOSBuildFallbackAcceptsDeclaredVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read macOS build script: %v", err)
 	}
-	versionSource, err := os.ReadFile("version.go")
-	if err != nil {
-		t.Fatalf("read version source: %v", err)
+
+	extractorPattern := regexp.MustCompile(`(?ms)^[\t ]*SHORT_VERSION="\$\(sed -nE[[:space:]]+\\[[:space:]]*'([^']+)'[[:space:]]+\\[[:space:]]*"\$REPO_ROOT/internal/version/version\.go"[[:space:]]*\|[[:space:]]*head -1\)"`)
+	extractors := extractorPattern.FindAllSubmatch(script, -1)
+	if len(extractors) != 1 {
+		t.Fatalf("macOS build script has %d executable version extractors, want 1", len(extractors))
 	}
 
-	declaration := regexp.MustCompile(`(?m)^[\t ]*(?:const|var)[\t ]+Version[\t ]*=[\t ]*"([^"]+)"`)
-	match := declaration.FindSubmatch(versionSource)
-	if len(match) != 2 {
-		t.Fatal("version source must contain a supported Version declaration")
-	}
+	for _, tc := range []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{name: "const", source: "package version\n\nconst Version = \"1.2.3\"\n", want: "1.2.3"},
+		{name: "var", source: "package version\n\n\tvar\tVersion = \"4.5.6\"\n", want: "4.5.6"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := filepath.Join(t.TempDir(), "version.go")
+			if err := os.WriteFile(fixture, []byte(tc.source), 0o600); err != nil {
+				t.Fatalf("write version fixture: %v", err)
+			}
 
-	const portableFallback = `(const|var)[[:space:]]+Version`
-	if !strings.Contains(string(script), portableFallback) {
-		t.Fatalf("macOS shallow-checkout fallback must accept the real %q declaration using %q", match[0], portableFallback)
-	}
-	if strings.Contains(string(script), `s/^const Version`) {
-		t.Fatal("macOS shallow-checkout fallback must not assume Version is declared as a const")
+			output, err := exec.Command("sed", "-nE", string(extractors[0][1]), fixture).CombinedOutput()
+			if err != nil {
+				t.Fatalf("run version extractor: %v: %s", err, output)
+			}
+			if got, want := string(output), tc.want+"\n"; got != want {
+				t.Fatalf("version extractor output = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
