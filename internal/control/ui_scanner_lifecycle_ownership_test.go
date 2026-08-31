@@ -67,6 +67,7 @@ func TestUIScannerCheckActionsSnapshotDraftOwnership(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/scanner.js"))
 	for _, want := range []string{
 		"let checkDraftEpoch=0",
+		"let checkActionFocus=null",
 		"const draftEpoch=checkDraftEpoch",
 		"const source=$('#checkSrc').value",
 		"const id=$('#checkId').value.trim()",
@@ -78,6 +79,8 @@ func TestUIScannerCheckActionsSnapshotDraftOwnership(t *testing.T) {
 		"openModal($('#checksModal'),{onEscape:closeChecks,onDismiss:closeChecks})",
 		"const close=$('#checksClose');if(close)close.disabled=checkActionBusy",
 		"$('#checksList')?.querySelectorAll('button,input').forEach(control=>{control.disabled=checkActionBusy;})",
+		"out.focus({preventScroll:true})",
+		"restore.focus({preventScroll:true})",
 		"setCheckActionState('delete','pending')",
 		"checkLoadEpoch++;checkDraftEpoch++;cancelCheckAction()",
 		"loadBuiltinCheck(id,{preserveAction:true})",

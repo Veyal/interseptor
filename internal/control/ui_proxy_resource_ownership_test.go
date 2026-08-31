@@ -153,16 +153,35 @@ func TestUIAuthzModalOwnsLoadsEditsAndActions(t *testing.T) {
 	authz := requireUIContracts(t, "js/authz.js",
 		"let rules=[]",
 		"rules=d.rules||[]",
+		"let authzActionFocus=null",
 		"authzIdentityLoadEpoch",
 		"authzIdentityEditEpoch",
 		"authzIdentityMutationTail",
 		"onEscape:closeAuthz,onDismiss:closeAuthz",
-		"'#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose'",
+		"'#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose', '#authzScopeEdit'",
+		"status.focus({preventScroll:true})",
+		"restore.focus({preventScroll:true})",
+		"function setAuthzStatus(message,kind='status')",
+		"kind==='error'?'alert':'status'",
+		"kind==='error'?'assertive':'polite'",
+		"function openSettingsScope(){\n  if(authzActionBusy)return",
+		"setAuthzStatus('Loading captured authentication…')",
 		"function closeAuthz(){\n  if(authzActionBusy)return",
 		"function authzActionCurrent(epoch,mode,target,requiresTarget=true)",
 		"$('#authzIds')?.querySelectorAll('input,textarea,button')",
 		"finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}",
 	)
+	for _, message := range []string{
+		"Loading captured authentication failed: ",
+		"Session check failed: ",
+		"Cross-host replay failed: ",
+		"Saving identities failed: ",
+		"Authorization replay failed: ",
+	} {
+		if !strings.Contains(authz, "setAuthzStatus('"+message+"'+e.message,'error')") {
+			t.Errorf("Authz failure must use assertive status semantics: missing %q", message)
+		}
+	}
 	if strings.Contains(authz, "state.scope=d.rules||[]") {
 		t.Fatal("authorization scope preview must not overwrite Settings target-scope state")
 	}

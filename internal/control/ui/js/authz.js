@@ -11,11 +11,19 @@ let authzHintTarget=null;
 let authzViewMode = 'list'; // 'list' | 'matrix' — toggled in bulk results
 let authzMode = 'flow';     // 'flow' | 'scope' | 'crosshost' — the segmented picker at the top
 let authzActionBusy = false;
+let authzActionFocus=null;
 let authzScopeEpoch=0,authzHintEpoch=0,authzRunEpoch=0,authzIdentityLoadEpoch=0,authzIdentityEditEpoch=0;
 let authzIdentityMutationTail=Promise.resolve();
 function setAuthzActionBusy(busy) {
+  const modal=$('#authzModal');
+  if(busy&&!authzActionBusy){
+    const active=document.activeElement;
+    authzActionFocus=modal?.contains(active)?active:null;
+  }
+  const restore=!busy&&authzActionBusy?authzActionFocus:null;
+  if(!busy)authzActionFocus=null;
   authzActionBusy = !!busy;
-  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose'].forEach(sel => {
+  ['#authzRun', '#authzCheck', '#authzSave', '#authzFromFlow', '#authzAdd', '#authzClose', '#authzScopeEdit'].forEach(sel => {
     const b = $(sel); if (!b) return;
     b.disabled = authzActionBusy;
     b.setAttribute('aria-busy', authzActionBusy ? 'true' : 'false');
@@ -26,10 +34,17 @@ function setAuthzActionBusy(busy) {
     mode.setAttribute('aria-busy',authzActionBusy?'true':'false');
     mode.querySelectorAll('button').forEach(button=>{button.disabled=authzActionBusy;});
   }
+  const status=$('#authzStatus');
+  if(status)status.setAttribute('aria-busy',authzActionBusy?'true':'false');
+  if(authzActionBusy&&authzActionFocus&&status)status.focus({preventScroll:true});
+  else if(restore&&authzModalOpen()&&restore.isConnected&&!restore.disabled)restore.focus({preventScroll:true});
 }
-function setAuthzStatus(message) {
+function setAuthzStatus(message,kind='status') {
   const status = $('#authzStatus');
-  if (status) status.textContent = message || '';
+  if (!status) return;
+  status.textContent = message || '';
+  status.setAttribute('role',kind==='error'?'alert':'status');
+  status.setAttribute('aria-live',kind==='error'?'assertive':'polite');
 }
 // A context-menu action owns its explicit flow even when another History row was
 // selected before the modal opened. A selection made after opening deliberately
@@ -59,6 +74,7 @@ function closeAuthz(){
 }
 
 function openSettingsScope(){
+  if(authzActionBusy)return;
   closeAuthz();
   document.querySelector('.tab[data-tab="settings"]')?.click();
   document.querySelector('#setNav button[data-sec="scope"]')?.click();
@@ -198,12 +214,13 @@ async function fillFromFlow(){
   const fid=authzTarget(); syncAuthzLabel();
   if(!fid){toast('select a flow first');return;}
   const mode=authzMode,epoch=++authzRunEpoch;
+  setAuthzStatus('Loading captured authentication…');
   setAuthzActionBusy(true);
   try{
     const d=await api('/api/authz/flow-auth/'+fid);
     if(!authzActionCurrent(epoch,mode,fid))return;
     const requestAuth=[d.cookie?'Cookie: '+d.cookie:'',d.authorization?'Authorization: '+d.authorization:''].filter(Boolean).join('\n');
-    if(!requestAuth){toast('no Cookie/Authorization on that request');return;}
+    if(!requestAuth){toast('no Cookie/Authorization on that request');setAuthzStatus('No captured authentication found');return;}
     const ids=collectIds();
     let i=ids.findIndex(x=>!x.headers.trim());
     if(i<0){ids.unshift({name:'',headers:''});i=0;}
@@ -212,7 +229,8 @@ async function fillFromFlow(){
     authzIdentityEditEpoch++;
     renderIdentities(ids);
     toast('filled identity from flow #'+fid);
-  }catch(e){if(authzActionCurrent(epoch,mode,fid))toast(e.message);}
+    setAuthzStatus('Captured authentication loaded');
+  }catch(e){if(authzActionCurrent(epoch,mode,fid)){toast(e.message,'error');setAuthzStatus('Loading captured authentication failed: '+e.message,'error');}}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 }
 
@@ -243,7 +261,7 @@ async function checkSessions(){
         <span>${!c.hasAuth?'<span class="hint">anonymous</span>':c.sessionInvalid?'<span style="color:var(--red);font-weight:700">expired?</span>':'<span class="hint">ok</span>'}</span>
         <span></span></div>`).join('');
     setAuthzStatus('Session check complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,probe))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Check failed: '+esc(e.message)+'</div>';setAuthzStatus('Session check failed: '+e.message);}
+  }catch(e){if(!authzActionCurrent(epoch,mode,probe))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Check failed: '+esc(e.message)+'</div>';setAuthzStatus('Session check failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 }
 
@@ -353,7 +371,7 @@ async function crossHostReplay(){
     const d=await api('/api/authz/cross-host-replay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:fid})});
     if(!authzActionCurrent(epoch,mode,fid))return;renderCrossHostResults(d);
     setAuthzStatus('Cross-host replay complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,fid))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Cross-host replay failed: '+e.message);}
+  }catch(e){if(!authzActionCurrent(epoch,mode,fid))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Cross-host replay failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 }
 
@@ -386,7 +404,7 @@ $('#authzSave')&&($('#authzSave').onclick=async()=>{
   setAuthzStatus('Saving identities…');
   setAuthzActionBusy(true);
   try{await saveIds(identities);if(!authzActionCurrent(epoch,mode,target,false))return;toast('identities saved');refreshAuthzIds();setAuthzStatus('Identities saved');}
-  catch(e){if(!authzActionCurrent(epoch,mode,target,false))return;toast('Save failed: '+e.message,'error');setAuthzStatus('Saving identities failed: '+e.message);}
+  catch(e){if(!authzActionCurrent(epoch,mode,target,false))return;toast('Save failed: '+e.message,'error');setAuthzStatus('Saving identities failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 });
 $('#authzClose')&&($('#authzClose').onclick=closeAuthz);
@@ -408,7 +426,7 @@ $('#authzRun')&&($('#authzRun').onclick=async()=>{
     const d=await api('/api/authz/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;renderAuthzResults(d);
     setAuthzStatus('Authorization replay complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Authorization replay failed: '+e.message);}
+  }catch(e){if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Authorization replay failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 });
 

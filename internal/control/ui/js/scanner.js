@@ -99,6 +99,7 @@ const checkEndpoint='/api/checks';
 let checkLoadEpoch=0;
 let checkActionEpoch=0;
 let checkActionBusy=false;
+let checkActionFocus=null;
 let checkEditorReady=false;
 let checkEditorLoading=false;
 let checkRestoreFocus=false;
@@ -123,8 +124,15 @@ function setCheckActionState(kind,stateName){
   const test=$('#checkTest'),save=$('#checkSave'),del=$('#checkDelete');
   if(!test||!save)return;
   const busy=stateName==='pending';
+  if(busy&&!checkActionBusy){
+    const active=document.activeElement;
+    checkActionFocus=$('#checksModal')?.contains(active)?active:null;
+  }
+  const restore=!busy&&checkActionBusy?checkActionFocus:null;
+  if(!busy)checkActionFocus=null;
   checkActionBusy=busy;
   syncCheckEditorControls();
+  const out=$('#checkOut');if(out)out.setAttribute('aria-busy',busy?'true':'false');
   test.classList.remove('is-pending','is-success','is-error');
   save.classList.remove('is-pending','is-success','is-error');
   if(stateName!=='idle'){
@@ -139,6 +147,8 @@ function setCheckActionState(kind,stateName){
     test.textContent='Test ▸';save.textContent='Save';
     updateCheckDeleteLabel();
   }
+  if(busy&&checkActionFocus&&out)out.focus({preventScroll:true});
+  else if(restore&&$('#checksModal')?.style.display==='flex'&&restore.isConnected&&!restore.disabled)restore.focus({preventScroll:true});
 }
 function resetCheckAction(kind,delay,epoch){
   setTimeout(()=>{if(epoch===checkActionEpoch)setCheckActionState(kind,'idle');},delay);

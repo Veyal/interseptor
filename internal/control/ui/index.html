@@ -1216,7 +1216,7 @@ Content-Type: application/json
         <div id="checkPaneDocs" class="check-pane" role="tabpanel" aria-labelledby="checkModeDocs" style="display:none" hidden>
           <div id="checkDocs" class="check-docs"><span class="hint">Loading reference…</span></div>
         </div>
-        <div id="checkOut"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
+        <div id="checkOut" tabindex="-1"><span class="hint">Test runs against the selected flow (or the latest). Save validates &amp; writes the check.</span></div>
       </div>
     </div>
   </div>
@@ -1349,7 +1349,7 @@ Content-Type: application/json
         <button class="btn btn-primary" id="authzRun">Run ▸</button>
       </div>
       <div class="micro-label">RESULTS</div>
-      <div id="authzStatus" class="statusline" role="status" aria-live="polite"></div>
+      <div id="authzStatus" class="statusline" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
       <div id="authzResults"><div class="hint">Run to compare access across roles.</div></div>
     </div>
   </div>
@@ -1385,6 +1385,8 @@ Content-Type: application/json
       <p class="hint" style="margin:0">Creates a draft stub — fill Impact, Why, Target, and PoC next.</p>
     </div>
     <div class="modal-shell-foot">
+      <span id="fcStatus" class="statusline" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></span>
+      <div class="spacer"></div>
       <button class="btn btn-primary" id="fcSave">Create finding</button>
     </div>
   </div>

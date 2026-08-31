@@ -3,8 +3,8 @@
 The **After** screenshots validate the exact release-candidate runtime source identified by
 `application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). They were captured
 from a fresh build based on
-[`00cc339`](https://github.com/Veyal/interseptor/commit/00cc3392676b1fb20567541dc36d648506c85067)
-plus the gate review fixes in this change. The screenshots and measurements remain scoped to that
+[`6dae3ae`](https://github.com/Veyal/interseptor/commit/6dae3ae2f189bd42a173aa7571b29c760b12d2a6)
+plus the final focus-ownership fixes in this change. The screenshots and measurements remain scoped to that
 digest; any later runtime-source change requires a fresh run.
 
 The retained **Before** screenshots are from repository baseline `ec1b79e`. The After set uses only
@@ -23,15 +23,16 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The exact-target Playwright recheck ran Chromium 148. All 26 independent
-and cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
+The exact-target Playwright recheck ran Chromium 148 and all 26 independent and cross-feature cases
+passed. Dedicated viewport and control-reachability sweeps at 1440 × 900, 1024 × 768, and 390 × 844
+found no document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
 history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
 tab closures, including when its localStorage cleanup ledger was forced unavailable. The audit also
 exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed
-Intercept acknowledgements, Authz retargeting, reversible API-key/allowlist actions, unconfigured Vault
-behavior, and every Settings section. No unexpected console, page, HTTP, or external-request errors
-were reported.
+Intercept acknowledgements, Authz retargeting, mutation rejection/retry focus, blocked busy-modal
+navigation, reversible API-key/allowlist actions, unconfigured Vault behavior, and every Settings
+section. No unexpected console, page, HTTP, or external-request errors were reported.
 
 Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
 hydration and gestures. Exact timing, bounded-DOM, long-task, and interaction measurements are

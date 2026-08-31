@@ -1125,12 +1125,34 @@ async function openFlowPickForFinding(findingId) {
 /* ---- create finding ---- */
 let findingCreateEpoch=0;
 let findingCreateBusy=false;
+let findingCreateFocus=null;
+function setFindingCreateStatus(message,kind='status'){
+  const status=$('#fcStatus');if(!status)return;
+  status.textContent=message||'';
+  status.setAttribute('role',kind==='error'?'alert':'status');
+  status.setAttribute('aria-live',kind==='error'?'assertive':'polite');
+}
 function setFindingCreateBusy(busy){
+  const modal=$('#findCreateModal');
+  if(busy&&!findingCreateBusy){
+    const active=document.activeElement;
+    findingCreateFocus=modal?.contains(active)?active:null;
+  }
+  const restore=!busy&&findingCreateBusy?findingCreateFocus:null;
+  if(!busy)findingCreateFocus=null;
   findingCreateBusy=!!busy;
   ['#fcTitle','#fcSeverity','#fcSave','#fcClose'].forEach(sel=>{const control=$(sel);if(control)control.disabled=findingCreateBusy;});
   const button=$('#fcSave');if(!button)return;
   button.setAttribute('aria-busy',findingCreateBusy?'true':'false');
   button.textContent=findingCreateBusy?'Creating…':'Create finding';
+  const status=$('#fcStatus');
+  if(status)status.setAttribute('aria-busy',findingCreateBusy?'true':'false');
+  if(findingCreateBusy&&findingCreateFocus&&status){
+    setFindingCreateStatus('Creating finding…');
+    status.focus({preventScroll:true});
+  }else if(restore&&modal?.style.display==='flex'&&restore.isConnected&&!restore.disabled){
+    restore.focus({preventScroll:true});
+  }
 }
 function closeFindingCreate(){
   if(findingCreateBusy)return;
@@ -1147,6 +1169,7 @@ function openFindCreate(event) {
   $('#fcTitle').value = '';
   $('#fcSeverity').value = 'Medium';
   resetFindingCreateButton();
+  setFindingCreateStatus('');
   openModal($('#findCreateModal'),{initialFocus:$('#fcTitle'),onEscape:closeFindingCreate,onDismiss:closeFindingCreate});
 }
 $('#findNew') && ($('#findNew').onclick = openFindCreate);
@@ -1157,6 +1180,7 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
   const title = ($('#fcTitle')?.value || '').trim();
   if (!title) {
     toast('finding title is required', 'error');
+    setFindingCreateStatus('Finding title is required.','error');
     $('#fcTitle')?.focus();
     return;
   }
@@ -1183,6 +1207,7 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
     toast('finding created');
   } catch (err) {
     if(createEpoch!==findingCreateEpoch||modal?.style.display!=='flex')return;
+    setFindingCreateStatus(err.message || 'Could not create finding.','error');
     toast(err.message || 'could not create finding', 'error');
   } finally {
     if (createEpoch===findingCreateEpoch&&button.isConnected) {

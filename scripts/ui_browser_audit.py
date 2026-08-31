@@ -157,13 +157,31 @@ def png_dimensions(path: Path) -> Tuple[int, int]:
 
 def runtime_source_identity() -> Dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[1]
-    paths = [repo_root / "go.mod", repo_root / "go.sum"]
-    for source_root in (repo_root / "cmd", repo_root / "internal"):
-        paths.extend(
-            path
-            for path in source_root.rglob("*")
-            if path.is_file() and not path.name.endswith("_test.go")
-        )
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            "go.mod",
+            "go.sum",
+            "cmd",
+            "internal",
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    ).stdout
+    paths = []
+    for relative_bytes in listed.split(b"\0"):
+        if not relative_bytes:
+            continue
+        path = repo_root / relative_bytes.decode("utf-8", errors="surrogateescape")
+        if path.is_file() and not path.name.endswith("_test.go"):
+            paths.append(path)
     digest = hashlib.sha256()
     unique_paths = sorted(set(paths), key=lambda path: path.relative_to(repo_root).as_posix())
     for path in unique_paths:
@@ -212,7 +230,10 @@ def attach_observers(page: Page, result: AuditResult, base_netloc: str, expected
             return
         location = message.location or {}
         request_url = str(location.get("url") or "")
-        if expected_console_errors or request_url in result.expected_console_request_urls:
+        if expected_console_errors:
+            result.expected_console_errors.append(message.text)
+        elif request_url in result.expected_console_request_urls:
+            result.expected_console_request_urls.remove(request_url)
             result.expected_console_errors.append(message.text)
         else:
             result.console_errors.append(message.text)
@@ -1147,11 +1168,35 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("Notes save/preview and Findings creation/focus", notes_and_findings)
 
             def mutation_modals_lock_dismissal() -> None:
-                def wait_for_route(routes: List[Any], label: str) -> None:
+                def wait_for_route(routes: List[Any], label: str, count: int = 1) -> None:
                     deadline = time.monotonic() + 2.0
-                    while not routes and time.monotonic() < deadline:
+                    while len(routes) < count and time.monotonic() < deadline:
                         page.wait_for_timeout(10)
-                    result.require(bool(routes), f"{label} request was not issued")
+                    result.require(len(routes) >= count, f"{label} request was not issued")
+
+                case_http_start = len(result.http_errors)
+                expected_rejections: List[str] = []
+
+                def reject_expected(route: Any, label: str) -> None:
+                    item = f"409 {route.request.method} {route.request.url}"
+                    result.expected_console_request_urls.append(route.request.url)
+                    route.fulfill(
+                        status=409,
+                        content_type="application/json",
+                        body=json.dumps({"error": f"{label} audit rejected"}),
+                    )
+                    expected_rejections.append(item)
+
+                def absorb_expected_rejections() -> None:
+                    for item in list(expected_rejections):
+                        for index in range(len(result.http_errors) - 1, case_http_start - 1, -1):
+                            if result.http_errors[index] != item:
+                                continue
+                            result.expected_http_errors.append(item)
+                            del result.http_errors[index]
+                            expected_rejections.remove(item)
+                            break
+                    result.require(not expected_rejections, "an injected modal rejection was not classified as expected")
 
                 finding_title = "UI audit held finding"
                 held_findings: List[Any] = []
@@ -1180,12 +1225,23 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     page.locator("#findCreateModal").click(position={"x": 5, "y": 5})
                     page.wait_for_timeout(80)
                     result.require(page.locator("#findCreateModal").is_visible(), "finding creation was dismissible before acknowledgement")
-                    held_findings[0].continue_()
+                    result.require(page.evaluate("document.activeElement?.id") == "fcStatus", "finding pending state lost modal focus")
+                    reject_expected(held_findings[0], "finding create")
+                    page.wait_for_function(
+                        "document.querySelector('#fcStatus')?.getAttribute('role')==='alert'"
+                    )
+                    absorb_expected_rejections()
+                    result.require(page.evaluate("document.activeElement?.id") == "fcSave", "finding failure did not restore Create focus")
+                    page.locator("#fcSave").click()
+                    wait_for_route(held_findings, "retried finding create", 2)
+                    result.require(page.evaluate("document.activeElement?.id") == "fcStatus", "finding retry did not focus its pending status")
+                    held_findings[1].continue_()
                     page.wait_for_selector("#findCreateModal", state="hidden", timeout=10_000)
                     page.wait_for_function(
                         "title => document.querySelector('#findDetail')?.textContent.includes(title)",
                         arg=finding_title,
                     )
+                    result.require(page.evaluate("document.activeElement?.id") == "findNew", "finding acknowledgement did not restore invoker focus")
                 finally:
                     for route in held_findings:
                         try:
@@ -1241,12 +1297,23 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     page.locator("#checksModal").click(position={"x": 5, "y": 5})
                     page.wait_for_timeout(80)
                     result.require(page.locator("#checksModal").is_visible(), "Scanner check save was dismissible before acknowledgement")
-                    held_checks[0].continue_()
+                    result.require(page.evaluate("document.activeElement?.id") == "checkOut", "Scanner pending state lost modal focus")
+                    reject_expected(held_checks[0], "Scanner check save")
+                    page.wait_for_function(
+                        "document.querySelector('#checkOut')?.getAttribute('role')==='alert'"
+                    )
+                    absorb_expected_rejections()
+                    result.require(page.evaluate("document.activeElement?.id") == "checkSave", "Scanner failure did not restore Save focus")
+                    page.locator("#checkSave").click()
+                    wait_for_route(held_checks, "retried Scanner check save", 2)
+                    result.require(page.evaluate("document.activeElement?.id") == "checkOut", "Scanner retry did not focus its pending status")
+                    held_checks[1].continue_()
                     page.wait_for_function(
                         "document.querySelector('#checkOut')?.textContent.includes('Saved')",
                         timeout=10_000,
                     )
                     result.require(page.locator("#checksClose").is_enabled(), "Scanner close control did not restore after acknowledgement")
+                    result.require(page.evaluate("document.activeElement?.id") == "checkSave", "Scanner acknowledgement did not restore Save focus")
                 finally:
                     for route in held_checks:
                         try:
@@ -1273,6 +1340,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.wait_for_function("document.querySelectorAll('#rows .trow').length>0", timeout=10_000)
                 original_identities = page.evaluate("async () => (await (await fetch('/api/authz')).json()).identities||[]")
                 held_authz: List[Any] = []
+                held_authz_runs: List[Any] = []
 
                 def hold_authz_save(route: Any) -> None:
                     if route.request.method == "POST":
@@ -1280,9 +1348,18 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     else:
                         route.continue_()
 
+                def hold_authz_run(route: Any) -> None:
+                    if route.request.method == "POST":
+                        held_authz_runs.append(route)
+                    else:
+                        route.continue_()
+
                 first_flow = page.locator("#rows .trow").first.get_attribute("data-id")
-                page.locator(f'#rows .trow[data-id="{first_flow}"]').click(button="right", force=True)
-                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(force=True)
+                authz_row = page.locator(f'#rows .trow[data-id="{first_flow}"]')
+                authz_row.scroll_into_view_if_needed()
+                authz_row.click(button="right")
+                page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
+                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click()
                 page.wait_for_selector("#authzModal", state="visible", timeout=10_000)
                 page.wait_for_selector("#authzIds .authz-name", timeout=10_000)
                 page.route("**/api/authz", hold_authz_save)
@@ -1299,20 +1376,76 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     page.locator("#authzModal").click(position={"x": 5, "y": 5})
                     page.wait_for_timeout(80)
                     result.require(page.locator("#authzModal").is_visible(), "Authz identity save was dismissible before acknowledgement")
-                    held_authz[0].continue_()
+                    result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz pending state lost modal focus")
+                    reject_expected(held_authz[0], "Authz identity save")
+                    page.wait_for_function(
+                        "document.querySelector('#authzStatus')?.getAttribute('role')==='alert'"
+                        "&&document.querySelector('#authzStatus')?.textContent.includes('failed')"
+                    )
+                    absorb_expected_rejections()
+                    result.require(
+                        page.locator("#authzStatus").get_attribute("aria-live") == "assertive",
+                        "Authz failure was not announced assertively",
+                    )
+                    result.require(page.evaluate("document.activeElement?.id") == "authzSave", "Authz failure did not restore Save focus")
+                    page.locator("#authzSave").click()
+                    wait_for_route(held_authz, "retried Authz identity save", 2)
+                    result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz retry did not focus its pending status")
+                    held_authz[1].continue_()
                     page.wait_for_function(
                         "document.querySelector('#authzStatus')?.textContent.includes('Identities saved')",
                         timeout=10_000,
                     )
                     result.require(page.locator("#authzClose").is_enabled(), "Authz close control did not restore after acknowledgement")
+                    result.require(page.evaluate("document.activeElement?.id") == "authzSave", "Authz acknowledgement did not restore Save focus")
+
+                    page.unroute("**/api/authz", hold_authz_save)
+                    page.route("**/api/authz/run", hold_authz_run)
+                    page.locator('#authzMode button[data-m="scope"]').click()
+                    page.wait_for_selector("#authzScopeEdit", state="visible", timeout=10_000)
+                    page.locator("#authzRun").click()
+                    wait_for_route(held_authz_runs, "held in-scope Authz run")
+                    result.require(page.locator("#authzScopeEdit").is_disabled(), "Authz scope navigation stayed enabled during a run")
+                    result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz run did not retain pending focus")
+                    page.evaluate("""() => {
+                      const edit=document.querySelector('#authzScopeEdit');
+                      edit.disabled=false;
+                      edit.click();
+                    }""")
+                    page.wait_for_timeout(80)
+                    result.require(page.locator("#authzModal").is_visible(), "busy Authz scope navigation closed the modal")
+                    result.require(
+                        page.locator('.tab[data-tab="settings"][aria-selected="true"]').count() == 0,
+                        "busy Authz scope navigation changed the underlying panel",
+                    )
+                    held_authz_runs[0].fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"runs":[],"summary":{"endpoints":0,"flagged":0}}',
+                    )
+                    page.wait_for_function(
+                        "document.querySelector('#authzStatus')?.textContent.includes('Authorization replay complete')",
+                        timeout=10_000,
+                    )
+                    result.require(page.evaluate("document.activeElement?.id") == "authzRun", "Authz run acknowledgement did not restore Run focus")
                 finally:
                     for route in held_authz:
                         try:
                             route.continue_()
                         except Exception:
                             pass
+                    for route in held_authz_runs:
+                        try:
+                            route.fulfill(
+                                status=200,
+                                content_type="application/json",
+                                body='{"runs":[],"summary":{"endpoints":0,"flagged":0}}',
+                            )
+                        except Exception:
+                            pass
                     try:
                         page.unroute("**/api/authz", hold_authz_save)
+                        page.unroute("**/api/authz/run", hold_authz_run)
                     except Exception:
                         pass
                     try:
@@ -1329,7 +1462,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     if page.locator("#authzModal").is_visible() and page.locator("#authzClose").is_enabled():
                         page.locator("#authzClose").click()
 
-            result.run("non-cancelable Finding, Checks, and Authz mutations lock dismissal", mutation_modals_lock_dismissal)
+            result.run("modal mutations retain focus, errors, dismissal, and scope ownership", mutation_modals_lock_dismissal)
 
             def scanner_run() -> None:
                 page.locator('.tab[data-tab="scanner"]').click()
@@ -2063,8 +2196,11 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 explicit_id = rows.nth(1).get_attribute("data-id")
                 changed_id = rows.nth(2).get_attribute("data-id")
                 page.locator(f'#rows .trow[data-id="{selected_id}"]').click(force=True)
-                page.locator(f'#rows .trow[data-id="{explicit_id}"]').click(button="right", force=True)
-                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(force=True)
+                authz_row = page.locator(f'#rows .trow[data-id="{explicit_id}"]')
+                authz_row.scroll_into_view_if_needed()
+                authz_row.click(button="right")
+                page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
+                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click()
                 page.wait_for_selector("#authzModal", state="visible")
                 try:
                     result.require(page.locator("#authzFlow").inner_text() == f"#{explicit_id}", "Authz ignored the context-menu flow")

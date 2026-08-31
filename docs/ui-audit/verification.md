@@ -2,10 +2,10 @@
 
 ## Revision and environment
 
-- Audited release-candidate base: `00cc3392676b1fb20567541dc36d648506c85067`
+- Audited release-candidate base: `6dae3ae2f189bd42a173aa7571b29c760b12d2a6`
 - Exact application identity: `application_source.runtime_sha256` in
-  [`browser-audit.json`](browser-audit.json), computed from every runtime file under `cmd/` and
-  `internal/` plus `go.mod` and `go.sum`
+  [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
+  file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
 - Launch: fresh `go run ./cmd/interseptor` build of the exact audited source
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
@@ -54,6 +54,9 @@ field that created it. In particular:
   retain the exact action, draft, and task-tab owner that initiated them.
 - Same-flow SSE refreshes cannot retarget an explicit Authz request, and Map graph summaries count
   the same filtered, collapsed, and capped endpoints that the graph actually renders.
+- Finding creation, Scanner check actions, and Authz actions move pending focus to an in-dialog
+  status, restore the initiating action after rejection, and keep every dismissal or scope-navigation
+  exit locked until the non-cancelable request acknowledges; Authz failures use assertive alerts.
 
 ## Feature and dependency matrix
 
@@ -63,12 +66,12 @@ field that created it. In particular:
 | Intercept | request/response queues, filters, Match & Replace, pending/acknowledged Forward and Drop, typing-safe shortcuts | queue refreshes cannot overwrite filter edits; operation results cannot mutate a newer selected queue item |
 | Repeater | tab lifecycle, Send states, response ownership, decode races, persistence and cleanup | send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
 | Intruder | duplicate-start lock, history selection, live polling errors, result filters | returning from historical evidence to live evidence preserves the configured target; finding creation uses the displayed run |
-| Scanner | real pending/success/error state, latest issues response, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
-| Findings | creation focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
+| Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
+| Findings | creation and pending-status focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
 | Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
 | Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
 | Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
-| Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting, WebSocket capture/replay contracts | close paths restore focus; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
+| Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting/error announcements, WebSocket capture/replay contracts | close paths restore focus; pending modal actions retain focus; busy Authz scope navigation cannot switch the underlying panel; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
 
 ### Repeater history contract
 
@@ -109,12 +112,14 @@ restored OOB disabled; it made no external callback or system-proxy change.
   selection halo; Fit plus wheel/drag changed the graph transform without a continuous simulation.
 - Activity kept focus on the same record during live insertion and announced success/error outcome
   text. The evidence lightbox opened from the keyboard and restored focus on Escape.
-- Real Scanner and Intruder runs reached pending and success states. Intercept Forward and response
+- Real Scanner and Intruder runs reached pending and success states. Rejected Finding, Scanner-check,
+  and Authz mutations retained in-modal focus, announced the failure, restored their initiating
+  action for retry, and kept Escape/backdrop/scope exits locked until acknowledgement. Intercept Forward and response
   Drop kept their queue items until deliberately delayed server acknowledgements completed. Authz
   retained its explicit context target and followed later A→B→A selection changes exactly.
 - The normal sweep had no unexpected console, page, or HTTP errors and no external browser request.
-  The fault context intentionally returned three `503` responses for Activity/History and produced
-  persistent Retry states; those expected network-console messages were classified separately.
+  Fault contexts intentionally returned fourteen exact `409`/`503` responses across recovery and
+  ownership paths; their expected HTTP and network-console messages were classified separately.
 
 ## Performance findings
 

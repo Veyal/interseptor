@@ -1181,6 +1181,10 @@ function registerModal(modalEl){
   modalRegistry.set(modalEl,entry);
   modalEl.addEventListener('mousedown',e=>{
     if(e.target!==modalEl||topModal()!==entry)return;
+    // The dismissal owner may intentionally refuse while a non-cancelable
+    // request is pending. Keep focus inside the dialog either way; a real
+    // close restores its invoker through closeModal().
+    e.preventDefault();
     if(entry.onDismiss)entry.onDismiss();
     else if(entry.onEscape)entry.onEscape();
     else closeModal(modalEl);

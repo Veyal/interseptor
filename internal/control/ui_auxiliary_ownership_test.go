@@ -166,6 +166,10 @@ func TestUIFindingCreateAndAsyncEditorActionsRetainTheirOwners(t *testing.T) {
 	requireUIContracts(t, "js/findings.js",
 		"let findingCreateEpoch=0",
 		"let findingCreateBusy=false",
+		"let findingCreateFocus=null",
+		"function setFindingCreateStatus(message,kind='status')",
+		"status.focus({preventScroll:true})",
+		"restore.focus({preventScroll:true})",
 		"function closeFindingCreate()",
 		"if(findingCreateBusy)return",
 		"onEscape:closeFindingCreate,onDismiss:closeFindingCreate",
@@ -173,6 +177,12 @@ func TestUIFindingCreateAndAsyncEditorActionsRetainTheirOwners(t *testing.T) {
 		"const createEpoch=++findingCreateEpoch",
 		"if(createEpoch!==findingCreateEpoch",
 		"findingCreateEpoch++",
+	)
+	requireUIContracts(t, "index.html",
+		`id="fcStatus"`,
+		`role="status"`,
+		`aria-live="polite"`,
+		`tabindex="-1"`,
 	)
 	requireUIContracts(t, "js/tools.js",
 		"const ownerTab=repCur()",
