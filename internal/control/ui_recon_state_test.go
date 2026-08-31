@@ -172,7 +172,9 @@ func TestRepeaterDecodeCompletionDistinguishesStaleFromFallback(t *testing.T) {
 	for _, contract := range []string{
 		"const editorEpoch=t.reqEditEpoch||0",
 		"t.reqEditEpoch===editorEpoch",
-		"if(method!==t.method||url!==t.url||headers!==t.headers||v!==previous)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
+		"const changed=method!==t.method||url!==t.url||headers!==t.headers||v!==previous",
+		"if(changed)t.reqEditEpoch=(t.reqEditEpoch||0)+1",
+		"if(changed&&operatorEdit)t.requestAdoptionPristine=false",
 		"if(!current())return null",
 		"if(ok===null)return",
 		"if(repCur()!==t)return",
