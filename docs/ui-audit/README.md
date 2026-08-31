@@ -22,7 +22,7 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The final Playwright recheck ran Chromium 148 against source `0db243d`. All 17 independent and
+The audited-source Playwright recheck ran Chromium 148 against source `0db243d`. All 17 independent and
 cross-feature cases passed at 1440 × 900, 1024 × 768, and 390 × 844 without document overflow.
 Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
 history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both

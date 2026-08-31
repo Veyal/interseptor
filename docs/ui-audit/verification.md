@@ -1,4 +1,4 @@
-# UI release verification — 2026-08-31
+# UI audit verification — 2026-08-31
 
 ## Revision and environment
 
@@ -9,6 +9,9 @@
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
+
+This record validates only application source `0db243d`. Later application changes on the release
+branch are outside this evidence and require a fresh exact-target browser run before release.
 
 The complete 17-case matrix and three-run performance profile were executed against the exact audited
 source with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`. Two preceding isolated
@@ -59,7 +62,7 @@ field that created it. In particular:
 
 ### Repeater history contract
 
-The exact-target browser recheck sent a request from one Repeater tab, then changed its method, URL,
+The audited-source browser recheck sent a request from one Repeater tab, then changed its method, URL,
 headers, and body. History remained attached to the tab after every edit, top-level navigation, and
 a page reload; the edited request also survived the reload. A second task tab received a distinct
 history. Closing the first tab removed only its IndexedDB rows, and closing the second removed its
@@ -111,7 +114,7 @@ control was observed.
 | Whole three-burst profile (CDP delta) | task `0.407 s`, script `0.109 s`, layout `0.044 s` |
 | Map interaction (CDP delta) | task `0.046 s`, script `0.0017 s`, layout `0.0005 s` |
 
-The target recheck treats only a visible busy surface as busy. The virtualized table remained
+The audited-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
 visible busy surface behind.
 
