@@ -43,7 +43,9 @@ func TestUIFindingsCreateModalOwnsAndRestoresKeyboardFocus(t *testing.T) {
 		"function openFindCreate(event)",
 		"const trigger=event?.currentTarget",
 		"trigger.focus({preventScroll:true})",
-		"openModal($('#findCreateModal'),{initialFocus:$('#fcTitle')})",
+		"openModal($('#findCreateModal'),{initialFocus:$('#fcTitle'),",
+		"onEscape:closeFindingCreate",
+		"onDismiss:closeFindingCreate",
 	} {
 		if !strings.Contains(findings, want) {
 			t.Errorf("finding create focus ownership contract missing %q", want)
