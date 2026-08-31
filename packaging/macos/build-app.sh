@@ -37,12 +37,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-VERSION="${VERSION:-$(git -C "$REPO_ROOT" describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="${VERSION:-$(git -C "$REPO_ROOT" describe --tags --dirty 2>/dev/null || echo dev)}"
 VERSION="${VERSION#v}"
 # CFBundleShortVersionString/CFBundleVersion must be numeric-dotted; strip any
-# -g<sha>/-dirty suffix. A shallow CI checkout has no tags, so `git describe`
-# yields a bare commit SHA — fall back to the compiled-in version rather than
-# stamping something Apple will reject.
+# -g<sha>/-dirty suffix. With no reachable tag, `git describe` fails and the
+# `dev` sentinel below falls back to the compiled-in version rather than
+# mistaking a numeric-only abbreviated commit SHA for a release version.
 SHORT_VERSION="$(printf '%s' "$VERSION" | sed -E 's/[-+].*$//')"
 if [[ ! "$SHORT_VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
 	SHORT_VERSION="$(sed -nE \

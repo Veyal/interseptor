@@ -88,6 +88,40 @@ func TestMacOSBuildFallbackAcceptsDeclaredVersion(t *testing.T) {
 	}
 }
 
+func TestMacOSBuildNoTagDescribeCannotMasqueradeAsVersion(t *testing.T) {
+	t.Parallel()
+
+	script, err := os.ReadFile("../../packaging/macos/build-app.sh")
+	if err != nil {
+		t.Fatalf("read macOS build script: %v", err)
+	}
+	text := string(script)
+
+	if strings.Contains(text, "describe --tags --always") {
+		t.Fatal("macOS no-tag builds must not accept a numeric-only abbreviated commit SHA as a bundle version")
+	}
+	const noTagDescribe = `describe --tags --dirty`
+	if !strings.Contains(text, noTagDescribe) {
+		t.Fatalf("macOS build script must use the provenance-safe no-tag command %q", noTagDescribe)
+	}
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required to exercise the no-tag describe contract")
+	}
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "--quiet", repo},
+		{"-C", repo, "-c", "user.name=Interseptor Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "-m", "untagged"},
+	} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	if output, err := exec.Command("git", "-C", repo, "describe", "--tags", "--dirty").CombinedOutput(); err == nil {
+		t.Fatalf("untagged git describe unexpectedly produced %q; the build would skip its compiled-in fallback", output)
+	}
+}
+
 func TestReleaseWorkflowVerifiesExactMacOSBundleVersion(t *testing.T) {
 	t.Parallel()
 
