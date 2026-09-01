@@ -357,13 +357,10 @@ func run() error {
 	// Never record traffic aimed at our own listeners, so proxying localhost
 	// doesn't fill history with — or feedback-loop on — our own UI/API.
 	prx.SelfPorts = selfPorts(append([]string{controlAddr}, proxyAddrs...)...)
-	if err := pm.StartAddrs(proxyAddrs); err != nil {
-		return fmt.Errorf("proxy listen on %s: %w", strings.Join(proxyAddrs, ", "), err)
+	if err := startRuntimeListeners(pm, cm, controlAddr, proxyAddrs); err != nil {
+		return err
 	}
-
-	if err := cm.Start(controlAddr); err != nil {
-		return fmt.Errorf("control listen on %s: %w", controlAddr, err)
-	}
+	prx.SelfPorts = selfPorts(append([]string{cm.Addr()}, pm.Addrs()...)...)
 	hub.SetSelfAddr(cm.Addr())
 	if socket := mcp.ActivitySocketPath("http://" + cm.Addr()); socket != "" {
 		if err := hub.StartActivitySocket(socket); err != nil {
@@ -459,6 +456,15 @@ func (m *controlManager) Start(addr string) error {
 	ln, err := listenRetry(addr)
 	if err != nil {
 		return err
+	}
+	return m.StartListener(addr, ln)
+}
+
+// StartListener brings up the initial control server on an already-owned
+// listener. Managed browser audits use this to eliminate free-port races.
+func (m *controlManager) StartListener(addr string, ln net.Listener) error {
+	if ln == nil {
+		return fmt.Errorf("control listener is nil")
 	}
 	m.mu.Lock()
 	m.addr, m.srv = addr, m.serve(ln)
@@ -582,6 +588,27 @@ func (m *proxyManager) StartAddrs(addrs []string) error {
 	lns, err := m.listenAll(addrs)
 	if err != nil {
 		return err
+	}
+	if err := m.StartListeners(addrs, lns); err != nil {
+		for _, listener := range lns {
+			_ = listener.Close()
+		}
+		return err
+	}
+	return nil
+}
+
+// StartListeners brings up the initial proxy servers on already-owned
+// listeners. Managed browser audits keep duplicate descriptors open in their
+// parent process so these ports cannot be replaced if the child exits.
+func (m *proxyManager) StartListeners(addrs []string, lns []net.Listener) error {
+	if len(addrs) == 0 || len(addrs) != len(lns) {
+		return fmt.Errorf("proxy listener/address count mismatch")
+	}
+	for _, listener := range lns {
+		if listener == nil {
+			return fmt.Errorf("proxy listener is nil")
+		}
 	}
 	srvs := make([]*http.Server, len(lns))
 	for i, ln := range lns {

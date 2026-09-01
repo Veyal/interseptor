@@ -2,8 +2,8 @@
 
 ## Revision and environment
 
-- Audited worktree base: `9cbabaf18c72c8b990207faf3907713799b607e1`, plus the test-gate audit
-  journey-isolation cleanup captured by the exact harness digest below
+- Audited worktree base: `0d998b9682aba42faa8b9831d9f4054fcc4249dd`, plus the managed-listener
+  ownership changes captured by the exact runtime and harness digests below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -13,12 +13,15 @@
   already committed
 - Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
 - Launch: fresh CGO-free build of the exact audited source, started directly by the managed harness
-- Instance guard: full mode built and owned the exact worktree candidate, selected random loopback
-  control/proxy ports, created a sentinel-marked disposable OS-temp project, and verified version
-  `2.0.8`, exact project directory, empty History/tool traffic and Findings, proxy binding, and no
+- Instance guard: full mode built and owned the exact worktree candidate, pre-bound random loopback
+  control/proxy listeners, retained them in the parent for the full run, passed those exact
+  descriptors to the child without rebinding, created a sentinel-marked disposable OS-temp project,
+  and verified version `2.0.8`, exact project directory, empty History/tool traffic and Findings,
+  proxy binding, and no
   upstream proxy before navigation and again at both mutation boundaries; managed mode also locked
   project switching, stripped inherited `INTERSEPTOR_*` settings, and disabled update checks and
-  browser launches
+  browser launches. The POSIX descriptor handoff fails closed on unsupported platforms so a
+  free-port probe or replacement server can never receive full-audit mutations
 - Browser: Playwright 1.60.0, Chromium 148.0.7778.96
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
@@ -26,8 +29,8 @@
 
 ## Current-source applicability
 
-The retained audit digest is `f0054b5fe1205b41e7eef92d70f29bd3615e463cd19fe031dcaf5c5f8a08cfc2`
-across 249 runtime files. It matches the current evidence-first Findings runtime exactly, including
+The retained audit digest is `c59d0b598b74a4dc475fa97e3e7502f3911c1e2fbcd53f6b8b0274a0f7755434`
+across 252 runtime files. It matches the current evidence-first Findings runtime exactly, including
 structured Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
 provenance, report readiness, safe export paths, compact-toolbar behavior, mobile navigation
 semantics, and the published `2.0.8` browser-background suppression baseline.
@@ -37,8 +40,9 @@ under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and r
 The complete 26-case matrix and three-run performance profile were executed against that exact source
 with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
 --perf-runs 3`. Full mode cannot accept an arbitrary existing server: it builds and starts one owned
-candidate with project switching disabled, then stops it and removes only its validated
-sentinel-owned temporary root. The validated machine-readable result and screenshots were retained
+candidate with project switching disabled on parent-retained loopback listeners, then stops it,
+closes the reservations, and removes only its validated sentinel-owned temporary root. The
+validated machine-readable result and screenshots were retained
 together in this directory so the pass, measurements, and application-source identity cannot drift
 apart.
 
@@ -196,12 +200,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `156 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `322.5 ms` |
-| Delayed Intercept acknowledgement | `692.9 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `196.3 ms`; Fit/wheel/drag interaction `1028.7 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.733971 s`; script `0.125027 s`; layout `0.048868 s` |
-| Map interaction | CDP task `0.04275 s`; script `0.002587 s`; layout `0.000778 s` |
+| Three 240-request live History bursts | network p95 `191.1 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `200 ms` |
+| Delayed Intercept acknowledgement | `318.6 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `83 ms`; Fit/wheel/drag interaction `419.6 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.643833 s`; script `0.119739 s`; layout `0.047267 s` |
+| Map interaction | CDP task `0.032473 s`; script `0.001237 s`; layout `0.000374 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

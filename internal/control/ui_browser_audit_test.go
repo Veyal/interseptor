@@ -444,7 +444,7 @@ func TestUIBrowserAuditFullModeOwnsDisposableProcess(t *testing.T) {
 		"INTERSEPTOR_NO_UPDATE_CHECK",
 		"INTERSEPTOR_NO_BROWSER",
 		`not key.startswith("INTERSEPTOR_")`,
-		"env=managed_candidate_env()",
+		"env=managed_candidate_env(",
 		"subprocess.Popen",
 		"--data-dir",
 		"--project",
@@ -457,6 +457,57 @@ func TestUIBrowserAuditFullModeOwnsDisposableProcess(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("managed full audit ownership missing %s", want)
 		}
+	}
+}
+
+func TestUIBrowserAuditManagedChildOwnsReservedListeners(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"def reserve_loopback_listener()",
+		"INTERSEPTOR_UI_AUDIT_CONTROL_FD",
+		"INTERSEPTOR_UI_AUDIT_PROXY_FD",
+		"pass_fds=",
+		"reservations",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("managed full audit must retain and pass owned listeners: missing %s", want)
+		}
+	}
+	if strings.Contains(text, "def free_loopback_port()") {
+		t.Error("managed full audit must not select ports by closing free-port probes")
+	}
+	reserveStart := strings.Index(text, "def reserve_loopback_listener()")
+	if reserveStart < 0 {
+		t.Fatal("managed listener reservation helper not found")
+	}
+	reserveEnd := strings.Index(text[reserveStart:], "\n\ndef ")
+	if reserveEnd < 0 {
+		t.Fatal("managed listener reservation helper boundary not found")
+	}
+	reserve := text[reserveStart : reserveStart+reserveEnd]
+	for _, want := range []string{"listener.bind", "listener.listen", "listener.set_inheritable"} {
+		if !strings.Contains(reserve, want) {
+			t.Errorf("managed listener reservation is incomplete: missing %s", want)
+		}
+	}
+	cleanupStart := strings.Index(text, "def cleanup_managed_audit(")
+	if cleanupStart < 0 {
+		t.Fatal("managed cleanup helper not found")
+	}
+	cleanupEnd := strings.Index(text[cleanupStart:], "\n\ndef ")
+	if cleanupEnd < 0 {
+		t.Fatal("managed cleanup helper boundary not found")
+	}
+	cleanup := text[cleanupStart : cleanupStart+cleanupEnd]
+	stopAt := strings.Index(cleanup, "stop_managed_process(process)")
+	closeAt := strings.Index(cleanup, "close_managed_reservations(reservations)")
+	removeAt := strings.Index(cleanup, "remove_managed_root(root, project)")
+	if stopAt < 0 || closeAt < stopAt || removeAt < closeAt {
+		t.Error("managed cleanup must stop the child, close retained listeners, then remove its root")
 	}
 }
 
