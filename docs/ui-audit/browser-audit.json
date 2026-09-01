@@ -17,9 +17,9 @@
     }
   },
   "application_source": {
-    "base_commit": "7f47d5295a8261c5128334891367e8341d3b605c",
+    "base_commit": "cb4e8770a0f9ae87af524ebcaa59abd04a75f843",
     "runtime_files": 249,
-    "runtime_sha256": "e546a3a66e521a5926e140e78fb39d552e37d96bc994132296c7a3e7fd1d281b"
+    "runtime_sha256": "7a447ac2b28a8734de228ec8738fdd230684866e2f8481f922cd2fa4a83b44bb"
   },
   "base_url": "http://127.0.0.1:19967",
   "before_screenshots": {
@@ -104,38 +104,38 @@
   "failures": [],
   "http_errors": [],
   "metrics": {
-    "burst_network_ms": 133.0,
-    "burst_network_p95_ms": 133.0,
+    "burst_network_ms": 106.9,
+    "burst_network_p95_ms": 121.5,
     "burst_requests": 240,
     "burst_runs": 3,
-    "cdp_layout_duration_s": 0.037527,
-    "cdp_map_layout_duration_s": 0.000515,
-    "cdp_map_script_duration_s": 0.001129,
-    "cdp_map_task_duration_s": 0.022004,
-    "cdp_script_duration_s": 0.094033,
-    "cdp_task_duration_s": 0.290114,
+    "cdp_layout_duration_s": 0.038012,
+    "cdp_map_layout_duration_s": 0.001249,
+    "cdp_map_script_duration_s": 0.003986,
+    "cdp_map_task_duration_s": 0.051949,
+    "cdp_script_duration_s": 0.097058,
+    "cdp_task_duration_s": 0.321526,
     "history_dom_nodes": 658,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 319.0,
+    "intercept_ack_ms": 537.7,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      428.0
+      1306.4
     ],
-    "map_interaction_p95_ms": 428.0,
-    "map_ready_ms": 80.3,
+    "map_interaction_p95_ms": 1306.4,
+    "map_ready_ms": 78.1,
     "panel_interaction_ms": [
-      193.5,
-      184.3,
-      183.2,
-      183.4,
-      182.5,
-      184,
-      181.9,
-      184.5,
-      183.1
+      333.4,
+      199.2,
+      339.2,
+      202.3,
+      200,
+      193.8,
+      302.6,
+      200.6,
+      263.5
     ],
-    "panel_interaction_p95_ms": 193.5,
+    "panel_interaction_p95_ms": 339.2,
     "panel_transition_ms": [
       180.0,
       180.0,

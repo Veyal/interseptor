@@ -2,8 +2,8 @@
 
 ## Revision and environment
 
-- Audited worktree base: `7f47d5295a8261c5128334891367e8341d3b605c`, plus the evidence-first
-  Findings release candidate captured by the exact digest below
+- Audited target: `cb4e8770a0f9ae87af524ebcaa59abd04a75f843`, based on
+  `7f47d5295a8261c5128334891367e8341d3b605c`
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -16,7 +16,7 @@
 
 ## Current-source applicability
 
-The retained audit digest is `e546a3a66e521a5926e140e78fb39d552e37d96bc994132296c7a3e7fd1d281b`
+The retained audit digest is `7a447ac2b28a8734de228ec8738fdd230684866e2f8481f922cd2fa4a83b44bb`
 across 249 runtime files. It matches the current evidence-first Findings runtime exactly, including
 structured Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
 provenance, report readiness, safe export paths, compact-toolbar behavior, mobile navigation
@@ -181,12 +181,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `133.0 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `193.5 ms` |
-| Delayed Intercept acknowledgement | `319.0 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `80.3 ms`; Fit/wheel/drag interaction `428.0 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.290114 s`; script `0.094033 s`; layout `0.037527 s` |
-| Map interaction | CDP task `0.022004 s`; script `0.001129 s`; layout `0.000515 s` |
+| Three 240-request live History bursts | network p95 `121.5 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `339.2 ms` |
+| Delayed Intercept acknowledgement | `537.7 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `78.1 ms`; Fit/wheel/drag interaction `1306.4 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.321526 s`; script `0.097058 s`; layout `0.038012 s` |
+| Map interaction | CDP task `0.051949 s`; script `0.003986 s`; layout `0.001249 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
