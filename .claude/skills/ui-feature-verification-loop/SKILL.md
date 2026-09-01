@@ -13,6 +13,15 @@ after every implementation slice; reloading a binary started before the edit
 does not exercise the new assets. Use a temporary data directory, unique local
 ports, and only generic `example.com` or local-target evidence.
 
+For a mutating full audit, do not choose a port by binding and closing a
+"free-port" probe. The audit parent must retain both loopback listening sockets
+for the entire run and pass those exact descriptors to its owned child, which
+serves without rebinding. Stop the child before closing the parent reservations;
+fail closed where descriptor passing is unsupported. This prevents a failed or
+replaced child from redirecting audit mutations into another workstation.
+Any partial-start cleanup must use a bounded shutdown context so an accepted,
+non-terminating request cannot hang the audit before its sentinel cleanup runs.
+
 ## One loop
 
 1. Run the Go design-system and UI contract tests before opening the browser.

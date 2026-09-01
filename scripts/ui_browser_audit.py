@@ -205,10 +205,19 @@ def validate_expected_project(name: str) -> str:
     return name
 
 
-def free_loopback_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+def reserve_loopback_listener() -> socket.socket:
+    """Bind and retain one listener that the managed child will inherit."""
+    if os.name != "posix":
+        raise RuntimeError("managed full audits require POSIX listener descriptor passing")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
         listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
+        listener.listen(socket.SOMAXCONN)
+        listener.set_inheritable(True)
+        return listener
+    except Exception:
+        listener.close()
+        raise
 
 
 def runtime_source_paths(repo_root: Path) -> List[str]:
@@ -323,11 +332,13 @@ def managed_build_env(root: Path) -> Dict[str, str]:
     return env
 
 
-def managed_candidate_env() -> Dict[str, str]:
+def managed_candidate_env(control_fd: int, proxy_fd: int) -> Dict[str, str]:
     """Keep the host toolchain environment but remove product-specific drift."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("INTERSEPTOR_")}
     env.update({
         "INTERSEPTOR_UI_AUDIT_MANAGED": "1",
+        "INTERSEPTOR_UI_AUDIT_CONTROL_FD": str(control_fd),
+        "INTERSEPTOR_UI_AUDIT_PROXY_FD": str(proxy_fd),
         "INTERSEPTOR_NO_UPDATE_CHECK": "1",
         "INTERSEPTOR_NO_BROWSER": "1",
     })
@@ -344,6 +355,11 @@ def stop_managed_process(process: subprocess.Popen[bytes]) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+
+
+def close_managed_reservations(reservations: List[socket.socket]) -> None:
+    for listener in reservations:
+        listener.close()
 
 
 def remove_managed_root(root: Path, project: str) -> None:
@@ -366,7 +382,7 @@ def remove_managed_root(root: Path, project: str) -> None:
     shutil.rmtree(validated)
 
 
-def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tuple[str, int], Dict[str, Any]]:
+def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tuple[str, int], Dict[str, Any], List[socket.socket]]:
     """Build and start one disposable candidate owned by this audit process."""
     repo_root = Path(__file__).resolve().parents[1]
     root = Path(tempfile.mkdtemp(prefix="interseptor-ui-audit-"))
@@ -392,14 +408,17 @@ def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tu
         )
         if runtime_source_digest(snapshot, source_paths) != application_source["runtime_sha256"]:
             raise RuntimeError("managed audit source snapshot changed during build")
-        control_port = free_loopback_port()
-        proxy_port = free_loopback_port()
-        while proxy_port == control_port:
-            proxy_port = free_loopback_port()
+        reservations: List[socket.socket] = []
+        reservations.append(reserve_loopback_listener())
+        reservations.append(reserve_loopback_listener())
+        control_listener, proxy_listener = reservations
+        control_port = int(control_listener.getsockname()[1])
+        proxy_port = int(proxy_listener.getsockname()[1])
         process = subprocess.Popen(
             [str(binary), "--data-dir", str(root), "--project", project, "--control-port", str(control_port), "--proxy-port", str(proxy_port)],
             cwd=repo_root,
-            env=managed_candidate_env(),
+            env=managed_candidate_env(control_listener.fileno(), proxy_listener.fileno()),
+            pass_fds=(control_listener.fileno(), proxy_listener.fileno()),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -410,19 +429,22 @@ def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tu
                 raise RuntimeError("managed audit candidate exited before readiness")
             try:
                 _json_get(base, "/api/version")
-                return process, root, project, base, ("127.0.0.1", proxy_port), application_source
+                return process, root, project, base, ("127.0.0.1", proxy_port), application_source, reservations
             except Exception:
                 time.sleep(0.1)
         raise RuntimeError("managed audit candidate did not become ready")
     except Exception:
         if 'process' in locals() and process.poll() is None:
             stop_managed_process(process)
+        if 'reservations' in locals():
+            close_managed_reservations(reservations)
         remove_managed_root(root, project)
         raise
 
 
-def cleanup_managed_audit(process: subprocess.Popen[bytes], root: Path, project: str) -> None:
+def cleanup_managed_audit(process: subprocess.Popen[bytes], root: Path, project: str, reservations: List[socket.socket]) -> None:
     stop_managed_process(process)
+    close_managed_reservations(reservations)
     remove_managed_root(root, project)
 
 
@@ -3281,15 +3303,15 @@ def main() -> int:
     else:
         args.base_url = args.base_url or "http://127.0.0.1:9966"
         args.proxy = args.proxy or ("127.0.0.1", 8080)
-    managed: Optional[Tuple[subprocess.Popen[bytes], Path, str]] = None
+    managed: Optional[Tuple[subprocess.Popen[bytes], Path, str, List[socket.socket]]] = None
     managed_source: Optional[Dict[str, Any]] = None
     result: Optional[AuditResult] = None
     audit_error: Optional[str] = None
     cleanup_error = False
     try:
         if args.full:
-            process, root, project, base, proxy, managed_source = prepare_managed_audit()
-            managed = (process, root, project)
+            process, root, project, base, proxy, managed_source, reservations = prepare_managed_audit()
+            managed = (process, root, project, reservations)
             args.base_url = base
             args.proxy = proxy
             args.expected_project = project
