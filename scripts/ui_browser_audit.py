@@ -211,6 +211,118 @@ def free_loopback_port() -> int:
         return int(listener.getsockname()[1])
 
 
+def runtime_source_paths(repo_root: Path) -> List[str]:
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            "go.mod",
+            "go.sum",
+            "cmd",
+            "internal",
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    ).stdout
+    paths = []
+    for relative_bytes in listed.split(b"\0"):
+        if not relative_bytes:
+            continue
+        relative = Path(relative_bytes.decode("utf-8", errors="surrogateescape"))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("runtime source manifest contains an unsafe path")
+        path = repo_root / relative
+        if path.is_file() and not path.name.endswith("_test.go"):
+            paths.append(relative.as_posix())
+    return sorted(set(paths))
+
+
+def runtime_source_digest(source_root: Path, relative_paths: List[str]) -> str:
+    digest = hashlib.sha256()
+    for relative in relative_paths:
+        digest.update(relative.encode("utf-8") + b"\0")
+        digest.update(hashlib.sha256((source_root / relative).read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def source_base_commit(repo_root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def source_identity(source_root: Path, relative_paths: List[str], base_commit: str) -> Dict[str, Any]:
+    return {
+        "worktree_base_commit": base_commit,
+        "runtime_sha256": runtime_source_digest(source_root, relative_paths),
+        "runtime_files": len(relative_paths),
+        "audit_harness_sha256": hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),
+    }
+
+
+def create_runtime_source_snapshot(repo_root: Path, snapshot: Path) -> Tuple[Dict[str, Any], List[str]]:
+    source_paths = runtime_source_paths(repo_root)
+    base_commit = source_base_commit(repo_root)
+    snapshot.mkdir(mode=0o700)
+    for relative in source_paths:
+        destination = snapshot / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((repo_root / relative).read_bytes())
+    return source_identity(snapshot, source_paths, base_commit), source_paths
+
+
+def managed_build_env(root: Path) -> Dict[str, str]:
+    build_home = root / "build-home"
+    build_cache = root / "go-build-cache"
+    module_cache = root / "go-module-cache"
+    build_temp = root / "build-temp"
+    for path in (build_home, build_cache, module_cache, build_temp):
+        path.mkdir(mode=0o700)
+    env = {
+        key: os.environ[key]
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "all_proxy",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+        )
+        if key in os.environ
+    }
+    env.update({
+        "HOME": str(build_home),
+        "PATH": os.defpath,
+        "TMPDIR": str(build_temp),
+        "CGO_ENABLED": "0",
+        "GO111MODULE": "on",
+        "GOENV": "off",
+        "GOFLAGS": "",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOPATH": str(root / "go-path"),
+        "GOMODCACHE": str(module_cache),
+        "GOCACHE": str(build_cache),
+        "GOTELEMETRY": "off",
+    })
+    return env
+
+
 def managed_candidate_env() -> Dict[str, str]:
     """Keep the host toolchain environment but remove product-specific drift."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("INTERSEPTOR_")}
@@ -254,7 +366,7 @@ def remove_managed_root(root: Path, project: str) -> None:
     shutil.rmtree(validated)
 
 
-def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tuple[str, int]]:
+def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tuple[str, int], Dict[str, Any]]:
     """Build and start one disposable candidate owned by this audit process."""
     repo_root = Path(__file__).resolve().parents[1]
     root = Path(tempfile.mkdtemp(prefix="interseptor-ui-audit-"))
@@ -264,15 +376,22 @@ def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tu
     (root / AUDIT_SENTINEL_NAME).write_text(f"interseptor-ui-audit\nproject={project}\n", encoding="utf-8")
     binary = root / "interseptor-audit"
     try:
+        snapshot = root / "runtime-source"
+        application_source, source_paths = create_runtime_source_snapshot(repo_root, snapshot)
+        go_binary = shutil.which("go")
+        if not go_binary:
+            raise RuntimeError("Go toolchain is unavailable")
         subprocess.run(
-            ["go", "build", "-o", str(binary), "./cmd/interseptor"],
-            cwd=repo_root,
-            env={**os.environ, "CGO_ENABLED": "0"},
+            [str(Path(go_binary).resolve()), "build", "-mod=readonly", "-modcacherw", "-o", str(binary), "./cmd/interseptor"],
+            cwd=snapshot,
+            env=managed_build_env(root),
             check=True,
             timeout=300,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        if runtime_source_digest(snapshot, source_paths) != application_source["runtime_sha256"]:
+            raise RuntimeError("managed audit source snapshot changed during build")
         control_port = free_loopback_port()
         proxy_port = free_loopback_port()
         while proxy_port == control_port:
@@ -291,7 +410,7 @@ def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tu
                 raise RuntimeError("managed audit candidate exited before readiness")
             try:
                 _json_get(base, "/api/version")
-                return process, root, project, base, ("127.0.0.1", proxy_port)
+                return process, root, project, base, ("127.0.0.1", proxy_port), application_source
             except Exception:
                 time.sleep(0.1)
         raise RuntimeError("managed audit candidate did not become ready")
@@ -403,50 +522,8 @@ def png_dimensions(path: Path) -> Tuple[int, int]:
 
 def runtime_source_identity() -> Dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[1]
-    listed = subprocess.run(
-        [
-            "git",
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-            "--",
-            "go.mod",
-            "go.sum",
-            "cmd",
-            "internal",
-        ],
-        cwd=repo_root,
-        check=True,
-        capture_output=True,
-    ).stdout
-    paths = []
-    for relative_bytes in listed.split(b"\0"):
-        if not relative_bytes:
-            continue
-        path = repo_root / relative_bytes.decode("utf-8", errors="surrogateescape")
-        if path.is_file() and not path.name.endswith("_test.go"):
-            paths.append(path)
-    digest = hashlib.sha256()
-    unique_paths = sorted(set(paths), key=lambda path: path.relative_to(repo_root).as_posix())
-    for path in unique_paths:
-        relative = path.relative_to(repo_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(hashlib.sha256(path.read_bytes()).digest())
-    completed = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_root,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return {
-        "worktree_base_commit": completed.stdout.strip(),
-        "runtime_sha256": digest.hexdigest(),
-        "runtime_files": len(unique_paths),
-        "audit_harness_sha256": hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),
-    }
+    source_paths = runtime_source_paths(repo_root)
+    return source_identity(repo_root, source_paths, source_base_commit(repo_root))
 
 
 def percentile(values: List[float], percentile_value: float) -> Optional[float]:
@@ -571,9 +648,10 @@ def metric_delta(before: Dict[str, float], after: Dict[str, float], name: str) -
     return round(after.get(name, 0.0) - before.get(name, 0.0), 6)
 
 
-def run_audit(args: argparse.Namespace) -> AuditResult:
+def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, Any]] = None) -> AuditResult:
     result = AuditResult()
-    application_source = runtime_source_identity()
+    if application_source is None:
+        application_source = runtime_source_identity()
     base = args.base_url.rstrip("/")
     base_netloc = urlsplit(base).netloc
     output = Path(args.output_dir)
@@ -3170,18 +3248,19 @@ def main() -> int:
         args.base_url = args.base_url or "http://127.0.0.1:9966"
         args.proxy = args.proxy or ("127.0.0.1", 8080)
     managed: Optional[Tuple[subprocess.Popen[bytes], Path, str]] = None
+    managed_source: Optional[Dict[str, Any]] = None
     result: Optional[AuditResult] = None
     audit_error: Optional[str] = None
     cleanup_error = False
     try:
         if args.full:
-            process, root, project, base, proxy = prepare_managed_audit()
+            process, root, project, base, proxy, managed_source = prepare_managed_audit()
             managed = (process, root, project)
             args.base_url = base
             args.proxy = proxy
             args.expected_project = project
             args.expected_data_dir = str(root)
-        result = run_audit(args)
+        result = run_audit(args, managed_source)
     except Exception as exc:
         audit_error = type(exc).__name__
     finally:

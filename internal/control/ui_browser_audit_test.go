@@ -367,3 +367,30 @@ func TestUIBrowserAuditFullModeOwnsDisposableProcess(t *testing.T) {
 		}
 	}
 }
+
+func TestUIBrowserAuditManagedBuildUsesVerifiedSourceSnapshot(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"def create_runtime_source_snapshot(",
+		`root / "runtime-source"`,
+		"runtime_source_digest(snapshot, source_paths)",
+		`"GOENV": "off"`,
+		`"GOWORK": "off"`,
+		`"GOFLAGS": ""`,
+		`"GOTOOLCHAIN": "local"`,
+		`"GOMODCACHE": str(module_cache)`,
+		`"GOCACHE": str(build_cache)`,
+		`"-mod=readonly"`,
+		`"-modcacherw"`,
+		"cwd=snapshot",
+		"run_audit(args, managed_source)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("managed full audit source binding missing %s", want)
+		}
+	}
+}
