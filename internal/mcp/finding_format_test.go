@@ -23,12 +23,15 @@ func TestValidateFindingFormatRejectsWallOfText(t *testing.T) {
 }
 
 func TestValidateFindingFormatAcceptsPointFirst(t *testing.T) {
-	body := `[{"type":"text","md":"**Before**: own profile"},{"type":"flow","flowId":12,"note":"Before: own account"},{"type":"text","md":"**Action**: swap id"},{"type":"flow","flowId":13,"note":"After: other user PII"}]`
+	body := `[{"type":"text","role":"baseline","md":"Open a record owned by the current account."},{"type":"flow","role":"baseline","flowId":12,"note":"Own account","proof":"Establishes normal authorized access."},{"type":"text","role":"action","md":"Replace the object identifier with another account's example identifier."},{"type":"flow","role":"result","flowId":13,"note":"Cross-account response","proof":"The current session receives another account's record."},{"type":"image","role":"result","hash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source":"flow_preview","sourceFlowId":13,"caption":"Cross-account response","proof":"Highlights the returned foreign account fields."}]`
 	err, warns := validateFindingFormat(findingFormatInput{
 		Severity: "High",
+		Summary:  "A signed-in user can retrieve another account's profile.",
 		Impact:   "full PII disclosure",
 		Why:      "Broken object-level authorization",
 		Target:   "GET api.example.com/users/{id}",
+		Fix:      "Enforce object ownership on every profile lookup.",
+		Retest:   "Repeat with unrelated accounts and confirm a uniform denial.",
 		Body:     body,
 	})
 	if err != nil {
@@ -120,10 +123,76 @@ func TestValidateFindingFormatWarnsCredentialsNotHighlighted(t *testing.T) {
 
 func TestMCPInstructionsRequireFindingFormat(t *testing.T) {
 	instr := mcpInstructions()
-	for _, want := range []string{"REQUIRED FORMAT", "impact", "why", "target", "PoC", "NOT confirmed", "Before"} {
+	for _, want := range []string{"REQUIRED FORMAT", "summary", "impact", "why", "target", "retest", "Evidence", "proof", "browser screenshot", "NOT confirmed", "Differential proof"} {
 		if !strings.Contains(instr, want) {
 			t.Fatalf("mcpInstructions missing %q:\n%s", want, instr)
 		}
+	}
+	for _, forbidden := range []string{"Standard: Before", "add_finding_poc for Before/Action/After", "(text→flow→text)"} {
+		if strings.Contains(instr, forbidden) {
+			t.Fatalf("Before/Action/After must be a preset, not the universal format (%q):\n%s", forbidden, instr)
+		}
+	}
+}
+
+func TestFindingBlocksSchemaAdvertisesCapturedFlowProvenance(t *testing.T) {
+	raw, err := json.Marshal(findingBlocksSchema())
+	if err != nil {
+		t.Fatalf("marshal finding block schema: %v", err)
+	}
+	if !strings.Contains(string(raw), "captured_flow") {
+		t.Fatalf("finding block schema omits captured-flow provenance: %s", raw)
+	}
+}
+
+func TestValidateFindingFormatAcceptsTypedObservationEvidence(t *testing.T) {
+	body := `[{"type":"text","role":"observation","md":"Request the public configuration endpoint."},{"type":"flow","role":"result","flowId":12,"proof":"The unauthenticated response contains internal service names."},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"flow_preview","sourceFlowId":12,"caption":"Unauthenticated response","proof":"Visually identifies the exposed internal service list."}]`
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "Medium",
+		Summary:  "An unauthenticated endpoint exposes internal service configuration.",
+		Impact:   "An external attacker can map internal services and deployment details.",
+		Why:      "Sensitive configuration is returned without authentication.",
+		Target:   "GET https://api.example.com/config",
+		Fix:      "Require authorization and return only non-sensitive public configuration.",
+		Retest:   "Repeat the unauthenticated request and confirm a uniform denial without metadata.",
+		Body:     body,
+	})
+	if err != nil {
+		t.Fatalf("typed observation finding should pass: %v", err)
+	}
+	if len(warns) > 0 {
+		t.Fatalf("complete typed finding should have no warnings, got %v", warns)
+	}
+}
+
+func TestValidateFindingFormatDoesNotRequireDifferentialNarrative(t *testing.T) {
+	body := `[{"type":"text","role":"observation","md":"Observe the missing Content-Security-Policy header."},{"type":"flow","role":"result","flowId":9,"proof":"The response headers omit Content-Security-Policy."},{"type":"image","role":"result","hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","source":"flow_preview","sourceFlowId":9,"caption":"Response headers","proof":"Shows the absent policy header."}]`
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "Low", Summary: "The application omits a browser policy header.",
+		Impact: "Defense in depth is reduced.", Why: "The browser receives no content policy.",
+		Target: "https://www.example.com", Fix: "Deploy a restrictive policy.",
+		Retest: "Confirm the response includes the approved policy.", Body: body,
+	})
+	if err != nil {
+		t.Fatalf("non-differential finding should pass: %v", err)
+	}
+	joined := strings.ToLower(strings.Join(warns, "\n"))
+	if strings.Contains(joined, "before") || strings.Contains(joined, "after") {
+		t.Fatalf("non-differential finding must not be told to add Before/After: %v", warns)
+	}
+}
+
+func TestValidateFindingFormatWarnsEvidenceWithoutProof(t *testing.T) {
+	body := `[{"type":"text","role":"action","md":"Send the modified request."},{"type":"flow","role":"result","flowId":7,"note":"Cross-account response"},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","caption":"Returned account"}]`
+	err, warns := validateFindingFormat(findingFormatInput{
+		Severity: "Medium", Summary: "Authorization can be bypassed.", Impact: "Another account can be read.",
+		Why: "Object ownership is not enforced.", Target: "api.example.com", Body: body,
+	})
+	if err != nil {
+		t.Fatalf("missing proof annotation should warn, not reject: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(strings.Join(warns, "\n")), "proof") {
+		t.Fatalf("expected proof annotation warning, got %v", warns)
 	}
 }
 

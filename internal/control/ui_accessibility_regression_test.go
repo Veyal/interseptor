@@ -88,6 +88,20 @@ func TestUIMapGraphUsesRovingTabindex(t *testing.T) {
 	}
 }
 
+func TestUIMainNavigationReportsResponsiveOrientation(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	for _, contract := range []string{
+		"matchMedia('(max-width:720px)')",
+		"function syncMainNavigationOrientation",
+		"nav.setAttribute('aria-orientation',mobileNavMedia.matches?'horizontal':'vertical')",
+		"mobileNavMedia.addEventListener('change',syncMainNavigationOrientation)",
+	} {
+		if !strings.Contains(app, contract) {
+			t.Errorf("responsive main-navigation orientation contract missing %q", contract)
+		}
+	}
+}
+
 func TestUIStatusRegionsAnnounceBoundedUpdates(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, contract := range []string{

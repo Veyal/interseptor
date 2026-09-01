@@ -59,13 +59,24 @@ send and verification tools only on targets you are authorized to test and stay 
 **Goal:** Leave a report-ready project, not a History pile.
 
 ```
-1. list_finding_tags / list_findings — triage status / severity / ready / tags
-2. For each stub: update_finding with Impact / Why / Target + tags (cms|website|app|api)
-3. get_flow + add_finding_poc for proof flows (and screenshots if needed)
-4. Mark uncertain items needs_verification with concrete check steps
-5. Export via UI (Group by tag) or GET /api/findings/report?groupBy=tag&omitTags=out-of-scope
-6. Optional: export_full_project for a portable archive
+1. list_finding_tags / list_findings — triage status, severity, confidence, readiness, and tags
+2. get_finding — read the complete current record before editing it
+3. update_finding with the canonical claim/summary, impact, why, target, typed reproduction
+   blocks, fix, retest, confidence, and tags (`cms|website|app|api`)
+4. add_finding_poc for each captured proof flow; include its role and exact proof statement
+5. add_finding_image for a real browser/device screenshot whenever it visibly proves the issue;
+   use `source=browser_screenshot`. If a visual HTTP record helps, use render_flow_preview, which
+   retains `source=flow_preview` and the originating flow ID
+6. Mark uncertain items needs_verification and provide concrete verificationInstructions
+7. Export via UI (Group by tag) or GET /api/findings/report?groupBy=tag&omitTags=out-of-scope
+8. Optional: export_full_project for a portable archive
 ```
+
+The UI and reports use the same ordered `blocks` array. Each block can be `text`, `flow`, or
+`image`, with roles such as `baseline`, `action`, `result`, or `retest`; evidence should say what
+it proves and where it came from. Before→Action→After is only a useful Differential preset for
+authorization or state-change findings, not a universal template. Do not paste raw HTTP into the
+narrative when a captured flow can be attached.
 
 **Human checklist:** [engagement-closeout.md](../engagement-closeout.md)
 
@@ -79,7 +90,7 @@ send and verification tools only on targets you are authorized to test and stay 
 3. get_flow or analyze_flow — choose a focused hypothesis and injection point
 4. Compose the test with send_request, start_intruder, authz_run, cross_host_token_replay, or oob_* as appropriate
 5. Review Activity and History while requests run; verify important candidates with send_request
-6. create_finding and add_finding_poc only after evidence review
+6. create_finding with a stable envelope and typed blocks, then add_finding_poc and a real screenshot after evidence review
 ```
 
 **Safety:** Interseptor doesn't decide what to test. The external agent must follow scope and

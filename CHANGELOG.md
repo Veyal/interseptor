@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.7` release and refreshed the exact-source UI audit evidence without moving its tag.
+- **Evidence-first Findings workspace.** Standardized the Findings editor, REST/MCP tools, and report exports on a shared Claim/Risk/Target/Reproduction/Evidence/Fix-Retest/Review envelope with typed blocks, proof annotations, confidence, readiness stages, and report-safe provenance. Real browser/device screenshots are prioritized, while captured proxy flows remain attached as inspectable evidence; Before→Action→After is available only as an optional Differential preset.
+
+### Fixed
+- **Findings evidence integrity and workflow clarity.** Added atomic flow/image attachment, aggregate body and report-envelope limits, bounded compressed-flow decoding, image validation and content-addressed storage, server-stamped and merge-safe source-flow provenance, actionable readiness gaps, structured HTML/Markdown/JSON exports, bounded MCP summaries with explicit oversized-export errors, legacy body/ready compatibility, size- and collision-safe missing evidence in collaboration merges and structured edits, direct finding deep links, keyboard-safe editing, paste-safe in-progress steps, single-toggle flow selection, reduced-motion-safe transitions, and clearer verification/retest feedback. Unsupported PDF export is rejected instead of returning misleading content.
 
 ## [2.0.7] - 2026-09-01
 

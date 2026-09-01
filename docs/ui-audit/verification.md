@@ -1,9 +1,9 @@
-# UI audit verification — 2026-09-01
+# UI audit verification — 2026-09-02
 
 ## Revision and environment
 
-- Audited worktree base: `0f9851f0303466554a81694a8225fcf768ac6294`, plus the post-release
-  `2.0.7` fallback and refreshed evidence captured by the exact digest below
+- Audited target: `cb4e8770a0f9ae87af524ebcaa59abd04a75f843`, based on
+  `7f47d5295a8261c5128334891367e8341d3b605c`
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -16,10 +16,11 @@
 
 ## Current-source applicability
 
-The retained audit digest is `9b04404e9b079d700ef65d9d78d5133c7d1f51e51c93f4a985b6a984de3817a2`
-across 249 runtime files. It matches the current browser-background suppression runtime exactly,
-including the published `2.0.7` fallback, current Mozilla endpoint coverage, safe authority
-normalization, request/response rule and intercept bypasses, and explicit Settings semantics.
+The retained audit digest is `7a447ac2b28a8734de228ec8738fdd230684866e2f8481f922cd2fa4a83b44bb`
+across 249 runtime files. It matches the current evidence-first Findings runtime exactly, including
+structured Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
+provenance, report readiness, safe export paths, compact-toolbar behavior, mobile navigation
+semantics, and the published `2.0.7` browser-background suppression baseline.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
@@ -53,6 +54,11 @@ field that created it. In particular:
   restore an older form snapshot.
 - Findings, Intruder, Scanner, Notes, Map, Session, and project hydration use latest-request or
   entity-scoped ownership instead of repainting newer work.
+- Findings use one canonical typed envelope across UI, REST, MCP, and report export. Screenshot and
+  captured-flow attachments settle pending edits first, proof metadata updates the pending snapshot
+  while typing, and Done waits for both scalar and body writes before switching to the read view.
+- Missing peer-flow evidence remains visibly missing through collaboration merges and later edits;
+  a reused local flow id cannot silently bind a finding to unrelated traffic.
 - Share no longer probes an unconfigured remote Vault, a completed Vault save cannot clear a newer
   token draft, and the flow-search Test action validates its API-required name locally.
 - Captured and replayed WebSocket frames retain their distinct endpoint contracts, and selected
@@ -82,7 +88,7 @@ field that created it. In particular:
 | Repeater | tab lifecycle, Send states, response ownership, decode races, persistence and cleanup | send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
 | Intruder | duplicate-start lock, history selection, live polling errors, result filters | returning from historical evidence to live evidence preserves the configured target; finding creation uses the displayed run |
 | Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
-| Findings | creation and pending-status focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
+| Findings | creation/focus, canonical field and body saves, Differential preset, screenshot upload, flow picker, proof annotations, provenance, report readiness, Markdown/HTML/JSON handoff, compact-toolbar geometry, evidence lightbox | screenshot and captured-flow attachments retain the active finding and source flow; Done flushes pending edits; Intruder-to-Finding and Activity/evidence focus retain their owners |
 | Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
 | Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault, explicit browser-background suppression semantics | live refresh never overwrites pending edits; external allowlist changes reconcile only the visible pane; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft; suppression states that traffic remains forwarded and existing History remains intact |
 | Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
@@ -97,6 +103,26 @@ received a distinct history. Closing the first tab removed only its IndexedDB ro
 the second, the audit forced cleanup-ledger localStorage reads to throw; IndexedDB still reached
 zero, proving that the best-effort ledger cannot block tab-owned deletion. The larger 105-request
 render and close-vs-send race remain covered by focused Repeater regression tests.
+
+### Findings evidence contract
+
+The retained exact-source browser pass created a generic finding, saved the structured claim/risk/
+target/fix/retest/confidence envelope, applied the optional Differential outline, pasted a valid
+PNG while the final reproduction textarea still owned focus, and selected a captured loopback flow
+by clicking its picker row text. The pass confirmed the in-progress step survived the authoritative
+image response and the flow selection toggled exactly once. It
+then wrote a proof statement for each artifact, left Edit through the normal Done/flush path, and
+observed canonical `report_ready` readiness with `operator_upload` and `captured_flow` /
+`sourceFlowId` provenance still visible. Markdown, self-contained HTML, and JSON handoffs each
+completed through the UI download path.
+
+The final Findings views are retained as
+[`findings-after-1440x900.png`](findings-after-1440x900.png),
+[`findings-after-1024x768.png`](findings-after-1024x768.png), and
+[`findings-after-390x844.png`](findings-after-390x844.png). The 1024 px geometry assertion verifies
+that Export and Group by tag do not intersect and that the title keeps a full readable row; the
+390 px pass verifies the horizontal main navigation, vertical Findings listbox, direct detail route,
+Back behavior, and focus restoration.
 
 ### Settings ownership contract
 
@@ -127,6 +153,8 @@ restored OOB disabled; it made no external callback or system-proxy change.
 - All ten top-level tabs committed `aria-selected`, active-panel state, and focus together.
 - Every primary panel and its key control remained reachable at 390 × 844; 1440 × 900,
   1024 × 768, and 390 × 844 had `0 px` document overflow.
+- The main navigation announces vertical orientation on the desktop rail and horizontal orientation
+  on the narrow scrolling strip; the Findings listbox remains vertical at both sizes.
 - Reduced motion produced `0` active animations, `0s` panel/row transitions, and automatic rather
   than smooth scrolling. The shared JavaScript helper also returned without creating an Animation;
   selection, text, color, border, and status still communicated the result.
@@ -153,12 +181,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `154.4 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `225.6 ms` |
-| Delayed Intercept acknowledgement | `353.8 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `76.7 ms`; Fit/wheel/drag interaction `393 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.369041 s`; script `0.127854 s`; layout `0.054216 s` |
-| Map interaction | CDP task `0.020647 s`; script `0.001073 s`; layout `0.000495 s` |
+| Three 240-request live History bursts | network p95 `121.5 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `339.2 ms` |
+| Delayed Intercept acknowledgement | `537.7 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `78.1 ms`; Fit/wheel/drag interaction `1306.4 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.321526 s`; script `0.097058 s`; layout `0.038012 s` |
+| Map interaction | CDP task `0.051949 s`; script `0.003986 s`; layout `0.001249 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

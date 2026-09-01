@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,14 +10,16 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/report"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
-// maxFindingBodyBytes is the maximum total byte size of a finding's narrative
-// body (the body JSON or the combined detail+evidence+fix text). Capped at 1 MiB
-// to prevent storage DoS and UI hangs from runaway AI loops or malicious clients.
+// maxFindingBodyBytes is the maximum byte size of both the canonical block body
+// and, separately, the aggregate scalar report envelope. These caps prevent
+// storage/UI DoS from runaway AI loops or malicious clients while leaving the
+// full body allowance available for structured reproduction and evidence.
 const maxFindingBodyBytes = 1 << 20 // 1 MiB
 
 const maxFindingMutationRequestBytes int64 = 16 << 20
@@ -25,18 +28,14 @@ const maxFindingMutationRequestBytes int64 = 16 << 20
 // content within a finding body. Mirrors the reMaxText cap used elsewhere.
 const maxFindingTextBlock = 256 << 10 // 256 KiB
 
-// checkFindingBodySize validates body-content fields from an incoming write
-// request. It returns a non-empty error message (suitable for httpErr) if any
-// limit is exceeded. The checks are:
-//   - If body (pre-serialised JSON blocks) is non-empty: its raw byte length must
-//     not exceed maxFindingBodyBytes, and each text block's MD must not exceed
-//     maxFindingTextBlock.
-//   - Otherwise: the sum of detail + evidence + fix must not exceed maxFindingBodyBytes.
+// checkFindingBodySize validates the content supplied by one incoming write.
+// The store repeats the aggregate check against retained fields so a client
+// cannot bypass it with several individually small PATCH requests.
 //
 // Reads of pre-existing large findings are never blocked; this only guards writes.
-func checkFindingBodySize(body, detail, evidence, fix string) string {
-	if body != "" {
-		if len(body) > maxFindingBodyBytes {
+func checkFindingBodySize(f store.Finding) string {
+	if f.Body != "" {
+		if len(f.Body) > maxFindingBodyBytes {
 			return "finding body too large (max 1 MiB)"
 		}
 		// Validate individual text block sizes within the body JSON.
@@ -49,7 +48,7 @@ func checkFindingBodySize(body, detail, evidence, fix string) string {
 			Path string `json:"path,omitempty"`
 			Hash string `json:"hash,omitempty"`
 		}
-		if err := json.Unmarshal([]byte(body), &blocks); err == nil {
+		if err := json.Unmarshal([]byte(f.Body), &blocks); err == nil {
 			for _, b := range blocks {
 				if b.Type == "text" && len(b.MD) > maxFindingTextBlock {
 					return "finding text block too large (max 256 KiB per block)"
@@ -64,11 +63,15 @@ func checkFindingBodySize(body, detail, evidence, fix string) string {
 				}
 			}
 		}
-		return ""
 	}
-	// Legacy fields path: detail + evidence + fix combined.
-	if len(detail)+len(evidence)+len(fix) > maxFindingBodyBytes {
+	if f.Body == "" && len(f.Detail)+len(f.Evidence)+len(f.Fix) > maxFindingBodyBytes {
 		return "finding body too large (max 1 MiB)"
+	}
+	scalarSize := len(f.Title) + len(f.Summary) + len(f.Target) + len(f.Fix) +
+		len(f.Impact) + len(f.Why) + len(f.Cwe) + len(f.Cvss) +
+		len(f.VerificationInstructions) + len(f.Retest) + len(f.Detail) + len(f.Evidence)
+	if scalarSize > maxFindingBodyBytes {
+		return "finding narrative too large (max 1 MiB across report fields)"
 	}
 	return ""
 }
@@ -88,7 +91,81 @@ func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 	if fs == nil {
 		fs = []store.Finding{}
 	}
+	if strings.EqualFold(q.Get("view"), "summary") {
+		summaries, total, truncated := findingListSummaries(fs)
+		writeJSON(w, http.StatusOK, map[string]any{"findings": summaries, "total": total, "truncated": truncated})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"findings": fs})
+}
+
+const (
+	maxFindingListSummaries   = 500
+	maxFindingSummaryText     = 512
+	maxFindingSummaryTags     = 20
+	maxFindingSummaryTagBytes = 128
+	maxFindingSummaryMissing  = 50
+)
+
+type findingListSummary struct {
+	ID               int64                   `json:"id"`
+	Severity         string                  `json:"severity"`
+	Status           string                  `json:"status"`
+	Title            string                  `json:"title"`
+	Summary          string                  `json:"summary,omitempty"`
+	Target           string                  `json:"target,omitempty"`
+	Confidence       string                  `json:"confidence,omitempty"`
+	Tags             []string                `json:"tags"`
+	TagCount         int                     `json:"tagCount"`
+	Ready            bool                    `json:"ready"`
+	Missing          []string                `json:"missing"`
+	Readiness        *store.FindingReadiness `json:"readiness,omitempty"`
+	MissingFlowIDs   []int64                 `json:"missingFlowIds"`
+	MissingFlowCount int                     `json:"missingFlowCount"`
+}
+
+func findingListSummaries(fs []store.Finding) ([]findingListSummary, int, bool) {
+	total := len(fs)
+	if len(fs) > maxFindingListSummaries {
+		fs = fs[:maxFindingListSummaries]
+	}
+	out := make([]findingListSummary, 0, len(fs))
+	for i := range fs {
+		f := &fs[i]
+		tags := append([]string(nil), f.Tags...)
+		if len(tags) > maxFindingSummaryTags {
+			tags = tags[:maxFindingSummaryTags]
+		}
+		for j := range tags {
+			tags[j] = truncateFindingSummary(tags[j], maxFindingSummaryTagBytes)
+		}
+		missingFlows := missingFlowIDs(f)
+		missingFlowCount := len(missingFlows)
+		if len(missingFlows) > maxFindingSummaryMissing {
+			missingFlows = missingFlows[:maxFindingSummaryMissing]
+		}
+		out = append(out, findingListSummary{
+			ID: f.ID, Severity: f.Severity, Status: f.Status,
+			Title:      truncateFindingSummary(f.Title, maxFindingSummaryText),
+			Summary:    truncateFindingSummary(f.Summary, maxFindingSummaryText),
+			Target:     truncateFindingSummary(f.Target, maxFindingSummaryText),
+			Confidence: f.Confidence, Tags: tags, TagCount: len(f.Tags), Ready: f.Ready,
+			Missing: append([]string(nil), f.Missing...), Readiness: f.Readiness,
+			MissingFlowIDs: missingFlows, MissingFlowCount: missingFlowCount,
+		})
+	}
+	return out, total, total > len(out)
+}
+
+func truncateFindingSummary(value string, max int) string {
+	if len(value) <= max {
+		return value
+	}
+	value = value[:max]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value + "…"
 }
 
 func (h *findingsAPI) listFindingTags(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +189,11 @@ func (h *findingsAPI) listFindingTags(w http.ResponseWriter, r *http.Request) {
 // (?includeBodies=0 to omit — useful for huge projects).
 func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
+	if format != "" && format != "md" && format != "markdown" && format != "html" && format != "json" {
+		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
+		return
+	}
 	fs, err := h.st.ListFindings("", "", q.Get("tag"))
 	if err != nil {
 		httpInternalErr(w, err)
@@ -131,7 +213,6 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	if includeBodies {
 		h.enrichFindingReportBodies(fs)
 	}
-	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
 	groupByTag := strings.EqualFold(q.Get("groupBy"), "tag")
 	omitTags := splitCSV(q.Get("omitTags"))
 	tagOrder := splitCSV(q.Get("tagOrder"))
@@ -149,7 +230,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.Write([]byte(report.ProjectHTML(fs, issues)))
 		}
-	default:
+	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
 		if groupByTag {
@@ -157,6 +238,8 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.Write([]byte(report.Project(fs, issues)))
 		}
+	default:
+		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
 	}
 }
 
@@ -200,9 +283,10 @@ func splitCSV(s string) []string {
 // cannot blow up the report. Truncation is marked explicitly.
 const reportBodyCap = 64 << 10 // 64 KiB
 
-// reportImageEmbedCap bounds each screenshot embedded as a data URI in HTML
-// exports so a few large PNGs cannot explode the download.
-const reportImageEmbedCap = 2 << 20 // 2 MiB
+// reportImageEmbedCap matches the supported finding-image upload size; the
+// separate total cap keeps offline exports bounded when several images exist.
+const reportImageEmbedCap = 5 << 20      // 5 MiB
+const reportImageEmbedTotalCap = 8 << 20 // 8 MiB per offline HTML report
 
 // enrichFindingReportBodies attaches reconstructed HTTP req/res to each PoC flow
 // block (and legacy Flows list) for offline report handoff.
@@ -228,6 +312,7 @@ func (h *findingsAPI) enrichFindingReportBodies(fs []store.Finding) {
 // enrichFindingReportImages rewrites image block URLs to data: URIs so a
 // downloaded HTML report shows screenshots without the control API.
 func (h *findingsAPI) enrichFindingReportImages(fs []store.Finding) {
+	total := 0
 	for i := range fs {
 		for j := range fs[i].Blocks {
 			bl := &fs[i].Blocks[j]
@@ -236,11 +321,19 @@ func (h *findingsAPI) enrichFindingReportImages(fs []store.Finding) {
 			}
 			rc, err := h.st.OpenBody(bl.Hash)
 			if err != nil {
+				bl.URL = ""
+				bl.Missing = true
 				continue
 			}
 			data, err := io.ReadAll(io.LimitReader(rc, reportImageEmbedCap+1))
 			rc.Close()
-			if err != nil || len(data) == 0 || len(data) > reportImageEmbedCap {
+			if err != nil || len(data) == 0 {
+				bl.URL = ""
+				bl.Missing = true
+				continue
+			}
+			if len(data) > reportImageEmbedCap || total+len(data) > reportImageEmbedTotalCap {
+				bl.URL = ""
 				continue
 			}
 			mime := store.SanitizeNotesImageMIME(bl.Mime)
@@ -248,6 +341,7 @@ func (h *findingsAPI) enrichFindingReportImages(fs []store.Finding) {
 				mime = "image/png"
 			}
 			bl.URL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+			total += len(data)
 		}
 	}
 }
@@ -257,36 +351,71 @@ func (h *findingsAPI) flowRawForReport(id int64) (req, res string) {
 	if err != nil || f == nil {
 		return "", ""
 	}
-	return truncateReportRaw(string(h.rawRequest(f)), reportBodyCap),
-		truncateReportRaw(string(h.rawResponse(f)), reportBodyCap)
+	return h.flowRawSideForReport(f, true), h.flowRawSideForReport(f, false)
 }
 
-func truncateReportRaw(s string, cap int) string {
-	if cap <= 0 || len(s) <= cap {
-		return s
+const reportBodyTruncationMarker = "\n\n… [body truncated at 64 KiB]"
+
+// flowRawSideForReport reconstructs one side of a captured exchange while
+// bounding only the body read. Headers remain intact so an exported report is
+// still useful for reproducing the request/response, even when a payload is
+// large. The body is read through LimitReader rather than bodyBytesResult,
+// which would load the complete content-addressed body before truncating it.
+func (h *findingsAPI) flowRawSideForReport(f *store.Flow, request bool) string {
+	var b bytes.Buffer
+	var headers map[string][]string
+	var hash, host string
+	if request {
+		fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
+		headers, hash, host = f.ReqHeaders, f.ReqBodyHash, f.Host
+	} else {
+		fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
+		headers, hash = f.ResHeaders, f.ResBodyHash
 	}
-	return s[:cap] + "\n\n… [truncated]"
+
+	displayHeaders, body, truncated := h.reportBody(hash, headers)
+	writeHeaders(&b, displayHeaders, host)
+	b.WriteString("\r\n")
+	b.Write(body)
+	if truncated {
+		b.WriteString(reportBodyTruncationMarker)
+	}
+	return b.String()
+}
+
+// reportBody bounds the returned raw or decoded representation while allowing
+// supported compression streams to consume enough encoded input to produce it.
+func (h *findingsAPI) reportBody(hash string, headers map[string][]string) (map[string][]string, []byte, bool) {
+	displayHeaders, body, truncated, err := h.bodyForDisplayLimit(hash, headers, reportBodyCap)
+	if err != nil {
+		return headers, nil, false
+	}
+	return displayHeaders, body, truncated
 }
 
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Severity                 string   `json:"severity"`
-		Status                   string   `json:"status"`
-		Source                   string   `json:"source"`
-		Title                    string   `json:"title"`
-		Target                   string   `json:"target"`
-		Detail                   string   `json:"detail"`
-		Evidence                 string   `json:"evidence"`
-		Fix                      string   `json:"fix"`    // remediation — optional
-		Impact                   string   `json:"impact"` // what an attacker gains / business consequence
-		Why                      string   `json:"why"`    // why this is a vulnerability
-		Cwe                      string   `json:"cwe"`
-		Environment              string   `json:"environment"` // prod | staging | local
-		Cvss                     string   `json:"cvss"`
-		VerificationInstructions string   `json:"verificationInstructions"`
-		Body                     string   `json:"body"`    // JSON blocks (PoC timeline)
-		FlowIDs                  []int64  `json:"flowIds"` // optional: attach these PoC flows on create
-		Tags                     []string `json:"tags"`    // report-scoping labels (cms, api, …)
+		Severity                 string                `json:"severity"`
+		Status                   string                `json:"status"`
+		Source                   string                `json:"source"`
+		Title                    string                `json:"title"`
+		Summary                  string                `json:"summary"`
+		Target                   string                `json:"target"`
+		Confidence               string                `json:"confidence"`
+		Detail                   string                `json:"detail"`
+		Evidence                 string                `json:"evidence"`
+		Fix                      string                `json:"fix"`    // remediation — optional
+		Impact                   string                `json:"impact"` // what an attacker gains / business consequence
+		Why                      string                `json:"why"`    // why this is a vulnerability
+		Cwe                      string                `json:"cwe"`
+		Environment              string                `json:"environment"` // prod | staging | local
+		Cvss                     string                `json:"cvss"`
+		VerificationInstructions string                `json:"verificationInstructions"`
+		Retest                   string                `json:"retest"`
+		Body                     string                `json:"body"`    // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock `json:"blocks"`  // canonical structured alternative to body
+		FlowIDs                  []int64               `json:"flowIds"` // optional: attach these PoC flows on create
+		Tags                     []string              `json:"tags"`    // report-scoping labels (cms, api, …)
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -294,6 +423,22 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	if in.Title == "" {
 		httpErr(w, http.StatusBadRequest, "title required")
 		return
+	}
+	if in.Body != "" && in.Blocks != nil {
+		httpErr(w, http.StatusBadRequest, "send either body or blocks, not both")
+		return
+	}
+	if in.Blocks != nil {
+		normBlocks, err := store.NormalizeFindingBlocks(*in.Blocks)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		in.Body, err = store.MarshalFindingBlocks(normBlocks)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if in.Body != "" {
 		norm, err := store.NormalizeFindingBody(in.Body)
@@ -303,20 +448,20 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Body = norm
 	}
-	if msg := checkFindingBodySize(in.Body, in.Detail, in.Evidence, in.Fix); msg != "" {
-		httpErr(w, http.StatusRequestEntityTooLarge, msg)
-		return
-	}
 	f := &store.Finding{
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
-		Title: in.Title, Target: in.Target, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix,
+		Title: in.Title, Summary: in.Summary, Target: in.Target, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
 		Impact: in.Impact, Why: in.Why, Cwe: in.Cwe, Environment: in.Environment,
 		Cvss: in.Cvss, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
 		Tags: in.Tags,
 	}
+	if msg := checkFindingBodySize(*f); msg != "" {
+		httpErr(w, http.StatusRequestEntityTooLarge, msg)
+		return
+	}
 	id, err := h.st.CreateFinding(f)
 	if err != nil {
-		if errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") {
+		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -423,38 +568,45 @@ func (h *findingsAPI) requireFinding(w http.ResponseWriter, id int64) bool {
 func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
-		Severity                 *string   `json:"severity"`
-		Status                   *string   `json:"status"`
-		Title                    *string   `json:"title"`
-		Target                   *string   `json:"target"`
-		Detail                   *string   `json:"detail"`
-		Evidence                 *string   `json:"evidence"`
-		Fix                      *string   `json:"fix"`
-		Impact                   *string   `json:"impact"`
-		Why                      *string   `json:"why"`
-		Cwe                      *string   `json:"cwe"`
-		Environment              *string   `json:"environment"`
-		Cvss                     *string   `json:"cvss"`
-		VerificationInstructions *string   `json:"verificationInstructions"`
-		Body                     *string   `json:"body"` // JSON blocks (PoC timeline)
-		Tags                     *[]string `json:"tags"` // when present (incl. []), replaces the tag set
+		Severity                 *string               `json:"severity"`
+		Status                   *string               `json:"status"`
+		Title                    *string               `json:"title"`
+		Summary                  *string               `json:"summary"`
+		Target                   *string               `json:"target"`
+		Confidence               *string               `json:"confidence"`
+		Detail                   *string               `json:"detail"`
+		Evidence                 *string               `json:"evidence"`
+		Fix                      *string               `json:"fix"`
+		Impact                   *string               `json:"impact"`
+		Why                      *string               `json:"why"`
+		Cwe                      *string               `json:"cwe"`
+		Environment              *string               `json:"environment"`
+		Cvss                     *string               `json:"cvss"`
+		VerificationInstructions *string               `json:"verificationInstructions"`
+		Retest                   *string               `json:"retest"`
+		Body                     *string               `json:"body"`   // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock `json:"blocks"` // canonical structured alternative to body
+		Tags                     *[]string             `json:"tags"`   // when present (incl. []), replaces the tag set
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
 	}
-	// Dereference optional pointers for the size check; nil means "not being updated".
-	bodyStr, detailStr, evidenceStr, fixStr := "", "", "", ""
-	if in.Body != nil {
-		bodyStr = *in.Body
+	if in.Body != nil && in.Blocks != nil {
+		httpErr(w, http.StatusBadRequest, "send either body or blocks, not both")
+		return
 	}
-	if in.Detail != nil {
-		detailStr = *in.Detail
-	}
-	if in.Evidence != nil {
-		evidenceStr = *in.Evidence
-	}
-	if in.Fix != nil {
-		fixStr = *in.Fix
+	if in.Blocks != nil {
+		normBlocks, err := store.NormalizeFindingBlocks(*in.Blocks)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		normBody, err := store.MarshalFindingBlocks(normBlocks)
+		if err != nil {
+			httpErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		in.Body = &normBody
 	}
 	if in.Body != nil {
 		norm, err := store.NormalizeFindingBody(*in.Body)
@@ -463,14 +615,25 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		*in.Body = norm
-		bodyStr = norm
 	}
-	if msg := checkFindingBodySize(bodyStr, detailStr, evidenceStr, fixStr); msg != "" {
+	value := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	mutation := store.Finding{
+		Title: value(in.Title), Summary: value(in.Summary), Target: value(in.Target),
+		Detail: value(in.Detail), Evidence: value(in.Evidence), Fix: value(in.Fix), Body: value(in.Body),
+		Impact: value(in.Impact), Why: value(in.Why), Cwe: value(in.Cwe), Cvss: value(in.Cvss),
+		VerificationInstructions: value(in.VerificationInstructions), Retest: value(in.Retest),
+	}
+	if msg := checkFindingBodySize(mutation); msg != "" {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFindingWithTags(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Tags); err != nil {
-		if errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
+	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags); err != nil {
+		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -501,10 +664,15 @@ func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {
 // inserted in the narrative body; omit or -1 to append at the end.
 func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, id) {
+		return
+	}
 	var in struct {
 		FlowID   int64  `json:"flowId"`
 		Note     string `json:"note"`
 		Position *int   `json:"position"` // optional 0-based block index; omit = append
+		Role     string `json:"role"`
+		Proof    string `json:"proof"`
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -517,9 +685,13 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	if err := h.st.AttachFlow(id, in.FlowID, in.Note, pos); err != nil {
+	if err := h.st.AttachFlowWithMetadata(id, in.FlowID, in.Note, pos, in.Role, in.Proof, "captured_flow", in.FlowID); err != nil {
 		if errors.Is(err, store.ErrFlowNotFound) {
 			httpErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrInvalidFinding) {
+			httpErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		httpInternalErr(w, err)
@@ -531,19 +703,22 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 		httpInternalErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
 func (h *findingsAPI) detachFindingFlow(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	flowID, _ := strconv.ParseInt(r.PathValue("flowId"), 10, 64)
+	if !h.requireFinding(w, id) {
+		return
+	}
 	if err := h.st.DetachFlow(id, flowID); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
 	out, _ := h.st.GetFinding(id)
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
 // attachFindingImage uploads screenshot/evidence bytes and inserts an image
@@ -554,10 +729,14 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var in struct {
-		Mime     string `json:"mime"`
-		Data     string `json:"data"` // raw base64 or data: URL
-		Caption  string `json:"caption"`
-		Position *int   `json:"position"`
+		Mime         string `json:"mime"`
+		Data         string `json:"data"` // raw base64 or data: URL
+		Caption      string `json:"caption"`
+		Position     *int   `json:"position"`
+		Role         string `json:"role"`
+		Proof        string `json:"proof"`
+		Source       string `json:"source"`
+		SourceFlowID int64  `json:"sourceFlowId"`
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -567,17 +746,14 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	hash, _, err := h.st.PutImageBytes(mime, raw)
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	pos := -1
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	if err := h.st.AttachImage(id, hash, mime, in.Caption, pos); err != nil {
-		httpInternalErr(w, err)
+	role, source, proof := in.Role, in.Source, in.Proof
+	_, _, err = h.st.PutAndAttachImage(id, mime, raw, in.Caption, pos, role, proof, source, in.SourceFlowID)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -586,12 +762,19 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
 // getFindingImage serves a content-addressed finding screenshot by hash.
 func (h *findingsAPI) getFindingImage(w http.ResponseWriter, r *http.Request) {
 	hash := r.PathValue("hash")
+	// Content-addressed bodies are shared with flow captures. Only a hash
+	// referenced by a finding image block is authorized on this endpoint.
+	mime := h.st.FindingImageMIME(hash)
+	if mime == "" {
+		httpErr(w, http.StatusNotFound, "image not found")
+		return
+	}
 	rc, err := h.st.OpenBody(hash)
 	if err != nil {
 		httpErr(w, http.StatusNotFound, "image not found")
@@ -600,7 +783,6 @@ func (h *findingsAPI) getFindingImage(w http.ResponseWriter, r *http.Request) {
 	defer rc.Close()
 	// Prefer MIME from a finding that references this hash; never sniff — serve
 	// as allowlisted raster or inert application/octet-stream.
-	mime := h.st.FindingImageMIME(hash)
 	w.Header().Set("Content-Type", store.SanitizeNotesImageMIME(mime))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")

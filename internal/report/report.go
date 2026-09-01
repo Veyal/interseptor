@@ -228,7 +228,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 }
 
 // renderFinding writes one finding's section in report order:
-// metadata → Impact → Why → Target → PoC/Evidence → optional Remediation.
+// metadata → Claim → Impact → Why → Target → Reproduction/Evidence → Remediation/Retest.
 //
 // Finding content (Title, Impact, narrative text/flow-note blocks) can
 // originate from untrusted proxied content — e.g. an AI pastes page content
@@ -238,6 +238,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	fmt.Fprintf(b, "\n### %d. %s\n", n, sanitizeLine(f.Title))
 	if f.Status != "" {
 		b.WriteString("- **Status:** " + sanitizeLine(f.Status) + "\n")
+	}
+	if f.Confidence != "" {
+		b.WriteString("- **Confidence:** " + sanitizeLine(f.Confidence) + "\n")
 	}
 	if f.VerificationInstructions != "" {
 		b.WriteString("- **Verification:** " + sanitizeLine(f.VerificationInstructions) + "\n")
@@ -264,6 +267,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 	b.WriteString("\n")
 
+	if f.Summary != "" {
+		b.WriteString("**Summary:** " + sanitizeLine(f.Summary) + "\n\n")
+	}
 	if f.Impact != "" {
 		b.WriteString("**Impact:** " + sanitizeLine(f.Impact) + "\n\n")
 	}
@@ -276,13 +282,20 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 
 	hasPoC := len(f.Blocks) > 0 || f.Detail != "" || f.Evidence != "" || len(f.Flows) > 0
 	if hasPoC {
-		b.WriteString("**PoC / Evidence:**\n\n")
+		b.WriteString("**Reproduction & Evidence:**\n\n")
 	}
 	// Render interleaved PoC timeline (text + flows + images in author's order).
 	if len(f.Blocks) > 0 {
 		hasDetailBlock := false
 		hasEvidenceBlock := false
 		for _, bl := range f.Blocks {
+			if meta := blockEvidenceMeta(bl); meta != "" {
+				label := "Evidence"
+				if bl.Type == "text" {
+					label = "Step"
+				}
+				b.WriteString("_" + label + ": " + meta + "._\n\n")
+			}
 			if bl.Type == "text" && bl.MD != "" {
 				hasDetailBlock = hasDetailBlock || bl.MD == f.Detail
 				hasEvidenceBlock = hasEvidenceBlock || bl.MD == f.Evidence
@@ -366,24 +379,66 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	if f.Fix != "" {
 		b.WriteString("**Remediation:** " + sanitizeLine(f.Fix) + "\n\n")
 	}
+	if f.Retest != "" {
+		b.WriteString("**Retest:** " + sanitizeLine(f.Retest) + "\n\n")
+	}
+}
+
+func blockEvidenceMeta(bl store.FindingBlock) string {
+	var parts []string
+	if bl.Role != "" {
+		parts = append(parts, "role="+sanitizeLine(bl.Role))
+	}
+	if bl.Proof != "" {
+		parts = append(parts, "proof="+sanitizeLine(bl.Proof))
+	}
+	if bl.Source != "" {
+		parts = append(parts, "source="+sanitizeLine(bl.Source))
+	}
+	if bl.SourceFlowID > 0 {
+		parts = append(parts, fmt.Sprintf("source flow #%d", bl.SourceFlowID))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // renderFlowRaw appends fenced HTTP request/response blocks when raw messages
 // were enriched for export. Empty strings are skipped (no empty fences).
 func renderFlowRaw(b *strings.Builder, reqRaw, resRaw string) {
+	fence := "```"
+	if n := maxBacktickRun(reqRaw, resRaw); n >= len(fence) {
+		fence = strings.Repeat("`", n+1)
+	}
 	if reqRaw != "" {
-		b.WriteString("\n**Request**\n\n```http\n")
+		b.WriteString("\n**Request**\n\n" + fence + "http\n")
 		b.WriteString(normalizeHTTPRaw(reqRaw))
-		b.WriteString("```\n")
+		b.WriteString(fence + "\n")
 	}
 	if resRaw != "" {
-		b.WriteString("\n**Response**\n\n```http\n")
+		b.WriteString("\n**Response**\n\n" + fence + "http\n")
 		b.WriteString(normalizeHTTPRaw(resRaw))
-		b.WriteString("```\n")
+		b.WriteString(fence + "\n")
 	}
 	if reqRaw != "" || resRaw != "" {
 		b.WriteString("\n")
 	}
+}
+
+func maxBacktickRun(values ...string) int {
+	max, run := 0, 0
+	for _, s := range values {
+		for _, r := range s {
+			if r == '`' {
+				run++
+				if run > max {
+					max = run
+				}
+			} else {
+				run = 0
+			}
+		}
+		run = 0
+	}
+	return max
 }
 
 // normalizeHTTPRaw converts wire CRLF to LF for Markdown fences and ensures a

@@ -56,6 +56,95 @@ unsupported features (such as local file bodies) are reported for review. Import
 creates no History flows because a collection is a plan, not captured evidence; sending a tab is
 what creates live replay evidence.
 
+### Findings: one canonical evidence format
+
+Findings are persistent, curated records shared by the UI, REST API, MCP tools, and report
+export. The stable envelope is:
+
+| Field | Use |
+| --- | --- |
+| `title`, `summary` | Short, report-ready claim and one-sentence statement of the vulnerable behavior |
+| `severity`, `confidence`, `cwe`, `cvss`, `environment` | Review and prioritization metadata |
+| `target` | Affected host, application, endpoint, account, or other scope |
+| `impact` | What an attacker gains or the business/security consequence |
+| `why` | The broken security property or trust boundary |
+| `blocks` | Ordered typed reproduction and evidence records |
+| `fix`, `retest` | Remediation at the failed boundary and the expected secure negative case |
+| `status`, `verificationInstructions`, `tags` | Review workflow and report scoping |
+
+Use `blocks` as the source of truth for reproduction. A block is `text`, `flow`, or `image` and
+may carry `role` (`context`, `setup`, `baseline`, `action`, `result`, `control`, `retest`, or
+`observation`), `proof` (the exact claim established), and `source`. Flow evidence uses
+`source=captured_flow` and `sourceFlowId`; generated HTTP previews use `source=flow_preview`.
+Image evidence can use `browser_screenshot`, `operator_upload`, `tool_output`, or `other`.
+Prefer a real browser/device screenshot when it visibly proves the issue, and attach the captured
+flow as the inspectable request/response record. The API validates and stores images by content
+hash (maximum 5 MiB); it does not store image data inside the finding body.
+The complete canonical `blocks` body is limited to 1 MiB after every create, partial update, flow
+attachment, or image attachment. Over-limit mutations fail atomically. A preserved `missing` flow
+block remains visible but cannot resolve to an unrelated local flow during collaboration merge.
+Collaboration imports preflight canonical and table-only evidence before publishing local rows.
+The scalar report envelope (title, summary, target, impact, cause, remediation, retest, review
+instructions, and legacy `detail`/`evidence` compatibility copies) has a separate aggregate 1 MiB
+limit. The store evaluates retained plus changed fields, so several individually small AI/API updates
+or a canonical body paired with distinct legacy text cannot bypass the limit.
+
+The UI file picker, paste, and drop paths record `source=operator_upload` because Interseptor cannot
+infer how an external file was captured. MCP image uploads use the same conservative default; set
+`source=browser_screenshot` only when the caller knows the bytes came from a real browser/device
+capture. This preserves provenance without making screenshots harder to attach.
+
+`Before → Action → After` is not a required report shape. It is an optional Differential preset
+for authorization or state-change comparisons. For other findings, choose the shortest roles that
+make the claim reproducible (for example `observation → result`, or `setup → action → result`).
+
+REST endpoints:
+
+```text
+POST   /api/findings                         create (title required; blocks or legacy body)
+GET    /api/findings/{id}                    read canonical finding and readiness
+PATCH  /api/findings/{id}                    partial update (blocks or legacy body)
+POST   /api/findings/{id}/flows              attach {flowId, role?, note?, proof?, position?}
+DELETE /api/findings/{id}/flows/{flowId}     detach a flow
+POST   /api/findings/{id}/images             attach {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}
+POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG
+GET    /api/findings/report                  md (default), html, or json export
+```
+
+For example, an AI can create the narrative without embedding raw HTTP, then attach proof:
+
+```json
+{
+  "title": "Cross-account record access",
+  "summary": "A user can read another account's record by changing the object identifier.",
+  "severity": "High",
+  "confidence": "firm",
+  "target": "api.example.com/v1/accounts/{id}",
+  "impact": "An authenticated attacker can read another customer's record.",
+  "why": "The object-level authorization check does not bind the record to the session.",
+  "blocks": [
+    {"type":"text", "role":"baseline", "md":"Open a record owned by the current account."},
+    {"type":"text", "role":"action", "md":"Change `{id}` to another account's identifier."},
+    {"type":"text", "role":"result", "md":"The response contains the other account's record."}
+  ],
+  "fix": "Enforce object ownership authorization before returning the record.",
+  "retest": "Repeat with a different account identifier; expect 403 or an equivalent non-disclosing response."
+}
+```
+
+Use `get_finding` before an AI update so it does not replace a concurrent human edit. MCP maps
+`create_finding`, `get_finding`, `update_finding`, `add_finding_poc`, `add_finding_image`,
+`render_flow_preview`, and `export_report` to these same contracts. `body` remains accepted for
+legacy clients, but must not be sent together with `blocks`; old `ready`/`missing` fields remain
+alongside structured `readiness` for compatibility. Report export supports Markdown, self-contained
+HTML, and JSON (`format=md|html|json`); use self-contained HTML when screenshot pixels must travel
+with the report. PDF is not an API format.
+Self-contained HTML embeds at most 5 MiB per image and 8 MiB across the report. An image that exceeds
+either bound remains explicitly marked unavailable in the export instead of creating an unbounded
+document or silently depending on the live control API.
+Raw request/response evidence is limited to 64 KiB per side after decoding; compressed streams also
+enforce bounded decoder windows and memory before output is read.
+
 ### History search API
 
 `GET /api/flows` supports `searchScope=anywhere|body|id` and `savedSearch=<name>`. Anywhere search checks flow metadata, headers, tags, and bodies, with an 8,000-candidate cap and 256 KiB per-body read cap. Responses expose `searchNote` when a search reaches its scan limit and `truncated` when the result page exceeds `limit`.

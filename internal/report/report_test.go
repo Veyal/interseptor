@@ -14,6 +14,16 @@ func TestFindingsEmpty(t *testing.T) {
 	}
 }
 
+func TestProjectFlowRawChoosesSafeFenceAndRendersEvidenceProvenance(t *testing.T) {
+	out := Project([]store.Finding{{ID: 1, Severity: "High", Status: "open", Title: "Fence", Summary: "short", Retest: "repeat it", Blocks: []store.FindingBlock{{Type: "flow", FlowID: 9, Method: "POST", Host: "example.com", Path: "/x", Role: "result", Proof: "response proves access", Source: "captured_flow", SourceFlowID: 9, ReqRaw: "POST /x HTTP/1.1\r\nX: ````\r\n\r\n"}}}}, nil)
+	if !strings.Contains(out, "**Summary:** short") || !strings.Contains(out, "**Retest:** repeat it") || !strings.Contains(out, "role=result, proof=response proves access, source=captured_flow") {
+		t.Fatalf("canonical envelope missing: %s", out)
+	}
+	if !strings.Contains(out, "`````http") {
+		t.Fatalf("raw payload fence was not lengthened: %s", out)
+	}
+}
+
 func TestFindingsGroupsAndOrders(t *testing.T) {
 	issues := []store.Issue{
 		{Severity: "Low", Title: "Cookie weak", Target: "GET a/b", Detail: "d", Evidence: "Set-Cookie: x", Fix: "harden"},
@@ -66,7 +76,7 @@ func TestProjectRendersFindingsAndPoCsAndAppendix(t *testing.T) {
 		t.Fatalf("severity order wrong (hi=%d lo=%d):\n%s", hi, lo, out)
 	}
 	// Status + PoC flow render under the finding.
-	for _, want := range []string{"### 1. IDOR on user", "**Status:** verified", "**PoC / Evidence:**", "**PoC flows:**", "GET app.test/api/user/2", "→ 200", "leaks other user", "**Remediation:** authorize"} {
+	for _, want := range []string{"### 1. IDOR on user", "**Status:** verified", "**Reproduction & Evidence:**", "**PoC flows:**", "GET app.test/api/user/2", "→ 200", "leaks other user", "**Remediation:** authorize"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -373,6 +383,13 @@ func TestProjectRendersImageBlock(t *testing.T) {
 	}
 	if !strings.Contains(out, "⚠ Screenshot — evidence blob missing") {
 		t.Fatalf("missing image note absent:\n%s", out)
+	}
+}
+
+func TestProjectRendersFindingConfidence(t *testing.T) {
+	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Example", Confidence: "firm"}}, nil)
+	if !strings.Contains(out, "- **Confidence:** firm") {
+		t.Fatalf("finding confidence absent:\n%s", out)
 	}
 }
 

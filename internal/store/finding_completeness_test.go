@@ -35,17 +35,21 @@ func TestFindingCompletenessDraftVsReady(t *testing.T) {
 	}
 
 	why := "broken object-level authorization"
+	summary := "A user can access another user's object."
 	cwe := "CWE-639"
 	env := "staging"
 	impact := "attacker reads other users' PII"
 	target := "GET api.example.com/users/{id}"
-	if err := s.UpdateFinding(id, nil, nil, nil, &target, nil, nil, nil, nil, &impact, &why, &cwe, &env, nil, nil); err != nil {
+	fix := "Enforce ownership checks."
+	confidence := "certain"
+	retest := "Repeat the request and confirm denial."
+	if err := s.UpdateFindingCanonical(id, nil, nil, nil, &target, nil, nil, &fix, nil, &impact, &why, &cwe, &env, nil, nil, &summary, &confidence, &retest, nil); err != nil {
 		t.Fatal(err)
 	}
 	f1, _ := s.InsertFlow(&Flow{Method: "GET", Host: "api.example.com", Path: "/users/1", Status: 200})
 	f2, _ := s.InsertFlow(&Flow{Method: "GET", Host: "api.example.com", Path: "/users/2", Status: 200})
-	_ = s.AttachFlow(id, f1, "Before: own account", -1)
-	_ = s.AttachFlow(id, f2, "After: other user data", -1)
+	_ = s.AttachFlowWithMetadata(id, f1, "Before: own account", -1, "baseline", "Establishes authorized access to the current user's record.", "captured_flow", f1)
+	_ = s.AttachFlowWithMetadata(id, f2, "After: other user data", -1, "result", "Shows the same session receiving another user's data.", "captured_flow", f2)
 
 	// Still High default Medium — only  need 1 poc for Medium. Make it High to require 2.
 	sev := "High"

@@ -14,6 +14,60 @@ import (
 // row in the flows table (typo, purged, or never captured).
 var ErrFlowNotFound = errors.New("flow not found")
 
+// ErrInvalidFinding identifies caller-correctable finding validation failures.
+var ErrInvalidFinding = errors.New("invalid finding")
+
+// maxFindingBodyBytes is the maximum serialized size of the canonical finding
+// narrative. Keep this guard in the store as well as at the HTTP boundary: AI,
+// MCP, imports, and legacy partial updates must all observe the same limit.
+const maxFindingBodyBytes = 1 << 20 // 1 MiB
+
+// Scalar report fields have their own aggregate cap so the canonical blocks
+// can use the documented body allowance without permitting AI/API clients to
+// place several additional MiB in summary, impact, remediation, or review text.
+const maxFindingNarrativeBytes = 1 << 20 // 1 MiB
+
+func validateFindingBodySize(body string) error {
+	if len(body) > maxFindingBodyBytes {
+		return fmt.Errorf("%w: body too large (max 1 MiB)", ErrInvalidFinding)
+	}
+	return nil
+}
+
+func validateFindingNarrativeSize(f Finding) error {
+	if err := validateFindingBodySize(f.Body); err != nil {
+		return err
+	}
+	size := len(f.Title) + len(f.Summary) + len(f.Target) + len(f.Fix) +
+		len(f.Impact) + len(f.Why) + len(f.Cwe) + len(f.Cvss) +
+		len(f.VerificationInstructions) + len(f.Retest) + len(f.Detail) + len(f.Evidence)
+	// Legacy detail/evidence normally mirror canonical blocks, but migration
+	// clients can supply distinct values and reports still render them. Count the
+	// stored copies even when Body is present so compatibility fields cannot
+	// become an unbounded side channel.
+	if size > maxFindingNarrativeBytes {
+		return fmt.Errorf("%w: finding narrative too large (max 1 MiB across report fields)", ErrInvalidFinding)
+	}
+	return nil
+}
+
+type findingNarrativeScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanFindingNarrative(row findingNarrativeScanner) (Finding, error) {
+	var f Finding
+	err := row.Scan(&f.Title, &f.Summary, &f.Target, &f.Detail, &f.Evidence, &f.Fix,
+		&f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Cvss, &f.VerificationInstructions, &f.Retest)
+	return f, err
+}
+
+func findingNarrativeRow(tx *sql.Tx, id int64) findingNarrativeScanner {
+	return tx.QueryRow(`SELECT title, summary, target, detail, evidence, fix, body,
+		impact, why, cwe, cvss, verification_instructions, retest
+		FROM findings WHERE id=?`, id)
+}
+
 // NormalizeFindingBody coerces common agent mistakes (type md/markdown → text)
 // and rejects unknown block types. Returns the normalized JSON body (or "" for
 // empty input). Empty/invalid JSON that is not an array is rejected when non-empty.
@@ -26,7 +80,18 @@ func NormalizeFindingBody(body string) (string, error) {
 	if err := json.Unmarshal([]byte(body), &recs); err != nil {
 		return "", fmt.Errorf("body must be a JSON array of blocks: %w", err)
 	}
+	seenFlows := make(map[int64]struct{})
+	normalized := recs[:0]
 	for i := range recs {
+		if strings.TrimSpace(recs[i].Role) != "" && normalizeFindingBlockRole(recs[i].Role) == "" {
+			return "", fmt.Errorf("body block[%d]: invalid role %q", i, recs[i].Role)
+		}
+		recs[i].Role = normalizeFindingBlockRole(recs[i].Role)
+		if strings.TrimSpace(recs[i].Source) != "" && normalizeFindingBlockSource(recs[i].Source) == "" {
+			return "", fmt.Errorf("body block[%d]: invalid source %q", i, recs[i].Source)
+		}
+		recs[i].Proof = strings.TrimSpace(recs[i].Proof)
+		recs[i].Source = normalizeFindingBlockSource(recs[i].Source)
 		switch strings.ToLower(strings.TrimSpace(recs[i].Type)) {
 		case "text":
 			recs[i].Type = "text"
@@ -34,17 +99,101 @@ func NormalizeFindingBody(body string) (string, error) {
 			recs[i].Type = "text"
 		case "flow":
 			recs[i].Type = "flow"
+			if recs[i].FlowID <= 0 {
+				return "", fmt.Errorf("body block[%d]: flow block missing flowId", i)
+			}
+			if _, ok := seenFlows[recs[i].FlowID]; ok {
+				continue
+			}
+			seenFlows[recs[i].FlowID] = struct{}{}
 		case "image":
 			recs[i].Type = "image"
 		default:
 			return "", fmt.Errorf("body block[%d]: type must be text|flow|image, got %q", i, recs[i].Type)
 		}
+		normalized = append(normalized, recs[i])
 	}
+	recs = normalized
 	j, err := json.Marshal(recs)
 	if err != nil {
 		return "", err
 	}
 	return string(j), nil
+}
+
+func normalizeFindingBlockRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "before", "baseline":
+		return "baseline"
+	case "after", "proof", "result":
+		return "result"
+	case "context", "setup", "action", "control", "retest", "observation":
+		return strings.ToLower(strings.TrimSpace(role))
+	default:
+		return ""
+	}
+}
+
+func normalizeFindingBlockSource(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "browser_screenshot", "screenshot":
+		return "browser_screenshot"
+	case "flow_preview", "preview":
+		return "flow_preview"
+	case "operator_upload", "upload":
+		return "operator_upload"
+	case "captured_flow":
+		return "captured_flow"
+	case "tool_output":
+		return "tool_output"
+	case "other":
+		return "other"
+	default:
+		return ""
+	}
+}
+
+func validateFindingEvidenceMetadata(role, source string, sourceFlowID int64) error {
+	if strings.TrimSpace(role) != "" && normalizeFindingBlockRole(role) == "" {
+		return fmt.Errorf("%w: evidence role %q", ErrInvalidFinding, role)
+	}
+	if strings.TrimSpace(source) != "" && normalizeFindingBlockSource(source) == "" {
+		return fmt.Errorf("%w: evidence source %q", ErrInvalidFinding, source)
+	}
+	if sourceFlowID < 0 {
+		return fmt.Errorf("%w: sourceFlowId must not be negative", ErrInvalidFinding)
+	}
+	return nil
+}
+
+// MarshalFindingBlocks validates and serializes structured evidence blocks for REST/MCP callers.
+func MarshalFindingBlocks(blocks []FindingBlock) (string, error) {
+	for i, block := range blocks {
+		if err := validateFindingEvidenceMetadata(block.Role, block.Source, block.SourceFlowID); err != nil {
+			return "", fmt.Errorf("body block[%d]: %w", i, err)
+		}
+	}
+	return NormalizeFindingBody(marshalBody(blocks))
+}
+
+// NormalizeFindingBlocks validates and canonicalizes structured blocks.
+func NormalizeFindingBlocks(blocks []FindingBlock) ([]FindingBlock, error) {
+	body, err := MarshalFindingBlocks(blocks)
+	if err != nil {
+		return nil, err
+	}
+	if body == "" {
+		return []FindingBlock{}, nil
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(body), &recs); err != nil {
+		return nil, err
+	}
+	out := make([]FindingBlock, len(recs))
+	for i, r := range recs {
+		out[i] = FindingBlock{Type: r.Type, MD: r.MD, FlowID: r.FlowID, Note: r.Note, Hash: r.Hash, Mime: r.Mime, Caption: r.Caption, Role: r.Role, Proof: r.Proof, Source: r.Source, SourceFlowID: r.SourceFlowID}
+	}
+	return out, nil
 }
 
 // Finding is a curated vulnerability write-up for a project. Unlike a scanner
@@ -60,7 +209,9 @@ type Finding struct {
 	Status      string `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
 	Source      string `json:"source"`    // human | ai | scanner
 	Title       string `json:"title"`
+	Summary     string `json:"summary,omitempty"`
 	Target      string `json:"target"`
+	Confidence  string `json:"confidence,omitempty"`
 	Detail      string `json:"detail"`                // legacy / MCP compat: first text block synced here
 	Evidence    string `json:"evidence"`              // legacy only
 	Fix         string `json:"fix"`                   // back-compat: kept but superseded by Impact
@@ -72,6 +223,7 @@ type Finding struct {
 	// VerificationInstructions tells a human reviewer exactly what to check when
 	// Status is needs_verification (e.g. "download X and run file on it").
 	VerificationInstructions string         `json:"verificationInstructions,omitempty"`
+	Retest                   string         `json:"retest,omitempty"`
 	Body                     string         `json:"body,omitempty"` // stored JSON blocks (use Blocks for rendering)
 	Flows                    []FindingFlow  `json:"flows"`          // attached flow metadata (for list sidebar count)
 	Blocks                   []FindingBlock `json:"blocks"`         // ordered narrative body (source of truth for UI)
@@ -80,19 +232,37 @@ type Finding struct {
 	// Verification is the Autopilot/machine proof-record when present (not stored on the finding row).
 	Verification *FindingVerification `json:"verification,omitempty"`
 	// Ready / Missing are computed at read time (not stored) — report-ready checklist.
-	Ready   bool     `json:"ready"`
-	Missing []string `json:"missing,omitempty"`
+	Ready     bool              `json:"ready"`
+	Missing   []string          `json:"missing,omitempty"`
+	Readiness *FindingReadiness `json:"readiness,omitempty"`
+}
+
+// FindingReadiness is the structured report readiness summary. Ready/Missing
+// remain the compatibility surface; this adds counts and actionable stage data.
+type FindingReadiness struct {
+	Stage                  string   `json:"stage"`
+	Gaps                   []string `json:"gaps,omitempty"`
+	EvidenceCount          int      `json:"evidenceCount"`
+	AnnotatedEvidenceCount int      `json:"annotatedEvidenceCount"`
+	FlowCount              int      `json:"flowCount"`
+	ScreenshotCount        int      `json:"screenshotCount"`
+	ImageCount             int      `json:"imageCount"`
+	VisualProofRecommended bool     `json:"visualProofRecommended"`
 }
 
 // FindingBlock is one element in a finding's narrative body.
 type FindingBlock struct {
-	Type    string `json:"type"`              // "text", "flow", or "image"
-	MD      string `json:"md,omitempty"`      // type=="text": markdown content
-	FlowID  int64  `json:"flowId,omitempty"`  // type=="flow": attached flow
-	Note    string `json:"note,omitempty"`    // type=="flow": annotation
-	Hash    string `json:"hash,omitempty"`    // type=="image": content-addressed sha256
-	Mime    string `json:"mime,omitempty"`    // type=="image": sanitized MIME
-	Caption string `json:"caption,omitempty"` // type=="image": optional caption
+	Type         string `json:"type"`              // "text", "flow", or "image"
+	MD           string `json:"md,omitempty"`      // type=="text": markdown content
+	FlowID       int64  `json:"flowId,omitempty"`  // type=="flow": attached flow
+	Note         string `json:"note,omitempty"`    // type=="flow": annotation
+	Hash         string `json:"hash,omitempty"`    // type=="image": content-addressed sha256
+	Mime         string `json:"mime,omitempty"`    // type=="image": sanitized MIME
+	Caption      string `json:"caption,omitempty"` // type=="image": optional caption
+	Role         string `json:"role,omitempty"`    // context/setup/baseline/action/result/control/retest/observation
+	Proof        string `json:"proof,omitempty"`   // exact claim this evidence establishes
+	Source       string `json:"source,omitempty"`  // captured_flow/flow_preview/browser_screenshot/operator_upload/tool_output/other
+	SourceFlowID int64  `json:"sourceFlowId,omitempty"`
 
 	// Enriched at read time from the flows JOIN — never stored in the body JSON.
 	Method string `json:"method,omitempty"`
@@ -136,13 +306,18 @@ type FindingFlow struct {
 
 // blockRecord is the minimal form written to the body column (no enriched metadata).
 type blockRecord struct {
-	Type    string `json:"type"`
-	MD      string `json:"md,omitempty"`
-	FlowID  int64  `json:"flowId,omitempty"`
-	Note    string `json:"note,omitempty"`
-	Hash    string `json:"hash,omitempty"`
-	Mime    string `json:"mime,omitempty"`
-	Caption string `json:"caption,omitempty"`
+	Type         string `json:"type"`
+	MD           string `json:"md,omitempty"`
+	FlowID       int64  `json:"flowId,omitempty"`
+	Note         string `json:"note,omitempty"`
+	Hash         string `json:"hash,omitempty"`
+	Mime         string `json:"mime,omitempty"`
+	Caption      string `json:"caption,omitempty"`
+	Role         string `json:"role,omitempty"`
+	Proof        string `json:"proof,omitempty"`
+	Source       string `json:"source,omitempty"`
+	SourceFlowID int64  `json:"sourceFlowId,omitempty"`
+	Missing      bool   `json:"missing,omitempty"`
 }
 
 // marshalBody serializes blocks for storage, stripping enriched metadata.
@@ -154,7 +329,8 @@ func marshalBody(blocks []FindingBlock) string {
 	for i, b := range blocks {
 		recs[i] = blockRecord{
 			Type: b.Type, MD: b.MD, FlowID: b.FlowID, Note: b.Note,
-			Hash: b.Hash, Mime: b.Mime, Caption: b.Caption,
+			Hash: b.Hash, Mime: b.Mime, Caption: b.Caption, Role: normalizeFindingBlockRole(b.Role), Proof: b.Proof,
+			Source: normalizeFindingBlockSource(b.Source), SourceFlowID: b.SourceFlowID, Missing: b.Type == "flow" && b.Missing,
 		}
 	}
 	j, _ := json.Marshal(recs)
@@ -177,9 +353,17 @@ func buildBlocks(body, detail, evidence string, flows []FindingFlow) []FindingBl
 			for i, r := range recs {
 				blocks[i] = FindingBlock{
 					Type: r.Type, MD: r.MD, FlowID: r.FlowID, Note: r.Note,
-					Hash: r.Hash, Mime: r.Mime, Caption: r.Caption,
+					Hash: r.Hash, Mime: r.Mime, Caption: r.Caption, Role: r.Role, Proof: r.Proof,
+					Source: r.Source, SourceFlowID: r.SourceFlowID, Missing: r.Missing,
 				}
-				if r.Type == "flow" {
+				if blocks[i].Role == "" && r.Type == "flow" {
+					// Older AttachFlow callers only had a free-form note. Preserve
+					// their common Before/After labels in the canonical read model so
+					// legacy findings can still satisfy the reproduction gate without
+					// imposing a differential requirement on new findings.
+					blocks[i].Role = findingBlockRoleFromNote(r.Note)
+				}
+				if r.Type == "flow" && !r.Missing {
 					if fl, ok := flowMeta[r.FlowID]; ok {
 						blocks[i].Method = fl.Method
 						blocks[i].Host = fl.Host
@@ -191,6 +375,10 @@ func buildBlocks(body, detail, evidence string, flows []FindingFlow) []FindingBl
 						// flow is gone (purged). Preserve the block; mark it missing.
 						blocks[i].Missing = true
 					}
+				} else if r.Type == "flow" {
+					// A persisted missing marker is authoritative even if a later
+					// local flow happens to reuse the same numeric id.
+					blocks[i].Missing = true
 				}
 			}
 			return blocks
@@ -208,11 +396,24 @@ func buildBlocks(body, detail, evidence string, flows []FindingFlow) []FindingBl
 	for _, fl := range flows {
 		blocks = append(blocks, FindingBlock{
 			Type: "flow", FlowID: fl.FlowID, Note: fl.Note,
+			Role:   findingBlockRoleFromNote(fl.Note),
 			Method: fl.Method, Host: fl.Host, Path: fl.Path, Status: fl.Status,
 			Missing: fl.Missing,
 		})
 	}
 	return blocks
+}
+
+func findingBlockRoleFromNote(note string) string {
+	trimmed := strings.TrimSpace(note)
+	if trimmed == "" {
+		return ""
+	}
+	label := trimmed
+	if colon := strings.IndexByte(label, ':'); colon >= 0 {
+		label = label[:colon]
+	}
+	return normalizeFindingBlockRole(label)
 }
 
 // initialBody creates the first body JSON from create-time text fields.
@@ -241,6 +442,10 @@ func appendFlowToBody(bodyJSON string, flowID int64, note string) string {
 // in the stored body JSON. pos < 0 or pos >= len means append at end.
 // If the flow is already present, its note is updated in-place (position unchanged).
 func insertFlowIntoBody(bodyJSON string, flowID int64, note string, pos int) string {
+	return insertFlowIntoBodyWithMetadata(bodyJSON, flowID, note, pos, "", "", "", 0)
+}
+
+func insertFlowIntoBodyWithMetadata(bodyJSON string, flowID int64, note string, pos int, role, proof, source string, sourceFlowID int64) string {
 	var recs []blockRecord
 	if bodyJSON != "" {
 		_ = json.Unmarshal([]byte(bodyJSON), &recs)
@@ -249,11 +454,23 @@ func insertFlowIntoBody(bodyJSON string, flowID int64, note string, pos int) str
 	for i, r := range recs {
 		if r.Type == "flow" && r.FlowID == flowID {
 			recs[i].Note = note
+			if strings.TrimSpace(role) != "" {
+				recs[i].Role = normalizeFindingBlockRole(role)
+			}
+			if strings.TrimSpace(proof) != "" {
+				recs[i].Proof = strings.TrimSpace(proof)
+			}
+			if strings.TrimSpace(source) != "" {
+				recs[i].Source = normalizeFindingBlockSource(source)
+			}
+			if sourceFlowID != 0 {
+				recs[i].SourceFlowID = sourceFlowID
+			}
 			j, _ := json.Marshal(recs)
 			return string(j)
 		}
 	}
-	newBlock := blockRecord{Type: "flow", FlowID: flowID, Note: note}
+	newBlock := blockRecord{Type: "flow", FlowID: flowID, Note: note, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID}
 	if pos < 0 || pos >= len(recs) {
 		recs = append(recs, newBlock)
 	} else {
@@ -304,6 +521,70 @@ func firstTextMD(bodyJSON string) string {
 	return ""
 }
 
+func bodyHasText(bodyJSON, text string) bool {
+	if bodyJSON == "" || text == "" {
+		return false
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(bodyJSON), &recs); err != nil {
+		return false
+	}
+	for _, rec := range recs {
+		if rec.Type == "text" && rec.MD == text {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyEvidenceAfterBodyReplace(existingBody, nextBody, evidence string) (string, bool) {
+	if evidence == "" {
+		return "", false
+	}
+	var existing, next []blockRecord
+	if json.Unmarshal([]byte(existingBody), &existing) != nil || json.Unmarshal([]byte(nextBody), &next) != nil {
+		return "", false
+	}
+	match := -1
+	for i := len(existing) - 1; i >= 0; i-- {
+		if existing[i].Type == "text" && existing[i].MD == evidence {
+			match = i
+			break
+		}
+	}
+	if match < 0 {
+		return "", false
+	}
+	if bodyHasText(nextBody, evidence) {
+		return evidence, true
+	}
+	if match < len(next) && next[match].Type == "text" {
+		return next[match].MD, true
+	}
+	return "", true
+}
+
+func preserveMissingFlowMarkers(existingBody, nextBody string) string {
+	var existing, next []blockRecord
+	if existingBody != "" {
+		_ = json.Unmarshal([]byte(existingBody), &existing)
+	}
+	if nextBody == "" || json.Unmarshal([]byte(nextBody), &next) != nil {
+		return nextBody
+	}
+	missing := make(map[int64]bool)
+	for _, rec := range existing {
+		if rec.Type == "flow" && rec.FlowID > 0 && rec.Missing {
+			missing[rec.FlowID] = true
+		}
+	}
+	for i := range next {
+		next[i].Missing = next[i].Type == "flow" && missing[next[i].FlowID]
+	}
+	encoded, _ := json.Marshal(next)
+	return string(encoded)
+}
+
 // updateFirstTextInBody replaces the first text block's content in body JSON.
 // If no text block exists, prepends one.
 func updateFirstTextInBody(bodyJSON, md string) string {
@@ -320,6 +601,36 @@ func updateFirstTextInBody(bodyJSON, md string) string {
 	}
 	// No text block yet — prepend one.
 	recs = append([]blockRecord{{Type: "text", MD: md}}, recs...)
+	j, _ := json.Marshal(recs)
+	return string(j)
+}
+
+// updateLegacyEvidenceInBody keeps the deprecated evidence field and the
+// canonical ordered blocks aligned. The last exact old-evidence text match is
+// used so identical detail/evidence values do not overwrite the opening step.
+func updateLegacyEvidenceInBody(bodyJSON, oldEvidence, nextEvidence string) string {
+	var recs []blockRecord
+	if bodyJSON != "" {
+		_ = json.Unmarshal([]byte(bodyJSON), &recs)
+	}
+	match := -1
+	if oldEvidence != "" {
+		for i := len(recs) - 1; i >= 0; i-- {
+			if recs[i].Type == "text" && recs[i].MD == oldEvidence {
+				match = i
+				break
+			}
+		}
+	}
+	if match >= 0 {
+		if nextEvidence == "" {
+			recs = append(recs[:match], recs[match+1:]...)
+		} else {
+			recs[match].MD = nextEvidence
+		}
+	} else if nextEvidence != "" {
+		recs = append(recs, blockRecord{Type: "text", MD: nextEvidence, Role: "observation"})
+	}
 	j, _ := json.Marshal(recs)
 	return string(j)
 }
@@ -380,6 +691,26 @@ func normalizeFindingEnvironment(s string) string {
 	}
 }
 
+func normalizeFindingConfidence(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "tentative":
+		return "tentative"
+	case "firm", "high":
+		return "firm"
+	case "certain", "confirmed":
+		return "certain"
+	default:
+		return ""
+	}
+}
+
+func validateFindingConfidence(s string) error {
+	if strings.TrimSpace(s) != "" && normalizeFindingConfidence(s) == "" {
+		return fmt.Errorf("%w: confidence %q", ErrInvalidFinding, s)
+	}
+	return nil
+}
+
 // EnrichCompleteness fills Ready/Missing and best-effort migrates Why from old
 // "## Why this is a vulnerability" narrative when the why column is empty.
 func (f *Finding) EnrichCompleteness() {
@@ -391,8 +722,33 @@ func (f *Finding) EnrichCompleteness() {
 			f.Why = w
 		}
 	}
-	f.Missing = f.completenessGaps()
-	f.Ready = len(f.Missing) == 0
+	r := f.ReadinessSummary()
+	f.Readiness = &r
+	// Ready/Missing are the long-standing compatibility fields. Derive them
+	// from the canonical envelope so clients never see a contradictory state
+	// (for example Ready=true while Readiness still reports gaps). Keep the old
+	// "poc" spelling as an output alias for the canonical "evidence" gap.
+	f.Missing = compatibilityFindingGaps(r.Gaps)
+	f.Ready = r.Stage == "report_ready"
+}
+
+func compatibilityFindingGaps(gaps []string) []string {
+	if len(gaps) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(gaps))
+	for _, gap := range gaps {
+		if gap == "evidence" {
+			gap = "poc"
+		}
+		// poc_before_after was an old severity heuristic, not a canonical
+		// requirement. Do not leak it through the compatibility surface.
+		if gap == "poc_before_after" {
+			continue
+		}
+		out = append(out, gap)
+	}
+	return out
 }
 
 func (f *Finding) narrativeText() string {
@@ -446,11 +802,90 @@ func (f *Finding) completenessGaps() []string {
 	if flowN+imgN == 0 {
 		miss = append(miss, "poc")
 	}
-	sev := strings.ToLower(strings.TrimSpace(f.Severity))
-	if (sev == "critical" || sev == "high") && flowN < 2 {
-		miss = append(miss, "poc_before_after")
-	}
 	return miss
+}
+
+// ReadinessSummary reports evidence completeness using the canonical envelope.
+func (f *Finding) ReadinessSummary() FindingReadiness {
+	r := FindingReadiness{}
+	var gaps []string
+	if strings.TrimSpace(f.Title) == "" {
+		gaps = append(gaps, "title")
+	}
+	if strings.TrimSpace(f.Summary) == "" {
+		gaps = append(gaps, "summary")
+	}
+	if strings.TrimSpace(f.Target) == "" {
+		gaps = append(gaps, "target")
+	}
+	if strings.TrimSpace(f.Impact) == "" {
+		gaps = append(gaps, "impact")
+	}
+	if strings.TrimSpace(f.Why) == "" {
+		gaps = append(gaps, "why")
+	}
+	var typed bool
+	var unproved int
+	for _, b := range f.Blocks {
+		if b.Missing {
+			continue
+		}
+		switch b.Type {
+		case "flow":
+			r.FlowCount++
+			if strings.TrimSpace(b.Proof) != "" {
+				r.AnnotatedEvidenceCount++
+			} else {
+				unproved++
+			}
+		case "image":
+			r.ScreenshotCount++
+			r.ImageCount++
+			if strings.TrimSpace(b.Proof) != "" {
+				r.AnnotatedEvidenceCount++
+			} else {
+				unproved++
+			}
+		}
+		if b.Role == "baseline" || b.Role == "action" || b.Role == "result" || b.Role == "control" || b.Role == "retest" {
+			typed = true
+		}
+	}
+	r.EvidenceCount = r.FlowCount + r.ScreenshotCount
+	r.VisualProofRecommended = r.ScreenshotCount == 0
+	if r.EvidenceCount == 0 {
+		gaps = append(gaps, "evidence")
+	}
+	if unproved > 0 {
+		gaps = append(gaps, "proof")
+	}
+	if !typed && r.EvidenceCount > 0 {
+		gaps = append(gaps, "reproduction")
+	}
+	if strings.TrimSpace(f.Fix) == "" {
+		gaps = append(gaps, "fix")
+	}
+	if strings.TrimSpace(f.Retest) == "" {
+		gaps = append(gaps, "retest")
+	}
+	if strings.TrimSpace(f.Confidence) == "" {
+		gaps = append(gaps, "confidence")
+	}
+	r.Gaps = gaps
+	if len(gaps) > 0 && (r.EvidenceCount == 0 || len(gaps) >= 1 && (strings.TrimSpace(f.Title) == "" || strings.TrimSpace(f.Summary) == "" || strings.TrimSpace(f.Target) == "" || strings.TrimSpace(f.Impact) == "" || strings.TrimSpace(f.Why) == "")) {
+		r.Stage = "draft"
+		return r
+	}
+	if len(gaps) > 0 && (!typed || unproved > 0) {
+		r.Stage = "evidence_attached"
+		return r
+	}
+	if len(gaps) > 0 {
+		r.Stage = "reproducible"
+		return r
+	}
+	r.Stage = "report_ready"
+	return r
 }
 
 // ExtractWhyFromNarrative pulls the body of "## Why this is a vulnerability"
@@ -474,6 +909,10 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	f.Status = normalizeFindingStatus(f.Status)
 	f.Source = normalizeFindingSource(f.Source)
 	f.Environment = normalizeFindingEnvironment(f.Environment)
+	if err := validateFindingConfidence(f.Confidence); err != nil {
+		return 0, err
+	}
+	f.Confidence = normalizeFindingConfidence(f.Confidence)
 	if f.Body == "" {
 		f.Body = initialBody(f.Detail, f.Evidence)
 	}
@@ -485,6 +924,9 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	if f.Detail == "" && f.Body != "" {
 		f.Detail = firstTextMD(f.Body)
 	}
+	if err := validateFindingNarrativeSize(*f); err != nil {
+		return 0, err
+	}
 	normTags := NormalizeTags(f.Tags)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -492,9 +934,9 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 	}
 	defer tx.Rollback()
 	res, err := tx.Exec(
-		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Target, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions)
+		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Summary, f.Target, f.Confidence, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions, f.Retest)
 	if err != nil {
 		return 0, err
 	}
@@ -525,28 +967,58 @@ func (s *Store) CreateFinding(f *Finding) (int64, error) {
 // When body is set, detail is synced from its first text block so MCP list_findings
 // still shows meaningful text.
 func (s *Store) UpdateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string) error {
-	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, nil)
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, nil, nil, nil, nil)
 }
 
 // UpdateFindingWithTags applies field, body/flow, and optional tag changes in one
 // transaction. A nil tags pointer preserves tags; a non-nil pointer replaces them.
 func (s *Store) UpdateFindingWithTags(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
-	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, tags)
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, nil, nil, nil, tags)
 }
 
-func (s *Store) updateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions *string, tags *[]string) error {
+// UpdateFindingCanonical applies legacy and evidence-first fields in one transaction.
+func (s *Store) UpdateFindingCanonical(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, summary, confidence, retest *string, tags *[]string) error {
+	return s.updateFinding(id, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, summary, confidence, retest, tags)
+}
+
+// UpdateFindingEnvelope updates additive report fields without changing the
+// long-standing UpdateFinding argument list.
+func (s *Store) UpdateFindingEnvelope(id int64, summary, confidence, retest *string) error {
+	return s.updateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, summary, confidence, retest, nil)
+}
+
+func (s *Store) updateFinding(id int64, severity, status, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verificationInstructions, summary, confidence, retest *string, tags *[]string) error {
+	if confidence != nil {
+		if err := validateFindingConfidence(*confidence); err != nil {
+			return err
+		}
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// If detail changes and there is an existing body, sync the first text block.
-	if detail != nil && body == nil {
-		var existBody string
-		_ = tx.QueryRow(`SELECT body FROM findings WHERE id=?`, id).Scan(&existBody)
-		if existBody != "" {
-			newBody := updateFirstTextInBody(existBody, *detail)
+	// Read the retained body before deriving any legacy partial-update body. A
+	// detail/evidence-only update still writes the complete canonical body, so
+	// it must be checked as an aggregate rather than only checking the changed
+	// field at the HTTP layer.
+	current, err := scanFindingNarrative(findingNarrativeRow(tx, id))
+	if err != nil {
+		return err
+	}
+	existingBody := current.Body
+
+	// Keep legacy text fields synchronized with the canonical ordered body.
+	if (detail != nil || evidence != nil) && body == nil {
+		newBody := existingBody
+		if detail != nil {
+			newBody = updateFirstTextInBody(newBody, *detail)
+		}
+		if evidence != nil {
+			newBody = updateLegacyEvidenceInBody(newBody, current.Evidence, *evidence)
+		}
+		if newBody != existingBody {
 			body = &newBody
 		}
 	}
@@ -556,13 +1028,61 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		if err != nil {
 			return err
 		}
-		*body = norm
+		*body = preserveMissingFlowMarkers(existingBody, norm)
 	}
-	// If body changes, sync its first text block back to detail for MCP compat.
-	if body != nil && *body != "" && detail == nil {
-		if md := firstTextMD(*body); md != "" {
-			detail = &md
+	resultingBody := existingBody
+	if body != nil {
+		resultingBody = *body
+	}
+	if body != nil && detail == nil && (current.Detail == "" || bodyHasText(existingBody, current.Detail)) {
+		md := firstTextMD(*body)
+		detail = &md
+	}
+	if body != nil && evidence == nil {
+		if nextEvidence, matched := legacyEvidenceAfterBodyReplace(existingBody, *body, current.Evidence); matched {
+			evidence = &nextEvidence
 		}
+	}
+	resulting := current
+	resulting.Body = resultingBody
+	if title != nil {
+		resulting.Title = *title
+	}
+	if summary != nil {
+		resulting.Summary = *summary
+	}
+	if target != nil {
+		resulting.Target = *target
+	}
+	if detail != nil {
+		resulting.Detail = *detail
+	}
+	if evidence != nil {
+		resulting.Evidence = *evidence
+	}
+	if fix != nil {
+		resulting.Fix = *fix
+	}
+	if impact != nil {
+		resulting.Impact = *impact
+	}
+	if why != nil {
+		resulting.Why = *why
+	}
+	if cwe != nil {
+		resulting.Cwe = *cwe
+	}
+	if cvss != nil {
+		resulting.Cvss = *cvss
+	}
+	if verificationInstructions != nil {
+		resulting.VerificationInstructions = *verificationInstructions
+	}
+	if retest != nil {
+		resulting.Retest = *retest
+	}
+	if err := validateFindingNarrativeSize(resulting); err != nil {
+		return err
 	}
 
 	sets := []string{"updated_ts=?"}
@@ -623,6 +1143,18 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		sets = append(sets, "verification_instructions=?")
 		args = append(args, *verificationInstructions)
 	}
+	if summary != nil {
+		sets = append(sets, "summary=?")
+		args = append(args, *summary)
+	}
+	if confidence != nil {
+		sets = append(sets, "confidence=?")
+		args = append(args, normalizeFindingConfidence(*confidence))
+	}
+	if retest != nil {
+		sets = append(sets, "retest=?")
+		args = append(args, *retest)
+	}
 	args = append(args, id)
 
 	res, err := tx.Exec(`UPDATE findings SET `+strings.Join(sets, ", ")+` WHERE id=?`, args...)
@@ -658,6 +1190,24 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 // syncFindingFlowsFromBody replaces finding_flows rows for a finding from the
 // ordered type=flow blocks in body JSON. Unknown flow ids are rejected.
 func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
+	// Existing attachments may reference flows intentionally purged by retention;
+	// preserve those references while rejecting newly introduced unknown IDs.
+	existing := make(map[int64]struct{})
+	rows, err := tx.Query(`SELECT flow_id FROM finding_flows WHERE finding_id=?`, findingID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		existing[id] = struct{}{}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM finding_flows WHERE finding_id=?`, findingID); err != nil {
 		return err
 	}
@@ -676,12 +1226,19 @@ func syncFindingFlowsFromBody(tx *sql.Tx, findingID int64, body string) error {
 		if r.FlowID <= 0 {
 			return fmt.Errorf("body flow block missing flowId")
 		}
+		if r.Missing {
+			// Missing evidence is intentionally not an attachment: keeping the
+			// marker in the body prevents a reused local id from reattaching it.
+			continue
+		}
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(1) FROM flows WHERE id=?`, r.FlowID).Scan(&exists); err != nil {
 			return err
 		}
 		if exists == 0 {
-			return fmt.Errorf("%w: %d", ErrFlowNotFound, r.FlowID)
+			if _, ok := existing[r.FlowID]; !ok {
+				return fmt.Errorf("%w: %d", ErrFlowNotFound, r.FlowID)
+			}
 		}
 		if _, err := tx.Exec(
 			`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)`,
@@ -722,16 +1279,25 @@ func (s *Store) DeleteFinding(id int64) error {
 // Returns ErrFlowNotFound when flowID has no row in flows — callers must not
 // create orphan PoC attachments that later render as Missing.
 func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error {
+	return s.AttachFlowWithMetadata(findingID, flowID, note, pos, "", "", "", 0)
+}
+
+// AttachFlowWithMetadata is the structured evidence variant of AttachFlow.
+func (s *Store) AttachFlowWithMetadata(findingID, flowID int64, note string, pos int, role, proof, source string, sourceFlowID int64) error {
+	if err := validateFindingEvidenceMetadata(role, source, sourceFlowID); err != nil {
+		return err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	var exists int
-	if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, findingID).Scan(&exists); err != nil {
+	narrative, err := scanFindingNarrative(findingNarrativeRow(tx, findingID))
+	if err != nil {
 		return err
 	}
+	var exists int
 	if err := tx.QueryRow(`SELECT 1 FROM flows WHERE id=?`, flowID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %d", ErrFlowNotFound, flowID)
@@ -743,19 +1309,23 @@ func (s *Store) AttachFlow(findingID, flowID int64, note string, pos int) error 
 	if err := tx.QueryRow(`SELECT COALESCE(MAX(ord)+1, 0) FROM finding_flows WHERE finding_id=?`, findingID).Scan(&nextOrd); err != nil {
 		return err
 	}
+	// Sync flow block into the body at the requested position. Build and validate
+	// the complete body before inserting the attachment row so a cap failure is
+	// atomic and cannot leave an orphan finding_flows record.
+	newBody := insertFlowIntoBodyWithMetadata(narrative.Body, flowID, note, pos, role, proof, source, sourceFlowID)
+	narrative.Body = newBody
+	if detailSync := firstTextMD(newBody); detailSync != "" {
+		narrative.Detail = detailSync
+	}
+	if err := validateFindingNarrativeSize(narrative); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
 		`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)
-		 ON CONFLICT(finding_id, flow_id) DO UPDATE SET note=excluded.note`,
+			 ON CONFLICT(finding_id, flow_id) DO UPDATE SET note=excluded.note`,
 		findingID, flowID, nextOrd, note); err != nil {
 		return err
 	}
-
-	// Sync flow block into the body at the requested position.
-	var bodyJSON string
-	if err := tx.QueryRow(`SELECT body FROM findings WHERE id=?`, findingID).Scan(&bodyJSON); err != nil {
-		return err
-	}
-	newBody := insertFlowIntoBody(bodyJSON, flowID, note, pos)
 	// Also update detail from first text block if needed.
 	detailSync := firstTextMD(newBody)
 	if _, err := tx.Exec(
@@ -829,14 +1399,14 @@ func (s *Store) findingFlows(findingID int64) ([]FindingFlow, error) {
 func scanFinding(sc scanner) (*Finding, error) {
 	var f Finding
 	if err := sc.Scan(&f.ID, &f.TS, &f.UpdatedTS, &f.Severity, &f.Status, &f.Source,
-		&f.Title, &f.Target, &f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss,
-		&f.VerificationInstructions); err != nil {
+		&f.Title, &f.Summary, &f.Target, &f.Confidence, &f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss,
+		&f.VerificationInstructions, &f.Retest); err != nil {
 		return nil, err
 	}
 	return &f, nil
 }
 
-const findingCols = `id, ts, updated_ts, severity, status, source, title, target, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions`
+const findingCols = `id, ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest`
 
 // GetFinding loads one finding with its narrative body blocks and PoC flow list.
 func (s *Store) GetFinding(id int64) (*Finding, error) {

@@ -5,25 +5,32 @@ Findings support three body block types: `text`, `flow`, and `image`.
 ## Persist shape (in `findings.body`)
 
 ```json
-{"type":"image","hash":"<64-char sha256>","mime":"image/png","caption":"..."}
+{"type":"image","hash":"<64-char sha256>","mime":"image/png","caption":"...","role":"result","proof":"...","source":"browser_screenshot","sourceFlowId":123}
 ```
 
-Never store `data`, `path`, `url`, or `missing` in the body JSON.
+`role`, `proof`, `source`, and `sourceFlowId` are optional provenance metadata. Never store `data`,
+`path`, or `url` in the body JSON; image availability is derived when the finding is read.
 
 ## Upload
 
-- REST: `POST /api/findings/{id}/images` with `{data, mime?, caption?, position?}`
-- MCP: `add_finding_image` (same fields) — for real browser/device screenshots you already have
-- Bytes go through `PutImageBytes` → content-addressed `bodiesDir` (same as flow bodies)
-- Max 5 MiB; MIME allowlist via `SanitizeNotesImageMIME` (raster only)
+- REST: `POST /api/findings/{id}/images` with
+  `{data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}`
+- MCP: `add_finding_image` (same fields) — for real browser/device screenshots you already have;
+  uploads default conservatively to `source=operator_upload`
+- Bytes go through `PutAndAttachImage` → content-addressed `bodiesDir` (same as flow bodies), with
+  upload and attachment protected from body GC as one operation
+- Max 5 MiB; raster MIME and dimensions are validated before storage
 
 ## Flow PNG previews (tool-styled HTTP screenshots)
 
-Prefer these for report evidence of captured traffic (History / Repeater / Intruder / PoC):
+Use these when a labeled rendering of captured HTTP improves report readability. Keep the captured
+flow attached as the inspectable raw evidence, and do not present a preview as a browser screenshot.
 
 - REST: `GET /api/flows/{id}/preview.png?side=both|req|res&pretty=0|1&layout=vertical|horizontal&theme=dark|light`
-- REST: `POST /api/findings/{id}/flow-preview` with `{flowId, side?, pretty?, layout?, theme?, caption?, position?}` — render + attach
-- MCP: `render_flow_preview` with `flowId` + optional `findingId` / `pretty` / `layout` / `theme` (recommended: always pass `findingId`)
+- REST: `POST /api/findings/{id}/flow-preview` with
+  `{flowId, side?, pretty?, layout?, theme?, caption?, role?, proof?, position?}` — render + attach
+- MCP: `render_flow_preview` with `flowId` + optional `findingId` / `pretty` / `layout` / `theme` /
+  `role` / `proof` (pass `findingId` to attach it)
 
 Defaults: `side=both`, `pretty=true`, `layout=horizontal` (request left / response right), `theme=light`.
 
@@ -33,7 +40,9 @@ Generated PNGs use Interseptor chrome + monospace req/res panes (pure Go, no bro
 
 `GET /api/findings/images/{hash}` — `nosniff`, sanitized Content-Type, long cache.
 
-HTML report export (`?format=html`) rewrites image URLs to `data:` URIs so offline/client reports show screenshots.
+HTML report export (`?format=html`) rewrites image URLs to `data:` URIs so offline/client reports show
+screenshots. Embedding is bounded to 5 MiB per image and 8 MiB across the report; evidence outside the
+bound is marked unavailable rather than retaining a live API dependency.
 
 ## GC
 
@@ -41,8 +50,14 @@ HTML report export (`?format=html`) rewrites image URLs to `data:` URIs so offli
 
 ## UI
 
-Findings editor is point-first: Impact → Why → Target → **PoC timeline** (primary editor). **＋ Screenshot** / flow attach / flow-preview PNG defaults: pretty, horizontal (request left / response right), light theme.
+The canonical editor and evidence-first workflow live in `docs/findings-and-reporting.md`. Keep this
+skill focused on image storage and rendering instead of maintaining a second finding template.
+
+**＋ Screenshot** / flow attach / flow-preview PNG defaults: pretty, horizontal (request left /
+response right), light theme.
 
 Click any screenshot (or markdown `.md-img`) → full-viewport lightbox: scroll / ± / double-click to zoom, drag to pan, Fit or Esc to close.
 
-Prefer `render_flow_preview` for HTTP evidence; `add_finding_image` for real UI/device shots. Each artifact caption should state what changed and why it proves Impact.
+Prefer a real browser/device screenshot when visual state proves the issue. Use `render_flow_preview`
+only for generated HTTP visuals. A caption identifies the artifact; `proof` states the exact
+security-relevant claim it establishes.
