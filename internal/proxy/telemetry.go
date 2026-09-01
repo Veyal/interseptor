@@ -21,7 +21,6 @@ var browserTelemetryHosts = map[string]struct{}{
 	"incoming.telemetry.mozilla.org": {},
 	"telemetry.mozilla.org":          {},
 	"crash-reports.mozilla.com":      {},
-	"crash-stats.mozilla.com":        {},
 	"dap.services.mozilla.com":       {},
 	"dap-09-3.api.divviup.org":       {},
 	"coverage.mozilla.org":           {},
@@ -189,10 +188,25 @@ func telemetryHostMatches(host string, exact map[string]struct{}, suffixes []str
 	return false
 }
 
-func (s *Server) newFlow(flow *store.Flow) *proxyFlow {
-	return &proxyFlow{
-		Flow: flow,
-		suppressCapture: (s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host)) ||
-			(s.suppressAndroidTelemetry.Load() && isAndroidTelemetry(flow.Host)),
+type suppressionSnapshot struct {
+	browser bool
+	android bool
+}
+
+func (s *Server) snapshotSuppression() suppressionSnapshot {
+	return suppressionSnapshot{
+		browser: s.suppressTelemetry.Load(),
+		android: s.suppressAndroidTelemetry.Load(),
 	}
+}
+
+func (snapshot suppressionSnapshot) newFlow(flow *store.Flow) *proxyFlow {
+	return &proxyFlow{
+		Flow:            flow,
+		suppressCapture: (snapshot.browser && isBrowserTelemetry(flow.Host)) || (snapshot.android && isAndroidTelemetry(flow.Host)),
+	}
+}
+
+func (s *Server) newFlow(flow *store.Flow) *proxyFlow {
+	return s.snapshotSuppression().newFlow(flow)
 }

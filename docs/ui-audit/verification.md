@@ -16,7 +16,7 @@
 
 ## Current-source applicability
 
-The retained audit digest is `becb80224964ec22fcee44ba714ec54359606b44640a003d1afc416bfe53161e`
+The retained audit digest is `d0081c779b45c6e35c0824cd55ef7798250dda6b5a49ac33ee65e0e972d5201f`
 across 249 runtime files. It matches the current browser-background suppression runtime exactly,
 including the published `2.0.6` fallback, current Mozilla endpoint coverage, safe authority
 normalization, request/response rule and intercept bypasses, and explicit Settings semantics.
@@ -152,12 +152,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `135.6 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `209.4 ms` |
-| Delayed Intercept acknowledgement | `344.9 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `79.0 ms`; Fit/wheel/drag interaction `381.9 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.35308 s`; script `0.120735 s`; layout `0.051559 s` |
-| Map interaction | CDP task `0.018861 s`; script `0.000944 s`; layout `0.000362 s` |
+| Three 240-request live History bursts | network p95 `250.9 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `209.8 ms` |
+| Delayed Intercept acknowledgement | `343.8 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `1,792.7 ms`; Fit/wheel/drag interaction `502.8 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.692951 s`; script `0.214766 s`; layout `0.104766 s` |
+| Map interaction | CDP task `0.143796 s`; script `0.023151 s`; layout `0.000452 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

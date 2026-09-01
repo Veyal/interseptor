@@ -352,6 +352,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	dialHost, port := splitHostPort(r.Host, 443)
 	logicalHost := dialHost
 	connectStarted := time.Now()
+	suppression := s.snapshotSuppression()
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -371,7 +372,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// negotiates TLS (and its pinning) with the real origin. Lets a pinned-but-
 	// unimportant domain keep working while other domains are still intercepted.
 	if s.shouldBypassTLS(dialHost) {
-		s.tunnelRaw(clientConn, dialHost, port, r)
+		s.tunnelRaw(clientConn, dialHost, port, r, suppression)
 		return
 	}
 
@@ -387,7 +388,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	tlsConn := tls.Server(clientConn, cfg)
 	if err := tlsConn.Handshake(); err != nil {
-		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err)
+		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err, suppression)
 		// The client rejected our leaf (pinning or untrusted CA). If auto-bypass is
 		// on, add this host so the app's next attempt tunnels through and works.
 		if s.autoBypass.Load() {

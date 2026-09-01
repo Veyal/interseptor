@@ -109,7 +109,9 @@ func TestTLSBypassSuppressionDoesNotConsumeDedupMarker(t *testing.T) {
 	req := httptest.NewRequest(http.MethodConnect, "https://"+host+":443", nil)
 
 	srv.SetSuppressBrowserTelemetry(true)
-	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req)
+	suppressed := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(false)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, suppressed)
 	if _, seen := srv.bypassSeen.Load(host); seen {
 		t.Fatal("suppressed bypass consumed the informational-flow dedup marker")
 	}
@@ -119,9 +121,10 @@ func TestTLSBypassSuppressionDoesNotConsumeDedupMarker(t *testing.T) {
 		t.Fatalf("suppressed bypass created %d history rows", len(flows))
 	}
 
-	srv.SetSuppressBrowserTelemetry(false)
-	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req)
-	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req)
+	visible := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(true)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, visible)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, visible)
 	flows, err := st.QueryFlows(10)
 	if err != nil {
 		t.Fatalf("query visible bypass: %v", err)

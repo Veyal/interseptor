@@ -14,6 +14,8 @@ Use this checklist when changing browser or Android capture-noise suppression.
   History insertion/events, request/response body storage, and WebSocket frame capture/events.
 - Snapshot the suppression decision when a request enters the proxy and keep it unchanged for the
   full request, response, error, upgrade, persistence, and body-storage lifecycle.
+- For CONNECT, snapshot the setting before hijacking, dialing, or handshaking, then apply that
+  snapshot when SNI reveals the logical host or a passthrough notice is recorded.
 - Existing History remains evidence and is never deleted automatically when a toggle changes.
 - Keep normal application traffic, authentication, sync, downloads, add-on services, and FCM visible.
 - Do not consume one-time History or notification dedup markers when suppression prevents the

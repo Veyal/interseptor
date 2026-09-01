@@ -47,6 +47,7 @@ func TestIsBrowserTelemetry(t *testing.T) {
 		{"ads-img.mozilla.org", true},
 		{"spocs.getpocket.com", true},
 		{"webextensions.settings.services.mozilla.com", true},
+		{"crash-stats.mozilla.com", false},
 		{"crash-stats.mozilla.org", false},
 		{"safebrowsing.googleapis.com", true},
 		{"safebrowsing.google.com", true},

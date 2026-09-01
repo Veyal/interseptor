@@ -149,7 +149,7 @@ func (s *Server) notifyBypassAdded(cb func([]string)) {
 // without terminating TLS, so the client's handshake (and pinning) reaches the
 // real server. The first passthrough per host is recorded as an informational
 // flow so the operator can see the domain is intentionally not intercepted.
-func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Request) {
+func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Request, suppression suppressionSnapshot) {
 	up, err := s.dialRawUpstream(host, port)
 	if err != nil {
 		writeSimpleResponse(client, http.StatusBadGateway, "tls-bypass dial: "+err.Error())
@@ -157,7 +157,7 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 	}
 	defer up.Close()
 
-	s.recordBypassOnce(host, port, client.RemoteAddr().String(), r)
+	s.recordBypassOnce(host, port, client.RemoteAddr().String(), r, suppression)
 
 	done := make(chan struct{}, 2)
 	go func() { io.Copy(up, client); done <- struct{}{} }()
@@ -185,17 +185,17 @@ func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 // recordBypassOnce persists at most one informational flow for a bypassed host.
 // A suppression or persistence failure releases the dedup marker so a later
 // visible bypass can still be recorded.
-func (s *Server) recordBypassOnce(host string, port int, clientAddr string, r *http.Request) {
+func (s *Server) recordBypassOnce(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) {
 	if _, seen := s.bypassSeen.LoadOrStore(host, struct{}{}); seen {
 		return
 	}
-	if !s.recordBypass(host, port, clientAddr, r) {
+	if !s.recordBypass(host, port, clientAddr, r, suppression) {
 		s.bypassSeen.Delete(host)
 	}
 }
 
-func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request) bool {
-	flow := s.newFlow(&store.Flow{
+func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) bool {
+	flow := suppression.newFlow(&store.Flow{
 		TS:          time.Now(),
 		Method:      "CONNECT",
 		Scheme:      "https",
