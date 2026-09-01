@@ -44,6 +44,33 @@ func decodeForDisplay(headers map[string][]string, body []byte) (map[string][]st
 	return out, dec
 }
 
+// decodeForDisplayLimit is the report-safe variant: decoded output never
+// exceeds max, even when a small compressed capture expands dramatically.
+func decodeForDisplayLimit(headers map[string][]string, body []byte, max int) (map[string][]string, []byte, bool) {
+	if len(body) == 0 {
+		return headers, body, false
+	}
+	enc := strings.ToLower(strings.TrimSpace(firstHeader(headers, "Content-Encoding")))
+	if enc == "" || enc == "identity" {
+		return headers, body, false
+	}
+	dec, ok, truncated := codec.DecompressBodyLimit(enc, body, max)
+	if !ok {
+		return headers, body, truncated
+	}
+	out := make(map[string][]string, len(headers)+1)
+	for k, v := range headers {
+		switch strings.ToLower(k) {
+		case "content-encoding", "content-length":
+		default:
+			out[k] = v
+		}
+	}
+	out["Content-Length"] = []string{strconv.Itoa(len(dec))}
+	out["X-Interseptor-Decoded"] = []string{enc}
+	return out, dec, truncated
+}
+
 func firstHeader(h map[string][]string, key string) string {
 	for k, v := range h {
 		if strings.EqualFold(k, key) && len(v) > 0 {

@@ -12,7 +12,7 @@ import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
-import { loadFindings } from './findings.js';
+import { loadFindings, handleAppHash } from './findings.js';
 import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
 import './flowmodal.js'; // side-effect: flow inspect popup + modal handlers
@@ -85,9 +85,18 @@ $$('.tab').forEach(t=>{
   // Roving tabindex: only the active tab is in the tab sequence initially
   t.tabIndex=t.classList.contains('active')?0:-1;
 });
+const mobileNavMedia=matchMedia('(max-width:720px)');
+function syncMainNavigationOrientation(){
+  const nav=$('#tabs');
+  if(!nav)return;
+  nav.setAttribute('aria-orientation',mobileNavMedia.matches?'horizontal':'vertical');
+}
+syncMainNavigationOrientation();
+if(mobileNavMedia.addEventListener)mobileNavMedia.addEventListener('change',syncMainNavigationOrientation);
+else mobileNavMedia.addListener(syncMainNavigationOrientation);
 // Roving arrow-key navigation within the tablist (ARIA tablist pattern). The
-// rail is vertical, so Up/Down walks it; Left/Right are also accepted so
-// muscle memory from the old horizontal strip still works.
+// desktop rail is vertical and the mobile strip is horizontal. Accept both
+// arrow pairs so the controls remain predictable while a viewport changes.
 $('#tabs').addEventListener('keydown',e=>{
   if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'&&e.key!=='ArrowUp'&&e.key!=='ArrowDown'&&e.key!=='Home'&&e.key!=='End')return;
   const tabs=$$('.tab');
@@ -607,6 +616,7 @@ async function bootFirstRunUI(){
     const statuses=await bootProjectScopedUI();
     completeProjectScopedUIHydration(statuses);
     restoreTab();
+    handleAppHash();
     releaseWorkstationReady();
     await loadFlows();
     maybeShowSetup();

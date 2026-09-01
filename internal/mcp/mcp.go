@@ -172,11 +172,11 @@ func mcpInstructions() string {
 		"AUTH: list_flows tag=auth → promote_flow_to_authz (Surveyor, Admin, …) → authz_run inScope:true → set_login_macro_from_flow → run_login_macro (refresh CSRF).\n\n" +
 		"RECON: run content discovery with a real tool (feroxbuster / gobuster / ffuf) pointed THROUGH this proxy so hits land in History — Interseptor has no built-in forced-browser. Then triage with list_flows / host_stats.\n\n" +
 		"SCAN: run_scanner (passive) → inspect list_issues and relevant flows → use send_request, start_intruder, authz_run, cross_host_token_replay, and oob_* deliberately for confirmation and blind callbacks.\n\n" +
-		"RECORD: write findings point-first — create_finding with title (+ impact/why/target when known; tags for report scope e.g. cms|website|app|api|out-of-scope) → add_finding_poc for Before/Action/After flows → render_flow_preview for HTTP PNG evidence → add_finding_image only for real browser/device screenshots. Keep body as a short PoC timeline (text → flow → text → image), never a wall of prose. Prefer attaching flows/images over pasting raw HTTP into detail/evidence.\n\n" +
+		"RECORD: write findings point-first — create_finding with claim/risk/target fields and typed reproduction blocks → attach captured requests with add_finding_poc → add a real browser/device screenshot when it visually proves the claim, or use render_flow_preview for a clearly labeled HTTP preview. Give every flow/image a proof statement and provenance. Choose the shortest role sequence that fits the vulnerability; use the Differential proof preset only for authorization or state-change comparisons. Never file a wall of prose or paste raw HTTP into detail/evidence.\n\n" +
 		findingFormatGuide + "\n\n" +
 		"Everything you do is tagged AI. Pass optional `intent` on consequential tools.\n\n" +
 		"HUMAN INPUT (Interseptor / target engagement only): Use request_human_input for scope ambiguity, destructive or high-blast-radius target actions (mass IDOR fuzz, Intruder against prod-like targets), auth/identity choices that change what gets tested, or anything that exceeds the operator's declared engagement authority. Do NOT use it for local machine/OS admin (sudo, Remote Login, package installs, SSH/Tailscale host setup), general coding/git/Cursor questions, or non-Interseptor tooling — ask in the normal chat UI, or stop and tell the human what local command to run.\n\n" +
-		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings via create_finding + add_finding_poc (text→flow→text) and render_flow_preview to attach HTTP PNG screenshots for report-ready evidence. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
+		"ASK FOR FINDINGS: when the operator asks you to triage history and file findings, read scope + list_findings (dedupe) + in-scope list_flows / list_issues, then file only evidence-backed findings in the canonical claim/risk/target/reproduction/evidence/fix/retest/review envelope. Attach captured flows and proof annotations; prioritize a real screenshot when available, otherwise use a labeled flow preview when it improves reviewability. Skip duplicates. Summarize filed / skipped / needs_verification.\n\n" +
 		"IMPROVE INTERSEPTOR: this workspace is a tool under active development, separate from the target you are testing. If an Interseptor tool errors, returns something wrong, or is missing a capability you needed, report it (or ask the human to) at https://github.com/" + version.Repo + "/issues — include the tool name, what you expected, and what actually happened. Do not file issues about the target application there. If you need human input for something outside Interseptor, Do NOT route it through request_human_input — use the normal chat channel, or stop and tell the operator exactly which local command to run."
 }
 
@@ -498,6 +498,31 @@ func argTags(a map[string]any, key string) []string {
 		return nil
 	}
 	return raw
+}
+
+// argFindingBlocks returns a structured block array unchanged for forwarding to
+// the REST API, plus a JSON representation used by the shared format validator.
+// Keeping this as an array avoids the double-encoded legacy body contract for AI
+// clients while the REST layer continues to accept body for compatibility.
+func argFindingBlocks(a map[string]any) (value any, raw string, present bool, err error) {
+	v, ok := a["blocks"]
+	if !ok {
+		return nil, "", false, nil
+	}
+	if v == nil {
+		return []any{}, "[]", true, nil
+	}
+	switch v.(type) {
+	case []any, []map[string]any:
+		// Expected shapes from JSON-RPC and in-process callers.
+	default:
+		return nil, "", true, fmt.Errorf("blocks must be a JSON array of typed finding blocks (got %T)", v)
+	}
+	b, marshalErr := json.Marshal(v)
+	if marshalErr != nil {
+		return nil, "", true, fmt.Errorf("blocks must be JSON-serializable: %w", marshalErr)
+	}
+	return v, string(b), true, nil
 }
 
 func argInt(a map[string]any, key string, def int) int {
@@ -1020,22 +1045,26 @@ func (s *Server) registerTools() {
 	// ---- findings: structured, curated vulnerability records (the AI's durable
 	// memory; the human reviews/curates them in the Findings tab) ----
 	s.add("create_finding",
-		"Record a vulnerability finding (durable memory the human reviews). "+findingFormatGuide+" Stub create with title only is OK; fill impact/why/target + PoC before report-ready. Prefer add_finding_poc + render_flow_preview over pasting raw HTTP. Returns the finding + UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
+		"Record a vulnerability finding in the same evidence-first format used by the UI and reports. "+findingFormatGuide+" Stub create with title only is OK. Prefer structured blocks plus add_finding_poc/render_flow_preview over pasted raw HTTP. Returns the finding, readiness data, and UI URL. severity=Critical|High|Medium|Low|Info; status defaults to open.",
 		obj(map[string]any{
 			"title":                    pt("string"),
 			"severity":                 pt("string"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
+			"summary":                  p("string", "concise statement of the vulnerable behavior"),
 			"target":                   p("string", "affected host/app/endpoint"),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability — which security property breaks"),
+			"confidence":               p("string", "tentative|firm|certain"),
 			"cwe":                      p("string", "optional CWE id or class, e.g. CWE-639 or IDOR"),
 			"environment":              p("string", "optional: prod|staging|local"),
-			"fix":                      p("string", "optional remediation"),
+			"fix":                      p("string", "remediation at the failed trust boundary"),
+			"retest":                   p("string", "expected secure behavior and negative verification case"),
 			"detail":                   p("string", "legacy opening text — prefer impact/why fields + PoC body"),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS score or vector string"),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human"),
-			"body":                     p("string", "JSON PoC timeline [{type:'text',md},{type:'flow',flowId,note},{type:'image',...}]"),
+			"blocks":                   findingBlocksSchema(),
+			"body":                     p("string", "legacy JSON blocks string; do not send together with blocks"),
 			"tags":                     p("string", "report-scope labels (comma/space-separated or array): cms, website, app, api, out-of-scope"),
 			"intent":                   p("string", "optional: short 'why' shown in Activity"),
 		}, "title"),
@@ -1043,20 +1072,36 @@ func (s *Server) registerTools() {
 			if _, err := reqStr(a, "title"); err != nil {
 				return "", err
 			}
+			blocks, blocksRaw, hasBlocks, err := argFindingBlocks(a)
+			if err != nil {
+				return "", err
+			}
+			if hasBlocks && strings.TrimSpace(argStr(a, "body")) != "" {
+				return "", fmt.Errorf("send blocks or legacy body, not both")
+			}
+			narrative := argStr(a, "body")
+			if hasBlocks {
+				narrative = blocksRaw
+			}
 			impact := argStr(a, "impact")
-			if impact == "" && argStr(a, "why") == "" {
-				// Legacy: some agents put impact text in "fix".
+			legacyFixAsImpact := impact == "" && argStr(a, "why") == "" && argStr(a, "fix") != "" &&
+				argStr(a, "summary") == "" && argStr(a, "confidence") == "" && argStr(a, "retest") == "" && !hasBlocks && strings.TrimSpace(narrative) == ""
+			if legacyFixAsImpact {
 				impact = argStr(a, "fix")
 			}
 			hard, warns := validateFindingFormat(findingFormatInput{
 				Severity:                 argStr(a, "severity"),
 				Status:                   argStr(a, "status"),
 				Title:                    argStr(a, "title"),
+				Summary:                  argStr(a, "summary"),
 				Target:                   argStr(a, "target"),
 				Detail:                   argStr(a, "detail"),
 				Impact:                   impact,
 				Why:                      argStr(a, "why"),
-				Body:                     argStr(a, "body"),
+				Fix:                      argStr(a, "fix"),
+				Retest:                   argStr(a, "retest"),
+				Confidence:               argStr(a, "confidence"),
+				Body:                     narrative,
 				VerificationInstructions: argStr(a, "verificationInstructions"),
 			})
 			if hard != nil {
@@ -1066,6 +1111,9 @@ func (s *Server) registerTools() {
 				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
+			}
+			if v := argStr(a, "summary"); v != "" {
+				reqBody["summary"] = v
 			}
 			if impact != "" {
 				reqBody["impact"] = impact
@@ -1079,8 +1127,14 @@ func (s *Server) registerTools() {
 			if v := argStr(a, "environment"); v != "" {
 				reqBody["environment"] = v
 			}
-			if v := argStr(a, "fix"); v != "" && argStr(a, "impact") != "" {
+			if v := argStr(a, "confidence"); v != "" {
+				reqBody["confidence"] = v
+			}
+			if v := argStr(a, "fix"); v != "" && !legacyFixAsImpact {
 				reqBody["fix"] = v
+			}
+			if v := argStr(a, "retest"); v != "" {
+				reqBody["retest"] = v
 			}
 			if v := argStr(a, "cvss"); v != "" {
 				reqBody["cvss"] = v
@@ -1088,7 +1142,9 @@ func (s *Server) registerTools() {
 			if v := argStr(a, "verificationInstructions"); v != "" {
 				reqBody["verificationInstructions"] = v
 			}
-			if v := argStr(a, "body"); v != "" {
+			if hasBlocks {
+				reqBody["blocks"] = blocks
+			} else if v := argStr(a, "body"); v != "" {
 				reqBody["body"] = v
 			}
 			if tags := argTags(a, "tags"); tags != nil {
@@ -1109,7 +1165,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("list_findings",
-		"List the project's findings (with their attached PoC flows), optionally filtered by severity, status (open|needs_verification|verified|false_positive|wont_fix|fixed), or tag (report scope: cms|website|app|api|…). Use this to track progress and avoid re-reporting. Response includes a summary line per finding: #id · severity · status · tags · pocCount · missingFlowCount.",
+		"List concise finding summaries, evidence/readiness state, and optional severity/status/tag filters. Use get_finding before editing one record so human and AI changes stay aligned.",
 		obj(map[string]any{"severity": pt("string"), "status": pt("string"), "tag": p("string", "filter to findings with this tag")}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
@@ -1133,29 +1189,51 @@ func (s *Server) registerTools() {
 			return prependFindingsSummary(raw), nil
 		})
 
+	s.add("get_finding",
+		"Read one complete finding in the canonical evidence-first format, including structured blocks, readiness gaps, attached-flow metadata, image provenance, and verification state. Call this before update_finding to avoid replacing another editor's work.",
+		obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			if id <= 0 {
+				return "", fmt.Errorf("id is required (a non-zero finding id)")
+			}
+			result, err := s.apiGet(fmt.Sprintf("/api/findings/%d", id))
+			if err != nil {
+				return result, err
+			}
+			return result + fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id), nil
+		})
+
 	s.add("list_finding_tags",
 		"List tags in use on findings (with counts) — reuse these for report scoping (cms, website, app, api, out-of-scope) instead of inventing near-duplicates.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/findings/tags") })
 
 	s.add("update_finding",
-		"Update a finding (only fields you pass change). "+findingFormatGuide+" Set impact/why/target for report-ready. Prefer add_finding_poc (with position) to insert flows instead of rewriting the whole body. When body is set: types must be text|flow|image (md/markdown coerced to text); flow blocks sync finding_flows; unknown flowIds are rejected. Returns updated finding (incl. missingFlowIds) + UI URL.",
+		"Update a finding (only fields you pass change) using the same evidence-first format as the UI. "+findingFormatGuide+" Prefer structured blocks and the atomic evidence tools. Legacy body remains accepted but cannot be sent with blocks. Returns the updated finding, readiness data, missingFlowIds, and UI URL.",
 		obj(map[string]any{
 			"id":                       pt("integer"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
 			"severity":                 pt("string"),
 			"title":                    pt("string"),
+			"summary":                  p("string", "concise statement of the vulnerable behavior"),
 			"target":                   pt("string"),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability"),
+			"confidence":               p("string", "tentative|firm|certain"),
 			"cwe":                      p("string", "optional CWE id or class"),
 			"environment":              p("string", "optional: prod|staging|local"),
-			"fix":                      p("string", "optional remediation"),
+			"fix":                      p("string", "remediation at the failed trust boundary"),
+			"retest":                   p("string", "expected secure behavior and negative verification case"),
 			"detail":                   pt("string"),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS score or vector"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
-			"body":                     p("string", "JSON PoC timeline [{type:text|flow|image,...}] — FULL array when rewriting; prefer add_finding_poc for flows"),
+			"blocks":                   findingBlocksSchema(),
+			"body":                     p("string", "legacy FULL JSON blocks string; do not send together with blocks"),
 			"tags":                     p("string", "replace tag set (comma/space-separated or array); pass [] to clear"),
 		}, "id"),
 		func(a map[string]any) (string, error) {
@@ -1166,7 +1244,21 @@ func (s *Server) registerTools() {
 			if id == 0 {
 				return "", fmt.Errorf("id is required (a non-zero finding id)")
 			}
+			blocks, blocksRaw, hasBlocks, err := argFindingBlocks(a)
+			if err != nil {
+				return "", err
+			}
+			if hasBlocks && strings.TrimSpace(argStr(a, "body")) != "" {
+				return "", fmt.Errorf("send blocks or legacy body, not both")
+			}
+			narrative := argStr(a, "body")
+			if hasBlocks {
+				narrative = blocksRaw
+			}
 			_, hasNarrative := a["body"]
+			if hasBlocks {
+				hasNarrative = true
+			}
 			if !hasNarrative {
 				_, hasNarrative = a["detail"]
 			}
@@ -1183,12 +1275,17 @@ func (s *Server) registerTools() {
 					Severity:                 argStr(a, "severity"),
 					Status:                   argStr(a, "status"),
 					Title:                    argStr(a, "title"),
+					Summary:                  argStr(a, "summary"),
 					Target:                   argStr(a, "target"),
 					Detail:                   argStr(a, "detail"),
 					Impact:                   argStr(a, "impact"),
 					Why:                      argStr(a, "why"),
-					Body:                     argStr(a, "body"),
+					Fix:                      argStr(a, "fix"),
+					Retest:                   argStr(a, "retest"),
+					Confidence:               argStr(a, "confidence"),
+					Body:                     narrative,
 					VerificationInstructions: argStr(a, "verificationInstructions"),
+					Partial:                  true,
 				})
 				if hard != nil {
 					return "", hard
@@ -1201,10 +1298,14 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "target", "detail", "evidence", "impact", "why", "cwe", "environment", "fix", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
+			}
+			if hasBlocks {
+				delete(body, "body")
+				body["blocks"] = blocks
 			}
 			if _, ok := a["tags"]; ok {
 				body["tags"] = argTags(a, "tags")
@@ -1222,11 +1323,13 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("add_finding_poc",
-		"Attach a captured flow (a request/response from list_flows) to a finding as proof-of-concept evidence. Attach the baseline and the exploit requests so the human can reproduce it. Optional note explains what the flow demonstrates. Optional position (0-based block index) inserts the flow block at that index in the body; omit to append at end. Returns an error if flowId does not exist (does not create a Missing PoC).",
+		"Attach a captured Interseptor request/response as first-class evidence. Set role to describe its place in reproduction and proof to identify the exact response field, authorization difference, callback, or state change it establishes. This keeps raw evidence inspectable; call render_flow_preview separately when a visual report image is also useful.",
 		obj(map[string]any{
 			"findingId": pt("integer"),
 			"flowId":    pt("integer"),
-			"note":      pt("string"),
+			"role":      p("string", "context|setup|baseline|action|result|control|retest|observation"),
+			"note":      p("string", "short human-readable caption"),
+			"proof":     p("string", "what this request/response proves"),
 			"position":  p("integer", "0-based block index to insert the flow at; omit to append at end"),
 		}, "findingId", "flowId"),
 		func(a map[string]any) (string, error) {
@@ -1241,7 +1344,11 @@ func (s *Server) registerTools() {
 			if fid == 0 || flow == 0 {
 				return "", fmt.Errorf("findingId and flowId are required (non-zero integers; got findingId=%d flowId=%d)", fid, flow)
 			}
-			reqBody := map[string]any{"flowId": flow, "note": argStr(a, "note")}
+			reqBody := map[string]any{
+				"flowId": flow, "note": argStr(a, "note"),
+				"role": argStr(a, "role"), "proof": argStr(a, "proof"),
+				"source": "captured_flow", "sourceFlowId": flow,
+			}
 			if pos, ok := a["position"]; ok && pos != nil {
 				reqBody["position"] = pos
 			}
@@ -1249,13 +1356,17 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("add_finding_image",
-		"Attach a screenshot/image as finding evidence (XSS popup, admin panel, error page, etc.). Pass base64 image data (or a data: URL) — never put data/path inside update_finding body JSON. Optional caption and position (0-based block index; omit to append).",
+		"Attach real visual evidence such as a browser/device screenshot. Pass base64 image data or a data URL; uploads default to source=operator_upload, so set source=browser_screenshot only when the capture provenance is known and explain exactly what it proves. Generated HTTP images should use render_flow_preview so provenance and sourceFlowId are retained.",
 		obj(map[string]any{
-			"findingId": pt("integer"),
-			"data":      p("string", "raw base64 or data:image/...;base64,... (max 5 MiB)"),
-			"mime":      p("string", "image/png|jpeg|gif|webp|bmp|avif (optional if data URL includes it)"),
-			"caption":   pt("string"),
-			"position":  p("integer", "0-based block index; omit to append"),
+			"findingId":    pt("integer"),
+			"data":         p("string", "raw base64 or data:image/...;base64,... (max 5 MiB)"),
+			"mime":         p("string", "image/png|jpeg|gif|webp|bmp|avif (optional if data URL includes it)"),
+			"caption":      p("string", "concise visible description"),
+			"role":         p("string", "context|setup|baseline|action|result|control|retest|observation"),
+			"proof":        p("string", "what the screenshot establishes"),
+			"source":       p("string", "browser_screenshot|operator_upload|tool_output|other"),
+			"sourceFlowId": p("integer", "originating flow when independently known"),
+			"position":     p("integer", "0-based block index; omit to append"),
 		}, "findingId", "data"),
 		func(a map[string]any) (string, error) {
 			fid, err := reqInt(a, "findingId")
@@ -1269,7 +1380,21 @@ func (s *Server) registerTools() {
 			if data == "" {
 				return "", fmt.Errorf("data is required (base64 image or data URL)")
 			}
-			reqBody := map[string]any{"data": data, "mime": argStr(a, "mime"), "caption": argStr(a, "caption")}
+			role := argStr(a, "role")
+			if role == "" {
+				role = "result"
+			}
+			source := argStr(a, "source")
+			if source == "" {
+				source = "operator_upload"
+			}
+			reqBody := map[string]any{
+				"data": data, "mime": argStr(a, "mime"), "caption": argStr(a, "caption"),
+				"role": role, "proof": argStr(a, "proof"), "source": source,
+			}
+			if sourceFlowID := argInt(a, "sourceFlowId", 0); sourceFlowID > 0 {
+				reqBody["sourceFlowId"] = sourceFlowID
+			}
 			if pos, ok := a["position"]; ok && pos != nil {
 				reqBody["position"] = pos
 			}
@@ -1277,7 +1402,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("render_flow_preview",
-		"Render a captured flow (History/Repeater/Intruder/PoC) as an Interseptor-styled HTTP request/response PNG — looks like a tool screenshot for reports. Prefer this over pasting curl. Pass findingId to generate+attach in one step (recommended). Without findingId, returns a data URL you can feed to add_finding_image.",
+		"Render a captured flow as an Interseptor-styled HTTP request/response PNG. With findingId, it is attached as source=flow_preview with sourceFlowId retained; this is generated report evidence, not a real browser screenshot. Add a proof statement identifying the security-relevant line or state. Without findingId, returns a data URL.",
 		obj(map[string]any{
 			"flowId":    pt("integer"),
 			"side":      p("string", "both (default) | req | res"),
@@ -1286,6 +1411,8 @@ func (s *Server) registerTools() {
 			"theme":     p("string", "light (default) | dark"),
 			"findingId": p("integer", "if set, attach the PNG to this finding"),
 			"caption":   pt("string"),
+			"role":      p("string", "context|setup|baseline|action|result|control|retest|observation"),
+			"proof":     p("string", "what the generated HTTP image proves"),
 			"position":  p("integer", "0-based block index when attaching; omit to append"),
 		}, "flowId"),
 		func(a map[string]any) (string, error) {
@@ -1312,6 +1439,8 @@ func (s *Server) registerTools() {
 					"layout":  layout,
 					"theme":   theme,
 					"caption": argStr(a, "caption"),
+					"role":    argStr(a, "role"),
+					"proof":   argStr(a, "proof"),
 				}
 				if pos, ok := a["position"]; ok && pos != nil {
 					reqBody["position"] = pos
@@ -1380,22 +1509,34 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("export_report",
-		"Render the engagement report: curated findings with PoC flows. Passive scan is omitted by default — pass includeIssues=true for the appendix. format=html for HTML.",
+		"Render the engagement report from the canonical finding records and evidence. Passive scan is omitted by default. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract.",
 		obj(map[string]any{
 			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
-			"format":        p("string", "md (default) or html"),
+			"format":        p("string", "md (default), html, or json"),
+			"statuses":      p("string", "comma-separated finding statuses, or all"),
+			"tag":           p("string", "optional finding tag filter"),
 		}),
 		func(a map[string]any) (string, error) {
 			p := "/api/findings/report"
-			var q []string
+			q := url.Values{}
 			if argBool(a, "includeIssues", false) {
-				q = append(q, "issues=1")
+				q.Set("issues", "1")
 			}
-			if strings.ToLower(argStr(a, "format")) == "html" {
-				q = append(q, "format=html")
+			format := strings.ToLower(strings.TrimSpace(argStr(a, "format")))
+			if format != "" && format != "md" && format != "html" && format != "json" {
+				return "", fmt.Errorf("format must be md, html, or json")
+			}
+			if format != "" && format != "md" {
+				q.Set("format", format)
+			}
+			if v := strings.TrimSpace(argStr(a, "statuses")); v != "" {
+				q.Set("statuses", v)
+			}
+			if v := strings.TrimSpace(argStr(a, "tag")); v != "" {
+				q.Set("tag", v)
 			}
 			if len(q) > 0 {
-				p += "?" + strings.Join(q, "&")
+				p += "?" + q.Encode()
 			}
 			return s.apiGet(p)
 		})

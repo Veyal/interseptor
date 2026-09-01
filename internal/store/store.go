@@ -201,10 +201,13 @@ CREATE TABLE IF NOT EXISTS findings (
   status TEXT NOT NULL DEFAULT 'open',
   source TEXT NOT NULL DEFAULT 'human',
   title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
   target TEXT NOT NULL DEFAULT '',
+  confidence TEXT NOT NULL DEFAULT '',
   detail TEXT NOT NULL DEFAULT '',
   evidence TEXT NOT NULL DEFAULT '',
-  fix TEXT NOT NULL DEFAULT ''
+  fix TEXT NOT NULL DEFAULT '',
+  retest TEXT NOT NULL DEFAULT ''
 );
 
 -- PoC request/response evidence attached to a finding (many flows per finding).
@@ -313,6 +316,9 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE flows ADD COLUMN original_res_body_hash TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE activity ADD COLUMN intent TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN body TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN summary TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN confidence TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN retest TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN verification_instructions TEXT NOT NULL DEFAULT ''`,

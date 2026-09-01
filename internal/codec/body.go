@@ -25,8 +25,20 @@ const decompressMax = 24 << 20 // 24 MiB
 //
 // Comma-separated encoding chains are decoded in reverse application order.
 func DecompressBody(contentEncoding string, body []byte) ([]byte, bool) {
-	if len(body) == 0 || contentEncoding == "" {
+	out, ok, truncated := DecompressBodyLimit(contentEncoding, body, decompressMax)
+	if truncated {
 		return nil, false
+	}
+	return out, ok
+}
+
+// DecompressBodyLimit inflates body while keeping every decoded layer within
+// max bytes. The returned prefix is safe to display when ok and truncated are
+// both true. A truncated intermediate in a multi-encoding chain cannot be
+// decoded coherently, so that case returns ok=false, truncated=true.
+func DecompressBodyLimit(contentEncoding string, body []byte, max int) ([]byte, bool, bool) {
+	if len(body) == 0 || contentEncoding == "" || max <= 0 {
+		return nil, false, false
 	}
 	parts := strings.Split(contentEncoding, ",")
 	current := body
@@ -37,38 +49,53 @@ func DecompressBody(contentEncoding string, body []byte) ([]byte, bool) {
 			continue
 		}
 		if enc == "" {
-			return nil, false
+			return nil, false, false
 		}
-		var ok bool
-		current, ok = decompressOne(enc, current)
+		var ok, truncated bool
+		current, ok, truncated = decompressOneLimit(enc, current, max)
 		if !ok {
-			return nil, false
+			return nil, false, truncated
+		}
+		if truncated {
+			if i == 0 {
+				return current, true, true
+			}
+			return nil, false, true
 		}
 		decoded = true
 	}
 	if !decoded {
-		return nil, false
+		return nil, false, false
 	}
-	return current, true
+	return current, true, false
 }
 
-func decompressOne(enc string, body []byte) ([]byte, bool) {
+func decompressOneLimit(enc string, body []byte, max int) ([]byte, bool, bool) {
 	var rc io.Reader
 	var closer io.Closer
 	switch enc {
 	case "gzip", "x-gzip":
 		zr, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
-			return nil, false
+			return nil, false, false
 		}
 		rc = zr
 		closer = zr
 	case "br":
 		rc = brotli.NewReader(bytes.NewReader(body))
 	case "zstd":
-		zr, err := zstd.NewReader(bytes.NewReader(body))
+		windowLimit := uint64(max)
+		if windowLimit < zstd.MinWindowSize {
+			windowLimit = zstd.MinWindowSize
+		}
+		zr, err := zstd.NewReader(bytes.NewReader(body),
+			zstd.WithDecoderConcurrency(1),
+			zstd.WithDecoderLowmem(true),
+			zstd.WithDecoderMaxWindow(windowLimit),
+			zstd.WithDecoderMaxMemory(windowLimit),
+		)
 		if err != nil {
-			return nil, false
+			return nil, false, false
 		}
 		rc = zr
 		closer = zr.IOReadCloser()
@@ -83,17 +110,20 @@ func decompressOne(enc string, body []byte) ([]byte, bool) {
 			closer = fr
 		}
 	default:
-		return nil, false
+		return nil, false, false
 	}
 
-	out, err := io.ReadAll(io.LimitReader(rc, decompressMax+1))
+	out, err := io.ReadAll(io.LimitReader(rc, int64(max)+1))
 	if closer != nil {
 		_ = closer.Close()
 	}
-	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 || len(out) > decompressMax {
-		return nil, false
+	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 {
+		return nil, false, false
 	}
-	return out, true
+	if len(out) > max {
+		return out[:max], true, true
+	}
+	return out, true, false
 }
 
 // IsBinaryContentType returns true when the Content-Type header value indicates

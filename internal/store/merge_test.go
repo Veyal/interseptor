@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,290 @@ func seedFlow(t *testing.T, s *Store, host, path, body string, tsMs int64) int64
 }
 
 func peerBodiesDir(s *Store) string { return s.BodiesDir() }
+
+func TestQueryPeerFindingsSupportsLegacySchemaWithoutEnvelopeColumns(t *testing.T) {
+	peerPath := filepath.Join(t.TempDir(), "legacy.db")
+	peer, err := sql.Open("sqlite", peerPath)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	defer peer.Close()
+	if _, err := peer.Exec(`CREATE TABLE findings (
+		id INTEGER PRIMARY KEY, severity TEXT, status TEXT, source TEXT, title TEXT,
+		target TEXT, detail TEXT, evidence TEXT, fix TEXT
+	)`); err != nil {
+		t.Fatalf("create legacy findings: %v", err)
+	}
+	if _, err := peer.Exec(`INSERT INTO findings VALUES (
+		1, 'High', 'open', 'human', 'Legacy issue', 'https://example.com',
+		'detail', 'evidence', 'fix'
+	)`); err != nil {
+		t.Fatalf("insert legacy finding: %v", err)
+	}
+
+	rows, err := queryPeerFindings(peer)
+	if err != nil {
+		t.Fatalf("queryPeerFindings: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("expected legacy finding row")
+	}
+	var f Finding
+	if err := rows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
+		&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe,
+		&f.Environment, &f.Cvss, &f.VerificationInstructions, &f.Summary,
+		&f.Confidence, &f.Retest); err != nil {
+		t.Fatalf("scan legacy finding: %v", err)
+	}
+	if f.Title != "Legacy issue" || f.Body != "" || f.Impact != "" || f.Why != "" || f.Cwe != "" || f.Environment != "" || f.Cvss != "" || f.VerificationInstructions != "" || f.Summary != "" || f.Confidence != "" || f.Retest != "" {
+		t.Fatalf("legacy finding fallback = %+v", f)
+	}
+}
+
+func TestMergeFromLegacyFindingWithoutBodyPreservesFindingFlows(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	flowID := seedFlow(t, peer, "example.com", "/account/2", "private order", 1000)
+	findingID, err := peer.CreateFinding(&Finding{
+		Severity: "High", Title: "Legacy access control", Target: "https://example.com/account/2",
+		Detail: "Cross-account access is possible.", Impact: "Private data is disclosed.", Why: "Ownership is not checked.",
+	})
+	if err != nil {
+		t.Fatalf("create peer finding: %v", err)
+	}
+	if err := peer.AttachFlow(findingID, flowID, "After: private data returned", -1); err != nil {
+		t.Fatalf("attach peer flow: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	// Simulate the original findings schema, before the body, risk/classification,
+	// tags, and evidence-first envelope columns were introduced. The
+	// finding_flows table intentionally remains so its legacy PoC attachment
+	// must still be imported.
+	for _, column := range []string{"body", "summary", "confidence", "retest", "impact", "why", "cwe", "environment", "cvss", "verification_instructions"} {
+		if _, err := peer.db.Exec(`ALTER TABLE findings DROP COLUMN ` + column); err != nil {
+			peer.Close()
+			t.Fatalf("drop legacy %s column: %v", column, err)
+		}
+	}
+	if _, err := peer.db.Exec(`DROP TABLE finding_tags`); err != nil {
+		peer.Close()
+		t.Fatalf("drop legacy finding_tags table: %v", err)
+	}
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	stats, err := local.MergeFrom(peerDBPath, peerBodies, "legacy")
+	if err != nil {
+		t.Fatalf("merge legacy finding: %v", err)
+	}
+	if stats.FindingsAdded != 1 || stats.FlowsAdded != 1 {
+		t.Fatalf("merge stats=%+v", stats)
+	}
+	findings, err := local.ListFindings("", "", "")
+	if err != nil || len(findings) != 1 {
+		t.Fatalf("merged findings=%d err=%v", len(findings), err)
+	}
+	if len(findings[0].Flows) != 1 || findings[0].Flows[0].Path != "/account/2" {
+		t.Fatalf("legacy finding flows=%+v", findings[0].Flows)
+	}
+	if len(findings[0].Blocks) != 2 || findings[0].Blocks[1].FlowID == 0 {
+		t.Fatalf("legacy finding blocks=%+v", findings[0].Blocks)
+	}
+}
+
+func TestMergeFromPreservesMissingCanonicalAndLegacyFlowEvidence(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{
+		Severity: "High", Title: "Purged evidence", Target: "https://example.com/account",
+		Detail: "The captured proof was retained after flow retention removed the exchanges.",
+	})
+	if err != nil {
+		t.Fatalf("create peer finding: %v", err)
+	}
+	// Simulate a peer whose finding body and legacy attachment table outlived
+	// their flow rows after history pruning. CreateFinding normally rejects new
+	// orphan references, so this models the persisted post-prune state directly.
+	body := marshalBody([]FindingBlock{
+		{Type: "text", MD: "Retained report narrative."},
+		{Type: "flow", FlowID: 901, Note: "canonical proof", Role: "result", Proof: "response proves disclosure"},
+	})
+	if _, err := peer.db.Exec(`UPDATE findings SET body=? WHERE id=?`, body, findingID); err != nil {
+		t.Fatalf("seed canonical orphan body: %v", err)
+	}
+	if _, err := peer.db.Exec(`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)`, findingID, 902, 2, "legacy proof"); err != nil {
+		t.Fatalf("seed legacy orphan attachment: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peer.Close()
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	for i := int64(0); i < 900; i++ {
+		seedFlow(t, local, "example.com", "/padding", "x", i+1)
+	}
+	if id := seedFlow(t, local, "example.com", "/unrelated", "local", 901); id != 901 {
+		t.Fatalf("local collision flow id=%d, want 901", id)
+	}
+	stats, err := local.MergeFrom(peerDBPath, "", "purged")
+	if err != nil {
+		t.Fatalf("merge orphan evidence: %v", err)
+	}
+	if stats.FindingsAdded != 1 {
+		t.Fatalf("merge stats=%+v, want one finding", stats)
+	}
+	got, err := local.GetFinding(1)
+	if err != nil {
+		t.Fatalf("get merged finding: %v", err)
+	}
+	if len(got.Flows) != 0 || len(got.Blocks) != 3 {
+		t.Fatalf("merged evidence flows=%+v blocks=%+v, want 0 attached flows/3 blocks", got.Flows, got.Blocks)
+	}
+	for _, block := range got.Blocks {
+		if block.Type == "flow" && !block.Missing {
+			t.Fatalf("orphan body flow should be visible as missing: %+v", block)
+		}
+	}
+}
+
+func TestMergeRejectsOversizedBodyMadeOnlyOfMissingFlowEvidence(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	findingID, err := peer.CreateFinding(&Finding{Title: "Oversized missing evidence"})
+	if err != nil {
+		peer.Close()
+		t.Fatalf("create peer finding: %v", err)
+	}
+	var body strings.Builder
+	body.WriteByte('[')
+	for id := int64(1); body.Len() <= maxFindingBodyBytes+1024; id++ {
+		if id > 1 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `{"type":"flow","flowId":%d,"note":"%s"}`, id, strings.Repeat("x", 128))
+	}
+	body.WriteByte(']')
+	if _, err := peer.db.Exec(`UPDATE findings SET body=? WHERE id=?`, body.String(), findingID); err != nil {
+		peer.Close()
+		t.Fatalf("seed oversized peer body: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "oversized"); err == nil || !strings.Contains(err.Error(), "body too large") {
+		t.Fatalf("MergeFrom error=%v, want body-size rejection", err)
+	}
+	findings, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatalf("ListFindings: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("oversized merge persisted %d findings", len(findings))
+	}
+}
+
+func TestMergePreflightsTableOnlyEvidenceBeforeImportingFlows(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatalf("open peer: %v", err)
+	}
+	flowID := seedFlow(t, peer, "example.com", "/proof", "bounded", 1)
+	findingID, err := peer.CreateFinding(&Finding{Title: "Oversized table evidence", Detail: "bounded narrative"})
+	if err != nil {
+		peer.Close()
+		t.Fatalf("create peer finding: %v", err)
+	}
+	if _, err := peer.db.Exec(
+		`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)`,
+		findingID, flowID, 0, strings.Repeat("n", maxFindingBodyBytes),
+	); err != nil {
+		peer.Close()
+		t.Fatalf("seed table-only evidence: %v", err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	peerBodies := peer.BodiesDir()
+	if err := peer.Close(); err != nil {
+		t.Fatalf("close peer: %v", err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open local: %v", err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, peerBodies, "oversized-table"); err == nil || !strings.Contains(err.Error(), "body too large") {
+		t.Fatalf("MergeFrom error=%v, want preflight body-size rejection", err)
+	}
+	var flows, findings int
+	if err := local.db.QueryRow(`SELECT COUNT(*) FROM flows`).Scan(&flows); err != nil {
+		t.Fatal(err)
+	}
+	if err := local.db.QueryRow(`SELECT COUNT(*) FROM findings`).Scan(&findings); err != nil {
+		t.Fatal(err)
+	}
+	if flows != 0 || findings != 0 {
+		t.Fatalf("failed preflight mutated local database: flows=%d findings=%d", flows, findings)
+	}
+}
+
+func TestFindingMissingMarkerWinsOverLocalFlowIDCollision(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer s.Close()
+	for i := int64(0); i < 900; i++ {
+		seedFlow(t, s, "example.com", "/padding", "x", i+1)
+	}
+	localID := seedFlow(t, s, "example.com", "/unrelated", "local", 901)
+	if localID != 901 {
+		t.Fatalf("local flow id=%d, want 901", localID)
+	}
+	body := `[ {"type":"flow","flowId":901,"note":"purged peer proof","missing":true} ]`
+	fid, err := s.CreateFinding(&Finding{Title: "Collision", Target: "https://example.com", Body: body})
+	if err != nil {
+		t.Fatalf("create finding: %v", err)
+	}
+	got, err := s.GetFinding(fid)
+	if err != nil || len(got.Blocks) != 1 || !got.Blocks[0].Missing {
+		t.Fatalf("missing marker was resolved: finding=%+v err=%v", got, err)
+	}
+	if len(got.Flows) != 0 {
+		t.Fatalf("marked missing block must not attach local flow: %+v", got.Flows)
+	}
+	if err := s.UpdateFinding(fid, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("resave marked missing body: %v", err)
+	}
+}
 
 func TestMergeFromRejectsPeerFlowIterationErrorBeforeImport(t *testing.T) {
 	peerPath := filepath.Join(t.TempDir(), "peer.db")
@@ -530,7 +815,7 @@ func TestMergeFromRejectsFindingReferencingMissingImageBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open peer: %v", err)
 	}
-	hash, _, err := peer.PutImageBytes("image/png", []byte("image bytes"))
+	hash, _, err := peer.PutImageBytes("image/png", tinyPNG)
 	if err != nil {
 		t.Fatalf("PutImageBytes: %v", err)
 	}
@@ -780,7 +1065,8 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 		{Type: "flow", FlowID: f1, Note: "poc"},
 	})
 	fid, err := peer.CreateFinding(&Finding{Severity: "High", Status: "verified", Source: "ai",
-		Title: "IDOR", Target: "https://victim.test/a", Detail: "IDOR on /a", Body: body})
+		Title: "IDOR", Summary: "A user can read another user's record.", Target: "https://victim.test/a", Confidence: "certain",
+		Detail: "IDOR on /a", Body: body, Retest: "Cross-user access returns a uniform denial."})
 	if err != nil {
 		t.Fatalf("CreateFinding: %v", err)
 	}
@@ -817,6 +1103,9 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	}
 	// The finding's PoC flow-ref must point at a LOCAL flow id that exists.
 	f := finds[0]
+	if f.Summary != "A user can read another user's record." || f.Confidence != "certain" || f.Retest != "Cross-user access returns a uniform denial." {
+		t.Fatalf("merged finding lost evidence-first fields: summary=%q confidence=%q retest=%q", f.Summary, f.Confidence, f.Retest)
+	}
 	var pocFlowID int64
 	for _, b := range f.Blocks {
 		if b.Type == "flow" {

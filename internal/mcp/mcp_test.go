@@ -120,6 +120,26 @@ func TestCreateFindingWithImpact(t *testing.T) {
 	}
 }
 
+func TestCreateFindingPreservesLegacyFixAsImpactFallback(t *testing.T) {
+	var createBody map[string]any
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&createBody)
+		io.WriteString(w, `{"id":1,"title":"legacy","flows":[],"blocks":[]}`)
+	}))
+	defer mock.Close()
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+	if _, err := s.Call("create_finding", map[string]any{"title": "legacy", "severity": "High", "fix": "An attacker can read another user's record."}); err != nil {
+		t.Fatal(err)
+	}
+	if createBody["impact"] != "An attacker can read another user's record." {
+		t.Fatalf("legacy fix was not mapped to impact: %#v", createBody)
+	}
+	if _, ok := createBody["fix"]; ok {
+		t.Fatalf("legacy impact text must not also be labeled remediation: %#v", createBody)
+	}
+}
+
 // TestCreateUpdateFindingUIURL verifies that create_finding and update_finding
 // MCP tool responses include the /#finding-<id> deep-link URL.
 func TestCreateUpdateFindingUIURL(t *testing.T) {
@@ -267,6 +287,130 @@ func TestUpdateFindingBodyParam(t *testing.T) {
 	}
 	if updateBody["cvss"] != "9.8" {
 		t.Fatalf("update_finding: cvss not forwarded, got %v", updateBody)
+	}
+}
+
+func TestFindingToolsForwardStructuredBlocksAndEnvelope(t *testing.T) {
+	var createBody, updateBody map[string]any
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings":
+			_ = json.NewDecoder(r.Body).Decode(&createBody)
+			io.WriteString(w, `{"id":8,"title":"Exposure","blocks":[],"flows":[]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/findings/8":
+			_ = json.NewDecoder(r.Body).Decode(&updateBody)
+			io.WriteString(w, `{"id":8,"title":"Exposure","blocks":[],"flows":[]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+	blocks := []any{
+		map[string]any{"type": "text", "role": "observation", "md": "Request the public endpoint."},
+		map[string]any{"type": "flow", "role": "result", "flowId": 17, "proof": "The response exposes internal metadata."},
+	}
+	createArgs := map[string]any{
+		"title": "Exposure", "severity": "Medium", "summary": "Internal metadata is public.",
+		"impact": "An attacker can map internal services.", "why": "The endpoint lacks access control.",
+		"target": "GET api.example.com/config", "confidence": "firm", "fix": "Require access control.",
+		"retest": "Confirm an unauthenticated request is denied.", "blocks": blocks,
+	}
+	if _, err := s.Call("create_finding", createArgs); err != nil {
+		t.Fatalf("create_finding: %v", err)
+	}
+	if _, err := s.Call("update_finding", map[string]any{
+		"id": 8, "summary": "Updated summary.", "confidence": "certain", "retest": "Repeat the negative case.", "blocks": blocks,
+	}); err != nil {
+		t.Fatalf("update_finding: %v", err)
+	}
+
+	for name, got := range map[string]map[string]any{"create": createBody, "update": updateBody} {
+		if _, ok := got["blocks"].([]any); !ok {
+			t.Fatalf("%s did not forward blocks as a JSON array: %#v", name, got["blocks"])
+		}
+		if _, exists := got["body"]; exists {
+			t.Fatalf("%s must not re-encode structured blocks into legacy body: %#v", name, got)
+		}
+	}
+	if createBody["summary"] != "Internal metadata is public." || createBody["confidence"] != "firm" || createBody["retest"] != "Confirm an unauthenticated request is denied." {
+		t.Fatalf("create envelope not forwarded: %#v", createBody)
+	}
+	if updateBody["summary"] != "Updated summary." || updateBody["confidence"] != "certain" || updateBody["retest"] != "Repeat the negative case." {
+		t.Fatalf("update envelope not forwarded: %#v", updateBody)
+	}
+}
+
+func TestGetFindingToolReadsOneFinding(t *testing.T) {
+	var gotPath string
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if r.Method == http.MethodGet && r.URL.Path == "/api/findings/23" {
+			io.WriteString(w, `{"id":23,"title":"Evidence-backed issue","readiness":{"stage":"report_ready"}}`)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+	out, err := s.Call("get_finding", map[string]any{"id": 23})
+	if err != nil {
+		t.Fatalf("get_finding: %v", err)
+	}
+	if gotPath != "/api/findings/23" || !strings.Contains(out, "Evidence-backed issue") || !strings.Contains(out, "/#finding-23") {
+		t.Fatalf("unexpected get_finding result/path: path=%q out=%q", gotPath, out)
+	}
+}
+
+func TestFindingEvidenceToolsForwardRoleProofAndProvenance(t *testing.T) {
+	var flowBody, imageBody, previewBody map[string]any
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/flows"):
+			_ = json.NewDecoder(r.Body).Decode(&flowBody)
+		case strings.HasSuffix(r.URL.Path, "/images"):
+			_ = json.NewDecoder(r.Body).Decode(&imageBody)
+		case strings.HasSuffix(r.URL.Path, "/flow-preview"):
+			_ = json.NewDecoder(r.Body).Decode(&previewBody)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		io.WriteString(w, `{"id":3,"title":"t","blocks":[],"flows":[]}`)
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+	if _, err := s.Call("add_finding_poc", map[string]any{
+		"findingId": 3, "flowId": 7, "role": "baseline", "note": "Own record", "proof": "Establishes expected access.",
+	}); err != nil {
+		t.Fatalf("add_finding_poc: %v", err)
+	}
+	if _, err := s.Call("add_finding_image", map[string]any{
+		"findingId": 3, "data": "aW1hZ2U=", "mime": "image/png", "caption": "Browser result",
+		"role": "result", "proof": "Shows cross-account data.", "source": "browser_screenshot",
+	}); err != nil {
+		t.Fatalf("add_finding_image: %v", err)
+	}
+	if _, err := s.Call("render_flow_preview", map[string]any{
+		"flowId": 7, "findingId": 3, "role": "result", "proof": "Shows the security-relevant response.",
+	}); err != nil {
+		t.Fatalf("render_flow_preview: %v", err)
+	}
+
+	if flowBody["role"] != "baseline" || flowBody["proof"] != "Establishes expected access." || flowBody["source"] != "captured_flow" || flowBody["sourceFlowId"] != float64(7) {
+		t.Fatalf("flow evidence metadata not forwarded: %#v", flowBody)
+	}
+	if imageBody["role"] != "result" || imageBody["proof"] != "Shows cross-account data." || imageBody["source"] != "browser_screenshot" {
+		t.Fatalf("image evidence metadata not forwarded: %#v", imageBody)
+	}
+	if previewBody["role"] != "result" || previewBody["proof"] != "Shows the security-relevant response." {
+		t.Fatalf("preview evidence metadata not forwarded: %#v", previewBody)
 	}
 }
 
@@ -751,6 +895,9 @@ func TestAddFindingImageForwardsToREST(t *testing.T) {
 	}
 	if gotBody["position"] != float64(2) {
 		t.Fatalf("position = %v", gotBody["position"])
+	}
+	if gotBody["role"] != "result" || gotBody["source"] != "operator_upload" {
+		t.Fatalf("screenshot evidence defaults = role %v source %v", gotBody["role"], gotBody["source"])
 	}
 }
 

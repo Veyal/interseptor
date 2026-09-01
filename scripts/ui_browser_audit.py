@@ -1183,12 +1183,223 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 current = page.locator("#findList .find-row[aria-current='true']")
                 result.require(current.count() == 1, "Finding selection does not expose one current row")
                 result.require("Generic UI audit finding" in page.locator("#findDetail").inner_text(), "created finding did not open")
+
+                # Exercise the evidence-first contract through the same controls
+                # an operator (or an AI driving the UI) uses.  Keep the fixture
+                # generic and deterministic: no real target data or external
+                # requests are involved.
+                page.wait_for_selector("#findSummary")
+                page.locator("#findSummary").fill(
+                    "An unauthorised user can read a second generic loopback record."
+                )
+                page.locator("#findImpact").fill("A record outside the user's scope is disclosed.")
+                page.locator("#findWhy").fill("The object-level access check is missing.")
+                page.locator("#findTarget").fill(f"{fixture_base}/audit/seed")
+                page.locator("#findFix").fill("Enforce authorization before returning the requested record.")
+                page.locator("#findRetest").fill("The same request returns 403 and no record data.")
+                page.locator("#findConfidence").select_option("firm")
+                page.locator("#findBody").click(position={"x": 4, "y": 4})
+                page.wait_for_function(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      return f?.summary?.includes('unauthorised') && f?.impact?.includes('disclosed')
+                        && f?.why?.includes('missing') && f?.target?.includes('/audit/seed')
+                        && f?.fix?.includes('Enforce') && f?.retest?.includes('403')
+                        && f?.confidence==='firm';
+                    }""",
+                    timeout=10_000,
+                )
+
+                page.locator("#findNarrativePreset").select_option("Differential proof")
+                page.locator("#findApplyPreset").click()
+                steps = page.locator("#findBody .block-text")
+                result.require(steps.count() == 3, f"differential outline created {steps.count()} steps")
+                step_text = (
+                    "The baseline identity can read only its own record.",
+                    "Request the neighbouring record identifier without changing identity.",
+                    "The server returns the neighbouring record, proving the missing check.",
+                )
+                for index, text in enumerate(step_text):
+                    steps.nth(index).fill(text)
+
+                # Paste a generic 1x1 PNG while the final step still owns focus.
+                # This proves evidence attachment captures in-progress text
+                # before the authoritative response replaces the editor DOM.
+                result.require(
+                    page.evaluate("document.activeElement?.matches('#findBody .block-text')") is True,
+                    "final reproduction step did not retain focus before screenshot paste",
+                )
+                png_hex = (
+                    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                    "0000000d49444154789c6360f8cf00000003000101c9fe2a0000000049454e44ae426082"
+                )
+                page.evaluate(
+                    """hex => {
+                      const bytes = new Uint8Array(hex.match(/../g).map(v => parseInt(v, 16)));
+                      const file = new File([bytes], 'ui-audit-evidence.png', {type:'image/png'});
+                      const transfer = new DataTransfer();
+                      transfer.items.add(file);
+                      document.activeElement.dispatchEvent(new ClipboardEvent('paste', {
+                        bubbles:true, cancelable:true, clipboardData:transfer,
+                      }));
+                    }""",
+                    png_hex,
+                )
+                page.wait_for_selector("#findBody .find-block-image, #findBody .find-doc-image", timeout=10_000)
+                page.wait_for_function(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      const text=(f?.blocks||[]).filter(b=>b.type==='text');
+                      return text.length===3
+                        && text.every((b,i)=>b.role===['baseline','action','result'][i] && b.md)
+                        && (f?.blocks||[]).some(b=>b.type==='image' && b.source==='operator_upload');
+                    }""",
+                    timeout=10_000,
+                )
+
+                # Attach the captured loopback flow via the picker, proving the
+                # flow reference remains tied to its sourceFlowId/provenance.
+                page.locator("#findAddFlow").click()
+                page.wait_for_selector("#findFlowPickModal", state="visible", timeout=10_000)
+                page.wait_for_selector("#findFlowPickList .find-flow-pick", timeout=10_000)
+                first_flow_pick = page.locator("#findFlowPickList .find-flow-pick").first
+                first_flow_pick.locator(".p").click()
+                result.require(first_flow_pick.locator("input").is_checked(), "flow-picker row text did not select exactly once")
+                result.require(page.locator("#ffpAttach").is_enabled(), "flow-picker attach action did not enable")
+                page.locator("#ffpAttach").click()
+                page.wait_for_selector("#findFlowPickModal", state="hidden", timeout=10_000)
+                page.wait_for_function(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      return (f?.blocks||[]).some(b=>b.type==='flow' && b.source==='captured_flow'
+                        && Number(b.sourceFlowId)>0 && Number(b.flowId)>0);
+                    }""",
+                    timeout=10_000,
+                )
+                page.wait_for_selector("#findBody .find-doc-flow", timeout=10_000)
+                # Evidence is not report-ready until each visual/traffic
+                # artifact states the exact claim it supports. Fill both
+                # annotations through the editor, then leave Edit so the
+                # normal Done/flush path is covered too.
+                page.locator("#findBody .find-doc-image .find-block-proof").fill(
+                    "Confirms the observed record disclosure in the UI."
+                )
+                page.locator("#findBody .find-doc-flow .find-block-proof").fill(
+                    "Confirms the request and response returned the other record."
+                )
+                result.require(
+                    page.locator("#findBody .find-block-proof").count() >= 2,
+                    "evidence blocks did not expose proof annotations",
+                )
+                page.locator("#findToggleEdit").click()
+                page.wait_for_selector("#findSummary", state="hidden", timeout=10_000)
+                evidence = page.evaluate(
+                    """async () => {
+                      const list=await (await fetch('/api/findings')).json();
+                      const f=(list.findings||[]).find(x=>x.title==='Generic UI audit finding');
+                      return {f, text:document.querySelector('#findDetail')?.innerText||''};
+                    }"""
+                )
+                finding = evidence["f"] or {}
+                blocks = finding.get("blocks") or []
+                result.require(
+                    any(b.get("type") == "image" and b.get("source") == "operator_upload" for b in blocks),
+                    "uploaded screenshot did not retain operator_upload provenance",
+                )
+                result.require(
+                    any(
+                        b.get("type") == "flow"
+                        and b.get("source") == "captured_flow"
+                        and b.get("sourceFlowId") == b.get("flowId")
+                        for b in blocks
+                    ),
+                    "attached flow did not retain captured_flow/sourceFlowId provenance",
+                )
+                result.require(
+                    finding.get("readiness", {}).get("stage") == "report_ready",
+                    "complete evidence-first finding did not become report ready",
+                )
+                result.require("operator_upload" in evidence["text"] and "captured_flow" in evidence["text"], "finding view hid evidence provenance")
+
+                # Verify all supported report handoffs produce a browser download.
+                # Headless Chromium exposes the native File System Access API,
+                # but Playwright cannot accept its operating-system save sheet.
+                # Force the product's documented anchor-download fallback so
+                # the real UI fetch/blob/filename path remains observable.
+                page.evaluate("Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true})")
+                for fmt in ("md", "html", "json"):
+                    page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+                    page.locator("#findExportFmt").select_option(fmt)
+                    with page.expect_download(timeout=10_000) as download_info:
+                        page.locator("#findExport").click()
+                    download = download_info.value
+                    result.require(download.suggested_filename.endswith("." + fmt), f"{fmt} export filename was not reported")
+                    page.wait_for_function("!document.querySelector('#findExport')?.disabled")
+
+                # At 1024px the report toolbar must remain distinct from the
+                # findings content, and the mobile listbox must retain its
+                # announced vertical orientation.
+                page.set_viewport_size({"width": 1024, "height": 768})
+                try:
+                    page.locator('.tab[data-tab="findings"]').click()
+                    result.require(
+                        page.evaluate(
+                            """() => {
+                              const toolbar=document.querySelector('.findings-toolbar')?.getBoundingClientRect();
+                              const content=document.querySelector('#scanFindingsView')?.getBoundingClientRect();
+                              return toolbar && content && toolbar.bottom <= content.top + 1;
+                            }"""
+                        ),
+                        "1024px Findings toolbar overlaps report content",
+                    )
+                    result.require(
+                        page.evaluate(
+                            """() => {
+                              const exportBox=document.querySelector('#findExport')?.getBoundingClientRect();
+                              const groupBox=document.querySelector('#findExportGroupByTag')?.closest('label')?.getBoundingClientRect();
+                              if(!exportBox||!groupBox)return false;
+                              return exportBox.right<=groupBox.left || groupBox.right<=exportBox.left
+                                || exportBox.bottom<=groupBox.top || groupBox.bottom<=exportBox.top;
+                            }"""
+                        ),
+                        "1024px Findings Export and Group-by controls overlap",
+                    )
+                    result.require(
+                        page.evaluate(
+                            """() => {
+                              const title=document.querySelector('#findTitleText');
+                              if(!title)return false;
+                              const style=getComputedStyle(title);
+                              const text=title.textContent.trim();
+                              const line=parseFloat(style.lineHeight)||20;
+                              return title.getBoundingClientRect().width>=Math.min(180, text.length*5)
+                                && title.getBoundingClientRect().height<=line*2.5
+                                && style.wordBreak!=='break-all' && style.overflowWrap!=='anywhere';
+                            }"""
+                        ),
+                        "1024px compact Finding title was reduced to an unusable narrow row",
+                    )
+                    page.set_viewport_size({"width": 390, "height": 844})
+                    page.wait_for_function(
+                        "document.querySelector('#tabs')?.getAttribute('aria-orientation')==='horizontal'"
+                    )
+                    result.require(
+                        page.locator("#findList").get_attribute("aria-orientation") == "vertical",
+                        "mobile Findings listbox lost its vertical orientation",
+                    )
+                finally:
+                    # A failed responsive assertion must not cascade into later
+                    # desktop-only journeys by leaving the shared page narrow.
+                    page.set_viewport_size({"width": 1440, "height": 900})
                 guide = page.locator("#findGuide")
                 guide.click()
                 page.keyboard.press("Escape")
                 result.require(page.evaluate("document.activeElement?.id") == "findGuide", "Finding guide did not restore focus")
 
-            result.run("Notes save/preview and Findings creation/focus", notes_and_findings)
+            result.run("Notes save/preview and Findings evidence workflow", notes_and_findings)
 
             def mutation_modals_lock_dismissal() -> None:
                 def wait_for_route(routes: List[Any], label: str, count: int = 1) -> None:
@@ -2378,9 +2589,13 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     result.require(max(run_long_tasks or [0]) < 200, f"burst {run + 1} produced a blocking long task: {run_long_tasks}")
                 page.locator('.tab[data-tab="proxy"]').click()
                 rows = page.locator("#rows .trow").count()
-                nodes = page.evaluate("document.getElementsByTagName('*').length")
+                # Measure the virtualized History surface itself. A global DOM
+                # count couples this performance guard to unrelated hidden
+                # panels (for example a richer Findings editor) and produces
+                # false regressions even when History remains bounded.
+                nodes = page.evaluate("document.querySelector('#rows')?.getElementsByTagName('*').length||0")
                 result.require(0 < rows <= 160, f"History DOM was not bounded after burst: {rows} rows")
-                result.require(nodes < 5000, f"History DOM grew unexpectedly: {nodes} nodes")
+                result.require(nodes <= rows * 12 + 100, f"History row DOM grew unexpectedly: {nodes} nodes for {rows} rows")
 
                 rows_box = page.locator("#rows")
                 rows_box.evaluate("el=>{el.scrollTop=Math.min(500,el.scrollHeight-el.clientHeight)}")

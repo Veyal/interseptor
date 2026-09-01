@@ -12,11 +12,15 @@ The goal is a **report-ready project**, not just a pile of History rows.
 ## 2. Triage → Findings
 
 - [ ] Run **Scanner** (passive) and triage hits worth promoting
-- [ ] Review scanner and agent evidence, then file findings manually or through MCP — prefer point-first findings
-  (Impact / Why / Target + PoC timeline)
+- [ ] Review scanner and agent evidence, then file findings manually or through MCP using the shared
+  evidence-first envelope: claim/summary, impact, why, target, typed reproduction blocks, fix, retest,
+  and confidence
 - [ ] Tag findings by deliverable scope (`cms` / `website` / `app` / `api`; use
   `out-of-scope` for adjacent evidence you want to keep out of the client pack)
-- [ ] Attach **PoC flows** (`add_finding_poc` / UI) and screenshots where needed
+- [ ] Attach **PoC flows** (`add_finding_poc` / UI) with a role and exact proof statement
+- [ ] Attach a real browser/device **screenshot as primary visual evidence** when it visibly proves the issue;
+  use `add_finding_image` with `source=browser_screenshot`. Use `render_flow_preview` for a labeled visual
+  HTTP record, not as a substitute for a real screenshot when one is available
 - [ ] Mark uncertain items `needs_verification` with concrete check steps
 - [ ] Intruder: filter **Interesting** → **→ Finding** to attach flagged attempts
 
@@ -29,7 +33,7 @@ The goal is a **report-ready project**, not just a pile of History rows.
 
 ## 4. Export & handoff
 
-- [ ] Export **Findings report** (Markdown / HTML / JSON) with PoC bodies as needed;
+- [ ] Export **Findings report** (Markdown / self-contained HTML / JSON) with PoC bodies as needed;
   enable **Group by tag** (omits `out-of-scope` by default) for multi-scope write-ups
 - [ ] Export **full project** zip if the client needs a portable archive
 - [ ] Copy deep links (`/#finding-N`, `/#flow-N`) into notes / ticket system
@@ -42,3 +46,13 @@ The goal is a **report-ready project**, not just a pile of History rows.
 - [ ] Clear or archive the project when the engagement is done
 
 For agent-driven close-out, see [MCP cookbook](product/mcp-cookbook.md) recipe **Close out findings**.
+
+### Evidence format
+
+Findings use one ordered `blocks` array across the UI, REST API, MCP, and reports. Blocks are text,
+captured flows, or images. Give evidence a role (`baseline`, `action`, `result`, `control`, or
+`retest`), state exactly what it proves, and preserve provenance (`captured_flow`,
+`browser_screenshot`, or `flow_preview` plus `sourceFlowId` where applicable). Before→Action→After
+is an optional Differential preset for authorization/state comparisons; use a shorter role sequence
+when the vulnerability does not require a before/after comparison. See [API & MCP](api-and-mcp.md)
+for the complete field and endpoint contract.

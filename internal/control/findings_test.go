@@ -2,7 +2,9 @@ package control
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -153,6 +155,132 @@ func TestFindingsEndpoints(t *testing.T) {
 	r6.Body.Close()
 	if r6.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete: got %d, want 204", r6.StatusCode)
+	}
+}
+
+func TestFindingReportBoundsFlowBodiesWhilePreservingHeaders(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &findingsAPI{h}
+
+	tail := []byte("REPORT_BODY_TAIL_MUST_NOT_BE_READ")
+	large := append(bytes.Repeat([]byte("a"), reportBodyCap), tail...)
+	hash := putTestBody(t, st, large)
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS:          time.UnixMilli(1),
+		Method:      "POST",
+		Host:        "example.com",
+		Path:        "/submit",
+		HTTPVersion: "HTTP/1.1",
+		Status:      200,
+		ReqHeaders:  map[string][]string{"Content-Type": {"text/plain"}, "X-Evidence": {"kept"}},
+		ResHeaders:  map[string][]string{"Content-Type": {"text/plain"}, "X-Evidence": {"kept"}},
+		ReqBodyHash: hash,
+		ResBodyHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	findingID, err := st.CreateFinding(&store.Finding{Title: "bounded report"})
+	if err != nil {
+		t.Fatalf("CreateFinding: %v", err)
+	}
+	if err := st.AttachFlow(findingID, flowID, "proof", -1); err != nil {
+		t.Fatalf("AttachFlow: %v", err)
+	}
+
+	reqRaw, resRaw := api.flowRawForReport(flowID)
+	for name, raw := range map[string]string{"request": reqRaw, "response": resRaw} {
+		if !strings.Contains(raw, "X-Evidence: kept") {
+			t.Errorf("%s raw omitted preserved header: %q", name, raw[:min(len(raw), 200)])
+		}
+		if !strings.Contains(raw, "… [body truncated at 64 KiB]") {
+			t.Errorf("%s raw missing explicit truncation marker", name)
+		}
+		if strings.Contains(raw, string(tail)) {
+			t.Errorf("%s raw included bytes beyond the 64 KiB body cap", name)
+		}
+	}
+}
+
+func TestFindingReportBoundsDecompressedFlowBodies(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &findingsAPI{h}
+
+	plain := bytes.Repeat([]byte("decoded-evidence-"), 16<<10)
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	hash := putTestBody(t, st, compressed.Bytes())
+	flowID, err := st.InsertFlow(&store.Flow{
+		TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/compressed",
+		HTTPVersion: "HTTP/1.1", Status: 200, ResBodyHash: hash,
+		ResHeaders: map[string][]string{"Content-Encoding": {"gzip"}, "Content-Type": {"text/plain"}},
+	})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+	flow, err := st.GetFlow(flowID)
+	if err != nil {
+		t.Fatalf("GetFlow: %v", err)
+	}
+	raw := api.flowRawSideForReport(flow, false)
+	if !strings.Contains(raw, "X-Interseptor-Decoded: gzip") {
+		t.Fatalf("compressed report did not expose decoded provenance: %q", raw[:min(len(raw), 300)])
+	}
+	if !strings.Contains(raw, reportBodyTruncationMarker) {
+		t.Fatal("compressed report body missing truncation marker")
+	}
+	if len(raw) > reportBodyCap+2048 {
+		t.Fatalf("compressed report expanded to %d bytes, want bounded output", len(raw))
+	}
+}
+
+func TestFindingFlowEndpointsReturnNotFoundForMissingFinding(t *testing.T) {
+	h, st, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	flowID, err := st.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/"})
+	if err != nil {
+		t.Fatalf("InsertFlow: %v", err)
+	}
+
+	attachReq, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/findings/999999/flows", ts.URL), strings.NewReader(fmt.Sprintf(`{"flowId":%d}`, flowID)))
+	if err != nil {
+		t.Fatalf("attach NewRequest: %v", err)
+	}
+	attachResp, err := http.DefaultClient.Do(attachReq)
+	if err != nil {
+		t.Fatalf("attach request: %v", err)
+	}
+	attachResp.Body.Close()
+	if attachResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("attach missing finding status=%d, want 404", attachResp.StatusCode)
+	}
+
+	detachURL := fmt.Sprintf("%s/api/findings/999999/flows/%d", ts.URL, flowID)
+	detach, err := http.NewRequest(http.MethodDelete, detachURL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	detachResp, err := http.DefaultClient.Do(detach)
+	if err != nil {
+		t.Fatalf("detach request: %v", err)
+	}
+	detachResp.Body.Close()
+	if detachResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("detach missing finding status=%d, want 404", detachResp.StatusCode)
+	}
+	findings, err := st.ListFindings("", "", "")
+	if err != nil {
+		t.Fatalf("ListFindings: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("missing-finding flow operations mutated findings: %+v", findings)
 	}
 }
 
@@ -428,6 +556,54 @@ func TestFindingBodySizeCap(t *testing.T) {
 		t.Fatalf("good update after rejected writes: want 200, got %d", resp5.StatusCode)
 	}
 	resp5.Body.Close()
+
+	// ---- (6) Evidence-first scalar narrative fields share the aggregate cap ----
+	largeScalar := strings.Repeat("n", maxFindingBodyBytes/2+1)
+	payload6, _ := json.Marshal(map[string]string{
+		"title":                    "oversized envelope",
+		"summary":                  largeScalar,
+		"verificationInstructions": largeScalar,
+	})
+	resp6 := post(string(payload6))
+	if resp6.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("over-cap narrative envelope: want 413, got %d", resp6.StatusCode)
+	}
+	if msg := errMsg(resp6); !strings.Contains(msg, "finding narrative too large") {
+		t.Fatalf("over-cap narrative envelope: error message %q", msg)
+	}
+
+	// Separate partial updates must also be checked against retained fields in
+	// the store, not just against the current HTTP payload.
+	firstHalf, _ := json.Marshal(map[string]string{"summary": strings.Repeat("s", maxFindingBodyBytes/2)})
+	resp7 := patch(created.ID, string(firstHalf))
+	if resp7.StatusCode != http.StatusOK {
+		t.Fatalf("first bounded narrative update: want 200, got %d", resp7.StatusCode)
+	}
+	resp7.Body.Close()
+	secondHalf, _ := json.Marshal(map[string]string{"impact": strings.Repeat("i", maxFindingBodyBytes/2+1)})
+	resp8 := patch(created.ID, string(secondHalf))
+	if resp8.StatusCode != http.StatusBadRequest {
+		t.Fatalf("aggregate partial narrative update: want 400, got %d", resp8.StatusCode)
+	}
+	if msg := errMsg(resp8); !strings.Contains(msg, "finding narrative too large") {
+		t.Fatalf("aggregate partial narrative update: error message %q", msg)
+	}
+
+	// Canonical blocks do not make independently supplied legacy fields free.
+	// REST and MCP clients may send both during migration, so the scalar copy
+	// must still be bounded even when it differs from the canonical body.
+	canonicalBody := `[{"type":"text","md":"bounded canonical step"}]`
+	payload9, _ := json.Marshal(map[string]string{
+		"title": "canonical plus legacy evidence", "body": canonicalBody,
+		"evidence": strings.Repeat("e", maxFindingBodyBytes+1),
+	})
+	resp9 := post(string(payload9))
+	if resp9.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("canonical plus oversized legacy evidence: want 413, got %d", resp9.StatusCode)
+	}
+	if msg := errMsg(resp9); !strings.Contains(msg, "finding narrative too large") {
+		t.Fatalf("canonical plus oversized legacy evidence: error message %q", msg)
+	}
 }
 
 // TestFindingImpactCreateAndPatch verifies that:
@@ -476,6 +652,70 @@ func TestFindingImpactCreateAndPatch(t *testing.T) {
 	want := "full account takeover — admin privilege escalation"
 	if updated.Impact != want {
 		t.Fatalf("patch: impact want %q got %q", want, updated.Impact)
+	}
+}
+
+func TestFindingsReportRejectsUnsupportedFormat(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/findings/report?format=pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", resp.StatusCode)
+	}
+}
+
+func TestFindingInvalidConfidenceIsRejectedWithoutPartialMutation(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	createdResp, err := http.Post(ts.URL+"/api/findings", "application/json", strings.NewReader(`{"title":"Original","confidence":"firm"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created store.Finding
+	if err := json.NewDecoder(createdResp.Body).Decode(&created); err != nil {
+		createdResp.Body.Close()
+		t.Fatal(err)
+	}
+	createdResp.Body.Close()
+
+	patch, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("%s/api/findings/%d", ts.URL, created.ID), strings.NewReader(`{"title":"Must not persist","confidence":"bogus"}`))
+	patchedResp, err := http.DefaultClient.Do(patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchedResp.Body.Close()
+	if patchedResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("PATCH status=%d, want 400", patchedResp.StatusCode)
+	}
+
+	currentResp, err := http.Get(fmt.Sprintf("%s/api/findings/%d", ts.URL, created.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var current store.Finding
+	if err := json.NewDecoder(currentResp.Body).Decode(&current); err != nil {
+		currentResp.Body.Close()
+		t.Fatal(err)
+	}
+	currentResp.Body.Close()
+	if current.Title != "Original" || current.Confidence != "firm" {
+		t.Fatalf("invalid patch partially applied: title=%q confidence=%q", current.Title, current.Confidence)
+	}
+
+	invalidCreate, err := http.Post(ts.URL+"/api/findings", "application/json", strings.NewReader(`{"title":"Invalid","confidence":"bogus"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidCreate.Body.Close()
+	if invalidCreate.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST status=%d, want 400", invalidCreate.StatusCode)
 	}
 }
 
@@ -742,6 +982,37 @@ func TestAttachFindingFlowExistingFlowNotMissing(t *testing.T) {
 	}
 }
 
+func TestAttachFindingFlowRejectsInvalidMetadataAtomically(t *testing.T) {
+	h, s, _ := newHub(t)
+	flowID, err := s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Host: "example.com", Path: "/proof", Status: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingID, err := s.CreateFinding(&store.Finding{Title: "Evidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/findings/%d/flows", ts.URL, findingID), strings.NewReader(fmt.Sprintf(`{"flowId":%d,"role":"garbage","source":"garbage"}`, flowID)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", resp.StatusCode)
+	}
+	f, err := s.GetFinding(findingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Blocks) != 0 || len(f.Flows) != 0 {
+		t.Fatalf("invalid metadata partially attached evidence: blocks=%+v flows=%+v", f.Blocks, f.Flows)
+	}
+}
+
 // TestAttachFindingImageRoundTrip uploads a tiny PNG and serves it back by hash.
 func TestAttachFindingImageRoundTrip(t *testing.T) {
 	h, _, _ := newHub(t)
@@ -826,5 +1097,71 @@ func TestUpdateFindingRejectsInlineImageData(t *testing.T) {
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusRequestEntityTooLarge && r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("want 413/400 for inline image data, got %d", r.StatusCode)
+	}
+}
+
+func TestFindingImageRequiresReferencedHash(t *testing.T) {
+	h, st, _ := newHub(t)
+	id, err := st.CreateFinding(&store.Finding{Title: "image auth"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _, err := st.PutImageBytes("image/png", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/api/findings/images/" + hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unreferenced image status=%d, want 404", resp.StatusCode)
+	}
+	if err := st.AttachImage(id, hash, "image/png", "proof", -1); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Get(ts.URL + "/api/findings/images/" + hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("referenced image status=%d, want 200", resp.StatusCode)
+	}
+}
+
+func TestFindingCreateAcceptsCanonicalBlocksAndRejectsBodyTogether(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	resp, err := http.Post(ts.URL+"/api/findings", "application/json", strings.NewReader(`{"title":"structured","blocks":[{"type":"text","md":"summary"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("structured create status=%d: %#v", resp.StatusCode, out)
+	}
+	if _, ok := out["blocks"]; !ok {
+		t.Fatalf("response missing blocks: %#v", out)
+	}
+	resp, err = http.Post(ts.URL+"/api/findings", "application/json", strings.NewReader(`{"title":"ambiguous","body":"[]","blocks":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("body+blocks status=%d, want 400", resp.StatusCode)
 	}
 }

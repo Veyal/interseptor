@@ -425,7 +425,7 @@ Content-Type: application/json
 
         <span class="toolbar-divider"></span>
         <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
-          <option value="md">Markdown</option><option value="html">HTML</option><option value="json">JSON</option><option value="pdf">PDF</option>
+          <option value="md">Markdown</option><option value="html">HTML (embedded images)</option><option value="json">JSON</option>
         </select>
         <select id="findExportStatuses" class="btn find-export-statuses" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
         <button class="btn find-export-btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export</button>
@@ -434,7 +434,7 @@ Content-Type: application/json
     </div>
     <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
     <div id="scanFindingsView" class="find-view is-empty">
-      <div id="findList" class="scan-list">
+      <div id="findList" class="scan-list" role="listbox" aria-label="Security findings" aria-orientation="vertical">
         <div class="state-empty find-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
           <div class="state-empty-title">No findings yet</div>
@@ -1362,11 +1362,12 @@ Content-Type: application/json
     </div>
     <div class="modal-shell-body find-guide-body">
       <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
-      <section><span class="find-guide-n">2</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
-      <section><span class="find-guide-n">3</span><div><h3>Technical context</h3><p>Record the exact target, environment, CWE, CVSS vector/score, scope tags, and why the behavior violates a security boundary.</p></div></section>
-      <section><span class="find-guide-n">4</span><div><h3>Reproduction</h3><p>Use a numbered Before → Action → After chain. Include prerequisites, exact parameter changes, identities or roles, and the security-relevant response.</p></div></section>
-      <section><span class="find-guide-n">5</span><div><h3>Evidence</h3><p>Attach the smallest useful request/response flows and screenshots. Annotate what proves the issue; redact secrets and unrelated personal data.</p></div></section>
-      <section><span class="find-guide-n">6</span><div><h3>Remediation</h3><p>Recommend the failed control, not only input filtering. Explain how to retest and include a negative authorization case when relevant.</p></div></section>
+      <section><span class="find-guide-n">2</span><div><h3>Claim</h3><p>Summarize who can do what, to which asset, and under which missing or failed control in one sentence.</p></div></section>
+      <section><span class="find-guide-n">3</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
+      <section><span class="find-guide-n">4</span><div><h3>Technical context</h3><p>Record the exact target, environment, CWE, CVSS vector/score, scope tags, and why the behavior violates a security boundary.</p></div></section>
+      <section><span class="find-guide-n">5</span><div><h3>Reproduction</h3><p>Choose the shortest structure that proves the claim. Before → Action → After is useful for differential authorization or state-change tests; exposure, input/result, and control-failure findings use different step roles.</p></div></section>
+      <section><span class="find-guide-n">6</span><div><h3>Evidence</h3><p>Prioritize a screenshot when it makes the result immediately understandable, and attach captured request/response flows when the traffic exists in Interseptor. State exactly what each item proves; redact secrets and unrelated personal data.</p></div></section>
+      <section><span class="find-guide-n">7</span><div><h3>Remediation and retest</h3><p>Recommend the failed control, then record the expected secure result so another tester can verify the fix.</p></div></section>
       <div class="find-guide-check"><strong>Ready-to-report check</strong><span>A pentester unfamiliar with the target can reproduce it; a developer can identify the failed control; a retester knows the expected secure result.</span></div>
     </div>
   </div>
@@ -1382,7 +1383,7 @@ Content-Type: application/json
       <select id="fcSeverity" class="btn btn-field" aria-label="Severity">
         <option>Critical</option><option>High</option><option selected>Medium</option><option>Low</option><option>Info</option>
       </select>
-      <p class="hint" style="margin:0">Creates a draft stub — fill Impact, Why, Target, and PoC next.</p>
+      <p class="hint" style="margin:0">Creates a draft — add a concise claim, impact, target, reproducible steps, and evidence next.</p>
     </div>
     <div class="modal-shell-foot">
       <span id="fcStatus" class="statusline" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></span>

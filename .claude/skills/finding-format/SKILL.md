@@ -1,56 +1,72 @@
 ---
 name: finding-format
-description: Enforce structured, impact-first finding markdown for MCP create_finding / update_finding.
+description: Keep Findings evidence-first, reproducible, provenance-aware, and identical across UI, REST, MCP, and exports.
 ---
 
-# Finding format (MCP)
+# Finding format
 
-Agents must not file walls of text. Format is enforced in `internal/mcp/finding_format.go`.
+Use the canonical envelope in `docs/findings-and-reporting.md`. Do not invent a separate AI template
+or file report prose as one markdown blob.
 
-## Point-first pillars
+## Envelope
 
-| Field | Create | Report-ready |
-|---|---|---|
-| `title` | required | required |
-| `severity` / `status` | defaults OK | set |
-| `impact` | blank OK | required |
-| `why` | blank OK | required |
-| `target` | blank OK | required |
-| PoC body (flows/images) | blank OK | ≥1 flow **or** image; Critical/High: ≥2 flows (Before + After) |
+A report-ready finding contains:
 
-Optional: `cwe`, `environment` (`prod`|`staging`|`local`), `fix`/remediation, `cvss`.
+- claim: `title`, concise `summary`;
+- risk: `impact`, `why`, `severity`;
+- affected object: `target`, optional `environment`, `cwe`, `cvss`, and tags;
+- ordered typed reproduction/evidence `blocks`;
+- `fix` and `retest`;
+- `confidence`, status, and verification instructions when required.
 
-Stub create (title only) is allowed. Expand pillars before treating the finding as done.
+Title-only drafts remain valid. Read `readiness.stage` and `readiness.gaps`; do not treat legacy
+`ready` as proof that the vulnerability is true.
 
-## PoC / Evidence (body timeline)
+## Blocks
 
-Keep `body` as an ordered exploit chain — not an essay:
+Prefer the structured `blocks` array. Legacy `body` is a JSON string kept for old clients. Never send
+both.
 
-1. Short step notes (`text`) — label **Before → Action → After** (or IDOR: our account → other id → cross-access)
-2. Attach flows (`add_finding_poc`) and/or screenshots (`render_flow_preview` / `add_finding_image`)
-3. Never claim success without an After (or cross-access) artifact — flow and/or image
-4. Captions/notes: one sentence on what changed and why it proves Impact
+Allowed roles are `context`, `setup`, `baseline`, `action`, `result`, `control`, `observation`, and
+`retest`. `before` maps to `baseline`; `after`/`proof` map to `result`. Unknown roles are errors.
 
-Do **not** dump long `## Summary` / `## Steps` / `## Evidence` walls into body text. Put Impact/Why in their fields.
+`Before → Action → After` is only the **Differential proof** preset. Choose roles that match the
+actual issue:
 
-`needs_verification` → set `verificationInstructions`; say **"NOT confirmed"** when XSS/JS was not proven.
+- authorization/state change: baseline → action → result;
+- injection/reflection: action → result;
+- exposure/misconfiguration: observation → result;
+- custom multi-step cases: the smallest accurate ordered sequence.
 
-## Enforcement
+## Evidence
 
-| Case | Behavior |
-|---|---|
-| ≥180 chars narrative, no headings, empty impact+why | **Reject** tool call |
-| Substantial write missing Impact/Why/Target/PoC; High without enough flows; bare credentials; needs_verification w/o instructions | **FORMAT WARNING** appended to success |
-| Title-only stub | Allowed |
+Every report-ready finding needs non-missing flow or image evidence. Every evidence block needs a
+string `proof` explaining the exact claim it establishes.
 
-Human UI creates are not gated — MCP only. UI shows Draft vs Ready from the same completeness rules.
+- Attach an Interseptor flow whenever the relevant request was captured.
+- Prefer a real `browser_screenshot` when visual state proves the issue.
+- Use `flow_preview` for a generated HTTP report image and retain `sourceFlowId`.
+- Never describe a generated flow preview as a real browser screenshot.
+- Caption identifies the artifact; proof identifies the security-relevant observation.
+- Redact secrets and unrelated private data from screenshots and prose.
 
-The human-facing writing and review standard lives in `docs/findings-and-reporting.md` and the
-Findings **Writing guide** modal. Keep those two surfaces aligned with this enforcement contract when
-fields, readiness rules, evidence actions, or status meanings change.
+Use `get_finding` before editing, `add_finding_poc` for flows, `add_finding_image` for real screenshots,
+and `render_flow_preview` for generated HTTP images. Do not put base64 or local paths in block JSON.
 
-## Do not
+## AI integrity
 
-- Put base64/`path` image data in body JSON — use `add_finding_image`
-- Paste raw HTTP into `evidence`/`detail` when a flow can be attached
-- File freeform essay findings — use structured fields + PoC timeline
+Keep AI interpretation separate from raw evidence. If execution, callback, or state change was not
+observed, use `needs_verification`, say **NOT confirmed**, and provide exact
+`verificationInstructions`. Confidence is separate from severity and must be `tentative`, `firm`, or
+`certain`.
+
+## Keep aligned
+
+When the contract changes, update all of:
+
+- `internal/store/findings.go` and migrations;
+- `internal/control/findings.go`;
+- `internal/control/ui/js/findings.js` and the writing guide;
+- `internal/mcp/finding_format.go` plus tool schemas;
+- `internal/report/report.go`;
+- `docs/findings-and-reporting.md` and tests.

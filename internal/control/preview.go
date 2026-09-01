@@ -43,13 +43,17 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var in struct {
-		FlowID   int64  `json:"flowId"`
-		Side     string `json:"side"`
-		Pretty   *bool  `json:"pretty"`
-		Layout   string `json:"layout"`
-		Theme    string `json:"theme"`
-		Caption  string `json:"caption"`
-		Position *int   `json:"position"`
+		FlowID       int64  `json:"flowId"`
+		Side         string `json:"side"`
+		Pretty       *bool  `json:"pretty"`
+		Layout       string `json:"layout"`
+		Theme        string `json:"theme"`
+		Caption      string `json:"caption"`
+		Position     *int   `json:"position"`
+		Role         string `json:"role"`
+		Proof        string `json:"proof"`
+		Source       string `json:"source"`
+		SourceFlowID int64  `json:"sourceFlowId"`
 	}
 	if !decodeLimitedJSON(w, r, maxFlowPreviewRequestBytes, &in) {
 		return
@@ -83,11 +87,6 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		writePreviewError(w, err)
 		return
 	}
-	hash, _, err := h.st.PutImageBytes("image/png", pngBytes)
-	if err != nil {
-		httpErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	caption := strings.TrimSpace(in.Caption)
 	if caption == "" {
 		caption = flowPreviewTitle(f)
@@ -96,8 +95,13 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	if err := h.st.AttachImage(findingID, hash, "image/png", caption, pos); err != nil {
-		httpErr(w, http.StatusInternalServerError, err.Error())
+	source := in.Source
+	if source == "" {
+		source = "flow_preview"
+	}
+	_, _, err = h.st.PutAndAttachImage(findingID, "image/png", pngBytes, caption, pos, in.Role, in.Proof, source, in.FlowID)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	h.broadcast(map[string]any{"type": "findings.update"})
@@ -106,7 +110,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		httpNotFoundOrInternal(w, err, "finding not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
 func previewOptsFromQuery(r *http.Request) preview.Options {
@@ -131,6 +135,7 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 		if err != nil {
 			return nil, err
 		}
+		req = capPreviewRaw(req)
 	}
 	if side == preview.SideBoth || side == preview.SideRes {
 		var err error
@@ -138,11 +143,19 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 		if err != nil {
 			return nil, err
 		}
+		res = capPreviewRaw(res)
 	}
 	if opts.Title == "" {
 		opts.Title = flowPreviewTitle(f)
 	}
 	return preview.Render(req, res, opts)
+}
+
+func capPreviewRaw(raw []byte) []byte {
+	if int64(len(raw)) <= maxFlowPreviewRequestBytes {
+		return raw
+	}
+	return raw[:int(maxFlowPreviewRequestBytes)]
 }
 
 func writePreviewError(w http.ResponseWriter, err error) {
