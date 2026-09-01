@@ -200,10 +200,15 @@ func (s *Server) snapshotSuppression() suppressionSnapshot {
 	}
 }
 
+func (snapshot suppressionSnapshot) suppresses(host string) bool {
+	return (snapshot.browser && isBrowserTelemetry(host)) ||
+		(snapshot.android && isAndroidTelemetry(host))
+}
+
 func (snapshot suppressionSnapshot) newFlow(flow *store.Flow) *proxyFlow {
 	return &proxyFlow{
 		Flow:            flow,
-		suppressCapture: (snapshot.browser && isBrowserTelemetry(flow.Host)) || (snapshot.android && isAndroidTelemetry(flow.Host)),
+		suppressCapture: snapshot.suppresses(flow.Host),
 	}
 }
 

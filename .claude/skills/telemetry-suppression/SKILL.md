@@ -18,8 +18,9 @@ Use this checklist when changing browser or Android capture-noise suppression.
   snapshot when SNI reveals the logical host or a passthrough notice is recorded.
 - Existing History remains evidence and is never deleted automatically when a toggle changes.
 - Keep normal application traffic, authentication, sync, downloads, add-on services, and FCM visible.
-- Do not consume one-time History or notification dedup markers when suppression prevents the
-  underlying record from being persisted; disabling suppression must restore future observability.
+- Evaluate suppression before acquiring one-time History or notification dedup markers. Suppressed
+  flows must never reserve visibility ownership, even transiently; disabling suppression must let a
+  newly visible flow acquire it immediately.
 
 ## Endpoint updates
 

@@ -183,15 +183,21 @@ func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 }
 
 // recordBypassOnce persists at most one informational flow for a bypassed host.
-// A suppression or persistence failure releases the dedup marker so a later
-// visible bypass can still be recorded.
 func (s *Server) recordBypassOnce(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) {
-	if _, seen := s.bypassSeen.LoadOrStore(host, struct{}{}); seen {
+	if !s.claimBypassRecord(host, suppression) {
 		return
 	}
 	if !s.recordBypass(host, port, clientAddr, r, suppression) {
 		s.bypassSeen.Delete(host)
 	}
+}
+
+func (s *Server) claimBypassRecord(host string, suppression suppressionSnapshot) bool {
+	if suppression.suppresses(host) {
+		return false
+	}
+	_, seen := s.bypassSeen.LoadOrStore(host, struct{}{})
+	return !seen
 }
 
 func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) bool {

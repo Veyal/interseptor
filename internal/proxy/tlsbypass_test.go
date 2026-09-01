@@ -134,6 +134,21 @@ func TestTLSBypassSuppressionDoesNotConsumeDedupMarker(t *testing.T) {
 	}
 }
 
+func TestSuppressedTLSBypassNeverClaimsDedupMarker(t *testing.T) {
+	srv := &Server{}
+	host := "merino.services.mozilla.com"
+
+	if srv.claimBypassRecord(host, suppressionSnapshot{browser: true}) {
+		t.Fatal("suppressed bypass claimed the informational-flow dedup marker")
+	}
+	if _, seen := srv.bypassSeen.Load(host); seen {
+		t.Fatal("suppressed bypass left an informational-flow dedup marker")
+	}
+	if !srv.claimBypassRecord(host, suppressionSnapshot{}) {
+		t.Fatal("visible bypass could not claim the informational-flow dedup marker")
+	}
+}
+
 // With auto-bypass on, a failed MITM handshake (pinning) must add the host to
 // the bypass list and fire OnBypassAdded with the updated list.
 func TestAutoBypassOnPinFailure(t *testing.T) {

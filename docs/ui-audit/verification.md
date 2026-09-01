@@ -16,7 +16,7 @@
 
 ## Current-source applicability
 
-The retained audit digest is `d0081c779b45c6e35c0824cd55ef7798250dda6b5a49ac33ee65e0e972d5201f`
+The retained audit digest is `395b0ec83141fc17cfc5a30bca527c76bf8baf806c6c401b373939cf6899905f`
 across 249 runtime files. It matches the current browser-background suppression runtime exactly,
 including the published `2.0.6` fallback, current Mozilla endpoint coverage, safe authority
 normalization, request/response rule and intercept bypasses, and explicit Settings semantics.
@@ -70,7 +70,8 @@ field that created it. In particular:
   both intercept queues, History, and body capture. Current Firefox Suggest, OHTTP, DAP, Remote
   Settings, sponsored-content, connectivity, crash, and Safe Browsing hosts observed in the live
   audit are forwarded unchanged without polluting a new capture. A suppressed TLS-passthrough
-  notice also releases its dedup marker so disabling suppression restores future observability.
+  notice never claims its dedup marker, so disabling suppression restores future observability
+  immediately even while an earlier suppressed CONNECT remains in flight.
 
 ## Feature and dependency matrix
 
@@ -152,12 +153,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `250.9 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `209.8 ms` |
-| Delayed Intercept acknowledgement | `343.8 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `1,792.7 ms`; Fit/wheel/drag interaction `502.8 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.692951 s`; script `0.214766 s`; layout `0.104766 s` |
-| Map interaction | CDP task `0.143796 s`; script `0.023151 s`; layout `0.000452 s` |
+| Three 240-request live History bursts | network p95 `148.2 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `211.3 ms` |
+| Delayed Intercept acknowledgement | `322.5 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `183.8 ms`; Fit/wheel/drag interaction `382.4 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.508618 s`; script `0.193797 s`; layout `0.064545 s` |
+| Map interaction | CDP task `0.05489 s`; script `0.023245 s`; layout `0.000766 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
