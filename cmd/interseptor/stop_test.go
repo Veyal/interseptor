@@ -17,7 +17,7 @@ func TestRunStopBootsOutLaunchdJobBeforeSignaling(t *testing.T) {
 
 	calls := []string{}
 	stopList = func() ([]proc.Proc, error) {
-		return []proc.Proc{{PID: 31777, Path: "/Users/des/.local/bin/interseptor", Role: proc.RoleServer}}, nil
+		return []proc.Proc{{PID: 31777, Path: "/Users/example/.local/bin/interseptor", Role: proc.RoleServer}}, nil
 	}
 	stopBootout = func(pid int) (string, bool, error) {
 		calls = append(calls, "bootout")
@@ -55,7 +55,7 @@ func TestRunStopDoesNotBootoutVault(t *testing.T) {
 
 	bootoutCalled := false
 	stopList = func() ([]proc.Proc, error) {
-		return []proc.Proc{{PID: 19227, Path: "/Users/des/.local/bin/interseptor", Role: proc.RoleVault}}, nil
+		return []proc.Proc{{PID: 19227, Path: "/Users/example/.local/bin/interseptor", Role: proc.RoleVault}}, nil
 	}
 	stopBootout = func(int) (string, bool, error) {
 		bootoutCalled = true

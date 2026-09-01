@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.8` release and refreshed the exact-source UI audit evidence and six required product/Findings screenshots without moving its tag.
+
+### Fixed
+- **UI audit instance safety.** Full browser audits can no longer target an arbitrary running workstation: managed mode builds the exact worktree, owns one child on random loopback ports, uses a sentinel-marked disposable OS-temp project, strips inherited product settings, locks project re-exec, disables update/browser side effects, verifies version/project/proxy/freshness/upstream state before navigation and mutation, then stops the child and removes only its validated root. Smoke mode is read-only; retained diagnostics are sanitized, direct-proxy reads are bounded, and independent journeys close transient modals during teardown.
+- **Private fixture hygiene.** Replaced local user and project names in launchd and process-stop tests with generic examples.
+
 ## [2.0.8] - 2026-09-02
 
 ### Changed
