@@ -63,8 +63,8 @@ type Server struct {
 	upstream                 atomic.Pointer[url.URL] // optional chained upstream proxy
 	upstreamProxyRoots       atomic.Pointer[x509.CertPool]
 	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
-	suppressTelemetry        atomic.Bool // when set, browser telemetry is not captured or intercepted
-	suppressAndroidTelemetry atomic.Bool // when set, Android/GMS/Crashlytics telemetry is not captured or intercepted
+	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
+	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
@@ -1274,8 +1274,8 @@ func (s *Server) SetSuppressBrowserTelemetry(v bool) { s.suppressTelemetry.Store
 
 // SetSuppressAndroidTelemetry controls whether known Android OS, Google Play
 // Services, Crashlytics, and Analytics phone-home hosts are silently forwarded
-// without being captured or held by the intercept gate. Enabled by default;
-// users may turn it off to inspect GMS / SDK background traffic.
+// without rules, capture, or either intercept gate. Enabled by default; users
+// may turn it off to inspect GMS / SDK background traffic.
 func (s *Server) SetSuppressAndroidTelemetry(v bool) { s.suppressAndroidTelemetry.Store(v) }
 
 // SetInvisibleProxy toggles transparent/invisible proxy mode (Burp's "Support
@@ -1305,9 +1305,8 @@ func (s *Server) persistable(flow *proxyFlow) bool {
 
 // teeBody captures a body to the content-addressed store and returns a reader to
 // forward plus a finalize() yielding (hash, len) — mirroring capture.TeeBody. When
-// the flow is not persistable (scope-only mode, out of scope) it skips storage
-// entirely and streams the body straight through, so out-of-scope bodies (the
-// bulk of disk use) never land on disk.
+// the flow is not persistable (self traffic, enabled suppression, or scope-only
+// mode with an out-of-scope flow), it skips storage and streams the body through.
 func (s *Server) teeBody(flow *proxyFlow, body io.Reader) (io.Reader, func() (string, int64, error), error) {
 	if s.persistable(flow) {
 		return s.cap.TeeBody(body)

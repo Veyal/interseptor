@@ -10,9 +10,9 @@ import (
 // browserTelemetryHosts is the set of exact hostnames that Chrome and Firefox
 // use for background telemetry and browser-managed services such as crash
 // reporting, Safe Browsing, updates, remote settings, suggestions, sponsored
-// new-tab content, and connectivity probes. Requests to these hosts are
-// forwarded untouched but suppressed from History and both intercept gates
-// when SuppressBrowserTelemetry is on.
+// new-tab content, and connectivity probes. When SuppressBrowserTelemetry is
+// on, requests to these hosts are forwarded unchanged while bypassing rules,
+// capture, both intercept gates, body storage, and live flow/frame events.
 //
 // Keep this list exact and curated. Broad suffixes such as *.mozilla.org or
 // *.googleapis.com would hide ordinary target traffic from a security tester.
@@ -103,8 +103,8 @@ var browserTelemetryHosts = map[string]struct{}{
 
 // androidTelemetryHosts is the set of exact hostnames that Android OS, Google
 // Play Services, Firebase Analytics/Crashlytics SDKs, and related ad/measurement
-// stacks use for background phone-home. Suppressed from history and the
-// intercept gate when SuppressAndroidTelemetry is on.
+// stacks use for background phone-home. SuppressAndroidTelemetry applies the
+// same forwarding-without-rules-or-capture contract as browser suppression.
 //
 // Intentionally excludes app backends (firebase.googleapis.com, Firestore),
 // auth (accounts.google.com), and FCM push (mtalk.google.com) so mobile

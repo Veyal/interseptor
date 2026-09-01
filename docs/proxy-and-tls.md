@@ -52,9 +52,10 @@ store or an environment-specific secret mechanism.
 ## Browser background traffic suppression
 
 **Settings → Proxy & network → Browser background traffic** is enabled by default. It forwards
-known Firefox and Chromium background requests unchanged while excluding them from History, request
-and response interception, match-and-replace processing, and body storage. It is capture-noise
-suppression, not a firewall: the browser can still reach those services.
+known Firefox and Chromium background requests unchanged while excluding them from History, live
+flow and frame events, request and response interception, match-and-replace processing,
+content-addressed body storage, and WebSocket frame capture. It is capture-noise suppression, not a
+firewall: the browser can still reach those services.
 
 The curated list covers dedicated telemetry, crash, update, Remote Settings, Safe Browsing,
 connectivity, Firefox Suggest, sponsored new-tab, and related browser-managed endpoints. Some of
