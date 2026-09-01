@@ -2,8 +2,8 @@
 
 ## Revision and environment
 
-- Audited worktree base: `18d6b9b0076bad0785ee6668f9ad16589314ff15`, plus the browser-background
-  suppression, regression, UI-copy, and documentation changes captured by the exact digest below
+- Audited worktree base: `0f9851f0303466554a81694a8225fcf768ac6294`, plus the post-release
+  `2.0.7` fallback and refreshed evidence captured by the exact digest below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -16,9 +16,9 @@
 
 ## Current-source applicability
 
-The retained audit digest is `8eb54d6f7a1c2692f10c8d885245fb3369b4d7da10314c9b93d6b401240c9e6f`
+The retained audit digest is `9b04404e9b079d700ef65d9d78d5133c7d1f51e51c93f4a985b6a984de3817a2`
 across 249 runtime files. It matches the current browser-background suppression runtime exactly,
-including the published `2.0.6` fallback, current Mozilla endpoint coverage, safe authority
+including the published `2.0.7` fallback, current Mozilla endpoint coverage, safe authority
 normalization, request/response rule and intercept bypasses, and explicit Settings semantics.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
@@ -153,12 +153,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `120 ms`; 82 rendered rows; 4,833 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `222.3 ms` |
-| Delayed Intercept acknowledgement | `317.8 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `75.9 ms`; Fit/wheel/drag interaction `402 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.348762 s`; script `0.11655 s`; layout `0.049422 s` |
-| Map interaction | CDP task `0.028649 s`; script `0.001064 s`; layout `0.000487 s` |
+| Three 240-request live History bursts | network p95 `154.4 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `225.6 ms` |
+| Delayed Intercept acknowledgement | `353.8 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `76.7 ms`; Fit/wheel/drag interaction `393 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.369041 s`; script `0.127854 s`; layout `0.054216 s` |
+| Map interaction | CDP task `0.020647 s`; script `0.001073 s`; layout `0.000495 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
