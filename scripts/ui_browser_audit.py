@@ -546,6 +546,23 @@ def wait_ready(page: Page) -> None:
         page.locator("#setupSkip").click()
 
 
+def invalidate_and_close_flow_popup(page: Page) -> None:
+    """Invalidate popup epochs until the modal stays hidden for two seconds."""
+    deadline = time.monotonic() + 15
+    hidden_since: Optional[float] = None
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+        if page.locator("#flowModal").is_visible():
+            hidden_since = None
+        elif hidden_since is None:
+            hidden_since = now
+        elif time.monotonic() - hidden_since >= 2:
+            return
+        page.locator("#fmClose").evaluate("button => button.click()")
+        page.wait_for_timeout(100)
+    raise TimeoutError("flow popup did not remain hidden during journey teardown")
+
+
 def attach_observers(page: Page, result: AuditResult, base_netloc: str, expected_console_errors: bool = False) -> None:
     http_sink = result.expected_http_errors if expected_console_errors else result.http_errors
 
@@ -2840,9 +2857,16 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.locator(f'#rows .trow[data-id="{selected_id}"]').click(force=True)
                 authz_row = page.locator(f'#rows .trow[data-id="{explicit_id}"]')
                 authz_row.scroll_into_view_if_needed()
-                authz_row.click(button="right")
-                page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
-                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click()
+                for attempt in range(2):
+                    try:
+                        authz_row.click(button="right")
+                        page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
+                        page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(timeout=2_000)
+                        break
+                    except Exception:
+                        if attempt == 1:
+                            raise
+                        page.keyboard.press("Escape")
                 page.wait_for_selector("#authzModal", state="visible")
                 try:
                     result.require(page.locator("#authzFlow").inner_text() == f"#{explicit_id}", "Authz ignored the context-menu flow")
@@ -2863,9 +2887,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             result.run("Authz explicit context and A-to-B-to-A retargeting", authz_context_target)
 
             def flow_note_read_waits_for_save() -> None:
-                if page.locator("#flowModal").is_visible():
-                    page.locator("#fmClose").click(force=True)
-                    page.wait_for_selector("#flowModal", state="hidden", timeout=10_000)
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="proxy"]').click()
                 page.wait_for_function("document.querySelectorAll('#rows .trow').length>=2", timeout=10_000)
                 rows = page.locator("#rows .trow")
@@ -2929,15 +2951,23 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                             raise RuntimeError(f"PUT returned {cleanup_status}")
                     except Exception as exc:
                         result.failures.append(f"flow-note audit cleanup failed: {type(exc).__name__}: {exc}")
-                    if page.locator("#flowModal").is_visible():
-                        page.locator("#fmClose").click(force=True)
-                        page.wait_for_selector("#flowModal", state="hidden", timeout=10_000)
+                    invalidate_and_close_flow_popup(page)
 
             result.run("Inspector reads wait for their flow's acknowledged note save", flow_note_read_waits_for_save)
 
             def burst_and_map_performance() -> None:
+                invalidate_and_close_flow_popup(page)
                 page.set_viewport_size({"width": 1440, "height": 900})
-                page.locator('.tab[data-tab="proxy"]').click()
+                try:
+                    page.locator('.tab[data-tab="proxy"]').click(timeout=2_000)
+                except Exception:
+                    if not page.locator("#flowModal").is_visible():
+                        raise
+                    # Commit the intended tab change underneath the known
+                    # transient popup, then finish closing that popup before
+                    # the performance measurements begin.
+                    page.locator('.tab[data-tab="proxy"]').click(force=True)
+                    invalidate_and_close_flow_popup(page)
                 page.evaluate(
                     """() => {
                       window.__uiAuditLongTasks=[];
@@ -2970,7 +3000,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     run_long_tasks = page.evaluate("window.__uiAuditLongTasks||[]")
                     all_long_tasks.extend(run_long_tasks)
                     result.require(max(run_long_tasks or [0]) < 200, f"burst {run + 1} produced a blocking long task: {run_long_tasks}")
-                page.locator('.tab[data-tab="proxy"]').click()
+                invalidate_and_close_flow_popup(page)
                 rows = page.locator("#rows .trow").count()
                 # Measure the virtualized History surface itself. A global DOM
                 # count couples this performance guard to unrelated hidden
@@ -2983,6 +3013,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 rows_box = page.locator("#rows")
                 rows_box.evaluate("el=>{el.scrollTop=Math.min(500,el.scrollHeight-el.clientHeight)}")
                 saved_scroll = rows_box.evaluate("el=>el.scrollTop")
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="map"]').click()
                 map_started = time.perf_counter()
                 page.wait_for_selector("#mapTree .map-host", timeout=20_000)
@@ -3017,6 +3048,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 else:
                     result.failures.append("Map SVG has no layout box for wheel/drag performance check")
                 map_after = cdp_metrics(cdp)
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="proxy"]').click()
                 result.require(abs(rows_box.evaluate("el=>el.scrollTop") - saved_scroll) < 2, "panel navigation lost History scroll state")
 
@@ -3065,6 +3097,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             result.run("high-volume History, Map render/Fit, scroll, and CDP performance", burst_and_map_performance)
 
             def mobile_dense_reachability() -> None:
+                invalidate_and_close_flow_popup(page)
                 page.set_viewport_size({"width": 390, "height": 844})
                 key_controls = {
                     "proxy": "#fSearch",
@@ -3108,6 +3141,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             result.run("mobile reachability for every dense panel and Checks/Codecs", mobile_dense_reachability)
 
             def screenshots() -> None:
+                invalidate_and_close_flow_popup(page)
                 screenshot_meta: Dict[str, Dict[str, Any]] = {}
 
                 def capture(name: str, path: Path, dimensions: Tuple[int, int]) -> None:

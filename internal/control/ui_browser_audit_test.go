@@ -331,8 +331,100 @@ func TestUIBrowserAuditFlowNoteJourneyClosesItsModal(t *testing.T) {
 		t.Fatal("flow-note audit journey boundary not found")
 	}
 	journey := text[start : start+end]
-	if strings.Count(journey, `page.locator("#fmClose").click(force=True)`) < 2 {
-		t.Fatal("flow-note journey must close a pre-existing modal and guarantee closure during teardown")
+	if strings.Count(journey, "invalidate_and_close_flow_popup(page)") < 2 {
+		t.Fatal("flow-note journey must invalidate and close a pre-existing popup and guarantee the same during teardown")
+	}
+	closeStart := strings.Index(text, "def invalidate_and_close_flow_popup(page: Page)")
+	if closeStart < 0 {
+		t.Fatal("flow-popup invalidation helper not found")
+	}
+	closeEnd := strings.Index(text[closeStart:], "\n\ndef ")
+	if closeEnd < 0 {
+		t.Fatal("flow-popup invalidation helper boundary not found")
+	}
+	closeHelper := text[closeStart : closeStart+closeEnd]
+	if !strings.Contains(closeHelper, `button.click()`) {
+		t.Fatal("flow-popup cleanup must click the close control even while hidden so an in-flight popup is invalidated")
+	}
+	for _, want := range []string{"deadline = time.monotonic() + 15", "hidden_since", "time.monotonic() - hidden_since >= 2"} {
+		if !strings.Contains(closeHelper, want) {
+			t.Fatalf("flow-popup cleanup must require a stable hidden interval: missing %s", want)
+		}
+	}
+}
+
+func TestUIBrowserAuditLateJourneysCloseTransientFlowPopup(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	for _, marker := range []string{
+		"def burst_and_map_performance()",
+		"def mobile_dense_reachability()",
+		"def screenshots()",
+	} {
+		start := strings.Index(text, marker)
+		if start < 0 {
+			t.Fatalf("late audit journey %q not found", marker)
+		}
+		end := start + 360
+		if end > len(text) {
+			end = len(text)
+		}
+		if !strings.Contains(text[start:end], "invalidate_and_close_flow_popup(page)") {
+			t.Errorf("late audit journey %q must close a transient popup before navigation", marker)
+		}
+	}
+}
+
+func TestUIBrowserAuditPerformanceRetriesOnlyVisibleFlowPopup(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "def burst_and_map_performance()")
+	if start < 0 {
+		t.Fatal("performance journey not found")
+	}
+	end := strings.Index(text[start:], `result.run("high-volume History, Map render/Fit, scroll, and CDP performance"`)
+	if end < 0 {
+		t.Fatal("performance journey boundary not found")
+	}
+	journey := text[start : start+end]
+	for _, want := range []string{
+		`page.locator('.tab[data-tab="proxy"]').click(timeout=2_000)`,
+		`if not page.locator("#flowModal").is_visible():`,
+		`page.locator('.tab[data-tab="proxy"]').click(force=True)`,
+		`invalidate_and_close_flow_popup(page)`,
+	} {
+		if !strings.Contains(journey, want) {
+			t.Errorf("performance popup retry contract missing %s", want)
+		}
+	}
+	if strings.Count(journey, "invalidate_and_close_flow_popup(page)") < 4 {
+		t.Error("performance journey must re-establish popup quiescence after the burst and before later panel navigation")
+	}
+}
+
+func TestUIBrowserAuditAuthzContextMenuRetriesLiveDismissal(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "def authz_context_target()")
+	if start < 0 {
+		t.Fatal("Authz context-target journey not found")
+	}
+	end := strings.Index(text[start:], `result.run("Authz explicit context and A-to-B-to-A retargeting"`)
+	if end < 0 {
+		t.Fatal("Authz context-target journey boundary not found")
+	}
+	journey := text[start : start+end]
+	if !strings.Contains(journey, "for attempt in range(2)") || !strings.Contains(journey, "if attempt == 1:") {
+		t.Fatal("Authz context-target journey must retry once when live History refresh dismisses its context menu")
 	}
 }
 

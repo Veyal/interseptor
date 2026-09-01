@@ -2,8 +2,8 @@
 
 ## Revision and environment
 
-- Audited worktree base: `a139c3710dc1b6255139de99d7e91355c25fc501`, plus the post-release
-  `2.0.8` fallback and refreshed evidence captured by the exact digest below
+- Audited worktree base: `9cbabaf18c72c8b990207faf3907713799b607e1`, plus the test-gate audit
+  journey-isolation cleanup captured by the exact harness digest below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -196,12 +196,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `184.8 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `184.8 ms` |
-| Delayed Intercept acknowledgement | `335.2 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `78.1 ms`; Fit/wheel/drag interaction `427.1 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.307985 s`; script `0.104974 s`; layout `0.040816 s` |
-| Map interaction | CDP task `0.021475 s`; script `0.001123 s`; layout `0.000602 s` |
+| Three 240-request live History bursts | network p95 `156 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `322.5 ms` |
+| Delayed Intercept acknowledgement | `692.9 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `196.3 ms`; Fit/wheel/drag interaction `1028.7 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.733971 s`; script `0.125027 s`; layout `0.048868 s` |
+| Map interaction | CDP task `0.04275 s`; script `0.002587 s`; layout `0.000778 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
