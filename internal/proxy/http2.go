@@ -32,7 +32,7 @@ func (s *Server) h2Handler(dialHost, logicalHost string, port int) http.Handler 
 
 		// buildFlow records the client-leg proto (HTTP/2.0) before we normalize
 		// the request below, so History shows the client actually spoke h2.
-		flow := buildFlow(r, "https", logicalHost, port, time.Now())
+		flow := s.newFlow(buildFlow(r, "https", logicalHost, port, time.Now()))
 
 		// http.Transport does its own upstream ALPN negotiation and rejects a
 		// request whose ProtoMajor is 2, so present the forwarded request as

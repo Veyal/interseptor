@@ -98,6 +98,57 @@ func TestTLSBypassPassthrough(t *testing.T) {
 	}
 }
 
+func TestTLSBypassSuppressionDoesNotConsumeDedupMarker(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	srv := New(st, capture.New(st), nil, nil, nil)
+	host := "merino.services.mozilla.com"
+	req := httptest.NewRequest(http.MethodConnect, "https://"+host+":443", nil)
+
+	srv.SetSuppressBrowserTelemetry(true)
+	suppressed := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(false)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, suppressed)
+	if _, seen := srv.bypassSeen.Load(host); seen {
+		t.Fatal("suppressed bypass consumed the informational-flow dedup marker")
+	}
+	if flows, err := st.QueryFlows(10); err != nil {
+		t.Fatalf("query suppressed bypass: %v", err)
+	} else if len(flows) != 0 {
+		t.Fatalf("suppressed bypass created %d history rows", len(flows))
+	}
+
+	visible := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(true)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, visible)
+	srv.recordBypassOnce(host, 443, "127.0.0.1:12345", req, visible)
+	flows, err := st.QueryFlows(10)
+	if err != nil {
+		t.Fatalf("query visible bypass: %v", err)
+	}
+	if len(flows) != 1 || flows[0].Flags&store.FlagTLSBypassed == 0 {
+		t.Fatalf("visible bypass flows=%+v, want one deduplicated informational row", flows)
+	}
+}
+
+func TestSuppressedTLSBypassNeverClaimsDedupMarker(t *testing.T) {
+	srv := &Server{}
+	host := "merino.services.mozilla.com"
+
+	if srv.claimBypassRecord(host, suppressionSnapshot{browser: true}) {
+		t.Fatal("suppressed bypass claimed the informational-flow dedup marker")
+	}
+	if _, seen := srv.bypassSeen.Load(host); seen {
+		t.Fatal("suppressed bypass left an informational-flow dedup marker")
+	}
+	if !srv.claimBypassRecord(host, suppressionSnapshot{}) {
+		t.Fatal("visible bypass could not claim the informational-flow dedup marker")
+	}
+}
+
 // With auto-bypass on, a failed MITM handshake (pinning) must add the host to
 // the bypass list and fire OnBypassAdded with the updated list.
 func TestAutoBypassOnPinFailure(t *testing.T) {

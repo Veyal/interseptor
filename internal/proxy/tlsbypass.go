@@ -149,7 +149,7 @@ func (s *Server) notifyBypassAdded(cb func([]string)) {
 // without terminating TLS, so the client's handshake (and pinning) reaches the
 // real server. The first passthrough per host is recorded as an informational
 // flow so the operator can see the domain is intentionally not intercepted.
-func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Request) {
+func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Request, suppression suppressionSnapshot) {
 	up, err := s.dialRawUpstream(host, port)
 	if err != nil {
 		writeSimpleResponse(client, http.StatusBadGateway, "tls-bypass dial: "+err.Error())
@@ -157,9 +157,7 @@ func (s *Server) tunnelRaw(client net.Conn, host string, port int, r *http.Reque
 	}
 	defer up.Close()
 
-	if _, seen := s.bypassSeen.LoadOrStore(host, struct{}{}); !seen {
-		s.recordBypass(host, port, client.RemoteAddr().String(), r)
-	}
+	s.recordBypassOnce(host, port, client.RemoteAddr().String(), r, suppression)
 
 	done := make(chan struct{}, 2)
 	go func() { io.Copy(up, client); done <- struct{}{} }()
@@ -184,10 +182,26 @@ func (s *Server) dialRawUpstream(host string, port int) (net.Conn, error) {
 	return d.Dial("tcp", addr)
 }
 
-// recordBypass persists a single informational flow marking a host as passed
-// through untouched, so it is visible in history/activity (deduped per host).
-func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request) {
-	flow := &store.Flow{
+// recordBypassOnce persists at most one informational flow for a bypassed host.
+func (s *Server) recordBypassOnce(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) {
+	if !s.claimBypassRecord(host, suppression) {
+		return
+	}
+	if !s.recordBypass(host, port, clientAddr, r, suppression) {
+		s.bypassSeen.Delete(host)
+	}
+}
+
+func (s *Server) claimBypassRecord(host string, suppression suppressionSnapshot) bool {
+	if suppression.suppresses(host) {
+		return false
+	}
+	_, seen := s.bypassSeen.LoadOrStore(host, struct{}{})
+	return !seen
+}
+
+func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request, suppression suppressionSnapshot) bool {
+	flow := suppression.newFlow(&store.Flow{
 		TS:          time.Now(),
 		Method:      "CONNECT",
 		Scheme:      "https",
@@ -198,9 +212,11 @@ func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.
 		ClientAddr:  clientAddr,
 		Flags:       store.FlagTLSBypassed,
 		ReqHeaders:  headerWithHost(r),
-	}
+	})
 	s.record(flow)
-	if flow.ID != 0 {
-		_, _ = s.st.AddFlowTags(flow.ID, []string{"tls-bypassed"})
+	if flow.ID == 0 {
+		return false
 	}
+	_, _ = s.st.AddFlowTags(flow.ID, []string{"tls-bypassed"})
+	return true
 }

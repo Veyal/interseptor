@@ -314,7 +314,7 @@ func TestProxySkipsOwnListenerCapture(t *testing.T) {
 	srv.SelfPorts = []int{9966, 8080}
 
 	// Our own control plane (loopback:9966): not recorded, no events, no id.
-	own := &store.Flow{Host: "127.0.0.1", Port: 9966, Method: "GET", Path: "/api/flows", Status: 200}
+	own := srv.newFlow(&store.Flow{Host: "127.0.0.1", Port: 9966, Method: "GET", Path: "/api/flows", Status: 200})
 	srv.recordRequest(own)
 	srv.record(own)
 	if own.ID != 0 {
@@ -322,21 +322,21 @@ func TestProxySkipsOwnListenerCapture(t *testing.T) {
 	}
 
 	// localhost by name is loopback too.
-	named := &store.Flow{Host: "localhost", Port: 8080, Method: "GET", Path: "/x", Status: 200}
+	named := srv.newFlow(&store.Flow{Host: "localhost", Port: 8080, Method: "GET", Path: "/x", Status: 200})
 	srv.recordRequest(named)
 	if named.ID != 0 {
 		t.Fatal("localhost:8080 (own proxy) must not be inserted")
 	}
 
 	// A loopback port that ISN'T ours is a legitimate target — record it.
-	target := &store.Flow{Host: "127.0.0.1", Port: 8877, Method: "GET", Path: "/app", Status: 200}
+	target := srv.newFlow(&store.Flow{Host: "127.0.0.1", Port: 8877, Method: "GET", Path: "/app", Status: 200})
 	srv.recordRequest(target)
 	if target.ID == 0 {
 		t.Fatal("a non-self loopback target should be recorded")
 	}
 
 	// A normal remote host is always recorded.
-	remote := &store.Flow{Host: "example.com", Port: 443, Method: "GET", Path: "/", Status: 200}
+	remote := srv.newFlow(&store.Flow{Host: "example.com", Port: 443, Method: "GET", Path: "/", Status: 200})
 	srv.recordRequest(remote)
 	if remote.ID == 0 {
 		t.Fatal("remote flow should be recorded")
@@ -1265,7 +1265,7 @@ func TestGateAndForwardSuppressesChainedUpstream407(t *testing.T) {
 	}
 	srv.upstream.Store(proxyURL)
 
-	flow := &store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"}
+	flow := srv.newFlow(&store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"})
 	req := httptest.NewRequest(http.MethodGet, "http://origin.example/", nil)
 	resp, dropped, err := srv.gateAndForward(flow, req)
 	if resp != nil || dropped {
@@ -1295,7 +1295,7 @@ func TestPlainHTTPUpstreamUsesBasicProxyAuthorization(t *testing.T) {
 	if err := srv.SetUpstreamProxy(strings.Replace(upstream.URL, "http://", "http://alice:secret@", 1)); err != nil {
 		t.Fatal(err)
 	}
-	flow := &store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"}
+	flow := srv.newFlow(&store.Flow{Scheme: "http", Host: "origin.example", Port: 80, Method: "GET", Path: "/"})
 	resp, _, err := srv.gateAndForward(flow, httptest.NewRequest(http.MethodGet, "http://origin.example/", nil))
 	if err != nil {
 		t.Fatal(err)

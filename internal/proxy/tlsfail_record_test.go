@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,41 @@ import (
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/tlsca"
 )
+
+func TestTLSFailureUsesConnectSuppressionSnapshot(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	srv := New(st, capture.New(st), nil, nil, nil)
+	host := "merino.services.mozilla.com"
+	req, err := http.NewRequest(http.MethodConnect, "https://"+host+":443", nil)
+	if err != nil {
+		t.Fatalf("new CONNECT request: %v", err)
+	}
+
+	srv.SetSuppressBrowserTelemetry(true)
+	suppressed := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(false)
+	srv.recordTLSFailure(host, 443, "127.0.0.1:12345", req, time.Now(), errors.New("handshake failed"), suppressed)
+	if flows, err := st.QueryFlows(10); err != nil {
+		t.Fatalf("query suppressed failure: %v", err)
+	} else if len(flows) != 0 {
+		t.Fatalf("suppressed CONNECT failure created %d history rows", len(flows))
+	}
+
+	visible := srv.snapshotSuppression()
+	srv.SetSuppressBrowserTelemetry(true)
+	srv.recordTLSFailure(host, 443, "127.0.0.1:12345", req, time.Now(), errors.New("handshake failed"), visible)
+	flows, err := st.QueryFlows(10)
+	if err != nil {
+		t.Fatalf("query visible failure: %v", err)
+	}
+	if len(flows) != 1 || flows[0].Flags&store.FlagTLSFailed == 0 {
+		t.Fatalf("visible CONNECT failure flows=%+v, want one TLS failure", flows)
+	}
+}
 
 // TestTLSHandshakeFailureRecorded verifies that a client rejecting the MITM leaf
 // produces a FlagTLSFailed flow — the signal for SSL pinning / untrusted CA.

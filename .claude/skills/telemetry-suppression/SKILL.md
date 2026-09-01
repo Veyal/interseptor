@@ -1,0 +1,48 @@
+---
+name: telemetry-suppression
+description: Maintain Interseptor's conservative browser and Android capture-noise suppression without hiding authorized targets or changing forwarded traffic.
+---
+
+# Telemetry suppression maintenance
+
+Use this checklist when changing browser or Android capture-noise suppression.
+
+## Contract
+
+- Suppression forwards matching requests and responses unchanged. It does not block the network.
+- A suppressed flow must bypass request and response interception, request and response rules,
+  History insertion/events, request/response body storage, and WebSocket frame capture/events.
+- Snapshot the suppression decision when a request enters the proxy and keep it unchanged for the
+  full request, response, error, upgrade, persistence, and body-storage lifecycle.
+- For CONNECT, snapshot the setting before hijacking, dialing, or handshaking, then apply that
+  snapshot when SNI reveals the logical host or a passthrough notice is recorded.
+- Existing History remains evidence and is never deleted automatically when a toggle changes.
+- Keep normal application traffic, authentication, sync, downloads, add-on services, and FCM visible.
+- Evaluate suppression before acquiring one-time History or notification dedup markers. Suppressed
+  flows must never reserve visibility ownership, even transiently; disabling suppression must let a
+  newly visible flow acquire it immediately.
+
+## Endpoint updates
+
+1. Confirm the endpoint in current primary browser source or vendor documentation.
+2. Classify it as telemetry, crash reporting, update/configuration, connectivity, or another dedicated
+   browser-managed background service.
+3. Prefer an exact hostname. Never add broad patterns such as `*.mozilla.org` or
+   `*.googleapis.com`; they can hide an authorized target.
+4. Add positive classifier and persistence tests plus nearby negative hosts that must remain visible.
+5. Cover case, optional port, and trailing-dot normalization when introducing a new host family.
+
+Mozilla references:
+
+- <https://support.mozilla.org/kb/domains-allow-firefox>
+- <https://searchfox.org/mozilla-central/source/modules/libpref/init/all.js>
+- <https://searchfox.org/mozilla-central/source/browser/app/profile/firefox.js>
+
+## Cross-path regression
+
+Exercise a suppressed flow with request and response rules configured. Assert that it reaches the
+upstream unchanged, creates no request or response hold, inserts no flow, and emits no stored body.
+For upgrade endpoints, assert that raw frames relay in both directions without frame storage or
+events. Toggle suppression while an ordinary and a suppressed request are in flight to prove each
+keeps its admission decision. Also keep an ordinary target-flow test proving that normal rules and
+capture still work.

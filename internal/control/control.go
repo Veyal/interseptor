@@ -85,7 +85,8 @@ type Hub struct {
 	sysProxySupported  func() bool
 	// SetCaptureScopeOnly toggles persisting only in-scope traffic. Set by cmd.
 	SetCaptureScopeOnly func(bool)
-	// SetSuppressBrowserTelemetry toggles suppression of Chrome/Firefox telemetry. Set by cmd.
+	// SetSuppressBrowserTelemetry toggles suppression of known Chrome/Firefox
+	// background-service traffic. The name is retained for API compatibility.
 	SetSuppressBrowserTelemetry func(bool)
 	// SetSuppressAndroidTelemetry toggles suppression of Android/GMS/Crashlytics telemetry. Set by cmd.
 	SetSuppressAndroidTelemetry func(bool)

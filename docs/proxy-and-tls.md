@@ -49,6 +49,30 @@ curl --proxy http://192.0.2.10:8080 \
 Avoid putting a real key in shell history on an engagement; use your client's protected credential
 store or an environment-specific secret mechanism.
 
+## Browser background traffic suppression
+
+**Settings → Proxy & network → Browser background traffic** is enabled by default. It forwards
+known Firefox and Chromium background requests unchanged while excluding them from History, live
+flow and frame events, request and response interception, match-and-replace processing,
+content-addressed body storage, and WebSocket frame capture. It is capture-noise suppression, not a
+firewall: the browser can still reach those services.
+
+The curated list covers dedicated telemetry, crash, update, Remote Settings, Safe Browsing,
+connectivity, Firefox Suggest, sponsored new-tab, and related browser-managed endpoints. Some of
+these services are functional browser services rather than telemetry; the UI deliberately calls the
+category **background traffic**. The API setting retains its existing
+`suppressBrowserTelemetry` name for compatibility.
+
+Suppression applies when a new request enters the proxy. Existing History rows are not deleted or
+hidden when the setting is enabled. Disable the setting when those browser services are themselves
+part of the authorized target.
+
+Matching stays exact and conservative. Interseptor does not suppress broad domains such as
+`*.mozilla.org`, `*.googleapis.com`, Mozilla Accounts, Firefox Sync, add-on services, downloads, or
+ordinary website/application hosts. Current Firefox endpoints are reviewed against Mozilla's
+[enterprise domain inventory](https://support.mozilla.org/kb/domains-allow-firefox) and
+[source defaults](https://searchfox.org/mozilla-central/source/modules/libpref/init/all.js).
+
 ## HTTPS interception
 
 For HTTPS, the client first creates a `CONNECT` tunnel. Interseptor presents a per-host certificate

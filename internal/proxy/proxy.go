@@ -46,6 +46,11 @@ type ScopeChecker interface {
 	InScope(*store.Flow) bool
 }
 
+type proxyFlow struct {
+	*store.Flow
+	suppressCapture bool
+}
+
 // Server is the intercepting forward-proxy HTTP handler.
 type Server struct {
 	st                       *store.Store
@@ -58,8 +63,8 @@ type Server struct {
 	upstream                 atomic.Pointer[url.URL] // optional chained upstream proxy
 	upstreamProxyRoots       atomic.Pointer[x509.CertPool]
 	scopeOnly                atomic.Bool // when set, only in-scope flows are persisted
-	suppressTelemetry        atomic.Bool // when set, browser telemetry is not captured or intercepted
-	suppressAndroidTelemetry atomic.Bool // when set, Android/GMS/Crashlytics telemetry is not captured or intercepted
+	suppressTelemetry        atomic.Bool // browser background traffic bypasses capture processing when set
+	suppressAndroidTelemetry atomic.Bool // Android background traffic bypasses capture processing when set
 	invisible                atomic.Bool // when set, origin-form requests (no absolute URI) are forwarded from the Host header
 
 	// TLS-bypass: CONNECTs to a matching host are tunneled raw (no MITM) so the
@@ -319,7 +324,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Hostname()
 	port := strutil.AtoiOr(r.URL.Port(), defaultPort(scheme))
 
-	flow := buildFlow(r, scheme, host, port, time.Now())
+	flow := s.newFlow(buildFlow(r, scheme, host, port, time.Now()))
 	if isUpgradeRequest(r.Header) {
 		s.handleUpgradeHTTP(w, r, flow)
 		return
@@ -347,6 +352,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	dialHost, port := splitHostPort(r.Host, 443)
 	logicalHost := dialHost
 	connectStarted := time.Now()
+	suppression := s.snapshotSuppression()
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -366,7 +372,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// negotiates TLS (and its pinning) with the real origin. Lets a pinned-but-
 	// unimportant domain keep working while other domains are still intercepted.
 	if s.shouldBypassTLS(dialHost) {
-		s.tunnelRaw(clientConn, dialHost, port, r)
+		s.tunnelRaw(clientConn, dialHost, port, r, suppression)
 		return
 	}
 
@@ -382,7 +388,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	tlsConn := tls.Server(clientConn, cfg)
 	if err := tlsConn.Handshake(); err != nil {
-		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err)
+		s.recordTLSFailure(logicalHost, port, clientConn.RemoteAddr().String(), r, connectStarted, err, suppression)
 		// The client rejected our leaf (pinning or untrusted CA). If auto-bypass is
 		// on, add this host so the app's next attempt tunnels through and works.
 		if s.autoBypass.Load() {
@@ -446,7 +452,7 @@ func (s *Server) mitmExchange(conn net.Conn, br *bufio.Reader, req *http.Request
 	req.URL.Scheme = "https"
 	req.URL.Host = hostPort(logicalHost, port, "https")
 	req = withOriginDialTarget(req, originDialTargetAddress(dialHost, port))
-	flow := buildFlow(req, "https", logicalHost, port, time.Now())
+	flow := s.newFlow(buildFlow(req, "https", logicalHost, port, time.Now()))
 	flow.ClientAddr = conn.RemoteAddr().String()
 
 	if isUpgradeRequest(req.Header) {
@@ -518,7 +524,7 @@ func isUpgradeRequest(h http.Header) bool {
 
 // handleUpgradeHTTP hijacks a plain-HTTP client connection and tunnels the
 // upgrade through to the upstream.
-func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow *store.Flow) {
+func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow *proxyFlow) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		s.fail(w, flow, "upgrade: hijacking unsupported")
@@ -536,7 +542,7 @@ func (s *Server) handleUpgradeHTTP(w http.ResponseWriter, r *http.Request, flow 
 // headers intact, never stripped) and, on a 101, splices bytes bidirectionally
 // until either side closes. Frame-level capture (WebSocket messages) is a later
 // slice — here we keep the connection working and record the handshake flow.
-func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, r *http.Request, flow *store.Flow) {
+func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, r *http.Request, flow *proxyFlow) {
 	flow.Flags |= store.FlagWebSocket
 
 	up, err := s.dialUpstream(flow.Scheme, flow.Host, flow.Port)
@@ -579,16 +585,31 @@ func (s *Server) tunnelUpgrade(clientConn net.Conn, clientReader *bufio.Reader, 
 	}
 	s.record(flow)
 
-	// Frame-aware relay: capture each WebSocket frame while forwarding verbatim.
-	// Each relay closes its write side and signals done from a defer, so a panic
-	// in the capture/record path (e.g. a store or notifier callback) can never
-	// leak the goroutine or wedge the parent on <-done — the connection is torn
-	// down and the wait is released regardless.
+	s.relayUpgrade(flow, clientReader, upReader, clientConn, up)
+}
+
+func (s *Server) relayUpgrade(flow *proxyFlow, clientReader, upstreamReader *bufio.Reader, clientConn, upstreamConn net.Conn) {
 	done := make(chan struct{}, 2)
-	go s.relayWS(flow.ID, "send", clientReader, up, up, done)
-	go s.relayWS(flow.ID, "recv", upReader, clientConn, clientConn, done)
+	if flow.suppressCapture {
+		go relayRaw(clientReader, upstreamConn, upstreamConn, done)
+		go relayRaw(upstreamReader, clientConn, clientConn, done)
+	} else {
+		go s.relayWS(flow.ID, "send", clientReader, upstreamConn, upstreamConn, done)
+		go s.relayWS(flow.ID, "recv", upstreamReader, clientConn, clientConn, done)
+	}
 	<-done
 	<-done
+}
+
+func relayRaw(src io.Reader, dst, closer net.Conn, done chan<- struct{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("proxy: raw relay panic: %v", r)
+		}
+		closer.Close()
+		done <- struct{}{}
+	}()
+	_, _ = io.Copy(dst, src)
 }
 
 // relayWS runs one direction of the WebSocket splice. It always closes closer
@@ -605,7 +626,7 @@ func (s *Server) relayWS(flowID int64, dir string, src *bufio.Reader, dst net.Co
 	s.relayWSFrames(flowID, dir, src, dst)
 }
 
-func (s *Server) recordUpgradeError(clientConn net.Conn, flow *store.Flow, msg string) {
+func (s *Server) recordUpgradeError(clientConn net.Conn, flow *proxyFlow, msg string) {
 	flow.Status = http.StatusBadGateway
 	flow.Error = msg
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -808,17 +829,17 @@ func writeResponseHead(w io.Writer, resp *http.Response) error {
 // body, forwards upstream, and finalizes the request side of flow. It returns
 // (resp, false, nil) on success, (nil, true, nil) if the request was dropped,
 // or (nil, false, err) on an upstream error.
-func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Response, bool, error) {
+func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Response, bool, error) {
 	out := r.Clone(r.Context())
 	out.RequestURI = ""
 	out.URL.Scheme = flow.Scheme
 	out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 	removeHeaders(out.Header, hopRequestHeaders)
 
-	// Intercept gate (Burp-style hold) — only for in-scope, non-self, non-telemetry requests.
-	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && (s.Scope == nil || s.Scope.InScope(flow)) &&
-		(!s.suppressTelemetry.Load() || !isBrowserTelemetry(flow.Host)) &&
-		(!s.suppressAndroidTelemetry.Load() || !isAndroidTelemetry(flow.Host)) {
+	// Intercept gate (Burp-style hold) — only for in-scope, non-self requests
+	// that are not covered by an enabled background-traffic suppression policy.
+	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow.Flow) && !flow.suppressCapture &&
+		(s.Scope == nil || s.Scope.InScope(flow.Flow)) {
 		raw, truncated := dumpRequest(out)
 		if truncated {
 			// The body is too large or could not be read completely, so a round-tripped
@@ -826,7 +847,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 			log.Printf("proxy: intercept bypassed for %s %s%s — body unavailable for safe editing (limit %d bytes)",
 				out.Method, flow.Host, flow.Path, maxTransformBody)
 		} else {
-			d := s.eng.HoldContext(out.Context(), flow, out, raw)
+			d := s.eng.HoldContext(out.Context(), flow.Flow, out, raw)
 			// Only flag as intercepted when the request was actually held; the
 			// conditional filter forwards non-matching requests without holding.
 			if d.Held {
@@ -885,8 +906,10 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		}
 	}
 
-	// Match & replace (request-side) — skip our own traffic.
-	if s.eng != nil && s.shouldCapture(flow) {
+	// Match & replace (request-side) — skip our own and suppressed background
+	// traffic. Suppressed requests must be forwarded untouched as well as kept
+	// out of History and Intercept.
+	if s.eng != nil && s.shouldCapture(flow.Flow) && !flow.suppressCapture {
 		if err := s.eng.ApplyRules(out); err != nil {
 			return nil, false, fmt.Errorf("apply rules: %w", err)
 		}
@@ -936,7 +959,7 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 
 // writeResponseHTTP streams the upstream response to an http.ResponseWriter
 // while tee'ing the body to the store, then records the flow.
-func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *store.Flow) {
+func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *proxyFlow) {
 	defer resp.Body.Close()
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
 		flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -1000,7 +1023,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 
 // writeResponseConn serializes the upstream response onto a raw conn (the MITM
 // path) while tee'ing the body to the store, then records the flow.
-func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *store.Flow) error {
+func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *proxyFlow) error {
 	upstream := resp.Body
 	defer upstream.Close()
 	if st, hdr, body, transformed, dropped := s.maybeInterceptResponse(flow, resp); dropped {
@@ -1077,12 +1100,12 @@ func restoreBody(prefix []byte, rest io.ReadCloser) io.ReadCloser {
 // hold gate when active. It returns the final status/header/body to send. When
 // neither rules nor response-interception apply, transformed is false and the
 // caller streams the original response untouched (no buffering).
-func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (status int, header http.Header, body []byte, transformed, dropped bool) {
-	if s.eng == nil || !s.shouldCapture(flow) {
-		return 0, nil, nil, false, false // our own traffic is forwarded untouched
+func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (status int, header http.Header, body []byte, transformed, dropped bool) {
+	if s.eng == nil || !s.shouldCapture(flow.Flow) || flow.suppressCapture {
+		return 0, nil, nil, false, false // own/suppressed traffic is forwarded untouched
 	}
 	hasRules := s.eng.HasResponseRules()
-	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow))
+	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow.Flow))
 	if !hasRules && !hold {
 		return 0, nil, nil, false, false
 	}
@@ -1114,7 +1137,7 @@ func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (
 		if resp.Request != nil {
 			ctx = resp.Request.Context()
 		}
-		d := s.eng.HoldResponseContext(ctx, flow, buildRawResponse(st, h, b))
+		d := s.eng.HoldResponseContext(ctx, flow.Flow, buildRawResponse(st, h, b))
 		if d.Drop {
 			flow.Flags |= store.FlagDropped
 			return 0, nil, nil, false, true
@@ -1193,7 +1216,7 @@ func parseRawResponse(raw []byte) (int, http.Header, []byte, error) {
 
 // fail records an errored flow and writes a 502 to the client. Used only before
 // any response header has been written.
-func (s *Server) fail(w http.ResponseWriter, flow *store.Flow, msg string) {
+func (s *Server) fail(w http.ResponseWriter, flow *proxyFlow, msg string) {
 	flow.Status = http.StatusBadGateway
 	flow.Error = msg
 	flow.DurationMs = time.Since(flow.TS).Milliseconds()
@@ -1244,15 +1267,15 @@ func (s *Server) isOwnListenerTarget(host string, port int) bool {
 func (s *Server) SetCaptureScopeOnly(v bool) { s.scopeOnly.Store(v) }
 
 // SetSuppressBrowserTelemetry controls whether known Chrome and Firefox
-// background telemetry, update, and crash-reporting hosts are silently
-// forwarded without being captured or held by the intercept gate. Enabled by
-// default; users may turn it off to inspect browser background traffic.
+// background-service hosts are forwarded untouched without being captured or
+// held by either intercept gate. Enabled by default; users may turn it off to
+// inspect browser-managed traffic.
 func (s *Server) SetSuppressBrowserTelemetry(v bool) { s.suppressTelemetry.Store(v) }
 
 // SetSuppressAndroidTelemetry controls whether known Android OS, Google Play
 // Services, Crashlytics, and Analytics phone-home hosts are silently forwarded
-// without being captured or held by the intercept gate. Enabled by default;
-// users may turn it off to inspect GMS / SDK background traffic.
+// without rules, capture, or either intercept gate. Enabled by default; users
+// may turn it off to inspect GMS / SDK background traffic.
 func (s *Server) SetSuppressAndroidTelemetry(v bool) { s.suppressAndroidTelemetry.Store(v) }
 
 // SetInvisibleProxy toggles transparent/invisible proxy mode (Burp's "Support
@@ -1264,19 +1287,17 @@ func (s *Server) SetSuppressAndroidTelemetry(v bool) { s.suppressAndroidTelemetr
 func (s *Server) SetInvisibleProxy(v bool) { s.invisible.Store(v) }
 
 // persistable reports whether a flow should be written to history: never our own
-// loopback traffic; never browser/Android telemetry when suppression is on; and
-// — when scope-only capture is on and a scope is set — only when it is in scope.
-func (s *Server) persistable(flow *store.Flow) bool {
-	if !s.shouldCapture(flow) {
+// loopback traffic; never enabled browser/Android background suppression
+// categories; and — when scope-only capture is on and a scope is set — only
+// when it is in scope.
+func (s *Server) persistable(flow *proxyFlow) bool {
+	if !s.shouldCapture(flow.Flow) {
 		return false
 	}
-	if s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host) {
+	if flow.suppressCapture {
 		return false
 	}
-	if s.suppressAndroidTelemetry.Load() && isAndroidTelemetry(flow.Host) {
-		return false
-	}
-	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow) {
+	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow.Flow) {
 		return false
 	}
 	return true
@@ -1284,10 +1305,9 @@ func (s *Server) persistable(flow *store.Flow) bool {
 
 // teeBody captures a body to the content-addressed store and returns a reader to
 // forward plus a finalize() yielding (hash, len) — mirroring capture.TeeBody. When
-// the flow is not persistable (scope-only mode, out of scope) it skips storage
-// entirely and streams the body straight through, so out-of-scope bodies (the
-// bulk of disk use) never land on disk.
-func (s *Server) teeBody(flow *store.Flow, body io.Reader) (io.Reader, func() (string, int64, error), error) {
+// the flow is not persistable (self traffic, enabled suppression, or scope-only
+// mode with an out-of-scope flow), it skips storage and streams the body through.
+func (s *Server) teeBody(flow *proxyFlow, body io.Reader) (io.Reader, func() (string, int64, error), error) {
 	if s.persistable(flow) {
 		return s.cap.TeeBody(body)
 	}
@@ -1306,17 +1326,17 @@ func isLoopbackName(host string) bool {
 // recordRequest inserts a flow the moment its request is sent upstream — before
 // the response is known — so it shows in history immediately. Idempotent: it is
 // a no-op once the flow has an ID. record() later fills in the response.
-func (s *Server) recordRequest(flow *store.Flow) {
+func (s *Server) recordRequest(flow *proxyFlow) {
 	if flow.ID != 0 || !s.persistable(flow) {
 		return
 	}
-	if _, err := s.st.InsertFlow(flow); err != nil {
+	if _, err := s.st.InsertFlow(flow.Flow); err != nil {
 		log.Printf("proxy: insert flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
 	s.cap.TagIfAuth(flow.ID, flow.Path) // best-effort auth surface tagging
 	if s.events != nil {
-		s.events.FlowCaptured(flow)
+		s.events.FlowCaptured(flow.Flow)
 	}
 }
 
@@ -1324,16 +1344,16 @@ func (s *Server) recordRequest(flow *store.Flow) {
 // time (recordRequest), this updates that row in place and emits a flow.update;
 // otherwise — e.g. a request dropped before it was ever sent — it inserts and
 // emits flow.new.
-func (s *Server) record(flow *store.Flow) {
+func (s *Server) record(flow *proxyFlow) {
 	if flow.ID != 0 {
 		// Already inserted at request time — always finish it (the scope decision
 		// was made then) so an in-flight scope change can't strand a half-flow.
-		if err := s.st.UpdateFlow(flow); err != nil {
+		if err := s.st.UpdateFlow(flow.Flow); err != nil {
 			log.Printf("proxy: update flow %d (%s %s%s): %v", flow.ID, flow.Method, flow.Host, flow.Path, err)
 			return
 		}
 		if s.events != nil {
-			s.events.FlowUpdated(flow)
+			s.events.FlowUpdated(flow.Flow)
 		}
 		plugin.EmitFlowCaptured(flow.ID) // extension hooks (best-effort, off the wire)
 		return
@@ -1341,13 +1361,13 @@ func (s *Server) record(flow *store.Flow) {
 	if !s.persistable(flow) {
 		return
 	}
-	if _, err := s.st.InsertFlow(flow); err != nil {
+	if _, err := s.st.InsertFlow(flow.Flow); err != nil {
 		log.Printf("proxy: persist flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
 	s.cap.TagIfAuth(flow.ID, flow.Path) // best-effort auth surface tagging
 	if s.events != nil {
-		s.events.FlowCaptured(flow)
+		s.events.FlowCaptured(flow.Flow)
 	}
 	plugin.EmitFlowCaptured(flow.ID) // extension hooks (best-effort, off the wire)
 }

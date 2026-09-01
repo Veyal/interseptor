@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.6` release, added a changelog/source alignment guard, and refreshed the exact-source UI audit evidence without moving its tag.
 
+### Fixed
+- **Current Firefox background-traffic suppression.** Expanded the conservative exact-host classifier for current Mozilla telemetry, DAP, connectivity, Remote Settings, Firefox Suggest, sponsored new-tab, OHTTP, crash, and Safe Browsing services observed in live capture while keeping the interactive Socorro crash-search UI capturable; hardened authority normalization for ports, IPv6, case, whitespace, and trailing DNS dots; and snapshots suppression when each request enters so later setting changes cannot split capture across request, response, History events, body storage, or WebSocket frames. CONNECT suppression is fixed before hijacking, dialing, or handshaking, and suppressed TLS-passthrough notices no longer consume their later visible dedup marker. Settings now accurately explains that matching traffic is forwarded unchanged, only new traffic is affected, other capture policies still apply when suppression is disabled, and existing History remains intact, while its pending toggle restores keyboard focus after acknowledgement.
+
 ## [2.0.6] - 2026-08-31
 
 ### Changed
