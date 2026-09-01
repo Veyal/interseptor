@@ -16,7 +16,7 @@ func (c capScope) InScope(*store.Flow) bool { return c.in }
 // keeps everything; and with no scope configured everything is in scope.
 func TestPersistableScopeOnly(t *testing.T) {
 	s := &Server{}
-	flow := &store.Flow{Host: "example.com", Port: 443}
+	flow := s.newFlow(&store.Flow{Host: "example.com", Port: 443})
 
 	// Default (capture all): persist regardless of scope.
 	s.Scope = capScope{in: false}
@@ -49,7 +49,7 @@ func TestTeeBodyPassthroughWhenNotPersistable(t *testing.T) {
 	s := &Server{}
 	s.Scope = capScope{in: false}
 	s.SetCaptureScopeOnly(true)
-	flow := &store.Flow{Host: "example.com", Port: 443}
+	flow := s.newFlow(&store.Flow{Host: "example.com", Port: 443})
 
 	r, finalize, err := s.teeBody(flow, strings.NewReader("hello body"))
 	if err != nil {

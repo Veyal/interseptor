@@ -195,7 +195,7 @@ func (s *Server) recordBypassOnce(host string, port int, clientAddr string, r *h
 }
 
 func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.Request) bool {
-	flow := &store.Flow{
+	flow := s.newFlow(&store.Flow{
 		TS:          time.Now(),
 		Method:      "CONNECT",
 		Scheme:      "https",
@@ -206,7 +206,7 @@ func (s *Server) recordBypass(host string, port int, clientAddr string, r *http.
 		ClientAddr:  clientAddr,
 		Flags:       store.FlagTLSBypassed,
 		ReqHeaders:  headerWithHost(r),
-	}
+	})
 	s.record(flow)
 	if flow.ID == 0 {
 		return false

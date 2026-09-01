@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -45,7 +47,7 @@ func TestIsBrowserTelemetry(t *testing.T) {
 		{"ads-img.mozilla.org", true},
 		{"spocs.getpocket.com", true},
 		{"webextensions.settings.services.mozilla.com", true},
-		{"crash-stats.mozilla.org", true},
+		{"crash-stats.mozilla.org", false},
 		{"safebrowsing.googleapis.com", true},
 		{"safebrowsing.google.com", true},
 		{"sb-ssl.google.com", true},
@@ -116,7 +118,8 @@ func TestSuppressedTelemetrySkipsResponseRulesAndHold(t *testing.T) {
 				Request:    req,
 			}
 
-			_, _, _, transformed, dropped := srv.maybeInterceptResponse(&store.Flow{Host: tt.host}, resp)
+			flow := srv.newFlow(&store.Flow{Host: tt.host})
+			_, _, _, transformed, dropped := srv.maybeInterceptResponse(flow, resp)
 			if transformed || dropped {
 				t.Fatalf("suppressed response transformed=%v dropped=%v, want untouched forwarding", transformed, dropped)
 			}
@@ -266,6 +269,241 @@ func TestBrowserBackgroundSuppressionSeparatesTargetTraffic(t *testing.T) {
 	}
 }
 
+func TestBrowserSuppressionDecisionRemainsStableAcrossToggle(t *testing.T) {
+	tests := []struct {
+		name             string
+		initial          bool
+		wantUserAgent    string
+		wantServerHeader string
+		wantCaptured     bool
+	}{
+		{name: "suppressed admission", initial: true, wantUserAgent: "original", wantServerHeader: "origin"},
+		{name: "captured admission", initial: false, wantUserAgent: "rewritten", wantServerHeader: "rewritten", wantCaptured: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			received := make(chan string, 1)
+			release := make(chan struct{})
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				received <- r.Header.Get("User-Agent")
+				<-release
+				w.Header().Set("Server", "origin")
+				_, _ = io.WriteString(w, "response-body")
+			}))
+			defer upstream.Close()
+			defer func() {
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+			}()
+			upstreamURL, err := url.Parse(upstream.URL)
+			if err != nil {
+				t.Fatalf("parse upstream URL: %v", err)
+			}
+
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatalf("open store: %v", err)
+			}
+			defer st.Close()
+			eng := intercept.New()
+			if err := eng.SetRules([]store.Rule{
+				{Enabled: true, Type: "req-header", Match: `User-Agent: .*`, Replace: "User-Agent: rewritten"},
+				{Enabled: true, Type: "res-header", Match: `Server: .*`, Replace: "Server: rewritten"},
+			}); err != nil {
+				t.Fatalf("set rules: %v", err)
+			}
+			events := &recEvents{}
+			srv := New(st, capture.New(st), nil, eng, events)
+			srv.SetSuppressBrowserTelemetry(tt.initial)
+			srv.tr.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, upstreamURL.Host)
+			}
+
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("listen: %v", err)
+			}
+			defer listener.Close()
+			go srv.Serve(listener)
+
+			proxyURL, err := url.Parse("http://" + listener.Addr().String())
+			if err != nil {
+				t.Fatalf("parse proxy URL: %v", err)
+			}
+			client := &http.Client{
+				Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+				Timeout:   5 * time.Second,
+			}
+			type result struct {
+				resp *http.Response
+				body []byte
+				err  error
+			}
+			resultCh := make(chan result, 1)
+			go func() {
+				req, reqErr := http.NewRequest(http.MethodPost, "http://merino.services.mozilla.com/background", strings.NewReader("request-body"))
+				if reqErr != nil {
+					resultCh <- result{err: reqErr}
+					return
+				}
+				req.Header.Set("User-Agent", "original")
+				resp, reqErr := client.Do(req)
+				if reqErr != nil {
+					resultCh <- result{err: reqErr}
+					return
+				}
+				body, readErr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				resultCh <- result{resp: resp, body: body, err: readErr}
+			}()
+
+			select {
+			case got := <-received:
+				if got != tt.wantUserAgent {
+					t.Fatalf("upstream User-Agent=%q, want %q", got, tt.wantUserAgent)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("upstream did not receive request")
+			}
+			srv.SetSuppressBrowserTelemetry(!tt.initial)
+			close(release)
+
+			var got result
+			select {
+			case got = <-resultCh:
+			case <-time.After(2 * time.Second):
+				t.Fatal("proxy did not finish toggled request")
+			}
+			if got.err != nil {
+				t.Fatalf("request through proxy: %v", got.err)
+			}
+			if got.resp.Header.Get("Server") != tt.wantServerHeader {
+				t.Fatalf("response Server=%q, want %q", got.resp.Header.Get("Server"), tt.wantServerHeader)
+			}
+			if string(got.body) != "response-body" {
+				t.Fatalf("response body=%q", got.body)
+			}
+
+			flows, err := st.QueryFlows(10)
+			if err != nil {
+				t.Fatalf("query flows: %v", err)
+			}
+			captured, updated := events.snap()
+			entries, err := os.ReadDir(st.BodiesDir())
+			if err != nil {
+				t.Fatalf("read body store: %v", err)
+			}
+			if tt.wantCaptured {
+				if len(flows) != 1 || flows[0].ReqBodyHash == "" || flows[0].ResBodyHash == "" {
+					t.Fatalf("captured flow=%+v, want request and response bodies", flows)
+				}
+				if len(captured) != 1 || len(updated) != 1 || len(entries) == 0 {
+					t.Fatalf("capture side effects: new=%d update=%d bodies=%d", len(captured), len(updated), len(entries))
+				}
+			} else if len(flows) != 0 || len(captured) != 0 || len(updated) != 0 || len(entries) != 0 {
+				t.Fatalf("suppressed side effects: flows=%d new=%d update=%d bodies=%d", len(flows), len(captured), len(updated), len(entries))
+			}
+		})
+	}
+}
+
+type websocketEventRecorder struct {
+	recEvents
+	frames chan int64
+}
+
+func (r *websocketEventRecorder) WSFramed(flowID int64) {
+	r.frames <- flowID
+}
+
+func TestSuppressedUpgradeUsesRawRelayWithoutCapture(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	events := &websocketEventRecorder{frames: make(chan int64, 1)}
+	srv := New(st, capture.New(st), nil, nil, events)
+	srv.SetSuppressBrowserTelemetry(true)
+	flow := srv.newFlow(&store.Flow{Host: "push.services.mozilla.com", Scheme: "https", Port: 443})
+	srv.record(flow)
+
+	clientProxy, clientPeer := net.Pipe()
+	upstreamProxy, upstreamPeer := net.Pipe()
+	defer clientPeer.Close()
+	defer upstreamPeer.Close()
+	_ = clientPeer.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = upstreamPeer.SetDeadline(time.Now().Add(2 * time.Second))
+	done := make(chan struct{})
+	go func() {
+		srv.relayUpgrade(flow, bufio.NewReader(clientProxy), bufio.NewReader(upstreamProxy), clientProxy, upstreamProxy)
+		close(done)
+	}()
+
+	clientFrame := wsTextFrame("client-frame", true)
+	writeResult := make(chan error, 1)
+	go func() {
+		_, err := clientPeer.Write(clientFrame)
+		writeResult <- err
+	}()
+	forwarded := make([]byte, len(clientFrame))
+	if _, err := io.ReadFull(upstreamPeer, forwarded); err != nil {
+		t.Fatalf("read upstream frame: %v", err)
+	}
+	if err := <-writeResult; err != nil {
+		t.Fatalf("write client frame: %v", err)
+	}
+	if !bytes.Equal(forwarded, clientFrame) {
+		t.Fatalf("client frame changed in raw relay")
+	}
+
+	serverFrame := wsTextFrame("server-frame", false)
+	go func() {
+		_, err := upstreamPeer.Write(serverFrame)
+		writeResult <- err
+	}()
+	forwarded = make([]byte, len(serverFrame))
+	if _, err := io.ReadFull(clientPeer, forwarded); err != nil {
+		t.Fatalf("read client frame: %v", err)
+	}
+	if err := <-writeResult; err != nil {
+		t.Fatalf("write server frame: %v", err)
+	}
+	if !bytes.Equal(forwarded, serverFrame) {
+		t.Fatalf("server frame changed in raw relay")
+	}
+
+	clientPeer.Close()
+	upstreamPeer.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("raw upgrade relay did not stop")
+	}
+	frames, err := st.QueryWSFrames(0, 10)
+	if err != nil {
+		t.Fatalf("query websocket frames: %v", err)
+	}
+	flows, err := st.QueryFlows(10)
+	if err != nil {
+		t.Fatalf("query flows: %v", err)
+	}
+	captured, updated := events.snap()
+	if len(frames) != 0 || len(flows) != 0 || len(captured) != 0 || len(updated) != 0 {
+		t.Fatalf("suppressed upgrade side effects: frames=%d flows=%d new=%d update=%d", len(frames), len(flows), len(captured), len(updated))
+	}
+	select {
+	case flowID := <-events.frames:
+		t.Fatalf("suppressed upgrade emitted ws.frame for flow %d", flowID)
+	default:
+	}
+}
+
 func TestIsAndroidTelemetry(t *testing.T) {
 	cases := []struct {
 		host string
@@ -300,7 +538,7 @@ func TestIsAndroidTelemetry(t *testing.T) {
 
 func TestPersistableSuppressesAndroidTelemetry(t *testing.T) {
 	s := &Server{}
-	flow := &store.Flow{Host: "android.clients.google.com", Port: 443}
+	flow := s.newFlow(&store.Flow{Host: "android.clients.google.com", Port: 443})
 
 	// Default atomic false: still persist until cmd wires the setting on.
 	if !s.persistable(flow) {
@@ -308,12 +546,16 @@ func TestPersistableSuppressesAndroidTelemetry(t *testing.T) {
 	}
 
 	s.SetSuppressAndroidTelemetry(true)
+	if !s.persistable(flow) {
+		t.Fatal("an admitted flow must keep its original capture decision")
+	}
+	flow = s.newFlow(&store.Flow{Host: "android.clients.google.com", Port: 443})
 	if s.persistable(flow) {
 		t.Fatal("android telemetry must be dropped when suppression is on")
 	}
 
 	// Ordinary app host still persists.
-	app := &store.Flow{Host: "api.example.com", Port: 443}
+	app := s.newFlow(&store.Flow{Host: "api.example.com", Port: 443})
 	if !s.persistable(app) {
 		t.Fatal("non-telemetry host must still persist")
 	}
@@ -321,18 +563,20 @@ func TestPersistableSuppressesAndroidTelemetry(t *testing.T) {
 	// Browser suppress must not affect Android hosts (and vice versa).
 	s.SetSuppressAndroidTelemetry(false)
 	s.SetSuppressBrowserTelemetry(true)
+	flow = s.newFlow(&store.Flow{Host: "android.clients.google.com", Port: 443})
 	if !s.persistable(flow) {
 		t.Fatal("browser-only suppress must not drop android hosts")
 	}
-	browser := &store.Flow{Host: "incoming.telemetry.mozilla.org", Port: 443}
+	browser := s.newFlow(&store.Flow{Host: "incoming.telemetry.mozilla.org", Port: 443})
 	if s.persistable(browser) {
 		t.Fatal("browser telemetry must still be dropped by browser suppress")
 	}
-	for _, flow := range []*store.Flow{
+	for _, candidate := range []*store.Flow{
 		{Host: "merino.services.mozilla.com", Port: 443, HTTPVersion: "HTTP/1.1"},
 		{Host: "mozilla-ohttp.fastly-edge.com", Port: 443, HTTPVersion: "HTTP/2.0"},
 		{Host: "firefox-portal-detection.com.", Port: 80, HTTPVersion: "HTTP/1.1"},
 	} {
+		flow := s.newFlow(candidate)
 		if s.persistable(flow) {
 			t.Errorf("browser background flow %q (%s) must be dropped", flow.Host, flow.HTTPVersion)
 		}

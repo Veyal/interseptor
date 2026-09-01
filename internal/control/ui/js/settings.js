@@ -755,7 +755,7 @@ $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
   const control=$('#suppressTelemetryToggle');
   const on=!control.classList.contains('on');
   return saveBooleanSetting('suppressBrowserTelemetry',on,{control,lockControl:true,
-    success:current=>{setSuppressTelemetry(current);toast(current?'New browser background traffic will be forwarded without capture':'Browser background traffic will now appear in History');},
+    success:current=>{setSuppressTelemetry(current);toast(current?'New browser background traffic will be forwarded without capture':'Browser background suppression disabled; other capture policies still apply');},
     failure:e=>{toast('browser background traffic: '+e.message);loadSettings();},
   });
 });
@@ -764,7 +764,7 @@ $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').oncl
   const control=$('#suppressAndroidTelemetryToggle');
   const on=!control.classList.contains('on');
   return saveBooleanSetting('suppressAndroidTelemetry',on,{control,lockControl:true,
-    success:current=>{setSuppressAndroidTelemetry(current);toast(current?'Android telemetry suppressed':'Android telemetry now visible in history');},
+    success:current=>{setSuppressAndroidTelemetry(current);toast(current?'Android telemetry suppressed':'Android telemetry suppression disabled; other capture policies still apply');},
     failure:e=>{toast('android telemetry: '+e.message);loadSettings();},
   });
 });

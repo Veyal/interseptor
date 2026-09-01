@@ -34,7 +34,7 @@ func classifyTLSError(err error) string {
 // recordTLSFailure persists a CONNECT→TLS-failure event so operators can tell
 // pinning/CA rejection apart from "no traffic at all".
 func (s *Server) recordTLSFailure(host string, port int, clientAddr string, r *http.Request, started time.Time, handshakeErr error) {
-	flow := &store.Flow{
+	flow := s.newFlow(&store.Flow{
 		TS:          started,
 		Method:      "CONNECT",
 		Scheme:      "https",
@@ -48,7 +48,7 @@ func (s *Server) recordTLSFailure(host string, port int, clientAddr string, r *h
 		Flags:       store.FlagTLSFailed,
 		DurationMs:  time.Since(started).Milliseconds(),
 		ReqHeaders:  headerWithHost(r),
-	}
+	})
 	s.record(flow)
 	if flow.ID != 0 {
 		_, _ = s.st.AddFlowTags(flow.ID, []string{"tls-failed", "ssl-pinning?"})

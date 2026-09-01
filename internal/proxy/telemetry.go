@@ -22,7 +22,6 @@ var browserTelemetryHosts = map[string]struct{}{
 	"telemetry.mozilla.org":          {},
 	"crash-reports.mozilla.com":      {},
 	"crash-stats.mozilla.com":        {},
-	"crash-stats.mozilla.org":        {},
 	"dap.services.mozilla.com":       {},
 	"dap-09-3.api.divviup.org":       {},
 	"coverage.mozilla.org":           {},
@@ -190,14 +189,10 @@ func telemetryHostMatches(host string, exact map[string]struct{}, suffixes []str
 	return false
 }
 
-// isSuppressedTelemetry reports whether flow belongs to a currently enabled
-// browser/Android background-traffic suppression category. Keeping this policy
-// in one place prevents request and response interception from diverging from
-// History/body persistence.
-func (s *Server) isSuppressedTelemetry(flow *store.Flow) bool {
-	if flow == nil {
-		return false
+func (s *Server) newFlow(flow *store.Flow) *proxyFlow {
+	return &proxyFlow{
+		Flow: flow,
+		suppressCapture: (s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host)) ||
+			(s.suppressAndroidTelemetry.Load() && isAndroidTelemetry(flow.Host)),
 	}
-	return (s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host)) ||
-		(s.suppressAndroidTelemetry.Load() && isAndroidTelemetry(flow.Host))
 }

@@ -208,7 +208,8 @@ func TestUIBrowserBackgroundSuppressionExplainsScope(t *testing.T) {
 		`Suppressing browser background traffic`,
 		`Capturing browser background traffic`,
 		`New browser background traffic will be forwarded without capture`,
-		`Browser background traffic will now appear in History`,
+		`Browser background suppression disabled; other capture policies still apply`,
+		`Android telemetry suppression disabled; other capture policies still apply`,
 		`document.activeElement===control`,
 		`focusReturn.focus({preventScroll:true})`,
 	)

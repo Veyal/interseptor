@@ -11,7 +11,9 @@ Use this checklist when changing browser or Android capture-noise suppression.
 
 - Suppression forwards matching requests and responses unchanged. It does not block the network.
 - A suppressed flow must bypass request and response interception, request and response rules,
-  History insertion/events, and request/response body storage.
+  History insertion/events, request/response body storage, and WebSocket frame capture/events.
+- Snapshot the suppression decision when a request enters the proxy and keep it unchanged for the
+  full request, response, error, upgrade, persistence, and body-storage lifecycle.
 - Existing History remains evidence and is never deleted automatically when a toggle changes.
 - Keep normal application traffic, authentication, sync, downloads, add-on services, and FCM visible.
 - Do not consume one-time History or notification dedup markers when suppression prevents the
@@ -37,4 +39,7 @@ Mozilla references:
 
 Exercise a suppressed flow with request and response rules configured. Assert that it reaches the
 upstream unchanged, creates no request or response hold, inserts no flow, and emits no stored body.
-Also keep an ordinary target-flow test proving that normal rules and capture still work.
+For upgrade endpoints, assert that raw frames relay in both directions without frame storage or
+events. Toggle suppression while an ordinary and a suppressed request are in flight to prove each
+keeps its admission decision. Also keep an ordinary target-flow test proving that normal rules and
+capture still work.
