@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+const managedUIAuditEnv = "INTERSEPTOR_UI_AUDIT_MANAGED"
+
+// projectSwitchAllowed disables re-exec only for the browser audit's owned,
+// disposable candidate. Normal application launches preserve project switching.
+func projectSwitchAllowed() bool {
+	return os.Getenv(managedUIAuditEnv) != "1"
+}
+
 // resolveProjectDir maps a --project / INTERSEPTOR_PROJECT value to a display
 // name and an absolute data directory. A bare token (no path separator) is a
 // named project under projectsDir; anything that looks like a path (absolute,

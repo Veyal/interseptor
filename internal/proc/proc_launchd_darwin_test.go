@@ -18,7 +18,7 @@ func TestLaunchdServerJobWithRunner(t *testing.T) {
 		case "list":
 			return []byte("PID\tStatus\tLabel\n31777\t0\tcom.interseptor.ui\n19227\t-15\tcom.interseptor.vault\n"), nil
 		case "print":
-			return []byte("pid = 31777\narguments = {\n\t/Users/des/.local/bin/interseptor\n\t--project\n\tebranch-banksumut\n}\n"), nil
+			return []byte("pid = 31777\narguments = {\n\t/Users/example/.local/bin/interseptor\n\t--project\n\texample-project\n}\n"), nil
 		default:
 			return nil, errors.New("unexpected command")
 		}
@@ -62,7 +62,7 @@ func TestBootoutLaunchdServerWithRunnerConstructsBootout(t *testing.T) {
 		case "list":
 			return []byte("31777\t0\tcom.interseptor.ui\n"), nil
 		case "print":
-			return []byte("pid = 31777\narguments = {\n\t/Users/des/.local/bin/interseptor\n\t--project\n\texample\n}\n"), nil
+			return []byte("pid = 31777\narguments = {\n\t/Users/example/.local/bin/interseptor\n\t--project\n\texample\n}\n"), nil
 		case "bootout":
 			return nil, nil
 		default:

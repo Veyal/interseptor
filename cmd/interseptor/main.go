@@ -253,12 +253,14 @@ func run() error {
 	// fresh start on the new project's store/CA, no mid-session store swapping.
 	// The mechanism is platform-specific (syscall.Exec on Unix, spawn-and-exit on
 	// Windows, which has no syscall.Exec) — see reexec_unix.go / reexec_windows.go.
-	hub.SwitchProject = func(target string) error {
-		exe, err := os.Executable()
-		if err != nil {
-			return err
+	if projectSwitchAllowed() {
+		hub.SwitchProject = func(target string) error {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			return reexecProject(exe, target)
 		}
-		return reexecProject(exe, target)
 	}
 	prx := proxy.New(st, capture.New(st), ca, eng, hub)
 	prx.Scope = sc

@@ -14,8 +14,14 @@ import concurrent.futures
 import hashlib
 import http.client
 import json
+import os
+import re
+import secrets
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -51,6 +57,8 @@ BASELINE_SCREENSHOTS = {
     "1024x768": "docs/ui-audit/before-1024x768-map.png",
     "390x844": "docs/ui-audit/before-390x844-scanner.png",
 }
+AUDIT_SENTINEL_NAME = ".interseptor-ui-audit-sentinel"
+AUDIT_PROJECT_PREFIX = "ui-audit-"
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -135,28 +143,75 @@ def proxy_request(proxy: Tuple[str, int], url: str, method: str = "GET", body: b
     try:
         connection.request(method, url, body=body, headers=headers)
         response = connection.getresponse()
-        return response.status, response.read()
+        payload = response.read(256 * 1024 + 1)
+        if len(payload) > 256 * 1024:
+            raise ValueError("direct proxy response exceeds 256 KiB")
+        return response.status, payload
     finally:
         connection.close()
 
 
-def start_fixture() -> Tuple[ThreadingHTTPServer, threading.Thread]:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
-    thread = threading.Thread(target=server.serve_forever, name="ui-audit-fixture", daemon=True)
-    thread.start()
-    return server, thread
+def bounded_response_diagnostic(status: int, body: bytes) -> str:
+    """Keep direct-proxy failures useful without dumping captured data."""
+    digest = hashlib.sha256(body).hexdigest()[:16]
+    return f"status {status}; response bytes {len(body)}; sha256 {digest}"
 
 
-def png_dimensions(path: Path) -> Tuple[int, int]:
-    """Read PNG dimensions without adding an image-processing dependency."""
-    data = path.read_bytes()
-    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR" or len(data) < 24:
-        raise ValueError(f"{path} is not a valid PNG with an IHDR")
-    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+def _json_get(base: str, path: str) -> Tuple[int, Dict[str, Any], str]:
+    parsed = urlsplit(base)
+    if parsed.scheme != "http" or not parsed.hostname or parsed.port is None:
+        raise ValueError("audit base URL must be an explicit HTTP HOST:PORT")
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    try:
+        connection.request("GET", path, headers={"Connection": "close"})
+        response = connection.getresponse()
+        raw = response.read(256 * 1024 + 1)
+        if len(raw) > 256 * 1024:
+            raise ValueError(f"{path} response exceeds 256 KiB")
+        text = raw.decode("utf-8", errors="replace")
+        if response.status < 200 or response.status >= 300:
+            raise ValueError(f"{path} returned status {response.status}")
+        value = json.loads(text)
+        if not isinstance(value, dict):
+            raise ValueError(f"{path} returned a non-object JSON response")
+        return response.status, value, text
+    finally:
+        connection.close()
 
 
-def runtime_source_identity() -> Dict[str, Any]:
-    repo_root = Path(__file__).resolve().parents[1]
+def expected_fallback_version() -> str:
+    source = Path(__file__).resolve().parents[1] / "internal/version/version.go"
+    match = re.search(r'(?m)^\s*(?:var|const)\s+Version\s*=\s*"([^"\\]+)"', source.read_text())
+    if not match:
+        raise ValueError("could not read fallback version from internal/version/version.go")
+    return match.group(1)
+
+
+def validate_expected_data_dir(raw: str) -> Path:
+    """Accept only a real, direct child audit root under the OS temp dir."""
+    candidate = Path(raw).expanduser()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ValueError("--expected-data-dir must be an existing non-symlink directory")
+    resolved = candidate.resolve()
+    if resolved == temp_root or resolved.parent != temp_root or not resolved.name.startswith("interseptor-ui-audit-"):
+        raise ValueError("--expected-data-dir must be a direct interseptor-ui-audit-* directory under the OS temp dir")
+    return resolved
+
+
+def validate_expected_project(name: str) -> str:
+    if not re.fullmatch(r"ui-audit-[a-z0-9][a-z0-9-]{0,47}", name or ""):
+        raise ValueError("--expected-project must be a safe bare project name")
+    return name
+
+
+def free_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def runtime_source_paths(repo_root: Path) -> List[str]:
     listed = subprocess.run(
         [
             "git",
@@ -179,15 +234,24 @@ def runtime_source_identity() -> Dict[str, Any]:
     for relative_bytes in listed.split(b"\0"):
         if not relative_bytes:
             continue
-        path = repo_root / relative_bytes.decode("utf-8", errors="surrogateescape")
+        relative = Path(relative_bytes.decode("utf-8", errors="surrogateescape"))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("runtime source manifest contains an unsafe path")
+        path = repo_root / relative
         if path.is_file() and not path.name.endswith("_test.go"):
-            paths.append(path)
+            paths.append(relative.as_posix())
+    return sorted(set(paths))
+
+
+def runtime_source_digest(source_root: Path, relative_paths: List[str]) -> str:
     digest = hashlib.sha256()
-    unique_paths = sorted(set(paths), key=lambda path: path.relative_to(repo_root).as_posix())
-    for path in unique_paths:
-        relative = path.relative_to(repo_root).as_posix()
+    for relative in relative_paths:
         digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(hashlib.sha256(path.read_bytes()).digest())
+        digest.update(hashlib.sha256((source_root / relative).read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def source_base_commit(repo_root: Path) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repo_root,
@@ -195,11 +259,271 @@ def runtime_source_identity() -> Dict[str, Any]:
         capture_output=True,
         text=True,
     )
+    return completed.stdout.strip()
+
+
+def source_identity(source_root: Path, relative_paths: List[str], base_commit: str) -> Dict[str, Any]:
     return {
-        "base_commit": completed.stdout.strip(),
-        "runtime_sha256": digest.hexdigest(),
-        "runtime_files": len(unique_paths),
+        "worktree_base_commit": base_commit,
+        "runtime_sha256": runtime_source_digest(source_root, relative_paths),
+        "runtime_files": len(relative_paths),
+        "audit_harness_sha256": hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),
     }
+
+
+def create_runtime_source_snapshot(repo_root: Path, snapshot: Path) -> Tuple[Dict[str, Any], List[str]]:
+    source_paths = runtime_source_paths(repo_root)
+    base_commit = source_base_commit(repo_root)
+    snapshot.mkdir(mode=0o700)
+    for relative in source_paths:
+        destination = snapshot / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((repo_root / relative).read_bytes())
+    return source_identity(snapshot, source_paths, base_commit), source_paths
+
+
+def managed_build_env(root: Path) -> Dict[str, str]:
+    build_home = root / "build-home"
+    build_cache = root / "go-build-cache"
+    module_cache = root / "go-module-cache"
+    build_temp = root / "build-temp"
+    for path in (build_home, build_cache, module_cache, build_temp):
+        path.mkdir(mode=0o700)
+    env = {
+        key: os.environ[key]
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "all_proxy",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+        )
+        if key in os.environ
+    }
+    env.update({
+        "HOME": str(build_home),
+        "PATH": os.defpath,
+        "TMPDIR": str(build_temp),
+        "CGO_ENABLED": "0",
+        "GO111MODULE": "on",
+        "GOENV": "off",
+        "GOFLAGS": "",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOPATH": str(root / "go-path"),
+        "GOMODCACHE": str(module_cache),
+        "GOCACHE": str(build_cache),
+        "GOTELEMETRY": "off",
+    })
+    return env
+
+
+def managed_candidate_env() -> Dict[str, str]:
+    """Keep the host toolchain environment but remove product-specific drift."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("INTERSEPTOR_")}
+    env.update({
+        "INTERSEPTOR_UI_AUDIT_MANAGED": "1",
+        "INTERSEPTOR_NO_UPDATE_CHECK": "1",
+        "INTERSEPTOR_NO_BROWSER": "1",
+    })
+    return env
+
+
+def stop_managed_process(process: subprocess.Popen[bytes]) -> None:
+    """Stop only the candidate process created by this audit."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def remove_managed_root(root: Path, project: str) -> None:
+    """Remove only the exact sentinel-owned root created for this run."""
+    validated = validate_expected_data_dir(str(root))
+    project = validate_expected_project(project)
+    sentinel = validated / AUDIT_SENTINEL_NAME
+    expected = f"interseptor-ui-audit\nproject={project}\n"
+    try:
+        owned = (
+            sentinel.is_file()
+            and not sentinel.is_symlink()
+            and sentinel.stat().st_size == len(expected.encode("utf-8"))
+            and sentinel.read_text(encoding="utf-8") == expected
+        )
+    except (OSError, UnicodeError):
+        owned = False
+    if not owned:
+        raise RuntimeError("managed audit cleanup refused an unowned root")
+    shutil.rmtree(validated)
+
+
+def prepare_managed_audit() -> Tuple[subprocess.Popen[bytes], Path, str, str, Tuple[str, int], Dict[str, Any]]:
+    """Build and start one disposable candidate owned by this audit process."""
+    repo_root = Path(__file__).resolve().parents[1]
+    root = Path(tempfile.mkdtemp(prefix="interseptor-ui-audit-"))
+    project = f"{AUDIT_PROJECT_PREFIX}{secrets.token_hex(6)}"
+    validate_expected_project(project)
+    (root / "projects" / project).mkdir(parents=True)
+    (root / AUDIT_SENTINEL_NAME).write_text(f"interseptor-ui-audit\nproject={project}\n", encoding="utf-8")
+    binary = root / "interseptor-audit"
+    try:
+        snapshot = root / "runtime-source"
+        application_source, source_paths = create_runtime_source_snapshot(repo_root, snapshot)
+        go_binary = shutil.which("go")
+        if not go_binary:
+            raise RuntimeError("Go toolchain is unavailable")
+        subprocess.run(
+            [str(Path(go_binary).resolve()), "build", "-mod=readonly", "-modcacherw", "-o", str(binary), "./cmd/interseptor"],
+            cwd=snapshot,
+            env=managed_build_env(root),
+            check=True,
+            timeout=300,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if runtime_source_digest(snapshot, source_paths) != application_source["runtime_sha256"]:
+            raise RuntimeError("managed audit source snapshot changed during build")
+        control_port = free_loopback_port()
+        proxy_port = free_loopback_port()
+        while proxy_port == control_port:
+            proxy_port = free_loopback_port()
+        process = subprocess.Popen(
+            [str(binary), "--data-dir", str(root), "--project", project, "--control-port", str(control_port), "--proxy-port", str(proxy_port)],
+            cwd=repo_root,
+            env=managed_candidate_env(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        base = f"http://127.0.0.1:{control_port}"
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError("managed audit candidate exited before readiness")
+            try:
+                _json_get(base, "/api/version")
+                return process, root, project, base, ("127.0.0.1", proxy_port), application_source
+            except Exception:
+                time.sleep(0.1)
+        raise RuntimeError("managed audit candidate did not become ready")
+    except Exception:
+        if 'process' in locals() and process.poll() is None:
+            stop_managed_process(process)
+        remove_managed_root(root, project)
+        raise
+
+
+def cleanup_managed_audit(process: subprocess.Popen[bytes], root: Path, project: str) -> None:
+    stop_managed_process(process)
+    remove_managed_root(root, project)
+
+
+def full_audit_preflight(base: str, proxy: Tuple[str, int], expected_project: str, expected_data_dir: str) -> Dict[str, Any]:
+    """Verify that full mode is pointed at the intended isolated workstation."""
+    expected_root = validate_expected_data_dir(expected_data_dir)
+    expected_project = validate_expected_project(expected_project)
+    sentinel = expected_root / AUDIT_SENTINEL_NAME
+    expected_sentinel = f"interseptor-ui-audit\nproject={expected_project}\n"
+    try:
+        sentinel_ok = (
+            sentinel.is_file()
+            and not sentinel.is_symlink()
+            and sentinel.stat().st_size == len(expected_sentinel.encode("utf-8"))
+            and sentinel.read_text(encoding="utf-8") == expected_sentinel
+        )
+    except (OSError, UnicodeError):
+        sentinel_ok = False
+    if not sentinel_ok:
+        raise ValueError("audit sentinel is absent or invalid under --expected-data-dir")
+    expected_version = expected_fallback_version().lstrip("v")
+    _, version, _ = _json_get(base, "/api/version")
+    observed_version = str(version.get("version", "")).strip().lstrip("v")
+    if observed_version != expected_version:
+        raise ValueError(f"server version {observed_version!r} does not match source fallback {expected_version!r}")
+    _, project, _ = _json_get(base, "/api/project")
+    observed_project = str(project.get("current", "")).strip()
+    if observed_project != expected_project:
+        raise ValueError("server project does not match --expected-project")
+    if project.get("canSwitch") is not False:
+        raise ValueError("managed audit candidate did not lock project switching")
+    observed_dir = str(project.get("dir", "")).strip()
+    try:
+        observed_path = Path(observed_dir).expanduser().resolve()
+        projects_dir = expected_root / "projects"
+        expected_project_path = projects_dir / expected_project
+        expected_project_dir = expected_project_path.resolve()
+        data_dir_match = (
+            bool(observed_dir)
+            and projects_dir.is_dir()
+            and not projects_dir.is_symlink()
+            and expected_project_path.is_dir()
+            and not expected_project_path.is_symlink()
+            and os.path.commonpath((str(observed_path), str(expected_root))) == str(expected_root)
+            and observed_path == expected_project_dir
+        )
+    except (OSError, RuntimeError, ValueError):
+        data_dir_match = False
+    if not data_dir_match:
+        raise ValueError("server project directory does not match the isolated audit project")
+    _, flows, _ = _json_get(base, "/api/flows?limit=1&includeTools=1")
+    _, findings, _ = _json_get(base, "/api/findings?view=summary")
+    if not isinstance(flows.get("flows"), list) or not isinstance(findings.get("findings"), list):
+        raise ValueError("full audit freshness responses must contain list members")
+    if flows.get("flows") or findings.get("findings"):
+        raise ValueError("full audit requires a fresh empty project")
+    _, settings, _ = _json_get(base, "/api/settings")
+    expected_proxy = f"{proxy[0]}:{proxy[1]}"
+    # The server contract is settings.proxyAddr (the JSON field is proxyAddr).
+    observed_proxy = str(settings.get("proxyAddr", "")).strip()
+    if observed_proxy != expected_proxy:
+        raise ValueError("server proxy does not match --proxy")
+    upstream = str(settings.get("upstreamProxy", "")).strip()
+    if upstream:
+        raise ValueError("full loopback audit requires an empty upstreamProxy")
+    return {
+        "ok": True,
+        "base_netloc": urlsplit(base).netloc,
+        "expected_version": expected_version,
+        "server_version": observed_version,
+        "project_match": True,
+        "project_switch_locked": True,
+        "disposable_project": True,
+        "data_dir_match": True,
+        "fresh_flows": True,
+        "fresh_findings": True,
+        "expected_proxy": expected_proxy,
+        "server_proxy": observed_proxy,
+        "upstream_configured": bool(upstream),
+    }
+
+
+def start_fixture() -> Tuple[ThreadingHTTPServer, threading.Thread]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, name="ui-audit-fixture", daemon=True)
+    thread.start()
+    return server, thread
+
+
+def png_dimensions(path: Path) -> Tuple[int, int]:
+    """Read PNG dimensions without adding an image-processing dependency."""
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR" or len(data) < 24:
+        raise ValueError(f"{path} is not a valid PNG with an IHDR")
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def runtime_source_identity() -> Dict[str, Any]:
+    repo_root = Path(__file__).resolve().parents[1]
+    source_paths = runtime_source_paths(repo_root)
+    return source_identity(repo_root, source_paths, source_base_commit(repo_root))
 
 
 def percentile(values: List[float], percentile_value: float) -> Optional[float]:
@@ -220,6 +544,23 @@ def wait_ready(page: Page) -> None:
     setup = page.locator("#setupModal")
     if setup.is_visible():
         page.locator("#setupSkip").click()
+
+
+def invalidate_and_close_flow_popup(page: Page) -> None:
+    """Invalidate popup epochs until the modal stays hidden for two seconds."""
+    deadline = time.monotonic() + 15
+    hidden_since: Optional[float] = None
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+        if page.locator("#flowModal").is_visible():
+            hidden_since = None
+        elif hidden_since is None:
+            hidden_since = now
+        elif time.monotonic() - hidden_since >= 2:
+            return
+        page.locator("#fmClose").evaluate("button => button.click()")
+        page.wait_for_timeout(100)
+    raise TimeoutError("flow popup did not remain hidden during journey teardown")
 
 
 def attach_observers(page: Page, result: AuditResult, base_netloc: str, expected_console_errors: bool = False) -> None:
@@ -324,15 +665,41 @@ def metric_delta(before: Dict[str, float], after: Dict[str, float], name: str) -
     return round(after.get(name, 0.0) - before.get(name, 0.0), 6)
 
 
-def run_audit(args: argparse.Namespace) -> AuditResult:
+def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, Any]] = None) -> AuditResult:
     result = AuditResult()
-    application_source = runtime_source_identity()
+    if application_source is None:
+        application_source = runtime_source_identity()
     base = args.base_url.rstrip("/")
     base_netloc = urlsplit(base).netloc
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     fixture: Optional[ThreadingHTTPServer] = None
     baseline_artifacts: Dict[str, Dict[str, Any]] = {}
+    preflight: Dict[str, Any] = {"required": bool(args.full), "ok": not args.full}
+    if args.full:
+        try:
+            preflight = full_audit_preflight(base, args.proxy, args.expected_project, args.expected_data_dir)
+        except Exception as exc:
+            # Fail before Playwright creates a page or navigates to a target.
+            message = f"full audit preflight: {type(exc).__name__}: {exc}"
+            result.failures.append(message)
+            preflight = {"required": True, "ok": False, "error": str(exc)[:512]}
+            output = Path(args.output_dir)
+            output.mkdir(parents=True, exist_ok=True)
+            report = {
+                "application_source": application_source,
+                "base_url": base,
+                "mode": "full",
+                "preflight": preflight,
+                "cases": result.cases,
+                "metrics": result.metrics,
+                "console_errors": [], "expected_console_errors": [],
+                "page_errors": [], "http_errors": [], "expected_http_errors": [],
+                "external_requests": [], "before_screenshots": {}, "after_screenshots": {},
+                "failures": result.failures,
+            }
+            (output / "browser-audit.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+            return result
 
     def verify_baseline_artifacts() -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -388,6 +755,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
         result.run("main navigation, motion, and keyboard semantics", navigation_semantics)
 
         def inner_tabs_and_settings() -> None:
+            nonlocal preflight
             for name, panel_id, bar_id in (
                 ("repeater", "repTabPanel", "repTabs"),
                 ("intruder", "intrTabPanel", "intrTabs"),
@@ -413,24 +781,29 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             toggle = page.locator("#suppressTelemetryToggle")
             initial_pressed = toggle.get_attribute("aria-pressed")
             toggle.focus()
-            toggle.press("Enter")
-            page.wait_for_function(
-                "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') !== initial",
-                arg=initial_pressed,
-            )
             result.require(
                 page.evaluate("document.activeElement?.id") == "suppressTelemetryToggle",
-                "browser-background toggle lost keyboard focus after acknowledgement",
+                "browser-background toggle is not keyboard-focusable",
             )
-            toggle.press("Enter")
-            page.wait_for_function(
-                "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') === initial",
-                arg=initial_pressed,
-            )
-            result.require(
-                page.evaluate("document.activeElement?.id") == "suppressTelemetryToggle",
-                "browser-background toggle lost keyboard focus after restoring its setting",
-            )
+            if args.full:
+                # The earlier navigation checks are read-only. Revalidate the
+                # disposable instance immediately before the first mutation.
+                full_audit_preflight(base, args.proxy, args.expected_project, args.expected_data_dir)
+                preflight["revalidated_before_settings"] = True
+                toggle.press("Enter")
+                page.wait_for_function(
+                    "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') !== initial",
+                    arg=initial_pressed,
+                )
+                result.require(
+                    page.evaluate("document.activeElement?.id") == "suppressTelemetryToggle",
+                    "browser-background toggle lost keyboard focus after acknowledgement",
+                )
+                toggle.press("Enter")
+                page.wait_for_function(
+                    "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') === initial",
+                    arg=initial_pressed,
+                )
 
         result.run("Repeater/Intruder inner tabs and every Settings section", inner_tabs_and_settings)
 
@@ -535,9 +908,12 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
         result.run("persistent retry states under request failure", fault_states)
 
         if args.full:
+            proxy = args.proxy
+            # Re-check immediately before entering the mutation-heavy block.
+            full_audit_preflight(base, proxy, args.expected_project, args.expected_data_dir)
+            preflight["revalidated_before_full_audit"] = True
             fixture, _fixture_thread = start_fixture()
             fixture_base = f"http://127.0.0.1:{fixture.server_port}"
-            proxy = args.proxy
 
             def setup_action_ack_lock() -> None:
                 """A held setup-scope acknowledgement must lock dismissal/navigation."""
@@ -970,8 +1346,8 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("initial allowlist failure exposes persistent Retry", allowlist_initial_failure)
 
             def seed_flow() -> None:
-                status, _ = proxy_request(proxy, fixture_base + "/audit/seed?host=example")
-                result.require(status == 200, f"seed request returned {status}")
+                status, body = proxy_request(proxy, fixture_base + "/audit/seed?host=example")
+                result.require(status == 200, f"seed request failed: {bounded_response_diagnostic(status, body)}")
                 page.locator('.tab[data-tab="proxy"]').click()
                 page.wait_for_selector("#rows .trow", timeout=10_000)
 
@@ -2274,37 +2650,53 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("rejected Scope and Match & Replace PUT/DELETE ownership", rejected_scope_and_rule_mutations)
 
             def relative_project_path_is_ui_only() -> None:
-                page.locator('.tab[data-tab="settings"]').click()
+                project_context = browser.new_context(viewport={"width": 1024, "height": 768})
+                project_page = project_context.new_page()
+                project_page.set_default_timeout(10_000)
+                attach_observers(project_page, result, base_netloc)
                 switch_requests: List[Any] = []
+
+                def expose_switchable_fixture(route: Any) -> None:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body=json.dumps({
+                            "current": "ui-audit-fixture",
+                            "dir": "/audit/projects/ui-audit-fixture",
+                            "projects": [{"name": "default", "path": ""}],
+                            "canSwitch": True,
+                        }),
+                    )
 
                 def block_project_switch(route: Any) -> None:
                     switch_requests.append(route)
                     route.fulfill(status=400, content_type="application/json", body='{"error":"switch must not be attempted"}')
 
-                page.route("**/api/project/switch", block_project_switch)
+                project_page.route("**/api/project", expose_switchable_fixture)
+                project_page.route("**/api/project/switch", block_project_switch)
                 try:
-                    page.locator("#projBadge").click()
-                    page.wait_for_selector("#projModal", state="visible", timeout=10_000)
-                    page.locator("#pmNew").fill("ui-audit-relative")
-                    page.locator("#pmNewPath").fill("relative/audit")
-                    page.locator("#pmNewBtn").click()
-                    page.wait_for_function(
+                    project_page.goto(base, wait_until="domcontentloaded")
+                    wait_ready(project_page)
+                    project_page.locator('.tab[data-tab="settings"]').click()
+                    project_page.locator("#projBadge").click()
+                    project_page.wait_for_selector("#projModal", state="visible", timeout=10_000)
+                    project_page.locator("#pmNew").fill("ui-audit-relative")
+                    project_page.locator("#pmNewPath").fill("relative/audit")
+                    project_page.locator("#pmNewBtn").click()
+                    project_page.wait_for_function(
                         "needle => [...document.querySelectorAll('#toast .toast-item')].some(el=>el.textContent.includes(needle))",
                         arg="absolute folder path",
                         timeout=10_000,
                     )
-                    page.wait_for_function(
+                    project_page.wait_for_function(
                         "document.querySelector('#pmSwitchNote')?.textContent.includes('absolute folder path')",
                         timeout=10_000,
                     )
-                    result.require(page.locator("#pmNewPath").get_attribute("aria-invalid") == "true", "relative project path was not associated with its field")
-                    result.require(page.locator("#pmSwitchNote").get_attribute("role") == "alert", "relative project path error was not persistently announced")
+                    result.require(project_page.locator("#pmNewPath").get_attribute("aria-invalid") == "true", "relative project path was not associated with its field")
+                    result.require(project_page.locator("#pmSwitchNote").get_attribute("role") == "alert", "relative project path error was not persistently announced")
                     result.require(not switch_requests, "relative project path attempted a project switch request")
                 finally:
-                    page.unroute("**/api/project/switch", block_project_switch)
-                    if page.locator("#projModal").is_visible():
-                        page.locator("#pmClose").click()
-                        page.wait_for_selector("#projModal", state="hidden", timeout=10_000)
+                    project_context.close()
 
             result.run("relative project path validation stays UI-only", relative_project_path_is_ui_only)
 
@@ -2465,9 +2857,16 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 page.locator(f'#rows .trow[data-id="{selected_id}"]').click(force=True)
                 authz_row = page.locator(f'#rows .trow[data-id="{explicit_id}"]')
                 authz_row.scroll_into_view_if_needed()
-                authz_row.click(button="right")
-                page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
-                page.locator("#ctxmenu .ctx-item", has_text="Authz test").click()
+                for attempt in range(2):
+                    try:
+                        authz_row.click(button="right")
+                        page.wait_for_selector("#ctxmenu.show", state="visible", timeout=10_000)
+                        page.locator("#ctxmenu .ctx-item", has_text="Authz test").click(timeout=2_000)
+                        break
+                    except Exception:
+                        if attempt == 1:
+                            raise
+                        page.keyboard.press("Escape")
                 page.wait_for_selector("#authzModal", state="visible")
                 try:
                     result.require(page.locator("#authzFlow").inner_text() == f"#{explicit_id}", "Authz ignored the context-menu flow")
@@ -2488,6 +2887,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("Authz explicit context and A-to-B-to-A retargeting", authz_context_target)
 
             def flow_note_read_waits_for_save() -> None:
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="proxy"]').click()
                 page.wait_for_function("document.querySelectorAll('#rows .trow').length>=2", timeout=10_000)
                 rows = page.locator("#rows .trow")
@@ -2551,12 +2951,23 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                             raise RuntimeError(f"PUT returned {cleanup_status}")
                     except Exception as exc:
                         result.failures.append(f"flow-note audit cleanup failed: {type(exc).__name__}: {exc}")
+                    invalidate_and_close_flow_popup(page)
 
             result.run("Inspector reads wait for their flow's acknowledged note save", flow_note_read_waits_for_save)
 
             def burst_and_map_performance() -> None:
+                invalidate_and_close_flow_popup(page)
                 page.set_viewport_size({"width": 1440, "height": 900})
-                page.locator('.tab[data-tab="proxy"]').click()
+                try:
+                    page.locator('.tab[data-tab="proxy"]').click(timeout=2_000)
+                except Exception:
+                    if not page.locator("#flowModal").is_visible():
+                        raise
+                    # Commit the intended tab change underneath the known
+                    # transient popup, then finish closing that popup before
+                    # the performance measurements begin.
+                    page.locator('.tab[data-tab="proxy"]').click(force=True)
+                    invalidate_and_close_flow_popup(page)
                 page.evaluate(
                     """() => {
                       window.__uiAuditLongTasks=[];
@@ -2579,15 +2990,17 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     offset = run * args.burst
                     urls = [fixture_base + f"/audit/burst/{index % 24}?n={offset + index}" for index in range(args.burst)]
                     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
-                        statuses = list(pool.map(lambda url: proxy_request(proxy, url)[0], urls))
+                        responses = list(pool.map(lambda url: proxy_request(proxy, url), urls))
+                    statuses = [status for status, _body in responses]
                     network_ms = round((time.perf_counter() - started) * 1000, 1)
                     network_samples.append(network_ms)
-                    result.require(all(status == 200 for status in statuses), f"burst {run + 1} contained non-200 responses")
+                    bad = next(((status, body) for status, body in responses if status != 200), None)
+                    result.require(bad is None, f"burst {run + 1} contained a direct-proxy failure: {bounded_response_diagnostic(*bad)}" if bad else "")
                     page.wait_for_timeout(1500)
                     run_long_tasks = page.evaluate("window.__uiAuditLongTasks||[]")
                     all_long_tasks.extend(run_long_tasks)
                     result.require(max(run_long_tasks or [0]) < 200, f"burst {run + 1} produced a blocking long task: {run_long_tasks}")
-                page.locator('.tab[data-tab="proxy"]').click()
+                invalidate_and_close_flow_popup(page)
                 rows = page.locator("#rows .trow").count()
                 # Measure the virtualized History surface itself. A global DOM
                 # count couples this performance guard to unrelated hidden
@@ -2600,6 +3013,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 rows_box = page.locator("#rows")
                 rows_box.evaluate("el=>{el.scrollTop=Math.min(500,el.scrollHeight-el.clientHeight)}")
                 saved_scroll = rows_box.evaluate("el=>el.scrollTop")
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="map"]').click()
                 map_started = time.perf_counter()
                 page.wait_for_selector("#mapTree .map-host", timeout=20_000)
@@ -2634,6 +3048,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                 else:
                     result.failures.append("Map SVG has no layout box for wheel/drag performance check")
                 map_after = cdp_metrics(cdp)
+                invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="proxy"]').click()
                 result.require(abs(rows_box.evaluate("el=>el.scrollTop") - saved_scroll) < 2, "panel navigation lost History scroll state")
 
@@ -2682,6 +3097,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("high-volume History, Map render/Fit, scroll, and CDP performance", burst_and_map_performance)
 
             def mobile_dense_reachability() -> None:
+                invalidate_and_close_flow_popup(page)
                 page.set_viewport_size({"width": 390, "height": 844})
                 key_controls = {
                     "proxy": "#fSearch",
@@ -2725,6 +3141,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.run("mobile reachability for every dense panel and Checks/Codecs", mobile_dense_reachability)
 
             def screenshots() -> None:
+                invalidate_and_close_flow_popup(page)
                 screenshot_meta: Dict[str, Dict[str, Any]] = {}
 
                 def capture(name: str, path: Path, dimensions: Tuple[int, int]) -> None:
@@ -2732,6 +3149,33 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
                     width, height = png_dimensions(path)
                     result.require((width, height) == dimensions, f"{path.name} is {width}x{height}, expected {dimensions[0]}x{dimensions[1]}")
                     screenshot_meta[name] = {"path": str(path), "width": width, "height": height}
+
+                # Retain the evidence-first Findings detail at every required
+                # viewport, not only the surrounding product surfaces.
+                page.set_viewport_size({"width": 1440, "height": 900})
+                page.locator('.tab[data-tab="findings"]').click()
+                finding_row = page.locator("#findList .find-row").filter(has_text="Generic UI audit finding").first
+                finding_row.wait_for(state="visible", timeout=10_000)
+                finding_row.click()
+                page.wait_for_function(
+                    "document.querySelector('#findDetail')?.textContent.includes('Generic UI audit finding')"
+                )
+                if page.locator("#findSummary").is_visible():
+                    page.locator("#findToggleEdit").click()
+                    page.wait_for_selector("#findSummary", state="hidden", timeout=10_000)
+                result.require(not page.locator("#findSummary").is_visible(), "Findings screenshot remained in edit mode")
+                page.evaluate("() => { window.scrollTo(0,0); const detail=document.querySelector('#findDetail'); if(detail) detail.scrollTop=0; }")
+                page.mouse.move(170, 20)
+                capture("findings-1440x900", output / "findings-after-1440x900.png", (1440, 900))
+
+                page.set_viewport_size({"width": 1024, "height": 768})
+                page.evaluate("() => { window.scrollTo(0,0); const detail=document.querySelector('#findDetail'); if(detail) detail.scrollTop=0; }")
+                capture("findings-1024x768", output / "findings-after-1024x768.png", (1024, 768))
+
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.wait_for_function("document.querySelector('#findDetail')?.classList.contains('find-mobile-detail-visible')")
+                page.evaluate("() => { window.scrollTo(0,0); const detail=document.querySelector('#findDetail'); if(detail) detail.scrollTop=0; }")
+                capture("findings-390x844", output / "findings-after-390x844.png", (390, 844))
 
                 page.set_viewport_size({"width": 1440, "height": 900})
                 page.locator('.tab[data-tab="proxy"]').click()
@@ -2788,6 +3232,7 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
         "application_source": application_source,
         "base_url": base,
         "mode": "full" if args.full else "smoke",
+        "preflight": preflight,
         "viewports": [list(viewport) for viewport in VIEWPORTS],
         "cases": result.cases,
         "metrics": result.metrics,
@@ -2807,10 +3252,11 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://127.0.0.1:9966")
-    parser.add_argument("--proxy", type=parse_host_port, default=("127.0.0.1", 8080), metavar="HOST:PORT")
+    parser.add_argument("--base-url", default=None)
+    parser.add_argument("--proxy", type=parse_host_port, default=None, metavar="HOST:PORT")
     parser.add_argument("--output-dir", default="/tmp/interseptor-ui-audit")
-    parser.add_argument("--full", action="store_true", help="mutate only the isolated project supplied by the operator")
+    parser.add_argument("--full", action="store_true", help="run the mutating matrix against a managed disposable candidate")
+    parser.add_argument("--managed", action="store_true", help="required ownership mode for --full; starts a disposable candidate")
     parser.add_argument("--burst", type=int, default=240, help="requests in the full high-volume pass")
     parser.add_argument("--perf-runs", type=int, default=3, help="repeat the high-volume profile this many times")
     parser.add_argument("--headed", action="store_true")
@@ -2819,7 +3265,53 @@ def main() -> int:
         parser.error("--burst must be at least 120 to exercise History virtualization")
     if args.perf_runs < 1 or args.perf_runs > 10:
         parser.error("--perf-runs must be between 1 and 10")
-    result = run_audit(args)
+    if args.full:
+        if not args.managed:
+            parser.error("--full requires --managed; arbitrary existing servers are not accepted")
+        if args.base_url or args.proxy:
+            parser.error("--full --managed chooses its own disposable server and data root")
+    elif args.managed:
+        parser.error("--managed requires --full")
+    if args.full:
+        # Managed mode fills these only after it owns the candidate process.
+        args.base_url = None
+        args.proxy = None
+        args.expected_project = None
+        args.expected_data_dir = None
+    else:
+        args.base_url = args.base_url or "http://127.0.0.1:9966"
+        args.proxy = args.proxy or ("127.0.0.1", 8080)
+    managed: Optional[Tuple[subprocess.Popen[bytes], Path, str]] = None
+    managed_source: Optional[Dict[str, Any]] = None
+    result: Optional[AuditResult] = None
+    audit_error: Optional[str] = None
+    cleanup_error = False
+    try:
+        if args.full:
+            process, root, project, base, proxy, managed_source = prepare_managed_audit()
+            managed = (process, root, project)
+            args.base_url = base
+            args.proxy = proxy
+            args.expected_project = project
+            args.expected_data_dir = str(root)
+        result = run_audit(args, managed_source)
+    except Exception as exc:
+        audit_error = type(exc).__name__
+    finally:
+        if managed is not None:
+            try:
+                cleanup_managed_audit(*managed)
+            except Exception:
+                cleanup_error = True
+    if audit_error:
+        print(f"audit failed ({audit_error})", file=sys.stderr)
+        return 1
+    if cleanup_error:
+        print("audit cleanup failed; an owned temporary candidate or root may remain", file=sys.stderr)
+        return 1
+    if result is None:
+        print("audit failed before producing a result", file=sys.stderr)
+        return 1
     print(json.dumps({"cases": result.cases, "metrics": result.metrics, "failures": result.failures}, indent=2, sort_keys=True))
     return 1 if result.failures else 0
 

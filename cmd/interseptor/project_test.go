@@ -29,6 +29,17 @@ func TestResolveProjectDir(t *testing.T) {
 	}
 }
 
+func TestManagedUIAuditLocksProjectSwitching(t *testing.T) {
+	t.Setenv("INTERSEPTOR_UI_AUDIT_MANAGED", "1")
+	if projectSwitchAllowed() {
+		t.Fatal("managed UI audit must lock project switching")
+	}
+	t.Setenv("INTERSEPTOR_UI_AUDIT_MANAGED", "")
+	if !projectSwitchAllowed() {
+		t.Fatal("normal launches must retain project switching")
+	}
+}
+
 func TestSanitizeProjectName(t *testing.T) {
 	for _, c := range []struct {
 		in string

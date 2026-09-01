@@ -14,14 +14,30 @@
       "height": 844,
       "path": "docs/ui-audit/after-390x844-scanner.png",
       "width": 390
+    },
+    "findings-1024x768": {
+      "height": 768,
+      "path": "docs/ui-audit/findings-after-1024x768.png",
+      "width": 1024
+    },
+    "findings-1440x900": {
+      "height": 900,
+      "path": "docs/ui-audit/findings-after-1440x900.png",
+      "width": 1440
+    },
+    "findings-390x844": {
+      "height": 844,
+      "path": "docs/ui-audit/findings-after-390x844.png",
+      "width": 390
     }
   },
   "application_source": {
-    "base_commit": "cb4e8770a0f9ae87af524ebcaa59abd04a75f843",
+    "audit_harness_sha256": "b681b25c03c16d6661ab5139495345079b32931969b98e17a7c12cbd9f1103d4",
     "runtime_files": 249,
-    "runtime_sha256": "7a447ac2b28a8734de228ec8738fdd230684866e2f8481f922cd2fa4a83b44bb"
+    "runtime_sha256": "f0054b5fe1205b41e7eef92d70f29bd3615e463cd19fe031dcaf5c5f8a08cfc2",
+    "worktree_base_commit": "9cbabaf18c72c8b990207faf3907713799b607e1"
   },
-  "base_url": "http://127.0.0.1:19967",
+  "base_url": "http://127.0.0.1:55124",
   "before_screenshots": {
     "1024x768": {
       "height": 768,
@@ -85,57 +101,57 @@
     "Failed to load resource: the server responded with a status of 409 (Conflict)"
   ],
   "expected_http_errors": [
-    "503 GET http://127.0.0.1:19967/api/activity",
-    "503 GET http://127.0.0.1:19967/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
-    "503 GET http://127.0.0.1:19967/api/activity",
-    "503 GET http://127.0.0.1:19967/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:19967/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:19967/api/allowlist",
-    "409 POST http://127.0.0.1:19967/api/allowlist",
-    "409 POST http://127.0.0.1:19967/api/findings",
-    "409 PUT http://127.0.0.1:19967/api/checks/ui-audit-held-check",
-    "409 POST http://127.0.0.1:19967/api/authz",
-    "409 DELETE http://127.0.0.1:19967/api/scope/1",
-    "409 PUT http://127.0.0.1:19967/api/scope/1",
-    "409 DELETE http://127.0.0.1:19967/api/rules/1",
-    "409 PUT http://127.0.0.1:19967/api/rules/1"
+    "503 GET http://127.0.0.1:55124/api/activity",
+    "503 GET http://127.0.0.1:55124/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "503 GET http://127.0.0.1:55124/api/activity",
+    "503 GET http://127.0.0.1:55124/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:55124/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:55124/api/allowlist",
+    "409 POST http://127.0.0.1:55124/api/allowlist",
+    "409 POST http://127.0.0.1:55124/api/findings",
+    "409 PUT http://127.0.0.1:55124/api/checks/ui-audit-held-check",
+    "409 POST http://127.0.0.1:55124/api/authz",
+    "409 DELETE http://127.0.0.1:55124/api/scope/1",
+    "409 PUT http://127.0.0.1:55124/api/scope/1",
+    "409 DELETE http://127.0.0.1:55124/api/rules/1",
+    "409 PUT http://127.0.0.1:55124/api/rules/1"
   ],
   "external_requests": [],
   "failures": [],
   "http_errors": [],
   "metrics": {
-    "burst_network_ms": 106.9,
-    "burst_network_p95_ms": 121.5,
+    "burst_network_ms": 148.9,
+    "burst_network_p95_ms": 156.0,
     "burst_requests": 240,
     "burst_runs": 3,
-    "cdp_layout_duration_s": 0.038012,
-    "cdp_map_layout_duration_s": 0.001249,
-    "cdp_map_script_duration_s": 0.003986,
-    "cdp_map_task_duration_s": 0.051949,
-    "cdp_script_duration_s": 0.097058,
-    "cdp_task_duration_s": 0.321526,
+    "cdp_layout_duration_s": 0.048868,
+    "cdp_map_layout_duration_s": 0.000778,
+    "cdp_map_script_duration_s": 0.002587,
+    "cdp_map_task_duration_s": 0.04275,
+    "cdp_script_duration_s": 0.125027,
+    "cdp_task_duration_s": 0.733971,
     "history_dom_nodes": 658,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 537.7,
+    "intercept_ack_ms": 692.9,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      1306.4
+      1028.7
     ],
-    "map_interaction_p95_ms": 1306.4,
-    "map_ready_ms": 78.1,
+    "map_interaction_p95_ms": 1028.7,
+    "map_ready_ms": 196.3,
     "panel_interaction_ms": [
-      333.4,
-      199.2,
-      339.2,
+      259.4,
+      185.8,
+      201.6,
       202.3,
-      200,
-      193.8,
-      302.6,
-      200.6,
-      263.5
+      194,
+      303.9,
+      322.5,
+      206.1,
+      298.1
     ],
-    "panel_interaction_p95_ms": 339.2,
+    "panel_interaction_p95_ms": 322.5,
     "panel_transition_ms": [
       180.0,
       180.0,
@@ -162,11 +178,43 @@
         "height": 844,
         "path": "docs/ui-audit/after-390x844-scanner.png",
         "width": 390
+      },
+      "findings-1024x768": {
+        "height": 768,
+        "path": "docs/ui-audit/findings-after-1024x768.png",
+        "width": 1024
+      },
+      "findings-1440x900": {
+        "height": 900,
+        "path": "docs/ui-audit/findings-after-1440x900.png",
+        "width": 1440
+      },
+      "findings-390x844": {
+        "height": 844,
+        "path": "docs/ui-audit/findings-after-390x844.png",
+        "width": 390
       }
     }
   },
   "mode": "full",
   "page_errors": [],
+  "preflight": {
+    "base_netloc": "127.0.0.1:55124",
+    "data_dir_match": true,
+    "disposable_project": true,
+    "expected_proxy": "127.0.0.1:55125",
+    "expected_version": "2.0.8",
+    "fresh_findings": true,
+    "fresh_flows": true,
+    "ok": true,
+    "project_match": true,
+    "project_switch_locked": true,
+    "revalidated_before_full_audit": true,
+    "revalidated_before_settings": true,
+    "server_proxy": "127.0.0.1:55125",
+    "server_version": "2.0.8",
+    "upstream_configured": false
+  },
   "viewports": [
     [
       1440,
