@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-09-02
+
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.7` release and refreshed the exact-source UI audit evidence without moving its tag.
 - **Evidence-first Findings workspace.** Standardized the Findings editor, REST/MCP tools, and report exports on a shared Claim/Risk/Target/Reproduction/Evidence/Fix-Retest/Review envelope with typed blocks, proof annotations, confidence, readiness stages, and report-safe provenance. Real browser/device screenshots are prioritized, while captured proxy flows remain attached as inspectable evidence; Before→Action→After is available only as an optional Differential preset.
