@@ -17,9 +17,9 @@
     }
   },
   "application_source": {
-    "base_commit": "5710e80befe2cbbd07cfc55a29e57a3cd984fc41",
+    "base_commit": "5f41a2c6efafc62b86d8bf4f33d55b0e67f1e854",
     "runtime_files": 249,
-    "runtime_sha256": "395b0ec83141fc17cfc5a30bca527c76bf8baf806c6c401b373939cf6899905f"
+    "runtime_sha256": "8eb54d6f7a1c2692f10c8d885245fb3369b4d7da10314c9b93d6b401240c9e6f"
   },
   "base_url": "http://127.0.0.1:19966",
   "before_screenshots": {
@@ -104,38 +104,38 @@
   "failures": [],
   "http_errors": [],
   "metrics": {
-    "burst_network_ms": 143.2,
-    "burst_network_p95_ms": 148.2,
+    "burst_network_ms": 120.0,
+    "burst_network_p95_ms": 120.0,
     "burst_requests": 240,
     "burst_runs": 3,
-    "cdp_layout_duration_s": 0.064545,
-    "cdp_map_layout_duration_s": 0.000766,
-    "cdp_map_script_duration_s": 0.023245,
-    "cdp_map_task_duration_s": 0.05489,
-    "cdp_script_duration_s": 0.193797,
-    "cdp_task_duration_s": 0.508618,
-    "history_dom_nodes": 4836,
+    "cdp_layout_duration_s": 0.049422,
+    "cdp_map_layout_duration_s": 0.000487,
+    "cdp_map_script_duration_s": 0.001064,
+    "cdp_map_task_duration_s": 0.028649,
+    "cdp_script_duration_s": 0.11655,
+    "cdp_task_duration_s": 0.348762,
+    "history_dom_nodes": 4833,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 322.5,
+    "intercept_ack_ms": 317.8,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      382.4
+      402.0
     ],
-    "map_interaction_p95_ms": 382.4,
-    "map_ready_ms": 183.8,
+    "map_interaction_p95_ms": 402.0,
+    "map_ready_ms": 75.9,
     "panel_interaction_ms": [
-      211.3,
-      198.6,
-      201.6,
-      200.6,
-      202,
-      193,
-      192,
-      203.7,
-      195.2
+      222.3,
+      197.4,
+      194.7,
+      199.9,
+      206.4,
+      201.2,
+      197.6,
+      195.1,
+      199.5
     ],
-    "panel_interaction_p95_ms": 211.3,
+    "panel_interaction_p95_ms": 222.3,
     "panel_transition_ms": [
       180.0,
       180.0,
