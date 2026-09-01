@@ -152,7 +152,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/packs/{name}", "Show one installed pack's record"},
 	{"POST", "/api/packs/install", "Install a rule-pack .tar.gz (sha256 + ed25519 signature; ?allowUnsigned=1 to skip sig); full-scope only"},
 	{"DELETE", "/api/packs/{name}", "Uninstall a rule pack and delete its check files; full-scope only"},
-	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=&tag=)"},
+	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=&tag=; view=summary returns a bounded lightweight projection)"},
 	{"GET", "/api/findings/tags", "List tags in use on findings with counts (and optional colors from tag_meta)"},
 	{"GET", "/api/findings/report", "Curated findings as Markdown/HTML/JSON (?format=html|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=; ?issues=1; ?includeBodies=0)"},
 	{"POST", "/api/findings", "Create an evidence-first finding. Body: {title, summary?, severity?, status?, confidence?, target?, impact?, why?, cwe?, environment?, fix?, retest?, cvss?, verificationInstructions?, blocks?|body?, flowIds?, tags?, detail?, evidence?} — title required (stub OK); send blocks or legacy body, not both"},

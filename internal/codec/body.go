@@ -3,6 +3,7 @@
 package codec
 
 import (
+	"bufio"
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
@@ -68,6 +69,99 @@ func DecompressBodyLimit(contentEncoding string, body []byte, max int) ([]byte, 
 		return nil, false, false
 	}
 	return current, true, false
+}
+
+func DecompressReaderLimit(contentEncoding string, body io.Reader, max int) ([]byte, bool, bool) {
+	if body == nil || contentEncoding == "" || max <= 0 {
+		return nil, false, false
+	}
+	parts := strings.Split(contentEncoding, ",")
+	current := body
+	decoded := false
+	var closers []io.Closer
+	closeAll := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			_ = closers[i].Close()
+		}
+	}
+	defer closeAll()
+	for i := len(parts) - 1; i >= 0; i-- {
+		enc := strings.ToLower(strings.TrimSpace(parts[i]))
+		if enc == "identity" {
+			continue
+		}
+		if enc == "" {
+			return nil, false, false
+		}
+		next, closer, ok := decompressionReader(enc, current, max)
+		if !ok {
+			return nil, false, false
+		}
+		current = next
+		if closer != nil {
+			closers = append(closers, closer)
+		}
+		decoded = true
+	}
+	if !decoded {
+		return nil, false, false
+	}
+	out, err := io.ReadAll(io.LimitReader(current, int64(max)+1))
+	if (err != nil && err != io.ErrUnexpectedEOF) || len(out) == 0 {
+		return nil, false, false
+	}
+	if len(out) > max {
+		return out[:max], true, true
+	}
+	return out, true, false
+}
+
+func decompressionReader(enc string, body io.Reader, max int) (io.Reader, io.Closer, bool) {
+	switch enc {
+	case "gzip", "x-gzip":
+		zr, err := gzip.NewReader(body)
+		return zr, zr, err == nil
+	case "br":
+		return brotli.NewReader(body), nil, true
+	case "zstd":
+		windowLimit := uint64(max)
+		if windowLimit < zstd.MinWindowSize {
+			windowLimit = zstd.MinWindowSize
+		}
+		zr, err := zstd.NewReader(body,
+			zstd.WithDecoderConcurrency(1),
+			zstd.WithDecoderLowmem(true),
+			zstd.WithDecoderMaxWindow(windowLimit),
+			zstd.WithDecoderMaxMemory(windowLimit),
+		)
+		if err != nil {
+			return nil, nil, false
+		}
+		closer := zr.IOReadCloser()
+		return closer, closer, true
+	case "deflate":
+		buffered := bufio.NewReader(body)
+		header, err := buffered.Peek(2)
+		if err != nil {
+			return nil, nil, false
+		}
+		if isZlibHeader(header) {
+			zr, err := zlib.NewReader(buffered)
+			return zr, zr, err == nil
+		}
+		fr := flate.NewReader(buffered)
+		return fr, fr, true
+	default:
+		return nil, nil, false
+	}
+}
+
+func isZlibHeader(header []byte) bool {
+	if len(header) < 2 {
+		return false
+	}
+	cmf, flg := int(header[0]), int(header[1])
+	return cmf&0x0f == 8 && cmf>>4 <= 7 && (cmf<<8+flg)%31 == 0
 }
 
 func decompressOneLimit(enc string, body []byte, max int) ([]byte, bool, bool) {

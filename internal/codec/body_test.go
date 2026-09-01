@@ -3,11 +3,35 @@ package codec
 import (
 	"bytes"
 	"compress/gzip"
+	"math/rand"
 	"testing"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
+
+func TestDecompressReaderLimitStreamsPastEncodedCap(t *testing.T) {
+	plain := make([]byte, 160<<10)
+	if _, err := rand.New(rand.NewSource(1)).Read(plain); err != nil {
+		t.Fatal(err)
+	}
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if compressed.Len() <= 64<<10 {
+		t.Fatalf("fixture compressed to %d bytes", compressed.Len())
+	}
+
+	got, ok, truncated := DecompressReaderLimit("gzip", bytes.NewReader(compressed.Bytes()), 64<<10)
+	if !ok || !truncated || !bytes.Equal(got, plain[:64<<10]) {
+		t.Fatalf("streamed decode ok=%t truncated=%t len=%d", ok, truncated, len(got))
+	}
+}
 
 func TestDecompressBodyDecodesChainedEncodings(t *testing.T) {
 	plain := []byte("chained response body")

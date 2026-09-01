@@ -217,7 +217,7 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 			}
 			if strings.TrimSpace(b.Proof) != "" {
 				parts = append(parts, b.Proof)
-			} else if strings.TrimSpace(b.Note) == "" {
+			} else {
 				out.proofless++
 			}
 		case "image":
@@ -227,7 +227,7 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 			}
 			if strings.TrimSpace(b.Proof) != "" {
 				parts = append(parts, b.Proof)
-			} else if strings.TrimSpace(b.Caption) == "" {
+			} else {
 				out.proofless++
 			}
 		}
@@ -258,14 +258,19 @@ func formatWarningsBlock(warns []string) string {
 // prependFindingsSummary adds one-line #id summaries ahead of the raw JSON list.
 func prependFindingsSummary(raw string) string {
 	var wrap struct {
-		Findings []store.Finding `json:"findings"`
+		Findings []struct {
+			store.Finding
+			MissingFlowIDs   []int64 `json:"missingFlowIds"`
+			MissingFlowCount int     `json:"missingFlowCount"`
+		} `json:"findings"`
 	}
 	if err := json.Unmarshal([]byte(raw), &wrap); err != nil || len(wrap.Findings) == 0 {
 		return raw
 	}
 	var b strings.Builder
 	b.WriteString("Summary:\n")
-	for _, f := range wrap.Findings {
+	for _, item := range wrap.Findings {
+		f := item.Finding
 		poc, missing := 0, 0
 		seen := map[int64]bool{}
 		for _, fl := range f.Flows {
@@ -296,6 +301,12 @@ func prependFindingsSummary(raw string) string {
 			stage = f.Readiness.Stage
 			images = f.Readiness.ScreenshotCount
 			evidence = f.Readiness.EvidenceCount
+			poc = f.Readiness.FlowCount
+		}
+		if item.MissingFlowCount > 0 {
+			missing = item.MissingFlowCount
+		} else if len(item.MissingFlowIDs) > 0 {
+			missing = len(item.MissingFlowIDs)
 		}
 		confidence := strings.TrimSpace(f.Confidence)
 		if confidence == "" {

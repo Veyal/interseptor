@@ -76,6 +76,36 @@ func TestHTTPMCPForwardsCallerAuthorization(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsOversizedSuccessfulResponse(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("x"), maxControlAPIResponseBytes+1))
+	}))
+	defer mock.Close()
+	s := New(mock.URL)
+
+	result, err := s.apiGet("/api/findings/report?format=html")
+	if err == nil || !strings.Contains(err.Error(), "exceeds") || result != "" {
+		t.Fatalf("oversized response result=%d bytes err=%v", len(result), err)
+	}
+}
+
+func TestListFindingsRequestsBoundedSummaryProjection(t *testing.T) {
+	var gotView string
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotView = r.URL.Query().Get("view")
+		_, _ = io.WriteString(w, `{"findings":[],"total":0,"truncated":false}`)
+	}))
+	defer mock.Close()
+	s := New(mock.URL)
+
+	if _, err := s.Call("list_findings", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if gotView != "summary" {
+		t.Fatalf("list_findings view=%q, want summary", gotView)
+	}
+}
+
 func TestCreateFindingWithImpact(t *testing.T) {
 	var createBody, updateBody map[string]any
 

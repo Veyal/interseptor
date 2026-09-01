@@ -133,7 +133,7 @@ func TestAttachFindingFlowPreviewWithOptions(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&created)
 	resp.Body.Close()
 
-	payload := fmt.Sprintf(`{"flowId":%d,"side":"both","pretty":true,"layout":"horizontal","theme":"light","caption":"login PoC","position":1}`, flowID)
+	payload := fmt.Sprintf(`{"flowId":%d,"side":"both","pretty":true,"layout":"horizontal","theme":"light","caption":"login PoC","position":1,"source":"browser_screenshot","sourceFlowId":999}`, flowID)
 	req, _ := http.NewRequest(http.MethodPost,
 		ts.URL+"/api/findings/"+strconv.FormatInt(created.ID, 10)+"/flow-preview",
 		strings.NewReader(payload))
@@ -154,10 +154,37 @@ func TestAttachFindingFlowPreviewWithOptions(t *testing.T) {
 	for _, b := range out.Blocks {
 		if b.Type == "image" && b.Caption == "login PoC" {
 			found = true
+			if b.Source != "flow_preview" || b.SourceFlowID != flowID {
+				t.Fatalf("flow preview accepted spoofed provenance: %+v", b)
+			}
 		}
 	}
 	if !found {
 		t.Fatalf("no image block: %+v", out.Blocks)
+	}
+}
+
+func TestFlowPreviewRawBoundsBodyBeforeRendering(t *testing.T) {
+	h, st, _ := newHub(t)
+	tail := []byte("PREVIEW_TAIL_MUST_NOT_BE_READ")
+	hash := putTestBody(t, st, append(bytes.Repeat([]byte("x"), int(maxFlowPreviewRequestBytes)), tail...))
+	flowID, err := st.InsertFlow(&store.Flow{
+		Method: "POST", Host: "example.com", Path: "/upload", HTTPVersion: "HTTP/1.1",
+		ReqHeaders: map[string][]string{"Content-Type": {"text/plain"}}, ReqBodyHash: hash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := st.GetFlow(flowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := h.flowRawSideForPreview(flow, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int64(len(raw)) > maxFlowPreviewRequestBytes || bytes.Contains(raw, tail) {
+		t.Fatalf("preview raw was not bounded before rendering: len=%d", len(raw))
 	}
 }
 

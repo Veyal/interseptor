@@ -30,3 +30,13 @@ func TestProjectHTMLWithAppendix(t *testing.T) {
 		t.Fatalf("appendix missing:\n%s", html)
 	}
 }
+
+func TestMarkdownToHTMLRequiresMatchingFenceLength(t *testing.T) {
+	html := markdownToHTML("````http\nHTTP/1.1 200 OK\n```\npayload continues\n````\n")
+	if strings.Count(html, "<pre><code>") != 1 || !strings.Contains(html, "HTTP/1.1 200 OK\n```\npayload continues") {
+		t.Fatalf("long fence closed by shorter payload delimiter: %s", html)
+	}
+	if strings.Contains(html, "<p>payload continues</p>") {
+		t.Fatalf("payload escaped the code fence: %s", html)
+	}
+}

@@ -357,6 +357,9 @@ func preflightPeerFindings(peer *sql.DB) error {
 		if err := validateFindingNarrativeSize(f); err != nil {
 			return fmt.Errorf("preflight peer finding %d: %w", f.ID, err)
 		}
+		if err := validateFindingConfidence(f.Confidence); err != nil {
+			return fmt.Errorf("preflight peer finding %d: %w", f.ID, err)
+		}
 		if f.Body == "" {
 			f.Body = initialBody(f.Detail, f.Evidence)
 			if err := validateFindingBodySize(f.Body); err != nil {
@@ -775,6 +778,13 @@ func remapBodyFlowIDs(body string, m map[int64]int64) string {
 		if recs[i].FlowID != 0 {
 			if local, ok := m[recs[i].FlowID]; ok {
 				recs[i].FlowID = local
+			}
+		}
+		if recs[i].SourceFlowID != 0 {
+			if local, ok := m[recs[i].SourceFlowID]; ok {
+				recs[i].SourceFlowID = local
+			} else {
+				recs[i].SourceFlowID = 0
 			}
 		}
 	}

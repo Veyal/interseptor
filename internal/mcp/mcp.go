@@ -399,6 +399,8 @@ func (s *Server) writeJSON(w http.ResponseWriter, b []byte) {
 
 func (s *Server) apiGet(path string) (string, error) { return s.api(http.MethodGet, path, nil) }
 
+const maxControlAPIResponseBytes = 4 << 20
+
 // flowsExist reports whether a /api/flows query returned at least one flow.
 func (s *Server) flowsExist(path string) bool {
 	raw, err := s.apiGet(path)
@@ -450,7 +452,13 @@ func (s *Server) api(method, path string, body any) (string, error) {
 		return "", fmt.Errorf("control API unreachable at %s — is `interseptor` running? (%v)", s.base, err)
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	b, readErr := io.ReadAll(io.LimitReader(resp.Body, maxControlAPIResponseBytes+1))
+	if readErr != nil {
+		return "", fmt.Errorf("read control API response: %w", readErr)
+	}
+	if len(b) > maxControlAPIResponseBytes {
+		return "", fmt.Errorf("%s %s response exceeds the 4 MiB MCP transfer limit; narrow the request or download %s%s through the control API", method, path, s.base, path)
+	}
 	if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("%s %s → %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
@@ -1169,6 +1177,7 @@ func (s *Server) registerTools() {
 		obj(map[string]any{"severity": pt("string"), "status": pt("string"), "tag": p("string", "filter to findings with this tag")}),
 		func(a map[string]any) (string, error) {
 			q := url.Values{}
+			q.Set("view", "summary")
 			if v := argStr(a, "severity"); v != "" {
 				q.Set("severity", v)
 			}
@@ -1509,7 +1518,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("export_report",
-		"Render the engagement report from the canonical finding records and evidence. Passive scan is omitted by default. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract.",
+		"Render the engagement report from the canonical finding records and evidence. Passive scan is omitted by default. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract. Responses above the 4 MiB MCP transfer limit return an explicit error and must be narrowed or downloaded through the control API.",
 		obj(map[string]any{
 			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
 			"format":        p("string", "md (default), html, or json"),

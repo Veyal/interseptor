@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -206,7 +207,10 @@ func TestFindingReportBoundsDecompressedFlowBodies(t *testing.T) {
 	h, st, _ := newHub(t)
 	api := &findingsAPI{h}
 
-	plain := bytes.Repeat([]byte("decoded-evidence-"), 16<<10)
+	plain := make([]byte, 160<<10)
+	if _, err := rand.New(rand.NewSource(1)).Read(plain); err != nil {
+		t.Fatal(err)
+	}
 	var compressed bytes.Buffer
 	zw := gzip.NewWriter(&compressed)
 	if _, err := zw.Write(plain); err != nil {
@@ -214,6 +218,9 @@ func TestFindingReportBoundsDecompressedFlowBodies(t *testing.T) {
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatalf("gzip close: %v", err)
+	}
+	if compressed.Len() <= reportBodyCap {
+		t.Fatalf("compressed fixture=%d, want larger than report cap", compressed.Len())
 	}
 	hash := putTestBody(t, st, compressed.Bytes())
 	flowID, err := st.InsertFlow(&store.Flow{
@@ -232,11 +239,71 @@ func TestFindingReportBoundsDecompressedFlowBodies(t *testing.T) {
 	if !strings.Contains(raw, "X-Interseptor-Decoded: gzip") {
 		t.Fatalf("compressed report did not expose decoded provenance: %q", raw[:min(len(raw), 300)])
 	}
+	if !bytes.Contains([]byte(raw), plain[:256]) {
+		t.Fatal("compressed report returned encoded bytes instead of decoded evidence")
+	}
 	if !strings.Contains(raw, reportBodyTruncationMarker) {
 		t.Fatal("compressed report body missing truncation marker")
 	}
 	if len(raw) > reportBodyCap+2048 {
 		t.Fatalf("compressed report expanded to %d bytes, want bounded output", len(raw))
+	}
+}
+
+func TestFindingReportImageBudgetDoesNotMarkPresentBlobMissing(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &findingsAPI{h}
+	first := putTestBody(t, st, bytes.Repeat([]byte("a"), (9<<20)/2))
+	second := putTestBody(t, st, bytes.Repeat([]byte("b"), (9<<20)/2))
+	findings := []store.Finding{{Blocks: []store.FindingBlock{
+		{Type: "image", Hash: first, Mime: "image/png", URL: "/api/findings/images/" + first},
+		{Type: "image", Hash: second, Mime: "image/png", URL: "/api/findings/images/" + second},
+	}}}
+
+	api.enrichFindingReportImages(findings)
+	if findings[0].Blocks[0].URL == "" || findings[0].Blocks[0].Missing {
+		t.Fatalf("first image was not embedded: %+v", findings[0].Blocks[0])
+	}
+	if findings[0].Blocks[1].URL != "" || findings[0].Blocks[1].Missing {
+		t.Fatalf("budget omission was reported as missing evidence: %+v", findings[0].Blocks[1])
+	}
+}
+
+func TestFindingListSummaryOmitsHeavyNarrative(t *testing.T) {
+	h, st, _ := newHub(t)
+	sentinel := strings.Repeat("private-evidence-", 4096)
+	if _, err := st.CreateFinding(&store.Finding{
+		Title: "summary title", Summary: sentinel, Detail: sentinel, Evidence: sentinel,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/findings?view=summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 4096 || bytes.Contains(body, []byte(sentinel)) || bytes.Contains(body, []byte(`"body"`)) || bytes.Contains(body, []byte(`"detail"`)) {
+		t.Fatalf("summary response retained heavy narrative (%d bytes)", len(body))
+	}
+	var out struct {
+		Findings []struct {
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"findings"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Total != 1 || len(out.Findings) != 1 || out.Findings[0].Title != "summary title" || len(out.Findings[0].Summary) > 520 {
+		t.Fatalf("unexpected summary projection: %+v", out)
 	}
 }
 
@@ -823,6 +890,40 @@ func TestFindingAttachFlowPosition(t *testing.T) {
 	if last.Type != "flow" || last.FlowID != f3 {
 		t.Fatalf("last block should be f3, got %+v", last)
 	}
+}
+
+func TestFindingAttachFlowStampsCapturedProvenance(t *testing.T) {
+	h, st, _ := newHub(t)
+	flowID, err := st.InsertFlow(&store.Flow{Method: "GET", Host: "example.com", Path: "/proof"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingID, err := st.CreateFinding(&store.Finding{Title: "provenance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	payload := fmt.Sprintf(`{"flowId":%d,"source":"browser_screenshot","sourceFlowId":999}`, flowID)
+	resp, err := http.Post(ts.URL+"/api/findings/"+strconv.FormatInt(findingID, 10)+"/flows", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got store.Finding
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range got.Blocks {
+		if block.Type == "flow" && block.FlowID == flowID {
+			if block.Source != "captured_flow" || block.SourceFlowID != flowID {
+				t.Fatalf("captured endpoint accepted spoofed provenance: %+v", block)
+			}
+			return
+		}
+	}
+	t.Fatalf("attached flow block missing: %+v", got.Blocks)
 }
 
 // TestCreateFindingSurfacesBadFlowIDWarning verifies that create_finding's

@@ -234,6 +234,41 @@ func TestUpdateFindingAllowsPreviouslyAttachedPurgedFlowButRejectsNewUnknown(t *
 	}
 }
 
+func TestUpdateFindingPreservesPersistedMissingFlowMarker(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	flowID, err := s.InsertFlow(&Flow{Method: "GET", Host: "example.com", Path: "/unrelated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.CreateFinding(&Finding{Title: "merged orphan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted := marshalBody([]FindingBlock{{Type: "flow", FlowID: flowID, Note: "purged peer flow", Missing: true}})
+	if _, err := s.db.Exec(`UPDATE findings SET body=? WHERE id=?`, persisted, id); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := marshalBody([]FindingBlock{{Type: "flow", FlowID: flowID, Note: "edited note"}})
+	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, &replacement, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Blocks) != 1 || !got.Blocks[0].Missing || got.Blocks[0].Note != "edited note" {
+		t.Fatalf("missing marker was not retained: %+v", got.Blocks)
+	}
+	if len(got.Flows) != 0 {
+		t.Fatalf("missing peer evidence attached to unrelated local flow: %+v", got.Flows)
+	}
+}
+
 func TestFindingReadinessSummary(t *testing.T) {
 	f := &Finding{Title: "x", Summary: "summary", Target: "example.com", Impact: "impact", Why: "why", Fix: "fix", Retest: "retest", Confidence: "firm", Severity: "Medium", Blocks: []FindingBlock{{Type: "image", Hash: "abc", Role: "result", Missing: false, Proof: "screen proves impact"}, {Type: "flow", FlowID: 1, Missing: false, Proof: "response proves impact"}}}
 	r := f.ReadinessSummary()
@@ -336,6 +371,42 @@ func TestUpdateFindingLegacyEvidenceKeepsCanonicalBodyInSync(t *testing.T) {
 	}
 	if f.Evidence != next || len(f.Blocks) != 2 || f.Blocks[1].MD != next || strings.Contains(f.Body, "old observation") {
 		t.Fatalf("legacy evidence/body diverged: evidence=%q body=%q blocks=%+v", f.Evidence, f.Body, f.Blocks)
+	}
+}
+
+func TestUpdateFindingCanonicalBodyClearsStaleLegacyText(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	id, err := s.CreateFinding(&Finding{Title: "legacy", Detail: "old step", Evidence: "old proof"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := `[{"type":"text","md":"new step"}]`
+	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Detail != "new step" || got.Evidence != "" {
+		t.Fatalf("legacy fields diverged after canonical replacement: detail=%q evidence=%q", got.Detail, got.Evidence)
+	}
+
+	body = `[]`
+	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Detail != "" || got.Evidence != "" {
+		t.Fatalf("empty canonical body retained legacy text: detail=%q evidence=%q", got.Detail, got.Evidence)
 	}
 }
 

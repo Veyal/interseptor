@@ -183,7 +183,7 @@ func TestValidateFindingFormatDoesNotRequireDifferentialNarrative(t *testing.T) 
 }
 
 func TestValidateFindingFormatWarnsEvidenceWithoutProof(t *testing.T) {
-	body := `[{"type":"text","role":"action","md":"Send the modified request."},{"type":"flow","role":"result","flowId":7}]`
+	body := `[{"type":"text","role":"action","md":"Send the modified request."},{"type":"flow","role":"result","flowId":7,"note":"Cross-account response"},{"type":"image","role":"result","hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","caption":"Returned account"}]`
 	err, warns := validateFindingFormat(findingFormatInput{
 		Severity: "Medium", Summary: "Authorization can be bypassed.", Impact: "Another account can be read.",
 		Why: "Object ownership is not enforced.", Target: "api.example.com", Body: body,

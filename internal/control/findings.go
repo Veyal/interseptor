@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Veyal/interseptor/internal/report"
 	"github.com/Veyal/interseptor/internal/store"
@@ -90,7 +91,81 @@ func (h *findingsAPI) listFindings(w http.ResponseWriter, r *http.Request) {
 	if fs == nil {
 		fs = []store.Finding{}
 	}
+	if strings.EqualFold(q.Get("view"), "summary") {
+		summaries, total, truncated := findingListSummaries(fs)
+		writeJSON(w, http.StatusOK, map[string]any{"findings": summaries, "total": total, "truncated": truncated})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"findings": fs})
+}
+
+const (
+	maxFindingListSummaries   = 500
+	maxFindingSummaryText     = 512
+	maxFindingSummaryTags     = 20
+	maxFindingSummaryTagBytes = 128
+	maxFindingSummaryMissing  = 50
+)
+
+type findingListSummary struct {
+	ID               int64                   `json:"id"`
+	Severity         string                  `json:"severity"`
+	Status           string                  `json:"status"`
+	Title            string                  `json:"title"`
+	Summary          string                  `json:"summary,omitempty"`
+	Target           string                  `json:"target,omitempty"`
+	Confidence       string                  `json:"confidence,omitempty"`
+	Tags             []string                `json:"tags"`
+	TagCount         int                     `json:"tagCount"`
+	Ready            bool                    `json:"ready"`
+	Missing          []string                `json:"missing"`
+	Readiness        *store.FindingReadiness `json:"readiness,omitempty"`
+	MissingFlowIDs   []int64                 `json:"missingFlowIds"`
+	MissingFlowCount int                     `json:"missingFlowCount"`
+}
+
+func findingListSummaries(fs []store.Finding) ([]findingListSummary, int, bool) {
+	total := len(fs)
+	if len(fs) > maxFindingListSummaries {
+		fs = fs[:maxFindingListSummaries]
+	}
+	out := make([]findingListSummary, 0, len(fs))
+	for i := range fs {
+		f := &fs[i]
+		tags := append([]string(nil), f.Tags...)
+		if len(tags) > maxFindingSummaryTags {
+			tags = tags[:maxFindingSummaryTags]
+		}
+		for j := range tags {
+			tags[j] = truncateFindingSummary(tags[j], maxFindingSummaryTagBytes)
+		}
+		missingFlows := missingFlowIDs(f)
+		missingFlowCount := len(missingFlows)
+		if len(missingFlows) > maxFindingSummaryMissing {
+			missingFlows = missingFlows[:maxFindingSummaryMissing]
+		}
+		out = append(out, findingListSummary{
+			ID: f.ID, Severity: f.Severity, Status: f.Status,
+			Title:      truncateFindingSummary(f.Title, maxFindingSummaryText),
+			Summary:    truncateFindingSummary(f.Summary, maxFindingSummaryText),
+			Target:     truncateFindingSummary(f.Target, maxFindingSummaryText),
+			Confidence: f.Confidence, Tags: tags, TagCount: len(f.Tags), Ready: f.Ready,
+			Missing: append([]string(nil), f.Missing...), Readiness: f.Readiness,
+			MissingFlowIDs: missingFlows, MissingFlowCount: missingFlowCount,
+		})
+	}
+	return out, total, total > len(out)
+}
+
+func truncateFindingSummary(value string, max int) string {
+	if len(value) <= max {
+		return value
+	}
+	value = value[:max]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value + "…"
 }
 
 func (h *findingsAPI) listFindingTags(w http.ResponseWriter, r *http.Request) {
@@ -246,13 +321,19 @@ func (h *findingsAPI) enrichFindingReportImages(fs []store.Finding) {
 			}
 			rc, err := h.st.OpenBody(bl.Hash)
 			if err != nil {
+				bl.URL = ""
+				bl.Missing = true
 				continue
 			}
 			data, err := io.ReadAll(io.LimitReader(rc, reportImageEmbedCap+1))
 			rc.Close()
-			if err != nil || len(data) == 0 || len(data) > reportImageEmbedCap || total+len(data) > reportImageEmbedTotalCap {
+			if err != nil || len(data) == 0 {
 				bl.URL = ""
 				bl.Missing = true
+				continue
+			}
+			if len(data) > reportImageEmbedCap || total+len(data) > reportImageEmbedTotalCap {
+				bl.URL = ""
 				continue
 			}
 			mime := store.SanitizeNotesImageMIME(bl.Mime)
@@ -302,28 +383,14 @@ func (h *findingsAPI) flowRawSideForReport(f *store.Flow, request bool) string {
 	return b.String()
 }
 
-// reportBody reads at most reportBodyCap+1 bytes so the caller can distinguish
-// an exact-cap body from a truncated one. Compression decoding is attempted
-// only after that bounded read; the decoded representation is bounded again
-// before it is returned to the report.
+// reportBody bounds the returned raw or decoded representation while allowing
+// supported compression streams to consume enough encoded input to produce it.
 func (h *findingsAPI) reportBody(hash string, headers map[string][]string) (map[string][]string, []byte, bool) {
-	if hash == "" {
-		return headers, nil, false
-	}
-	rc, err := h.st.OpenBody(hash)
+	displayHeaders, body, truncated, err := h.bodyForDisplayLimit(hash, headers, reportBodyCap)
 	if err != nil {
 		return headers, nil, false
 	}
-	defer rc.Close()
-	body, err := io.ReadAll(io.LimitReader(rc, reportBodyCap+1))
-	if err != nil {
-		return headers, nil, false
-	}
-	if len(body) > reportBodyCap {
-		return headers, body[:reportBodyCap], true
-	}
-	displayHeaders, displayBody, decodedTruncated := decodeForDisplayLimit(headers, body, reportBodyCap)
-	return displayHeaders, displayBody, decodedTruncated
+	return displayHeaders, body, truncated
 }
 
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
@@ -601,13 +668,11 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		FlowID       int64  `json:"flowId"`
-		Note         string `json:"note"`
-		Position     *int   `json:"position"` // optional 0-based block index; omit = append
-		Role         string `json:"role"`
-		Proof        string `json:"proof"`
-		Source       string `json:"source"`
-		SourceFlowID int64  `json:"sourceFlowId"`
+		FlowID   int64  `json:"flowId"`
+		Note     string `json:"note"`
+		Position *int   `json:"position"` // optional 0-based block index; omit = append
+		Role     string `json:"role"`
+		Proof    string `json:"proof"`
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -620,7 +685,7 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	if err := h.st.AttachFlowWithMetadata(id, in.FlowID, in.Note, pos, in.Role, in.Proof, in.Source, in.SourceFlowID); err != nil {
+	if err := h.st.AttachFlowWithMetadata(id, in.FlowID, in.Note, pos, in.Role, in.Proof, "captured_flow", in.FlowID); err != nil {
 		if errors.Is(err, store.ErrFlowNotFound) {
 			httpErr(w, http.StatusNotFound, err.Error())
 			return

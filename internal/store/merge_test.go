@@ -157,7 +157,7 @@ func TestMergeFromPreservesMissingCanonicalAndLegacyFlowEvidence(t *testing.T) {
 	// orphan references, so this models the persisted post-prune state directly.
 	body := marshalBody([]FindingBlock{
 		{Type: "text", MD: "Retained report narrative."},
-		{Type: "flow", FlowID: 901, Note: "canonical proof", Role: "result", Proof: "response proves disclosure"},
+		{Type: "flow", FlowID: 901, Note: "canonical proof", Role: "result", Proof: "response proves disclosure", Source: "captured_flow", SourceFlowID: 901},
 	})
 	if _, err := peer.db.Exec(`UPDATE findings SET body=? WHERE id=?`, body, findingID); err != nil {
 		t.Fatalf("seed canonical orphan body: %v", err)
@@ -197,6 +197,45 @@ func TestMergeFromPreservesMissingCanonicalAndLegacyFlowEvidence(t *testing.T) {
 		if block.Type == "flow" && !block.Missing {
 			t.Fatalf("orphan body flow should be visible as missing: %+v", block)
 		}
+		if block.Type == "flow" && block.FlowID == 901 && block.SourceFlowID != 0 {
+			t.Fatalf("orphan provenance retained colliding peer flow id: %+v", block)
+		}
+	}
+}
+
+func TestMergeFromRejectsInvalidConfidenceBeforeImport(t *testing.T) {
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedFlow(t, peer, "example.com", "/peer", "peer", 1)
+	findingID, err := peer.CreateFinding(&Finding{Title: "invalid confidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peer.db.Exec(`UPDATE findings SET confidence='guess' WHERE id=?`, findingID); err != nil {
+		t.Fatal(err)
+	}
+	peerDBPath := filepath.Join(peerDir, currentDBName)
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	if _, err := local.MergeFrom(peerDBPath, "", "invalid"); err == nil || !strings.Contains(err.Error(), "confidence") {
+		t.Fatalf("MergeFrom error=%v, want confidence preflight rejection", err)
+	}
+	flows, err := local.QueryFlows(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flows) != 0 {
+		t.Fatalf("preflight failure imported flows: %+v", flows)
 	}
 }
 
@@ -1062,7 +1101,7 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	seedFlow(t, peer, "victim.test", "/b", "resp-b", 2000)
 	body := marshalBody([]FindingBlock{
 		{Type: "text", MD: "IDOR on /a"},
-		{Type: "flow", FlowID: f1, Note: "poc"},
+		{Type: "flow", FlowID: f1, Note: "poc", Source: "captured_flow", SourceFlowID: f1},
 	})
 	fid, err := peer.CreateFinding(&Finding{Severity: "High", Status: "verified", Source: "ai",
 		Title: "IDOR", Summary: "A user can read another user's record.", Target: "https://victim.test/a", Confidence: "certain",
@@ -1110,6 +1149,9 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	for _, b := range f.Blocks {
 		if b.Type == "flow" {
 			pocFlowID = b.FlowID
+			if b.SourceFlowID != b.FlowID {
+				t.Fatalf("source flow provenance was not remapped with evidence: %+v", b)
+			}
 		}
 	}
 	if pocFlowID == 0 {

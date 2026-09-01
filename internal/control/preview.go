@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -43,17 +44,15 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	var in struct {
-		FlowID       int64  `json:"flowId"`
-		Side         string `json:"side"`
-		Pretty       *bool  `json:"pretty"`
-		Layout       string `json:"layout"`
-		Theme        string `json:"theme"`
-		Caption      string `json:"caption"`
-		Position     *int   `json:"position"`
-		Role         string `json:"role"`
-		Proof        string `json:"proof"`
-		Source       string `json:"source"`
-		SourceFlowID int64  `json:"sourceFlowId"`
+		FlowID   int64  `json:"flowId"`
+		Side     string `json:"side"`
+		Pretty   *bool  `json:"pretty"`
+		Layout   string `json:"layout"`
+		Theme    string `json:"theme"`
+		Caption  string `json:"caption"`
+		Position *int   `json:"position"`
+		Role     string `json:"role"`
+		Proof    string `json:"proof"`
 	}
 	if !decodeLimitedJSON(w, r, maxFlowPreviewRequestBytes, &in) {
 		return
@@ -95,11 +94,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	source := in.Source
-	if source == "" {
-		source = "flow_preview"
-	}
-	_, _, err = h.st.PutAndAttachImage(findingID, "image/png", pngBytes, caption, pos, in.Role, in.Proof, source, in.FlowID)
+	_, _, err = h.st.PutAndAttachImage(findingID, "image/png", pngBytes, caption, pos, in.Role, in.Proof, "flow_preview", in.FlowID)
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -131,24 +126,45 @@ func (h *Hub) renderFlowPreview(f *store.Flow, opts preview.Options) ([]byte, er
 	}
 	if side == preview.SideBoth || side == preview.SideReq {
 		var err error
-		req, err = h.rawRequestVariantResult(f, false)
+		req, err = h.flowRawSideForPreview(f, true)
 		if err != nil {
 			return nil, err
 		}
-		req = capPreviewRaw(req)
 	}
 	if side == preview.SideBoth || side == preview.SideRes {
 		var err error
-		res, err = h.rawResponseVariantResult(f, false)
+		res, err = h.flowRawSideForPreview(f, false)
 		if err != nil {
 			return nil, err
 		}
-		res = capPreviewRaw(res)
 	}
 	if opts.Title == "" {
 		opts.Title = flowPreviewTitle(f)
 	}
 	return preview.Render(req, res, opts)
+}
+
+func (h *Hub) flowRawSideForPreview(f *store.Flow, request bool) ([]byte, error) {
+	var b strings.Builder
+	var headers map[string][]string
+	var hash, host string
+	if request {
+		fmt.Fprintf(&b, "%s %s %s\r\n", f.Method, orVal(f.Path, "/"), orVal(f.HTTPVersion, "HTTP/1.1"))
+		headers, hash, host = f.ReqHeaders, f.ReqBodyHash, f.Host
+	} else {
+		fmt.Fprintf(&b, "%s %d %s\r\n", orVal(f.HTTPVersion, "HTTP/1.1"), f.Status, http.StatusText(f.Status))
+		headers, hash = f.ResHeaders, f.ResBodyHash
+	}
+	displayHeaders, body, _, err := h.bodyForDisplayLimit(hash, headers, int(maxFlowPreviewRequestBytes))
+	if err != nil {
+		return nil, err
+	}
+	var raw bytes.Buffer
+	raw.WriteString(b.String())
+	writeHeaders(&raw, displayHeaders, host)
+	raw.WriteString("\r\n")
+	raw.Write(body)
+	return capPreviewRaw(raw.Bytes()), nil
 }
 
 func capPreviewRaw(raw []byte) []byte {

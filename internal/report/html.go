@@ -65,6 +65,7 @@ func markdownToHTML(md string) string {
 	inUL := false
 	inQuote := false
 	inFence := false
+	fenceLen := 0
 	var fence []string
 	var quote []string
 	var tableRows [][]string
@@ -76,6 +77,7 @@ func markdownToHTML(md string) string {
 		out = append(out, "<pre><code>"+htmlEsc(strings.Join(fence, "\n"))+"</code></pre>")
 		fence = nil
 		inFence = false
+		fenceLen = 0
 	}
 	flushQuote := func() {
 		if !inQuote {
@@ -116,18 +118,19 @@ func markdownToHTML(md string) string {
 	for _, line := range lines {
 		trim := strings.TrimSpace(line)
 		if inFence {
-			if strings.HasPrefix(trim, "```") {
+			if trim == strings.Repeat("`", fenceLen) {
 				flushFence()
 				continue
 			}
 			fence = append(fence, line)
 			continue
 		}
-		if strings.HasPrefix(trim, "```") {
+		if openingLen := backtickFenceLen(trim); openingLen >= 3 {
 			flushQuote()
 			closeList()
 			flushTable()
 			inFence = true
+			fenceLen = openingLen
 			continue
 		}
 		if strings.HasPrefix(trim, "|") {
@@ -190,6 +193,15 @@ func markdownToHTML(md string) string {
 	closeList()
 	flushTable()
 	return strings.Join(out, "\n")
+}
+
+func backtickFenceLen(line string) int {
+	for i, r := range line {
+		if r != '`' {
+			return i
+		}
+	}
+	return len(line)
 }
 
 func splitTableRow(line string) []string {

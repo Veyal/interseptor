@@ -521,6 +521,70 @@ func firstTextMD(bodyJSON string) string {
 	return ""
 }
 
+func bodyHasText(bodyJSON, text string) bool {
+	if bodyJSON == "" || text == "" {
+		return false
+	}
+	var recs []blockRecord
+	if err := json.Unmarshal([]byte(bodyJSON), &recs); err != nil {
+		return false
+	}
+	for _, rec := range recs {
+		if rec.Type == "text" && rec.MD == text {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyEvidenceAfterBodyReplace(existingBody, nextBody, evidence string) (string, bool) {
+	if evidence == "" {
+		return "", false
+	}
+	var existing, next []blockRecord
+	if json.Unmarshal([]byte(existingBody), &existing) != nil || json.Unmarshal([]byte(nextBody), &next) != nil {
+		return "", false
+	}
+	match := -1
+	for i := len(existing) - 1; i >= 0; i-- {
+		if existing[i].Type == "text" && existing[i].MD == evidence {
+			match = i
+			break
+		}
+	}
+	if match < 0 {
+		return "", false
+	}
+	if bodyHasText(nextBody, evidence) {
+		return evidence, true
+	}
+	if match < len(next) && next[match].Type == "text" {
+		return next[match].MD, true
+	}
+	return "", true
+}
+
+func preserveMissingFlowMarkers(existingBody, nextBody string) string {
+	var existing, next []blockRecord
+	if existingBody != "" {
+		_ = json.Unmarshal([]byte(existingBody), &existing)
+	}
+	if nextBody == "" || json.Unmarshal([]byte(nextBody), &next) != nil {
+		return nextBody
+	}
+	missing := make(map[int64]bool)
+	for _, rec := range existing {
+		if rec.Type == "flow" && rec.FlowID > 0 && rec.Missing {
+			missing[rec.FlowID] = true
+		}
+	}
+	for i := range next {
+		next[i].Missing = next[i].Type == "flow" && missing[next[i].FlowID]
+	}
+	encoded, _ := json.Marshal(next)
+	return string(encoded)
+}
+
 // updateFirstTextInBody replaces the first text block's content in body JSON.
 // If no text block exists, prepends one.
 func updateFirstTextInBody(bodyJSON, md string) string {
@@ -964,16 +1028,19 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		if err != nil {
 			return err
 		}
-		*body = norm
+		*body = preserveMissingFlowMarkers(existingBody, norm)
 	}
 	resultingBody := existingBody
 	if body != nil {
 		resultingBody = *body
 	}
-	// If body changes, sync its first text block back to detail for MCP compat.
-	if body != nil && *body != "" && detail == nil {
-		if md := firstTextMD(*body); md != "" {
-			detail = &md
+	if body != nil && detail == nil && (current.Detail == "" || bodyHasText(existingBody, current.Detail)) {
+		md := firstTextMD(*body)
+		detail = &md
+	}
+	if body != nil && evidence == nil {
+		if nextEvidence, matched := legacyEvidenceAfterBodyReplace(existingBody, *body, current.Evidence); matched {
+			evidence = &nextEvidence
 		}
 	}
 	resulting := current
