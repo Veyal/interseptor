@@ -291,7 +291,8 @@ func run() error {
 	if v, ok, _ := st.GetSetting("capture.scopeOnly"); ok && v == "1" {
 		prx.SetCaptureScopeOnly(true)
 	}
-	// Browser telemetry suppression: on by default; users may disable it in Settings.
+	// Browser background-traffic suppression: on by default; the persisted/API
+	// key keeps its original telemetry name for compatibility.
 	hub.SetSuppressBrowserTelemetry = prx.SetSuppressBrowserTelemetry
 	if v, ok, _ := st.GetSetting("capture.suppressBrowserTelemetry"); !ok || v == "1" {
 		prx.SetSuppressBrowserTelemetry(true)

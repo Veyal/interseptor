@@ -1,9 +1,9 @@
-# UI audit verification — 2026-08-31
+# UI audit verification — 2026-09-01
 
 ## Revision and environment
 
-- Audited worktree base: `056fa2f0b347a2b37bf9bdf4fe467276705eacae`, plus the post-release
-  fallback, regression, and changelog changes captured by the exact digest below
+- Audited worktree base: `18d6b9b0076bad0785ee6668f9ad16589314ff15`, plus the browser-background
+  suppression, regression, UI-copy, and documentation changes captured by the exact digest below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -16,12 +16,12 @@
 
 ## Current-source applicability
 
-The retained audit digest is `616b49e6a142491a1ed73007acf3b01ae25701675aff3376ba09fd7266b45a76`
-across 249 runtime files. It matches the current post-release runtime exactly, including the
-published `2.0.6` dev-build fallback and the final Authz, mobile-action, Repeater-adoption, and
-visible-Allowlist SSE fixes. Documentation-only commits made after the audited base do not change
-this identity; any later change under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh
-full run and replacement evidence.
+The retained audit digest is `becb80224964ec22fcee44ba714ec54359606b44640a003d1afc416bfe53161e`
+across 249 runtime files. It matches the current browser-background suppression runtime exactly,
+including the published `2.0.6` fallback, current Mozilla endpoint coverage, safe authority
+normalization, request/response rule and intercept bypasses, and explicit Settings semantics.
+Documentation-only commits made after the audited base do not change this identity; any later change
+under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
 The complete 26-case matrix and three-run performance profile were executed against that exact source
 with `scripts/ui_browser_audit.py --full --burst 240 --perf-runs 3`; the validated machine-readable
@@ -66,6 +66,11 @@ field that created it. In particular:
 - Finding creation, Scanner check actions, and Authz actions move pending focus to an in-dialog
   status, restore the initiating action after rejection, and keep every dismissal or scope-navigation
   exit locked until the non-cancelable request acknowledges; Authz failures use assertive alerts.
+- Browser and Android suppression now share one flow policy across request rules, response rules,
+  both intercept queues, History, and body capture. Current Firefox Suggest, OHTTP, DAP, Remote
+  Settings, sponsored-content, connectivity, crash, and Safe Browsing hosts observed in the live
+  audit are forwarded unchanged without polluting a new capture. A suppressed TLS-passthrough
+  notice also releases its dedup marker so disabling suppression restores future observability.
 
 ## Feature and dependency matrix
 
@@ -78,7 +83,7 @@ field that created it. In particular:
 | Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
 | Findings | creation and pending-status focus, save ordering, rollback, picker query ownership, evidence lightbox | flow picker and Intruder-to-Finding actions retain the active finding/run; Activity and evidence focus are restored |
 | Map | tree hydration, table/graph/search replacement, graph-summary parity, node keyboard selection, Fit/focus transform | Proxy body search waits for project hydration; host focus preserves the server-side search and refreshes parameters |
-| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault | live refresh never overwrites pending edits; external allowlist changes reconcile only the visible pane; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft |
+| Settings | all eight sections, search/navigation, dirty-field restoration, upstream proxy ownership, Session/project failures, device refresh, API keys, allowlist, REST/MCP, Share/Vault, explicit browser-background suppression semantics | live refresh never overwrites pending edits; external allowlist changes reconcile only the visible pane; Session Save/Login Run serialize full-object writes; project failure blocks dependent UI loads instead of guessing a project; delayed Vault acknowledgement preserves the newest token draft; suppression states that traffic remains forwarded and existing History remains intact |
 | Notes / Activity | latest load/save ownership, outcome labels, filter/focus retention | panel activation and live updates preserve focused objects and their accessible outcomes |
 | Auxiliary tools | Checks/Codecs modals, Decoder, project modal, OOB availability, Authz retargeting/error announcements, WebSocket capture/replay contracts | close paths restore focus; pending modal actions retain focus; busy Authz scope navigation cannot switch the underlying panel; explicit context-menu targets and later A→B→A selection changes retain the intended flow |
 
@@ -102,6 +107,12 @@ The pass also held a Vault configuration PUT, typed a newer token draft, then re
 acknowledgement; the newer draft remained. Focused Go UI contracts additionally inject delayed
 Settings reads and acknowledgements, rapid strict/compatible changes, live refresh over dirty TLS
 drafts, and shared Setup/Settings system-proxy mutations without making an operating-system change.
+
+The exact-source Playwright pass exercised the browser-background toggle using only the keyboard.
+Both server-acknowledged states exposed the expected `aria-pressed` value and plain-language label,
+the control restored visible focus after its temporary pending lock, and suppression was restored
+before teardown. The Settings surface had `0 px` document overflow at both 1440 × 900 and 390 × 844,
+and the pass observed no console errors, page errors, or external requests.
 
 ### OOB draft ownership contract
 
@@ -141,12 +152,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `142.0 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `195.6 ms` |
-| Delayed Intercept acknowledgement | `334.9 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `77.7 ms`; Fit/wheel/drag interaction `428.1 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.322931 s`; script `0.104679 s`; layout `0.044039 s` |
-| Map interaction | CDP task `0.021898 s`; script `0.001176 s`; layout `0.000507 s` |
+| Three 240-request live History bursts | network p95 `135.6 ms`; 82 rendered rows; 4,836 DOM nodes; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `209.4 ms` |
+| Delayed Intercept acknowledgement | `344.9 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `79.0 ms`; Fit/wheel/drag interaction `381.9 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.35308 s`; script `0.120735 s`; layout `0.051559 s` |
+| Map interaction | CDP task `0.018861 s`; script `0.000944 s`; layout `0.000362 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
@@ -181,7 +192,7 @@ or a component-library visual language.
 
 ## Required source gates
 
-The release branch must pass these source gates in their owning validation phases:
+Any branch that changes the runtime must pass these source gates in its owning validation phases:
 
 ```text
 go test ./... -count=1
@@ -192,5 +203,4 @@ go run ./tools/docscheck check .
 for file in internal/control/ui/js/*.js; do node --check "$file"; done
 ```
 
-The release branch is additionally required to pass the no-mistakes review and repository CI before
-merge and tagging.
+The branch is additionally required to pass the no-mistakes review and repository CI before merge.

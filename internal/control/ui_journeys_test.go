@@ -195,6 +195,28 @@ func TestUIJourneySettingsRetainsNonAIControls(t *testing.T) {
 	)
 }
 
+func TestUIBrowserBackgroundSuppressionExplainsScope(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	settings := executableJS(readUIAsset(t, "js/settings.js"))
+	requireUIContains(t, index,
+		`BROWSER BACKGROUND TRAFFIC`,
+		`forwarded without appearing in History or Intercept`,
+		`Applies to new traffic; existing History is unchanged`,
+		`Normal website and application traffic remains visible`,
+	)
+	requireUIContains(t, settings,
+		`Suppressing browser background traffic`,
+		`Capturing browser background traffic`,
+		`New browser background traffic will be forwarded without capture`,
+		`Browser background traffic will now appear in History`,
+		`document.activeElement===control`,
+		`focusReturn.focus({preventScroll:true})`,
+	)
+	if strings.Contains(settings, "Allowing browser telemetry") {
+		t.Error("suppression-off label must describe capture visibility, not imply that suppression blocks network traffic")
+	}
+}
+
 func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))

@@ -815,10 +815,10 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 	out.URL.Host = hostPort(flow.Host, flow.Port, flow.Scheme)
 	removeHeaders(out.Header, hopRequestHeaders)
 
-	// Intercept gate (Burp-style hold) — only for in-scope, non-self, non-telemetry requests.
-	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && (s.Scope == nil || s.Scope.InScope(flow)) &&
-		(!s.suppressTelemetry.Load() || !isBrowserTelemetry(flow.Host)) &&
-		(!s.suppressAndroidTelemetry.Load() || !isAndroidTelemetry(flow.Host)) {
+	// Intercept gate (Burp-style hold) — only for in-scope, non-self requests
+	// that are not covered by an enabled background-traffic suppression policy.
+	if s.eng != nil && s.eng.Enabled() && s.shouldCapture(flow) && !s.isSuppressedTelemetry(flow) &&
+		(s.Scope == nil || s.Scope.InScope(flow)) {
 		raw, truncated := dumpRequest(out)
 		if truncated {
 			// The body is too large or could not be read completely, so a round-tripped
@@ -885,8 +885,10 @@ func (s *Server) gateAndForward(flow *store.Flow, r *http.Request) (*http.Respon
 		}
 	}
 
-	// Match & replace (request-side) — skip our own traffic.
-	if s.eng != nil && s.shouldCapture(flow) {
+	// Match & replace (request-side) — skip our own and suppressed background
+	// traffic. Suppressed requests must be forwarded untouched as well as kept
+	// out of History and Intercept.
+	if s.eng != nil && s.shouldCapture(flow) && !s.isSuppressedTelemetry(flow) {
 		if err := s.eng.ApplyRules(out); err != nil {
 			return nil, false, fmt.Errorf("apply rules: %w", err)
 		}
@@ -1078,8 +1080,8 @@ func restoreBody(prefix []byte, rest io.ReadCloser) io.ReadCloser {
 // neither rules nor response-interception apply, transformed is false and the
 // caller streams the original response untouched (no buffering).
 func (s *Server) maybeInterceptResponse(flow *store.Flow, resp *http.Response) (status int, header http.Header, body []byte, transformed, dropped bool) {
-	if s.eng == nil || !s.shouldCapture(flow) {
-		return 0, nil, nil, false, false // our own traffic is forwarded untouched
+	if s.eng == nil || !s.shouldCapture(flow) || s.isSuppressedTelemetry(flow) {
+		return 0, nil, nil, false, false // own/suppressed traffic is forwarded untouched
 	}
 	hasRules := s.eng.HasResponseRules()
 	hold := s.eng.ResponseEnabled() && (s.Scope == nil || s.Scope.InScope(flow))
@@ -1244,9 +1246,9 @@ func (s *Server) isOwnListenerTarget(host string, port int) bool {
 func (s *Server) SetCaptureScopeOnly(v bool) { s.scopeOnly.Store(v) }
 
 // SetSuppressBrowserTelemetry controls whether known Chrome and Firefox
-// background telemetry, update, and crash-reporting hosts are silently
-// forwarded without being captured or held by the intercept gate. Enabled by
-// default; users may turn it off to inspect browser background traffic.
+// background-service hosts are forwarded untouched without being captured or
+// held by either intercept gate. Enabled by default; users may turn it off to
+// inspect browser-managed traffic.
 func (s *Server) SetSuppressBrowserTelemetry(v bool) { s.suppressTelemetry.Store(v) }
 
 // SetSuppressAndroidTelemetry controls whether known Android OS, Google Play
@@ -1264,16 +1266,14 @@ func (s *Server) SetSuppressAndroidTelemetry(v bool) { s.suppressAndroidTelemetr
 func (s *Server) SetInvisibleProxy(v bool) { s.invisible.Store(v) }
 
 // persistable reports whether a flow should be written to history: never our own
-// loopback traffic; never browser/Android telemetry when suppression is on; and
-// — when scope-only capture is on and a scope is set — only when it is in scope.
+// loopback traffic; never enabled browser/Android background suppression
+// categories; and — when scope-only capture is on and a scope is set — only
+// when it is in scope.
 func (s *Server) persistable(flow *store.Flow) bool {
 	if !s.shouldCapture(flow) {
 		return false
 	}
-	if s.suppressTelemetry.Load() && isBrowserTelemetry(flow.Host) {
-		return false
-	}
-	if s.suppressAndroidTelemetry.Load() && isAndroidTelemetry(flow.Host) {
+	if s.isSuppressedTelemetry(flow) {
 		return false
 	}
 	if s.scopeOnly.Load() && s.Scope != nil && !s.Scope.InScope(flow) {

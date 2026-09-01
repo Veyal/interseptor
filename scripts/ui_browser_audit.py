@@ -409,6 +409,29 @@ def run_audit(args: argparse.Namespace) -> AuditResult:
             result.require(page.locator("#setNav button[data-sec]:visible").count() > 0, "Settings search hid every result")
             search.fill("")
 
+            page.locator('#setNav button[data-sec="proxy"]').click()
+            toggle = page.locator("#suppressTelemetryToggle")
+            initial_pressed = toggle.get_attribute("aria-pressed")
+            toggle.focus()
+            toggle.press("Enter")
+            page.wait_for_function(
+                "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') !== initial",
+                arg=initial_pressed,
+            )
+            result.require(
+                page.evaluate("document.activeElement?.id") == "suppressTelemetryToggle",
+                "browser-background toggle lost keyboard focus after acknowledgement",
+            )
+            toggle.press("Enter")
+            page.wait_for_function(
+                "initial => document.querySelector('#suppressTelemetryToggle')?.getAttribute('aria-pressed') === initial",
+                arg=initial_pressed,
+            )
+            result.require(
+                page.evaluate("document.activeElement?.id") == "suppressTelemetryToggle",
+                "browser-background toggle lost keyboard focus after restoring its setting",
+            )
+
         result.run("Repeater/Intruder inner tabs and every Settings section", inner_tabs_and_settings)
 
         def viewport_and_reduced_motion() -> None:

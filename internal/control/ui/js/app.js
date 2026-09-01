@@ -395,7 +395,7 @@ function cmdkCommands(){
     {t:'Switch or create project',kw:'projects workspace engagement open new default',run:openProjectModal},
     {t:'Run setup wizard',kw:'setup wizard onboarding first run guide proxy ca scope',run:openSetup},
     {t:'Toggle theme (dark / light)',kw:'dark mode light appearance ui color scheme',run:toggleTheme},
-    {t:'Settings: Proxy & network',kw:'listener bind port upstream system proxy capture browser telemetry android gms crashlytics invisible',run:goSet('proxy')},
+    {t:'Settings: Proxy & network',kw:'listener bind port upstream system proxy capture browser background telemetry firefox chromium suggestions sponsored remote settings android gms crashlytics invisible',run:goSet('proxy')},
     {t:'Settings: TLS / CA — download CA certificate',kw:'https certificate cert trust install ca download mitm ssl pinning diagnosis passthrough bypass',run:goSet('tls')},
     {t:'Settings: Mobile devices — Android / iOS',kw:'android ios adb simulator device jailbreak ssh proxy install ca mobile phone',run:goSet('devices')},
     {t:'Settings: Target scope',kw:'include exclude host path in scope',run:goSet('scope')},

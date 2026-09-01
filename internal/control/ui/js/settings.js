@@ -139,6 +139,7 @@ function setSettingsMutationBusy(lane,mutation) {
   if(!control)return;
   if(!lane.controls.has(control))lane.controls.set(control,!!control.disabled);
   lane.lockControl=lane.lockControl||!!mutation.lockControl;
+  if(lane.lockControl&&document.activeElement===control)lane.focusReturn=control;
   lane.controls.forEach((_wasDisabled,current)=>{
     current.setAttribute('aria-busy','true');
     if(lane.lockControl)current.disabled=true;
@@ -146,16 +147,20 @@ function setSettingsMutationBusy(lane,mutation) {
 }
 
 function clearSettingsMutationBusy(lane) {
+  const focusReturn=lane.focusReturn;
+  lane.focusReturn=null;
   lane.controls.forEach((wasDisabled,control)=>{
     control.removeAttribute('aria-busy');
     if(lane.lockControl)control.disabled=wasDisabled;
   });
+  if(focusReturn?.isConnected&&!focusReturn.disabled&&
+    (!document.activeElement||document.activeElement===document.body))focusReturn.focus({preventScroll:true});
 }
 
 function queueSettingsMutation(key,value,options) {
   let lane=settingsMutationLanes.get(key);
   if(!lane){
-    lane={generation:0,running:false,pending:null,active:null,controls:new Map(),lockControl:false};
+    lane={generation:0,running:false,pending:null,active:null,controls:new Map(),lockControl:false,focusReturn:null};
     settingsMutationLanes.set(key,lane);
   }
   if(lane.pending)lane.pending.resolve(false);
@@ -745,13 +750,13 @@ $('#capScopeToggle')&&($('#capScopeToggle').onclick=async()=>{
     failure:e=>{toast('capture: '+e.message);loadSettings();},
   });
 });
-export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser telemetry':'Allowing browser telemetry';}
+export function setSuppressTelemetry(on){const b=$('#suppressTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing browser background traffic':'Capturing browser background traffic';}
 $('#suppressTelemetryToggle')&&($('#suppressTelemetryToggle').onclick=async()=>{
   const control=$('#suppressTelemetryToggle');
   const on=!control.classList.contains('on');
   return saveBooleanSetting('suppressBrowserTelemetry',on,{control,lockControl:true,
-    success:current=>{setSuppressTelemetry(current);toast(current?'Browser telemetry suppressed':'Browser telemetry now visible in history');},
-    failure:e=>{toast('telemetry: '+e.message);loadSettings();},
+    success:current=>{setSuppressTelemetry(current);toast(current?'New browser background traffic will be forwarded without capture':'Browser background traffic will now appear in History');},
+    failure:e=>{toast('browser background traffic: '+e.message);loadSettings();},
   });
 });
 export function setSuppressAndroidTelemetry(on){const b=$('#suppressAndroidTelemetryToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Suppressing Android telemetry':'Allowing Android telemetry';}
