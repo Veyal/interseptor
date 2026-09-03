@@ -72,13 +72,14 @@ export function setSeg(btn,on){
 
 // Project-scoped localStorage (#17/#18): feature preferences and drafts must not
 // leak across project switches. Repeater/Intruder tabs and presets plus Map view
-// preferences use keys such as `rep.tabs.default`. On first use of a scoped key,
-// an unscoped legacy value is migrated once.
+// preferences use the canonical project directory in each key. On first use of
+// a scoped key, an unscoped legacy value is migrated once.
 // Keep this below the browser's usual per-origin quota so one unexpectedly
 // restored blob cannot monopolize the main thread during JSON.parse. The raw
 // value remains untouched when the guard trips; the user can still recover it
 // from project storage or an older browser profile instead of losing drafts.
-const MAX_PERSISTED_TAB_STATE_CHARS=8*1024*1024;
+export const MAX_PROJECT_UI_STATE_BYTES=4*1024*1024;
+export function persistedStateByteLength(value){return new TextEncoder().encode(String(value)).byteLength;}
 const MAX_PERSISTED_TAB_COUNT=200;
 export function isSafePersistedTabState(value){
   if(!value||typeof value!=='object'||Array.isArray(value)||!Array.isArray(value.tabs)
@@ -92,23 +93,36 @@ export function isSafePersistedTabState(value){
   return true;
 }
 let storageProject='default';
+let storageLegacyProject='default';
 let storageProjectNames=[];
 let storageProjectNamesKnown=false;
 const migratedStorageBases=new Set();
 const storageMigrationWarnings=new Map();
 const legacyProjectStorageID=name=>String(name).replace(/[^A-Za-z0-9._-]+/g,'_')||'default';
-export function setStorageProject(name,knownProjects=[]){
+export function setStorageProject(name,knownProjects=[],legacyName=name){
   storageProject=(name&&String(name).trim())||'default';
+  storageLegacyProject=(legacyName&&String(legacyName).trim())||storageProject;
   storageProjectNamesKnown=Array.isArray(knownProjects)&&knownProjects.length>0;
   storageProjectNames=(Array.isArray(knownProjects)?knownProjects:[])
     .map(project=>typeof project==='string'?project:project?.name)
     .filter(project=>typeof project==='string'&&project.trim());
-  if(!storageProjectNames.includes(storageProject))storageProjectNames.push(storageProject);
+  if(!storageProjectNames.includes(storageLegacyProject))storageProjectNames.push(storageLegacyProject);
 }
 export function consumeStorageMigrationWarning(key){
   const warning=storageMigrationWarnings.get(key)||'';
   storageMigrationWarnings.delete(key);
   return warning;
+}
+export function projectStorageLegacyKeys(base){
+  if(!storageProjectNamesKnown)return[];
+  const keys=[];
+  const exactMatches=storageProjectNames.filter(project=>project===storageLegacyProject);
+  if(exactMatches.length===1)keys.push(base+'.v2.'+(encodeURIComponent(storageLegacyProject)||'default'));
+  const legacySafe=legacyProjectStorageID(storageLegacyProject);
+  const legacyMatches=storageProjectNames.filter(project=>legacyProjectStorageID(project)===legacySafe);
+  if(legacyMatches.length===1)keys.push(base+'.'+legacySafe);
+  const current=base+'.v2.'+(encodeURIComponent(String(storageProject))||'default');
+  return [...new Set(keys.filter(key=>key!==current))];
 }
 export function projectStorageKey(base){
   // Percent-encode the complete identity instead of replacing characters.
@@ -122,29 +136,28 @@ export function projectStorageKey(base){
   if(!migratedStorageBases.has(base)){
     let migrationComplete=true;
     try{
-      const legacySafe=legacyProjectStorageID(storageProject);
-      const legacyScoped=base+'.'+legacySafe;
-      if(legacyScoped!==scoped&&localStorage.getItem(scoped)==null){
-        const legacyValue=localStorage.getItem(legacyScoped);
-        if(legacyValue!=null){
-          const legacyMatches=storageProjectNames.filter(project=>legacyProjectStorageID(project)===legacySafe);
-          if(storageProjectNamesKnown&&legacyMatches.length===1){
-            if(legacyValue.length>MAX_PERSISTED_TAB_STATE_CHARS){
-              storageMigrationWarnings.set(scoped,'oversized legacy state');
-            }else{
-              localStorage.setItem(scoped,legacyValue);
-              localStorage.removeItem(legacyScoped);
-            }
+      const legacySafe=legacyProjectStorageID(storageLegacyProject);
+      const legacyCandidates=[base+'.v2.'+(encodeURIComponent(storageLegacyProject)||'default'),base+'.'+legacySafe]
+        .filter(key=>key!==scoped);
+      const safeLegacyKeys=projectStorageLegacyKeys(base);
+      if(localStorage.getItem(scoped)==null){
+        for(const legacyScoped of safeLegacyKeys){
+          const legacyValue=localStorage.getItem(legacyScoped);
+          if(legacyValue==null)continue;
+          if(persistedStateByteLength(legacyValue)>MAX_PROJECT_UI_STATE_BYTES){
+            storageMigrationWarnings.set(scoped,'oversized legacy state');
           }else{
-            // The previous key format collapsed valid project names. Never
-            // guess which project owns an old draft when more than one could.
-            storageMigrationWarnings.set(scoped,'ambiguous legacy project state');
+            localStorage.setItem(scoped,legacyValue);
+            localStorage.removeItem(legacyScoped);
           }
+          break;
         }
       }
+      if(legacyCandidates.some(key=>!safeLegacyKeys.includes(key)&&localStorage.getItem(key)!=null))
+        storageMigrationWarnings.set(scoped,'ambiguous legacy project state');
       const old=localStorage.getItem(base);
       if(old!=null){
-        if(old.length>MAX_PERSISTED_TAB_STATE_CHARS){
+        if(persistedStateByteLength(old)>MAX_PROJECT_UI_STATE_BYTES){
           // Keep an oversized legacy value at its original key. The scoped key
           // remains safe for the current project and the tab manager surfaces
           // the retained legacy draft instead of overwriting it during boot.
@@ -328,7 +341,7 @@ export function createTabManager(opts){
         $(barSel)?.querySelector(`.rep-tab[data-tid="${tid}"] .rt-select`)?.focus();
       });
     };
-    let ok=false;
+    let ok=false,localState=null;
     const applyState=d=>{
       if(!isSafePersistedTabState(d)||!d.tabs.length)return false;
       const normalizedTabs=[];
@@ -347,7 +360,7 @@ export function createTabManager(opts){
       else if(migrationWarning==='legacy project state could not be migrated')mgr.warnStorage(`${storageLabel} legacy browser state could not be migrated; the original draft was kept for recovery.`);
       else if(migrationWarning)mgr.warnStorage(`${storageLabel} legacy saved state is too large to load safely; the original draft was kept.`);
       const raw=localStorage.getItem(key);
-      if(raw&&raw.length>MAX_PERSISTED_TAB_STATE_CHARS){
+      if(raw&&persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
         mgr.warnStorage(`${storageLabel} saved state is too large to load safely; the original draft was kept for recovery. Editing this replacement tab will replace it.`);
       }else{
         const d=JSON.parse(raw||'null');
@@ -355,12 +368,13 @@ export function createTabManager(opts){
           mgr.warnStorage(`${storageLabel} saved state has too many tabs to load safely; the original draft was kept for recovery. Editing this replacement tab will replace it.`);
         }else if(d!==null&&!isSafePersistedTabState(d)){
           mgr.warnStorage(`${storageLabel} saved state is not recognized; the original draft was kept for recovery. Editing this replacement tab will replace it.`);
-        }else if(d&&d.tabs.length)ok=applyState(d);
+        }else if(d&&d.tabs.length)localState=d;
       }
     }catch(e){
       mgr.warnStorage(`${storageLabel} saved state could not be read; the original draft was kept for recovery. Editing this replacement tab will replace it.`);
     }
-    if(!ok&&isSafePersistedTabState(fallbackState))ok=applyState(fallbackState);
+    if(isSafePersistedTabState(fallbackState))ok=applyState(fallbackState);
+    else if(localState)ok=applyState(localState);
     if(!ok){mgr.tabs=[];mgr.create();mgr.active=mgr.tabs[0].tid;}
     mgr._rerender();
     onLoad(mgr.cur());

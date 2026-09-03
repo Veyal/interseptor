@@ -191,7 +191,7 @@ func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 	projectJS := executableJS(readUIAsset(t, "js/project.js"))
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{
-		"const projectStorageReady=activeProjectIdentity().then(identity=>setStorageProject(identity.name,identity.projects))",
+		"const projectStorageReady=activeProjectIdentity().then(identity=>setStorageProject(identity.key,identity.projects,identity.name))",
 		"return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')))",
 	} {
 		if !strings.Contains(projectJS, contract) {

@@ -11,15 +11,20 @@ import (
 func TestPersistedTabStateHasNonDestructiveSizeGuard(t *testing.T) {
 	core := readUIAsset(t, "js/core.js")
 	tools := readUIAsset(t, "js/tools.js")
+	if maxUIStateBytes != 4<<20 {
+		t.Fatalf("server UI-state limit = %d, want 4 MiB", maxUIStateBytes)
+	}
 
 	for _, contract := range []string{
-		"const MAX_PERSISTED_TAB_STATE_CHARS=8*1024*1024",
+		"export const MAX_PROJECT_UI_STATE_BYTES=4*1024*1024",
+		"export function persistedStateByteLength(value)",
+		"new TextEncoder().encode(String(value)).byteLength",
 		"const MAX_PERSISTED_TAB_COUNT=200",
 		"export function isSafePersistedTabState(value)",
 		"Number.isSafeInteger(tab.tid)",
 		"const persistedSeq=Number.isSafeInteger(d.seq)&&d.seq>0?d.seq:0",
 		"mgr.init=function(barSel,fallbackState=null)",
-		"raw.length>MAX_PERSISTED_TAB_STATE_CHARS",
+		"persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES",
 		"d.tabs.length>MAX_PERSISTED_TAB_COUNT",
 		"storageMigrationWarnings.set(scoped",
 		"return scoped",
@@ -32,12 +37,16 @@ func TestPersistedTabStateHasNonDestructiveSizeGuard(t *testing.T) {
 		}
 	}
 	for _, contract := range []string{
-		"const MAX_PENDING_UI_STATE_CHARS=8*1024*1024",
 		"const ignoredPendingStateKeys=new Set()",
-		"raw.length>MAX_PENDING_UI_STATE_CHARS",
+		"persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES",
 		"ignoredPendingStateKeys.add(key)",
 		"ignoredPendingStateKeys.delete(key)",
-		"if(ignoredPendingStateKeys.has(key)){uiPersistenceReady.set(panel,false);return 'error';}",
+		"if(ignoredPendingStateKeys.has(key))",
+		"guardedHydratedTabStates.set(storageBase,result.value)",
+		"Saved workspace exceeds the project storage limit.",
+		"queue.pending=null",
+		"queue.version++",
+		"if(queue.version!==version)continue",
 		"const canReplaceInvalidServer=pending!==null&&result.status==='success'",
 		"validServer||canReplaceInvalidServer",
 		"if(!validServer&&!canReplaceInvalidServer)return 'error'",
@@ -70,6 +79,9 @@ func TestPersistedTabStateHasNonDestructiveSizeGuard(t *testing.T) {
 	}
 	if strings.Contains(core, "storageWarningPending") {
 		t.Fatal("the first operator edit after guarded recovery must be persisted")
+	}
+	if strings.Contains(core+tools, "MAX_PERSISTED_TAB_STATE_CHARS") || strings.Contains(core+tools, "MAX_PENDING_UI_STATE_CHARS") {
+		t.Fatal("UI-state guards must use the server byte limit, not an independent character limit")
 	}
 }
 
@@ -148,7 +160,8 @@ func TestProjectStorageKeysPreserveTheFullProjectIdentity(t *testing.T) {
 		t.Error("lossy project-name replacement can leak drafts between distinct projects")
 	}
 	for _, contract := range []string{
-		"export function setStorageProject(name,knownProjects=[])",
+		"export function setStorageProject(name,knownProjects=[],legacyName=name)",
+		"export function projectStorageLegacyKeys(base)",
 		"const legacyMatches=storageProjectNames.filter",
 		"legacyMatches.length===1",
 		"localStorage.removeItem(legacyScoped)",
@@ -157,7 +170,9 @@ func TestProjectStorageKeysPreserveTheFullProjectIdentity(t *testing.T) {
 		"migrationComplete=false",
 		"legacy project state could not be migrated",
 		"if(migrationComplete)migratedStorageBases.add(base)",
-		"setStorageProject(identity.name,identity.projects)",
+		"setStorageProject(identity.key,identity.projects,identity.name)",
+		"key:project.dir",
+		"key:version.projectDir",
 	} {
 		if !strings.Contains(core+project, contract) {
 			t.Errorf("legacy scoped drafts need an unambiguous migration or explicit recovery warning: missing %q", contract)
@@ -208,9 +223,28 @@ func TestHydrationWriteFailureUsesInMemoryStateInsteadOfBlankReplacement(t *test
 		"could not be copied into browser storage; it was restored in memory",
 		"loadIntrPresets(guardedHydratedTabStates.get('intruder.presets'))",
 		"let list=normalizeIntruderPresets(fallback)",
+		"if(ignoredPendingStateKeys.has(key))",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("a failed hydration write must retain authoritative state in memory: missing %q", contract)
+		}
+	}
+	if strings.Contains(tools, "uiPersistenceReady.set(panel,false)") {
+		t.Error("an ignored browser draft must not disable later project storage synchronization")
+	}
+}
+
+func TestIntruderPresetSaveKeepsInMemoryFallbackAndTruthfulFeedback(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	for _, contract := range []string{
+		"let storedLocally=true",
+		"catch(e){storedLocally=false;}",
+		"loadIntrPresets(list)",
+		"preset kept in this session · server sync queued",
+		"preset kept in this session · storage unavailable",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("Intruder preset save fallback missing %q", contract)
 		}
 	}
 }

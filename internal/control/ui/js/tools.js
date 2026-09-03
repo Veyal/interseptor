@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, consumeStorageMigrationWarning, isSafePersistedTabState, syncUiSelectStyles, icon } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
@@ -88,13 +88,15 @@ function repHistoryDB(){
   return repHistoryDBPromise;
 }
 function repHistoryTabKey(t){return projectStorageKey('rep.history')+'|'+t.historyKey;}
+function repHistoryLegacyTabKeys(t){return projectStorageLegacyKeys('rep.history').map(prefix=>prefix+'|'+t.historyKey);}
+function repHistoryTabKeys(t){return [...new Set([repHistoryTabKey(t),...repHistoryLegacyTabKeys(t)])];}
 function repHistoryCleanupStorageKey(){return projectStorageKey('rep.history.cleanup');}
 function repHistoryCleanupKeys(){
   const raw=localStorage.getItem(repHistoryCleanupStorageKey());
   if(!raw)return[];
   try{
-    const prefix=projectStorageKey('rep.history')+'|';
-    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&key.startsWith(prefix)&&key.length<=512))];
+    const prefixes=[projectStorageKey('rep.history'),...projectStorageLegacyKeys('rep.history')].map(prefix=>prefix+'|');
+    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&prefixes.some(prefix=>key.startsWith(prefix))&&key.length<=512))];
   }catch(e){return[];}
 }
 function repWriteHistoryCleanupKeys(keys){
@@ -102,10 +104,10 @@ function repWriteHistoryCleanupKeys(keys){
   else localStorage.removeItem(repHistoryCleanupStorageKey());
 }
 function repMarkHistoryCleanup(t){
-  const tabKey=repHistoryTabKey(t),keys=repHistoryCleanupKeys();
-  if(!keys.includes(tabKey))keys.push(tabKey);
+  const tabKeys=repHistoryTabKeys(t),keys=repHistoryCleanupKeys();
+  for(const tabKey of tabKeys)if(!keys.includes(tabKey))keys.push(tabKey);
   repWriteHistoryCleanupKeys(keys);
-  return tabKey;
+  return tabKeys;
 }
 function repClearHistoryCleanup(tabKey){repWriteHistoryCleanupKeys(repHistoryCleanupKeys().filter(key=>key!==tabKey));}
 function repHistoryTxnDone(tx){
@@ -142,7 +144,23 @@ async function repStoreHistoryEntries(t,entries){
     await repHistoryTxnDone(tx);
   });
 }
+async function repMigrateLegacyHistoryRows(t){
+  const legacyTabKeys=repHistoryLegacyTabKeys(t);if(!legacyTabKeys.length)return;
+  const db=await repHistoryDB(),tabKey=repHistoryTabKey(t);
+  const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE),index=store.index('tabKey');
+  for(const legacyTabKey of legacyTabKeys){
+    const request=index.openCursor(legacyTabKey);
+    request.onsuccess=()=>{
+      const cursor=request.result;if(!cursor)return;
+      const entries=normalizeRepHistory([cursor.value?.entry]);
+      if(entries.length){const entry=entries[0];store.put({key:tabKey+'|'+entry.id,tabKey,entry});cursor.delete();}
+      cursor.continue();
+    };
+  }
+  await repHistoryTxnDone(tx);
+}
 async function repReadHistory(t){
+  await repMigrateLegacyHistoryRows(t);
   const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readonly');
   const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
   const request=index.getAll(repHistoryTabKey(t));
@@ -176,19 +194,19 @@ async function repDeleteHistoryKey(tabKey){
   }while(deleted===REP_HISTORY_DELETE_BATCH);
 }
 async function repDeleteHistory(t){
-  const tabKey=repHistoryTabKey(t);
+  const tabKeys=repHistoryTabKeys(t);
   // The retry ledger is a resilience aid, not a prerequisite for deletion.
   // Browsers can deny localStorage while leaving IndexedDB usable; closing a
   // task must still attempt to remove that tab's durable history.
   try{repMarkHistoryCleanup(t);}catch(e){}
   return repHistoryOperation(t,async()=>{
     if(!t._closed)return;
-    await repDeleteHistoryKey(tabKey);
-    try{repClearHistoryCleanup(tabKey);}catch(e){}
+    for(const tabKey of tabKeys)await repDeleteHistoryKey(tabKey);
+    for(const tabKey of tabKeys)try{repClearHistoryCleanup(tabKey);}catch(e){}
   },true);
 }
 async function repRetryHistoryCleanup(openTabs){
-  const openKeys=new Set(openTabs.map(repHistoryTabKey));
+  const openKeys=new Set(openTabs.flatMap(repHistoryTabKeys));
   let cleanupKeys;
   try{cleanupKeys=repHistoryCleanupKeys();}catch(e){return;}
   for(const tabKey of cleanupKeys){
@@ -317,7 +335,6 @@ let repRequestActionEpoch=0;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
-const MAX_PENDING_UI_STATE_CHARS=8*1024*1024;
 const guardedHydratedTabStates=new Map();
 const workspaceStorageWarnings=[];
 function reportWorkspaceStorageWarning(message){
@@ -327,7 +344,7 @@ function reportWorkspaceStorageWarning(message){
 export function workspaceStorageWarningMessage(){return workspaceStorageWarnings.join(' ');}
 function persistedTabStateIsUnsafe(raw){
   if(raw===null)return false;
-  if(raw.length>MAX_PENDING_UI_STATE_CHARS)return true;
+  if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES)return true;
   try{return !isSafePersistedTabState(JSON.parse(raw));}catch(e){return true;}
 }
 export function releaseWorkstationReady(result={ok:true}){resolveWorkstationReady(result);}
@@ -358,7 +375,7 @@ function readPendingUIState(panel){
   try{
     const raw=localStorage.getItem(key);
     if(raw===null)return null;
-    if(raw.length>MAX_PENDING_UI_STATE_CHARS){
+    if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
       ignoredPendingStateKeys.add(key);
       reportWorkspaceStorageWarning('Saved workspace pending state is too large to restore safely. It was kept for recovery; your next edit will replace it.');
       return null;
@@ -372,7 +389,7 @@ function readPendingUIState(panel){
 }
 function uiPersistenceQueue(panel){
   let queue=uiPersistenceQueues.get(panel);
-  if(!queue){queue={pending:null,saving:false};uiPersistenceQueues.set(panel,queue);}
+  if(!queue){queue={pending:null,saving:false,version:0};uiPersistenceQueues.set(panel,queue);}
   return queue;
 }
 async function drainUIState(panel){
@@ -381,10 +398,10 @@ async function drainUIState(panel){
   queue.saving=true;
   try{
     while(queue.pending!==null){
-      const body=queue.pending;queue.pending=null;
+      const body=queue.pending,version=queue.version;queue.pending=null;
       try{
         await api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body});
-        if(queue.pending===null){
+        if(queue.pending===null&&queue.version===version){
           try{
             if(localStorage.getItem(uiPendingStateKey(panel))===body){
               localStorage.removeItem(uiPendingStateKey(panel));
@@ -393,6 +410,7 @@ async function drainUIState(panel){
           }catch(e){}
         }
       }catch(e){
+        if(queue.version!==version)continue;
         if(queue.pending===null)queue.pending=body;
         document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:true,error:true,panel}}));
         break;
@@ -411,9 +429,19 @@ function persistUIState(panel, blob){
   let body;
   try{body=JSON.stringify(blob);}catch(e){return false;}
   const key=uiPendingStateKey(panel);
+  const queue=uiPersistenceQueue(panel);
+  queue.version++;
+  if(persistedStateByteLength(body)>MAX_PROJECT_UI_STATE_BYTES){
+    queue.pending=null;
+    ignoredPendingStateKeys.add(key);
+    try{localStorage.setItem(key,body);}catch(e){}
+    reportWorkspaceStorageWarning('Saved workspace exceeds the project storage limit. The browser draft was kept for recovery and will not be retried until it is reduced or replaced.');
+    document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:uiStateSyncPending()}}));
+    return false;
+  }
   ignoredPendingStateKeys.delete(key);
-  try{localStorage.setItem(uiPendingStateKey(panel),body);}catch(e){}
-  uiPersistenceQueue(panel).pending=body;
+  try{localStorage.setItem(key,body);}catch(e){}
+  queue.pending=body;
   if(uiPersistenceReady.get(panel)!==true)return false;
   drainUIState(panel);
   return true;
@@ -452,7 +480,10 @@ async function hydrateUIState(panel,storageBase,valid=()=>true){
   const validServer=result.status!=='success'||valid(result.value);
   const canReplaceInvalidServer=pending!==null&&result.status==='success';
   uiPersistenceReady.set(panel,result.status!=='error'&&(validServer||canReplaceInvalidServer));
-  if(ignoredPendingStateKeys.has(key)){uiPersistenceReady.set(panel,false);return 'error';}
+  if(ignoredPendingStateKeys.has(key)){
+    if(result.status==='success'&&validServer)guardedHydratedTabStates.set(storageBase,result.value);
+    return 'error';
+  }
   if(!validServer&&!canReplaceInvalidServer)return 'error';
   if(pending!==null){
     let restoredInMemory=false;
@@ -1621,9 +1652,14 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
     threads:snapshot.threads,delay:snapshot.delay,
     repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
   if(list.length>20)list.length=20;
-  try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
+  let storedLocally=true;
+  try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){storedLocally=false;}
   const serverSyncQueued=persistUIState('intruder-presets',list);
-  loadIntrPresets();toast(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable',serverSyncQueued?'success':'warn');
+  loadIntrPresets(list);
+  const message=storedLocally
+    ?(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable')
+    :(serverSyncQueued?'preset kept in this session · server sync queued':'preset kept in this session · storage unavailable');
+  toast(message,storedLocally&&serverSyncQueued?'success':'warn');
 };
 export let intrTimer=null;
 let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;

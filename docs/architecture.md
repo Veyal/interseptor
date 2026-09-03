@@ -93,9 +93,11 @@ tools locked rather than selecting a guessed project. The pre-module lock is rev
 module eventually completes. Browser-local tab envelopes are schema-checked and bounded before
 normalization or rendering; unsafe values remain available for recovery and cannot be replaced by
 the automatic blank-tab write. All Repeater creation routes share the same reload-safe tab and ID
-limits. Browser storage keys use a versioned, percent-encoded project identity: uniquely owned
-legacy keys migrate once, while an ambiguous older key is left intact and reported instead of being
-assigned to the wrong project. A browser-local write failure is visible but does not suppress the
+limits. Browser storage keys use the versioned, percent-encoded canonical project directory:
+uniquely owned localStorage and IndexedDB history keys migrate once, while an ambiguous older key is
+left intact and reported instead of being assigned to the wrong project. Client-side persistence
+uses the project API's 4 MiB UTF-8 byte limit and retains larger browser drafts without retrying a
+request the server cannot accept. A browser-local write failure is visible but does not suppress the
 project-database synchronization path.
 
 The [UI motion specification](ui-motion-spec.md) owns motion behavior and constraints. Other design

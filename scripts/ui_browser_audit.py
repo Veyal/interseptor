@@ -820,7 +820,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         "export const repInit=()=>{},intrInit=()=>{},repSend=()=>{},"
                         "sendToRepeater=()=>{},sendToIntruder=()=>{},scheduleIntr=()=>{},"
                         "releaseWorkstationReady=()=>{},uiStateSyncPending=()=>false,"
-                        "retryUIStateSync=()=>{};throw new Error('injected module evaluation failure');"
+                        "retryUIStateSync=()=>{},workspaceStorageWarningMessage=()=>'';"
+                        "throw new Error('injected module evaluation failure');"
                     ),
                 )
 
@@ -873,6 +874,45 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             finally:
                 stalled_context.close()
 
+        def project_identity_sibling_recovery(target_browser: Browser, engine_name: str) -> None:
+            _, version_info, _ = _json_get(base, "/api/version")
+            project_identity = str(version_info.get("projectDir") or "")
+            identity_context = target_browser.new_context(viewport={"width": 1024, "height": 768})
+            identity_page = identity_context.new_page()
+            identity_page.set_default_timeout(10_000)
+            identity_page.add_init_script(
+                """(() => {
+                  const nativeFetch=window.fetch;
+                  window.__projectIdentityStalls=0;
+                  window.fetch=function(input,init){
+                    const url=typeof input==='string'?input:String(input&&input.url||'');
+                    if(url.includes('/api/project')){
+                      window.__projectIdentityStalls++;
+                      return new Promise(()=>{});
+                    }
+                    return nativeFetch.call(this,input,init);
+                  };
+                })()"""
+            )
+            attach_observers(identity_page, result, base_netloc)
+            try:
+                started = time.perf_counter()
+                identity_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(identity_page)
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                storage_key = identity_page.evaluate(
+                    "async () => (await import('/js/core.js')).projectStorageKey('identity.audit')"
+                )
+                result.require(elapsed_ms < 4_500, f"project identity sibling fallback settled too late ({elapsed_ms:.1f}ms)")
+                result.require(identity_page.evaluate("window.__projectIdentityStalls") > 0, "project identity stall fault was not exercised")
+                result.require(
+                    storage_key == browser_project_storage_key("identity.audit", project_identity),
+                    "project identity fallback did not retain the canonical directory",
+                )
+                result.metrics[f"project_identity_fallback_ms_{engine_name}"] = round(elapsed_ms, 1)
+            finally:
+                identity_context.close()
+
         for engine_name in args.startup_engines:
             target_browser = browser if engine_name == "chromium" else getattr(playwright, engine_name).launch(headless=not args.headed)
             try:
@@ -887,6 +927,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.run(
                     f"workspace hydration timeout falls back locally ({engine_name})",
                     lambda current=target_browser, name=engine_name: workspace_hydration_recovery(current, name),
+                )
+                result.run(
+                    f"project identity accepts a valid sibling ({engine_name})",
+                    lambda current=target_browser, name=engine_name: project_identity_sibling_recovery(current, name),
                 )
             finally:
                 if target_browser is not browser:
@@ -938,8 +982,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
         def pathological_persisted_state_recovery() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            storage_key = browser_project_storage_key("rep.tabs", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            storage_key = browser_project_storage_key("rep.tabs", project_identity)
             tab_count = 5_000
             saved_state = json.dumps(
                 {
@@ -1024,22 +1068,26 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
         def invalid_pending_state_recovery() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            pending_key = browser_project_storage_key("ui.pending.repeater", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            pending_key = browser_project_storage_key("ui.pending.repeater", project_identity)
             pending_context = browser.new_context(viewport={"width": 1024, "height": 768})
             pending_context.add_init_script(f"localStorage.setItem({json.dumps(pending_key)},'{{}}');")
             pending_page = pending_context.new_page()
             pending_page.set_default_timeout(10_000)
             unexpected_writes: List[str] = []
 
-            def empty_repeater_state(route: Any) -> None:
+            def valid_server_repeater_state(route: Any) -> None:
                 if route.request.method == "GET":
-                    route.fulfill(status=200, content_type="application/json", body='{"value":null}')
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":{"seq":2,"active":1,"tabs":[{"tid":1,"method":"GET","url":"https://example.com/server-preserved","headers":"","body":""}]}}',
+                    )
                     return
                 unexpected_writes.append(route.request.method)
                 route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
 
-            pending_page.route("**/api/ui/repeater", empty_repeater_state)
+            pending_page.route("**/api/ui/repeater", valid_server_repeater_state)
             attach_observers(pending_page, result, base_netloc)
             try:
                 pending_page.goto(base, wait_until="domcontentloaded")
@@ -1048,6 +1096,11 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require("pending state is not recognized" in status.inner_text(), "invalid pending state has no persistent explanation")
                 result.require(status.locator("[data-workspace-warning-dismiss]").is_enabled(), "invalid pending-state warning has no Continue action")
                 result.require(pending_page.evaluate("key => localStorage.getItem(key)", pending_key) == "{}", "invalid pending state was overwritten")
+                pending_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    pending_page.locator("#repUrl").input_value() == "https://example.com/server-preserved",
+                    "invalid pending state blocked a valid server workspace",
+                )
                 result.require(not unexpected_writes, f"invalid pending state triggered server writes: {unexpected_writes}")
             finally:
                 pending_context.close()
@@ -1057,10 +1110,69 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             invalid_pending_state_recovery,
         )
 
+        def oversized_pending_state_is_not_retried() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_identity = str(project_info.get("dir") or "")
+            pending_key = browser_project_storage_key("ui.pending.repeater", project_identity)
+            oversized_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "POST", "url": "https://example.com/oversized", "body": "x" * (4 * 1024 * 1024)}],
+                },
+                separators=(",", ":"),
+            )
+            pending_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            pending_context.add_init_script(
+                f"localStorage.setItem({json.dumps(pending_key)},{json.dumps(oversized_state)});"
+            )
+            pending_page = pending_context.new_page()
+            pending_page.set_default_timeout(10_000)
+            unexpected_writes: List[str] = []
+
+            def valid_server_repeater_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":{"seq":2,"active":1,"tabs":[{"tid":1,"method":"GET","url":"https://example.com/server-after-oversized","headers":"","body":""}]}}',
+                    )
+                    return
+                unexpected_writes.append(route.request.method)
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            pending_page.route("**/api/ui/repeater", valid_server_repeater_state)
+            attach_observers(pending_page, result, base_netloc)
+            try:
+                pending_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(pending_page)
+                result.require(
+                    "too large to restore safely" in pending_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "oversized pending state has no persistent recovery explanation",
+                )
+                result.require(
+                    pending_page.evaluate("key => localStorage.getItem(key)?.length", pending_key) == len(oversized_state),
+                    "oversized pending state was not retained exactly",
+                )
+                pending_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    pending_page.locator("#repUrl").input_value() == "https://example.com/server-after-oversized",
+                    "oversized pending state blocked a valid server workspace",
+                )
+                pending_page.wait_for_timeout(500)
+                result.require(not unexpected_writes, f"oversized pending state entered a guaranteed-failure retry loop: {unexpected_writes}")
+            finally:
+                pending_context.close()
+
+        result.run(
+            "oversized pending workspace state is retained without retry",
+            oversized_pending_state_is_not_retried,
+        )
+
         def valid_pending_replaces_invalid_server_state() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            pending_key = browser_project_storage_key("ui.pending.repeater", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            pending_key = browser_project_storage_key("ui.pending.repeater", project_identity)
             pending_state = json.dumps(
                 {
                     "seq": 2,
@@ -1106,8 +1218,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
         def browser_storage_failure_keeps_project_sync() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            preset_key = browser_project_storage_key("intruder.presets", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            preset_key = browser_project_storage_key("intruder.presets", project_identity)
             stale_presets = json.dumps([{"name": "Stale preset", "target": "https://example.com/stale"}], separators=(",", ":"))
             storage_context = browser.new_context(viewport={"width": 1024, "height": 768})
             storage_context.add_init_script(
@@ -1128,6 +1240,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             storage_page = storage_context.new_page()
             storage_page.set_default_timeout(10_000)
             project_writes: List[str] = []
+            preset_writes: List[str] = []
 
             def isolated_storage_failure_state(route: Any) -> None:
                 if route.request.method == "GET":
@@ -1150,6 +1263,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         body='{"value":[{"name":"Server preset","target":"https://example.com/server"}]}',
                     )
                     return
+                preset_writes.append(route.request.post_data or "")
                 route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
 
             storage_page.route("**/api/ui/intruder-presets", isolated_preset_state)
@@ -1173,6 +1287,24 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 storage_page.locator('.tab[data-tab="intruder"]').click()
                 preset_options = storage_page.locator("#intrPreset option").all_text_contents()
                 result.require("Server preset" in preset_options and "Stale preset" not in preset_options, "in-memory server preset lost to stale browser storage")
+                storage_page.locator("#intrPresetSave").click()
+                storage_page.locator("#promptInput").fill("Session preset")
+                storage_page.locator("#promptOk").click()
+                storage_page.wait_for_function(
+                    "document.querySelector('#intrPreset')?.textContent.includes('Session preset')"
+                )
+                result.require(
+                    "Session preset" in storage_page.locator("#intrPreset").inner_text(),
+                    "failed browser storage discarded the newly built preset",
+                )
+                result.require(
+                    any("Session preset" in body for body in preset_writes),
+                    "failed browser storage suppressed the new preset project write",
+                )
+                result.require(
+                    "preset kept in this session" in storage_page.locator("#toast").inner_text(),
+                    "preset save feedback falsely claimed browser persistence",
+                )
             finally:
                 storage_context.close()
 
@@ -1183,8 +1315,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
         def persisted_tab_identity_and_creation_guards() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            storage_key = browser_project_storage_key("rep.tabs", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            storage_key = browser_project_storage_key("rep.tabs", project_identity)
             tab_count = 200
             saved_state = json.dumps(
                 {
@@ -1261,6 +1393,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                       const core=await import('/js/core.js');
                       core.setStorageProject('team alpha');const spaced=core.projectStorageKey('rep.tabs');
                       core.setStorageProject('team_alpha');const underscored=core.projectStorageKey('rep.tabs');
+                      core.setStorageProject('/client-a/shared',[{name:'shared',path:'/client-a/shared'},{name:'shared',path:'/client-b/shared'}],'shared');
+                      const externalA=core.projectStorageKey('rep.tabs');
+                      core.setStorageProject('/client-b/shared',[{name:'shared',path:'/client-a/shared'},{name:'shared',path:'/client-b/shared'}],'shared');
+                      const externalB=core.projectStorageKey('rep.tabs');
                       localStorage.setItem('audit.unambiguous.team_alpha','one');
                       core.setStorageProject('team alpha',['team alpha']);
                       const migratedKey=core.projectStorageKey('audit.unambiguous');
@@ -1293,10 +1429,11 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         legacy:localStorage.getItem('audit.retry.team_alpha'),
                         failedWarning
                       };
-                      return {spaced,underscored,migrated,removed,ambiguous,retried};
+                      return {spaced,underscored,externalA,externalB,migrated,removed,ambiguous,retried};
                     }"""
                 )
                 result.require(identity_keys["spaced"] != identity_keys["underscored"], "distinct project names share browser-local storage")
+                result.require(identity_keys["externalA"] != identity_keys["externalB"], "distinct external project directories share browser-local storage")
                 result.require(identity_keys["migrated"] == "one" and identity_keys["removed"] is None, "unambiguous legacy project state was not migrated")
                 result.require(
                     identity_keys["ambiguous"] == {"current": None, "legacy": "two", "warning": "ambiguous legacy project state"},
@@ -1375,10 +1512,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
         def malformed_tab_fields_and_history_keys_recover() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
-            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
-            rep_key = browser_project_storage_key("rep.tabs", project_name)
-            intr_key = browser_project_storage_key("intr.tabs", project_name)
-            preset_key = browser_project_storage_key("intruder.presets", project_name)
+            project_identity = str(project_info.get("dir") or "")
+            rep_key = browser_project_storage_key("rep.tabs", project_identity)
+            intr_key = browser_project_storage_key("intr.tabs", project_identity)
+            preset_key = browser_project_storage_key("intruder.presets", project_identity)
             rep_state = json.dumps(
                 {
                     "seq": 3,
@@ -2139,6 +2276,36 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require(page.locator("#repHistory .h").first.get_attribute("aria-current") == "true", "Repeater history selection is not exposed")
                 tab_a = page.locator("#repTabs .rep-tab.on").get_attribute("data-tid")
                 result.require(bool(tab_a), "Repeater active tab has no stable identity")
+                _, project_info, _ = _json_get(base, "/api/project")
+                legacy_project = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+                legacy_rows = page.evaluate(
+                    """async legacyPrefix => {
+                      const tools=await import('/js/tools.js'),core=await import('/js/core.js');
+                      const tab=tools.repTabs.cur();
+                      const currentTabKey=core.projectStorageKey('rep.history')+'|'+tab.historyKey;
+                      const legacyTabKey=legacyPrefix+'|'+tab.historyKey;
+                      return await new Promise((resolve,reject)=>{
+                        const open=indexedDB.open('interseptor-repeater-history',1);
+                        open.onerror=()=>reject(open.error);
+                        open.onsuccess=()=>{
+                          const tx=open.result.transaction('entries','readwrite');
+                          const store=tx.objectStore('entries'),index=store.index('tabKey');
+                          const rows=index.getAll(currentTabKey);
+                          rows.onsuccess=()=>{
+                            for(const row of rows.result||[]){
+                              store.put({key:legacyTabKey+'|'+row.entry.id,tabKey:legacyTabKey,entry:row.entry});
+                              store.delete(row.key);
+                            }
+                          };
+                          tx.oncomplete=()=>resolve((rows.result||[]).length);
+                          tx.onerror=()=>reject(tx.error);
+                          tx.onabort=()=>reject(tx.error);
+                        };
+                      });
+                    }""",
+                    f"rep.history.{legacy_project}",
+                )
+                result.require(legacy_rows == history_count, "legacy Repeater history migration fixture did not move the current rows")
 
                 changed_url = fixture_base + "/audit/repeater-edited"
                 page.locator("#repMethod").select_option("POST")
@@ -2159,6 +2326,25 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.wait_for_selector("#repHistory .h")
                 result.require(page.locator("#repHistory .h").count() == history_count, "reload cleared tab-owned Repeater history")
                 result.require(indexed_history_count(page) == history_count, "durable Repeater history count diverged")
+                migrated_counts = page.evaluate(
+                    """async legacyPrefix => {
+                      const tools=await import('/js/tools.js'),core=await import('/js/core.js');
+                      const tab=tools.repTabs.cur();
+                      const keys=[core.projectStorageKey('rep.history')+'|'+tab.historyKey,legacyPrefix+'|'+tab.historyKey];
+                      return await new Promise((resolve,reject)=>{
+                        const open=indexedDB.open('interseptor-repeater-history',1);
+                        open.onerror=()=>reject(open.error);
+                        open.onsuccess=()=>{
+                          const tx=open.result.transaction('entries','readonly'),index=tx.objectStore('entries').index('tabKey');
+                          const counts=keys.map(key=>index.count(key));
+                          tx.oncomplete=()=>resolve(counts.map(request=>request.result));
+                          tx.onerror=()=>reject(tx.error);
+                        };
+                      });
+                    }""",
+                    f"rep.history.{legacy_project}",
+                )
+                result.require(migrated_counts == [history_count, 0], f"legacy Repeater history rows were not migrated atomically: {migrated_counts}")
 
                 # A second tab is an important boundary: history is keyed by
                 # tab identity, not by whichever request happens to be visible

@@ -91,6 +91,27 @@ func TestUIRepeaterHistoryMigrationIsOneShotAndRaceSafe(t *testing.T) {
 	}
 }
 
+func TestUIRepeaterHistoryMigratesGuardedBrowserNamespaces(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	tools := readUIAsset(t, "js/tools.js")
+	for _, contract := range []string{
+		"export function projectStorageLegacyKeys(base)",
+		"function repHistoryLegacyTabKeys(t)",
+		"function repHistoryTabKeys(t)",
+		"async function repMigrateLegacyHistoryRows(t)",
+		"const request=index.openCursor(legacyTabKey)",
+		"store.put({key:tabKey+'|'+entry.id,tabKey,entry})",
+		"cursor.delete()",
+		"await repMigrateLegacyHistoryRows(t)",
+		"openTabs.flatMap(repHistoryTabKeys)",
+		"for(const tabKey of tabKeys)await repDeleteHistoryKey(tabKey)",
+	} {
+		if !strings.Contains(core+tools, contract) {
+			t.Errorf("guarded Repeater history namespace migration missing %q", contract)
+		}
+	}
+}
+
 func TestUIRepeaterHistoryRetainsTabLifetimeAndPaginatesRendering(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 

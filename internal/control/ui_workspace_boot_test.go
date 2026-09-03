@@ -11,9 +11,13 @@ func TestUIWorkspaceRequestsSettleEvenWhenAbortIsIgnored(t *testing.T) {
 	tools := executableJS(readUIAsset(t, "js/tools.js"))
 
 	for _, contract := range []string{
-		"Promise.race([requests,deadline])",
+		"async function boundedProjectIdentity(path,select)",
+		"Promise.race([api(path",
+		"Promise.allSettled([",
 		"controller.abort()",
 		"reject(new Error('active project timed out'))",
+		"key:project.dir",
+		"key:version.projectDir",
 	} {
 		if !strings.Contains(project, contract) {
 			t.Errorf("project identity needs a settling deadline independent of fetch abort: missing %q", contract)
@@ -41,8 +45,10 @@ func TestUIBrowserAuditExercisesWorkspaceStartupRecovery(t *testing.T) {
 		`def workspace_module_fetch_recovery`,
 		`def workspace_module_evaluation_recovery`,
 		`def workspace_hydration_recovery`,
+		`def project_identity_sibling_recovery`,
 		`def pathological_persisted_state_recovery`,
 		`def invalid_pending_state_recovery`,
+		`def oversized_pending_state_is_not_retried`,
 		`def valid_pending_replaces_invalid_server_state`,
 		`def browser_storage_failure_keeps_project_sync`,
 		`def persisted_tab_identity_and_creation_guards`,
@@ -53,6 +59,7 @@ func TestUIBrowserAuditExercisesWorkspaceStartupRecovery(t *testing.T) {
 		`"**/api/ui/repeater"`,
 		`module_page.route("**/js/tools.js"`,
 		`injected module evaluation failure`,
+		`workspaceStorageWarningMessage=()=>''`,
 		"if(url.includes('/api/ui/repeater')){",
 		"return new Promise(()=>{})",
 		"Workspace scripts could not start",
@@ -66,8 +73,10 @@ func TestUIBrowserAuditExercisesWorkspaceStartupRecovery(t *testing.T) {
 		`f"workspace module fetch failure becomes actionable ({engine_name})"`,
 		`f"workspace module evaluation failure becomes actionable ({engine_name})"`,
 		`f"workspace hydration timeout falls back locally ({engine_name})"`,
+		`f"project identity accepts a valid sibling ({engine_name})"`,
 		`"pathological browser-local workspace state remains recoverable"`,
 		`"invalid pending workspace state is preserved"`,
+		`"oversized pending workspace state is retained without retry"`,
 		`"valid pending workspace state replaces invalid server state"`,
 		`"browser storage failure keeps project workspace sync"`,
 		`"persisted tab identity and creation limits remain safe"`,
