@@ -73,7 +73,8 @@ export function setSeg(btn,on){
 // Project-scoped localStorage (#17/#18): feature preferences and drafts must not
 // leak across project switches. Repeater/Intruder tabs and presets plus Map view
 // preferences use the canonical project directory in each key. On first use of
-// a scoped key, an unscoped legacy value is migrated once.
+// a scoped key, an unscoped or uniquely owned name-based legacy value is
+// migrated once; ambiguous legacy state stays untouched.
 // Keep this below the browser's usual per-origin quota so one unexpectedly
 // restored blob cannot monopolize the main thread during JSON.parse. The raw
 // value remains untouched when the guard trips; the user can still recover it
@@ -209,7 +210,8 @@ export function renderLoadError(el, label, err, retry, stale=false){
 //   labelStyle(tab,isActive) — optional inline `style="…"` attribute value
 //                 for a tab's `.rt-label` span (Repeater colors it by method;
 //                 omit to leave the span unstyled)
-// Returns {tabs,cur,add,switchTo,close,persist,persistDebounced,render,init}.
+// Returns tab/ID allocation, rendering, persistence, switching, closing, and
+// initialization operations for the owning panel.
 export function createTabManager(opts){
   const {storageKey:keyOpt,blank,title,onSave,onLoad,normalize,serialize=(t=>t),labelStyle,onPersist,onClose,tablistLabel='Tabs',tabPanelId='',storageLabel='workspace',onStorageWarning}=opts;
   const storageKey=()=>typeof keyOpt==='function'?keyOpt():keyOpt;

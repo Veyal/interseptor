@@ -22,22 +22,8 @@ horizontal, scrollable dense-table surface while its controls wrap inside the vi
 
 ## Verification summary
 
-The retained exact-source Playwright recheck ran Chromium 148 and all 26 independent and
-cross-feature cases passed. Dedicated viewport and control-reachability sweeps at 1440 × 900,
-1024 × 768, and 390 × 844 found no document overflow.
-Reduced motion left zero active animations and zero-duration animations/transitions. Repeater
-history stayed tab-owned after every request edit, navigation, reload, a second task tab, and both
-tab closures, including when its localStorage cleanup ledger was forced unavailable. The audit also
-exercised OOB draft retention across interaction refresh, real Scanner and Intruder runs, delayed
-Intercept acknowledgements, Authz retargeting, mutation rejection/retry focus, blocked busy-modal
-navigation, reversible API-key/allowlist actions, unconfigured Vault behavior, and every Settings
-section. A direct API mutation also proved the visible Allowlist pane reconciles another client's
-addition and deletion over SSE without eagerly loading the API module. No unexpected console, page,
-HTTP, or external-request errors were reported.
-
-Chrome DevTools Protocol metrics covered three fresh 240-request proxy bursts and the resulting Map
-hydration and gestures. Exact timing, bounded-DOM, long-task, and interaction measurements are
-retained in `browser-audit.json` with the runtime-source digest.
-
-See [`verification.md`](verification.md) for the source identity, feature matrix, measurements, failure
-injections, competitive review, and intentionally deferred ideas.
+[`verification.md`](verification.md) is the authoritative audit report for the retained evidence. It
+owns the exact source and harness identities, browser-engine and feature matrices, failure
+injections, accessibility results, performance measurements, and deferred work. The machine-readable
+results remain in [`browser-audit.json`](browser-audit.json); this README owns only the screenshot
+inventory above.

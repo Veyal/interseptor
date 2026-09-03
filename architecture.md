@@ -109,3 +109,4 @@ project-database synchronization path.
 
 The [UI motion specification](https://github.com/Veyal/interseptor/blob/main/docs/ui-motion-spec.md) owns motion behavior and constraints. Other design
 notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).
+

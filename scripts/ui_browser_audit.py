@@ -1287,6 +1287,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 storage_page.locator('.tab[data-tab="intruder"]').click()
                 preset_options = storage_page.locator("#intrPreset option").all_text_contents()
                 result.require("Server preset" in preset_options and "Stale preset" not in preset_options, "in-memory server preset lost to stale browser storage")
+                storage_page.locator(".intr-opts-disc summary").click()
                 storage_page.locator("#intrPresetSave").click()
                 storage_page.locator("#promptInput").fill("Session preset")
                 storage_page.locator("#promptOk").click()

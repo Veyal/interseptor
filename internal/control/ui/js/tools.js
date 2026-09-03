@@ -321,9 +321,9 @@ function repSyncReqSeg(view){
 }
 
 // repTabs — shared tab-manager instance (docs/UI-REDESIGN-ROADMAP.md §4).
-// Storage is project-scoped (`rep.tabs.<project>`) so switching projects does
-// not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
-// migrated once into the current project via projectStorageKey.
+// Storage is scoped by the encoded canonical project directory so switching
+// projects does not leak another engagement's drafts (#17). Legacy state is
+// migrated only when projectStorageKey can prove a unique owner.
 const uiPersistenceReady=new Map();
 const uiPersistenceQueues=new Map();
 // A malformed/oversized pending blob is left intact for recovery, but should
@@ -1172,8 +1172,9 @@ function normalizeIntruderTab(t){
     posNums:Array.isArray(t.posNums)?t.posNums.map(item=>persistedPlainObject(item,INTR_NUM_DEFAULT())):[],
     grep:persistedText(t.grep),extract:persistedText(t.extract),proc:persistedText(t.proc)};
 }
-// intrTabs — project-scoped (`intr.tabs.<project>`) so attack configs do not
-// leak across projects (#18). Legacy unscoped key migrates once.
+// intrTabs — scoped by the encoded canonical project directory so attack
+// configs do not leak across projects (#18). Legacy state migrates only when
+// its project owner is unambiguous.
 const intrTabs=createTabManager({
   storageKey:()=>projectStorageKey('intr.tabs'),
   blank:intrBlank,

@@ -62,6 +62,16 @@ URL, headers, and body before sending. Interseptor reuses a tab for the same sch
 queryless path; query values remain in the loaded request. A deleted/missing evidence flow cannot be
 sent and must be recaptured.
 
+## Saved workspace does not finish loading
+
+Wait for the workspace status to offer **Reload** rather than clearing browser data. Reload retries
+module startup, project identification, and Repeater/Intruder hydration without deleting drafts. If
+the status says project-scoped tools are locked, confirm the active project is still available and
+then reload; Interseptor deliberately does not guess a project after an identity failure. A recovery
+warning means an older, malformed, or oversized browser draft was kept intact and the next explicit
+edit will create its replacement. See [Project boundaries](projects-and-data.md#project-boundaries)
+for storage and size limits.
+
 ## Finding layout or evidence is incomplete
 
 Switch to Edit to reveal block controls and add actions. Read mode intentionally hides edit-only

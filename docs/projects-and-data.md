@@ -18,6 +18,14 @@ preferences—such as theme, the last open top-level panel and Settings section,
 and inspector height—remain browser-wide. Device-helper form state may remain in the current
 browser tab.
 
+Repeater and Intruder tab drafts and presets are synchronized with the project database and cached
+in the browser under the project's full canonical directory. Older name-based browser keys migrate
+only when they belong unambiguously to the active project; ambiguous, malformed, or oversized
+drafts remain untouched and produce a recovery warning. Each Repeater or Intruder workspace accepts
+up to 200 tabs, and each project-backed UI-state document is limited to 4 MiB of UTF-8 JSON. A
+retained draft is replaced only after an explicit edit, and unavailable browser storage does not
+block project-database synchronization.
+
 A Repeater tab's send list is project-keyed but browser-local. It survives request edits, tab
 switches, and reloads, and is deleted when that Repeater tab closes. The corresponding request and
 response flows remain in the project store; project export and peer sync do not preserve their
