@@ -6,7 +6,7 @@
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync } from './tools.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
@@ -575,6 +575,20 @@ async function bootProjectScopedUI(){
   await projectStorageReady;
   return await Promise.all([repInit(),intrInit()]);
 }
+const WORKSPACE_BOOT_TIMEOUT_MS=7000;
+async function bootProjectScopedUIWithDeadline(work){
+  let timer;
+  const deadline=new Promise((_,reject)=>{
+    timer=setTimeout(()=>{
+      const error=new Error('workspace initialization timed out');
+      error.name='WorkspaceBootTimeout';
+      reject(error);
+    },WORKSPACE_BOOT_TIMEOUT_MS);
+  });
+  try{return await Promise.race([work,deadline]);}
+  finally{clearTimeout(timer);}
+}
+function settleWorkspaceBootWatchdog(){globalThis.__interseptorWorkspaceBoot?.settle?.();}
 function completeProjectScopedUIHydration(statuses){
   projectScopedUIReady=true;
   const failed=statuses.includes('error');
@@ -586,34 +600,46 @@ function completeProjectScopedUIHydration(statuses){
     const panel=document.querySelector(`.panel[data-panel="${name}"]`);if(!panel)return;
     panel.setAttribute('aria-busy','false');panel.removeAttribute('inert');
   });
-  const status=$('#workspaceHydrationStatus');if(!status)return;
-  if(failed){status.innerHTML='Saved workspace unavailable · local drafts only <button type="button" class="btn xs" data-workspace-retry>Retry</button>';status.classList.add('is-error');}
-  else if(pending&&uiStateSyncPending()){
-    renderWorkspaceSyncPending('Restored local workspace · server sync pending');
-    setTimeout(()=>{if(status.dataset.syncPending==='true'&&!uiStateSyncPending()){status.hidden=true;delete status.dataset.syncPending;}},0);
+  const status=$('#workspaceHydrationStatus');
+  if(status){
+    status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+    const storageWarning=workspaceStorageWarningMessage();
+    if(failed&&storageWarning){status.innerHTML=esc(storageWarning)+' <button type="button" class="btn xs" data-workspace-warning-dismiss>Continue</button>';status.classList.add('is-error');}
+    else if(failed){status.innerHTML='Saved workspace unavailable · local drafts only <button type="button" class="btn xs" data-workspace-retry>Retry</button>';status.classList.add('is-error');}
+    else if(pending&&uiStateSyncPending()){
+      renderWorkspaceSyncPending('Restored local workspace · server sync pending');
+      setTimeout(()=>{if(status.dataset.syncPending==='true'&&!uiStateSyncPending()){status.hidden=true;status.classList.remove('is-error');delete status.dataset.syncPending;}},0);
+    }
+    else{status.hidden=true;status.classList.remove('is-error');}
+    const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
+    const dismiss=status.querySelector('[data-workspace-warning-dismiss]');if(dismiss)dismiss.onclick=()=>{
+      const restoreFocus=document.activeElement===dismiss;
+      status.hidden=true;status.classList.remove('is-error');
+      if(restoreFocus)document.querySelector('.tab.active:not(:disabled)')?.focus();
+    };
   }
-  else status.hidden=true;
-  const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
 }
 function renderWorkspaceSyncPending(message='Local draft · server sync pending'){
   const status=$('#workspaceHydrationStatus');if(!status)return;
+  status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   status.hidden=false;status.innerHTML=`${message} <button type="button" class="btn xs" data-workspace-sync-retry>Retry</button>`;
   status.classList.add('is-error');status.dataset.syncPending='true';
   const retry=status.querySelector('[data-workspace-sync-retry]');
   if(retry)retry.onclick=async()=>{
     retry.disabled=true;retry.setAttribute('aria-busy','true');
-    await retryUIStateSync();
-    if(retry.isConnected&&uiStateSyncPending()){retry.disabled=false;retry.setAttribute('aria-busy','false');}
+    try{await retryUIStateSync();}
+    catch(e){toast('Could not retry saved workspace sync: '+(e?.message||'request failed'),'error');}
+    finally{if(retry.isConnected){retry.disabled=false;retry.setAttribute('aria-busy','false');}}
   };
 }
 document.addEventListener('interseptor:ui-state-sync',event=>{
   const status=$('#workspaceHydrationStatus');
   if(event.detail?.pending){renderWorkspaceSyncPending();return;}
-  if(status?.dataset.syncPending==='true'){status.hidden=true;delete status.dataset.syncPending;}
+  if(status?.dataset.syncPending==='true'){status.hidden=true;status.classList.remove('is-error');delete status.dataset.syncPending;}
 });
 async function bootFirstRunUI(){
   try{
-    const statuses=await bootProjectScopedUI();
+    const statuses=await bootProjectScopedUIWithDeadline(bootProjectScopedUI());
     completeProjectScopedUIHydration(statuses);
     restoreTab();
     handleAppHash();
@@ -621,15 +647,22 @@ async function bootFirstRunUI(){
     await loadFlows();
     maybeShowSetup();
   }catch(e){
-    releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'});
+    const timedOut=e?.name==='WorkspaceBootTimeout';
+    const failureMessage=timedOut?'Workspace initialization timed out · project-scoped tools are locked':'Active project unavailable · project-scoped tools are locked';
+    if(timedOut)releaseWorkstationReady({ok:false,message:failureMessage});
+    else releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'});
     const status=$('#workspaceHydrationStatus');
     if(status){
-      status.innerHTML='Active project unavailable · project-scoped tools are locked <button type="button" class="btn xs" data-workspace-retry>Retry</button>';
-      status.classList.add('is-error');status.setAttribute('role','alert');
+      status.innerHTML=failureMessage+' <button type="button" class="btn xs" data-workspace-retry>Retry</button>';
+      status.classList.add('is-error');status.setAttribute('role','alert');status.setAttribute('aria-live','assertive');
       const retry=status.querySelector('[data-workspace-retry]');if(retry)retry.onclick=()=>location.reload();
     }
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());bootFirstRunUI();loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+// Reaching this line proves the static module graph loaded and evaluated. The
+// separate project-workspace deadline below still owns async hydration.
+settleWorkspaceBootWatchdog();
+bootFirstRunUI();
 {const cb=$('#cmdkBtn');if(cb)cb.onclick=()=>cmdkOpen();}

@@ -191,7 +191,7 @@ func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 	projectJS := executableJS(readUIAsset(t, "js/project.js"))
 	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
 	for _, contract := range []string{
-		"const projectStorageReady=activeProjectIdentity().then(name=>setStorageProject(name))",
+		"const projectStorageReady=activeProjectIdentity().then(identity=>setStorageProject(identity.name,identity.projects))",
 		"return projectStorageReady.then(()=>mapMod||(mapMod=import('./map.js')))",
 	} {
 		if !strings.Contains(projectJS, contract) {
@@ -212,7 +212,7 @@ func TestProjectIdentityResolvesBeforeSavedTabRestore(t *testing.T) {
 		t.Fatal("bootFirstRunUI not found")
 	}
 	body := app[start:]
-	project := strings.Index(body, "await bootProjectScopedUI()")
+	project := strings.Index(body, "await bootProjectScopedUIWithDeadline(bootProjectScopedUI())")
 	restore := strings.Index(body, "restoreTab()")
 	load := strings.Index(body, "await loadFlows()")
 	if project < 0 || restore < 0 || load < 0 || !(project < restore && restore < load) {
@@ -264,7 +264,7 @@ func TestProjectDraftHydrationGatesNavigationEditorsAndCrossFeatureEntries(t *te
 		t.Fatal("bootFirstRunUI not found")
 	}
 	body := app[boot:]
-	hydrate := strings.Index(body, "await bootProjectScopedUI()")
+	hydrate := strings.Index(body, "await bootProjectScopedUIWithDeadline(bootProjectScopedUI())")
 	complete := strings.Index(body, "completeProjectScopedUIHydration(statuses)")
 	restore := strings.Index(body, "restoreTab()")
 	release := strings.Index(body, "releaseWorkstationReady()")
@@ -311,13 +311,14 @@ func TestProjectUIHydrationCannotBlockStartupIndefinitely(t *testing.T) {
 		"clearTimeout(timer)",
 		"return {status:'success',value:d.value}",
 		"return {status:'empty'}",
-		"return {status:'error',error:e}",
+		"error=>({status:'error',error})",
+		"Promise.race([request,deadline])",
 		"const result=await readBoundedUIState(panel)",
-		"uiPersistenceReady.set(panel,result.status!=='error'&&validServer)",
-		"return hydrateUIState('intruder-presets','intruder.presets',Array.isArray)",
-		"const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()])",
-		"if(repTabs.tabs.length&&hydration!=='error')repTabs.persist()",
-		"if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist()",
+		"uiPersistenceReady.set(panel,result.status!=='error'&&(validServer||canReplaceInvalidServer))",
+		"return hydrateUIState('intruder-presets','intruder.presets',value=>normalizeIntruderPresets(value)!==null)",
+		"const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs',isSafePersistedTabState),hydrateIntrPresets()])",
+		"if(repTabs.tabs.length&&hydration!=='error'&&!repTabs.storageWarning)repTabs.persist()",
+		"if(intrTabs.tabs.length&&hydration!=='error'&&!intrTabs.storageWarning)intrTabs.persist()",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("bounded project UI hydration contract missing %q", contract)

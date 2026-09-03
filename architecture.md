@@ -89,6 +89,22 @@ state-driven motion, and `project.js` owns active-project readiness plus the one
 shared by main navigation and Proxy's **Search in Map** action. Feature behavior stays in its
 feature module; `app.js` owns global navigation, shortcuts, SSE dispatch, and boot. No build step or
 bundler; the binary stays single and static.
+
+Workspace startup has two independent safety boundaries. A small classic-script guard runs before
+the ES-module graph and replaces the static loading state with a Reload action if those modules
+cannot load or evaluate. Once `app.js` is running, project identity and Repeater/Intruder state
+hydration race their requests against real settling deadlines; `AbortController` is used for
+cleanup, not as the promise-settlement guarantee. A failed saved-state read unlocks the workstation
+with its browser-local drafts intact, while an unresolved project identity keeps project-scoped
+tools locked rather than selecting a guessed project. The pre-module lock is reversible if a slow
+module eventually completes. Browser-local tab envelopes are schema-checked and bounded before
+normalization or rendering; unsafe values remain available for recovery and cannot be replaced by
+the automatic blank-tab write. All Repeater creation routes share the same reload-safe tab and ID
+limits. Browser storage keys use a versioned, percent-encoded project identity: uniquely owned
+legacy keys migrate once, while an ambiguous older key is left intact and reported instead of being
+assigned to the wrong project. A browser-local write failure is visible but does not suppress the
+project-database synchronization path.
+
 The [UI motion specification](https://github.com/Veyal/interseptor/blob/main/docs/ui-motion-spec.md) owns motion behavior and constraints. Other design
 notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).
 

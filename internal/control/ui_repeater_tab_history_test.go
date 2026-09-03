@@ -15,7 +15,7 @@ func TestUIRepeaterHistoryIsOwnedAndPersistedByTab(t *testing.T) {
 		"historyKey:newRepHistoryKey()",
 		"historyNeedsMigration:false",
 		"function normalizeRepHistory(",
-		"function normalizeRepeaterTab(t)",
+		"function normalizeRepeaterTab(t,normalizedTabs=[])",
 		"function serializeRepeaterTab(t)",
 		"async function repRecordHistory(t,flow)",
 		"await repRecordHistory(t,flow)",

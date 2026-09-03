@@ -32,12 +32,12 @@
     }
   },
   "application_source": {
-    "audit_harness_sha256": "a571339dcef6f6f0a20626295c1713a963674c6b81cd747a8bd9585dc13b0fbf",
+    "audit_harness_sha256": "d582918ca978175999a548ec806cf2ef6a907cdbb644e8723fc512b5862592e2",
     "runtime_files": 252,
-    "runtime_sha256": "c59d0b598b74a4dc475fa97e3e7502f3911c1e2fbcd53f6b8b0274a0f7755434",
-    "worktree_base_commit": "0d998b9682aba42faa8b9831d9f4054fcc4249dd"
+    "runtime_sha256": "cd1d1e1d45e7815636f093785721e3557a04e7b6a08b7e248a1bffbdeabbaff6",
+    "worktree_base_commit": "e275de77e060e0bc6cf085b4ad1ebde9c878ca2d"
   },
-  "base_url": "http://127.0.0.1:49208",
+  "base_url": "http://127.0.0.1:54624",
   "before_screenshots": {
     "1024x768": {
       "height": 768,
@@ -63,25 +63,42 @@
     "Intercept response Drop waits for delayed acknowledgement": "pass",
     "Intruder real run and per-tab history": "pass",
     "Notes save/preview and Findings evidence workflow": "pass",
+    "Postman import creates unique reload-safe Repeater tabs": "pass",
     "Repeater/Intruder inner tabs and every Settings section": "pass",
     "Scanner empty results restore focused issue context": "pass",
     "Scanner real pending-to-success lifecycle": "pass",
     "auxiliary surfaces, reversible actions, and validators": "pass",
     "before screenshot baselines are present and dimensioned": "pass",
+    "browser storage failure keeps project workspace sync": "pass",
     "custom Scanner check load failure clears stale source": "pass",
     "generic loopback capture seed": "pass",
     "high-volume History, Map render/Fit, scroll, and CDP performance": "pass",
     "initial allowlist failure exposes persistent Retry": "pass",
+    "invalid pending workspace state is preserved": "pass",
+    "late module completion restores the guarded workspace": "pass",
     "main navigation, motion, and keyboard semantics": "pass",
+    "malformed tab and preset fields recover with isolated Repeater history": "pass",
     "mobile reachability for every dense panel and Checks/Codecs": "pass",
     "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
+    "pathological browser-local workspace state remains recoverable": "pass",
+    "persisted tab identity and creation limits remain safe": "pass",
     "persistent retry states under request failure": "pass",
     "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
     "relative project path validation stays UI-only": "pass",
     "required screenshots": "pass",
     "required viewports and reduced motion": "pass",
     "setup Add-to-scope locks dismissal until acknowledgement": "pass",
-    "tab-owned Repeater history across every request edit": "pass"
+    "tab-owned Repeater history across every request edit": "pass",
+    "valid pending workspace state replaces invalid server state": "pass",
+    "workspace hydration timeout falls back locally (chromium)": "pass",
+    "workspace hydration timeout falls back locally (firefox)": "pass",
+    "workspace hydration timeout falls back locally (webkit)": "pass",
+    "workspace module evaluation failure becomes actionable (chromium)": "pass",
+    "workspace module evaluation failure becomes actionable (firefox)": "pass",
+    "workspace module evaluation failure becomes actionable (webkit)": "pass",
+    "workspace module fetch failure becomes actionable (chromium)": "pass",
+    "workspace module fetch failure becomes actionable (firefox)": "pass",
+    "workspace module fetch failure becomes actionable (webkit)": "pass"
   },
   "console_errors": [],
   "expected_console_errors": [
@@ -101,57 +118,58 @@
     "Failed to load resource: the server responded with a status of 409 (Conflict)"
   ],
   "expected_http_errors": [
-    "503 GET http://127.0.0.1:49208/api/activity",
-    "503 GET http://127.0.0.1:49208/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
-    "503 GET http://127.0.0.1:49208/api/activity",
-    "503 GET http://127.0.0.1:49208/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:49208/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:49208/api/allowlist",
-    "409 POST http://127.0.0.1:49208/api/allowlist",
-    "409 POST http://127.0.0.1:49208/api/findings",
-    "409 PUT http://127.0.0.1:49208/api/checks/ui-audit-held-check",
-    "409 POST http://127.0.0.1:49208/api/authz",
-    "409 DELETE http://127.0.0.1:49208/api/scope/1",
-    "409 PUT http://127.0.0.1:49208/api/scope/1",
-    "409 DELETE http://127.0.0.1:49208/api/rules/1",
-    "409 PUT http://127.0.0.1:49208/api/rules/1"
+    "503 GET http://127.0.0.1:54624/api/activity",
+    "503 GET http://127.0.0.1:54624/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "503 GET http://127.0.0.1:54624/api/activity",
+    "503 GET http://127.0.0.1:54624/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:54624/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:54624/api/allowlist",
+    "409 POST http://127.0.0.1:54624/api/allowlist",
+    "409 POST http://127.0.0.1:54624/api/findings",
+    "409 PUT http://127.0.0.1:54624/api/checks/ui-audit-held-check",
+    "409 POST http://127.0.0.1:54624/api/authz",
+    "409 DELETE http://127.0.0.1:54624/api/scope/1",
+    "409 PUT http://127.0.0.1:54624/api/scope/1",
+    "409 DELETE http://127.0.0.1:54624/api/rules/1",
+    "409 PUT http://127.0.0.1:54624/api/rules/1"
   ],
   "external_requests": [],
   "failures": [],
   "http_errors": [],
   "metrics": {
-    "burst_network_ms": 191.1,
-    "burst_network_p95_ms": 191.1,
+    "burst_network_ms": 194.6,
+    "burst_network_p95_ms": 209.8,
     "burst_requests": 240,
     "burst_runs": 3,
-    "cdp_layout_duration_s": 0.047267,
-    "cdp_map_layout_duration_s": 0.000374,
-    "cdp_map_script_duration_s": 0.001237,
-    "cdp_map_task_duration_s": 0.032473,
-    "cdp_script_duration_s": 0.119739,
-    "cdp_task_duration_s": 0.643833,
+    "cdp_layout_duration_s": 0.069276,
+    "cdp_map_layout_duration_s": 0.000438,
+    "cdp_map_script_duration_s": 0.001377,
+    "cdp_map_task_duration_s": 0.026686,
+    "cdp_script_duration_s": 0.160767,
+    "cdp_task_duration_s": 0.701415,
     "history_dom_nodes": 658,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 318.6,
+    "intercept_ack_ms": 326.9,
+    "late_module_recovery_ms": 9468.6,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      419.6
+      398.3
     ],
-    "map_interaction_p95_ms": 419.6,
-    "map_ready_ms": 83.0,
+    "map_interaction_p95_ms": 398.3,
+    "map_ready_ms": 288.7,
     "panel_interaction_ms": [
-      200,
-      183.2,
-      184.4,
-      183.2,
-      182.6,
-      184,
-      183,
-      183.4,
-      183.2
+      199.1,
+      200.9,
+      191.9,
+      197.8,
+      194.6,
+      210.6,
+      196,
+      207,
+      194
     ],
-    "panel_interaction_p95_ms": 200.0,
+    "panel_interaction_p95_ms": 210.6,
     "panel_transition_ms": [
       180.0,
       180.0,
@@ -163,6 +181,8 @@
       180.0,
       180.0
     ],
+    "pathological_workspace_recovery_ms": 630.4,
+    "pathological_workspace_tabs_retained": 5000,
     "screenshots": {
       "1024x768": {
         "height": 768,
@@ -194,15 +214,18 @@
         "path": "docs/ui-audit/findings-after-390x844.png",
         "width": 390
       }
-    }
+    },
+    "workspace_hydration_timeout_ms_chromium": 2565.2,
+    "workspace_hydration_timeout_ms_firefox": 2567.8,
+    "workspace_hydration_timeout_ms_webkit": 2580.4
   },
   "mode": "full",
   "page_errors": [],
   "preflight": {
-    "base_netloc": "127.0.0.1:49208",
+    "base_netloc": "127.0.0.1:54624",
     "data_dir_match": true,
     "disposable_project": true,
-    "expected_proxy": "127.0.0.1:49209",
+    "expected_proxy": "127.0.0.1:54625",
     "expected_version": "2.0.8",
     "fresh_findings": true,
     "fresh_flows": true,
@@ -211,10 +234,15 @@
     "project_switch_locked": true,
     "revalidated_before_full_audit": true,
     "revalidated_before_settings": true,
-    "server_proxy": "127.0.0.1:49209",
+    "server_proxy": "127.0.0.1:54625",
     "server_version": "2.0.8",
     "upstream_configured": false
   },
+  "startup_engines": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
   "viewports": [
     [
       1440,

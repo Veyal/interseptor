@@ -114,7 +114,8 @@ func TestIntruderPresetHydrationAndSaveFeedbackStayTruthful(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
 		"const [tabHydration,presetHydration]=await Promise.all",
-		"const hydration=[tabHydration,presetHydration].includes('error')?'error'",
+		"let hydration=[tabHydration,presetHydration].includes('error')?'error'",
+		"if(intrTabs.storageWarning)hydration='error'",
 		"return result.status",
 		"const serverSyncQueued=persistUIState('intruder-presets',list)",
 		"preset saved locally",

@@ -449,9 +449,9 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(settings, "Traffic and TLS interception are ready") {
 		t.Error("mobile setup still claims the selected device is ready from historical project evidence")
 	}
-	requireUIContains(t, app, "await projectStorageReady", "await bootProjectScopedUI()", "await loadFlows()", "maybeShowSetup()")
+	requireUIContains(t, app, "await projectStorageReady", "await bootProjectScopedUIWithDeadline(bootProjectScopedUI())", "await loadFlows()", "maybeShowSetup()")
 	requireUIContains(t, projectJS, "'/api/project'", "'/api/version'", "Promise.allSettled", "throw new Error('active project unavailable')")
-	requireUIRegex(t, app, `(?s)await bootProjectScopedUI\(\).*?await loadFlows\(\).*?maybeShowSetup\(\)`)
+	requireUIRegex(t, app, `(?s)await bootProjectScopedUIWithDeadline\(bootProjectScopedUI\(\)\).*?await loadFlows\(\).*?maybeShowSetup\(\)`)
 	if strings.Contains(projectJS, "return 'default'") {
 		t.Error("project identity must fail closed instead of selecting an unverified default workspace")
 	}

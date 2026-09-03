@@ -42,6 +42,25 @@ non-terminating request cannot hang the audit before its sentinel cleanup runs.
    visible detail, enabled action, editor draft, and acknowledgement must all
    describe the same entity and generation. Live refreshes must not overwrite
    dirty Settings or move focus to a different object.
+   Treat `AbortController.abort()` as a cancellation request, never as proof
+   that the wrapped promise settled: race every startup-critical read against
+   an independently settling deadline and handle late completion safely.
+   Fault-inject both a failed transitive ES-module request and a `fetch` promise
+   that ignores its abort signal. A pre-module watchdog must replace any static
+   loading shell with one keyboard-reachable recovery action. Repeat these two
+   cases in Chromium, Firefox, and WebKit because profile/engine-specific state
+   is a common reason one browser hangs while another starts normally.
+   Also delay a module past the watchdog threshold and then let it finish: every
+   surface made inert by the guard must recover, without restoring disabled
+   states owned by feature code. Seed malformed and high-cardinality tab state,
+   verify boot remains bounded, preserve the original value until an explicit
+   edit, and confirm that the first recovery edit—not the second—is persisted.
+   Make `localStorage.setItem` throw and prove the durable project write still
+   occurs with persistent feedback. Exercise every tab-creation entry point,
+   not only the visible Add button, at the reload-safe limit; imported items
+   must have unique IDs and capacity rejection must be atomic. Test project
+   names that collided under older key sanitization, including both a uniquely
+   migratable value and an ambiguous value that must remain untouched.
 6. Repeat keyboard and focus checks at 1440×900, 1024×768, and 390×844. Check
    Arrow/Home/End tab behavior, modal traps and focus return, context menus,
    Escape priority, generated controls, visible focus, document overflow, and

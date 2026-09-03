@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 try:
     from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
@@ -59,6 +59,11 @@ BASELINE_SCREENSHOTS = {
 }
 AUDIT_SENTINEL_NAME = ".interseptor-ui-audit-sentinel"
 AUDIT_PROJECT_PREFIX = "ui-audit-"
+ENCODE_URI_COMPONENT_SAFE = "~()*!.'-_"
+
+
+def browser_project_storage_key(base: str, project: str) -> str:
+    return f"{base}.v2.{quote(str(project), safe=ENCODE_URI_COMPONENT_SAFE)}"
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -742,6 +747,712 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
         attach_observers(page, result, base_netloc)
         page.goto(base, wait_until="domcontentloaded")
         wait_ready(page)
+
+        def assert_module_startup_recovery(module_page: Page, engine_name: str, exercise_keyboard: bool = False) -> None:
+            module_page.wait_for_selector(
+                "#workspaceHydrationStatus[data-workspace-boot-failed='true']",
+                state="visible",
+            )
+            module_status = module_page.locator("#workspaceHydrationStatus")
+            result.require(
+                "Workspace scripts could not start" in module_status.inner_text(),
+                "module failure left the static saved-workspace loading message",
+            )
+            result.require(module_status.get_attribute("role") == "alert", "module startup failure is not announced as an alert")
+            result.require(module_status.get_attribute("aria-live") == "assertive", "module startup failure is not announced assertively")
+            result.require(module_status.locator("[data-workspace-retry]").is_enabled(), "module startup failure has no usable reload action")
+            result.require(
+                module_page.locator(".tab:disabled").count() == module_page.locator(".tab").count(),
+                "module startup failure left nonfunctional navigation enabled",
+            )
+            result.require(module_page.locator("#main").evaluate("element => element.inert"), "dead workspace controls remain interactive")
+            result.require(module_page.evaluate("document.getAnimations().length") == 0, "module startup recovery relies on motion")
+            if not exercise_keyboard:
+                return
+            if engine_name != "webkit":
+                module_page.evaluate("document.activeElement?.blur()")
+                module_page.keyboard.press("Tab")
+                result.require(
+                    module_page.evaluate("document.activeElement?.hasAttribute('data-workspace-retry')"),
+                    "Reload is not the first usable keyboard action after module startup failure",
+                )
+            # Playwright WebKit follows Safari's platform preference that can
+            # omit buttons from sequential Tab focus. Direct focus plus Enter
+            # still verifies the native keyboard activation contract there.
+            module_status.locator("[data-workspace-retry]").focus()
+            result.require(
+                module_page.evaluate("document.activeElement?.hasAttribute('data-workspace-retry')"),
+                "Reload cannot receive keyboard focus after module startup failure",
+            )
+            with module_page.expect_navigation(wait_until="domcontentloaded"):
+                module_page.keyboard.press("Enter")
+            module_page.wait_for_selector(
+                "#workspaceHydrationStatus[data-workspace-boot-failed='true']",
+                state="visible",
+            )
+
+        def workspace_module_fetch_recovery(target_browser: Browser, engine_name: str) -> None:
+            module_context = target_browser.new_context(viewport={"width": 1024, "height": 768}, reduced_motion="reduce")
+            module_page = module_context.new_page()
+            module_page.set_default_timeout(10_000)
+            failed_requests: List[str] = []
+            module_page.on("requestfailed", lambda request: failed_requests.append(request.url))
+            module_page.route("**/js/tools.js", lambda route: route.abort())
+            try:
+                module_page.goto(base, wait_until="domcontentloaded")
+                assert_module_startup_recovery(module_page, engine_name, exercise_keyboard=True)
+                result.require(any(url.endswith("/js/tools.js") for url in failed_requests), "module fetch fault was not exercised")
+            finally:
+                module_context.close()
+
+        def workspace_module_evaluation_recovery(target_browser: Browser, engine_name: str) -> None:
+            module_context = target_browser.new_context(viewport={"width": 1024, "height": 768}, reduced_motion="reduce")
+            module_page = module_context.new_page()
+            module_page.set_default_timeout(10_000)
+            served_faults: List[str] = []
+
+            def fail_tools_evaluation(route: Any) -> None:
+                served_faults.append(route.request.url)
+                route.fulfill(
+                    status=200,
+                    content_type="application/javascript",
+                    body=(
+                        "export const repInit=()=>{},intrInit=()=>{},repSend=()=>{},"
+                        "sendToRepeater=()=>{},sendToIntruder=()=>{},scheduleIntr=()=>{},"
+                        "releaseWorkstationReady=()=>{},uiStateSyncPending=()=>false,"
+                        "retryUIStateSync=()=>{};throw new Error('injected module evaluation failure');"
+                    ),
+                )
+
+            module_page.route("**/js/tools.js", fail_tools_evaluation)
+            try:
+                module_page.goto(base, wait_until="domcontentloaded")
+                assert_module_startup_recovery(module_page, engine_name)
+                result.require(any(url.endswith("/js/tools.js") for url in served_faults), "module evaluation fault was not exercised")
+            finally:
+                module_context.close()
+
+        def workspace_hydration_recovery(target_browser: Browser, engine_name: str) -> None:
+            stalled_context = target_browser.new_context(viewport={"width": 1024, "height": 768})
+            stalled_page = stalled_context.new_page()
+            stalled_page.set_default_timeout(10_000)
+            stalled_page.add_init_script(
+                """(() => {
+                  const nativeFetch=window.fetch;
+                  window.__workspaceStalledFetches=0;
+                  window.fetch=function(input,init){
+                    const url=typeof input==='string'?input:String(input&&input.url||'');
+                    if(url.includes('/api/ui/repeater')){
+                      window.__workspaceStalledFetches++;
+                      return new Promise(()=>{});
+                    }
+                    return nativeFetch.call(this,input,init);
+                  };
+                })()"""
+            )
+            try:
+                started = time.perf_counter()
+                stalled_page.goto(base, wait_until="domcontentloaded")
+                stalled_page.wait_for_function(
+                    "document.querySelector('#workspaceHydrationStatus')?.textContent.includes('Saved workspace unavailable')",
+                    timeout=5_000,
+                )
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                stalled_status = stalled_page.locator("#workspaceHydrationStatus")
+                result.require(elapsed_ms < 4_500, f"saved workspace request deadline settled too late ({elapsed_ms:.1f}ms)")
+                result.require(stalled_status.get_attribute("role") == "status", "local-draft fallback is not a polite status")
+                result.require(stalled_status.get_attribute("aria-live") == "polite", "local-draft fallback is not announced politely")
+                result.require(stalled_status.locator("[data-workspace-retry]").is_enabled(), "saved workspace failure has no usable retry action")
+                result.require(stalled_page.locator("#tabs").get_attribute("aria-busy") == "false", "local-draft recovery left navigation busy")
+                result.require(
+                    stalled_page.locator(".tab:disabled").count() == 0,
+                    "local-draft recovery left navigation disabled",
+                )
+                result.require(stalled_page.evaluate("window.__workspaceStalledFetches") > 0, "hydration stall fault was not exercised")
+                result.metrics[f"workspace_hydration_timeout_ms_{engine_name}"] = round(elapsed_ms, 1)
+            finally:
+                stalled_context.close()
+
+        for engine_name in args.startup_engines:
+            target_browser = browser if engine_name == "chromium" else getattr(playwright, engine_name).launch(headless=not args.headed)
+            try:
+                result.run(
+                    f"workspace module fetch failure becomes actionable ({engine_name})",
+                    lambda current=target_browser, name=engine_name: workspace_module_fetch_recovery(current, name),
+                )
+                result.run(
+                    f"workspace module evaluation failure becomes actionable ({engine_name})",
+                    lambda current=target_browser, name=engine_name: workspace_module_evaluation_recovery(current, name),
+                )
+                result.run(
+                    f"workspace hydration timeout falls back locally ({engine_name})",
+                    lambda current=target_browser, name=engine_name: workspace_hydration_recovery(current, name),
+                )
+            finally:
+                if target_browser is not browser:
+                    target_browser.close()
+
+        def delayed_module_eventually_recovers() -> None:
+            delayed_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            delayed_context.add_init_script(
+                """(() => {
+                  window.__workspaceWatchdogObserved=false;
+                  const observer=setInterval(()=>{
+                    if(document.querySelector('#workspaceHydrationStatus[data-workspace-boot-failed="true"]')){
+                      window.__workspaceWatchdogObserved=true;
+                      clearInterval(observer);
+                    }
+                  },20);
+                })()"""
+            )
+            delayed_page = delayed_context.new_page()
+            delayed_page.set_default_timeout(20_000)
+
+            def delay_tools_module(route: Any) -> None:
+                time.sleep(8.75)
+                route.continue_()
+
+            delayed_page.route("**/js/tools.js", delay_tools_module)
+            attach_observers(delayed_page, result, base_netloc)
+            try:
+                started = time.perf_counter()
+                delayed_page.goto(base, wait_until="domcontentloaded", timeout=20_000)
+                wait_ready(delayed_page)
+                result.require(delayed_page.evaluate("window.__workspaceWatchdogObserved"), "static watchdog was not exercised")
+                result.require(not delayed_page.locator("#main").evaluate("element => element.inert"), "late module completion left the workspace inert")
+                result.require(delayed_page.locator("#themeToggle").is_enabled(), "late module completion left the top bar disabled")
+                result.require(delayed_page.locator("#cmdkBtn").is_enabled(), "late module completion left the command palette disabled")
+                delayed_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    delayed_page.locator('.panel[data-panel="repeater"]').get_attribute("class").find("active") >= 0,
+                    "late module completion did not restore navigation",
+                )
+                result.metrics["late_module_recovery_ms"] = round((time.perf_counter() - started) * 1000, 1)
+            finally:
+                delayed_context.close()
+
+        result.run(
+            "late module completion restores the guarded workspace",
+            delayed_module_eventually_recovers,
+        )
+
+        def pathological_persisted_state_recovery() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            storage_key = browser_project_storage_key("rep.tabs", project_name)
+            tab_count = 5_000
+            saved_state = json.dumps(
+                {
+                    "seq": tab_count + 1,
+                    "active": 1,
+                    "tabs": [
+                        {"tid": index, "method": "GET", "url": f"https://example.com/request/{index}"}
+                        for index in range(1, tab_count + 1)
+                    ],
+                },
+                separators=(",", ":"),
+            )
+            state_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            state_context.add_init_script(
+                f"localStorage.setItem({json.dumps(storage_key)},{json.dumps(saved_state)});"
+            )
+            state_page = state_context.new_page()
+            state_page.set_default_timeout(10_000)
+            isolated_writes: List[str] = []
+
+            def isolated_repeater_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":{"seq":"not-a-number","active":1,"tabs":[{"tid":1,"method":"POST","url":"https://example.com/server","headers":"","body":""}]}}',
+                    )
+                    return
+                isolated_writes.append(route.request.method)
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            state_page.route("**/api/ui/repeater", isolated_repeater_state)
+            attach_observers(state_page, result, base_netloc)
+            try:
+                started = time.perf_counter()
+                state_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(state_page)
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                result.require(elapsed_ms < 4_500, f"pathological local workspace recovery settled too late ({elapsed_ms:.1f}ms)")
+                result.require(state_page.locator("#repTabs .rep-tab").count() == 1, "pathological saved tabs were rendered into the workspace")
+                result.require(
+                    "too many tabs to load safely" in state_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "pathological saved state did not expose persistent recovery feedback",
+                )
+                retained_count = state_page.evaluate(
+                    "key => JSON.parse(localStorage.getItem(key)).tabs.length",
+                    storage_key,
+                )
+                result.require(retained_count == tab_count, "pathological browser-local state was overwritten during recovery")
+                dismiss = state_page.locator("[data-workspace-warning-dismiss]")
+                result.require(dismiss.is_enabled(), "pathological saved-state warning has no Continue action")
+                dismiss.click()
+                result.require(state_page.locator("#workspaceHydrationStatus").is_hidden(), "saved-state warning cannot be dismissed after review")
+                result.require(
+                    state_page.evaluate("document.activeElement?.matches('.tab.active')"),
+                    "saved-state Continue action did not restore visible workspace focus",
+                )
+                state_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(state_page.locator("#repUrl").input_value() == "https://example.com/server", "safe server state was not restored in memory")
+                state_page.locator("#repTabsAdd").click()
+                result.require(
+                    state_page.locator("#repTabs .rep-tab").last.get_attribute("data-tid") == "2",
+                    "invalid persisted sequence broke the next recovered tab id",
+                )
+                state_page.locator("#repUrl").fill("https://example.com/recovered")
+                state_page.wait_for_timeout(650)
+                recovered_url = state_page.evaluate(
+                    "key => JSON.parse(localStorage.getItem(key)).tabs.find(tab => tab.url === 'https://example.com/recovered')?.url",
+                    storage_key,
+                )
+                result.require(recovered_url == "https://example.com/recovered", "first edit after guarded recovery was not persisted")
+                result.require(bool(isolated_writes) and set(isolated_writes) == {"PUT"}, f"recovered edit produced unexpected sync writes: {isolated_writes}")
+                result.metrics["pathological_workspace_recovery_ms"] = round(elapsed_ms, 1)
+                result.metrics["pathological_workspace_tabs_retained"] = retained_count
+            finally:
+                state_context.close()
+
+        result.run(
+            "pathological browser-local workspace state remains recoverable",
+            pathological_persisted_state_recovery,
+        )
+
+        def invalid_pending_state_recovery() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            pending_key = browser_project_storage_key("ui.pending.repeater", project_name)
+            pending_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            pending_context.add_init_script(f"localStorage.setItem({json.dumps(pending_key)},'{{}}');")
+            pending_page = pending_context.new_page()
+            pending_page.set_default_timeout(10_000)
+            unexpected_writes: List[str] = []
+
+            def empty_repeater_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(status=200, content_type="application/json", body='{"value":null}')
+                    return
+                unexpected_writes.append(route.request.method)
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            pending_page.route("**/api/ui/repeater", empty_repeater_state)
+            attach_observers(pending_page, result, base_netloc)
+            try:
+                pending_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(pending_page)
+                status = pending_page.locator("#workspaceHydrationStatus")
+                result.require("pending state is not recognized" in status.inner_text(), "invalid pending state has no persistent explanation")
+                result.require(status.locator("[data-workspace-warning-dismiss]").is_enabled(), "invalid pending-state warning has no Continue action")
+                result.require(pending_page.evaluate("key => localStorage.getItem(key)", pending_key) == "{}", "invalid pending state was overwritten")
+                result.require(not unexpected_writes, f"invalid pending state triggered server writes: {unexpected_writes}")
+            finally:
+                pending_context.close()
+
+        result.run(
+            "invalid pending workspace state is preserved",
+            invalid_pending_state_recovery,
+        )
+
+        def valid_pending_replaces_invalid_server_state() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            pending_key = browser_project_storage_key("ui.pending.repeater", project_name)
+            pending_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "PATCH", "url": "https://example.com/pending", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
+            pending_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            pending_context.add_init_script(
+                f"localStorage.setItem({json.dumps(pending_key)},{json.dumps(pending_state)});"
+            )
+            pending_page = pending_context.new_page()
+            pending_page.set_default_timeout(10_000)
+            replacement_writes: List[str] = []
+
+            def invalid_server_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(status=200, content_type="application/json", body='{"value":{}}')
+                    return
+                replacement_writes.append(route.request.post_data or "")
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            pending_page.route("**/api/ui/repeater", invalid_server_state)
+            attach_observers(pending_page, result, base_netloc)
+            try:
+                pending_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(pending_page)
+                pending_page.wait_for_function("key => localStorage.getItem(key) === null", arg=pending_key)
+                pending_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(pending_page.locator("#repUrl").input_value() == "https://example.com/pending", "valid pending state did not win over invalid server state")
+                result.require(
+                    bool(replacement_writes) and all("https://example.com/pending" in body for body in replacement_writes),
+                    "valid pending state was not synchronized as the authoritative replacement",
+                )
+            finally:
+                pending_context.close()
+
+        result.run(
+            "valid pending workspace state replaces invalid server state",
+            valid_pending_replaces_invalid_server_state,
+        )
+
+        def browser_storage_failure_keeps_project_sync() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            preset_key = browser_project_storage_key("intruder.presets", project_name)
+            stale_presets = json.dumps([{"name": "Stale preset", "target": "https://example.com/stale"}], separators=(",", ":"))
+            storage_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            storage_context.add_init_script(
+                """(() => {
+                  const nativeSetItem=Storage.prototype.setItem;
+                  nativeSetItem.call(localStorage,"""
+                + json.dumps(preset_key)
+                + ","
+                + json.dumps(stale_presets)
+                + """ );
+                  window.__storageWriteFailures=0;
+                  Storage.prototype.setItem=function(){
+                    window.__storageWriteFailures++;
+                    throw new DOMException('injected unavailable storage','QuotaExceededError');
+                  };
+                })()"""
+            )
+            storage_page = storage_context.new_page()
+            storage_page.set_default_timeout(10_000)
+            project_writes: List[str] = []
+
+            def isolated_storage_failure_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":{"seq":2,"active":1,"tabs":[{"tid":1,"method":"GET","url":"https://example.com/server-backed","headers":"","body":""}]}}',
+                    )
+                    return
+                project_writes.append(route.request.post_data or "")
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            storage_page.route("**/api/ui/repeater", isolated_storage_failure_state)
+
+            def isolated_preset_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":[{"name":"Server preset","target":"https://example.com/server"}]}',
+                    )
+                    return
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            storage_page.route("**/api/ui/intruder-presets", isolated_preset_state)
+            attach_observers(storage_page, result, base_netloc)
+            try:
+                storage_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(storage_page)
+                result.require(
+                    "could not be copied into browser storage" in storage_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "browser-storage failure did not expose persistent recovery feedback",
+                )
+                storage_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(storage_page.locator("#repUrl").input_value() == "https://example.com/server-backed", "browser-storage failure replaced valid server state with a blank tab")
+                storage_page.locator("#repUrl").fill("https://example.com/project-backed")
+                storage_page.wait_for_timeout(700)
+                result.require(storage_page.evaluate("window.__storageWriteFailures") > 0, "browser-storage fault was not exercised")
+                result.require(
+                    any("https://example.com/project-backed" in body for body in project_writes),
+                    "browser-storage failure suppressed the project workspace write",
+                )
+                storage_page.locator('.tab[data-tab="intruder"]').click()
+                preset_options = storage_page.locator("#intrPreset option").all_text_contents()
+                result.require("Server preset" in preset_options and "Stale preset" not in preset_options, "in-memory server preset lost to stale browser storage")
+            finally:
+                storage_context.close()
+
+        result.run(
+            "browser storage failure keeps project workspace sync",
+            browser_storage_failure_keeps_project_sync,
+        )
+
+        def persisted_tab_identity_and_creation_guards() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            storage_key = browser_project_storage_key("rep.tabs", project_name)
+            tab_count = 200
+            saved_state = json.dumps(
+                {
+                    "seq": tab_count + 1,
+                    "active": 1,
+                    "tabs": [
+                        {"tid": index, "method": "GET", "url": f"https://example.com/request/{index}"}
+                        for index in range(1, tab_count + 1)
+                    ],
+                },
+                separators=(",", ":"),
+            )
+            limit_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            limit_context.add_init_script(
+                f"localStorage.setItem({json.dumps(storage_key)},{json.dumps(saved_state)});"
+            )
+            limit_page = limit_context.new_page()
+            limit_page.set_default_timeout(10_000)
+
+            def empty_limit_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(status=200, content_type="application/json", body='{"value":null}')
+                    return
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            limit_page.route("**/api/ui/repeater", empty_limit_state)
+            attach_observers(limit_page, result, base_netloc)
+            try:
+                limit_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(limit_page)
+                validation = limit_page.evaluate(
+                    """async () => {
+                      const {isSafePersistedTabState}=await import('/js/core.js');
+                      return {
+                        unique:isSafePersistedTabState({tabs:[{tid:1},{tid:2}]}),
+                        duplicate:isSafePersistedTabState({tabs:[{tid:1},{tid:1}]}),
+                        exhausted:isSafePersistedTabState({tabs:[{tid:Number.MAX_SAFE_INTEGER}]})
+                      };
+                    }"""
+                )
+                result.require(validation == {"unique": True, "duplicate": False, "exhausted": False}, f"persisted tab ID validation is ambiguous: {validation}")
+                limit_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(limit_page.locator("#repTabs .rep-tab").count() == tab_count, "safe 200-tab workspace did not load")
+                add = limit_page.locator("#repTabsAdd")
+                result.require(add.get_attribute("aria-disabled") == "true", "tab creation cap is not exposed semantically")
+                add.focus()
+                limit_page.keyboard.press("Enter")
+                result.require(limit_page.locator("#repTabs .rep-tab").count() == tab_count, "tab creation exceeded the reload-safe cap")
+                result.require("supports up to 200 tabs" in limit_page.locator("#toast").inner_text(), "tab creation cap has no direct feedback")
+                created = limit_page.evaluate("async () => (await import('/js/tools.js')).repNewTab() !== null")
+                result.require(not created, "non-button Repeater creation bypassed the reload-safe cap")
+                capped_collection = {
+                    "info": {
+                        "name": "Capacity audit",
+                        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+                    },
+                    "item": [{"name": "Extra", "request": {"method": "GET", "url": "https://example.com/extra"}}],
+                }
+                limit_page.locator("#repPostmanFile").set_input_files(
+                    {
+                        "name": "capacity.postman_collection.json",
+                        "mimeType": "application/json",
+                        "buffer": json.dumps(capped_collection).encode("utf-8"),
+                    }
+                )
+                limit_page.wait_for_function("document.querySelector('#toast')?.textContent.includes('only 0 tab slots available')")
+                result.require(limit_page.locator("#repTabs .rep-tab").count() == tab_count, "Postman import bypassed the reload-safe cap")
+                limit_page.reload(wait_until="domcontentloaded")
+                wait_ready(limit_page)
+                limit_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(limit_page.locator("#repTabs .rep-tab").count() == tab_count, "capped workspace did not survive reload")
+                identity_keys = limit_page.evaluate(
+                    """async () => {
+                      const core=await import('/js/core.js');
+                      core.setStorageProject('team alpha');const spaced=core.projectStorageKey('rep.tabs');
+                      core.setStorageProject('team_alpha');const underscored=core.projectStorageKey('rep.tabs');
+                      localStorage.setItem('audit.unambiguous.team_alpha','one');
+                      core.setStorageProject('team alpha',['team alpha']);
+                      const migratedKey=core.projectStorageKey('audit.unambiguous');
+                      const migrated=localStorage.getItem(migratedKey);
+                      const removed=localStorage.getItem('audit.unambiguous.team_alpha');
+                      localStorage.setItem('audit.ambiguous.team_alpha','two');
+                      core.setStorageProject('team alpha',['team alpha','team_alpha']);
+                      const ambiguousKey=core.projectStorageKey('audit.ambiguous');
+                      const ambiguous={
+                        current:localStorage.getItem(ambiguousKey),
+                        legacy:localStorage.getItem('audit.ambiguous.team_alpha'),
+                        warning:core.consumeStorageMigrationWarning(ambiguousKey)
+                      };
+                      localStorage.setItem('audit.retry.team_alpha','three');
+                      core.setStorageProject('team alpha',['team alpha']);
+                      const nativeSetItem=Storage.prototype.setItem;
+                      let retryKey,failedWarning;
+                      try{
+                        Storage.prototype.setItem=function(key,value){
+                          if(String(key).includes('audit.retry.v2.'))throw new DOMException('injected migration failure','QuotaExceededError');
+                          return nativeSetItem.call(this,key,value);
+                        };
+                        retryKey=core.projectStorageKey('audit.retry');
+                        failedWarning=core.consumeStorageMigrationWarning(retryKey);
+                      }finally{Storage.prototype.setItem=nativeSetItem;}
+                      const retriedKey=core.projectStorageKey('audit.retry');
+                      const retried={
+                        sameKey:retryKey===retriedKey,
+                        current:localStorage.getItem(retriedKey),
+                        legacy:localStorage.getItem('audit.retry.team_alpha'),
+                        failedWarning
+                      };
+                      return {spaced,underscored,migrated,removed,ambiguous,retried};
+                    }"""
+                )
+                result.require(identity_keys["spaced"] != identity_keys["underscored"], "distinct project names share browser-local storage")
+                result.require(identity_keys["migrated"] == "one" and identity_keys["removed"] is None, "unambiguous legacy project state was not migrated")
+                result.require(
+                    identity_keys["ambiguous"] == {"current": None, "legacy": "two", "warning": "ambiguous legacy project state"},
+                    f"ambiguous legacy project state was not preserved: {identity_keys['ambiguous']}",
+                )
+                result.require(
+                    identity_keys["retried"] == {"sameKey": True, "current": "three", "legacy": None, "failedWarning": "legacy project state could not be migrated"},
+                    f"failed legacy migration was not reported and retried: {identity_keys['retried']}",
+                )
+            finally:
+                limit_context.close()
+
+        result.run(
+            "persisted tab identity and creation limits remain safe",
+            persisted_tab_identity_and_creation_guards,
+        )
+
+        def postman_import_preserves_unique_repeater_tabs() -> None:
+            import_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            import_page = import_context.new_page()
+            import_page.set_default_timeout(10_000)
+
+            def empty_import_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(status=200, content_type="application/json", body='{"value":null}')
+                    return
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            import_page.route("**/api/ui/repeater", empty_import_state)
+            attach_observers(import_page, result, base_netloc)
+            collection = {
+                "info": {
+                    "name": "Browser audit",
+                    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+                },
+                "item": [
+                    {"name": "Read", "request": {"method": "GET", "url": "https://example.com/read"}},
+                    {"name": "Update", "request": {"method": "PATCH", "url": "https://example.com/update"}},
+                ],
+            }
+            try:
+                import_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(import_page)
+                import_page.locator('.tab[data-tab="repeater"]').click()
+                initial_count = import_page.locator("#repTabs .rep-tab").count()
+                import_page.locator("#repPostmanFile").set_input_files(
+                    {
+                        "name": "browser-audit.postman_collection.json",
+                        "mimeType": "application/json",
+                        "buffer": json.dumps(collection).encode("utf-8"),
+                    }
+                )
+                import_page.wait_for_function(
+                    "count => document.querySelectorAll('#repTabs .rep-tab').length === count + 2",
+                    arg=initial_count,
+                )
+                tab_state = import_page.evaluate(
+                    """async () => {
+                      const {repTabs}=await import('/js/tools.js');
+                      return {ids:repTabs.tabs.map(tab=>tab.tid),urls:repTabs.tabs.map(tab=>tab.url)};
+                    }"""
+                )
+                result.require(len(tab_state["ids"]) == initial_count + 2, "Postman import created an unexpected number of tabs")
+                result.require(len(tab_state["ids"]) == len(set(tab_state["ids"])), "Postman import created duplicate tab IDs")
+                result.require(
+                    "https://example.com/read" in tab_state["urls"] and "https://example.com/update" in tab_state["urls"],
+                    "Postman import did not preserve both request targets",
+                )
+            finally:
+                import_context.close()
+
+        result.run(
+            "Postman import creates unique reload-safe Repeater tabs",
+            postman_import_preserves_unique_repeater_tabs,
+        )
+
+        def malformed_tab_fields_and_history_keys_recover() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(project_info.get("current") or "default")) or "default"
+            rep_key = browser_project_storage_key("rep.tabs", project_name)
+            intr_key = browser_project_storage_key("intr.tabs", project_name)
+            preset_key = browser_project_storage_key("intruder.presets", project_name)
+            rep_state = json.dumps(
+                {
+                    "seq": 3,
+                    "active": 1,
+                    "tabs": [
+                        {"tid": 1, "method": {}, "url": {}, "headers": [], "body": 7, "historyKey": "shared-history"},
+                        {"tid": 2, "method": "GET", "url": "https://example.com/valid", "historyKey": "shared-history"},
+                    ],
+                },
+                separators=(",", ":"),
+            )
+            intr_state = json.dumps(
+                {"seq": 2, "active": 1, "tabs": [{"tid": 1, "target": {}, "template": [], "type": {}, "threads": "many"}]},
+                separators=(",", ":"),
+            )
+            preset_state = json.dumps(
+                [None, {"name": {}, "target": {}, "template": [], "type": {}, "threads": "many", "pos": "invalid"}, "invalid"],
+                separators=(",", ":"),
+            )
+            malformed_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            malformed_context.add_init_script(
+                f"localStorage.setItem({json.dumps(rep_key)},{json.dumps(rep_state)});"
+                f"localStorage.setItem({json.dumps(intr_key)},{json.dumps(intr_state)});"
+                f"localStorage.setItem({json.dumps(preset_key)},{json.dumps(preset_state)});"
+            )
+            malformed_page = malformed_context.new_page()
+            malformed_page.set_default_timeout(10_000)
+
+            def empty_malformed_state(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(status=200, content_type="application/json", body='{"value":null}')
+                    return
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            malformed_page.route("**/api/ui/repeater", empty_malformed_state)
+            malformed_page.route("**/api/ui/intruder", empty_malformed_state)
+            malformed_page.route("**/api/ui/intruder-presets", empty_malformed_state)
+            attach_observers(malformed_page, result, base_netloc)
+            try:
+                malformed_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(malformed_page)
+                malformed_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(malformed_page.locator("#repUrl").input_value() == "", "malformed Repeater URL was not safely coerced")
+                result.require(malformed_page.locator("#repMethod").input_value() == "GET", "malformed Repeater method was not safely coerced")
+                rep_tabs = malformed_page.evaluate(
+                    """async () => {
+                      const {repTabs}=await import('/js/tools.js');
+                      return repTabs.tabs.map(tab=>({tid:tab.tid,urlType:typeof tab.url,historyKey:tab.historyKey}));
+                    }"""
+                )
+                history_keys = [tab["historyKey"] for tab in rep_tabs]
+                result.require(len(rep_tabs) == 2 and all(tab["urlType"] == "string" for tab in rep_tabs), "malformed Repeater tabs did not normalize")
+                result.require(len(history_keys) == len(set(history_keys)), "duplicate Repeater history identities survived normalization")
+                malformed_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(malformed_page.locator("#intrTarget").input_value() == "", "malformed Intruder target was not safely coerced")
+                result.require(malformed_page.locator("#intrThreads").input_value() == "1", "malformed Intruder thread count was not bounded")
+                preset_options = malformed_page.locator("#intrPreset option").all_text_contents()
+                result.require(preset_options == ["presets…", "preset 0"], f"malformed Intruder presets were not filtered and normalized: {preset_options}")
+                malformed_page.evaluate(
+                    """() => {
+                      const preset=document.querySelector('#intrPreset');
+                      preset.value='0';
+                      preset.dispatchEvent(new Event('change',{bubbles:true}));
+                    }"""
+                )
+                result.require(malformed_page.locator("#intrTarget").input_value() == "", "malformed Intruder preset target reached the editor")
+                result.require(malformed_page.locator("#intrThreads").input_value() == "1", "malformed Intruder preset limits reached the editor")
+            finally:
+                malformed_context.close()
+
+        result.run(
+            "malformed tab and preset fields recover with isolated Repeater history",
+            malformed_tab_fields_and_history_keys_recover,
+        )
 
         def navigation_semantics() -> None:
             sampled = []
@@ -3254,6 +3965,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
         "application_source": application_source,
         "base_url": base,
         "mode": "full" if args.full else "smoke",
+        "startup_engines": args.startup_engines,
         "preflight": preflight,
         "viewports": [list(viewport) for viewport in VIEWPORTS],
         "cases": result.cases,
@@ -3281,8 +3993,18 @@ def main() -> int:
     parser.add_argument("--managed", action="store_true", help="required ownership mode for --full; starts a disposable candidate")
     parser.add_argument("--burst", type=int, default=240, help="requests in the full high-volume pass")
     parser.add_argument("--perf-runs", type=int, default=3, help="repeat the high-volume profile this many times")
+    parser.add_argument(
+        "--startup-engines",
+        default="chromium",
+        help="comma-separated browser engines for saved-workspace startup fault checks",
+    )
     parser.add_argument("--headed", action="store_true")
     args = parser.parse_args()
+    requested_engines = [value.strip().lower() for value in args.startup_engines.split(",") if value.strip()]
+    unknown_engines = sorted(set(requested_engines) - {"chromium", "firefox", "webkit"})
+    if unknown_engines:
+        parser.error("--startup-engines accepts only chromium, firefox, webkit")
+    args.startup_engines = list(dict.fromkeys(["chromium", *requested_engines]))
     if args.burst < 120:
         parser.error("--burst must be at least 120 to exercise History virtualization")
     if args.perf_runs < 1 or args.perf_runs > 10:
