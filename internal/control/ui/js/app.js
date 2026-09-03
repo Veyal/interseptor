@@ -591,7 +591,8 @@ async function bootProjectScopedUIWithDeadline(work){
 function settleWorkspaceBootWatchdog(){globalThis.__interseptorWorkspaceBoot?.settle?.();}
 function completeProjectScopedUIHydration(statuses){
   projectScopedUIReady=true;
-  const failed=statuses.includes('error');
+  const storageWarning=workspaceStorageWarningMessage();
+  const failed=statuses.includes('error')||Boolean(storageWarning);
   const pending=statuses.includes('pending');
   const nav=$('#tabs');if(nav)nav.setAttribute('aria-busy','false');
   $$('.tab').forEach(tab=>{tab.disabled=false;});
@@ -603,7 +604,7 @@ function completeProjectScopedUIHydration(statuses){
   const status=$('#workspaceHydrationStatus');
   if(status){
     status.setAttribute('role','status');status.setAttribute('aria-live','polite');
-    const storageWarning=workspaceStorageWarningMessage();
+    delete status.dataset.syncPending;
     if(failed&&storageWarning){status.innerHTML=esc(storageWarning)+' <button type="button" class="btn xs" data-workspace-warning-dismiss>Continue</button>';status.classList.add('is-error');}
     else if(failed){status.innerHTML='Saved workspace unavailable · local drafts only <button type="button" class="btn xs" data-workspace-retry>Retry</button>';status.classList.add('is-error');}
     else if(pending&&uiStateSyncPending()){
@@ -634,7 +635,10 @@ function renderWorkspaceSyncPending(message='Local draft · server sync pending'
 }
 document.addEventListener('interseptor:ui-state-sync',event=>{
   const status=$('#workspaceHydrationStatus');
-  if(event.detail?.pending){renderWorkspaceSyncPending();return;}
+  if(event.detail?.pending){
+    if(status&&!status.hidden&&status.querySelector('[data-workspace-warning-dismiss]'))return;
+    renderWorkspaceSyncPending();return;
+  }
   if(status?.dataset.syncPending==='true'){status.hidden=true;status.classList.remove('is-error');delete status.dataset.syncPending;}
 });
 async function bootFirstRunUI(){

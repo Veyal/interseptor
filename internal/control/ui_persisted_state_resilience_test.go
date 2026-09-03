@@ -60,7 +60,7 @@ func TestPersistedTabStateHasNonDestructiveSizeGuard(t *testing.T) {
 		"hydrateUIState('repeater','rep.tabs',isSafePersistedTabState)",
 		"hydrateUIState('intruder','intr.tabs',isSafePersistedTabState)",
 		"const guardedHydratedTabStates=new Map()",
-		"function persistedTabStateIsUnsafe(raw)",
+		"function persistedUIStateIsUnsafe(raw,valid)",
 		"guardedHydratedTabStates.set(storageBase,result.value)",
 		"repTabs.init('#repTabs',guardedHydratedTabStates.get('rep.tabs'))",
 		"intrTabs.init('#intrTabs',guardedHydratedTabStates.get('intr.tabs'))",
@@ -304,17 +304,56 @@ func TestIntruderPresetNormalizationCannotBlockWorkspaceBoot(t *testing.T) {
 	for _, contract := range []string{
 		"function normalizeIntruderPreset(p)",
 		"function normalizeIntruderPresets(value)",
+		"function readIntrPresetBrowserState()",
 		"if(!p||typeof p!=='object'||Array.isArray(p))return null",
 		"value.slice(0,20).map(normalizeIntruderPreset).filter(Boolean)",
 		"hydrateUIState('intruder-presets','intruder.presets',value=>normalizeIntruderPresets(value)!==null)",
 		"let list=normalizeIntruderPresets(fallback)",
-		"list=normalizeIntruderPresets(JSON.parse(localStorage.getItem(intrPresetsKey())||'null'))",
+		"const browserList=readIntrPresetBrowserState()",
 		"list=normalizeIntruderPresets(list)||[]",
 	} {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("malformed Intruder presets must be normalized before rendering or reuse: missing %q", contract)
 		}
 	}
+}
+
+func TestIntruderPresetHydrationPreservesUnsafeBrowserDrafts(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	app := readUIAsset(t, "js/app.js")
+	for _, contract := range []string{
+		"function persistedUIStateIsUnsafe(raw,valid)",
+		"preserveLocal=persistedUIStateIsUnsafe(localStorage.getItem(storageKey),valid)",
+		"consumeStorageMigrationWarning(key)",
+		"persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES",
+		"Intruder presets saved state is too large to load safely",
+		"Intruder presets saved state is not recognized",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("unsafe Intruder preset drafts must survive server hydration: missing %q", contract)
+		}
+	}
+	start := strings.Index(tools, "function readIntrPresetBrowserState()")
+	if start < 0 {
+		t.Fatal("bounded Intruder preset reader not found")
+	}
+	end := strings.Index(tools[start:], "function loadIntrPresets(")
+	if end < 0 {
+		t.Fatal("bounded Intruder preset reader boundary not found")
+	}
+	reader := tools[start : start+end]
+	if strings.Index(reader, "persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES") > strings.Index(reader, "JSON.parse(raw)") {
+		t.Fatal("Intruder preset size must be checked before JSON parsing")
+	}
+	if strings.Contains(reader, "localStorage.removeItem") {
+		t.Fatal("unsafe Intruder preset drafts must remain available for recovery")
+	}
+	requireUIContains(t, app,
+		"const storageWarning=workspaceStorageWarningMessage()",
+		"statuses.includes('error')||Boolean(storageWarning)",
+		"delete status.dataset.syncPending",
+		"status.querySelector('[data-workspace-warning-dismiss]')",
+	)
 }
 
 func TestHydrationWriteFailureUsesInMemoryStateInsteadOfBlankReplacement(t *testing.T) {
@@ -341,6 +380,7 @@ func TestIntruderPresetSaveKeepsInMemoryFallbackAndTruthfulFeedback(t *testing.T
 	for _, contract := range []string{
 		"let storedLocally=true",
 		"catch(e){storedLocally=false;}",
+		"const list=readIntrPresetBrowserState()||[]",
 		"loadIntrPresets(list)",
 		"preset kept in this session · server sync queued",
 		"preset kept in this session · storage unavailable",
@@ -348,6 +388,17 @@ func TestIntruderPresetSaveKeepsInMemoryFallbackAndTruthfulFeedback(t *testing.T
 		if !strings.Contains(tools, contract) {
 			t.Errorf("Intruder preset save fallback missing %q", contract)
 		}
+	}
+	saveStart := strings.Index(tools, "if($('#intrPresetSave'))")
+	if saveStart < 0 {
+		t.Fatal("Intruder preset save handler not found")
+	}
+	saveEnd := strings.Index(tools[saveStart:], "export let intrTimer")
+	if saveEnd < 0 {
+		t.Fatal("Intruder preset save handler boundary not found")
+	}
+	if strings.Contains(tools[saveStart:saveStart+saveEnd], "JSON.parse(localStorage.getItem") {
+		t.Fatal("Intruder preset save must not parse an unsafe retained draft directly")
 	}
 }
 

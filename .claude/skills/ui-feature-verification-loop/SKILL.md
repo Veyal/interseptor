@@ -74,6 +74,10 @@ non-terminating request cannot hang the audit before its sentinel cleanup runs.
    Use real progress and local traffic; never fabricate progress.
 9. Capture the three required viewport screenshots after the final restart and
    compare them with the pre-change baseline.
+   Run steps 2–9 independently in Chromium, Firefox, and WebKit against fresh
+   disposable candidates. Retain engine-qualified cases, screenshots, and
+   performance metrics; Chromium-only CDP counters may supplement, but never
+   replace, the portable timing and bounded-DOM evidence for the other engines.
 10. Rerun `go test ./...`, `go test -race ./...`, `go vet ./...`, the no-cgo
     build, JavaScript syntax checks, documentation checks, and the repository's
     ship gate.

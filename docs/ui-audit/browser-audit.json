@@ -32,12 +32,17 @@
     }
   },
   "application_source": {
-    "audit_harness_sha256": "0065385adc1f91e84ad413174dad9a30e2a47ac7d82d2a109ff20ab046b9d08f",
+    "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
     "runtime_files": 252,
-    "runtime_sha256": "e80e478e3ea55ca2ddad37723469d003255310a93469dced0064b5ee1bc35f79",
-    "worktree_base_commit": "a7ab425459c49047d581d2373c7d776d48f0cec7"
+    "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
+    "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
   },
-  "base_url": "http://127.0.0.1:63470",
+  "base_url": "http://127.0.0.1:53119",
+  "base_urls": {
+    "chromium": "http://127.0.0.1:53119",
+    "firefox": "http://127.0.0.1:55147",
+    "webkit": "http://127.0.0.1:57083"
+  },
   "before_screenshots": {
     "1024x768": {
       "height": 768,
@@ -55,57 +60,135 @@
       "width": 390
     }
   },
+  "browser_engines": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
   "cases": {
-    "Authz explicit context and A-to-B-to-A retargeting": "pass",
-    "Codecs Docs and list loads retain their latest owners": "pass",
-    "Inspector reads wait for their flow's acknowledged note save": "pass",
-    "Intercept request Forward waits for delayed acknowledgement": "pass",
-    "Intercept response Drop waits for delayed acknowledgement": "pass",
-    "Intruder real run and per-tab history": "pass",
-    "Notes save/preview and Findings evidence workflow": "pass",
-    "Postman import creates unique reload-safe Repeater tabs": "pass",
-    "Repeater/Intruder inner tabs and every Settings section": "pass",
-    "Scanner empty results restore focused issue context": "pass",
-    "Scanner real pending-to-success lifecycle": "pass",
-    "auxiliary surfaces, reversible actions, and validators": "pass",
-    "before screenshot baselines are present and dimensioned": "pass",
-    "browser storage failure keeps project workspace sync": "pass",
-    "custom Scanner check load failure clears stale source": "pass",
+    "Authz explicit context and A-to-B-to-A retargeting (chromium)": "pass",
+    "Authz explicit context and A-to-B-to-A retargeting (firefox)": "pass",
+    "Authz explicit context and A-to-B-to-A retargeting (webkit)": "pass",
+    "Codecs Docs and list loads retain their latest owners (chromium)": "pass",
+    "Codecs Docs and list loads retain their latest owners (firefox)": "pass",
+    "Codecs Docs and list loads retain their latest owners (webkit)": "pass",
+    "Inspector reads wait for their flow's acknowledged note save (chromium)": "pass",
+    "Inspector reads wait for their flow's acknowledged note save (firefox)": "pass",
+    "Inspector reads wait for their flow's acknowledged note save (webkit)": "pass",
+    "Intercept request Forward waits for delayed acknowledgement (chromium)": "pass",
+    "Intercept request Forward waits for delayed acknowledgement (firefox)": "pass",
+    "Intercept request Forward waits for delayed acknowledgement (webkit)": "pass",
+    "Intercept response Drop waits for delayed acknowledgement (chromium)": "pass",
+    "Intercept response Drop waits for delayed acknowledgement (firefox)": "pass",
+    "Intercept response Drop waits for delayed acknowledgement (webkit)": "pass",
+    "Intruder real run and per-tab history (chromium)": "pass",
+    "Intruder real run and per-tab history (firefox)": "pass",
+    "Intruder real run and per-tab history (webkit)": "pass",
+    "Notes save/preview and Findings evidence workflow (chromium)": "pass",
+    "Notes save/preview and Findings evidence workflow (firefox)": "pass",
+    "Notes save/preview and Findings evidence workflow (webkit)": "pass",
+    "Postman import creates unique reload-safe Repeater tabs (chromium)": "pass",
+    "Postman import creates unique reload-safe Repeater tabs (firefox)": "pass",
+    "Postman import creates unique reload-safe Repeater tabs (webkit)": "pass",
+    "Repeater/Intruder inner tabs and every Settings section (chromium)": "pass",
+    "Repeater/Intruder inner tabs and every Settings section (firefox)": "pass",
+    "Repeater/Intruder inner tabs and every Settings section (webkit)": "pass",
+    "Scanner empty results restore focused issue context (chromium)": "pass",
+    "Scanner empty results restore focused issue context (firefox)": "pass",
+    "Scanner empty results restore focused issue context (webkit)": "pass",
+    "Scanner real pending-to-success lifecycle (chromium)": "pass",
+    "Scanner real pending-to-success lifecycle (firefox)": "pass",
+    "Scanner real pending-to-success lifecycle (webkit)": "pass",
+    "auxiliary surfaces, reversible actions, and validators (chromium)": "pass",
+    "auxiliary surfaces, reversible actions, and validators (firefox)": "pass",
+    "auxiliary surfaces, reversible actions, and validators (webkit)": "pass",
+    "before screenshot baselines are present and dimensioned (chromium)": "pass",
+    "before screenshot baselines are present and dimensioned (firefox)": "pass",
+    "before screenshot baselines are present and dimensioned (webkit)": "pass",
+    "browser storage failure keeps project workspace sync (chromium)": "pass",
+    "browser storage failure keeps project workspace sync (firefox)": "pass",
+    "browser storage failure keeps project workspace sync (webkit)": "pass",
+    "custom Scanner check load failure clears stale source (chromium)": "pass",
+    "custom Scanner check load failure clears stale source (firefox)": "pass",
+    "custom Scanner check load failure clears stale source (webkit)": "pass",
     "duplicate project names preserve legacy drafts (chromium)": "pass",
     "duplicate project names preserve legacy drafts (firefox)": "pass",
     "duplicate project names preserve legacy drafts (webkit)": "pass",
-    "generic loopback capture seed": "pass",
-    "high-volume History, Map render/Fit, scroll, and CDP performance": "pass",
-    "initial allowlist failure exposes persistent Retry": "pass",
-    "invalid pending workspace state is preserved": "pass",
-    "late module completion restores the guarded workspace": "pass",
-    "main navigation, motion, and keyboard semantics": "pass",
+    "generic loopback capture seed (chromium)": "pass",
+    "generic loopback capture seed (firefox)": "pass",
+    "generic loopback capture seed (webkit)": "pass",
+    "high-volume History, Map render/Fit, scroll, and browser performance (chromium)": "pass",
+    "high-volume History, Map render/Fit, scroll, and browser performance (firefox)": "pass",
+    "high-volume History, Map render/Fit, scroll, and browser performance (webkit)": "pass",
+    "initial allowlist failure exposes persistent Retry (chromium)": "pass",
+    "initial allowlist failure exposes persistent Retry (firefox)": "pass",
+    "initial allowlist failure exposes persistent Retry (webkit)": "pass",
+    "invalid pending workspace state is preserved (chromium)": "pass",
+    "invalid pending workspace state is preserved (firefox)": "pass",
+    "invalid pending workspace state is preserved (webkit)": "pass",
+    "late module completion restores the guarded workspace (chromium)": "pass",
+    "late module completion restores the guarded workspace (firefox)": "pass",
+    "late module completion restores the guarded workspace (webkit)": "pass",
+    "main navigation, motion, and keyboard semantics (chromium)": "pass",
+    "main navigation, motion, and keyboard semantics (firefox)": "pass",
+    "main navigation, motion, and keyboard semantics (webkit)": "pass",
     "malformed project entries preserve legacy drafts (chromium)": "pass",
     "malformed project entries preserve legacy drafts (firefox)": "pass",
     "malformed project entries preserve legacy drafts (webkit)": "pass",
-    "malformed tab and preset fields recover with isolated Repeater history": "pass",
+    "malformed tab and preset fields recover with isolated Repeater history (chromium)": "pass",
+    "malformed tab and preset fields recover with isolated Repeater history (firefox)": "pass",
+    "malformed tab and preset fields recover with isolated Repeater history (webkit)": "pass",
     "mixed valid and malformed project entries preserve legacy drafts (chromium)": "pass",
     "mixed valid and malformed project entries preserve legacy drafts (firefox)": "pass",
     "mixed valid and malformed project entries preserve legacy drafts (webkit)": "pass",
-    "mobile reachability for every dense panel and Checks/Codecs": "pass",
-    "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
-    "oversized pending workspace state is retained without retry": "pass",
-    "pathological browser-local workspace state remains recoverable": "pass",
-    "persisted tab identity and creation limits remain safe": "pass",
-    "persistent retry states under request failure": "pass",
+    "mobile reachability for every dense panel and Checks/Codecs (chromium)": "pass",
+    "mobile reachability for every dense panel and Checks/Codecs (firefox)": "pass",
+    "mobile reachability for every dense panel and Checks/Codecs (webkit)": "pass",
+    "modal mutations retain focus, errors, dismissal, and scope ownership (chromium)": "pass",
+    "modal mutations retain focus, errors, dismissal, and scope ownership (firefox)": "pass",
+    "modal mutations retain focus, errors, dismissal, and scope ownership (webkit)": "pass",
+    "oversized pending workspace state is retained without retry (chromium)": "pass",
+    "oversized pending workspace state is retained without retry (firefox)": "pass",
+    "oversized pending workspace state is retained without retry (webkit)": "pass",
+    "pathological browser-local workspace state remains recoverable (chromium)": "pass",
+    "pathological browser-local workspace state remains recoverable (firefox)": "pass",
+    "pathological browser-local workspace state remains recoverable (webkit)": "pass",
+    "persisted tab identity and creation limits remain safe (chromium)": "pass",
+    "persisted tab identity and creation limits remain safe (firefox)": "pass",
+    "persisted tab identity and creation limits remain safe (webkit)": "pass",
+    "persistent retry states under request failure (chromium)": "pass",
+    "persistent retry states under request failure (firefox)": "pass",
+    "persistent retry states under request failure (webkit)": "pass",
     "project identity accepts a valid sibling (chromium)": "pass",
     "project identity accepts a valid sibling (firefox)": "pass",
     "project identity accepts a valid sibling (webkit)": "pass",
     "project identity failure settles navigation (chromium)": "pass",
     "project identity failure settles navigation (firefox)": "pass",
     "project identity failure settles navigation (webkit)": "pass",
-    "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
-    "relative project path validation stays UI-only": "pass",
-    "required screenshots": "pass",
-    "required viewports and reduced motion": "pass",
-    "setup Add-to-scope locks dismissal until acknowledgement": "pass",
-    "tab-owned Repeater history across every request edit": "pass",
-    "valid pending workspace state replaces invalid server state": "pass",
+    "rejected Scope and Match & Replace PUT/DELETE ownership (chromium)": "pass",
+    "rejected Scope and Match & Replace PUT/DELETE ownership (firefox)": "pass",
+    "rejected Scope and Match & Replace PUT/DELETE ownership (webkit)": "pass",
+    "relative project path validation stays UI-only (chromium)": "pass",
+    "relative project path validation stays UI-only (firefox)": "pass",
+    "relative project path validation stays UI-only (webkit)": "pass",
+    "required screenshots (chromium)": "pass",
+    "required screenshots (firefox)": "pass",
+    "required screenshots (webkit)": "pass",
+    "required viewports and reduced motion (chromium)": "pass",
+    "required viewports and reduced motion (firefox)": "pass",
+    "required viewports and reduced motion (webkit)": "pass",
+    "setup Add-to-scope locks dismissal until acknowledgement (chromium)": "pass",
+    "setup Add-to-scope locks dismissal until acknowledgement (firefox)": "pass",
+    "setup Add-to-scope locks dismissal until acknowledgement (webkit)": "pass",
+    "tab-owned Repeater history across every request edit (chromium)": "pass",
+    "tab-owned Repeater history across every request edit (firefox)": "pass",
+    "tab-owned Repeater history across every request edit (webkit)": "pass",
+    "unsafe Intruder preset drafts survive hydration (chromium)": "pass",
+    "unsafe Intruder preset drafts survive hydration (firefox)": "pass",
+    "unsafe Intruder preset drafts survive hydration (webkit)": "pass",
+    "valid pending workspace state replaces invalid server state (chromium)": "pass",
+    "valid pending workspace state replaces invalid server state (firefox)": "pass",
+    "valid pending workspace state replaces invalid server state (webkit)": "pass",
     "workspace hydration timeout falls back locally (chromium)": "pass",
     "workspace hydration timeout falls back locally (firefox)": "pass",
     "workspace hydration timeout falls back locally (webkit)": "pass",
@@ -117,90 +200,1148 @@
     "workspace module fetch failure becomes actionable (webkit)": "pass"
   },
   "console_errors": [],
+  "engine_reports": {
+    "chromium": {
+      "after_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/findings-after-390x844.png",
+          "width": 390
+        }
+      },
+      "application_source": {
+        "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
+        "runtime_files": 252,
+        "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
+        "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
+      },
+      "base_url": "http://127.0.0.1:53119",
+      "before_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/before-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/before-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/before-390x844-scanner.png",
+          "width": 390
+        }
+      },
+      "browser_engine": "chromium",
+      "cases": {
+        "Authz explicit context and A-to-B-to-A retargeting": "pass",
+        "Codecs Docs and list loads retain their latest owners": "pass",
+        "Inspector reads wait for their flow's acknowledged note save": "pass",
+        "Intercept request Forward waits for delayed acknowledgement": "pass",
+        "Intercept response Drop waits for delayed acknowledgement": "pass",
+        "Intruder real run and per-tab history": "pass",
+        "Notes save/preview and Findings evidence workflow": "pass",
+        "Postman import creates unique reload-safe Repeater tabs": "pass",
+        "Repeater/Intruder inner tabs and every Settings section": "pass",
+        "Scanner empty results restore focused issue context": "pass",
+        "Scanner real pending-to-success lifecycle": "pass",
+        "auxiliary surfaces, reversible actions, and validators": "pass",
+        "before screenshot baselines are present and dimensioned": "pass",
+        "browser storage failure keeps project workspace sync": "pass",
+        "custom Scanner check load failure clears stale source": "pass",
+        "duplicate project names preserve legacy drafts (chromium)": "pass",
+        "generic loopback capture seed": "pass",
+        "high-volume History, Map render/Fit, scroll, and browser performance": "pass",
+        "initial allowlist failure exposes persistent Retry": "pass",
+        "invalid pending workspace state is preserved": "pass",
+        "late module completion restores the guarded workspace": "pass",
+        "main navigation, motion, and keyboard semantics": "pass",
+        "malformed project entries preserve legacy drafts (chromium)": "pass",
+        "malformed tab and preset fields recover with isolated Repeater history": "pass",
+        "mixed valid and malformed project entries preserve legacy drafts (chromium)": "pass",
+        "mobile reachability for every dense panel and Checks/Codecs": "pass",
+        "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
+        "oversized pending workspace state is retained without retry": "pass",
+        "pathological browser-local workspace state remains recoverable": "pass",
+        "persisted tab identity and creation limits remain safe": "pass",
+        "persistent retry states under request failure": "pass",
+        "project identity accepts a valid sibling (chromium)": "pass",
+        "project identity failure settles navigation (chromium)": "pass",
+        "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
+        "relative project path validation stays UI-only": "pass",
+        "required screenshots": "pass",
+        "required viewports and reduced motion": "pass",
+        "setup Add-to-scope locks dismissal until acknowledgement": "pass",
+        "tab-owned Repeater history across every request edit": "pass",
+        "unsafe Intruder preset drafts survive hydration": "pass",
+        "valid pending workspace state replaces invalid server state": "pass",
+        "workspace hydration timeout falls back locally (chromium)": "pass",
+        "workspace module evaluation failure becomes actionable (chromium)": "pass",
+        "workspace module fetch failure becomes actionable (chromium)": "pass"
+      },
+      "console_errors": [],
+      "expected_console_errors": [
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)"
+      ],
+      "expected_http_errors": [
+        "503 PUT http://127.0.0.1:53119/api/ui/intruder-presets",
+        "503 PUT http://127.0.0.1:53119/api/ui/intruder",
+        "503 PUT http://127.0.0.1:53119/api/ui/repeater",
+        "503 GET http://127.0.0.1:53119/api/activity",
+        "503 GET http://127.0.0.1:53119/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+        "503 GET http://127.0.0.1:53119/api/activity",
+        "503 GET http://127.0.0.1:53119/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:53119/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:53119/api/allowlist",
+        "409 POST http://127.0.0.1:53119/api/allowlist",
+        "409 POST http://127.0.0.1:53119/api/findings",
+        "409 PUT http://127.0.0.1:53119/api/checks/ui-audit-held-check",
+        "409 POST http://127.0.0.1:53119/api/authz",
+        "409 DELETE http://127.0.0.1:53119/api/scope/1",
+        "409 PUT http://127.0.0.1:53119/api/scope/1",
+        "409 DELETE http://127.0.0.1:53119/api/rules/1",
+        "409 PUT http://127.0.0.1:53119/api/rules/1"
+      ],
+      "external_requests": [],
+      "failures": [],
+      "http_errors": [],
+      "metrics": {
+        "browser_engine": "chromium",
+        "burst_network_ms": 106.8,
+        "burst_network_p95_ms": 112.1,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "cdp_layout_duration_s": 0.044348,
+        "cdp_map_layout_duration_s": 0.000895,
+        "cdp_map_script_duration_s": 0.003396,
+        "cdp_map_task_duration_s": 0.047925,
+        "cdp_script_duration_s": 0.095309,
+        "cdp_task_duration_s": 0.685025,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 599.8,
+        "late_module_recovery_ms": 9785.9,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          811.9
+        ],
+        "map_interaction_p95_ms": 811.9,
+        "map_ready_ms": 292.6,
+        "panel_interaction_ms": [
+          294.8,
+          200.7,
+          301.9,
+          398.1,
+          323,
+          1039.8,
+          301.5,
+          314.4,
+          264.6
+        ],
+        "panel_interaction_p95_ms": 1039.8,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 704.5,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer+cdp",
+        "project_identity_fallback_ms_chromium": 3542.6,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_chromium": 2756.3
+      },
+      "mode": "full",
+      "page_errors": [],
+      "preflight": {
+        "base_netloc": "127.0.0.1:53119",
+        "data_dir_match": true,
+        "disposable_project": true,
+        "expected_proxy": "127.0.0.1:53120",
+        "expected_version": "2.0.8",
+        "fresh_findings": true,
+        "fresh_flows": true,
+        "ok": true,
+        "project_match": true,
+        "project_switch_locked": true,
+        "revalidated_before_full_audit": true,
+        "revalidated_before_settings": true,
+        "server_proxy": "127.0.0.1:53120",
+        "server_version": "2.0.8",
+        "upstream_configured": false
+      },
+      "startup_engines": [
+        "chromium"
+      ],
+      "viewports": [
+        [
+          1440,
+          900
+        ],
+        [
+          1024,
+          768
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    },
+    "firefox": {
+      "after_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/firefox/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/firefox/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/firefox/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/firefox/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/firefox/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/firefox/findings-after-390x844.png",
+          "width": 390
+        }
+      },
+      "application_source": {
+        "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
+        "runtime_files": 252,
+        "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
+        "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
+      },
+      "base_url": "http://127.0.0.1:55147",
+      "before_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/before-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/before-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/before-390x844-scanner.png",
+          "width": 390
+        }
+      },
+      "browser_engine": "firefox",
+      "cases": {
+        "Authz explicit context and A-to-B-to-A retargeting": "pass",
+        "Codecs Docs and list loads retain their latest owners": "pass",
+        "Inspector reads wait for their flow's acknowledged note save": "pass",
+        "Intercept request Forward waits for delayed acknowledgement": "pass",
+        "Intercept response Drop waits for delayed acknowledgement": "pass",
+        "Intruder real run and per-tab history": "pass",
+        "Notes save/preview and Findings evidence workflow": "pass",
+        "Postman import creates unique reload-safe Repeater tabs": "pass",
+        "Repeater/Intruder inner tabs and every Settings section": "pass",
+        "Scanner empty results restore focused issue context": "pass",
+        "Scanner real pending-to-success lifecycle": "pass",
+        "auxiliary surfaces, reversible actions, and validators": "pass",
+        "before screenshot baselines are present and dimensioned": "pass",
+        "browser storage failure keeps project workspace sync": "pass",
+        "custom Scanner check load failure clears stale source": "pass",
+        "duplicate project names preserve legacy drafts (firefox)": "pass",
+        "generic loopback capture seed": "pass",
+        "high-volume History, Map render/Fit, scroll, and browser performance": "pass",
+        "initial allowlist failure exposes persistent Retry": "pass",
+        "invalid pending workspace state is preserved": "pass",
+        "late module completion restores the guarded workspace": "pass",
+        "main navigation, motion, and keyboard semantics": "pass",
+        "malformed project entries preserve legacy drafts (firefox)": "pass",
+        "malformed tab and preset fields recover with isolated Repeater history": "pass",
+        "mixed valid and malformed project entries preserve legacy drafts (firefox)": "pass",
+        "mobile reachability for every dense panel and Checks/Codecs": "pass",
+        "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
+        "oversized pending workspace state is retained without retry": "pass",
+        "pathological browser-local workspace state remains recoverable": "pass",
+        "persisted tab identity and creation limits remain safe": "pass",
+        "persistent retry states under request failure": "pass",
+        "project identity accepts a valid sibling (firefox)": "pass",
+        "project identity failure settles navigation (firefox)": "pass",
+        "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
+        "relative project path validation stays UI-only": "pass",
+        "required screenshots": "pass",
+        "required viewports and reduced motion": "pass",
+        "setup Add-to-scope locks dismissal until acknowledgement": "pass",
+        "tab-owned Repeater history across every request edit": "pass",
+        "unsafe Intruder preset drafts survive hydration": "pass",
+        "valid pending workspace state replaces invalid server state": "pass",
+        "workspace hydration timeout falls back locally (firefox)": "pass",
+        "workspace module evaluation failure becomes actionable (firefox)": "pass",
+        "workspace module fetch failure becomes actionable (firefox)": "pass"
+      },
+      "console_errors": [],
+      "expected_console_errors": [],
+      "expected_http_errors": [
+        "503 PUT http://127.0.0.1:55147/api/ui/intruder-presets",
+        "503 PUT http://127.0.0.1:55147/api/ui/intruder",
+        "503 PUT http://127.0.0.1:55147/api/ui/repeater",
+        "503 GET http://127.0.0.1:55147/api/activity",
+        "503 GET http://127.0.0.1:55147/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+        "503 GET http://127.0.0.1:55147/api/activity",
+        "503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:55147/api/allowlist",
+        "409 POST http://127.0.0.1:55147/api/allowlist",
+        "409 POST http://127.0.0.1:55147/api/findings",
+        "409 PUT http://127.0.0.1:55147/api/checks/ui-audit-held-check",
+        "409 POST http://127.0.0.1:55147/api/authz",
+        "409 DELETE http://127.0.0.1:55147/api/scope/1",
+        "409 PUT http://127.0.0.1:55147/api/scope/1",
+        "409 DELETE http://127.0.0.1:55147/api/rules/1",
+        "409 PUT http://127.0.0.1:55147/api/rules/1"
+      ],
+      "external_requests": [],
+      "failures": [],
+      "http_errors": [],
+      "metrics": {
+        "browser_engine": "firefox",
+        "burst_network_ms": 149.5,
+        "burst_network_p95_ms": 151.8,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 338.4,
+        "late_module_recovery_ms": 9625.0,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          385.8
+        ],
+        "map_interaction_p95_ms": 385.8,
+        "map_ready_ms": 192.7,
+        "panel_interaction_ms": [
+          203,
+          180,
+          187,
+          190,
+          182,
+          173,
+          198,
+          209,
+          179
+        ],
+        "panel_interaction_p95_ms": 209.0,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 736.6,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer",
+        "project_identity_fallback_ms_firefox": 3509.0,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/firefox/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/firefox/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/firefox/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/firefox/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/firefox/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/firefox/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_firefox": 2578.1
+      },
+      "mode": "full",
+      "page_errors": [],
+      "preflight": {
+        "base_netloc": "127.0.0.1:55147",
+        "data_dir_match": true,
+        "disposable_project": true,
+        "expected_proxy": "127.0.0.1:55148",
+        "expected_version": "2.0.8",
+        "fresh_findings": true,
+        "fresh_flows": true,
+        "ok": true,
+        "project_match": true,
+        "project_switch_locked": true,
+        "revalidated_before_full_audit": true,
+        "revalidated_before_settings": true,
+        "server_proxy": "127.0.0.1:55148",
+        "server_version": "2.0.8",
+        "upstream_configured": false
+      },
+      "startup_engines": [
+        "firefox"
+      ],
+      "viewports": [
+        [
+          1440,
+          900
+        ],
+        [
+          1024,
+          768
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    },
+    "webkit": {
+      "after_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+          "width": 390
+        }
+      },
+      "application_source": {
+        "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
+        "runtime_files": 252,
+        "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
+        "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
+      },
+      "base_url": "http://127.0.0.1:57083",
+      "before_screenshots": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/before-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/before-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/before-390x844-scanner.png",
+          "width": 390
+        }
+      },
+      "browser_engine": "webkit",
+      "cases": {
+        "Authz explicit context and A-to-B-to-A retargeting": "pass",
+        "Codecs Docs and list loads retain their latest owners": "pass",
+        "Inspector reads wait for their flow's acknowledged note save": "pass",
+        "Intercept request Forward waits for delayed acknowledgement": "pass",
+        "Intercept response Drop waits for delayed acknowledgement": "pass",
+        "Intruder real run and per-tab history": "pass",
+        "Notes save/preview and Findings evidence workflow": "pass",
+        "Postman import creates unique reload-safe Repeater tabs": "pass",
+        "Repeater/Intruder inner tabs and every Settings section": "pass",
+        "Scanner empty results restore focused issue context": "pass",
+        "Scanner real pending-to-success lifecycle": "pass",
+        "auxiliary surfaces, reversible actions, and validators": "pass",
+        "before screenshot baselines are present and dimensioned": "pass",
+        "browser storage failure keeps project workspace sync": "pass",
+        "custom Scanner check load failure clears stale source": "pass",
+        "duplicate project names preserve legacy drafts (webkit)": "pass",
+        "generic loopback capture seed": "pass",
+        "high-volume History, Map render/Fit, scroll, and browser performance": "pass",
+        "initial allowlist failure exposes persistent Retry": "pass",
+        "invalid pending workspace state is preserved": "pass",
+        "late module completion restores the guarded workspace": "pass",
+        "main navigation, motion, and keyboard semantics": "pass",
+        "malformed project entries preserve legacy drafts (webkit)": "pass",
+        "malformed tab and preset fields recover with isolated Repeater history": "pass",
+        "mixed valid and malformed project entries preserve legacy drafts (webkit)": "pass",
+        "mobile reachability for every dense panel and Checks/Codecs": "pass",
+        "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
+        "oversized pending workspace state is retained without retry": "pass",
+        "pathological browser-local workspace state remains recoverable": "pass",
+        "persisted tab identity and creation limits remain safe": "pass",
+        "persistent retry states under request failure": "pass",
+        "project identity accepts a valid sibling (webkit)": "pass",
+        "project identity failure settles navigation (webkit)": "pass",
+        "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
+        "relative project path validation stays UI-only": "pass",
+        "required screenshots": "pass",
+        "required viewports and reduced motion": "pass",
+        "setup Add-to-scope locks dismissal until acknowledgement": "pass",
+        "tab-owned Repeater history across every request edit": "pass",
+        "unsafe Intruder preset drafts survive hydration": "pass",
+        "valid pending workspace state replaces invalid server state": "pass",
+        "workspace hydration timeout falls back locally (webkit)": "pass",
+        "workspace module evaluation failure becomes actionable (webkit)": "pass",
+        "workspace module fetch failure becomes actionable (webkit)": "pass"
+      },
+      "console_errors": [],
+      "expected_console_errors": [
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)",
+        "Failed to load resource: the server responded with a status of 409 (Conflict)"
+      ],
+      "expected_http_errors": [
+        "503 PUT http://127.0.0.1:57083/api/ui/intruder-presets",
+        "503 PUT http://127.0.0.1:57083/api/ui/intruder",
+        "503 PUT http://127.0.0.1:57083/api/ui/repeater",
+        "503 GET http://127.0.0.1:57083/api/activity",
+        "503 GET http://127.0.0.1:57083/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+        "503 GET http://127.0.0.1:57083/api/activity",
+        "503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+        "503 GET http://127.0.0.1:57083/api/allowlist",
+        "409 POST http://127.0.0.1:57083/api/allowlist",
+        "409 POST http://127.0.0.1:57083/api/findings",
+        "409 PUT http://127.0.0.1:57083/api/checks/ui-audit-held-check",
+        "409 POST http://127.0.0.1:57083/api/authz",
+        "409 DELETE http://127.0.0.1:57083/api/scope/1",
+        "409 PUT http://127.0.0.1:57083/api/scope/1",
+        "409 DELETE http://127.0.0.1:57083/api/rules/1",
+        "409 PUT http://127.0.0.1:57083/api/rules/1"
+      ],
+      "external_requests": [],
+      "failures": [],
+      "http_errors": [],
+      "metrics": {
+        "browser_engine": "webkit",
+        "burst_network_ms": 181.5,
+        "burst_network_p95_ms": 235.3,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 317.4,
+        "late_module_recovery_ms": 9493.0,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          350.3
+        ],
+        "map_interaction_p95_ms": 350.3,
+        "map_ready_ms": 291.9,
+        "panel_interaction_ms": [
+          187,
+          180,
+          189,
+          180,
+          181.0,
+          190,
+          181.0,
+          179,
+          189
+        ],
+        "panel_interaction_p95_ms": 190.0,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 667.1,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer",
+        "project_identity_fallback_ms_webkit": 3468.7,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_webkit": 2584.4
+      },
+      "mode": "full",
+      "page_errors": [],
+      "preflight": {
+        "base_netloc": "127.0.0.1:57083",
+        "data_dir_match": true,
+        "disposable_project": true,
+        "expected_proxy": "127.0.0.1:57084",
+        "expected_version": "2.0.8",
+        "fresh_findings": true,
+        "fresh_flows": true,
+        "ok": true,
+        "project_match": true,
+        "project_switch_locked": true,
+        "revalidated_before_full_audit": true,
+        "revalidated_before_settings": true,
+        "server_proxy": "127.0.0.1:57084",
+        "server_version": "2.0.8",
+        "upstream_configured": false
+      },
+      "startup_engines": [
+        "webkit"
+      ],
+      "viewports": [
+        [
+          1440,
+          900
+        ],
+        [
+          1024,
+          768
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    }
+  },
   "expected_console_errors": [
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)",
-    "Failed to load resource: the server responded with a status of 409 (Conflict)"
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "chromium: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "webkit: Failed to load resource: the server responded with a status of 409 (Conflict)"
   ],
   "expected_http_errors": [
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder-presets",
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder",
-    "503 PUT http://127.0.0.1:63470/api/ui/repeater",
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder-presets",
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder",
-    "503 PUT http://127.0.0.1:63470/api/ui/repeater",
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder-presets",
-    "503 PUT http://127.0.0.1:63470/api/ui/intruder",
-    "503 PUT http://127.0.0.1:63470/api/ui/repeater",
-    "503 GET http://127.0.0.1:63470/api/activity",
-    "503 GET http://127.0.0.1:63470/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
-    "503 GET http://127.0.0.1:63470/api/activity",
-    "503 GET http://127.0.0.1:63470/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:63470/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:63470/api/allowlist",
-    "409 POST http://127.0.0.1:63470/api/allowlist",
-    "409 POST http://127.0.0.1:63470/api/findings",
-    "409 PUT http://127.0.0.1:63470/api/checks/ui-audit-held-check",
-    "409 POST http://127.0.0.1:63470/api/authz",
-    "409 DELETE http://127.0.0.1:63470/api/scope/1",
-    "409 PUT http://127.0.0.1:63470/api/scope/1",
-    "409 DELETE http://127.0.0.1:63470/api/rules/1",
-    "409 PUT http://127.0.0.1:63470/api/rules/1"
+    "chromium: 503 PUT http://127.0.0.1:53119/api/ui/intruder-presets",
+    "chromium: 503 PUT http://127.0.0.1:53119/api/ui/intruder",
+    "chromium: 503 PUT http://127.0.0.1:53119/api/ui/repeater",
+    "chromium: 503 GET http://127.0.0.1:53119/api/activity",
+    "chromium: 503 GET http://127.0.0.1:53119/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "chromium: 503 GET http://127.0.0.1:53119/api/activity",
+    "chromium: 503 GET http://127.0.0.1:53119/api/checks/ui-audit-load-failure",
+    "chromium: 503 GET http://127.0.0.1:53119/api/checks/ui-audit-load-failure",
+    "chromium: 503 GET http://127.0.0.1:53119/api/allowlist",
+    "chromium: 409 POST http://127.0.0.1:53119/api/allowlist",
+    "chromium: 409 POST http://127.0.0.1:53119/api/findings",
+    "chromium: 409 PUT http://127.0.0.1:53119/api/checks/ui-audit-held-check",
+    "chromium: 409 POST http://127.0.0.1:53119/api/authz",
+    "chromium: 409 DELETE http://127.0.0.1:53119/api/scope/1",
+    "chromium: 409 PUT http://127.0.0.1:53119/api/scope/1",
+    "chromium: 409 DELETE http://127.0.0.1:53119/api/rules/1",
+    "chromium: 409 PUT http://127.0.0.1:53119/api/rules/1",
+    "firefox: 503 PUT http://127.0.0.1:55147/api/ui/intruder-presets",
+    "firefox: 503 PUT http://127.0.0.1:55147/api/ui/intruder",
+    "firefox: 503 PUT http://127.0.0.1:55147/api/ui/repeater",
+    "firefox: 503 GET http://127.0.0.1:55147/api/activity",
+    "firefox: 503 GET http://127.0.0.1:55147/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "firefox: 503 GET http://127.0.0.1:55147/api/activity",
+    "firefox: 503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
+    "firefox: 503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
+    "firefox: 503 GET http://127.0.0.1:55147/api/allowlist",
+    "firefox: 409 POST http://127.0.0.1:55147/api/allowlist",
+    "firefox: 409 POST http://127.0.0.1:55147/api/findings",
+    "firefox: 409 PUT http://127.0.0.1:55147/api/checks/ui-audit-held-check",
+    "firefox: 409 POST http://127.0.0.1:55147/api/authz",
+    "firefox: 409 DELETE http://127.0.0.1:55147/api/scope/1",
+    "firefox: 409 PUT http://127.0.0.1:55147/api/scope/1",
+    "firefox: 409 DELETE http://127.0.0.1:55147/api/rules/1",
+    "firefox: 409 PUT http://127.0.0.1:55147/api/rules/1",
+    "webkit: 503 PUT http://127.0.0.1:57083/api/ui/intruder-presets",
+    "webkit: 503 PUT http://127.0.0.1:57083/api/ui/intruder",
+    "webkit: 503 PUT http://127.0.0.1:57083/api/ui/repeater",
+    "webkit: 503 GET http://127.0.0.1:57083/api/activity",
+    "webkit: 503 GET http://127.0.0.1:57083/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "webkit: 503 GET http://127.0.0.1:57083/api/activity",
+    "webkit: 503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+    "webkit: 503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+    "webkit: 503 GET http://127.0.0.1:57083/api/allowlist",
+    "webkit: 409 POST http://127.0.0.1:57083/api/allowlist",
+    "webkit: 409 POST http://127.0.0.1:57083/api/findings",
+    "webkit: 409 PUT http://127.0.0.1:57083/api/checks/ui-audit-held-check",
+    "webkit: 409 POST http://127.0.0.1:57083/api/authz",
+    "webkit: 409 DELETE http://127.0.0.1:57083/api/scope/1",
+    "webkit: 409 PUT http://127.0.0.1:57083/api/scope/1",
+    "webkit: 409 DELETE http://127.0.0.1:57083/api/rules/1",
+    "webkit: 409 PUT http://127.0.0.1:57083/api/rules/1"
   ],
   "external_requests": [],
   "failures": [],
   "http_errors": [],
   "metrics": {
-    "burst_network_ms": 190.1,
-    "burst_network_p95_ms": 190.1,
+    "browser_engine": "chromium",
+    "burst_network_ms": 106.8,
+    "burst_network_p95_ms": 112.1,
     "burst_requests": 240,
     "burst_runs": 3,
-    "cdp_layout_duration_s": 0.051071,
-    "cdp_map_layout_duration_s": 0.000329,
-    "cdp_map_script_duration_s": 0.001054,
-    "cdp_map_task_duration_s": 0.030942,
-    "cdp_script_duration_s": 0.129369,
-    "cdp_task_duration_s": 0.663232,
+    "by_engine": {
+      "chromium": {
+        "browser_engine": "chromium",
+        "burst_network_ms": 106.8,
+        "burst_network_p95_ms": 112.1,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "cdp_layout_duration_s": 0.044348,
+        "cdp_map_layout_duration_s": 0.000895,
+        "cdp_map_script_duration_s": 0.003396,
+        "cdp_map_task_duration_s": 0.047925,
+        "cdp_script_duration_s": 0.095309,
+        "cdp_task_duration_s": 0.685025,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 599.8,
+        "late_module_recovery_ms": 9785.9,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          811.9
+        ],
+        "map_interaction_p95_ms": 811.9,
+        "map_ready_ms": 292.6,
+        "panel_interaction_ms": [
+          294.8,
+          200.7,
+          301.9,
+          398.1,
+          323,
+          1039.8,
+          301.5,
+          314.4,
+          264.6
+        ],
+        "panel_interaction_p95_ms": 1039.8,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 704.5,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer+cdp",
+        "project_identity_fallback_ms_chromium": 3542.6,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_chromium": 2756.3
+      },
+      "firefox": {
+        "browser_engine": "firefox",
+        "burst_network_ms": 149.5,
+        "burst_network_p95_ms": 151.8,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 338.4,
+        "late_module_recovery_ms": 9625.0,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          385.8
+        ],
+        "map_interaction_p95_ms": 385.8,
+        "map_ready_ms": 192.7,
+        "panel_interaction_ms": [
+          203,
+          180,
+          187,
+          190,
+          182,
+          173,
+          198,
+          209,
+          179
+        ],
+        "panel_interaction_p95_ms": 209.0,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 736.6,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer",
+        "project_identity_fallback_ms_firefox": 3509.0,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/firefox/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/firefox/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/firefox/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/firefox/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/firefox/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/firefox/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_firefox": 2578.1
+      },
+      "webkit": {
+        "browser_engine": "webkit",
+        "burst_network_ms": 181.5,
+        "burst_network_p95_ms": 235.3,
+        "burst_requests": 240,
+        "burst_runs": 3,
+        "history_dom_nodes": 658,
+        "history_rendered_rows": 82,
+        "intercept_ack_ms": 317.4,
+        "late_module_recovery_ms": 9493.0,
+        "long_task_p95_ms": 0.0,
+        "long_tasks_ms": [],
+        "map_interaction_ms": [
+          350.3
+        ],
+        "map_interaction_p95_ms": 350.3,
+        "map_ready_ms": 291.9,
+        "panel_interaction_ms": [
+          187,
+          180,
+          189,
+          180,
+          181.0,
+          190,
+          181.0,
+          179,
+          189
+        ],
+        "panel_interaction_p95_ms": 190.0,
+        "panel_transition_ms": [
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0,
+          180.0
+        ],
+        "pathological_workspace_recovery_ms": 667.1,
+        "pathological_workspace_tabs_retained": 5000,
+        "performance_source": "performance-observer",
+        "project_identity_fallback_ms_webkit": 3468.7,
+        "screenshots": {
+          "1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+            "width": 1024
+          },
+          "1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+            "width": 1440
+          },
+          "390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+            "width": 390
+          },
+          "findings-1024x768": {
+            "height": 768,
+            "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+            "width": 1024
+          },
+          "findings-1440x900": {
+            "height": 900,
+            "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+            "width": 1440
+          },
+          "findings-390x844": {
+            "height": 844,
+            "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+            "width": 390
+          }
+        },
+        "workspace_hydration_timeout_ms_webkit": 2584.4
+      }
+    },
+    "cdp_layout_duration_s": 0.044348,
+    "cdp_map_layout_duration_s": 0.000895,
+    "cdp_map_script_duration_s": 0.003396,
+    "cdp_map_task_duration_s": 0.047925,
+    "cdp_script_duration_s": 0.095309,
+    "cdp_task_duration_s": 0.685025,
     "history_dom_nodes": 658,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 334.3,
-    "late_module_recovery_ms": 9448.4,
+    "intercept_ack_ms": 599.8,
+    "late_module_recovery_ms": 9785.9,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      422.5
+      811.9
     ],
-    "map_interaction_p95_ms": 422.5,
-    "map_ready_ms": 287.3,
+    "map_interaction_p95_ms": 811.9,
+    "map_ready_ms": 292.6,
     "panel_interaction_ms": [
-      213.9,
-      199.3,
+      294.8,
       200.7,
-      199.9,
-      197.9,
-      201,
-      200.6,
-      199.7,
-      200.1
+      301.9,
+      398.1,
+      323,
+      1039.8,
+      301.5,
+      314.4,
+      264.6
     ],
-    "panel_interaction_p95_ms": 213.9,
+    "panel_interaction_p95_ms": 1039.8,
     "panel_transition_ms": [
       180.0,
       180.0,
@@ -212,11 +1353,10 @@
       180.0,
       180.0
     ],
-    "pathological_workspace_recovery_ms": 632.1,
+    "pathological_workspace_recovery_ms": 704.5,
     "pathological_workspace_tabs_retained": 5000,
-    "project_identity_fallback_ms_chromium": 3436.1,
-    "project_identity_fallback_ms_firefox": 3499.4,
-    "project_identity_fallback_ms_webkit": 3470.2,
+    "performance_source": "performance-observer+cdp",
+    "project_identity_fallback_ms_chromium": 3542.6,
     "screenshots": {
       "1024x768": {
         "height": 768,
@@ -249,28 +1389,160 @@
         "width": 390
       }
     },
-    "workspace_hydration_timeout_ms_chromium": 2553.2,
-    "workspace_hydration_timeout_ms_firefox": 2575.0,
-    "workspace_hydration_timeout_ms_webkit": 2606.9
+    "screenshots_by_engine": {
+      "chromium": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/findings-after-390x844.png",
+          "width": 390
+        }
+      },
+      "firefox": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/firefox/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/firefox/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/firefox/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/firefox/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/firefox/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/firefox/findings-after-390x844.png",
+          "width": 390
+        }
+      },
+      "webkit": {
+        "1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+          "width": 1024
+        },
+        "1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+          "width": 1440
+        },
+        "390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+          "width": 390
+        },
+        "findings-1024x768": {
+          "height": 768,
+          "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+          "width": 1024
+        },
+        "findings-1440x900": {
+          "height": 900,
+          "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+          "width": 1440
+        },
+        "findings-390x844": {
+          "height": 844,
+          "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+          "width": 390
+        }
+      }
+    },
+    "workspace_hydration_timeout_ms_chromium": 2756.3
   },
   "mode": "full",
   "page_errors": [],
   "preflight": {
-    "base_netloc": "127.0.0.1:63470",
-    "data_dir_match": true,
-    "disposable_project": true,
-    "expected_proxy": "127.0.0.1:63471",
-    "expected_version": "2.0.8",
-    "fresh_findings": true,
-    "fresh_flows": true,
-    "ok": true,
-    "project_match": true,
-    "project_switch_locked": true,
-    "revalidated_before_full_audit": true,
-    "revalidated_before_settings": true,
-    "server_proxy": "127.0.0.1:63471",
-    "server_version": "2.0.8",
-    "upstream_configured": false
+    "chromium": {
+      "base_netloc": "127.0.0.1:53119",
+      "data_dir_match": true,
+      "disposable_project": true,
+      "expected_proxy": "127.0.0.1:53120",
+      "expected_version": "2.0.8",
+      "fresh_findings": true,
+      "fresh_flows": true,
+      "ok": true,
+      "project_match": true,
+      "project_switch_locked": true,
+      "revalidated_before_full_audit": true,
+      "revalidated_before_settings": true,
+      "server_proxy": "127.0.0.1:53120",
+      "server_version": "2.0.8",
+      "upstream_configured": false
+    },
+    "firefox": {
+      "base_netloc": "127.0.0.1:55147",
+      "data_dir_match": true,
+      "disposable_project": true,
+      "expected_proxy": "127.0.0.1:55148",
+      "expected_version": "2.0.8",
+      "fresh_findings": true,
+      "fresh_flows": true,
+      "ok": true,
+      "project_match": true,
+      "project_switch_locked": true,
+      "revalidated_before_full_audit": true,
+      "revalidated_before_settings": true,
+      "server_proxy": "127.0.0.1:55148",
+      "server_version": "2.0.8",
+      "upstream_configured": false
+    },
+    "webkit": {
+      "base_netloc": "127.0.0.1:57083",
+      "data_dir_match": true,
+      "disposable_project": true,
+      "expected_proxy": "127.0.0.1:57084",
+      "expected_version": "2.0.8",
+      "fresh_findings": true,
+      "fresh_flows": true,
+      "ok": true,
+      "project_match": true,
+      "project_switch_locked": true,
+      "revalidated_before_full_audit": true,
+      "revalidated_before_settings": true,
+      "server_proxy": "127.0.0.1:57084",
+      "server_version": "2.0.8",
+      "upstream_configured": false
+    }
   },
   "startup_engines": [
     "chromium",

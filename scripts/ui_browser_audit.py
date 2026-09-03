@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeatable Playwright + Chrome DevTools Protocol audit for Interseptor's UI.
+"""Repeatable cross-browser Playwright audit for Interseptor's UI.
 
 Run against a fresh, isolated Interseptor project. The default smoke pass is
 read-only. ``--full`` creates generic loopback traffic and temporary project
@@ -60,6 +60,7 @@ BASELINE_SCREENSHOTS = {
 AUDIT_SENTINEL_NAME = ".interseptor-ui-audit-sentinel"
 AUDIT_PROJECT_PREFIX = "ui-audit-"
 ENCODE_URI_COMPONENT_SAFE = "~()*!.'-_"
+BROWSER_ENGINES = ("chromium", "firefox", "webkit")
 
 
 def browser_project_storage_key(base: str, project: str) -> str:
@@ -716,6 +717,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             report = {
                 "application_source": application_source,
                 "base_url": base,
+                "browser_engine": args.browser_engine,
                 "mode": "full",
                 "preflight": preflight,
                 "cases": result.cases,
@@ -740,7 +742,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
 
     with sync_playwright() as playwright:
         result.run("before screenshot baselines are present and dimensioned", verify_baseline_artifacts)
-        browser: Browser = playwright.chromium.launch(headless=not args.headed)
+        browser: Browser = getattr(playwright, args.browser_engine).launch(headless=not args.headed)
         context: BrowserContext = browser.new_context(viewport={"width": 1440, "height": 900})
         page = context.new_page()
         page.set_default_timeout(10_000)
@@ -1398,7 +1400,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 isolation_context.close()
 
         for engine_name in args.startup_engines:
-            target_browser = browser if engine_name == "chromium" else getattr(playwright, engine_name).launch(headless=not args.headed)
+            target_browser = browser if engine_name == args.browser_engine else getattr(playwright, engine_name).launch(headless=not args.headed)
             try:
                 result.run(
                     f"workspace module fetch failure becomes actionable ({engine_name})",
@@ -1550,7 +1552,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require(retained_count == tab_count, "pathological browser-local state was overwritten during recovery")
                 dismiss = state_page.locator("[data-workspace-warning-dismiss]")
                 result.require(dismiss.is_enabled(), "pathological saved-state warning has no Continue action")
-                dismiss.click()
+                dismiss.focus()
+                dismiss.press("Enter")
                 result.require(state_page.locator("#workspaceHydrationStatus").is_hidden(), "saved-state warning cannot be dismissed after review")
                 result.require(
                     state_page.evaluate("document.activeElement?.matches('.tab.active')"),
@@ -1624,7 +1627,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require(status.locator("[data-workspace-warning-dismiss]").is_enabled(), "invalid pending-state warning has no Continue action")
                 result.require(pending_page.evaluate("key => localStorage.getItem(key)", pending_key) == "{}", "invalid pending state was overwritten")
                 result.require(not workspace_writes, f"invalid pending state triggered a server write before an explicit edit: {workspace_writes}")
-                status.locator("[data-workspace-warning-dismiss]").click()
+                dismiss = status.locator("[data-workspace-warning-dismiss]")
+                dismiss.focus()
+                dismiss.press("Enter")
                 result.require(status.is_hidden(), "invalid pending-state Continue action did not dismiss the warning")
                 result.require(
                     pending_page.evaluate("document.activeElement?.matches('.tab.active')"),
@@ -1770,6 +1775,140 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             valid_pending_replaces_invalid_server_state,
         )
 
+        def unsafe_intruder_preset_drafts_survive_hydration() -> None:
+            _, project_info, _ = _json_get(base, "/api/project")
+            project_identity = str(project_info.get("dir") or "")
+            preset_key = browser_project_storage_key("intruder.presets", project_identity)
+
+            def server_presets(route: Any) -> None:
+                if route.request.method == "GET":
+                    route.fulfill(
+                        status=200,
+                        content_type="application/json",
+                        body='{"value":[{"name":"Server preset","target":"https://example.com/server"}]}',
+                    )
+                    return
+                route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+            malformed = "{malformed-preset-draft"
+            malformed_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            malformed_context.add_init_script(
+                f"localStorage.setItem({json.dumps(preset_key)},{json.dumps(malformed)});"
+            )
+            malformed_page = malformed_context.new_page()
+            malformed_page.set_default_timeout(10_000)
+            malformed_page.route("**/api/ui/intruder-presets", server_presets)
+            attach_observers(malformed_page, result, base_netloc)
+            try:
+                malformed_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(malformed_page)
+                malformed_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(
+                    malformed_page.evaluate("key => localStorage.getItem(key)", preset_key) == malformed,
+                    "malformed canonical Intruder preset draft was overwritten",
+                )
+                result.require(
+                    "Server preset" in malformed_page.locator("#intrPreset option").all_text_contents(),
+                    "malformed canonical Intruder preset draft blocked in-memory server fallback",
+                )
+                result.require(
+                    "Intruder presets saved state is not recognized" in malformed_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "malformed canonical Intruder preset draft had no persistent recovery warning",
+                )
+            finally:
+                malformed_context.close()
+
+            oversized = json.dumps(
+                [{"name": "Oversized preset", "target": "https://example.com/" + "x" * (4 * 1024 * 1024)}],
+                separators=(",", ":"),
+            )
+            oversized_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            oversized_context.add_init_script(
+                f"localStorage.setItem({json.dumps(preset_key)},{json.dumps(oversized)});"
+            )
+            oversized_page = oversized_context.new_page()
+            oversized_page.set_default_timeout(10_000)
+            oversized_page.route("**/api/ui/intruder-presets", server_presets)
+            attach_observers(oversized_page, result, base_netloc)
+            try:
+                oversized_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(oversized_page)
+                oversized_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(
+                    oversized_page.evaluate("key => localStorage.getItem(key)?.length", preset_key) == len(oversized),
+                    "oversized canonical Intruder preset draft was overwritten",
+                )
+                result.require(
+                    "Server preset" in oversized_page.locator("#intrPreset option").all_text_contents(),
+                    "oversized canonical Intruder preset draft blocked in-memory server fallback",
+                )
+                result.require(
+                    "Intruder presets saved state is too large to load safely" in oversized_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "oversized canonical Intruder preset draft had no persistent recovery warning",
+                )
+                oversized_page.locator(".intr-opts-disc summary").click()
+                started = time.perf_counter()
+                oversized_page.locator("#intrPresetSave").click()
+                oversized_page.locator("#promptInput").fill("Recovery preset")
+                oversized_page.locator("#promptOk").click()
+                oversized_page.wait_for_function(
+                    "document.querySelector('#intrPreset')?.textContent.includes('Recovery preset')"
+                )
+                result.require((time.perf_counter() - started) * 1000 < 2_000, "first preset edit reparsed oversized recovery state")
+                replacement = oversized_page.evaluate("key => localStorage.getItem(key)", preset_key)
+                result.require(
+                    replacement is not None and len(replacement) < 4 * 1024 * 1024 and "Recovery preset" in replacement,
+                    "first explicit preset edit did not replace oversized recovery state",
+                )
+            finally:
+                oversized_context.close()
+
+            legacy_context = browser.new_context(viewport={"width": 1024, "height": 768})
+            legacy_context.add_init_script(
+                f"localStorage.setItem('intruder.presets',{json.dumps(oversized)});"
+            )
+            legacy_page = legacy_context.new_page()
+            legacy_page.set_default_timeout(10_000)
+            legacy_page.route(
+                "**/api/ui/intruder-presets",
+                lambda route: route.fulfill(status=200, content_type="application/json", body='{"value":null}'),
+            )
+            attach_observers(legacy_page, result, base_netloc)
+            try:
+                started = time.perf_counter()
+                legacy_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(legacy_page)
+                result.require((time.perf_counter() - started) * 1000 < 8_000, "oversized legacy Intruder preset draft blocked boot")
+                result.require(
+                    legacy_page.evaluate("() => localStorage.getItem('intruder.presets')?.length") == len(oversized),
+                    "oversized legacy Intruder preset draft was removed",
+                )
+                result.require(
+                    legacy_page.evaluate("key => localStorage.getItem(key)", preset_key) is None,
+                    "oversized legacy Intruder preset draft was copied into canonical storage",
+                )
+                legacy_warning = legacy_page.locator("#workspaceHydrationStatus").inner_text()
+                result.require(
+                    "Intruder presets" in legacy_warning
+                    and any(
+                        message in legacy_warning
+                        for message in (
+                            "legacy saved state is too large to load safely",
+                            "older key shared by multiple project names",
+                            "legacy migration is deferred",
+                            "legacy browser state could not be migrated",
+                        )
+                    ),
+                    "oversized legacy Intruder preset migration warning was not consumed",
+                )
+            finally:
+                legacy_context.close()
+
+        result.run(
+            "unsafe Intruder preset drafts survive hydration",
+            unsafe_intruder_preset_drafts_survive_hydration,
+        )
+
         def browser_storage_failure_keeps_project_sync() -> None:
             _, project_info, _ = _json_get(base, "/api/project")
             project_identity = str(project_info.get("dir") or "")
@@ -1849,7 +1988,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     "document.querySelector('#intrPreset')?.textContent.includes('Session preset')"
                 )
                 result.require(
-                    "Session preset" in storage_page.locator("#intrPreset").inner_text(),
+                    "Session preset" in storage_page.locator("#intrPreset option").all_text_contents(),
                     "failed browser storage discarded the newly built preset",
                 )
                 result.require(
@@ -2175,7 +2314,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             result.require(page.evaluate("document.activeElement?.dataset.tab") == "settings", "End did not focus Settings")
             page.keyboard.press("Home")
             result.require(page.evaluate("document.activeElement?.dataset.tab") == "proxy", "Home did not focus Proxy")
-            result.require(page.locator('.tab[data-tab="proxy"]').evaluate("el=>el.matches(':focus-visible')"), "keyboard focus is not visible on main navigation")
+            result.require(
+                page.locator('.tab[data-tab="proxy"]').evaluate("el=>parseFloat(getComputedStyle(el).outlineWidth)>=3"),
+                "keyboard focus is not visible on main navigation",
+            )
 
         result.run("main navigation, motion, and keyboard semantics", navigation_semantics)
 
@@ -3080,21 +3222,20 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.evaluate("document.activeElement?.matches('#findBody .block-text')") is True,
                     "final reproduction step did not retain focus before screenshot paste",
                 )
-                png_hex = (
-                    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-                    "0000000d49444154789c6360f8cf00000003000101c9fe2a0000000049454e44ae426082"
-                )
                 page.evaluate(
-                    """hex => {
-                      const bytes = new Uint8Array(hex.match(/../g).map(v => parseInt(v, 16)));
-                      const file = new File([bytes], 'ui-audit-evidence.png', {type:'image/png'});
+                    """async () => {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = 1; canvas.height = 1;
+                      const context = canvas.getContext('2d');
+                      context.fillStyle = '#067a46'; context.fillRect(0, 0, 1, 1);
+                      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                      const file = new File([blob], 'ui-audit-evidence.png', {type:'image/png'});
                       const transfer = new DataTransfer();
                       transfer.items.add(file);
-                      document.activeElement.dispatchEvent(new ClipboardEvent('paste', {
-                        bubbles:true, cancelable:true, clipboardData:transfer,
-                      }));
-                    }""",
-                    png_hex,
+                      const event = new Event('paste', {bubbles:true, cancelable:true});
+                      Object.defineProperty(event, 'clipboardData', {value:transfer});
+                      document.activeElement.dispatchEvent(event);
+                    }"""
                 )
                 page.wait_for_selector("#findBody .find-block-image, #findBody .find-doc-image", timeout=10_000)
                 page.wait_for_function(
@@ -3245,7 +3386,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     # desktop-only journeys by leaving the shared page narrow.
                     page.set_viewport_size({"width": 1440, "height": 900})
                 guide = page.locator("#findGuide")
-                guide.click()
+                guide.focus()
+                guide.press("Enter")
                 page.keyboard.press("Escape")
                 result.require(page.evaluate("document.activeElement?.id") == "findGuide", "Finding guide did not restore focus")
 
@@ -3294,9 +3436,11 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.route("**/api/findings", hold_finding_create)
                 try:
                     page.locator('.tab[data-tab="findings"]').click()
-                    page.locator("#findNew").click()
+                    page.locator("#findNew").focus()
+                    page.locator("#findNew").evaluate("el=>el.click()")
                     page.locator("#fcTitle").fill(finding_title)
-                    page.locator("#fcSave").click()
+                    page.locator("#fcSave").focus()
+                    page.locator("#fcSave").evaluate("el=>el.click()")
                     wait_for_route(held_findings, "held finding create")
                     result.require(
                         page.locator("#fcTitle").is_disabled()
@@ -3316,7 +3460,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     )
                     absorb_expected_rejections()
                     result.require(page.evaluate("document.activeElement?.id") == "fcSave", "finding failure did not restore Create focus")
-                    page.locator("#fcSave").click()
+                    page.locator("#fcSave").evaluate("el=>el.click()")
                     wait_for_route(held_findings, "retried finding create", 2)
                     result.require(page.evaluate("document.activeElement?.id") == "fcStatus", "finding retry did not focus its pending status")
                     held_findings[1].continue_()
@@ -3369,7 +3513,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.locator("#checkNew").click()
                     page.locator("#checkId").fill(check_id)
                     page.locator("#checkSrc").fill("def check(flow):\n    return []\n")
-                    page.locator("#checkSave").click()
+                    page.locator("#checkSave").focus()
+                    page.locator("#checkSave").evaluate("el=>el.click()")
                     wait_for_route(held_checks, "held Scanner check save")
                     result.require(
                         page.locator("#checksClose").is_disabled()
@@ -3388,7 +3533,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     )
                     absorb_expected_rejections()
                     result.require(page.evaluate("document.activeElement?.id") == "checkSave", "Scanner failure did not restore Save focus")
-                    page.locator("#checkSave").click()
+                    page.locator("#checkSave").evaluate("el=>el.click()")
                     wait_for_route(held_checks, "retried Scanner check save", 2)
                     result.require(page.evaluate("document.activeElement?.id") == "checkOut", "Scanner retry did not focus its pending status")
                     held_checks[1].continue_()
@@ -3449,7 +3594,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.route("**/api/authz", hold_authz_save)
                 try:
                     page.locator("#authzIds .authz-name").first.fill("ui-audit-held-identity")
-                    page.locator("#authzSave").click()
+                    page.locator("#authzSave").focus()
+                    page.locator("#authzSave").evaluate("el=>el.click()")
                     wait_for_route(held_authz, "held Authz identity save")
                     result.require(
                         page.locator("#authzClose").is_disabled()
@@ -3472,7 +3618,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         "Authz failure was not announced assertively",
                     )
                     result.require(page.evaluate("document.activeElement?.id") == "authzSave", "Authz failure did not restore Save focus")
-                    page.locator("#authzSave").click()
+                    page.locator("#authzSave").evaluate("el=>el.click()")
                     wait_for_route(held_authz, "retried Authz identity save", 2)
                     result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz retry did not focus its pending status")
                     held_authz[1].continue_()
@@ -3487,7 +3633,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.route("**/api/authz/run", hold_authz_run)
                     page.locator('#authzMode button[data-m="scope"]').click()
                     page.wait_for_selector("#authzScopeEdit", state="visible", timeout=10_000)
-                    page.locator("#authzRun").click()
+                    page.locator("#authzRun").focus()
+                    page.locator("#authzRun").evaluate("el=>el.click()")
                     wait_for_route(held_authz_runs, "held in-scope Authz run")
                     result.require(page.locator("#authzScopeEdit").is_disabled(), "Authz scope navigation stayed enabled during a run")
                     result.require(page.evaluate("document.activeElement?.id") == "authzStatus", "Authz run did not retain pending focus")
@@ -3982,7 +4129,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     scope_row.locator('[data-k="host"]').fill("changed.example.com")
                     scope_row.locator('[data-k="host"]').blur()
                     wait_route(scope_put, "scope PUT")
-                    page.locator(f'#scopeBody tr[data-id="{scope_id}"] [data-del]').click()
+                    scope_delete_button = page.locator(f'#scopeBody tr[data-id="{scope_id}"] [data-del]')
+                    scope_delete_button.focus()
+                    scope_delete_button.press("Enter")
                     result.require(page.locator(f'#scopeBody tr[data-id="{scope_id}"]').count() == 1, "rejected scope DELETE removed the row before acknowledgement")
                     fulfill_rejection(scope_put[0], "scope")
                     wait_route(scope_delete, "queued scope DELETE")
@@ -4085,7 +4234,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     rule_row.locator('[data-k="match"]').fill("^X-UiAudit-Changed:")
                     rule_row.locator('[data-k="match"]').blur()
                     wait_route(rule_put, "rule PUT")
-                    page.locator(f'#rulesBody tr[data-id="{rule_id}"] [data-del]').click()
+                    rule_delete_button = page.locator(f'#rulesBody tr[data-id="{rule_id}"] [data-del]')
+                    rule_delete_button.focus()
+                    rule_delete_button.press("Enter")
                     result.require(page.locator(f'#rulesBody tr[data-id="{rule_id}"]').count() == 1, "rejected rule DELETE removed the row before acknowledgement")
                     fulfill_rejection(rule_put[0], "rule")
                     wait_route(rule_delete, "queued rule DELETE")
@@ -4453,9 +4604,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                       }
                     }"""
                 )
-                cdp = context.new_cdp_session(page)
-                cdp.send("Performance.enable")
-                before = cdp_metrics(cdp)
+                cdp = None
+                before: Dict[str, float] = {}
+                if args.browser_engine == "chromium":
+                    cdp = context.new_cdp_session(page)
+                    cdp.send("Performance.enable")
+                    before = cdp_metrics(cdp)
                 network_samples: List[float] = []
                 all_long_tasks: List[float] = []
                 for run in range(args.perf_runs):
@@ -4496,7 +4650,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.wait_for_selector("#mapGraphG .g-node", timeout=10_000)
                 selected = page.locator("#mapGraphG .g-node[aria-selected='true']")
                 result.require(selected.count() == 1, "Map graph has no single accessible selection")
-                map_before = cdp_metrics(cdp)
+                map_before = cdp_metrics(cdp) if cdp is not None else {}
                 page.locator("#mapFit").click()
                 page.wait_for_timeout(320)
                 transform_before_gesture = page.locator("#mapGraphG").get_attribute("transform") or ""
@@ -4521,12 +4675,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     )
                 else:
                     result.failures.append("Map SVG has no layout box for wheel/drag performance check")
-                map_after = cdp_metrics(cdp)
+                map_after = cdp_metrics(cdp) if cdp is not None else {}
                 invalidate_and_close_flow_popup(page)
                 page.locator('.tab[data-tab="proxy"]').click()
                 result.require(abs(rows_box.evaluate("el=>el.scrollTop") - saved_scroll) < 2, "panel navigation lost History scroll state")
 
-                after = cdp_metrics(cdp)
+                after = cdp_metrics(cdp) if cdp is not None else {}
                 transition_samples = page.evaluate(
                     """async names => {
                       const samples=[];
@@ -4544,8 +4698,9 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     }""",
                     list(TOP_LEVEL_TABS),
                 )
-                result.metrics.update(
-                    {
+                performance_metrics: Dict[str, Any] = {
+                        "browser_engine": args.browser_engine,
+                        "performance_source": "performance-observer+cdp" if cdp is not None else "performance-observer",
                         "burst_requests": args.burst,
                         "burst_runs": args.perf_runs,
                         "burst_network_ms": network_samples[0],
@@ -4559,16 +4714,19 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         "map_ready_ms": map_ready_ms,
                         "map_interaction_ms": map_interaction_samples,
                         "map_interaction_p95_ms": percentile(map_interaction_samples, 95),
+                    }
+                if cdp is not None:
+                    performance_metrics.update({
                         "cdp_task_duration_s": metric_delta(before, after, "TaskDuration"),
                         "cdp_script_duration_s": metric_delta(before, after, "ScriptDuration"),
                         "cdp_layout_duration_s": metric_delta(before, after, "LayoutDuration"),
                         "cdp_map_task_duration_s": metric_delta(map_before, map_after, "TaskDuration"),
                         "cdp_map_script_duration_s": metric_delta(map_before, map_after, "ScriptDuration"),
                         "cdp_map_layout_duration_s": metric_delta(map_before, map_after, "LayoutDuration"),
-                    }
-                )
+                    })
+                result.metrics.update(performance_metrics)
 
-            result.run("high-volume History, Map render/Fit, scroll, and CDP performance", burst_and_map_performance)
+            result.run("high-volume History, Map render/Fit, scroll, and browser performance", burst_and_map_performance)
 
             def mobile_dense_reachability() -> None:
                 invalidate_and_close_flow_popup(page)
@@ -4705,6 +4863,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
     report = {
         "application_source": application_source,
         "base_url": base,
+        "browser_engine": args.browser_engine,
         "mode": "full" if args.full else "smoke",
         "startup_engines": args.startup_engines,
         "preflight": preflight,
@@ -4725,6 +4884,60 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
     return result
 
 
+def aggregate_engine_audits(
+    args: argparse.Namespace,
+    reports: Dict[str, Dict[str, Any]],
+) -> AuditResult:
+    combined = AuditResult()
+    primary_engine = "chromium" if "chromium" in reports else next(iter(reports))
+    primary = reports[primary_engine]
+    for engine_name, report in reports.items():
+        for case_name, status in report.get("cases", {}).items():
+            qualified = case_name if case_name.endswith(f"({engine_name})") else f"{case_name} ({engine_name})"
+            combined.cases[qualified] = status
+        combined.failures.extend(f"{engine_name}: {message}" for message in report.get("failures", []))
+        combined.console_errors.extend(f"{engine_name}: {message}" for message in report.get("console_errors", []))
+        combined.expected_console_errors.extend(f"{engine_name}: {message}" for message in report.get("expected_console_errors", []))
+        combined.page_errors.extend(f"{engine_name}: {message}" for message in report.get("page_errors", []))
+        combined.http_errors.extend(f"{engine_name}: {message}" for message in report.get("http_errors", []))
+        combined.expected_http_errors.extend(f"{engine_name}: {message}" for message in report.get("expected_http_errors", []))
+        combined.external_requests.extend(f"{engine_name}: {message}" for message in report.get("external_requests", []))
+    identities = {json.dumps(report.get("application_source"), sort_keys=True) for report in reports.values()}
+    if len(identities) != 1:
+        combined.failures.append("browser engines did not audit the same application source")
+    combined.metrics = dict(primary.get("metrics", {}))
+    combined.metrics["by_engine"] = {engine: report.get("metrics", {}) for engine, report in reports.items()}
+    combined.metrics["screenshots_by_engine"] = {
+        engine: report.get("after_screenshots", {}) for engine, report in reports.items()
+    }
+    aggregate = {
+        "application_source": primary.get("application_source"),
+        "base_url": primary.get("base_url"),
+        "base_urls": {engine: report.get("base_url") for engine, report in reports.items()},
+        "browser_engines": list(reports),
+        "mode": "full" if args.full else "smoke",
+        "startup_engines": list(reports),
+        "preflight": {engine: report.get("preflight", {}) for engine, report in reports.items()},
+        "viewports": [list(viewport) for viewport in VIEWPORTS],
+        "cases": combined.cases,
+        "metrics": combined.metrics,
+        "console_errors": combined.console_errors,
+        "expected_console_errors": combined.expected_console_errors,
+        "page_errors": combined.page_errors,
+        "http_errors": combined.http_errors,
+        "expected_http_errors": combined.expected_http_errors,
+        "external_requests": combined.external_requests,
+        "before_screenshots": primary.get("before_screenshots", {}),
+        "after_screenshots": primary.get("after_screenshots", {}),
+        "failures": combined.failures,
+        "engine_reports": reports,
+    }
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "browser-audit.json").write_text(json.dumps(aggregate, indent=2, sort_keys=True) + "\n")
+    return combined
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=None)
@@ -4736,13 +4949,13 @@ def main() -> int:
     parser.add_argument("--perf-runs", type=int, default=3, help="repeat the high-volume profile this many times")
     parser.add_argument(
         "--startup-engines",
-        default="chromium",
-        help="comma-separated browser engines for saved-workspace startup fault checks",
+        default=",".join(BROWSER_ENGINES),
+        help="comma-separated browser engines for the complete panel, dependency, screenshot, and performance matrix",
     )
     parser.add_argument("--headed", action="store_true")
     args = parser.parse_args()
     requested_engines = [value.strip().lower() for value in args.startup_engines.split(",") if value.strip()]
-    unknown_engines = sorted(set(requested_engines) - {"chromium", "firefox", "webkit"})
+    unknown_engines = sorted(set(requested_engines) - set(BROWSER_ENGINES))
     if unknown_engines:
         parser.error("--startup-engines accepts only chromium, firefox, webkit")
     args.startup_engines = list(dict.fromkeys(["chromium", *requested_engines]))
@@ -4755,6 +4968,8 @@ def main() -> int:
             parser.error("--full requires --managed; arbitrary existing servers are not accepted")
         if args.base_url or args.proxy:
             parser.error("--full --managed chooses its own disposable server and data root")
+        if set(args.startup_engines) != set(BROWSER_ENGINES):
+            parser.error("--full requires chromium, firefox, and webkit for complete evidence")
     elif args.managed:
         parser.error("--managed requires --full")
     if args.full:
@@ -4766,37 +4981,52 @@ def main() -> int:
     else:
         args.base_url = args.base_url or "http://127.0.0.1:9966"
         args.proxy = args.proxy or ("127.0.0.1", 8080)
-    managed: Optional[Tuple[subprocess.Popen[bytes], Path, str, List[socket.socket]]] = None
-    managed_source: Optional[Dict[str, Any]] = None
-    result: Optional[AuditResult] = None
-    audit_error: Optional[str] = None
-    cleanup_error = False
-    try:
-        if args.full:
-            process, root, project, base, proxy, managed_source, reservations = prepare_managed_audit()
-            managed = (process, root, project, reservations)
-            args.base_url = base
-            args.proxy = proxy
-            args.expected_project = project
-            args.expected_data_dir = str(root)
-        result = run_audit(args, managed_source)
-    except Exception as exc:
-        audit_error = type(exc).__name__
-    finally:
-        if managed is not None:
-            try:
-                cleanup_managed_audit(*managed)
-            except Exception:
-                cleanup_error = True
-    if audit_error:
-        print(f"audit failed ({audit_error})", file=sys.stderr)
-        return 1
-    if cleanup_error:
-        print("audit cleanup failed; an owned temporary candidate or root may remain", file=sys.stderr)
-        return 1
-    if result is None:
+    reports: Dict[str, Dict[str, Any]] = {}
+    results: Dict[str, AuditResult] = {}
+    base_output = Path(args.output_dir)
+    for engine_name in args.startup_engines:
+        engine_args = argparse.Namespace(**vars(args))
+        engine_args.browser_engine = engine_name
+        engine_args.startup_engines = [engine_name]
+        engine_args.output_dir = str(base_output if engine_name == "chromium" else base_output / engine_name)
+        managed: Optional[Tuple[subprocess.Popen[bytes], Path, str, List[socket.socket]]] = None
+        managed_source: Optional[Dict[str, Any]] = None
+        try:
+            if engine_args.full:
+                process, root, project, base, proxy, managed_source, reservations = prepare_managed_audit()
+                managed = (process, root, project, reservations)
+                engine_args.base_url = base
+                engine_args.proxy = proxy
+                engine_args.expected_project = project
+                engine_args.expected_data_dir = str(root)
+            results[engine_name] = run_audit(engine_args, managed_source)
+            report_path = Path(engine_args.output_dir) / "browser-audit.json"
+            reports[engine_name] = json.loads(report_path.read_text())
+        except Exception as exc:
+            failure = AuditResult(failures=[f"audit failed ({type(exc).__name__})"])
+            results[engine_name] = failure
+            reports[engine_name] = {
+                "application_source": managed_source or runtime_source_identity(),
+                "base_url": engine_args.base_url,
+                "browser_engine": engine_name,
+                "mode": "full" if engine_args.full else "smoke",
+                "preflight": {},
+                "cases": {},
+                "metrics": {},
+                "failures": failure.failures,
+            }
+        finally:
+            if managed is not None:
+                try:
+                    cleanup_managed_audit(*managed)
+                except Exception as exc:
+                    reports[engine_name].setdefault("failures", []).append(
+                        f"audit cleanup failed ({type(exc).__name__})"
+                    )
+    if not reports:
         print("audit failed before producing a result", file=sys.stderr)
         return 1
+    result = aggregate_engine_audits(args, reports)
     print(json.dumps({"cases": result.cases, "metrics": result.metrics, "failures": result.failures}, indent=2, sort_keys=True))
     return 1 if result.failures else 0
 

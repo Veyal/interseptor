@@ -172,6 +172,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .nav-rail-group-label{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--fg3);padding:5px 10px 4px}
 .nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:var(--sp-2)}
 .tab{position:relative;font-family:var(--ui);font-size:var(--fs-sm);font-weight:600;color:var(--fg2);padding:9px 12px;border-radius:var(--r-sm);text-align:left;display:flex;align-items:center;width:100%;border-left:2px solid transparent;letter-spacing:.1px}
+.tab:focus{outline:3px solid var(--focus-ring);outline-offset:2px;box-shadow:0 0 0 2px var(--bg)}
 .tab:hover{color:var(--fg);background:var(--bg3)}
 .tab.active{color:var(--accent);background:var(--accentDim);box-shadow:inset 2px 0 0 var(--accent)}
 .badge{font-size:var(--fs-xs);font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:var(--r-md);padding:1px 6px;margin-left:auto}

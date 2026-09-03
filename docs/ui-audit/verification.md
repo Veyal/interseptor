@@ -2,8 +2,9 @@
 
 ## Revision and environment
 
-- Audited worktree base: `a7ab425459c49047d581d2373c7d776d48f0cec7`, with the exact saved-workspace
-  recovery runtime and harness captured by the digests below
+- Audited worktree base: `application_source.worktree_base_commit` in
+  [`browser-audit.json`](browser-audit.json), with the exact saved-workspace recovery runtime and
+  harness captured by the adjacent digests
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -29,10 +30,10 @@
 
 ## Current-source applicability
 
-The retained audit digest is `e80e478e3ea55ca2ddad37723469d003255310a93469dced0064b5ee1bc35f79`
-across 252 runtime files; the harness digest is
-`0065385adc1f91e84ad413174dad9a30e2a47ac7d82d2a109ff20ab046b9d08f`. It matches the current
-saved-workspace and evidence-first Findings runtime exactly, including bounded startup recovery,
+The retained runtime digest, runtime file count, and harness digest are recorded under
+`application_source` in [`browser-audit.json`](browser-audit.json) and checked against the current
+worktree by the Go audit-evidence regression. They match the current saved-workspace and
+evidence-first Findings runtime exactly, including bounded startup recovery,
 versioned project-local browser keys, guarded Repeater/Intruder state, and structured
 Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
 provenance, report readiness, safe export paths, compact-toolbar behavior, mobile navigation
@@ -40,7 +41,7 @@ semantics, and the published `2.0.8` browser-background suppression baseline.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
-The complete 59-case matrix and three-run performance profile were executed against that exact source
+The complete 132-case aggregate matrix (44 cases per engine) and three-run-per-engine performance profiles were executed against that exact source
 with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
 --perf-runs 3 --startup-engines chromium,firefox,webkit`. Full mode cannot accept an arbitrary
 existing server: it builds and starts one owned
@@ -239,30 +240,28 @@ restored OOB disabled; it made no external callback or system-proxy change.
   action for retry, and kept Escape/backdrop/scope exits locked until acknowledgement. Intercept Forward and response
   Drop kept their queue items until deliberately delayed server acknowledgements completed. Authz
   retained its explicit context target and followed later A→B→A selection changes exactly.
-- The normal sweep had no unexpected console, page, or HTTP errors and no external browser request.
-  Fault contexts intentionally returned 23 exact `409`/`503` responses across recovery and
-  ownership paths; their expected HTTP and network-console messages were classified separately.
+- Every engine's normal sweep had no unexpected console, page, or HTTP errors and no external
+  browser request. Fault contexts intentionally returned exact `409`/`503` responses across
+  recovery and ownership paths; their expected HTTP and network-console messages were classified
+  separately per engine.
 
 ## Performance findings
 
-The full profile was captured after a fresh launch of the exact runtime source identified in
-`browser-audit.json`. Performance sampling
-used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
-runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
-control was observed.
+Each engine's full profile was captured after a fresh launch of the exact runtime source identified in
+`browser-audit.json`. Performance sampling used the Performance Observer API, three independent
+240-request capture runs per engine, bounded-DOM assertions, and real Map Fit/wheel/drag input;
+Chromium additionally retained Chrome DevTools Protocol task, script, and layout counters. No
+browser long task or stuck busy control was observed.
 
-| Scenario | Retained evidence |
+| Engine | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `190.1 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `213.9 ms` |
-| Delayed Intercept acknowledgement | `334.3 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `287.3 ms`; Fit/wheel/drag interaction `422.5 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.663232 s`; script `0.129369 s`; layout `0.051071 s` |
-| Map interaction | CDP task `0.030942 s`; script `0.001054 s`; layout `0.000329 s` |
+| Chromium | `metrics.by_engine.chromium`: network and interaction p95, bounded History rows/nodes, long tasks, Map readiness/gesture latency, and CDP task/script/layout deltas |
+| Firefox | `metrics.by_engine.firefox`: network and interaction p95, bounded History rows/nodes, long tasks, and Map readiness/gesture latency |
+| WebKit | `metrics.by_engine.webkit`: network and interaction p95, bounded History rows/nodes, long tasks, and Map readiness/gesture latency |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
-interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
-visible busy surface behind.
+interactive after each engine's 720 requests, preserved its scroll state through Map navigation,
+and left no visible busy surface behind.
 
 ## Competitive review
 

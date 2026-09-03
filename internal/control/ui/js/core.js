@@ -1376,6 +1376,11 @@ function registerModal(modalEl){
     if(entry.onDismiss)entry.onDismiss();
     else if(entry.onEscape)entry.onEscape();
     else closeModal(modalEl);
+    if(topModal()===entry&&!entry.dialog.contains(document.activeElement)){
+      const pending=entry.dialog.querySelector('[aria-busy="true"][tabindex]');
+      const target=visibleFocusable(pending)?pending:modalFocusables(entry)[0]||entry.dialog;
+      target.focus({preventScroll:true});
+    }
   });
   return entry;
 }

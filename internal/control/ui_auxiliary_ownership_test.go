@@ -171,7 +171,7 @@ func TestUIFindingCreateAndAsyncEditorActionsRetainTheirOwners(t *testing.T) {
 		"status.focus({preventScroll:true})",
 		"restore.focus({preventScroll:true})",
 		"function closeFindingCreate()",
-		"if(findingCreateBusy)return",
+		"if(findingCreateBusy){$('#fcStatus')?.focus({preventScroll:true});return;}",
 		"onEscape:closeFindingCreate,onDismiss:closeFindingCreate",
 		"'#fcTitle','#fcSeverity','#fcSave','#fcClose'",
 		"const createEpoch=++findingCreateEpoch",

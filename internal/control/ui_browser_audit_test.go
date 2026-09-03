@@ -99,6 +99,17 @@ func TestUIBrowserAuditRetainsCoreAndFindingsScreenshots(t *testing.T) {
 				Height int    `json:"height"`
 			} `json:"screenshots"`
 		} `json:"metrics"`
+		EngineReports map[string]struct {
+			Cases map[string]string `json:"cases"`
+			Metrics struct {
+				BrowserEngine string `json:"browser_engine"`
+				Screenshots   map[string]struct {
+					Path   string `json:"path"`
+					Width  int    `json:"width"`
+					Height int    `json:"height"`
+				} `json:"screenshots"`
+			} `json:"metrics"`
+		} `json:"engine_reports"`
 	}
 	if err := json.Unmarshal(reportBytes, &report); err != nil {
 		t.Fatalf("decode retained UI browser audit: %v", err)
@@ -138,6 +149,83 @@ func TestUIBrowserAuditRetainsCoreAndFindingsScreenshots(t *testing.T) {
 		height := int(binary.BigEndian.Uint32(png[20:24]))
 		if width != expected.width || height != expected.height {
 			t.Errorf("%s PNG is %dx%d, want %dx%d", key, width, height, expected.width, expected.height)
+		}
+	}
+	for _, engine := range []string{"chromium", "firefox", "webkit"} {
+		engineReport, ok := report.EngineReports[engine]
+		if !ok {
+			t.Errorf("retained UI audit is missing the %s full-engine report", engine)
+			continue
+		}
+		for _, name := range []string{
+			"main navigation, motion, and keyboard semantics",
+			"Repeater/Intruder inner tabs and every Settings section",
+			"high-volume History, Map render/Fit, scroll, and browser performance",
+			"required screenshots",
+		} {
+			if engineReport.Cases[name] != "pass" {
+				t.Errorf("%s full-engine case %q = %q, want pass", engine, name, engineReport.Cases[name])
+			}
+		}
+		if engineReport.Metrics.BrowserEngine != engine {
+			t.Errorf("%s performance evidence identifies engine %q", engine, engineReport.Metrics.BrowserEngine)
+		}
+		if len(engineReport.Metrics.Screenshots) != 6 {
+			t.Errorf("%s retained %d screenshots, want 6", engine, len(engineReport.Metrics.Screenshots))
+		}
+		for key, expected := range want {
+			got, ok := engineReport.Metrics.Screenshots[key]
+			if !ok {
+				t.Errorf("%s retained UI audit is missing %s screenshot", engine, key)
+				continue
+			}
+			expectedPath := expected.path
+			if engine != "chromium" {
+				expectedPath = filepath.ToSlash(filepath.Join("docs", "ui-audit", engine, filepath.Base(expected.path)))
+			}
+			if got.Path != expectedPath || got.Width != expected.width || got.Height != expected.height {
+				t.Errorf("%s %s screenshot = (%q, %dx%d), want (%q, %dx%d)", engine, key, got.Path, got.Width, got.Height, expectedPath, expected.width, expected.height)
+				continue
+			}
+			png, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(got.Path)))
+			if err != nil {
+				t.Errorf("read %s %s screenshot: %v", engine, key, err)
+				continue
+			}
+			if len(png) < 24 || !bytes.Equal(png[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) || string(png[12:16]) != "IHDR" {
+				t.Errorf("%s %s screenshot is not a valid PNG with an IHDR", engine, key)
+				continue
+			}
+			width := int(binary.BigEndian.Uint32(png[16:20]))
+			height := int(binary.BigEndian.Uint32(png[20:24]))
+			if width != expected.width || height != expected.height {
+				t.Errorf("%s %s PNG is %dx%d, want %dx%d", engine, key, width, height, expected.width, expected.height)
+			}
+		}
+	}
+}
+
+func TestUIBrowserAuditRunsCompleteMatrixPerEngine(t *testing.T) {
+	source, err := os.ReadFile("../../scripts/ui_browser_audit.py")
+	if err != nil {
+		t.Fatalf("read UI browser audit: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		`BROWSER_ENGINES = ("chromium", "firefox", "webkit")`,
+		`default=",".join(BROWSER_ENGINES)`,
+		`--full requires chromium, firefox, and webkit for complete evidence`,
+		`for engine_name in args.startup_engines:`,
+		`engine_args.browser_engine = engine_name`,
+		`results[engine_name] = run_audit(engine_args, managed_source)`,
+		`getattr(playwright, args.browser_engine).launch`,
+		`if args.browser_engine == "chromium":`,
+		`"performance_source": "performance-observer+cdp"`,
+		`"screenshots_by_engine"`,
+		`"engine_reports": reports`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("complete cross-browser matrix missing %s", want)
 		}
 	}
 }
@@ -388,7 +476,7 @@ func TestUIBrowserAuditPerformanceRetriesOnlyVisibleFlowPopup(t *testing.T) {
 	if start < 0 {
 		t.Fatal("performance journey not found")
 	}
-	end := strings.Index(text[start:], `result.run("high-volume History, Map render/Fit, scroll, and CDP performance"`)
+	end := strings.Index(text[start:], `result.run("high-volume History, Map render/Fit, scroll, and browser performance"`)
 	if end < 0 {
 		t.Fatal("performance journey boundary not found")
 	}
@@ -530,7 +618,7 @@ func TestUIBrowserAuditManagedBuildUsesVerifiedSourceSnapshot(t *testing.T) {
 		`"-mod=readonly"`,
 		`"-modcacherw"`,
 		"cwd=snapshot",
-		"run_audit(args, managed_source)",
+		"run_audit(engine_args, managed_source)",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("managed full audit source binding missing %s", want)

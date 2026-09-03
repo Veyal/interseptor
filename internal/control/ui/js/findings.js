@@ -1389,7 +1389,7 @@ function setFindingCreateBusy(busy){
   }
 }
 function closeFindingCreate(){
-  if(findingCreateBusy)return;
+  if(findingCreateBusy){$('#fcStatus')?.focus({preventScroll:true});return;}
   findingCreateEpoch++;
   closeModal($('#findCreateModal'));
 }

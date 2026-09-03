@@ -342,10 +342,10 @@ function reportWorkspaceStorageWarning(message){
   toast(message,'warn');
 }
 export function workspaceStorageWarningMessage(){return workspaceStorageWarnings.join(' ');}
-function persistedTabStateIsUnsafe(raw){
+function persistedUIStateIsUnsafe(raw,valid){
   if(raw===null)return false;
   if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES)return true;
-  try{return !isSafePersistedTabState(JSON.parse(raw));}catch(e){return true;}
+  try{return !valid(JSON.parse(raw));}catch(e){return true;}
 }
 export function releaseWorkstationReady(result={ok:true}){resolveWorkstationReady(result);}
 export async function waitForWorkstationReady(){
@@ -525,12 +525,9 @@ async function hydrateUIState(panel,storageBase,valid=()=>true){
   }
   if(result.status==='success'){
     const storageKey=projectStorageKey(storageBase);
-    const tabState=storageBase==='rep.tabs'||storageBase==='intr.tabs';
     let preserveLocal=false;
-    if(tabState){
-      try{preserveLocal=persistedTabStateIsUnsafe(localStorage.getItem(storageKey));}
-      catch(e){preserveLocal=true;}
-    }
+    try{preserveLocal=persistedUIStateIsUnsafe(localStorage.getItem(storageKey),valid);}
+    catch(e){preserveLocal=true;}
     if(preserveLocal)guardedHydratedTabStates.set(storageBase,result.value);
     else try{localStorage.setItem(storageKey,JSON.stringify(result.value));}
     catch(e){
@@ -1651,10 +1648,33 @@ function normalizeIntruderPresets(value){
 async function hydrateIntrPresets(){
   return hydrateUIState('intruder-presets','intruder.presets',value=>normalizeIntruderPresets(value)!==null);
 }
+function readIntrPresetBrowserState(){
+  const key=intrPresetsKey();
+  const migrationWarning=consumeStorageMigrationWarning(key);
+  if(migrationWarning==='ambiguous legacy project state')reportWorkspaceStorageWarning('Intruder presets has saved browser state under an older key shared by multiple project names; it was kept unchanged for recovery.');
+  else if(migrationWarning==='legacy project ownership unavailable')reportWorkspaceStorageWarning('Intruder presets legacy migration is deferred until project ownership is known; the older draft was kept unchanged.');
+  else if(migrationWarning==='conflicting unscoped legacy state')reportWorkspaceStorageWarning('Intruder presets has an older unscoped browser draft that differs from current project state; both were kept.');
+  else if(migrationWarning==='legacy project state could not be migrated')reportWorkspaceStorageWarning('Intruder presets legacy browser state could not be migrated; the original draft was kept for recovery.');
+  else if(migrationWarning)reportWorkspaceStorageWarning('Intruder presets legacy saved state is too large to load safely; the original draft was kept.');
+  let raw;
+  try{raw=localStorage.getItem(key);}catch(e){reportWorkspaceStorageWarning('Intruder presets saved state could not be read; the original draft was kept for recovery.');return null;}
+  if(raw===null)return null;
+  if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
+    reportWorkspaceStorageWarning('Intruder presets saved state is too large to load safely; the original draft was kept for recovery. Saving a preset will replace it.');
+    return null;
+  }
+  try{
+    const list=normalizeIntruderPresets(JSON.parse(raw));
+    if(list!==null)return list;
+  }catch(e){}
+  reportWorkspaceStorageWarning('Intruder presets saved state is not recognized; the original draft was kept for recovery. Saving a preset will replace it.');
+  return null;
+}
 function loadIntrPresets(fallback=null){
   const sel=$('#intrPreset');if(!sel)return;
+  const browserList=readIntrPresetBrowserState();
   let list=normalizeIntruderPresets(fallback);
-  if(list===null)try{list=normalizeIntruderPresets(JSON.parse(localStorage.getItem(intrPresetsKey())||'null'));}catch(e){}
+  if(list===null)list=browserList;
   list=normalizeIntruderPresets(list)||[];
   sel.innerHTML='<option value="">presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
   sel.onchange=()=>{
@@ -1673,7 +1693,7 @@ function loadIntrPresets(fallback=null){
 if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   const snapshot=intrReadEditor();
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
-  let list=[];try{list=normalizeIntruderPresets(JSON.parse(localStorage.getItem(intrPresetsKey())||'[]'))||[];}catch(e){}
+  const list=readIntrPresetBrowserState()||[];
   list.unshift({name,target:snapshot.target,template:snapshot.template,type:snapshot.type,
     sniper:snapshot.sniper,pos:snapshot.pos.slice(),sniperSource:snapshot.sniperSource,sniperNums:{...snapshot.sniperNums},
     posSources:snapshot.posSources.slice(),posNums:snapshot.posNums.map(n=>({...n})),
