@@ -69,8 +69,14 @@ module startup, project identification, and Repeater/Intruder hydration without 
 the status says project-scoped tools are locked, confirm the active project is still available and
 then reload; Interseptor deliberately does not guess a project after an identity failure. A recovery
 warning means an older, malformed, or oversized browser draft was kept intact and the next explicit
-edit will create its replacement. See [Project boundaries](projects-and-data.md#project-boundaries)
+valid edit will create its replacement and resume project synchronization. See [Project boundaries](projects-and-data.md#project-boundaries)
 for storage and size limits.
+
+If the warning says legacy migration is deferred until project ownership is known, keep working or
+reload after the project list is available. Interseptor leaves the older legacy draft untouched,
+while new edits continue saving to the canonical project-directory browser key and project storage.
+The same guard applies to older unscoped drafts, which cannot be assigned when several projects,
+duplicate project names, or malformed project-list entries make ownership uncertain.
 
 ## Finding layout or evidence is incomplete
 

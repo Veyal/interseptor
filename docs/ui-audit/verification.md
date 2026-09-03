@@ -2,7 +2,7 @@
 
 ## Revision and environment
 
-- Audited worktree base: `920cc00d42f559db1d954dcdb71210b70cf55f03`, with the exact saved-workspace
+- Audited worktree base: `a7ab425459c49047d581d2373c7d776d48f0cec7`, with the exact saved-workspace
   recovery runtime and harness captured by the digests below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
@@ -29,9 +29,9 @@
 
 ## Current-source applicability
 
-The retained audit digest is `c1ea51b5db585bc679bd2731f6984f32dc3fcd42ba633239833dc1ccd9048262`
+The retained audit digest is `e80e478e3ea55ca2ddad37723469d003255310a93469dced0064b5ee1bc35f79`
 across 252 runtime files; the harness digest is
-`5bdb04ec25bc1623bbe481055e4ac59f8a7d97276fec993a527277857f0240c3`. It matches the current
+`0065385adc1f91e84ad413174dad9a30e2a47ac7d82d2a109ff20ab046b9d08f`. It matches the current
 saved-workspace and evidence-first Findings runtime exactly, including bounded startup recovery,
 versioned project-local browser keys, guarded Repeater/Intruder state, and structured
 Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
@@ -40,7 +40,7 @@ semantics, and the published `2.0.8` browser-background suppression baseline.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
-The complete 47-case matrix and three-run performance profile were executed against that exact source
+The complete 59-case matrix and three-run performance profile were executed against that exact source
 with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
 --perf-runs 3 --startup-engines chromium,firefox,webkit`. Full mode cannot accept an arbitrary
 existing server: it builds and starts one owned
@@ -75,6 +75,10 @@ field that created it. In particular:
 - Every Repeater creation path—including Proxy/Findings adoption, send-as identity, and Postman
   import—uses one bounded allocator. Postman capacity rejection is atomic, and project keys use a
   versioned full-identity encoding with safe migration only when an older key has one owner.
+- Legacy project ownership is never inferred from deduplicated same-name projects or malformed
+  project-list entries. Root/external projects both named `default`, wholly invalid lists, and mixed
+  valid/malformed lists were fault-injected in every engine; name-keyed and unscoped drafts and retry
+  markers stayed unchanged.
 - History reconciles selection across successful and failed server-side filters and never leaves a
   stale Inspector spinner; a failed same-filter background refresh cannot cancel an independently
   selected detail request.
@@ -143,18 +147,30 @@ render and close-vs-send race remain covered by focused Repeater regression test
 The retained pass fault-injected a failed transitive module fetch, a valid module response that
 throws during evaluation, and a workspace fetch that never settles or honors cancellation in
 Chromium, Firefox, and WebKit. Module failures produced an assertive Reload action with dead
-surfaces inert; the ignored-abort cases unlocked browser-local operation in `2565.2 ms`, `2567.8 ms`,
-and `2580.4 ms`, respectively. A module delayed beyond the guard recovered the exact controls the
-guard disabled when it eventually completed.
+surfaces inert; the ignored-abort cases unlocked browser-local operation in `2553.2 ms`, `2575.0 ms`,
+and `2606.9 ms`, respectively. A total project-identity failure in each engine kept unavailable
+controls locked while clearing navigation and panel `aria-busy`, so the final alert no longer reads
+as an indefinite load. A module delayed beyond the guard recovered the exact controls the guard
+disabled when it eventually completed.
 
 Separate contexts retained a 5,000-tab source blob while restoring a safe server tab in memory,
-preserved malformed pending state, synchronized the first recovered edit, and proved that a
+preserved malformed pending state, synchronized its first valid replacement edit, and proved that a
 throwing `localStorage.setItem` still sends the project-backed workspace write. A 200-tab workspace
 blocked toolbar, cross-feature, and Postman additions without becoming unloadable; normal Postman
 import created exactly one unique tab per request. Versioned project keys distinguished `team alpha`
 from `team_alpha`, migrated a uniquely owned legacy key, and left an ambiguous legacy value intact
-with an explicit recovery warning. Malformed Repeater, Intruder, and Intruder-preset fields were
+with an explicit recovery warning. Duplicate `default` project names and wholly or partly malformed
+project lists were also unable to certify ownership: Repeater, Intruder, preset, and pending legacy values
+remained byte-identical while safe server state stayed usable. Malformed Repeater, Intruder, and Intruder-preset fields were
 coerced or filtered without sharing Repeater history identities or blocking the editor.
+
+When `/api/project` never settled but `/api/version` still supplied the canonical project directory,
+the workstation became usable in `3436.1 ms`, `3499.4 ms`, and `3470.2 ms` in Chromium, Firefox, and
+WebKit. Each engine started with unknown-owner legacy Repeater, Intruder, and preset values, then
+fault-injected the first project PUT for all three surfaces. New edits remained in both their exact
+canonical-directory browser keys and pending-retry keys, survived a reload, retried successfully,
+and cleared the pending markers. Every older unscoped and name-keyed value—including all three
+legacy pending queues—remained byte-for-byte unchanged; only its migration was deferred.
 
 ### Findings evidence contract
 
@@ -224,7 +240,7 @@ restored OOB disabled; it made no external callback or system-proxy change.
   Drop kept their queue items until deliberately delayed server acknowledgements completed. Authz
   retained its explicit context target and followed later A→B→A selection changes exactly.
 - The normal sweep had no unexpected console, page, or HTTP errors and no external browser request.
-  Fault contexts intentionally returned fourteen exact `409`/`503` responses across recovery and
+  Fault contexts intentionally returned 23 exact `409`/`503` responses across recovery and
   ownership paths; their expected HTTP and network-console messages were classified separately.
 
 ## Performance findings
@@ -237,12 +253,12 @@ control was observed.
 
 | Scenario | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `209.8 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `210.6 ms` |
-| Delayed Intercept acknowledgement | `326.9 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `288.7 ms`; Fit/wheel/drag interaction `398.3 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.701415 s`; script `0.160767 s`; layout `0.069276 s` |
-| Map interaction | CDP task `0.026686 s`; script `0.001377 s`; layout `0.000438 s` |
+| Three 240-request live History bursts | network p95 `190.1 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
+| Main-panel transitions | declared `180 ms`; measured interaction p95 `213.9 ms` |
+| Delayed Intercept acknowledgement | `334.3 ms`, including the deliberate route hold and retained queue row |
+| Map after the burst | ready `287.3 ms`; Fit/wheel/drag interaction `422.5 ms`; graph transform changed |
+| Whole three-burst profile | CDP task `0.663232 s`; script `0.129369 s`; layout `0.051071 s` |
+| Map interaction | CDP task `0.030942 s`; script `0.001054 s`; layout `0.000329 s` |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
 interactive after all 720 requests, preserved its scroll state through Map navigation, and left no

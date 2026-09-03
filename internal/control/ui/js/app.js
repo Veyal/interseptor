@@ -651,6 +651,8 @@ async function bootFirstRunUI(){
     const failureMessage=timedOut?'Workspace initialization timed out · project-scoped tools are locked':'Active project unavailable · project-scoped tools are locked';
     if(timedOut)releaseWorkstationReady({ok:false,message:failureMessage});
     else releaseWorkstationReady({ok:false,message:'Active project unavailable · project-scoped tools are locked'});
+    const failedNav=$('#tabs');if(failedNav)failedNav.setAttribute('aria-busy','false');
+    ['repeater','intruder'].forEach(name=>document.querySelector(`.panel[data-panel="${name}"]`)?.setAttribute('aria-busy','false'));
     const status=$('#workspaceHydrationStatus');
     if(status){
       status.innerHTML=failureMessage+' <button type="button" class="btn xs" data-workspace-retry>Retry</button>';

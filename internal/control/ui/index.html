@@ -1514,6 +1514,9 @@ Content-Type: application/json
     status.setAttribute('role','alert');
     status.setAttribute('aria-live','assertive');
     status.setAttribute('data-workspace-boot-failed','true');
+    var nav=document.getElementById('tabs');if(nav)nav.setAttribute('aria-busy','false');
+    var pendingPanels=document.querySelectorAll('#panel-repeater,#panel-intruder');
+    for(var p=0;p<pendingPanels.length;p++)pendingPanels[p].setAttribute('aria-busy','false');
     var tabs=document.querySelectorAll('.tab');
     for(var i=0;i<tabs.length;i++)tabs[i].disabled=true;
     var command=document.getElementById('cmdkBtn');if(command)command.disabled=true;

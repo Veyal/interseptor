@@ -74,7 +74,8 @@ export function setSeg(btn,on){
 // leak across project switches. Repeater/Intruder tabs and presets plus Map view
 // preferences use the canonical project directory in each key. On first use of
 // a scoped key, an unscoped or uniquely owned name-based legacy value is
-// migrated once; ambiguous legacy state stays untouched.
+// migrated once only when its project ownership is unique; ambiguous or
+// conflicting legacy state stays untouched.
 // Keep this below the browser's usual per-origin quota so one unexpectedly
 // restored blob cannot monopolize the main thread during JSON.parse. The raw
 // value remains untouched when the guard trips; the user can still recover it
@@ -103,10 +104,23 @@ const legacyProjectStorageID=name=>String(name).replace(/[^A-Za-z0-9._-]+/g,'_')
 export function setStorageProject(name,knownProjects=[],legacyName=name){
   storageProject=(name&&String(name).trim())||'default';
   storageLegacyProject=(legacyName&&String(legacyName).trim())||storageProject;
-  storageProjectNamesKnown=Array.isArray(knownProjects)&&knownProjects.length>0;
-  storageProjectNames=(Array.isArray(knownProjects)?knownProjects:[])
-    .map(project=>typeof project==='string'?project:project?.name)
-    .filter(project=>typeof project==='string'&&project.trim());
+  const projectEntries=Array.isArray(knownProjects)?knownProjects:[];
+  let malformedProjectEntry=!Array.isArray(knownProjects);
+  const normalizedProjectNames=projectEntries.map(project=>{
+    const isObject=!!project&&typeof project==='object'&&!Array.isArray(project);
+    const projectName=typeof project==='string'?project:isObject?project.name:null;
+    if(typeof projectName!=='string'||!projectName.trim()
+      ||(isObject&&project.path!==undefined&&typeof project.path!=='string')){
+      malformedProjectEntry=true;
+      return null;
+    }
+    return projectName;
+  }).filter(project=>project!==null);
+  storageProjectNames=normalizedProjectNames;
+  // A valid-looking name is not enough to prove ownership if another source
+  // entry could not be interpreted. Keep legacy state untouched until the
+  // complete project list is trustworthy.
+  storageProjectNamesKnown=storageProjectNames.length>0&&!malformedProjectEntry;
   if(!storageProjectNames.includes(storageLegacyProject))storageProjectNames.push(storageLegacyProject);
 }
 export function consumeStorageMigrationWarning(key){
@@ -132,8 +146,9 @@ export function projectStorageKey(base){
   // current encoded key from the older ambiguous sanitized-key format.
   const safe=encodeURIComponent(String(storageProject))||'default';
   const scoped=base+'.v2.'+safe;
-  // One-shot migrate: copy legacy unscoped key into *this* project, then remove
-  // it so a later project switch cannot inherit the same state (#17/#18).
+  // One-shot migrate: copy legacy state into *this* project only when the
+  // project list proves a unique owner, then remove the source key so a later
+  // project switch cannot inherit the same state (#17/#18).
   if(!migratedStorageBases.has(base)){
     let migrationComplete=true;
     try{
@@ -141,7 +156,8 @@ export function projectStorageKey(base){
       const legacyCandidates=[base+'.v2.'+(encodeURIComponent(storageLegacyProject)||'default'),base+'.'+legacySafe]
         .filter(key=>key!==scoped);
       const safeLegacyKeys=projectStorageLegacyKeys(base);
-      if(localStorage.getItem(scoped)==null){
+      let hasCurrent=localStorage.getItem(scoped)!=null;
+      if(!hasCurrent){
         for(const legacyScoped of safeLegacyKeys){
           const legacyValue=localStorage.getItem(legacyScoped);
           if(legacyValue==null)continue;
@@ -150,23 +166,45 @@ export function projectStorageKey(base){
           }else{
             localStorage.setItem(scoped,legacyValue);
             localStorage.removeItem(legacyScoped);
+            hasCurrent=true;
           }
           break;
         }
       }
-      if(legacyCandidates.some(key=>!safeLegacyKeys.includes(key)&&localStorage.getItem(key)!=null))
-        storageMigrationWarnings.set(scoped,'ambiguous legacy project state');
       const old=localStorage.getItem(base);
       if(old!=null){
-        if(persistedStateByteLength(old)>MAX_PROJECT_UI_STATE_BYTES){
+        const unscopedOwnershipKnown=storageProjectNamesKnown&&storageProjectNames.length===1&&storageProjectNames[0]===storageLegacyProject;
+        if(!unscopedOwnershipKnown){
+          const unscopedWarning=storageProjectNamesKnown?'ambiguous legacy project state':'legacy project ownership unavailable';
+          storageMigrationWarnings.set(scoped,unscopedWarning);
+          migrationComplete=false;
+        }else if(persistedStateByteLength(old)>MAX_PROJECT_UI_STATE_BYTES){
           // Keep an oversized legacy value at its original key. The scoped key
           // remains safe for the current project and the tab manager surfaces
           // the retained legacy draft instead of overwriting it during boot.
           storageMigrationWarnings.set(scoped,'oversized legacy state');
-        }else{
-          if(localStorage.getItem(scoped)==null) localStorage.setItem(scoped,old);
+        }else if(!hasCurrent){
+          localStorage.setItem(scoped,old);hasCurrent=true;
           localStorage.removeItem(base);
+        }else if(localStorage.getItem(scoped)===old){
+          // A byte-identical canonical copy makes removal a cleanup, not a
+          // choice between two drafts.
+          localStorage.removeItem(base);
+        }else{
+          storageMigrationWarnings.set(scoped,'conflicting unscoped legacy state');
         }
+      }
+      const inaccessibleLegacy=legacyCandidates.some(key=>!safeLegacyKeys.includes(key)&&localStorage.getItem(key)!=null);
+      if(inaccessibleLegacy&&!storageProjectNamesKnown){
+        // /api/version can identify the canonical directory even when the
+        // project-list endpoint is unavailable, but it cannot prove ownership
+        // of an older name-keyed draft. Keep that draft untouched and retry its
+        // migration later. New edits can still use the collision-free key made
+        // from the exact canonical project directory.
+        storageMigrationWarnings.set(scoped,'legacy project ownership unavailable');
+        migrationComplete=false;
+      }else if(inaccessibleLegacy){
+        storageMigrationWarnings.set(scoped,'ambiguous legacy project state');
       }
     }catch(e){
       migrationComplete=false;
@@ -251,7 +289,8 @@ export function createTabManager(opts){
   mgr.persist=function(){
     const blob={seq:mgr.seq,active:mgr.active,tabs:mgr.tabs.map(serialize)};
     let storedLocally=true;
-    try{localStorage.setItem(storageKey(),JSON.stringify(blob));}
+    const key=storageKey();
+    try{localStorage.setItem(key,JSON.stringify(blob));}
     catch(e){
       storedLocally=false;
       mgr.warnStorage(`${storageLabel} could not be saved in this browser; project storage will still be updated.`);
@@ -359,6 +398,8 @@ export function createTabManager(opts){
       const key=storageKey();
       const migrationWarning=consumeStorageMigrationWarning(key);
       if(migrationWarning==='ambiguous legacy project state')mgr.warnStorage(`${storageLabel} has saved browser state under an older key shared by multiple project names; it was kept unchanged for recovery.`);
+      else if(migrationWarning==='legacy project ownership unavailable')mgr.warnStorage(`${storageLabel} legacy migration is deferred until project ownership is known; the older unscoped or name-keyed draft was kept unchanged. New edits still use project-specific browser and project storage.`);
+      else if(migrationWarning==='conflicting unscoped legacy state')mgr.warnStorage(`${storageLabel} has an older unscoped browser draft that differs from current project state; both were kept, and the project-specific draft remains active.`);
       else if(migrationWarning==='legacy project state could not be migrated')mgr.warnStorage(`${storageLabel} legacy browser state could not be migrated; the original draft was kept for recovery.`);
       else if(migrationWarning)mgr.warnStorage(`${storageLabel} legacy saved state is too large to load safely; the original draft was kept.`);
       const raw=localStorage.getItem(key);

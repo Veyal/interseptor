@@ -362,18 +362,32 @@ export function uiStateSyncPending(){
 function readPendingUIState(panel){
   const key=uiPendingStateKey(panel);
   const migrationWarning=consumeStorageMigrationWarning(key);
-  if(migrationWarning){
+  let raw;
+  try{raw=localStorage.getItem(key);}
+  catch(e){
     ignoredPendingStateKeys.add(key);
-    const message=migrationWarning==='ambiguous legacy project state'
-      ?'An older pending workspace draft uses a browser key shared by multiple project names. It was kept unchanged for recovery; your next edit will create a project-specific replacement.'
-      :migrationWarning==='legacy project state could not be migrated'
-        ?'An older pending workspace draft could not be migrated in this browser. It was kept for recovery; your next edit will create a project-specific replacement.'
-        :'An older pending workspace draft is too large to restore safely. It was kept for recovery; your next edit will create a project-specific replacement.';
-    reportWorkspaceStorageWarning(message);
+    reportWorkspaceStorageWarning('Saved workspace pending state could not be read. It was kept for recovery; your next edit will replace it.');
     return null;
   }
+  if(migrationWarning){
+    const hasCanonical=raw!==null;
+    if(hasCanonical)ignoredPendingStateKeys.delete(key);
+    else ignoredPendingStateKeys.add(key);
+    const message=migrationWarning==='ambiguous legacy project state'
+      ?'An older pending workspace draft cannot be assigned to one project. It was kept unchanged for recovery.'
+      :migrationWarning==='legacy project ownership unavailable'
+        ?'An older pending workspace draft cannot be assigned while project ownership is unavailable. Its legacy migration is deferred.'
+      :migrationWarning==='conflicting unscoped legacy state'
+        ?'An older unscoped pending workspace draft differs from the project-specific draft. Both were kept.'
+      :migrationWarning==='legacy project state could not be migrated'
+        ?'An older pending workspace draft could not be migrated in this browser. It was kept for recovery.'
+        :'An older pending workspace draft is too large to restore safely. It was kept for recovery.';
+    reportWorkspaceStorageWarning(message+(hasCanonical
+      ?' The project-specific pending draft remains authoritative.'
+      :' Your next edit will create a project-specific replacement.'));
+    if(!hasCanonical)return null;
+  }
   try{
-    const raw=localStorage.getItem(key);
     if(raw===null)return null;
     if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
       ignoredPendingStateKeys.add(key);
@@ -439,7 +453,8 @@ function persistUIState(panel, blob){
     document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:uiStateSyncPending()}}));
     return false;
   }
-  ignoredPendingStateKeys.delete(key);
+  const replacedIgnoredPending=ignoredPendingStateKeys.delete(key);
+  if(replacedIgnoredPending)uiPersistenceReady.set(panel,true);
   try{localStorage.setItem(key,body);}catch(e){}
   queue.pending=body;
   if(uiPersistenceReady.get(panel)!==true)return false;
@@ -465,6 +480,15 @@ async function readBoundedUIState(panel){
   }
   finally{clearTimeout(timer);}
 }
+function hasValidBrowserUIState(storageBase,valid){
+  try{
+    const raw=localStorage.getItem(projectStorageKey(storageBase));
+    if(raw===null||persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES)return false;
+    const value=JSON.parse(raw);
+    if(!valid(value))return false;
+    return !((storageBase==='rep.tabs'||storageBase==='intr.tabs')&&value.tabs.length===0);
+  }catch(e){return false;}
+}
 async function hydrateUIState(panel,storageBase,valid=()=>true){
   const key=uiPendingStateKey(panel);
   guardedHydratedTabStates.delete(storageBase);
@@ -481,13 +505,16 @@ async function hydrateUIState(panel,storageBase,valid=()=>true){
   const canReplaceInvalidServer=pending!==null&&result.status==='success';
   uiPersistenceReady.set(panel,result.status!=='error'&&(validServer||canReplaceInvalidServer));
   if(ignoredPendingStateKeys.has(key)){
-    if(result.status==='success'&&validServer)guardedHydratedTabStates.set(storageBase,result.value);
+    if(result.status==='success'&&validServer){
+      if(!hasValidBrowserUIState(storageBase,valid))guardedHydratedTabStates.set(storageBase,result.value);
+    }
     return 'error';
   }
   if(!validServer&&!canReplaceInvalidServer)return 'error';
   if(pending!==null){
     let restoredInMemory=false;
-    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(pending));}
+    const storageKey=projectStorageKey(storageBase);
+    try{localStorage.setItem(storageKey,JSON.stringify(pending));}
     catch(e){
       restoredInMemory=true;
       guardedHydratedTabStates.set(storageBase,pending);
@@ -1654,7 +1681,8 @@ if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
     repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
   if(list.length>20)list.length=20;
   let storedLocally=true;
-  try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){storedLocally=false;}
+  const presetKey=intrPresetsKey();
+  try{localStorage.setItem(presetKey,JSON.stringify(list));}catch(e){storedLocally=false;}
   const serverSyncQueued=persistUIState('intruder-presets',list);
   loadIntrPresets(list);
   const message=storedLocally

@@ -46,6 +46,7 @@ func TestUIBrowserAuditExercisesWorkspaceStartupRecovery(t *testing.T) {
 		`def workspace_module_evaluation_recovery`,
 		`def workspace_hydration_recovery`,
 		`def project_identity_sibling_recovery`,
+		`def project_identity_failure_recovery`,
 		`def pathological_persisted_state_recovery`,
 		`def invalid_pending_state_recovery`,
 		`def oversized_pending_state_is_not_retried`,
@@ -74,6 +75,7 @@ func TestUIBrowserAuditExercisesWorkspaceStartupRecovery(t *testing.T) {
 		`f"workspace module evaluation failure becomes actionable ({engine_name})"`,
 		`f"workspace hydration timeout falls back locally ({engine_name})"`,
 		`f"project identity accepts a valid sibling ({engine_name})"`,
+		`f"project identity failure settles navigation ({engine_name})"`,
 		`"pathological browser-local workspace state remains recoverable"`,
 		`"invalid pending workspace state is preserved"`,
 		`"oversized pending workspace state is retained without retry"`,
@@ -110,6 +112,8 @@ func TestUIWorkspaceBootHasModuleAndTopLevelWatchdogs(t *testing.T) {
 		"guardedSurfaces[i].inert=false",
 		"guardedSurfaces",
 		"status.setAttribute('aria-live','assertive')",
+		"var nav=document.getElementById('tabs');if(nav)nav.setAttribute('aria-busy','false')",
+		"pendingPanels[p].setAttribute('aria-busy','false')",
 	} {
 		if !strings.Contains(index, contract) {
 			t.Errorf("pre-module workspace watchdog missing %q", contract)
@@ -130,6 +134,8 @@ func TestUIWorkspaceBootHasModuleAndTopLevelWatchdogs(t *testing.T) {
 		"error.name='WorkspaceBootTimeout'",
 		"settleWorkspaceBootWatchdog()",
 		"Workspace initialization timed out",
+		"const failedNav=$('#tabs');if(failedNav)failedNav.setAttribute('aria-busy','false')",
+		"?.setAttribute('aria-busy','false')",
 	} {
 		if !strings.Contains(app, contract) {
 			t.Errorf("top-level workspace boot deadline missing %q", contract)

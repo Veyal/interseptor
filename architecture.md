@@ -97,15 +97,23 @@ hydration race their requests against real settling deadlines; `AbortController`
 cleanup, not as the promise-settlement guarantee. A failed saved-state read unlocks the workstation
 with its browser-local drafts intact, while an unresolved project identity keeps project-scoped
 tools locked rather than selecting a guessed project. The pre-module lock is reversible if a slow
-module eventually completes. Browser-local tab envelopes are schema-checked and bounded before
+module eventually completes. A terminal startup alert clears navigation and panel `aria-busy`
+without enabling unavailable controls, so assistive technology receives a settled failure rather
+than an indefinite loading state. Browser-local tab envelopes are schema-checked and bounded before
 normalization or rendering; unsafe values remain available for recovery and cannot be replaced by
 the automatic blank-tab write. All Repeater creation routes share the same reload-safe tab and ID
 limits. Browser storage keys use the versioned, percent-encoded canonical project directory:
 uniquely owned localStorage and IndexedDB history keys migrate once, while an ambiguous older key is
-left intact and reported instead of being assigned to the wrong project. Client-side persistence
+left intact and reported instead of being assigned to the wrong project. If only the canonical
+directory is available while project-list ownership is unknown, migration or removal of an affected
+unscoped or name-keyed legacy value is deferred. An unscoped value also stays untouched when several
+projects make its owner ambiguous, including duplicate display names; malformed or blank project-list
+entries never count as ownership proof. New edits still use the collision-free canonical-directory browser
+key and continue synchronizing with the project database. Client-side persistence
 uses the project API's 4 MiB UTF-8 byte limit and retains larger browser drafts without retrying a
 request the server cannot accept. A browser-local write failure is visible but does not suppress the
-project-database synchronization path.
+project-database synchronization path. Replacing an ignored malformed pending marker with a valid
+explicit edit immediately re-enables that synchronization path.
 
 The [UI motion specification](https://github.com/Veyal/interseptor/blob/main/docs/ui-motion-spec.md) owns motion behavior and constraints. Other design
 notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).

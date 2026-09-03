@@ -26,6 +26,15 @@ up to 200 tabs, and each project-backed UI-state document is limited to 4 MiB of
 retained draft is replaced only after an explicit edit, and unavailable browser storage does not
 block project-database synchronization.
 
+If the project-list endpoint is temporarily unavailable but the version endpoint still identifies
+the canonical directory, the workspace can operate from project storage. When an older unscoped or
+name-keyed browser draft also exists, Interseptor does not guess its owner: migration or removal of
+that legacy value is deferred while new edits continue to use the exact canonical-directory browser
+key and synchronize with the project database. Unscoped state is migrated only when the project list
+proves exactly one valid entry whose name matches the active project. Duplicate names and malformed
+or blank entries are not ownership proof. The legacy value remains untouched for recovery. Reload after project
+identity is fully available to retry the guarded migration.
+
 A Repeater tab's send list is project-keyed but browser-local. It survives request edits, tab
 switches, and reloads, and is deleted when that Repeater tab closes. The corresponding request and
 response flows remain in the project store; project export and peer sync do not preserve their

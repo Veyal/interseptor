@@ -761,6 +761,12 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             result.require(module_status.get_attribute("role") == "alert", "module startup failure is not announced as an alert")
             result.require(module_status.get_attribute("aria-live") == "assertive", "module startup failure is not announced assertively")
             result.require(module_status.locator("[data-workspace-retry]").is_enabled(), "module startup failure has no usable reload action")
+            result.require(module_page.locator("#tabs").get_attribute("aria-busy") == "false", "settled module failure left navigation busy")
+            result.require(
+                module_page.locator("#panel-repeater").get_attribute("aria-busy") == "false"
+                and module_page.locator("#panel-intruder").get_attribute("aria-busy") == "false",
+                "settled module failure left project panels busy",
+            )
             result.require(
                 module_page.locator(".tab:disabled").count() == module_page.locator(".tab").count(),
                 "module startup failure left nonfunctional navigation enabled",
@@ -877,7 +883,68 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
         def project_identity_sibling_recovery(target_browser: Browser, engine_name: str) -> None:
             _, version_info, _ = _json_get(base, "/api/version")
             project_identity = str(version_info.get("projectDir") or "")
+            project_name = str(version_info.get("project") or "default")
+            canonical_workspace_key = browser_project_storage_key("rep.tabs", project_identity)
+            canonical_intruder_key = browser_project_storage_key("intr.tabs", project_identity)
+            canonical_preset_key = browser_project_storage_key("intruder.presets", project_identity)
+            pending_workspace_key = browser_project_storage_key("ui.pending.repeater", project_identity)
+            pending_intruder_key = browser_project_storage_key("ui.pending.intruder", project_identity)
+            pending_preset_key = browser_project_storage_key("ui.pending.intruder-presets", project_identity)
+            legacy_workspace_key = browser_project_storage_key("rep.tabs", project_name)
+            legacy_intruder_key = browser_project_storage_key("intr.tabs", project_name)
+            legacy_preset_key = browser_project_storage_key("intruder.presets", project_name)
+            legacy_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "GET", "url": "https://example.com/legacy-owned", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
+            legacy_intruder_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": "https://example.com/legacy-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                separators=(",", ":"),
+            )
+            legacy_preset_state = json.dumps(
+                [{"name": "Legacy preset", "target": "https://example.com/legacy-preset"}],
+                separators=(",", ":"),
+            )
+            unscoped_workspace_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "DELETE", "url": "https://example.com/unscoped-repeater", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
+            unscoped_intruder_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": "https://example.com/unscoped-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                separators=(",", ":"),
+            )
+            unscoped_preset_state = json.dumps(
+                [{"name": "Unscoped preset", "target": "https://example.com/unscoped-preset"}],
+                separators=(",", ":"),
+            )
             identity_context = target_browser.new_context(viewport={"width": 1024, "height": 768})
+            identity_context.add_init_script(
+                f"localStorage.setItem({json.dumps(legacy_workspace_key)},{json.dumps(legacy_state)});"
+                f"localStorage.setItem({json.dumps(legacy_intruder_key)},{json.dumps(legacy_intruder_state)});"
+                f"localStorage.setItem({json.dumps(legacy_preset_key)},{json.dumps(legacy_preset_state)});"
+                f"localStorage.setItem('rep.tabs',{json.dumps(unscoped_workspace_state)});"
+                f"localStorage.setItem('intr.tabs',{json.dumps(unscoped_intruder_state)});"
+                f"localStorage.setItem('intruder.presets',{json.dumps(unscoped_preset_state)});"
+                f"localStorage.setItem('ui.pending.repeater',{json.dumps(unscoped_workspace_state)});"
+                f"localStorage.setItem('ui.pending.intruder',{json.dumps(unscoped_intruder_state)});"
+                f"localStorage.setItem('ui.pending.intruder-presets',{json.dumps(unscoped_preset_state)});"
+            )
             identity_page = identity_context.new_page()
             identity_page.set_default_timeout(10_000)
             identity_page.add_init_script(
@@ -894,6 +961,51 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                   };
                 })()"""
             )
+            server_state: Dict[str, Any] = {
+                "repeater": {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "GET", "url": "https://example.com/server-during-fallback", "headers": "", "body": ""}],
+                },
+                "intruder": {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": "https://example.com/server-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                "intruder-presets": [{"name": "Server preset", "target": "https://example.com/server-preset"}],
+            }
+            project_writes: Dict[str, List[str]] = {panel: [] for panel in server_state}
+            expected_failures: List[str] = []
+            case_http_start = len(result.http_errors)
+
+            def identity_state_route(panel: str) -> Any:
+                def handle(route: Any) -> None:
+                    if route.request.method == "GET":
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps({"value": server_state[panel]}, separators=(",", ":")),
+                        )
+                        return
+                    body = route.request.post_data or ""
+                    project_writes[panel].append(body)
+                    if len(project_writes[panel]) == 1:
+                        item = f"503 {route.request.method} {route.request.url}"
+                        expected_failures.append(item)
+                        result.expected_console_request_urls.append(route.request.url)
+                        route.fulfill(
+                            status=503,
+                            content_type="application/json",
+                            body='{"error":"injected workspace persistence failure"}',
+                        )
+                        return
+                    server_state[panel] = json.loads(body)
+                    route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+                return handle
+
+            for panel in server_state:
+                identity_page.route(f"**/api/ui/{panel}", identity_state_route(panel))
             attach_observers(identity_page, result, base_netloc)
             try:
                 started = time.perf_counter()
@@ -909,9 +1021,381 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     storage_key == browser_project_storage_key("identity.audit", project_identity),
                     "project identity fallback did not retain the canonical directory",
                 )
+                result.require(
+                    "legacy migration is deferred until project ownership is known" in identity_page.locator("#workspaceHydrationStatus").inner_text(),
+                    "unknown legacy project ownership did not expose a recovery warning",
+                )
+                identity_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    identity_page.locator("#repUrl").input_value() == "https://example.com/server-during-fallback",
+                    "unknown legacy ownership exposed a potentially cross-project browser draft",
+                )
+                with identity_page.expect_response(
+                    lambda response: response.url.endswith("/api/ui/repeater") and response.request.method == "PUT"
+                ) as repeater_failure:
+                    identity_page.locator("#repUrl").fill("https://example.com/canonical-recovered")
+                result.require(repeater_failure.value.status == 503, "Repeater persistence fault was not exercised")
+
+                identity_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(
+                    identity_page.locator("#intrTarget").input_value() == "https://example.com/server-intruder",
+                    "unknown legacy ownership exposed a potentially cross-project Intruder draft",
+                )
+                with identity_page.expect_response(
+                    lambda response: response.url.endswith("/api/ui/intruder") and response.request.method == "PUT"
+                ) as intruder_failure:
+                    identity_page.locator("#intrTarget").fill("https://example.com/canonical-intruder")
+                result.require(intruder_failure.value.status == 503, "Intruder persistence fault was not exercised")
+
+                preset_options = identity_page.locator("#intrPreset option").all_text_contents()
+                result.require(
+                    "Server preset" in preset_options and "Legacy preset" not in preset_options,
+                    "unknown legacy ownership exposed a potentially cross-project Intruder preset",
+                )
+                if not identity_page.locator("#intrPresetSave").is_visible():
+                    identity_page.locator(".intr-opts-disc summary").click()
+                identity_page.locator("#intrPresetSave").click()
+                identity_page.locator("#promptInput").fill("Canonical preset")
+                with identity_page.expect_response(
+                    lambda response: response.url.endswith("/api/ui/intruder-presets") and response.request.method == "PUT"
+                ) as preset_failure:
+                    identity_page.locator("#promptOk").click()
+                result.require(preset_failure.value.status == 503, "Intruder preset persistence fault was not exercised")
+
+                identity_page.wait_for_timeout(100)
+                remaining_failures = list(expected_failures)
+                for index in range(len(result.http_errors) - 1, case_http_start - 1, -1):
+                    item = result.http_errors[index]
+                    if item not in remaining_failures:
+                        continue
+                    remaining_failures.remove(item)
+                    result.expected_http_errors.append(item)
+                    del result.http_errors[index]
+                result.require(not remaining_failures, f"injected workspace failures were not observed: {remaining_failures}")
+
+                retained_keys = identity_page.evaluate(
+                    """keys => Object.fromEntries(Object.entries(keys).map(([name,key])=>[name,localStorage.getItem(key)]))""",
+                    {
+                        "legacyRepeater": legacy_workspace_key,
+                        "legacyIntruder": legacy_intruder_key,
+                        "legacyPreset": legacy_preset_key,
+                        "currentRepeater": canonical_workspace_key,
+                        "currentIntruder": canonical_intruder_key,
+                        "currentPreset": canonical_preset_key,
+                        "pendingRepeater": pending_workspace_key,
+                        "pendingIntruder": pending_intruder_key,
+                        "pendingPreset": pending_preset_key,
+                        "unscopedRepeater": "rep.tabs",
+                        "unscopedIntruder": "intr.tabs",
+                        "unscopedPreset": "intruder.presets",
+                        "unscopedPendingRepeater": "ui.pending.repeater",
+                        "unscopedPendingIntruder": "ui.pending.intruder",
+                        "unscopedPendingPreset": "ui.pending.intruder-presets",
+                    },
+                )
+                result.require(retained_keys["legacyRepeater"] == legacy_state, "unknown-owner Repeater draft was modified")
+                result.require(retained_keys["legacyIntruder"] == legacy_intruder_state, "unknown-owner Intruder draft was modified")
+                result.require(retained_keys["legacyPreset"] == legacy_preset_state, "unknown-owner preset was modified")
+                result.require(retained_keys["unscopedRepeater"] == unscoped_workspace_state, "unknown-owner unscoped Repeater draft was modified")
+                result.require(retained_keys["unscopedIntruder"] == unscoped_intruder_state, "unknown-owner unscoped Intruder draft was modified")
+                result.require(retained_keys["unscopedPreset"] == unscoped_preset_state, "unknown-owner unscoped preset was modified")
+                result.require(retained_keys["unscopedPendingRepeater"] == unscoped_workspace_state, "unknown-owner unscoped Repeater pending draft was modified")
+                result.require(retained_keys["unscopedPendingIntruder"] == unscoped_intruder_state, "unknown-owner unscoped Intruder pending draft was modified")
+                result.require(retained_keys["unscopedPendingPreset"] == unscoped_preset_state, "unknown-owner unscoped preset pending draft was modified")
+                for name, marker in {
+                    "currentRepeater": "canonical-recovered",
+                    "currentIntruder": "canonical-intruder",
+                    "currentPreset": "Canonical preset",
+                    "pendingRepeater": "canonical-recovered",
+                    "pendingIntruder": "canonical-intruder",
+                    "pendingPreset": "Canonical preset",
+                }.items():
+                    result.require(marker in (retained_keys[name] or ""), f"failed project write lost {name} browser recovery state")
+
+                identity_page.reload(wait_until="domcontentloaded")
+                wait_ready(identity_page)
+                identity_page.wait_for_function(
+                    "keys => keys.every(key => localStorage.getItem(key) === null)",
+                    arg=[pending_workspace_key, pending_intruder_key, pending_preset_key],
+                    timeout=10_000,
+                )
+                identity_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    identity_page.locator("#repUrl").input_value() == "https://example.com/canonical-recovered",
+                    "failed Repeater project write did not recover from canonical browser state on reload",
+                )
+                identity_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(
+                    identity_page.locator("#intrTarget").input_value() == "https://example.com/canonical-intruder",
+                    "failed Intruder project write did not recover from canonical browser state on reload",
+                )
+                result.require(
+                    "Canonical preset" in identity_page.locator("#intrPreset option").all_text_contents(),
+                    "failed Intruder preset project write did not recover from canonical browser state on reload",
+                )
+                result.require(
+                    all(len(writes) >= 2 for writes in project_writes.values()),
+                    f"reload did not retry every failed workspace write: {project_writes}",
+                )
+                final_legacy = identity_page.evaluate(
+                    "keys => keys.map(key => localStorage.getItem(key))",
+                    [
+                        legacy_workspace_key,
+                        legacy_intruder_key,
+                        legacy_preset_key,
+                        "rep.tabs",
+                        "intr.tabs",
+                        "intruder.presets",
+                        "ui.pending.repeater",
+                        "ui.pending.intruder",
+                        "ui.pending.intruder-presets",
+                    ],
+                )
+                result.require(
+                    final_legacy
+                    == [
+                        legacy_state,
+                        legacy_intruder_state,
+                        legacy_preset_state,
+                        unscoped_workspace_state,
+                        unscoped_intruder_state,
+                        unscoped_preset_state,
+                        unscoped_workspace_state,
+                        unscoped_intruder_state,
+                        unscoped_preset_state,
+                    ],
+                    "reload modified an unknown-owner legacy workspace",
+                )
                 result.metrics[f"project_identity_fallback_ms_{engine_name}"] = round(elapsed_ms, 1)
             finally:
                 identity_context.close()
+
+        def project_identity_failure_recovery(target_browser: Browser, engine_name: str) -> None:
+            failure_context = target_browser.new_context(viewport={"width": 1024, "height": 768}, reduced_motion="reduce")
+            failure_page = failure_context.new_page()
+            failure_page.set_default_timeout(10_000)
+            failure_page.add_init_script(
+                """(() => {
+                  const nativeFetch=window.fetch;
+                  window.__projectIdentityFailureStalls=0;
+                  window.fetch=function(input,init){
+                    const url=typeof input==='string'?input:String(input&&input.url||'');
+                    if(url.includes('/api/project')||url.includes('/api/version')){
+                      window.__projectIdentityFailureStalls++;
+                      return new Promise(()=>{});
+                    }
+                    return nativeFetch.call(this,input,init);
+                  };
+                })()"""
+            )
+            attach_observers(failure_page, result, base_netloc)
+            try:
+                failure_page.goto(base, wait_until="domcontentloaded")
+                failure_page.wait_for_function(
+                    "document.querySelector('#workspaceHydrationStatus')?.textContent.includes('Active project unavailable')",
+                    timeout=5_000,
+                )
+                status = failure_page.locator("#workspaceHydrationStatus")
+                result.require(status.get_attribute("role") == "alert", "project identity failure is not an alert")
+                result.require(status.get_attribute("aria-live") == "assertive", "project identity failure is not assertive")
+                result.require(status.locator("[data-workspace-retry]").is_enabled(), "project identity failure has no Reload action")
+                result.require(failure_page.locator("#tabs").get_attribute("aria-busy") == "false", "settled project identity failure left navigation busy")
+                result.require(
+                    failure_page.locator("#panel-repeater").get_attribute("aria-busy") == "false"
+                    and failure_page.locator("#panel-intruder").get_attribute("aria-busy") == "false",
+                    "settled project identity failure left project panels busy",
+                )
+                result.require(
+                    failure_page.locator(".tab:disabled").count() == failure_page.locator(".tab").count(),
+                    "project identity failure enabled project-dependent navigation",
+                )
+                result.require(failure_page.evaluate("window.__projectIdentityFailureStalls") >= 2, "total project identity fault was not exercised")
+            finally:
+                failure_context.close()
+
+        def adversarial_project_list_preserves_legacy(
+            target_browser: Browser,
+            engine_name: str,
+            fixture_name: str,
+            project_entries: List[Any],
+        ) -> None:
+            _, version_info, _ = _json_get(base, "/api/version")
+            project_identity = str(version_info.get("projectDir") or "")
+            canonical_keys = {
+                "repeater": browser_project_storage_key("rep.tabs", project_identity),
+                "intruder": browser_project_storage_key("intr.tabs", project_identity),
+                "presets": browser_project_storage_key("intruder.presets", project_identity),
+                "pendingRepeater": browser_project_storage_key("ui.pending.repeater", project_identity),
+                "pendingIntruder": browser_project_storage_key("ui.pending.intruder", project_identity),
+                "pendingPresets": browser_project_storage_key("ui.pending.intruder-presets", project_identity),
+            }
+            name_keys = {
+                "repeater": browser_project_storage_key("rep.tabs", "default"),
+                "intruder": browser_project_storage_key("intr.tabs", "default"),
+                "presets": browser_project_storage_key("intruder.presets", "default"),
+                "pendingRepeater": browser_project_storage_key("ui.pending.repeater", "default"),
+                "pendingIntruder": browser_project_storage_key("ui.pending.intruder", "default"),
+                "pendingPresets": browser_project_storage_key("ui.pending.intruder-presets", "default"),
+            }
+            unscoped_keys = {
+                "repeater": "rep.tabs",
+                "intruder": "intr.tabs",
+                "presets": "intruder.presets",
+                "pendingRepeater": "ui.pending.repeater",
+                "pendingIntruder": "ui.pending.intruder",
+                "pendingPresets": "ui.pending.intruder-presets",
+            }
+            name_repeater = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "PATCH", "url": f"https://example.com/{fixture_name}-name-repeater", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
+            name_intruder = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": f"https://example.com/{fixture_name}-name-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                separators=(",", ":"),
+            )
+            name_presets = json.dumps(
+                [{"name": f"{fixture_name} name preset", "target": "https://example.com/name-preset"}],
+                separators=(",", ":"),
+            )
+            unscoped_repeater = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "DELETE", "url": f"https://example.com/{fixture_name}-unscoped-repeater", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
+            unscoped_intruder = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": f"https://example.com/{fixture_name}-unscoped-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                separators=(",", ":"),
+            )
+            unscoped_presets = json.dumps(
+                [{"name": f"{fixture_name} unscoped preset", "target": "https://example.com/unscoped-preset"}],
+                separators=(",", ":"),
+            )
+            seeded = {
+                name_keys["repeater"]: name_repeater,
+                name_keys["intruder"]: name_intruder,
+                name_keys["presets"]: name_presets,
+                name_keys["pendingRepeater"]: name_repeater,
+                name_keys["pendingIntruder"]: name_intruder,
+                name_keys["pendingPresets"]: name_presets,
+                unscoped_keys["repeater"]: unscoped_repeater,
+                unscoped_keys["intruder"]: unscoped_intruder,
+                unscoped_keys["presets"]: unscoped_presets,
+                unscoped_keys["pendingRepeater"]: unscoped_repeater,
+                unscoped_keys["pendingIntruder"]: unscoped_intruder,
+                unscoped_keys["pendingPresets"]: unscoped_presets,
+            }
+            server_state: Dict[str, Any] = {
+                "repeater": {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "GET", "url": f"https://example.com/{fixture_name}-server-repeater", "headers": "", "body": ""}],
+                },
+                "intruder": {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "target": f"https://example.com/{fixture_name}-server-intruder", "template": "GET / HTTP/1.1\nHost: example.com\n\n"}],
+                },
+                "intruder-presets": [{"name": f"{fixture_name} server preset", "target": "https://example.com/server-preset"}],
+            }
+            writes: List[str] = []
+            isolation_context = target_browser.new_context(viewport={"width": 1024, "height": 768})
+            isolation_context.add_init_script(
+                f"(() => {{ const entries={json.dumps(list(seeded.items()))};"
+                "for (const [key,value] of entries) localStorage.setItem(key,value); })()"
+            )
+            isolation_page = isolation_context.new_page()
+            isolation_page.set_default_timeout(10_000)
+
+            def expose_project_list(route: Any) -> None:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps(
+                        {
+                            "current": "default",
+                            "dir": project_identity,
+                            "projects": project_entries,
+                            "canSwitch": False,
+                        },
+                        separators=(",", ":"),
+                    ),
+                )
+
+            def state_route(panel: str) -> Any:
+                def handle(route: Any) -> None:
+                    if route.request.method == "GET":
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps({"value": server_state[panel]}, separators=(",", ":")),
+                        )
+                        return
+                    writes.append(f"{route.request.method} {panel}")
+                    route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+
+                return handle
+
+            isolation_page.route("**/api/project", expose_project_list)
+            for panel in server_state:
+                isolation_page.route(f"**/api/ui/{panel}", state_route(panel))
+            attach_observers(isolation_page, result, base_netloc)
+            try:
+                isolation_page.goto(base, wait_until="domcontentloaded")
+                wait_ready(isolation_page)
+                isolation_page.locator('.tab[data-tab="repeater"]').click()
+                result.require(
+                    isolation_page.locator("#repUrl").input_value() == f"https://example.com/{fixture_name}-server-repeater",
+                    f"{fixture_name} project list exposed a legacy Repeater draft",
+                )
+                isolation_page.locator('.tab[data-tab="intruder"]').click()
+                result.require(
+                    isolation_page.locator("#intrTarget").input_value() == f"https://example.com/{fixture_name}-server-intruder",
+                    f"{fixture_name} project list exposed a legacy Intruder draft",
+                )
+                result.require(
+                    f"{fixture_name} server preset" in isolation_page.locator("#intrPreset option").all_text_contents(),
+                    f"{fixture_name} project list exposed a legacy Intruder preset",
+                )
+                retained = isolation_page.evaluate(
+                    "entries => Object.fromEntries(entries.map(([key]) => [key, localStorage.getItem(key)]))",
+                    list(seeded.items()),
+                )
+                result.require(retained == seeded, f"{fixture_name} project list modified an unowned legacy draft")
+                canonical = isolation_page.evaluate(
+                    "keys => Object.fromEntries(Object.entries(keys).map(([name,key]) => [name, localStorage.getItem(key)]))",
+                    canonical_keys,
+                )
+                for name, marker in {
+                    "repeater": f"{fixture_name}-server-repeater",
+                    "intruder": f"{fixture_name}-server-intruder",
+                    "presets": f"{fixture_name} server preset",
+                }.items():
+                    result.require(
+                        canonical[name] is None or marker in canonical[name],
+                        f"{fixture_name} canonical {name} state came from an unowned legacy draft",
+                    )
+                result.require(
+                    all(canonical[name] is None for name in ("pendingRepeater", "pendingIntruder", "pendingPresets")),
+                    f"{fixture_name} project list created a canonical pending draft from unowned legacy state",
+                )
+                result.require(not writes, f"{fixture_name} legacy isolation queued unexpected project writes: {writes}")
+            finally:
+                isolation_context.close()
 
         for engine_name in args.startup_engines:
             target_browser = browser if engine_name == "chromium" else getattr(playwright, engine_name).launch(headless=not args.headed)
@@ -931,6 +1415,37 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.run(
                     f"project identity accepts a valid sibling ({engine_name})",
                     lambda current=target_browser, name=engine_name: project_identity_sibling_recovery(current, name),
+                )
+                result.run(
+                    f"project identity failure settles navigation ({engine_name})",
+                    lambda current=target_browser, name=engine_name: project_identity_failure_recovery(current, name),
+                )
+                result.run(
+                    f"duplicate project names preserve legacy drafts ({engine_name})",
+                    lambda current=target_browser, name=engine_name: adversarial_project_list_preserves_legacy(
+                        current,
+                        name,
+                        "duplicate-name",
+                        [{"name": "default", "path": ""}, {"name": "default", "path": "/external/default"}],
+                    ),
+                )
+                result.run(
+                    f"malformed project entries preserve legacy drafts ({engine_name})",
+                    lambda current=target_browser, name=engine_name: adversarial_project_list_preserves_legacy(
+                        current,
+                        name,
+                        "malformed-entry",
+                        [{}, {"name": "   "}, None],
+                    ),
+                )
+                result.run(
+                    f"mixed valid and malformed project entries preserve legacy drafts ({engine_name})",
+                    lambda current=target_browser, name=engine_name: adversarial_project_list_preserves_legacy(
+                        current,
+                        name,
+                        "mixed-malformed-entry",
+                        [{"name": "default", "path": ""}, {"path": "/external/unknown"}],
+                    ),
                 )
             finally:
                 if target_browser is not browser:
@@ -1070,11 +1585,23 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
             _, project_info, _ = _json_get(base, "/api/project")
             project_identity = str(project_info.get("dir") or "")
             pending_key = browser_project_storage_key("ui.pending.repeater", project_identity)
+            workspace_key = browser_project_storage_key("rep.tabs", project_identity)
+            local_state = json.dumps(
+                {
+                    "seq": 2,
+                    "active": 1,
+                    "tabs": [{"tid": 1, "method": "PATCH", "url": "https://example.com/local-preserved", "headers": "", "body": ""}],
+                },
+                separators=(",", ":"),
+            )
             pending_context = browser.new_context(viewport={"width": 1024, "height": 768})
-            pending_context.add_init_script(f"localStorage.setItem({json.dumps(pending_key)},'{{}}');")
+            pending_context.add_init_script(
+                f"localStorage.setItem({json.dumps(pending_key)},'{{}}');"
+                f"localStorage.setItem({json.dumps(workspace_key)},{json.dumps(local_state)});"
+            )
             pending_page = pending_context.new_page()
             pending_page.set_default_timeout(10_000)
-            unexpected_writes: List[str] = []
+            workspace_writes: List[str] = []
 
             def valid_server_repeater_state(route: Any) -> None:
                 if route.request.method == "GET":
@@ -1084,7 +1611,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         body='{"value":{"seq":2,"active":1,"tabs":[{"tid":1,"method":"GET","url":"https://example.com/server-preserved","headers":"","body":""}]}}',
                     )
                     return
-                unexpected_writes.append(route.request.method)
+                workspace_writes.append(route.request.post_data or "")
                 route.fulfill(status=200, content_type="application/json", body='{"ok":true}')
 
             pending_page.route("**/api/ui/repeater", valid_server_repeater_state)
@@ -1096,12 +1623,39 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require("pending state is not recognized" in status.inner_text(), "invalid pending state has no persistent explanation")
                 result.require(status.locator("[data-workspace-warning-dismiss]").is_enabled(), "invalid pending-state warning has no Continue action")
                 result.require(pending_page.evaluate("key => localStorage.getItem(key)", pending_key) == "{}", "invalid pending state was overwritten")
+                result.require(not workspace_writes, f"invalid pending state triggered a server write before an explicit edit: {workspace_writes}")
+                status.locator("[data-workspace-warning-dismiss]").click()
+                result.require(status.is_hidden(), "invalid pending-state Continue action did not dismiss the warning")
+                result.require(
+                    pending_page.evaluate("document.activeElement?.matches('.tab.active')"),
+                    "invalid pending-state Continue action did not restore visible workspace focus",
+                )
                 pending_page.locator('.tab[data-tab="repeater"]').click()
                 result.require(
-                    pending_page.locator("#repUrl").input_value() == "https://example.com/server-preserved",
-                    "invalid pending state blocked a valid server workspace",
+                    pending_page.locator("#repUrl").input_value() == "https://example.com/local-preserved",
+                    "invalid pending state hid a valid main browser workspace behind the server fallback",
                 )
-                result.require(not unexpected_writes, f"invalid pending state triggered server writes: {unexpected_writes}")
+                result.require(pending_page.locator("#repMethod").input_value() == "PATCH", "valid main browser workspace lost its request fields")
+                result.require(
+                    pending_page.evaluate("key => JSON.parse(localStorage.getItem(key)).tabs[0].url", workspace_key)
+                    == "https://example.com/local-preserved",
+                    "valid main browser workspace was overwritten",
+                )
+                with pending_page.expect_response(
+                    lambda response: response.url.endswith("/api/ui/repeater") and response.request.method == "PUT"
+                ) as replacement_response:
+                    pending_page.locator("#repUrl").fill("https://example.com/local-replaced-invalid-pending")
+                result.require(replacement_response.value.ok, "first valid edit did not resume project synchronization")
+                pending_page.wait_for_function("key => localStorage.getItem(key) === null", arg=pending_key)
+                result.require(
+                    len(workspace_writes) == 1 and "local-replaced-invalid-pending" in workspace_writes[0],
+                    f"first valid edit did not replace the invalid pending marker authoritatively: {workspace_writes}",
+                )
+                result.require(
+                    pending_page.evaluate("key => JSON.parse(localStorage.getItem(key)).tabs[0].url", workspace_key)
+                    == "https://example.com/local-replaced-invalid-pending",
+                    "first valid edit did not remain in canonical browser storage",
+                )
             finally:
                 pending_context.close()
 

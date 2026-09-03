@@ -180,6 +180,108 @@ func TestProjectStorageKeysPreserveTheFullProjectIdentity(t *testing.T) {
 	}
 }
 
+func TestUnknownLegacyOwnershipDefersOnlyLegacyMigration(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	tools := readUIAsset(t, "js/tools.js")
+	for _, contract := range []string{
+		"legacy project ownership unavailable",
+		"migrationComplete=false",
+		"legacy migration is deferred until project ownership is known",
+		"localStorage.setItem(key,JSON.stringify(blob))",
+		"localStorage.setItem(key,body)",
+		"localStorage.setItem(storageKey,JSON.stringify(pending))",
+		"localStorage.setItem(storageKey,JSON.stringify(result.value))",
+		"if(!storageProjectNamesKnown)return[]",
+		"function repHistoryLegacyTabKeys(t){return projectStorageLegacyKeys('rep.history')",
+		"const unscopedOwnershipKnown=storageProjectNamesKnown&&storageProjectNames.length===1&&storageProjectNames[0]===storageLegacyProject",
+		"const unscopedWarning=storageProjectNamesKnown?'ambiguous legacy project state':'legacy project ownership unavailable'",
+		"if(!unscopedOwnershipKnown)",
+		"storageMigrationWarnings.set(scoped,unscopedWarning)",
+	} {
+		if !strings.Contains(core+tools, contract) {
+			t.Errorf("unknown legacy ownership must retain the old key while canonical crash recovery continues: missing %q", contract)
+		}
+	}
+	for _, prohibited := range []string{"deferredProjectStorageKeys", "projectStorageWriteDeferred"} {
+		if strings.Contains(core+tools, prohibited) {
+			t.Errorf("unknown legacy ownership must not suppress canonical browser writes: found %q", prohibited)
+		}
+	}
+	persistStart := strings.Index(core, "mgr.persist=function()")
+	persistEnd := strings.Index(core[persistStart:], "mgr.persistDebounced=function()")
+	if persistStart < 0 || persistEnd < 0 {
+		t.Fatal("tab persistence implementation not found")
+	}
+	persist := core[persistStart : persistStart+persistEnd]
+	if strings.Index(persist, "localStorage.setItem(key,JSON.stringify(blob))") > strings.Index(persist, "if(typeof onPersist==='function')") {
+		t.Error("canonical browser recovery must be written before project DB synchronization")
+	}
+}
+
+func TestUnscopedLegacyMigrationRequiresOneMatchingProjectEntry(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	if !strings.Contains(core, "const unscopedOwnershipKnown=storageProjectNamesKnown&&storageProjectNames.length===1&&storageProjectNames[0]===storageLegacyProject") {
+		t.Fatal("unscoped legacy migration must require exactly one raw project entry matching the active project name")
+	}
+	if strings.Contains(core, "new Set(storageProjectNames).size===1") {
+		t.Fatal("deduplicating project names can treat multiple same-named projects as one owner")
+	}
+}
+
+func TestMalformedProjectEntriesCannotProveLegacyOwnership(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	start := strings.Index(core, "export function setStorageProject(")
+	end := strings.Index(core[start:], "export function consumeStorageMigrationWarning")
+	if start < 0 || end < 0 {
+		t.Fatal("project storage identity setup not found")
+	}
+	setup := core[start : start+end]
+	if strings.Contains(setup, "storageProjectNamesKnown=Array.isArray(knownProjects)&&knownProjects.length>0") {
+		t.Fatal("raw project-list length must not establish ownership when entries are malformed")
+	}
+	if !strings.Contains(setup, "const normalizedProjectNames=") {
+		t.Fatal("project names must be normalized before ownership is evaluated")
+	}
+	if !strings.Contains(setup, "storageProjectNames=normalizedProjectNames") {
+		t.Fatal("normalized project names must be the ownership source")
+	}
+	knownAt := strings.Index(setup, "storageProjectNamesKnown=storageProjectNames.length>0")
+	assignedAt := strings.Index(setup, "storageProjectNames=normalizedProjectNames")
+	if knownAt < 0 || assignedAt < 0 || knownAt < assignedAt {
+		t.Fatal("ownership must be marked known only after invalid project entries are filtered")
+	}
+	if !strings.Contains(setup, "if(!storageProjectNames.includes(storageLegacyProject))storageProjectNames.push(storageLegacyProject)") {
+		t.Fatal("legacy project name must be appended only after the known-list decision")
+	}
+}
+
+func TestMixedValidMalformedProjectEntriesCannotProveLegacyOwnership(t *testing.T) {
+	core := readUIAsset(t, "js/core.js")
+	for _, contract := range []string{
+		"let malformedProjectEntry=",
+		"malformedProjectEntry=true",
+		"storageProjectNamesKnown=storageProjectNames.length>0&&!malformedProjectEntry",
+	} {
+		if !strings.Contains(core, contract) {
+			t.Errorf("a valid project name must not authorize legacy migration when another project entry is malformed: missing %q", contract)
+		}
+	}
+}
+
+func TestIgnoredPendingMarkerCannotHideAValidBrowserWorkspace(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	for _, contract := range []string{
+		"function hasValidBrowserUIState(storageBase,valid)",
+		"if(!hasValidBrowserUIState(storageBase,valid))guardedHydratedTabStates.set(storageBase,result.value)",
+		"const replacedIgnoredPending=ignoredPendingStateKeys.delete(key)",
+		"if(replacedIgnoredPending)uiPersistenceReady.set(panel,true)",
+	} {
+		if !strings.Contains(tools, contract) {
+			t.Errorf("an ignored pending marker must preserve a valid main browser draft ahead of server fallback: missing %q", contract)
+		}
+	}
+}
+
 func TestPersistedTabNormalizationCannotCrashOrShareRepeaterHistory(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	core := readUIAsset(t, "js/core.js")
