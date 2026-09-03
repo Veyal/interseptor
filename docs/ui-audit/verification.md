@@ -2,8 +2,8 @@
 
 ## Revision and environment
 
-- Audited worktree base: `e275de77e060e0bc6cf085b4ad1ebde9c878ca2d`, plus the saved-workspace
-  recovery changes captured by the exact runtime and harness digests below
+- Audited worktree base: `920cc00d42f559db1d954dcdb71210b70cf55f03`, with the exact saved-workspace
+  recovery runtime and harness captured by the digests below
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -29,9 +29,9 @@
 
 ## Current-source applicability
 
-The retained audit digest is `cd1d1e1d45e7815636f093785721e3557a04e7b6a08b7e248a1bffbdeabbaff6`
+The retained audit digest is `c1ea51b5db585bc679bd2731f6984f32dc3fcd42ba633239833dc1ccd9048262`
 across 252 runtime files; the harness digest is
-`d582918ca978175999a548ec806cf2ef6a907cdbb644e8723fc512b5862592e2`. It matches the current
+`5bdb04ec25bc1623bbe481055e4ac59f8a7d97276fec993a527277857f0240c3`. It matches the current
 saved-workspace and evidence-first Findings runtime exactly, including bounded startup recovery,
 versioned project-local browser keys, guarded Repeater/Intruder state, and structured
 Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
@@ -40,7 +40,7 @@ semantics, and the published `2.0.8` browser-background suppression baseline.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
-The complete 43-case matrix and three-run performance profile were executed against that exact source
+The complete 47-case matrix and three-run performance profile were executed against that exact source
 with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
 --perf-runs 3 --startup-engines chromium,firefox,webkit`. Full mode cannot accept an arbitrary
 existing server: it builds and starts one owned

@@ -513,6 +513,7 @@ func (m *controlManager) Shutdown(ctx context.Context) {
 type proxyManager struct {
 	handler           http.Handler
 	verifyAPIKeyScope func(string) (bool, string, error)
+	listenFn          func(string) (net.Listener, error)
 
 	mu    sync.Mutex
 	addrs []string
@@ -567,8 +568,12 @@ func proxyListenerRequiresAuth(addr net.Addr) bool {
 
 func (m *proxyManager) listenAll(addrs []string) ([]net.Listener, error) {
 	lns := make([]net.Listener, 0, len(addrs))
+	listen := listenRetry
+	if m.listenFn != nil {
+		listen = m.listenFn
+	}
 	for _, addr := range addrs {
-		ln, err := listenRetry(addr)
+		ln, err := listen(addr)
 		if err != nil {
 			for _, open := range lns {
 				_ = open.Close()

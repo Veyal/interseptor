@@ -273,22 +273,22 @@ func TestUIRepeaterCloseAttemptsHistoryDeletionWhenCleanupLedgerIsUnavailable(t 
 	}
 	cleanup := tools[start:end]
 	for _, contract := range []string{
-		"const tabKey=repHistoryTabKey(t)",
+		"const tabKeys=repHistoryTabKeys(t)",
 		"try{repMarkHistoryCleanup(t);}catch(e){}",
-		"await repDeleteHistoryKey(tabKey)",
-		"try{repClearHistoryCleanup(tabKey);}catch(e){}",
+		"for(const tabKey of tabKeys)await repDeleteHistoryKey(tabKey)",
+		"for(const tabKey of tabKeys)try{repClearHistoryCleanup(tabKey);}catch(e){}",
 	} {
 		if !strings.Contains(cleanup, contract) {
 			t.Errorf("Repeater best-effort cleanup-ledger contract missing %q", contract)
 		}
 	}
-	if strings.Contains(cleanup, "const tabKey=repMarkHistoryCleanup(t)") {
+	if strings.Contains(cleanup, "const tabKeys=repMarkHistoryCleanup(t)") {
 		t.Error("cleanup-ledger failure must not prevent the IndexedDB deletion attempt")
 	}
-	derive := strings.Index(cleanup, "const tabKey=repHistoryTabKey(t)")
+	derive := strings.Index(cleanup, "const tabKeys=repHistoryTabKeys(t)")
 	mark := strings.Index(cleanup, "try{repMarkHistoryCleanup(t);}catch(e){}")
-	remove := strings.Index(cleanup, "await repDeleteHistoryKey(tabKey)")
+	remove := strings.Index(cleanup, "for(const tabKey of tabKeys)await repDeleteHistoryKey(tabKey)")
 	if derive < 0 || mark < derive || remove < mark {
-		t.Error("history cleanup must derive the key, attempt the ledger best-effort, then delete IndexedDB rows")
+		t.Error("history cleanup must derive current and legacy keys, attempt the ledger best-effort, then delete IndexedDB rows")
 	}
 }
