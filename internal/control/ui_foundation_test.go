@@ -102,6 +102,7 @@ func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
 		t.Errorf("interactive app style still suppresses focus outline: %s", line)
 	}
 	requireUIContains(t, css, ".rep-edit:focus-visible,.notes-edit:focus-visible", "inset 3px 0 0 var(--accent)")
+	requireUIContains(t, css, ".tab:focus", "outline:3px solid var(--focus-ring)")
 	if strings.Contains(readUIAsset(t, "js/app.js"), "outline:none") {
 		t.Error("command palette still suppresses its inline focus outline")
 	}
@@ -184,7 +185,7 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 	)
 	requireUIRegex(t, core, `(?s)function syncModalZOrder\(\)\{.*?modalStack\.forEach.*?setProperty\('z-index'`)
 	requireUIRegex(t, core, `(?s)function restoreModalZIndex\(entry\)\{.*?(setProperty|removeProperty)\('z-index'`)
-	requireUIRegex(t, core, `(?s)modalEl\.addEventListener\('mousedown'.*?e\.preventDefault\(\).*?entry\.onDismiss`)
+	requireUIRegex(t, core, `(?s)modalEl\.addEventListener\('mousedown'.*?e\.preventDefault\(\).*?entry\.onDismiss.*?topModal\(\)===entry.*?\[aria-busy="true"\]\[tabindex\].*?focus`)
 	if strings.Contains(core, `$$('[role="dialog"]').find(`) {
 		t.Error("modal focus trap still discovers the first open dialog by DOM order")
 	}

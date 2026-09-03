@@ -25,6 +25,23 @@ preferences—such as theme, the last open top-level panel and Settings section,
 and inspector height—remain browser-wide. Device-helper form state may remain in the current
 browser tab.
 
+Repeater and Intruder tab drafts and presets are synchronized with the project database and cached
+in the browser under the project's full canonical directory. Older name-based browser keys migrate
+only when they belong unambiguously to the active project; ambiguous, malformed, or oversized
+drafts remain untouched and produce a recovery warning. Each Repeater or Intruder workspace accepts
+up to 200 tabs, and each project-backed UI-state document is limited to 4 MiB of UTF-8 JSON. A
+retained draft is replaced only after an explicit edit, and unavailable browser storage does not
+block project-database synchronization.
+
+If the project-list endpoint is temporarily unavailable but the version endpoint still identifies
+the canonical directory, the workspace can operate from project storage. When an older unscoped or
+name-keyed browser draft also exists, Interseptor does not guess its owner: migration or removal of
+that legacy value is deferred while new edits continue to use the exact canonical-directory browser
+key and synchronize with the project database. Unscoped state is migrated only when the project list
+proves exactly one valid entry whose name matches the active project. Duplicate names and malformed
+or blank entries are not ownership proof. The legacy value remains untouched for recovery. Reload after project
+identity is fully available to retry the guarded migration.
+
 A Repeater tab's send list is project-keyed but browser-local. It survives request edits, tab
 switches, and reloads, and is deleted when that Repeater tab closes. The corresponding request and
 response flows remain in the project store; project export and peer sync do not preserve their

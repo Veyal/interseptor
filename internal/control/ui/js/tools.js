@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, syncUiSelectStyles, icon } from './core.js';
+import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
@@ -88,13 +88,15 @@ function repHistoryDB(){
   return repHistoryDBPromise;
 }
 function repHistoryTabKey(t){return projectStorageKey('rep.history')+'|'+t.historyKey;}
+function repHistoryLegacyTabKeys(t){return projectStorageLegacyKeys('rep.history').map(prefix=>prefix+'|'+t.historyKey);}
+function repHistoryTabKeys(t){return [...new Set([repHistoryTabKey(t),...repHistoryLegacyTabKeys(t)])];}
 function repHistoryCleanupStorageKey(){return projectStorageKey('rep.history.cleanup');}
 function repHistoryCleanupKeys(){
   const raw=localStorage.getItem(repHistoryCleanupStorageKey());
   if(!raw)return[];
   try{
-    const prefix=projectStorageKey('rep.history')+'|';
-    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&key.startsWith(prefix)&&key.length<=512))];
+    const prefixes=[projectStorageKey('rep.history'),...projectStorageLegacyKeys('rep.history')].map(prefix=>prefix+'|');
+    return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&prefixes.some(prefix=>key.startsWith(prefix))&&key.length<=512))];
   }catch(e){return[];}
 }
 function repWriteHistoryCleanupKeys(keys){
@@ -102,10 +104,10 @@ function repWriteHistoryCleanupKeys(keys){
   else localStorage.removeItem(repHistoryCleanupStorageKey());
 }
 function repMarkHistoryCleanup(t){
-  const tabKey=repHistoryTabKey(t),keys=repHistoryCleanupKeys();
-  if(!keys.includes(tabKey))keys.push(tabKey);
+  const tabKeys=repHistoryTabKeys(t),keys=repHistoryCleanupKeys();
+  for(const tabKey of tabKeys)if(!keys.includes(tabKey))keys.push(tabKey);
   repWriteHistoryCleanupKeys(keys);
-  return tabKey;
+  return tabKeys;
 }
 function repClearHistoryCleanup(tabKey){repWriteHistoryCleanupKeys(repHistoryCleanupKeys().filter(key=>key!==tabKey));}
 function repHistoryTxnDone(tx){
@@ -142,7 +144,23 @@ async function repStoreHistoryEntries(t,entries){
     await repHistoryTxnDone(tx);
   });
 }
+async function repMigrateLegacyHistoryRows(t){
+  const legacyTabKeys=repHistoryLegacyTabKeys(t);if(!legacyTabKeys.length)return;
+  const db=await repHistoryDB(),tabKey=repHistoryTabKey(t);
+  const tx=db.transaction(REP_HISTORY_STORE,'readwrite'),store=tx.objectStore(REP_HISTORY_STORE),index=store.index('tabKey');
+  for(const legacyTabKey of legacyTabKeys){
+    const request=index.openCursor(legacyTabKey);
+    request.onsuccess=()=>{
+      const cursor=request.result;if(!cursor)return;
+      const entries=normalizeRepHistory([cursor.value?.entry]);
+      if(entries.length){const entry=entries[0];store.put({key:tabKey+'|'+entry.id,tabKey,entry});cursor.delete();}
+      cursor.continue();
+    };
+  }
+  await repHistoryTxnDone(tx);
+}
 async function repReadHistory(t){
+  await repMigrateLegacyHistoryRows(t);
   const db=await repHistoryDB(),tx=db.transaction(REP_HISTORY_STORE,'readonly');
   const index=tx.objectStore(REP_HISTORY_STORE).index('tabKey');
   const request=index.getAll(repHistoryTabKey(t));
@@ -176,19 +194,19 @@ async function repDeleteHistoryKey(tabKey){
   }while(deleted===REP_HISTORY_DELETE_BATCH);
 }
 async function repDeleteHistory(t){
-  const tabKey=repHistoryTabKey(t);
+  const tabKeys=repHistoryTabKeys(t);
   // The retry ledger is a resilience aid, not a prerequisite for deletion.
   // Browsers can deny localStorage while leaving IndexedDB usable; closing a
   // task must still attempt to remove that tab's durable history.
   try{repMarkHistoryCleanup(t);}catch(e){}
   return repHistoryOperation(t,async()=>{
     if(!t._closed)return;
-    await repDeleteHistoryKey(tabKey);
-    try{repClearHistoryCleanup(tabKey);}catch(e){}
+    for(const tabKey of tabKeys)await repDeleteHistoryKey(tabKey);
+    for(const tabKey of tabKeys)try{repClearHistoryCleanup(tabKey);}catch(e){}
   },true);
 }
 async function repRetryHistoryCleanup(openTabs){
-  const openKeys=new Set(openTabs.map(repHistoryTabKey));
+  const openKeys=new Set(openTabs.flatMap(repHistoryTabKeys));
   let cleanupKeys;
   try{cleanupKeys=repHistoryCleanupKeys();}catch(e){return;}
   for(const tabKey of cleanupKeys){
@@ -221,14 +239,23 @@ async function repRecordHistory(t,flow){
   try{await repStoreHistoryEntries(t,t.historyStoreNeedsMigration?t.history:[entry]);t.historyStoreNeedsMigration=false;t.historyStorageError='';}
   catch(e){const first=!t.historyStorageError;t.historyStoreNeedsMigration=true;t.historyStorageError=e.message||'unknown error';if(first)toast('Repeater history could not be saved for reload: '+t.historyStorageError,'error');}
 }
+function persistedText(value,fallback=''){return typeof value==='string'?value:fallback;}
+function persistedInteger(value,fallback,min,max){return Number.isSafeInteger(value)&&value>=min&&value<=max?value:fallback;}
+function persistedStringList(value){return Array.isArray(value)?value.map(item=>persistedText(item)).filter(Boolean):[];}
+function persistedPlainObject(value,fallback){return value&&typeof value==='object'&&!Array.isArray(value)?{...value}:{...fallback};}
 export function repBlank(seq){return {tid:seq,title:'new tab',label:'',method:'GET',url:'',headers:'',body:'',reqView:'pretty',resId:null,resView:'pretty',status:'',color:'',sendError:'',sourceFlowId:null,codecId:'',rawBody:'',applyOnSend:false,decodedPlain:'',reqEditEpoch:0,requestAdoptionPristine:false,warnings:[],history:[],historyKey:newRepHistoryKey(),historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration:false,historyLegacyURL:'',historyStoreNeedsMigration:false};}
-function normalizeRepeaterTab(t){
-  const url=t.url||'';
+function normalizeRepeaterTab(t,normalizedTabs=[]){
+  const url=persistedText(t.url);
   const hasHistory=Object.prototype.hasOwnProperty.call(t,'history')&&Array.isArray(t.history);
-  const historyKey=typeof t.historyKey==='string'&&t.historyKey?t.historyKey.slice(0,160):newRepHistoryKey();
-  const historyNeedsMigration=t.historyNeedsMigration===true||(!t.historyKey&&!hasHistory);
+  const historyKeys=new Set(normalizedTabs.map(tab=>tab.historyKey));
+  let historyKey=typeof t.historyKey==='string'&&t.historyKey?t.historyKey.slice(0,160):newRepHistoryKey();
+  while(historyKeys.has(historyKey))historyKey=newRepHistoryKey();
+  const hasPersistedHistoryKey=typeof t.historyKey==='string'&&!!t.historyKey;
+  const historyNeedsMigration=t.historyNeedsMigration===true||(!hasPersistedHistoryKey&&!hasHistory);
   const history=normalizeRepHistory(t.history);
-  return {tid:t.tid,method:t.method||'GET',url,headers:t.headers||'',body:t.body||'',reqView:t.reqView||'pretty',resView:t.resView||'pretty',resId:null,status:'',color:'',sendError:'',title:'',label:t.label||'',sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:Array.isArray(t.warnings)?t.warnings.filter(w=>typeof w==='string'&&w):[],history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?String(t.historyLegacyURL||url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
+  const reqView=['pretty','raw','decoded'].includes(t.reqView)?t.reqView:'pretty';
+  const resView=['pretty','raw','render'].includes(t.resView)?t.resView:'pretty';
+  return {tid:t.tid,method:persistedText(t.method,'GET').slice(0,32)||'GET',url,headers:persistedText(t.headers),body:persistedText(t.body),reqView,resView,resId:null,status:'',color:'',sendError:'',title:'',label:persistedText(t.label),sourceFlowId:Number.isSafeInteger(t.sourceFlowId)&&t.sourceFlowId>0?t.sourceFlowId:null,codecId:persistedText(t.codecId),rawBody:persistedText(t.rawBody),applyOnSend:!!t.applyOnSend,decodedPlain:persistedText(t.decodedPlain),reqEditEpoch:0,requestAdoptionPristine:t.requestAdoptionPristine===true,warnings:persistedStringList(t.warnings),history,historyKey,historyVisibleCount:REP_HISTORY_RENDER_BATCH,historyNeedsMigration,historyLegacyURL:historyNeedsMigration?persistedText(t.historyLegacyURL,url):'',historyStoreNeedsMigration:hasHistory&&history.length>0};
 }
 function serializeRepeaterTab(t){
   const out={tid:t.tid,method:t.method,url:t.url,headers:t.headers,body:t.body,reqView:t.reqView||'pretty',resView:t.resView,sourceFlowId:t.sourceFlowId||null,codecId:t.codecId||'',rawBody:t.rawBody||'',applyOnSend:!!t.applyOnSend,decodedPlain:t.decodedPlain||'',label:t.label||'',requestAdoptionPristine:!!t.requestAdoptionPristine,warnings:t.warnings||[],historyKey:t.historyKey,historyNeedsMigration:!!t.historyNeedsMigration,historyLegacyURL:t.historyNeedsMigration?String(t.historyLegacyURL||t.url||''):''};
@@ -247,7 +274,7 @@ export function repRefreshHL(){
   if(h)h.innerHTML=highlightHeaderLines(($('#repHeaders').value)||'')+'\n';
   if(b)b.innerHTML=highlightBodyText(($('#repBody').value)||'',repReqContentType())+'\n';
 }
-export function repTitle(t){const warning=repWarningSuffix(t);if(t.label)return t.label+warning;if(!t.url)return 'new tab'+warning;try{const u=new URL(t.url);return t.method+' '+u.host+u.pathname+warning;}catch(e){return t.method+' '+t.url.slice(0,46)+warning;}}
+export function repTitle(t){const warning=repWarningSuffix(t),label=persistedText(t?.label),url=persistedText(t?.url),method=persistedText(t?.method,'GET');if(label)return label+warning;if(!url)return 'new tab'+warning;try{const u=new URL(url);return method+' '+u.host+u.pathname+warning;}catch(e){return method+' '+url.slice(0,46)+warning;}}
 // Keep tab/flow identity in lockstep with the history API contract. URL.host
 // drops an explicit default port, while flow metadata always carries one, so
 // normalize both sides to scheme + hostname + port + queryless path first.
@@ -294,16 +321,32 @@ function repSyncReqSeg(view){
 }
 
 // repTabs — shared tab-manager instance (docs/UI-REDESIGN-ROADMAP.md §4).
-// Storage is project-scoped (`rep.tabs.<project>`) so switching projects does
-// not leak another engagement's drafts (#17). Legacy unscoped `rep.tabs` is
-// migrated once into the current project via projectStorageKey.
+// Storage is scoped by the encoded canonical project directory so switching
+// projects does not leak another engagement's drafts (#17). Legacy state is
+// migrated only when projectStorageKey can prove a unique owner.
 const uiPersistenceReady=new Map();
 const uiPersistenceQueues=new Map();
+// A malformed/oversized pending blob is left intact for recovery, but should
+// not keep the sync banner permanently active in this page. A later explicit
+// draft write clears the session-only ignore marker.
+const ignoredPendingStateKeys=new Set();
 let resolveRepeaterReady,resolveIntruderReady,resolveWorkstationReady;
 let repRequestActionEpoch=0;
 const repeaterReady=new Promise(resolve=>{resolveRepeaterReady=resolve;});
 const intruderReady=new Promise(resolve=>{resolveIntruderReady=resolve;});
 export const workstationReady=new Promise(resolve=>{resolveWorkstationReady=resolve;});
+const guardedHydratedTabStates=new Map();
+const workspaceStorageWarnings=[];
+function reportWorkspaceStorageWarning(message){
+  if(!workspaceStorageWarnings.includes(message))workspaceStorageWarnings.push(message);
+  toast(message,'warn');
+}
+export function workspaceStorageWarningMessage(){return workspaceStorageWarnings.join(' ');}
+function persistedUIStateIsUnsafe(raw,valid){
+  if(raw===null)return false;
+  if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES)return true;
+  try{return !valid(JSON.parse(raw));}catch(e){return true;}
+}
 export function releaseWorkstationReady(result={ok:true}){resolveWorkstationReady(result);}
 export async function waitForWorkstationReady(){
   const result=await workstationReady;
@@ -313,19 +356,54 @@ export async function waitForWorkstationReady(){
 }
 function uiPendingStateKey(panel){return projectStorageKey('ui.pending.'+panel);}
 export function uiStateSyncPending(){
-  try{return ['repeater','intruder','intruder-presets'].some(panel=>localStorage.getItem(uiPendingStateKey(panel))!==null);}
+  try{return ['repeater','intruder','intruder-presets'].some(panel=>{const key=uiPendingStateKey(panel);return !ignoredPendingStateKeys.has(key)&&localStorage.getItem(key)!==null;});}
   catch(e){return true;}
 }
 function readPendingUIState(panel){
+  const key=uiPendingStateKey(panel);
+  const migrationWarning=consumeStorageMigrationWarning(key);
+  let raw;
+  try{raw=localStorage.getItem(key);}
+  catch(e){
+    ignoredPendingStateKeys.add(key);
+    reportWorkspaceStorageWarning('Saved workspace pending state could not be read. It was kept for recovery; your next edit will replace it.');
+    return null;
+  }
+  if(migrationWarning){
+    const hasCanonical=raw!==null;
+    if(hasCanonical)ignoredPendingStateKeys.delete(key);
+    else ignoredPendingStateKeys.add(key);
+    const message=migrationWarning==='ambiguous legacy project state'
+      ?'An older pending workspace draft cannot be assigned to one project. It was kept unchanged for recovery.'
+      :migrationWarning==='legacy project ownership unavailable'
+        ?'An older pending workspace draft cannot be assigned while project ownership is unavailable. Its legacy migration is deferred.'
+      :migrationWarning==='conflicting unscoped legacy state'
+        ?'An older unscoped pending workspace draft differs from the project-specific draft. Both were kept.'
+      :migrationWarning==='legacy project state could not be migrated'
+        ?'An older pending workspace draft could not be migrated in this browser. It was kept for recovery.'
+        :'An older pending workspace draft is too large to restore safely. It was kept for recovery.';
+    reportWorkspaceStorageWarning(message+(hasCanonical
+      ?' The project-specific pending draft remains authoritative.'
+      :' Your next edit will create a project-specific replacement.'));
+    if(!hasCanonical)return null;
+  }
   try{
-    const raw=localStorage.getItem(uiPendingStateKey(panel));
     if(raw===null)return null;
+    if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
+      ignoredPendingStateKeys.add(key);
+      reportWorkspaceStorageWarning('Saved workspace pending state is too large to restore safely. It was kept for recovery; your next edit will replace it.');
+      return null;
+    }
     return JSON.parse(raw);
-  }catch(e){try{localStorage.removeItem(uiPendingStateKey(panel));}catch(ignore){}return null;}
+  }catch(e){
+    ignoredPendingStateKeys.add(key);
+    reportWorkspaceStorageWarning('Saved workspace pending state could not be read. It was kept for recovery; your next edit will replace it.');
+    return null;
+  }
 }
 function uiPersistenceQueue(panel){
   let queue=uiPersistenceQueues.get(panel);
-  if(!queue){queue={pending:null,saving:false};uiPersistenceQueues.set(panel,queue);}
+  if(!queue){queue={pending:null,saving:false,version:0};uiPersistenceQueues.set(panel,queue);}
   return queue;
 }
 async function drainUIState(panel){
@@ -334,10 +412,10 @@ async function drainUIState(panel){
   queue.saving=true;
   try{
     while(queue.pending!==null){
-      const body=queue.pending;queue.pending=null;
+      const body=queue.pending,version=queue.version;queue.pending=null;
       try{
         await api('/api/ui/'+panel,{method:'PUT',headers:{'content-type':'application/json'},body});
-        if(queue.pending===null){
+        if(queue.pending===null&&queue.version===version){
           try{
             if(localStorage.getItem(uiPendingStateKey(panel))===body){
               localStorage.removeItem(uiPendingStateKey(panel));
@@ -346,6 +424,7 @@ async function drainUIState(panel){
           }catch(e){}
         }
       }catch(e){
+        if(queue.version!==version)continue;
         if(queue.pending===null)queue.pending=body;
         document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:true,error:true,panel}}));
         break;
@@ -363,8 +442,21 @@ export async function retryUIStateSync(){
 function persistUIState(panel, blob){
   let body;
   try{body=JSON.stringify(blob);}catch(e){return false;}
-  try{localStorage.setItem(uiPendingStateKey(panel),body);}catch(e){}
-  uiPersistenceQueue(panel).pending=body;
+  const key=uiPendingStateKey(panel);
+  const queue=uiPersistenceQueue(panel);
+  queue.version++;
+  if(persistedStateByteLength(body)>MAX_PROJECT_UI_STATE_BYTES){
+    queue.pending=null;
+    ignoredPendingStateKeys.add(key);
+    try{localStorage.setItem(key,body);}catch(e){}
+    reportWorkspaceStorageWarning('Saved workspace exceeds the project storage limit. The browser draft was kept for recovery and will not be retried until it is reduced or replaced.');
+    document.dispatchEvent(new CustomEvent('interseptor:ui-state-sync',{detail:{pending:uiStateSyncPending()}}));
+    return false;
+  }
+  const replacedIgnoredPending=ignoredPendingStateKeys.delete(key);
+  if(replacedIgnoredPending)uiPersistenceReady.set(panel,true);
+  try{localStorage.setItem(key,body);}catch(e){}
+  queue.pending=body;
   if(uiPersistenceReady.get(panel)!==true)return false;
   drainUIState(panel);
   return true;
@@ -372,31 +464,77 @@ function persistUIState(panel, blob){
 const UI_HYDRATE_TIMEOUT_MS=2500;
 async function readBoundedUIState(panel){
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),UI_HYDRATE_TIMEOUT_MS);
-  try{
-    const d=await api('/api/ui/'+panel,{signal:controller.signal});
+  let timer;
+  const request=api('/api/ui/'+panel,{signal:controller.signal}).then(d=>{
     if(d&&d.value!=null)return {status:'success',value:d.value};
     return {status:'empty'};
-  }catch(e){return {status:'error',error:e};}
+  },error=>({status:'error',error}));
+  const deadline=new Promise(resolve=>{
+    timer=setTimeout(()=>{
+      controller.abort();
+      resolve({status:'error',error:new Error('saved workspace request timed out')});
+    },UI_HYDRATE_TIMEOUT_MS);
+  });
+  try{
+    return await Promise.race([request,deadline]);
+  }
   finally{clearTimeout(timer);}
 }
+function hasValidBrowserUIState(storageBase,valid){
+  try{
+    const raw=localStorage.getItem(projectStorageKey(storageBase));
+    if(raw===null||persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES)return false;
+    const value=JSON.parse(raw);
+    if(!valid(value))return false;
+    return !((storageBase==='rep.tabs'||storageBase==='intr.tabs')&&value.tabs.length===0);
+  }catch(e){return false;}
+}
 async function hydrateUIState(panel,storageBase,valid=()=>true){
+  const key=uiPendingStateKey(panel);
+  guardedHydratedTabStates.delete(storageBase);
   let pending=readPendingUIState(panel);
   if(pending!==null&&!valid(pending)){
-    try{localStorage.removeItem(uiPendingStateKey(panel));}catch(e){}
+    // Keep an invalid draft for manual recovery. Ignore it only for this page
+    // session so it cannot block the workspace sync indicator indefinitely.
+    ignoredPendingStateKeys.add(key);
+    reportWorkspaceStorageWarning('Saved workspace pending state is not recognized. It was kept for recovery; your next edit will replace it.');
     pending=null;
   }
   const result=await readBoundedUIState(panel);
   const validServer=result.status!=='success'||valid(result.value);
-  uiPersistenceReady.set(panel,result.status!=='error'&&validServer);
-  if(!validServer)return 'error';
+  const canReplaceInvalidServer=pending!==null&&result.status==='success';
+  uiPersistenceReady.set(panel,result.status!=='error'&&(validServer||canReplaceInvalidServer));
+  if(ignoredPendingStateKeys.has(key)){
+    if(result.status==='success'&&validServer){
+      if(!hasValidBrowserUIState(storageBase,valid))guardedHydratedTabStates.set(storageBase,result.value);
+    }
+    return 'error';
+  }
+  if(!validServer&&!canReplaceInvalidServer)return 'error';
   if(pending!==null){
-    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(pending));}catch(e){}
+    let restoredInMemory=false;
+    const storageKey=projectStorageKey(storageBase);
+    try{localStorage.setItem(storageKey,JSON.stringify(pending));}
+    catch(e){
+      restoredInMemory=true;
+      guardedHydratedTabStates.set(storageBase,pending);
+      reportWorkspaceStorageWarning('Saved workspace could not be copied into browser storage; it was restored in memory and project sync remains available.');
+    }
     if(result.status!=='error')persistUIState(panel,pending);
-    return result.status==='error'?'error':'pending';
+    return result.status==='error'||restoredInMemory?'error':'pending';
   }
   if(result.status==='success'){
-    try{localStorage.setItem(projectStorageKey(storageBase),JSON.stringify(result.value));}catch(e){}
+    const storageKey=projectStorageKey(storageBase);
+    let preserveLocal=false;
+    try{preserveLocal=persistedUIStateIsUnsafe(localStorage.getItem(storageKey),valid);}
+    catch(e){preserveLocal=true;}
+    if(preserveLocal)guardedHydratedTabStates.set(storageBase,result.value);
+    else try{localStorage.setItem(storageKey,JSON.stringify(result.value));}
+    catch(e){
+      guardedHydratedTabStates.set(storageBase,result.value);
+      reportWorkspaceStorageWarning('Saved workspace could not be copied into browser storage; it was restored in memory and project sync remains available.');
+      return 'error';
+    }
   }
   return result.status;
 }
@@ -412,6 +550,8 @@ export const repTabs=createTabManager({
   tablistLabel:'Repeater tabs',
   tabPanelId:'repTabPanel',
   onPersist:blob=>persistUIState('repeater',blob),
+  storageLabel:'Repeater',
+  onStorageWarning:reportWorkspaceStorageWarning,
   onClose:t=>repDeleteHistory(t),
 });
 export function repCur(){return repTabs.cur();}
@@ -451,7 +591,7 @@ function repCodecBadge(t){
     b.textContent=(t.applyOnSend?'re-encode on send · ':'display · ')+(t.codecId);
   }else{b.style.display='none';b.textContent='';}
 }
-export function repNewTab(){repSaveEditor();const t=repBlank(repTabs.seq++);repTabs.tabs.push(t);repTabs.active=t.tid;renderRepTabs();return t;}
+export function repNewTab(){repSaveEditor();const t=repTabs.create();if(!t)return null;repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
   if(t.sendPending)setRepSendState('pending','Sending…');
@@ -696,7 +836,7 @@ export async function sendToRepeater(f){
       &&snapshot.editEpoch===(snapshot.tab.reqEditEpoch||0)
       &&snapshot.tab.sendPending!==true);
     let t=reusable?.tab||null;
-    if(!t){t=repBlank(repTabs.seq++);repTabs.tabs.push(t);}
+    if(!t){t=repTabs.create();if(!t)return false;}
     repTabs.active=t.tid;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.method=d.method;t.url=`${d.scheme}://${repEndpointAuthority(d.scheme,d.host,d.port)}${d.path}`;t.headers=headersToText(d.reqHeaders);
@@ -714,11 +854,15 @@ export async function sendToRepeater(f){
 }
 export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
-  const hydration=await hydrateUIState('repeater','rep.tabs');
-  repTabs.init('#repTabs');
+  let hydration=await hydrateUIState('repeater','rep.tabs',isSafePersistedTabState);
+  repTabs.init('#repTabs',guardedHydratedTabStates.get('rep.tabs'));
+  guardedHydratedTabStates.delete('rep.tabs');
   repRetryHistoryCleanup(repTabs.tabs).catch(()=>{});
   // First persist migrates localStorage drafts into the project DB.
-  if(repTabs.tabs.length&&hydration!=='error')repTabs.persist();
+  // A warning raised during init means the original local draft is intentionally
+  // retained. A warning raised by persist itself still becomes persistent UI.
+  if(repTabs.tabs.length&&hydration!=='error'&&!repTabs.storageWarning)repTabs.persist();
+  if(repTabs.storageWarning)hydration='error';
   ['#repMethod','#repUrl'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{
     repSaveEditor({operatorEdit:true});
     // Typing in method/url only changes the active tab's label — don't rebuild the
@@ -843,14 +987,17 @@ async function importPostmanFiles(files){
   const result=await api('/api/import/postman',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   const requests=Array.isArray(result.requests)?result.requests:[];
   if(!requests.length)throw new Error('the collection has no importable HTTP requests');
+  const available=repTabs.availableSlots();
+  if(requests.length>available)throw new Error(`collection has ${requests.length} importable requests, but Repeater has only ${available} tab slot${available===1?'':'s'} available; close tabs and import again`);
   repSaveEditor();
   const created=[];
   requests.forEach((request,index)=>{
-    const tab=repBlank(repTabs.seq++);
+    const tab=repTabs.create();
+    if(!tab)return;
     tab.label=((request.folder?request.folder+' / ':'')+(request.name||request.method+' '+request.url||('request '+(index+1))));
     tab.method=request.method||'GET';tab.url=request.url||'';tab.headers=request.headers||'';tab.body=request.body||'';
     tab.warnings=Array.isArray(request.warnings)?request.warnings.slice():[];
-    created.push(tab);repTabs.tabs.push(tab);
+    created.push(tab);
   });
   repTabs.active=created[0].tid;renderRepTabs();repLoadEditor();repPersist();
   const unresolved=Array.isArray(result.unresolved)?result.unresolved:[];
@@ -1002,7 +1149,7 @@ function intrMarkers(){return (($('#intrTemplate').value||'').match(/§[^§]*§/
 /* ---- intruder tabs: each is a full saved attack config (mirrors Repeater) ---- */
 function intrBlank(seq){return {tid:seq,target:'',template:INTR_TPL,type:'sniper',threads:1,delay:0,repeat:20,sniper:INTR_SNIPER,pos:INTR_POS.slice(),sniperLines:null,posLines:[],sniperFile:null,posFiles:[],sniperSource:'list',sniperNums:INTR_NUM_DEFAULT(),posSources:[],posNums:[],grep:'',extract:'',proc:''};}
 function intrTypeLabel(t){return t==='repeat'?'repeat':(t||'sniper');}
-function intrTitle(t){if(!t)return 'new attack';let h='';try{h=new URL(t.target).host;}catch(e){h=(t.target||'').replace(/^https?:\/\//,'');}return intrTypeLabel(t.type)+(h?' · '+h:' attack');}
+function intrTitle(t){if(!t)return 'new attack';const target=persistedText(t.target),type=persistedText(t.type,'sniper');let h='';try{h=new URL(target).host;}catch(e){h=target.replace(/^https?:\/\//,'');}return intrTypeLabel(type)+(h?' · '+h:' attack');}
 function intrReadEditor(){return {target:$('#intrTarget').value,template:$('#intrTemplate').value,
   threads:parseInt($('#intrThreads').value,10)||1,delay:parseInt($('#intrDelay').value,10)||0,repeat:parseInt($('#intrRepeat').value,10)||20,
   grep:$('#intrGrep').value,extract:$('#intrExtract').value,proc:$('#intrProc').value,
@@ -1022,39 +1169,62 @@ function intrApply(t){if(!t)return;
   intrState.posSources=Array.isArray(t.posSources)?t.posSources.slice():[];
   intrState.posNums=Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[];
   updateIntrMode();}
+const INTR_PERSISTED_PAYLOAD_MAX=500;
 function intrTabForStorage(t){
   const o={...t};
   delete o._editEpoch;
-  if(o.sniperLines?.length>500){o.sniperLarge=true;o.sniperCount=o.sniperLines.length;delete o.sniperLines;}
+  if(o.sniperLines?.length>INTR_PERSISTED_PAYLOAD_MAX){o.sniperLarge=true;o.sniperCount=o.sniperLines.length;delete o.sniperLines;}
   if(o.posLines?.length){
     o.posCounts=o.posLines.map(a=>a?.length||0);
-    o.posLines=o.posLines.map(a=>(a&&a.length<=500)?a:null);
+    o.posLines=o.posLines.map(a=>(a&&a.length<=INTR_PERSISTED_PAYLOAD_MAX)?a:null);
   }
   return o;
 }
-// intrTabs — project-scoped (`intr.tabs.<project>`) so attack configs do not
-// leak across projects (#18). Legacy unscoped key migrates once.
+function normalizeIntruderTab(t){
+  const type=['sniper','battering','pitchfork','cluster','repeat'].includes(t.type)?t.type:'sniper';
+  const sniperLines=Array.isArray(t.sniperLines)?t.sniperLines.map(item=>persistedText(item)):null;
+  const posLines=Array.isArray(t.posLines)?t.posLines.map(items=>Array.isArray(items)?items.map(item=>persistedText(item)):null):[];
+  const sniperSource=['list','numbers'].includes(t.sniperSource)?t.sniperSource:'list';
+  return {tid:t.tid,target:persistedText(t.target),template:persistedText(t.template,INTR_TPL),type,
+    threads:persistedInteger(t.threads,1,1,64),delay:persistedInteger(t.delay,0,0,Number.MAX_SAFE_INTEGER),repeat:persistedInteger(t.repeat,20,1,2000),
+    sniper:persistedText(t.sniper),pos:Array.isArray(t.pos)?t.pos.map(item=>persistedText(item)):[],sniperLines,posLines,
+    sniperFile:typeof t.sniperFile==='string'?t.sniperFile:null,posFiles:Array.isArray(t.posFiles)?t.posFiles.map(item=>typeof item==='string'?item:null):[],
+    sniperLarge:!!t.sniperLarge,sniperCount:persistedInteger(t.sniperCount,0,0,Number.MAX_SAFE_INTEGER),
+    posCounts:Array.isArray(t.posCounts)?t.posCounts.map(item=>persistedInteger(item,0,0,Number.MAX_SAFE_INTEGER)):[],
+    sniperSource,sniperNums:persistedPlainObject(t.sniperNums,INTR_NUM_DEFAULT()),
+    posSources:Array.isArray(t.posSources)?t.posSources.map(item=>item==='numbers'?'numbers':'list'):[],
+    posNums:Array.isArray(t.posNums)?t.posNums.map(item=>persistedPlainObject(item,INTR_NUM_DEFAULT())):[],
+    grep:persistedText(t.grep),extract:persistedText(t.extract),proc:persistedText(t.proc)};
+}
+// intrTabs — scoped by the encoded canonical project directory so attack
+// configs do not leak across projects (#18). Legacy state migrates only when
+// its project owner is unambiguous.
 const intrTabs=createTabManager({
   storageKey:()=>projectStorageKey('intr.tabs'),
   blank:intrBlank,
   title:intrTitle,
   onSave:()=>intrSaveCur(),
   onLoad:t=>intrLoadTab(t),
-  normalize:t=>({tid:t.tid,target:t.target||'',template:t.template||INTR_TPL,type:t.type||'sniper',threads:t.threads||1,delay:t.delay||0,repeat:t.repeat||20,sniper:t.sniper||'',pos:Array.isArray(t.pos)?t.pos:[],sniperLines:t.sniperLines||null,posLines:Array.isArray(t.posLines)?t.posLines:[],sniperFile:t.sniperFile||null,posFiles:Array.isArray(t.posFiles)?t.posFiles:[],sniperLarge:!!t.sniperLarge,sniperCount:t.sniperCount||0,posCounts:Array.isArray(t.posCounts)?t.posCounts:[],sniperSource:t.sniperSource||'list',sniperNums:{...(t.sniperNums||INTR_NUM_DEFAULT())},posSources:Array.isArray(t.posSources)?t.posSources:[],posNums:Array.isArray(t.posNums)?t.posNums.map(n=>({...(n||INTR_NUM_DEFAULT())})):[],grep:t.grep||'',extract:t.extract||'',proc:t.proc||''}),
+  normalize:normalizeIntruderTab,
   serialize:intrTabForStorage,
   tablistLabel:'Intruder tabs',
   tabPanelId:'intrTabPanel',
   onPersist:blob=>persistUIState('intruder',blob),
+  storageLabel:'Intruder',
+  onStorageWarning:reportWorkspaceStorageWarning,
 });
 function intrTouch(){const t=intrTabs.cur();if(t)t._editEpoch=(t._editEpoch||0)+1;intrSaveCur();renderIntrTabs();intrTabs.persistDebounced();} // save editor → active tab
 function renderIntrTabs(){intrTabs.render('#intrTabs');syncIntrTabLock(intrStartPending||intrLastRunning);}
 export async function intrInit(){
   if(intrInit._done)return intruderReady; intrInit._done=true;
-  const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs'),hydrateIntrPresets()]);
-  const hydration=[tabHydration,presetHydration].includes('error')?'error':[tabHydration,presetHydration].includes('pending')?'pending':tabHydration;
-  intrTabs.init('#intrTabs');
-  if(intrTabs.tabs.length&&hydration!=='error')intrTabs.persist();
-  renderIntrHistory();loadIntrPresets();
+  const [tabHydration,presetHydration]=await Promise.all([hydrateUIState('intruder','intr.tabs',isSafePersistedTabState),hydrateIntrPresets()]);
+  let hydration=[tabHydration,presetHydration].includes('error')?'error':[tabHydration,presetHydration].includes('pending')?'pending':tabHydration;
+  intrTabs.init('#intrTabs',guardedHydratedTabStates.get('intr.tabs'));
+  guardedHydratedTabStates.delete('intr.tabs');
+  if(intrTabs.tabs.length&&hydration!=='error'&&!intrTabs.storageWarning)intrTabs.persist();
+  if(intrTabs.storageWarning)hydration='error';
+  renderIntrHistory();loadIntrPresets(guardedHydratedTabStates.get('intruder.presets'));
+  guardedHydratedTabStates.delete('intruder.presets');
   const tabBar=$('#intrTabs');
   if(tabBar)tabBar.addEventListener('keydown',e=>{
     if((intrStartPending||intrLastRunning)&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
@@ -1463,12 +1633,49 @@ export async function intrStart(){
 }
 $('#intrStart').onclick=intrStart;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
-async function hydrateIntrPresets(){
-  return hydrateUIState('intruder-presets','intruder.presets',Array.isArray);
+function normalizeIntruderPreset(p){
+  if(!p||typeof p!=='object'||Array.isArray(p))return null;
+  const normalized=normalizeIntruderTab({...p,tid:1});
+  return {name:persistedText(p.name).slice(0,128),target:normalized.target,template:normalized.template,type:normalized.type,
+    sniper:normalized.sniper,pos:normalized.pos,sniperSource:normalized.sniperSource,sniperNums:normalized.sniperNums,
+    posSources:normalized.posSources,posNums:normalized.posNums,threads:normalized.threads,delay:normalized.delay,
+    repeat:normalized.repeat,grep:normalized.grep,extract:normalized.extract,proc:normalized.proc};
 }
-function loadIntrPresets(){
+function normalizeIntruderPresets(value){
+  if(!Array.isArray(value))return null;
+  return value.slice(0,20).map(normalizeIntruderPreset).filter(Boolean);
+}
+async function hydrateIntrPresets(){
+  return hydrateUIState('intruder-presets','intruder.presets',value=>normalizeIntruderPresets(value)!==null);
+}
+function readIntrPresetBrowserState(){
+  const key=intrPresetsKey();
+  const migrationWarning=consumeStorageMigrationWarning(key);
+  if(migrationWarning==='ambiguous legacy project state')reportWorkspaceStorageWarning('Intruder presets has saved browser state under an older key shared by multiple project names; it was kept unchanged for recovery.');
+  else if(migrationWarning==='legacy project ownership unavailable')reportWorkspaceStorageWarning('Intruder presets legacy migration is deferred until project ownership is known; the older draft was kept unchanged.');
+  else if(migrationWarning==='conflicting unscoped legacy state')reportWorkspaceStorageWarning('Intruder presets has an older unscoped browser draft that differs from current project state; both were kept.');
+  else if(migrationWarning==='legacy project state could not be migrated')reportWorkspaceStorageWarning('Intruder presets legacy browser state could not be migrated; the original draft was kept for recovery.');
+  else if(migrationWarning)reportWorkspaceStorageWarning('Intruder presets legacy saved state is too large to load safely; the original draft was kept.');
+  let raw;
+  try{raw=localStorage.getItem(key);}catch(e){reportWorkspaceStorageWarning('Intruder presets saved state could not be read; the original draft was kept for recovery.');return null;}
+  if(raw===null)return null;
+  if(persistedStateByteLength(raw)>MAX_PROJECT_UI_STATE_BYTES){
+    reportWorkspaceStorageWarning('Intruder presets saved state is too large to load safely; the original draft was kept for recovery. Saving a preset will replace it.');
+    return null;
+  }
+  try{
+    const list=normalizeIntruderPresets(JSON.parse(raw));
+    if(list!==null)return list;
+  }catch(e){}
+  reportWorkspaceStorageWarning('Intruder presets saved state is not recognized; the original draft was kept for recovery. Saving a preset will replace it.');
+  return null;
+}
+function loadIntrPresets(fallback=null){
   const sel=$('#intrPreset');if(!sel)return;
-  let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
+  const browserList=readIntrPresetBrowserState();
+  let list=normalizeIntruderPresets(fallback);
+  if(list===null)list=browserList;
+  list=normalizeIntruderPresets(list)||[];
   sel.innerHTML='<option value="">presets…</option>'+list.map((p,i)=>`<option value="${i}">${esc(p.name||'preset '+i)}</option>`).join('');
   sel.onchange=()=>{
     const i=parseInt(sel.value,10);if(isNaN(i)||!list[i])return;
@@ -1486,16 +1693,22 @@ function loadIntrPresets(){
 if($('#intrPresetSave'))$('#intrPresetSave').onclick=async()=>{
   const snapshot=intrReadEditor();
   const name=await uiPrompt({title:'Save attack preset',placeholder:'preset name'});if(!name)return;
-  let list=[];try{list=JSON.parse(localStorage.getItem(intrPresetsKey())||'[]');}catch(e){}
+  const list=readIntrPresetBrowserState()||[];
   list.unshift({name,target:snapshot.target,template:snapshot.template,type:snapshot.type,
     sniper:snapshot.sniper,pos:snapshot.pos.slice(),sniperSource:snapshot.sniperSource,sniperNums:{...snapshot.sniperNums},
     posSources:snapshot.posSources.slice(),posNums:snapshot.posNums.map(n=>({...n})),
     threads:snapshot.threads,delay:snapshot.delay,
     repeat:snapshot.repeat,grep:snapshot.grep,extract:snapshot.extract,proc:snapshot.proc});
   if(list.length>20)list.length=20;
-  try{localStorage.setItem(intrPresetsKey(),JSON.stringify(list));}catch(e){}
+  let storedLocally=true;
+  const presetKey=intrPresetsKey();
+  try{localStorage.setItem(presetKey,JSON.stringify(list));}catch(e){storedLocally=false;}
   const serverSyncQueued=persistUIState('intruder-presets',list);
-  loadIntrPresets();toast(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable',serverSyncQueued?'success':'warn');
+  loadIntrPresets(list);
+  const message=storedLocally
+    ?(serverSyncQueued?'preset saved locally · server sync queued':'preset saved locally · server sync unavailable')
+    :(serverSyncQueued?'preset kept in this session · server sync queued':'preset kept in this session · storage unavailable');
+  toast(message,storedLocally&&serverSyncQueued?'success':'warn');
 };
 export let intrTimer=null;
 let intrFilter='all', intrLastResults=[], intrDisplayedResults=[], intrDisplayOwner='live', intrDisplayedTarget='', intrDisplayedHistory=null;

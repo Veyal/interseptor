@@ -41,7 +41,8 @@ func TestProjectDraftWritesAreOrderedAndRecoverDirtyLocalState(t *testing.T) {
 	for _, contract := range []string{
 		"const uiPersistenceQueues=new Map()",
 		"function uiPendingStateKey(panel)",
-		"localStorage.setItem(uiPendingStateKey(panel),body)",
+		"const key=uiPendingStateKey(panel)",
+		"localStorage.setItem(key,body)",
 		"async function drainUIState(panel)",
 		"while(queue.pending!==null)",
 		"await api('/api/ui/'+panel",
@@ -58,6 +59,17 @@ func TestProjectDraftWritesAreOrderedAndRecoverDirtyLocalState(t *testing.T) {
 		if !strings.Contains(tools, contract) {
 			t.Errorf("durable ordered UI persistence contract missing %q", contract)
 		}
+	}
+	persistStart := strings.Index(tools, "function persistUIState(panel, blob)")
+	persistEnd := strings.Index(tools, "const UI_HYDRATE_TIMEOUT_MS")
+	if persistStart < 0 || persistEnd <= persistStart {
+		t.Fatal("project UI persistence function not found")
+	}
+	persist := tools[persistStart:persistEnd]
+	localWrite := strings.LastIndex(persist, "localStorage.setItem(key,body)")
+	queueWrite := strings.Index(persist, "queue.pending=body")
+	if localWrite < 0 || queueWrite < 0 || localWrite > queueWrite {
+		t.Error("project UI persistence must retain the draft locally before queueing its server write")
 	}
 	for _, contract := range []string{
 		"Local draft · server sync pending",
@@ -114,7 +126,8 @@ func TestIntruderPresetHydrationAndSaveFeedbackStayTruthful(t *testing.T) {
 	tools := readUIAsset(t, "js/tools.js")
 	for _, contract := range []string{
 		"const [tabHydration,presetHydration]=await Promise.all",
-		"const hydration=[tabHydration,presetHydration].includes('error')?'error'",
+		"let hydration=[tabHydration,presetHydration].includes('error')?'error'",
+		"if(intrTabs.storageWarning)hydration='error'",
 		"return result.status",
 		"const serverSyncQueued=persistUIState('intruder-presets',list)",
 		"preset saved locally",

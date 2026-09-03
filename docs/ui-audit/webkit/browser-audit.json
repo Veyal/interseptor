@@ -1,0 +1,261 @@
+{
+  "after_screenshots": {
+    "1024x768": {
+      "height": 768,
+      "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+      "width": 1024
+    },
+    "1440x900": {
+      "height": 900,
+      "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+      "width": 1440
+    },
+    "390x844": {
+      "height": 844,
+      "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+      "width": 390
+    },
+    "findings-1024x768": {
+      "height": 768,
+      "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+      "width": 1024
+    },
+    "findings-1440x900": {
+      "height": 900,
+      "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+      "width": 1440
+    },
+    "findings-390x844": {
+      "height": 844,
+      "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+      "width": 390
+    }
+  },
+  "application_source": {
+    "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
+    "runtime_files": 252,
+    "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
+    "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
+  },
+  "base_url": "http://127.0.0.1:57083",
+  "before_screenshots": {
+    "1024x768": {
+      "height": 768,
+      "path": "docs/ui-audit/before-1024x768-map.png",
+      "width": 1024
+    },
+    "1440x900": {
+      "height": 900,
+      "path": "docs/ui-audit/before-1440x900-proxy.png",
+      "width": 1440
+    },
+    "390x844": {
+      "height": 844,
+      "path": "docs/ui-audit/before-390x844-scanner.png",
+      "width": 390
+    }
+  },
+  "browser_engine": "webkit",
+  "cases": {
+    "Authz explicit context and A-to-B-to-A retargeting": "pass",
+    "Codecs Docs and list loads retain their latest owners": "pass",
+    "Inspector reads wait for their flow's acknowledged note save": "pass",
+    "Intercept request Forward waits for delayed acknowledgement": "pass",
+    "Intercept response Drop waits for delayed acknowledgement": "pass",
+    "Intruder real run and per-tab history": "pass",
+    "Notes save/preview and Findings evidence workflow": "pass",
+    "Postman import creates unique reload-safe Repeater tabs": "pass",
+    "Repeater/Intruder inner tabs and every Settings section": "pass",
+    "Scanner empty results restore focused issue context": "pass",
+    "Scanner real pending-to-success lifecycle": "pass",
+    "auxiliary surfaces, reversible actions, and validators": "pass",
+    "before screenshot baselines are present and dimensioned": "pass",
+    "browser storage failure keeps project workspace sync": "pass",
+    "custom Scanner check load failure clears stale source": "pass",
+    "duplicate project names preserve legacy drafts (webkit)": "pass",
+    "generic loopback capture seed": "pass",
+    "high-volume History, Map render/Fit, scroll, and browser performance": "pass",
+    "initial allowlist failure exposes persistent Retry": "pass",
+    "invalid pending workspace state is preserved": "pass",
+    "late module completion restores the guarded workspace": "pass",
+    "main navigation, motion, and keyboard semantics": "pass",
+    "malformed project entries preserve legacy drafts (webkit)": "pass",
+    "malformed tab and preset fields recover with isolated Repeater history": "pass",
+    "mixed valid and malformed project entries preserve legacy drafts (webkit)": "pass",
+    "mobile reachability for every dense panel and Checks/Codecs": "pass",
+    "modal mutations retain focus, errors, dismissal, and scope ownership": "pass",
+    "oversized pending workspace state is retained without retry": "pass",
+    "pathological browser-local workspace state remains recoverable": "pass",
+    "persisted tab identity and creation limits remain safe": "pass",
+    "persistent retry states under request failure": "pass",
+    "project identity accepts a valid sibling (webkit)": "pass",
+    "project identity failure settles navigation (webkit)": "pass",
+    "rejected Scope and Match & Replace PUT/DELETE ownership": "pass",
+    "relative project path validation stays UI-only": "pass",
+    "required screenshots": "pass",
+    "required viewports and reduced motion": "pass",
+    "setup Add-to-scope locks dismissal until acknowledgement": "pass",
+    "tab-owned Repeater history across every request edit": "pass",
+    "unsafe Intruder preset drafts survive hydration": "pass",
+    "valid pending workspace state replaces invalid server state": "pass",
+    "workspace hydration timeout falls back locally (webkit)": "pass",
+    "workspace module evaluation failure becomes actionable (webkit)": "pass",
+    "workspace module fetch failure becomes actionable (webkit)": "pass"
+  },
+  "console_errors": [],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)"
+  ],
+  "expected_http_errors": [
+    "503 PUT http://127.0.0.1:57083/api/ui/intruder-presets",
+    "503 PUT http://127.0.0.1:57083/api/ui/intruder",
+    "503 PUT http://127.0.0.1:57083/api/ui/repeater",
+    "503 GET http://127.0.0.1:57083/api/activity",
+    "503 GET http://127.0.0.1:57083/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "503 GET http://127.0.0.1:57083/api/activity",
+    "503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:57083/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:57083/api/allowlist",
+    "409 POST http://127.0.0.1:57083/api/allowlist",
+    "409 POST http://127.0.0.1:57083/api/findings",
+    "409 PUT http://127.0.0.1:57083/api/checks/ui-audit-held-check",
+    "409 POST http://127.0.0.1:57083/api/authz",
+    "409 DELETE http://127.0.0.1:57083/api/scope/1",
+    "409 PUT http://127.0.0.1:57083/api/scope/1",
+    "409 DELETE http://127.0.0.1:57083/api/rules/1",
+    "409 PUT http://127.0.0.1:57083/api/rules/1"
+  ],
+  "external_requests": [],
+  "failures": [],
+  "http_errors": [],
+  "metrics": {
+    "browser_engine": "webkit",
+    "burst_network_ms": 181.5,
+    "burst_network_p95_ms": 235.3,
+    "burst_requests": 240,
+    "burst_runs": 3,
+    "history_dom_nodes": 658,
+    "history_rendered_rows": 82,
+    "intercept_ack_ms": 317.4,
+    "late_module_recovery_ms": 9493.0,
+    "long_task_p95_ms": 0.0,
+    "long_tasks_ms": [],
+    "map_interaction_ms": [
+      350.3
+    ],
+    "map_interaction_p95_ms": 350.3,
+    "map_ready_ms": 291.9,
+    "panel_interaction_ms": [
+      187,
+      180,
+      189,
+      180,
+      181.0,
+      190,
+      181.0,
+      179,
+      189
+    ],
+    "panel_interaction_p95_ms": 190.0,
+    "panel_transition_ms": [
+      180.0,
+      180.0,
+      180.0,
+      180.0,
+      180.0,
+      180.0,
+      180.0,
+      180.0,
+      180.0
+    ],
+    "pathological_workspace_recovery_ms": 667.1,
+    "pathological_workspace_tabs_retained": 5000,
+    "performance_source": "performance-observer",
+    "project_identity_fallback_ms_webkit": 3468.7,
+    "screenshots": {
+      "1024x768": {
+        "height": 768,
+        "path": "docs/ui-audit/webkit/after-1024x768-map.png",
+        "width": 1024
+      },
+      "1440x900": {
+        "height": 900,
+        "path": "docs/ui-audit/webkit/after-1440x900-proxy.png",
+        "width": 1440
+      },
+      "390x844": {
+        "height": 844,
+        "path": "docs/ui-audit/webkit/after-390x844-scanner.png",
+        "width": 390
+      },
+      "findings-1024x768": {
+        "height": 768,
+        "path": "docs/ui-audit/webkit/findings-after-1024x768.png",
+        "width": 1024
+      },
+      "findings-1440x900": {
+        "height": 900,
+        "path": "docs/ui-audit/webkit/findings-after-1440x900.png",
+        "width": 1440
+      },
+      "findings-390x844": {
+        "height": 844,
+        "path": "docs/ui-audit/webkit/findings-after-390x844.png",
+        "width": 390
+      }
+    },
+    "workspace_hydration_timeout_ms_webkit": 2584.4
+  },
+  "mode": "full",
+  "page_errors": [],
+  "preflight": {
+    "base_netloc": "127.0.0.1:57083",
+    "data_dir_match": true,
+    "disposable_project": true,
+    "expected_proxy": "127.0.0.1:57084",
+    "expected_version": "2.0.8",
+    "fresh_findings": true,
+    "fresh_flows": true,
+    "ok": true,
+    "project_match": true,
+    "project_switch_locked": true,
+    "revalidated_before_full_audit": true,
+    "revalidated_before_settings": true,
+    "server_proxy": "127.0.0.1:57084",
+    "server_version": "2.0.8",
+    "upstream_configured": false
+  },
+  "startup_engines": [
+    "webkit"
+  ],
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      390,
+      844
+    ]
+  ]
+}

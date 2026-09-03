@@ -1495,6 +1495,68 @@ Content-Type: application/json
 </div>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
+<script>
+// This guard runs before the module graph. If a browser/profile cannot load or
+// evaluate an ES module, app.js never gets a chance to replace the static
+// hydration message. Keep the workspace locked, but turn the indefinite wait
+// into an actionable error instead of silently deleting any saved drafts.
+(function(){
+  var settled=false;
+  var timer;
+  var guardedSurfaces=[];
+  function renderWorkspaceStartupFailure(message){
+    if(settled)return;
+    clearTimeout(timer);
+    var status=document.getElementById('workspaceHydrationStatus');
+    if(!status)return;
+    status.hidden=false;
+    status.classList.add('is-error');
+    status.setAttribute('role','alert');
+    status.setAttribute('aria-live','assertive');
+    status.setAttribute('data-workspace-boot-failed','true');
+    var nav=document.getElementById('tabs');if(nav)nav.setAttribute('aria-busy','false');
+    var pendingPanels=document.querySelectorAll('#panel-repeater,#panel-intruder');
+    for(var p=0;p<pendingPanels.length;p++)pendingPanels[p].setAttribute('aria-busy','false');
+    var tabs=document.querySelectorAll('.tab');
+    for(var i=0;i<tabs.length;i++)tabs[i].disabled=true;
+    var command=document.getElementById('cmdkBtn');if(command)command.disabled=true;
+    var surfaces=document.querySelectorAll('#bar,#humanInputBar,#main,.nav-rail-foot');
+    for(var j=0;j<surfaces.length;j++){
+      var surface=surfaces[j];
+      if(!surface.inert){surface.inert=true;guardedSurfaces.push(surface);}
+    }
+    while(status.firstChild)status.removeChild(status.firstChild);
+    status.appendChild(document.createTextNode(message+' '));
+    var retry=document.createElement('button');
+    retry.type='button';retry.className='btn xs';retry.textContent='Reload';
+    retry.setAttribute('data-workspace-retry','');
+    retry.onclick=function(){location.reload();};
+    status.appendChild(retry);
+  }
+  function onWorkspaceScriptError(event){
+    var target=event&&event.target;
+    var filename=String(event&&event.filename||'');
+    if((target&&target.tagName==='SCRIPT')||filename.indexOf('/js/')!==-1||(event&&event.error)||target===window){
+      renderWorkspaceStartupFailure('Workspace scripts could not start in this browser.');
+    }
+  }
+  window.__interseptorWorkspaceBoot={
+    settle:function(){
+      if(settled)return;settled=true;clearTimeout(timer);
+      window.removeEventListener('error',onWorkspaceScriptError,true);
+      for(var i=0;i<guardedSurfaces.length;i++)guardedSurfaces[i].inert=false;
+      guardedSurfaces=[];
+      var status=document.getElementById('workspaceHydrationStatus');
+      if(status)status.removeAttribute('data-workspace-boot-failed');
+    },
+    fail:renderWorkspaceStartupFailure
+  };
+  window.addEventListener('error', onWorkspaceScriptError, true);
+  timer=setTimeout(function(){
+    renderWorkspaceStartupFailure('Workspace initialization is taking longer than expected.');
+  },8000);
+})();
+</script>
 <script type="module" src="/js/app.js"></script>
 </body>
 </html>

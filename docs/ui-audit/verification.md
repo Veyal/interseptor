@@ -1,9 +1,10 @@
-# UI audit verification — 2026-09-02
+# UI audit verification — 2026-09-03
 
 ## Revision and environment
 
-- Audited worktree base: `0d998b9682aba42faa8b9831d9f4054fcc4249dd`, plus the managed-listener
-  ownership changes captured by the exact runtime and harness digests below
+- Audited worktree base: `application_source.worktree_base_commit` in
+  [`browser-audit.json`](browser-audit.json), with the exact saved-workspace recovery runtime and
+  harness captured by the adjacent digests
 - Exact application identity: `application_source.runtime_sha256` in
   [`browser-audit.json`](browser-audit.json), computed from every Git-tracked or nonignored runtime
   file under `cmd/` and `internal/` plus `go.mod` and `go.sum`
@@ -22,24 +23,28 @@
   project switching, stripped inherited `INTERSEPTOR_*` settings, and disabled update checks and
   browser launches. The POSIX descriptor handoff fails closed on unsupported platforms so a
   free-port probe or replacement server can never receive full-audit mutations
-- Browser: Playwright 1.60.0, Chromium 148.0.7778.96
+- Browser: Playwright 1.60.0; Chromium 148.0.7778.96, Firefox 150.0.2, and WebKit 26.4
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
 
 ## Current-source applicability
 
-The retained audit digest is `c59d0b598b74a4dc475fa97e3e7502f3911c1e2fbcd53f6b8b0274a0f7755434`
-across 252 runtime files. It matches the current evidence-first Findings runtime exactly, including
-structured Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
+The retained runtime digest, runtime file count, and harness digest are recorded under
+`application_source` in [`browser-audit.json`](browser-audit.json) and checked against the current
+worktree by the Go audit-evidence regression. They match the current saved-workspace and
+evidence-first Findings runtime exactly, including bounded startup recovery,
+versioned project-local browser keys, guarded Repeater/Intruder state, and structured
+Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
 provenance, report readiness, safe export paths, compact-toolbar behavior, mobile navigation
 semantics, and the published `2.0.8` browser-background suppression baseline.
 Documentation-only commits made after the audited base do not change this identity; any later change
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
-The complete 26-case matrix and three-run performance profile were executed against that exact source
+The complete 132-case aggregate matrix (44 cases per engine) and three-run-per-engine performance profiles were executed against that exact source
 with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
---perf-runs 3`. Full mode cannot accept an arbitrary existing server: it builds and starts one owned
+--perf-runs 3 --startup-engines chromium,firefox,webkit`. Full mode cannot accept an arbitrary
+existing server: it builds and starts one owned
 candidate with project switching disabled on parent-retained loopback listeners, then stops it,
 closes the reservations, and removes only its validated sentinel-owned temporary root. The
 validated machine-readable result and screenshots were retained
@@ -58,6 +63,23 @@ selection, hide a real failure behind a plausible empty state, or overwrite edit
 was pending. The audited fixes bind each acknowledgement to the object, generation, tab, editor, or
 field that created it. In particular:
 
+- A browser-specific stalled fetch can no longer leave the static “Loading saved workspace…” shell
+  indefinitely. Independently settling project and hydration deadlines restore local operation,
+  while an early classic-script watchdog provides one keyboard-reachable Reload action when the
+  ES-module graph itself fails.
+- Repeater/Intruder state rejects malformed, duplicate-ID, unsafe-ID, oversized, and over-200-tab
+  envelopes before rendering. The original value remains untouched, a valid server copy can be used
+  in memory, and the first explicit edit creates the safe replacement. Browser-local write failure
+  no longer suppresses project-database persistence.
+- Intruder preset arrays filter invalid entries and normalize every editor field before rendering,
+  loading, or resaving, so a malformed browser or project value cannot abort workstation startup.
+- Every Repeater creation path—including Proxy/Findings adoption, send-as identity, and Postman
+  import—uses one bounded allocator. Postman capacity rejection is atomic, and project keys use a
+  versioned full-identity encoding with safe migration only when an older key has one owner.
+- Legacy project ownership is never inferred from deduplicated same-name projects or malformed
+  project-list entries. Root/external projects both named `default`, wholly invalid lists, and mixed
+  valid/malformed lists were fault-injected in every engine; name-keyed and unscoped drafts and retry
+  markers stayed unchanged.
 - History reconciles selection across successful and failed server-side filters and never leaves a
   stale Inspector spinner; a failed same-filter background refresh cannot cancel an independently
   selected detail request.
@@ -102,7 +124,7 @@ field that created it. In particular:
 | --- | --- | --- |
 | Proxy / History | filtering, selection, Inspector loading/error, pagination retry, saved-search validation, live virtualization, keyboard row/context actions | send/search actions wait for project identity; Map search receives the selected evidence; selected detail loads remain consistent during filters, failures, and SSE |
 | Intercept | request/response queues, filters, Match & Replace, pending/acknowledged Forward and Drop, typing-safe shortcuts | queue refreshes cannot overwrite filter edits; operation results cannot mutate a newer selected queue item |
-| Repeater | tab lifecycle, Send states, response ownership, decode races, persistence and cleanup | send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
+| Repeater | tab lifecycle, 200-tab/ID bounds, Postman import, Send states, response ownership, decode races, persistence and cleanup | every creation route shares one allocator; send-to-Repeater keeps the operator's edited tab intact; History remains tab-owned across request changes and project reload |
 | Intruder | duplicate-start lock, history selection, live polling errors, result filters | returning from historical evidence to live evidence preserves the configured target; finding creation uses the displayed run |
 | Scanner | real pending/success/error state, latest issues response, pending-status focus, retry focus, readable narrow layout | created findings and flow evidence remain tied to the scan result that initiated them |
 | Findings | creation/focus, canonical field and body saves, Differential preset, screenshot upload, flow picker, proof annotations, provenance, report readiness, Markdown/HTML/JSON handoff, compact-toolbar geometry, evidence lightbox | screenshot and captured-flow attachments retain the active finding and source flow; Done flushes pending edits; Intruder-to-Finding and Activity/evidence focus retain their owners |
@@ -120,6 +142,36 @@ received a distinct history. Closing the first tab removed only its IndexedDB ro
 the second, the audit forced cleanup-ledger localStorage reads to throw; IndexedDB still reached
 zero, proving that the best-effort ledger cannot block tab-owned deletion. The larger 105-request
 render and close-vs-send race remain covered by focused Repeater regression tests.
+
+### Saved-workspace startup contract
+
+The retained pass fault-injected a failed transitive module fetch, a valid module response that
+throws during evaluation, and a workspace fetch that never settles or honors cancellation in
+Chromium, Firefox, and WebKit. Module failures produced an assertive Reload action with dead
+surfaces inert; the ignored-abort cases unlocked browser-local operation in `2553.2 ms`, `2575.0 ms`,
+and `2606.9 ms`, respectively. A total project-identity failure in each engine kept unavailable
+controls locked while clearing navigation and panel `aria-busy`, so the final alert no longer reads
+as an indefinite load. A module delayed beyond the guard recovered the exact controls the guard
+disabled when it eventually completed.
+
+Separate contexts retained a 5,000-tab source blob while restoring a safe server tab in memory,
+preserved malformed pending state, synchronized its first valid replacement edit, and proved that a
+throwing `localStorage.setItem` still sends the project-backed workspace write. A 200-tab workspace
+blocked toolbar, cross-feature, and Postman additions without becoming unloadable; normal Postman
+import created exactly one unique tab per request. Versioned project keys distinguished `team alpha`
+from `team_alpha`, migrated a uniquely owned legacy key, and left an ambiguous legacy value intact
+with an explicit recovery warning. Duplicate `default` project names and wholly or partly malformed
+project lists were also unable to certify ownership: Repeater, Intruder, preset, and pending legacy values
+remained byte-identical while safe server state stayed usable. Malformed Repeater, Intruder, and Intruder-preset fields were
+coerced or filtered without sharing Repeater history identities or blocking the editor.
+
+When `/api/project` never settled but `/api/version` still supplied the canonical project directory,
+the workstation became usable in `3436.1 ms`, `3499.4 ms`, and `3470.2 ms` in Chromium, Firefox, and
+WebKit. Each engine started with unknown-owner legacy Repeater, Intruder, and preset values, then
+fault-injected the first project PUT for all three surfaces. New edits remained in both their exact
+canonical-directory browser keys and pending-retry keys, survived a reload, retried successfully,
+and cleared the pending markers. Every older unscoped and name-keyed value—including all three
+legacy pending queues—remained byte-for-byte unchanged; only its migration was deferred.
 
 ### Findings evidence contract
 
@@ -177,6 +229,8 @@ restored OOB disabled; it made no external callback or system-proxy change.
 - Reduced motion produced `0` active animations, `0s` panel/row transitions, and automatic rather
   than smooth scrolling. The shared JavaScript helper also returned without creating an Animation;
   selection, text, color, border, and status still communicated the result.
+- Startup recovery preserved alert/status semantics and keyboard access in Chromium, Firefox, and
+  WebKit; slow-module recovery restored only watchdog-owned inert/disabled state.
 - Map retained one roving graph tab stop, keyboard movement, `aria-selected`, and a persistent
   selection halo; Fit plus wheel/drag changed the graph transform without a continuous simulation.
 - Activity kept focus on the same record during live insertion and announced success/error outcome
@@ -186,30 +240,28 @@ restored OOB disabled; it made no external callback or system-proxy change.
   action for retry, and kept Escape/backdrop/scope exits locked until acknowledgement. Intercept Forward and response
   Drop kept their queue items until deliberately delayed server acknowledgements completed. Authz
   retained its explicit context target and followed later A→B→A selection changes exactly.
-- The normal sweep had no unexpected console, page, or HTTP errors and no external browser request.
-  Fault contexts intentionally returned fourteen exact `409`/`503` responses across recovery and
-  ownership paths; their expected HTTP and network-console messages were classified separately.
+- Every engine's normal sweep had no unexpected console, page, or HTTP errors and no external
+  browser request. Fault contexts intentionally returned exact `409`/`503` responses across
+  recovery and ownership paths; their expected HTTP and network-console messages were classified
+  separately per engine.
 
 ## Performance findings
 
-The full profile was captured after a fresh launch of the exact runtime source identified in
-`browser-audit.json`. Performance sampling
-used Chrome DevTools Protocol metrics, the Long Tasks API, three independent 240-request capture
-runs, bounded-DOM assertions, and real Map Fit/wheel/drag input. No browser long task or stuck busy
-control was observed.
+Each engine's full profile was captured after a fresh launch of the exact runtime source identified in
+`browser-audit.json`. Performance sampling used the Performance Observer API, three independent
+240-request capture runs per engine, bounded-DOM assertions, and real Map Fit/wheel/drag input;
+Chromium additionally retained Chrome DevTools Protocol task, script, and layout counters. No
+browser long task or stuck busy control was observed.
 
-| Scenario | Retained evidence |
+| Engine | Retained evidence |
 | --- | --- |
-| Three 240-request live History bursts | network p95 `191.1 ms`; 82 rendered rows; 658 nodes inside the bounded History row subtree; long-task p95 `0 ms` |
-| Main-panel transitions | declared `180 ms`; measured interaction p95 `200 ms` |
-| Delayed Intercept acknowledgement | `318.6 ms`, including the deliberate route hold and retained queue row |
-| Map after the burst | ready `83 ms`; Fit/wheel/drag interaction `419.6 ms`; graph transform changed |
-| Whole three-burst profile | CDP task `0.643833 s`; script `0.119739 s`; layout `0.047267 s` |
-| Map interaction | CDP task `0.032473 s`; script `0.001237 s`; layout `0.000374 s` |
+| Chromium | `metrics.by_engine.chromium`: network and interaction p95, bounded History rows/nodes, long tasks, Map readiness/gesture latency, and CDP task/script/layout deltas |
+| Firefox | `metrics.by_engine.firefox`: network and interaction p95, bounded History rows/nodes, long tasks, and Map readiness/gesture latency |
+| WebKit | `metrics.by_engine.webkit`: network and interaction p95, bounded History rows/nodes, long tasks, and Map readiness/gesture latency |
 
 The retained exact-source recheck treats only a visible busy surface as busy. The virtualized table remained
-interactive after all 720 requests, preserved its scroll state through Map navigation, and left no
-visible busy surface behind.
+interactive after each engine's 720 requests, preserved its scroll state through Map navigation,
+and left no visible busy surface behind.
 
 ## Competitive review
 

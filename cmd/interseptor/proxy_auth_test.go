@@ -139,14 +139,35 @@ func TestProxyManager_Rebind_reclassifiesListenerAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	loopbackListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		wildcardListener.Close()
+		t.Fatal(err)
+	}
 	wildcardAddr := wildcardListener.Addr().String()
-	wildcardListener.Close()
-	loopbackAddr := freeAddr(t)
+	loopbackAddr := loopbackListener.Addr().String()
+	listeners := map[string]net.Listener{
+		wildcardAddr: wildcardListener,
+		loopbackAddr: loopbackListener,
+	}
+	t.Cleanup(func() {
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	})
 	manager := &proxyManager{
 		handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
 		verifyAPIKeyScope: func(string) (bool, string, error) { return false, "", nil },
+		listenFn: func(addr string) (net.Listener, error) {
+			listener, ok := listeners[addr]
+			if !ok {
+				return nil, errors.New("unexpected proxy test address")
+			}
+			delete(listeners, addr)
+			return listener, nil
+		},
 	}
 	if err := manager.Start(wildcardAddr); err != nil {
 		t.Fatal(err)

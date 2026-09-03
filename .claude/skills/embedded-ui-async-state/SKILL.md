@@ -25,6 +25,11 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
 - Bound project-identity reads and fail closed when neither authoritative
   endpoint identifies the active project. Never guess the `default` namespace:
   a transient startup failure must not expose another engagement's local draft.
+- Use the canonical project directory or a server-provided opaque identifier for
+  browser namespaces; display names are not identities. Migrate name-based
+  localStorage and IndexedDB keys only when the server's project list proves
+  that the legacy name belongs to one project, and delete old durable rows only
+  in the same successful transaction that copies them.
 - Settle shared readiness boundaries with an explicit success or failure result.
   Every dependent action must inspect that result and return truthful recovery
   feedback instead of waiting forever on a success-only latch.
@@ -32,6 +37,14 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   in a project-scoped dirty marker until its exact PUT is acknowledged. On the
   next hydration, reconcile that pending local snapshot before copying server
   state into local storage, then resume the ordered write queue.
+- Enforce the server's UI-state limit as UTF-8 bytes at the client persistence
+  boundary. Retain oversized browser drafts, mark them unsyncable, and supersede
+  in-flight queue generations so a guaranteed 413 cannot become a permanent
+  retry loop.
+- When a pending browser draft is malformed or unreadable, preserve it but still
+  hydrate a simultaneously valid server snapshot in memory. Keep project sync
+  enabled for the next explicit edit while suppressing only the automatic boot
+  write that would replace the retained draft.
 - Block pagination while its first page is refreshing. A failed refresh must
   not leave the old rows eligible for paging with new filters.
 - Guard full-state mutation responses with the same generation as live events;

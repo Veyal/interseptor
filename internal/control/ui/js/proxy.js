@@ -37,8 +37,9 @@ function applyIdentityToHeaders(hdrsText, identityHdrs){
 
 async function sendAsIdentity(f, id){
   if(!await waitForWorkstationReady())return false;
-  document.querySelector('.tab[data-tab="repeater"]').click();
   const t=repNewTab();
+  if(!t)return false;
+  document.querySelector('.tab[data-tab="repeater"]').click();
   const editEpoch=t.reqEditEpoch||0;
   const current=()=>!t._closed&&(t.reqEditEpoch||0)===editEpoch;
   try{
