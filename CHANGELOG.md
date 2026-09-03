@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.9] - 2026-09-03
+
 ### Changed
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.8` release and refreshed the exact-source UI audit evidence and six required product/Findings screenshots without moving its tag.
 
