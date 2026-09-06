@@ -33,6 +33,14 @@ var githubWebHTTP = &http.Client{
 	},
 }
 
+type githubReleasesPageError struct {
+	status int
+}
+
+func (e githubReleasesPageError) Error() string {
+	return fmt.Sprintf("github releases page: HTTP %d", e.status)
+}
+
 // newGitHubRequest builds a GitHub REST request with the headers GitHub requires.
 // Unauthenticated calls are rate-limited (~60/h per IP); set GITHUB_TOKEN or
 // INTERSEPTOR_GITHUB_TOKEN for a higher quota.
@@ -132,7 +140,7 @@ func checkLatestRedirect(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github releases page: HTTP %d", resp.StatusCode)
+		return "", githubReleasesPageError{status: resp.StatusCode}
 	}
 	path := resp.Request.URL.Path
 	const prefix = "/releases/tag/"

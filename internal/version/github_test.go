@@ -163,6 +163,34 @@ func TestCheckLatestSkipsAPIWithoutToken(t *testing.T) {
 	}
 }
 
+func TestCheckLatestExplainsPrivateReleaseAccess(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("INTERSEPTOR_GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer web.Close()
+
+	oldWeb := githubReleasesLatest
+	t.Cleanup(func() { githubReleasesLatest = oldWeb })
+	githubReleasesLatest = web.URL + "/" + Repo + "/releases/latest"
+
+	_, _, err := CheckLatest(context.Background())
+	if err == nil {
+		t.Fatal("CheckLatest unexpectedly succeeded")
+	}
+	for _, want := range []string{"private", "GITHUB_TOKEN", Repo} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("CheckLatest error = %q, want %q", err, want)
+		}
+	}
+}
+
 func TestFetchReleaseAPI403Fallback(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	tag := "v1.2.3"

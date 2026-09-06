@@ -61,6 +61,9 @@ func CheckLatest(ctx context.Context) (latest string, newer bool, err error) {
 
 	latest, err = checkLatestRedirect(ctx)
 	if err != nil {
+		if pageErr, ok := err.(githubReleasesPageError); ok && pageErr.status == http.StatusNotFound {
+			return "", false, fmt.Errorf("GitHub releases are private (HTTP 404); set GITHUB_TOKEN, INTERSEPTOR_GITHUB_TOKEN, or GH_TOKEN to a token with access to %s and retry", Repo)
+		}
 		if apiErr != nil {
 			return "", false, apiErr
 		}

@@ -5,10 +5,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +34,26 @@ func TestPickAsset(t *testing.T) {
 	name, url = pickAssetFor(rel, "1.2.3", "darwin", "arm64")
 	if url != "https://ex/darwin" {
 		t.Fatalf("darwin: %q %q", name, url)
+	}
+}
+
+func TestDownloadUsesGitHubToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "test-token")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte("release-asset"))
+	}))
+	defer srv.Close()
+
+	got, err := download(context.Background(), srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "release-asset" {
+		t.Fatalf("download = %q", got)
 	}
 }
 
