@@ -502,7 +502,7 @@ func verifySHA256(data []byte, want string) error {
 }
 
 func download(ctx context.Context, url string, prog *updateProgress) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newGitHubRequest(ctx, http.MethodGet, url)
 	if err != nil {
 		return nil, err
 	}

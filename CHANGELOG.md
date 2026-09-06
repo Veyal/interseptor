@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Private-release self-update feedback.** Explain the token requirement when GitHub deliberately returns 404 for a private release, instead of surfacing an opaque releases-page failure.
+
 ## [2.0.10] - 2026-09-06
 
 ### Changed
