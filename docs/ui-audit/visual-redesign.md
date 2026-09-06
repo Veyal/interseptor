@@ -53,10 +53,14 @@ UI-only verification; no security operation was executed to produce the review.
 
 ## Evidence and validation
 
-Current runtime: `2bb4e0b83e90b17c8de43d32d62185918c18de60b1d3a8d35dcbe93ad8db7c66`
+Current release-prep runtime: `c4a3f82fe6001fa5ac3e690058cb13960310eec7538ab3f2f2dcb5d447c15b36`
 across 253 runtime files.
 
-- [Three-engine matrix](redesign/matrix/report.json): 117 captures, all ten
+- [Three-engine release matrix](redesign/release-v2.0.10-report.json): 117
+  captures against the release-prep source, all ten panels and eight Settings
+  sections at both sizes. No page or console errors, external requests,
+  viewport overflow, or visible native selects were observed.
+- [Earlier three-engine matrix](redesign/matrix/report.json): 117 captures, all ten
   panels and eight Settings sections at both sizes, with explicit dark/light
   views. No page or console errors, external requests, viewport overflow, or
   visible native selects were observed. `nav_gap: 6px` is the intended space

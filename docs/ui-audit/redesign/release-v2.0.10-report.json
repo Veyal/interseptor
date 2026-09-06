@@ -1,24 +1,9 @@
 {
   "result": "pass",
   "engines": {
-    "chromium": {
-      "captures": 39,
-      "console_errors": [],
-      "external_requests": [],
-      "nav_gap": "6px"
-    },
-    "firefox": {
-      "captures": 39,
-      "console_errors": [],
-      "external_requests": [],
-      "nav_gap": "6px"
-    },
-    "webkit": {
-      "captures": 39,
-      "console_errors": [],
-      "external_requests": [],
-      "nav_gap": "6px"
-    }
+    "chromium": {"captures": 39, "console_errors": [], "external_requests": [], "nav_gap": "6px"},
+    "firefox": {"captures": 39, "console_errors": [], "external_requests": [], "nav_gap": "6px"},
+    "webkit": {"captures": 39, "console_errors": [], "external_requests": [], "nav_gap": "6px"}
   },
   "failures": [],
   "runtime": {
