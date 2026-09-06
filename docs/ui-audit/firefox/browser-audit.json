@@ -32,12 +32,12 @@
     }
   },
   "application_source": {
-    "audit_harness_sha256": "628b74b3f1830ac7d18867de1f696d26399bc303818759ff408ebeb13f0a2e2a",
-    "runtime_files": 252,
-    "runtime_sha256": "704edaff675c66e2eb15227342973df08eb0e1d1570423fa7ef266a8124970b9",
-    "worktree_base_commit": "26c7fd672ce35c22b9dead6c4ede307c39932f85"
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 253,
+    "runtime_sha256": "e9f6e196a7fbbbeb1745ac9511a9a1436ec103be7545d827a27058366469e8e2",
+    "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c"
   },
-  "base_url": "http://127.0.0.1:55147",
+  "base_url": "http://127.0.0.1:59210",
   "before_screenshots": {
     "1024x768": {
       "height": 768,
@@ -105,56 +105,56 @@
   "console_errors": [],
   "expected_console_errors": [],
   "expected_http_errors": [
-    "503 PUT http://127.0.0.1:55147/api/ui/intruder-presets",
-    "503 PUT http://127.0.0.1:55147/api/ui/intruder",
-    "503 PUT http://127.0.0.1:55147/api/ui/repeater",
-    "503 GET http://127.0.0.1:55147/api/activity",
-    "503 GET http://127.0.0.1:55147/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
-    "503 GET http://127.0.0.1:55147/api/activity",
-    "503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:55147/api/checks/ui-audit-load-failure",
-    "503 GET http://127.0.0.1:55147/api/allowlist",
-    "409 POST http://127.0.0.1:55147/api/allowlist",
-    "409 POST http://127.0.0.1:55147/api/findings",
-    "409 PUT http://127.0.0.1:55147/api/checks/ui-audit-held-check",
-    "409 POST http://127.0.0.1:55147/api/authz",
-    "409 DELETE http://127.0.0.1:55147/api/scope/1",
-    "409 PUT http://127.0.0.1:55147/api/scope/1",
-    "409 DELETE http://127.0.0.1:55147/api/rules/1",
-    "409 PUT http://127.0.0.1:55147/api/rules/1"
+    "503 PUT http://127.0.0.1:59210/api/ui/intruder-presets",
+    "503 PUT http://127.0.0.1:59210/api/ui/intruder",
+    "503 PUT http://127.0.0.1:59210/api/ui/repeater",
+    "503 GET http://127.0.0.1:59210/api/activity",
+    "503 GET http://127.0.0.1:59210/api/flows?hideTlsFailed=1&manual=1&ai=1&sort=id&dir=desc&limit=301",
+    "503 GET http://127.0.0.1:59210/api/activity",
+    "503 GET http://127.0.0.1:59210/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:59210/api/checks/ui-audit-load-failure",
+    "503 GET http://127.0.0.1:59210/api/allowlist",
+    "409 POST http://127.0.0.1:59210/api/allowlist",
+    "409 POST http://127.0.0.1:59210/api/findings",
+    "409 PUT http://127.0.0.1:59210/api/checks/ui-audit-held-check",
+    "409 POST http://127.0.0.1:59210/api/authz",
+    "409 DELETE http://127.0.0.1:59210/api/scope/1",
+    "409 PUT http://127.0.0.1:59210/api/scope/1",
+    "409 DELETE http://127.0.0.1:59210/api/rules/1",
+    "409 PUT http://127.0.0.1:59210/api/rules/1"
   ],
   "external_requests": [],
   "failures": [],
   "http_errors": [],
   "metrics": {
     "browser_engine": "firefox",
-    "burst_network_ms": 149.5,
-    "burst_network_p95_ms": 151.8,
+    "burst_network_ms": 151.2,
+    "burst_network_p95_ms": 186.5,
     "burst_requests": 240,
     "burst_runs": 3,
     "history_dom_nodes": 658,
     "history_rendered_rows": 82,
-    "intercept_ack_ms": 338.4,
-    "late_module_recovery_ms": 9625.0,
+    "intercept_ack_ms": 365.6,
+    "late_module_recovery_ms": 9488.9,
     "long_task_p95_ms": 0.0,
     "long_tasks_ms": [],
     "map_interaction_ms": [
-      385.8
+      406.3
     ],
-    "map_interaction_p95_ms": 385.8,
-    "map_ready_ms": 192.7,
+    "map_interaction_p95_ms": 406.3,
+    "map_ready_ms": 89.8,
     "panel_interaction_ms": [
-      203,
-      180,
-      187,
-      190,
-      182,
-      173,
-      198,
-      209,
-      179
+      194,
+      184,
+      183,
+      184,
+      183,
+      183,
+      184,
+      183,
+      184
     ],
-    "panel_interaction_p95_ms": 209.0,
+    "panel_interaction_p95_ms": 194.0,
     "panel_transition_ms": [
       180.0,
       180.0,
@@ -166,10 +166,10 @@
       180.0,
       180.0
     ],
-    "pathological_workspace_recovery_ms": 736.6,
+    "pathological_workspace_recovery_ms": 708.7,
     "pathological_workspace_tabs_retained": 5000,
     "performance_source": "performance-observer",
-    "project_identity_fallback_ms_firefox": 3509.0,
+    "project_identity_fallback_ms_firefox": 3494.4,
     "screenshots": {
       "1024x768": {
         "height": 768,
@@ -202,15 +202,15 @@
         "width": 390
       }
     },
-    "workspace_hydration_timeout_ms_firefox": 2578.1
+    "workspace_hydration_timeout_ms_firefox": 2564.8
   },
   "mode": "full",
   "page_errors": [],
   "preflight": {
-    "base_netloc": "127.0.0.1:55147",
+    "base_netloc": "127.0.0.1:59210",
     "data_dir_match": true,
     "disposable_project": true,
-    "expected_proxy": "127.0.0.1:55148",
+    "expected_proxy": "127.0.0.1:59211",
     "expected_version": "2.0.8",
     "fresh_findings": true,
     "fresh_flows": true,
@@ -219,7 +219,7 @@
     "project_switch_locked": true,
     "revalidated_before_full_audit": true,
     "revalidated_before_settings": true,
-    "server_proxy": "127.0.0.1:55148",
+    "server_proxy": "127.0.0.1:59211",
     "server_version": "2.0.8",
     "upstream_configured": false
   },

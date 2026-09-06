@@ -520,7 +520,7 @@ function uiSelectAccessibleName(sel){
   const label=sel.labels&&sel.labels[0];
   const labelText=(label?.textContent||'').trim();
   if(labelText)return labelText;
-  const title=(sel.getAttribute('title')||'').trim();
+  const title=(sel.getAttribute('title')||sel.dataset.tooltip||'').trim();
   if(title)return title;
   const id=(sel.id||'select').replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[-_]+/g,' ').trim();
   return id||'Select option';
@@ -555,7 +555,7 @@ function wireUiSelectLabels(sel,trigger){
 }
 
 export function enhanceSelect(sel){
-  if(!sel||sel.tagName!=='SELECT'||sel._uiSelect||sel.dataset.uiSelect==='off')return sel;
+  if(!sel||sel.tagName!=='SELECT'||sel._uiSelect)return sel;
 
   const wrap=document.createElement('div');
   wrap.className='ui-select';
@@ -578,6 +578,8 @@ export function enhanceSelect(sel){
   trigger.setAttribute('role','combobox');
   trigger.setAttribute('aria-haspopup','listbox');
   trigger.setAttribute('aria-expanded','false');
+  if(sel.getAttribute('aria-describedby'))trigger.setAttribute('aria-describedby',sel.getAttribute('aria-describedby'));
+  if(sel.getAttribute('title')||sel.dataset.tooltip)trigger.dataset.tooltip=sel.getAttribute('title')||sel.dataset.tooltip;
   const valueEl=document.createElement('span');
   valueEl.className='ui-select-value';
   const caret=document.createElement('span');
@@ -1644,7 +1646,7 @@ export function uiConfirm(title,htmlMsg,okLabel,okClass,okColor){
   if(activeConfirmFinish)activeConfirmFinish(false);
   return new Promise(resolve=>{
     const m=$('#confirmModal');
-    if(!m){resolve(window.confirm(title+'\n\n'+htmlMsg.replace(/<[^>]+>/g,'')));return;}
+    if(!m){toast('Confirmation unavailable. Reload and try again.','error');resolve(false);return;}
     $('#confirmTitle').textContent=title;
     $('#confirmMsg').innerHTML=htmlMsg;
     const ok=$('#confirmOk');

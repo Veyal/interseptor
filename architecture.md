@@ -118,3 +118,12 @@ explicit edit immediately re-enables that synchronization path.
 The [UI motion specification](https://github.com/Veyal/interseptor/blob/main/docs/ui-motion-spec.md) owns motion behavior and constraints. Other design
 notes and per-slice specs/plans live under [`docs/`](https://github.com/Veyal/interseptor/tree/main/docs).
 
+Workspace controls use app-rendered dropdowns, checkbox/radio appearances,
+disclosure indicators, confirmation dialogs and contextual hints. Hidden select
+elements remain only as value/change adapters for the existing feature modules;
+they cannot paint a native menu, including before module startup. `hints.js`
+converts static and dynamically assigned title hints into one themed surface.
+Settings use a flat reading order and expandable reference text; state, errors and
+material consequences remain visible. File access continues through explicit
+import/export actions.
+

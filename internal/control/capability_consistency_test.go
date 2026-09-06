@@ -225,7 +225,9 @@ func TestHostedDocumentationConsistency(t *testing.T) {
 	hosted := "https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md"
 	for _, asset := range []string{"index.html", "js/findings.js"} {
 		body := readUIAsset(t, asset)
-		if !strings.Contains(body, hosted) {
+		// The optional checklist belongs in the Writing guide, rather than
+		// being repeated in the dynamically rendered Findings empty state.
+		if asset == "index.html" && !strings.Contains(body, hosted) {
 			t.Errorf("%s does not use the hosted engagement close-out URL", asset)
 		}
 		if strings.Contains(body, "<code>docs/engagement-closeout.md</code>") {

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Redesigned the shared visual system with neutral dark/light surfaces, original feature icons, calmer toolbars and dialogs, clear Settings section headers, compact connection references, and reduced-motion-aware entrances.
+
+- Consolidated mobile tool navigation and added a searchable custom Settings section picker; listener port fields now use the shared input styling.
+- History note save failures retain their draft when switching requests and show inline retry feedback. Findings edit actions remain visible on touch screens.
+- Mobile History scrolls when diagnostic banners and inspector content exceed the viewport, keeping request rows and note recovery controls reachable.
+- Findings headers scroll with content on phones and use an opaque sticky surface on desktop, preventing overlapping report text.
+- Storage statistics preserve their previous rows on refresh failure and offer Retry. Added direct mobile project access, a named Settings landmark, and announced Decoder status. Documented a feature-by-feature UI review separately from historical release audit evidence.
+- Preserve focused and open custom Findings dropdowns while background saves refresh the report.
+- Simplified Settings into flatter sections with shorter labels, conditional upstream help, and expandable setup/reference text. Reduced repeated empty-state guidance, added a mobile tool switcher, and grouped report export options.
+- Enforced app-rendered dropdowns, checkbox/radio styling, disclosure markers and contextual hints; unavailable confirmation UI now cancels safely instead of opening a browser-native dialog. Notes retain explicit save/error status and a retry action.
+- Retained historical managed three-engine audit evidence and added current UI-only screenshots with source identities; clarified capture counts and removed machine-specific temporary paths from audit metadata.
+
 ## [2.0.9] - 2026-09-03
 
 ### Changed

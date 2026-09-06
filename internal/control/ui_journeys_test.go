@@ -148,7 +148,7 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		`id="setUpstreamUser"`,
 		`id="setUpstreamPassword"`,
 		`id="setUpstreamCA"`,
-		`SOCKS5H resolves target names through the proxy`,
+		`id="upstreamSchemeHelp" hidden`,
 		`id="upstreamProxySummary"`,
 	)
 	requireUIContains(t, settings,
@@ -168,9 +168,9 @@ func TestUIJourneySettingsUpstreamProxyCredentialsAreOptional(t *testing.T) {
 		t.Error("upstream proxy URL must be built with URL.username instead of manual userinfo encoding")
 	}
 	requireUIContains(t, css,
-		`.settings-nav-group{display:contents}`,
-		`grid-template-columns:repeat(4,minmax(0,1fr))`,
-		`grid-template-columns:repeat(3,minmax(0,1fr))`,
+		`.settings-nav-group{display:none}`,
+		`.settings-picker{display:flex;align-items:center`,
+		`.settings-picker .ui-select{flex:1;min-width:0}`,
 	)
 }
 
@@ -199,9 +199,9 @@ func TestUIBrowserBackgroundSuppressionExplainsScope(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	requireUIContains(t, index,
-		`BROWSER BACKGROUND TRAFFIC`,
-		`forwarded without appearing in History or Intercept`,
-		`Applies to new traffic; existing History is unchanged`,
+		`Browser background traffic`,
+		`What is hidden?`,
+		`New traffic only; forwarding and existing History are unchanged`,
 		`Normal website and application traffic remains visible`,
 	)
 	requireUIContains(t, settings,
@@ -400,7 +400,7 @@ func TestUIJourneyFindingsHasWritingGuideAndResponsiveReadingLayout(t *testing.T
 		`.find-view .scan-list{width:100%`,
 		`@media (max-width:720px)`,
 		`#appRow{flex-direction:column}`,
-		`#tabs{width:100%`,
+		`#tabs{display:none}`,
 	)
 }
 

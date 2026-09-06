@@ -1,5 +1,9 @@
 # UI audit screenshots
 
+The [2026-09-06 overall review](overall-review.md) covers the subsequent UI pass.
+The full-audit screenshots below are historical evidence; their runtime identity
+does not match the newer navigation and recovery changes.
+
 The **After** screenshots validate only the audited runtime source identified by
 `application_source.runtime_sha256` in [`browser-audit.json`](browser-audit.json). See
 [`verification.md`](verification.md#current-source-applicability) for whether that retained
@@ -34,3 +38,11 @@ injections, accessibility results, performance measurements, and deferred work. 
 results remain in [`browser-audit.json`](browser-audit.json), whose `engine_reports` retain every
 engine's complete case matrix, performance metrics, and six core/Findings screenshots; this README
 owns only the core screenshot inventory above.
+
+The historical managed verification retains 24 focused custom-control and Settings captures
+(23 primary captures and one forced-colors diagnostic) in
+[`supplemental/`](supplemental/). They use a separate disposable loopback project and supplement,
+rather than replace, the cross-browser core evidence above.
+
+The current visual candidate is documented in the [visual redesign review](visual-redesign.md),
+with UI-only evidence kept separate from historical full operational audits.

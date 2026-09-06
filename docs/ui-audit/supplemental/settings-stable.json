@@ -1,0 +1,137 @@
+{
+  "captures": [
+    "settings-proxy-1440x900.png",
+    "settings-tls-1440x900.png",
+    "settings-devices-1440x900.png",
+    "settings-scope-1440x900.png",
+    "settings-scanner-1440x900.png",
+    "settings-session-1440x900.png",
+    "settings-project-1440x900.png",
+    "settings-api-1440x900.png",
+    "settings-proxy-390x844.png",
+    "settings-tls-390x844.png",
+    "settings-devices-390x844.png",
+    "settings-scope-390x844.png",
+    "settings-scanner-390x844.png",
+    "settings-session-390x844.png",
+    "settings-project-390x844.png",
+    "settings-api-390x844.png"
+  ],
+  "checkbox": {
+    "after": true,
+    "before": false,
+    "forced_colors": {
+      "appearance": "none",
+      "checked": true,
+      "focusVisible": true,
+      "focused": true,
+      "markBorderBottom": "2px",
+      "markBorderLeft": "2px",
+      "markContent": "\"\"",
+      "outlineColor": "rgb(124, 45, 18)",
+      "outlineStyle": "solid",
+      "outlineWidth": "3px"
+    },
+    "screenshot": "findings-checkbox-forced-colors-mobile.png",
+    "selector": "#findExportGroupByTag"
+  },
+  "cleanup": "managed candidate and fixture removed",
+  "failures": [],
+  "result": "pass",
+  "runtime": {
+    "application_source": {
+      "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+      "runtime_files": 253,
+      "runtime_sha256": "e9f6e196a7fbbbeb1745ac9511a9a1436ec103be7545d827a27058366469e8e2",
+      "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c"
+    },
+    "base_url": "http://127.0.0.1:64442",
+    "project": "ui-audit-1190fe0b7142"
+  },
+  "settings_checks": {
+    "desktop": {
+      "api": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "devices": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "project": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "proxy": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "scanner": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "scope": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "session": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "tls": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      }
+    },
+    "mobile": {
+      "api": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "devices": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "project": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "proxy": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "scanner": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "scope": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "session": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      },
+      "tls": {
+        "aria_current": "page",
+        "no_viewport_overflow": true,
+        "visible": true
+      }
+    }
+  }
+}

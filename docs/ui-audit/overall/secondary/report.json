@@ -1,0 +1,167 @@
+{
+  "cases": {
+    "1440x900": "pass",
+    "390x844": "pass"
+  },
+  "external_requests": [],
+  "failures": [],
+  "historical_gap": "Earlier finding-edit PNGs proved read detail only; they do not verify edit controls.",
+  "runtime": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 253,
+    "runtime_sha256": "e55b744e3fab1b222c3922399aeb2590d32101fd41184dc5171ba13dfaaaa294",
+    "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c"
+  },
+  "screenshots": [
+    {
+      "bytes": 154218,
+      "name": "1440x900-api-mcp.png",
+      "sha256": "d8929ef98b58c4e4e4102bf26b11f69360b652cd8c1fb3912831fd406452802f"
+    },
+    {
+      "bytes": 76908,
+      "name": "1440x900-checks.png",
+      "sha256": "213db1796861c368e27ffb65ce7628b8ef7f0b0fa7c8f7ed53fdc7db429dd058"
+    },
+    {
+      "bytes": 81570,
+      "name": "1440x900-codecs.png",
+      "sha256": "0f848f8f876d419d6613c7ad47926f0502b4a151e1e0acace5ed1d6521a6a706"
+    },
+    {
+      "bytes": 105613,
+      "name": "1440x900-decoder.png",
+      "sha256": "51aa3b9075a061eacea8f30e54de9a2ecbcec197807a98fc92b29c169046bd73"
+    },
+    {
+      "bytes": 128214,
+      "name": "1440x900-finding-edit-controls.png",
+      "sha256": "b2e429abded76f4e38319e9477b68b2b82126758c3c5a3fe456078d1de06fbd5"
+    },
+    {
+      "bytes": 128431,
+      "name": "1440x900-findings-dark.png",
+      "sha256": "ce8f51b1ddcda7d5bb80c227b9a57ca90607500e6f3fbe4bcfcbf5aea5386b44"
+    },
+    {
+      "bytes": 197796,
+      "name": "1440x900-guide.png",
+      "sha256": "734419bc13ec32bedd4a1d3bbc5de1620fcaa9d3dab7f92d0020a4d784fdf0f4"
+    },
+    {
+      "bytes": 111416,
+      "name": "1440x900-oob.png",
+      "sha256": "83bf041b7a42f299842bc5ade68e15143efac161f6e9ad4906575cd7e399265a"
+    },
+    {
+      "bytes": 148255,
+      "name": "1440x900-palette.png",
+      "sha256": "0c3d3d8500a189cae6a8838ce748ae5fd2f075c2270ef3834b49492a6a6a1c24"
+    },
+    {
+      "bytes": 156894,
+      "name": "1440x900-settings-dark.png",
+      "sha256": "394c1354134c494e992bc448121c681970dc8212355cf24025a7fa4dc1183196"
+    },
+    {
+      "bytes": 134056,
+      "name": "1440x900-shortcuts.png",
+      "sha256": "2f626320976cf954e8e58b5d5d07a9e962307dd1ad659e4ec20d856d90879490"
+    },
+    {
+      "bytes": 85090,
+      "name": "390x844-api-mcp.png",
+      "sha256": "60d45f7733209dab9ad0c460914aa9c81e3aefc97c38294e2ccd14874f4b2b4c"
+    },
+    {
+      "bytes": 43647,
+      "name": "390x844-checks.png",
+      "sha256": "9eb262884386f1865225f02085ad95e01bb4bc288153c4c284bee23dedcb6001"
+    },
+    {
+      "bytes": 43597,
+      "name": "390x844-codecs.png",
+      "sha256": "d7e099b1b0756423f9d9526314601ec57967e49f4b83c5a2840f768c55911850"
+    },
+    {
+      "bytes": 74812,
+      "name": "390x844-decoder.png",
+      "sha256": "d6f9de2353412ebc7bd65d53f8bd22ada2c5039c4d86f9d517ee6dac72897e11"
+    },
+    {
+      "bytes": 66282,
+      "name": "390x844-finding-edit-controls.png",
+      "sha256": "9eae2f88172cf4330cf8579e38a79eb5215112e1557fbb8bbece1cadb377f12f"
+    },
+    {
+      "bytes": 66073,
+      "name": "390x844-findings-dark.png",
+      "sha256": "94c1fa9c97964e0f0b6c5377da37eb5bb73698ce5369e350ce680557e09a2b65"
+    },
+    {
+      "bytes": 91026,
+      "name": "390x844-guide.png",
+      "sha256": "fe7cbe8cbed4fea668b1d0f2f22f2fbea8793b71e0f9b36f672247b2073d99e6"
+    },
+    {
+      "bytes": 76424,
+      "name": "390x844-oob.png",
+      "sha256": "f80d5c135041df7b9226ce8d024f85b0c04dd78536da8c7147f22a41cd52428c"
+    },
+    {
+      "bytes": 86880,
+      "name": "390x844-palette.png",
+      "sha256": "490865534224d324cb136d2457925e56690a44d52cb3d93e8ee65a4cb5a6beb0"
+    },
+    {
+      "bytes": 87119,
+      "name": "390x844-settings-dark.png",
+      "sha256": "c3e78a9474657c9d8d30658478cb601da7cae582e4d902f5821e9055b92209de"
+    },
+    {
+      "bytes": 61247,
+      "name": "390x844-shortcuts.png",
+      "sha256": "7b04471566179860e9f1874b083c8480c55842175e9311fc331671740944461d"
+    }
+  ],
+  "theme": [
+    {
+      "control": {
+        "background": "rgba(16, 185, 129, 0.2)",
+        "color": "rgb(16, 185, 129)"
+      },
+      "root": "#080c0b",
+      "select": {
+        "background": "rgba(25, 39, 32, 0.94)",
+        "color": "rgb(248, 250, 252)"
+      },
+      "settle_ms": 350,
+      "toggle": {
+        "background": "rgba(25, 39, 32, 0.94)",
+        "color": "rgb(203, 213, 225)"
+      },
+      "viewport": "1440x900"
+    },
+    {
+      "control": {
+        "background": "rgba(16, 185, 129, 0.2)",
+        "color": "rgb(16, 185, 129)"
+      },
+      "root": "#080c0b",
+      "select": {
+        "background": "rgba(25, 39, 32, 0.94)",
+        "color": "rgb(248, 250, 252)"
+      },
+      "settle_ms": 350,
+      "toggle": {
+        "background": "rgba(25, 39, 32, 0.94)",
+        "color": "rgb(203, 213, 225)"
+      },
+      "viewport": "390x844"
+    }
+  ],
+  "viewports": [
+    "1440x900",
+    "390x844"
+  ]
+}

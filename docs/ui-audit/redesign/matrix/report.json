@@ -1,0 +1,32 @@
+{
+  "result": "pass",
+  "engines": {
+    "chromium": {
+      "captures": 39,
+      "console_errors": [],
+      "external_requests": [],
+      "nav_gap": "6px"
+    },
+    "firefox": {
+      "captures": 39,
+      "console_errors": [],
+      "external_requests": [],
+      "nav_gap": "6px"
+    },
+    "webkit": {
+      "captures": 39,
+      "console_errors": [],
+      "external_requests": [],
+      "nav_gap": "6px"
+    }
+  },
+  "failures": [],
+  "runtime": {
+    "application_source": {
+      "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c",
+      "runtime_sha256": "2bb4e0b83e90b17c8de43d32d62185918c18de60b1d3a8d35dcbe93ad8db7c66",
+      "runtime_files": 253,
+      "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+    }
+  }
+}

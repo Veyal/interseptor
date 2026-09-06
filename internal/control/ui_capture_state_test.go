@@ -58,10 +58,10 @@ func TestUIFlowNoteSaveKeepsCapturedFlowOwnership(t *testing.T) {
 	if !strings.Contains(proxy, "addEventListener('input'") || !strings.Contains(proxy, "noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1)") {
 		t.Error("Flow note editor must advance per-flow ownership when the user edits")
 	}
-	if strings.Contains(proxy, "$('#noteInput').value=note") {
+	if strings.Contains(proxy, "$('#noteInput').value=note;") {
 		t.Error("A note acknowledgement must never write its captured snapshot back into the live editor")
 	}
-	if !strings.Contains(proxy, "if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||''") {
+	if !strings.Contains(proxy, "if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)restoreFlowNoteDraft(id,d.note||'')") {
 		t.Error("A same-flow refresh must not remount an acknowledged note over a newer editor draft")
 	}
 }

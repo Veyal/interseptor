@@ -1,0 +1,147 @@
+{
+  "cases": {
+    "1440x900": "pass",
+    "390x844": "pass"
+  },
+  "failures": [],
+  "screenshots": [
+    {
+      "name": "1440x900-api.png",
+      "sha256": "f58196e3d54ea1980f3db978dfac74d4b2f4fa8aa370d05943911e6a9496cb7c"
+    },
+    {
+      "name": "1440x900-checks.png",
+      "sha256": "9e8596d191a3d966758f592a1ac047c9b834133b9b8044cbc2cb440c679ae80b"
+    },
+    {
+      "name": "1440x900-codecs.png",
+      "sha256": "366c87c622c4ec0c5dd632c70ab9c4c704bba70a8bdb87e6e5c076533a30c873"
+    },
+    {
+      "name": "1440x900-dark.png",
+      "sha256": "957e64d8c1e33309899a233aa1cbb25b593e8275723002ece1ec178f9008046a"
+    },
+    {
+      "name": "1440x900-decoder.png",
+      "sha256": "84e1d1c6944cec62f8bd01efab3708eab522bccf314cc510d7751aa8142c1649"
+    },
+    {
+      "name": "1440x900-finding-edit.png",
+      "sha256": "149731bba7f2525362d0f0ed6676d79796611d96c7115d9225b9d94b59d53750"
+    },
+    {
+      "name": "1440x900-finding-read.png",
+      "sha256": "64d7e048489ac60f5bc45b4d1d6b8954a7db27faedd87a1c9df00ea3e0f9d16c"
+    },
+    {
+      "name": "1440x900-guide.png",
+      "sha256": "63fb5c379966d26492816cf43a30a3248a5573907e07311db72b28757c7a555e"
+    },
+    {
+      "name": "1440x900-history.png",
+      "sha256": "7249389b4d643cd37e9791e5bce3233fa7182b7ada2b5c9bff6621b44fcaedfe"
+    },
+    {
+      "name": "1440x900-notes.png",
+      "sha256": "73c39164bd7d47aaa574f8c27dfe2304f9c38bac05428a7b2350b466bb0b9b5b"
+    },
+    {
+      "name": "1440x900-oob.png",
+      "sha256": "d33d0660f7cf92620374a459593f96bc5d93561a20dc01d19f4b028078bb3d0c"
+    },
+    {
+      "name": "1440x900-palette.png",
+      "sha256": "aac20300e8a75b4a40b01fd712c6cfccdae6af8ebe315e658c2a8eafee2e8a03"
+    },
+    {
+      "name": "1440x900-shortcuts.png",
+      "sha256": "f241f9dca2b6d441834b5f1807cd5474fe0794e26f860d0faa9de5bff42ed126"
+    },
+    {
+      "name": "390x844-api.png",
+      "sha256": "c783c87b1a1a95d9ee805f6be2e2b82c95f790d2629de7734ea5b08abd0b5253"
+    },
+    {
+      "name": "390x844-checks.png",
+      "sha256": "03c3345efec97d5c2153cf510d3eb7992c568df80b1d8c5c415713cdf67d2704"
+    },
+    {
+      "name": "390x844-codecs.png",
+      "sha256": "d22d489b384485a8ca8ba2591b6ad658ca1c0ab80ec9ac81a8caa10841fd6fb1"
+    },
+    {
+      "name": "390x844-dark.png",
+      "sha256": "28175212378f3cd7b4fe218233f0a4436bfc81ea37d5e7ee09ee51affbf3d2b3"
+    },
+    {
+      "name": "390x844-decoder.png",
+      "sha256": "162f7e2b3c11e7dc59562ff3aa51c30c8ba9eabc86b2e0d9b70b938d0e84328c"
+    },
+    {
+      "name": "390x844-finding-edit.png",
+      "sha256": "c4de662bb33e6c29363b5640e6210f0fb481aa7ca8059299312fc6788d074488"
+    },
+    {
+      "name": "390x844-finding-read.png",
+      "sha256": "ba143036c0bfc48e73821db4835373e5e53824d6140c67aacaec85f7847cab15"
+    },
+    {
+      "name": "390x844-guide.png",
+      "sha256": "e88b04e3b4202079896c8029a6eb76bfd386ccaa925f494cdf361405fb74e022"
+    },
+    {
+      "name": "390x844-history.png",
+      "sha256": "e66f2631f9d0b69ce9d77f22c3ccc526dda4fd088ec184727f7e65c1bece0947"
+    },
+    {
+      "name": "390x844-notes.png",
+      "sha256": "3d6e2184e2f26e72d639400f95df92a5f5f3c44e052f8e36819505d9e04dda73"
+    },
+    {
+      "name": "390x844-oob.png",
+      "sha256": "88135cdfdee83d7eb6d660a6648acf2fe96e373734aeaefe790fce8bddcee75f"
+    },
+    {
+      "name": "390x844-palette.png",
+      "sha256": "ec7e9ae648a63e893142704cabfa926baf7e2599b4a1751b60d7314578c5c665"
+    },
+    {
+      "name": "390x844-shortcuts.png",
+      "sha256": "9648d923a17fcd748f5df9526257fd0ef29610a979ec8b7e1c107c014fdb735d"
+    }
+  ],
+  "console_errors": [],
+  "external_requests": [],
+  "theme": [
+    {
+      "viewport": "1440x900",
+      "root": "#111318",
+      "toggle": [
+        "rgb(37, 43, 53)",
+        "rgb(203, 213, 225)"
+      ],
+      "select": [
+        "rgb(37, 43, 53)",
+        "rgb(248, 250, 252)"
+      ]
+    },
+    {
+      "viewport": "390x844",
+      "root": "#111318",
+      "toggle": [
+        "rgb(37, 43, 53)",
+        "rgb(203, 213, 225)"
+      ],
+      "select": [
+        "rgb(37, 43, 53)",
+        "rgb(248, 250, 252)"
+      ]
+    }
+  ],
+  "runtime": {
+    "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c",
+    "runtime_sha256": "2bb4e0b83e90b17c8de43d32d62185918c18de60b1d3a8d35dcbe93ad8db7c66",
+    "runtime_files": 253,
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+  }
+}

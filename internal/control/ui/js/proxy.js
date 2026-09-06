@@ -650,18 +650,12 @@ export function handleFlowUpdate(f){
 }
 
 export function getStartedCard(){
-  return `<div style="max-width:640px;margin:26px auto;padding:0 16px">
-    <div style="font-size:var(--fs-lg);font-weight:700;color:var(--fg);margin-bottom:4px">No traffic yet — let's capture some</div>
-    <div class="hint" style="margin-bottom:14px">Interseptor sits between your client and the internet; point traffic at it and it shows up here live.</div>
-    <ol style="color:var(--fg2);line-height:2;font-size:var(--fs-sm);padding-left:20px;margin:0">
-      <li>Point your browser/client at the proxy <b style="color:var(--accent);font-family:var(--mono)">${esc(state.proxyAddr)}</b>${navigator.platform&&/win/i.test(navigator.platform)?' — Windows: Settings → Network → Proxy → manual <b>127.0.0.1:8080</b> (or <code>netsh winhttp set proxy 127.0.0.1:8080</code> for system-wide)':''}</li>
-      <li><b>Mobile:</b> Settings → TLS → <b>Android (ADB)</b> → Setup all. User CAs are ignored by most Android apps — pinning needs Frida or a patched APK.</li>
-      <li>To intercept <b>HTTPS</b>, <a href="/api/ca.crt" download style="color:var(--accent)">download the CA</a> and trust it (details in Settings)</li>
-      <li>Browse — flows stream in here. Red <b>PIN</b> rows mean SSL pinning or untrusted CA blocked the handshake.</li>
-      <li><b style="color:var(--fg)">Right-click</b> a row to filter, copy as cURL, send to Repeater/Intruder</li>
-
-    </ol>
-    <div class="hint" style="margin-top:14px">Tip: press <b style="color:var(--fg)">Ctrl/⌘ K</b> for the command palette — jump to any tab, search flows, or run an action.</div></div>`;
+  return `<div class="state-empty history-welcome">
+    <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div>
+    <div class="state-empty-title">Your traffic starts here</div>
+    <p class="state-empty-hint">Connect a client to <code>${esc(state.proxyAddr)}</code>. Requests appear here as they arrive.</p>
+    <div class="history-welcome-actions"><button type="button" class="btn btn-primary" id="gsSettings">Connection settings</button><button type="button" class="btn" id="gsTLS">HTTPS setup</button></div>
+  </div>`;
 }
 // The request/response inspector is only useful once a flow is picked. Until then
 // it's ~40% of the screen showing two "select a flow" placeholders while the flow
@@ -723,7 +717,8 @@ export function renderRows(){
       };
     }else{
       box.innerHTML=getStartedCard();
-      const b=document.getElementById('gsMcp');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="api"]')?.click();document.querySelector('#apiSub button[data-s="mcp"]')?.click();};
+      const b=document.getElementById('gsSettings');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="proxy"]')?.click();};
+      const tls=document.getElementById('gsTLS');if(tls)tls.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="tls"]')?.click();};
     }
     return;}
   const win=flowVirt.computeWindow(flows.length);
@@ -962,6 +957,20 @@ let flowFilterReconciledEpoch=0;
 const noteSaveTails=new Map();
 const noteEditorGenerations=new Map();
 function noteEditorGeneration(flowId){return noteEditorGenerations.get(flowId)||0;}
+const noteDrafts=new Map();
+function renderFlowNoteStatus(flowId,saved=false){
+  if(state.selId!==flowId)return;
+  const draft=noteDrafts.get(flowId),status=$('#noteSaved'),retry=$('#noteRetry');
+  if(status){
+    status.textContent=draft?.error?'Save failed: '+draft.error:draft?.saving?'Saving…':draft?'Unsaved':saved?'Saved':'';
+    status.dataset.state=draft?.error?'error':draft?'pending':'saved';
+  }
+  if(retry)retry.hidden=!draft?.error;
+}
+function restoreFlowNoteDraft(flowId,fallback){
+  $('#noteInput').value=noteDrafts.get(flowId)?.value??fallback;
+  renderFlowNoteStatus(flowId);
+}
 export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
 function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   if(state.selId==null)return;
@@ -1072,7 +1081,7 @@ export async function selectFlow(id){
     if(!current())return;
     if(canIncremental()&&!flowMatchesFilters(d)){closeInspector();return;}
     state.detail=d;
-    if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)$('#noteInput').value=d.note||'';
+    if(!preserveNoteDraft&&noteEditorGeneration(id)===noteGeneration)restoreFlowNoteDraft(id,d.note||'');
     setInspectorActionState(false);
     $('#noteBar').style.display='flex';
     await renderSide('req');
@@ -1394,7 +1403,11 @@ export function saveNote(){
   if(!flowId)return Promise.resolve();
   const note=$('#noteInput').value;
   const editorGeneration=noteEditorGeneration(flowId);
-  if(detail&&note===(detail.note||''))return Promise.resolve();
+  if(detail&&note===(detail.note||'')&&!noteSaveTails.has(flowId)){
+    noteDrafts.delete(flowId);renderFlowNoteStatus(flowId);return Promise.resolve();
+  }
+  const draft={value:note,saving:true,error:''};
+  noteDrafts.set(flowId,draft);renderFlowNoteStatus(flowId);
   const previous=noteSaveTails.get(flowId)||Promise.resolve();
   const save=previous.then(async()=>{
     try{
@@ -1402,11 +1415,15 @@ export function saveNote(){
       if(detail)detail.note=note;
       const fl=flowStore.byId.get(flowId);
       if(fl){fl.note=note;patchFlowRow(fl);}
+      if(noteDrafts.get(flowId)===draft)noteDrafts.delete(flowId);
       if(state.selId===flowId&&noteEditorGeneration(flowId)===editorGeneration&&$('#noteInput').value===note){
         if(state.detail)state.detail.note=note;
-        const s=$('#noteSaved');if(s){s.style.opacity='1';setTimeout(()=>{s.style.opacity='0';},1200);}
+        renderFlowNoteStatus(flowId,true);
       }
-    }catch(e){toast('note: '+e.message);}
+    }catch(e){
+      draft.saving=false;draft.error=e.message||'Could not save';
+      renderFlowNoteStatus(flowId);
+    }
   });
   const tail=save.catch(()=>{});
   noteSaveTails.set(flowId,tail);
@@ -1414,8 +1431,14 @@ export function saveNote(){
   return save;
 }
 $('#noteInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#noteInput').blur();}});
-$('#noteInput').addEventListener('input',()=>{const flowId=state.selId;if(flowId)noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);});
+$('#noteInput').addEventListener('input',()=>{
+  const flowId=state.selId;if(!flowId)return;
+  noteEditorGenerations.set(flowId,noteEditorGeneration(flowId)+1);
+  noteDrafts.set(flowId,{value:$('#noteInput').value,error:'',saving:false});
+  renderFlowNoteStatus(flowId);
+});
 $('#noteInput').addEventListener('blur',saveNote);
+$('#noteRetry').onclick=saveNote;
 /* ---- saved views (one dropdown: apply / save / delete) ---- */
 let viewsLoadError=null,viewsLoadEpoch=0,viewsMutationPending=false;
 export async function loadViews(){const epoch=++viewsLoadEpoch;try{const d=await api('/api/views');if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=null;state.views=d.views||[];renderViews();}catch(e){if(epoch!==viewsLoadEpoch||viewsMutationPending)return;viewsLoadError=e;renderViews();}}

@@ -1,4 +1,10 @@
-# UI audit verification — 2026-09-03
+# UI audit verification — 2026-09-05
+
+> **Superseded runtime:** the overall UI pass on 2026-09-06 changes navigation,
+> History note recovery, and Settings recovery. The full 132-case evidence below
+> belongs to the earlier runtime and no longer matches the working tree. See
+> [the overall review](overall-review.md) for current UI-only coverage and
+> validation. This is not a refreshed full release audit.
 
 ## Revision and environment
 
@@ -12,7 +18,7 @@
   the precise managed Playwright/CDP script that produced it; `worktree_base_commit` is explicitly
   the clean commit underneath any audited worktree changes, not a claim that the evidence file was
   already committed
-- Original audit baseline source: `42461e18fd13e72047cb81d99716fa6f18e8241a`
+- Audited worktree base: `c1ac41af5a3f01736b2291b2067468c2f3accb9c`
 - Launch: fresh CGO-free build of the exact audited source, started directly by the managed harness
 - Instance guard: full mode built and owned the exact worktree candidate, pre-bound random loopback
   control/proxy listeners, retained them in the parent for the full run, passed those exact
@@ -23,7 +29,7 @@
   project switching, stripped inherited `INTERSEPTOR_*` settings, and disabled update checks and
   browser launches. The POSIX descriptor handoff fails closed on unsupported platforms so a
   free-port probe or replacement server can never receive full-audit mutations
-- Browser: Playwright 1.60.0; Chromium 148.0.7778.96, Firefox 150.0.2, and WebKit 26.4
+- Browser: Playwright 1.60.0, with the installed Chromium, Firefox, and WebKit managed runtimes
 - Data: isolated projects with generic `example.com`, `localhost`, and loopback fixtures only
 - Required viewports: 1440 × 900, 1024 × 768, and 390 × 844
 - Reduced motion: a separate browser context with `prefers-reduced-motion: reduce`
@@ -32,7 +38,7 @@
 
 The retained runtime digest, runtime file count, and harness digest are recorded under
 `application_source` in [`browser-audit.json`](browser-audit.json) and checked against the current
-worktree by the Go audit-evidence regression. They match the current saved-workspace and
+worktree by the Go audit-evidence regression. They match the previously audited saved-workspace and
 evidence-first Findings runtime exactly, including bounded startup recovery,
 versioned project-local browser keys, guarded Repeater/Intruder state, and structured
 Claim/Risk/Reproduction/Evidence/Fix-Retest/Review fields, screenshot and captured-flow
@@ -42,8 +48,8 @@ Documentation-only commits made after the audited base do not change this identi
 under `cmd/`, `internal/`, `go.mod`, or `go.sum` requires a fresh full run and replacement evidence.
 
 The complete 132-case aggregate matrix (44 cases per engine) and three-run-per-engine performance profiles were executed against that exact source
-with `python3 scripts/ui_browser_audit.py --full --managed --output-dir docs/ui-audit --burst 240
---perf-runs 3 --startup-engines chromium,firefox,webkit`. Full mode cannot accept an arbitrary
+with `python3 scripts/ui_browser_audit.py --full --managed --output-dir /tmp/interseptor-ui-custom-controls-verified`
+using the default burst of 240, three performance runs, and all three browser engines. Full mode cannot accept an arbitrary
 existing server: it builds and starts one owned
 candidate with project switching disabled on parent-retained loopback listeners, then stops it,
 closes the reservations, and removes only its validated sentinel-owned temporary root. The
@@ -51,7 +57,41 @@ validated machine-readable result and screenshots were retained
 together in this directory so the pass, measurements, and application-source identity cannot drift
 apart.
 
-## Audit outcome
+## Historical managed verification — 2026-09-05
+
+This run verifies the earlier source identity recorded below; it does not certify the current runtime.
+
+The 16 Settings captures in `supplemental/` were recaptured after navigation
+transitions settled, with the selected navigation state and lack of viewport
+overflow asserted. The actual custom checkbox was toggled with Space and
+verified in forced-colors mode. Its screenshot and matching source identity are
+recorded in [settings-stable.json](supplemental/settings-stable.json).
+
+The exact command below completed successfully against fresh, sentinel-owned
+loopback projects and retained no real traffic or engagement data:
+
+```bash
+python3 scripts/ui_browser_audit.py --full --managed \
+  --output-dir /tmp/interseptor-ui-custom-controls-verified
+```
+
+- Aggregate outcome: **132/132 cases passed** — 44 each in Chromium, Firefox,
+  and WebKit; there were no console, page, HTTP, or external-request failures.
+- The run used the default `--burst 240` and `--perf-runs 3` workload. Current
+  per-engine measurements remain in [`browser-audit.json`](browser-audit.json),
+  rather than being copied into prose as a stale performance claim.
+- `application_source.runtime_sha256` is
+  `e9f6e196a7fbbbeb1745ac9511a9a1436ec103be7545d827a27058366469e8e2` for 253
+  runtime files; `application_source.audit_harness_sha256` is
+  `514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0`.
+  Both were recomputed from the worktree at the time of the run and matched the
+  retained JSON.
+- Supplementary Chromium managed checks covered app-rendered tooltip
+  focus/Escape/hover and Map click-through, keyboard and forced-colors controls,
+  hidden native select/title adapters, mobile tool navigation, and a synthetic
+  Notes failed-save reason/retry path. Their 24 captures (23 primary captures and
+  one forced-colors diagnostic) are retained under
+  [`supplemental/`](supplemental/); they contain only disposable audit data.
 
 Interseptor already had a strong foundation: a compact technical identity, direct navigation,
 stable data hierarchy, native controls, visible raw protocol data, project-scoped state, and no
@@ -148,8 +188,7 @@ render and close-vs-send race remain covered by focused Repeater regression test
 The retained pass fault-injected a failed transitive module fetch, a valid module response that
 throws during evaluation, and a workspace fetch that never settles or honors cancellation in
 Chromium, Firefox, and WebKit. Module failures produced an assertive Reload action with dead
-surfaces inert; the ignored-abort cases unlocked browser-local operation in `2553.2 ms`, `2575.0 ms`,
-and `2606.9 ms`, respectively. A total project-identity failure in each engine kept unavailable
+surfaces inert; the ignored-abort cases unlocked browser-local operation in every engine. A total project-identity failure in each engine kept unavailable
 controls locked while clearing navigation and panel `aria-busy`, so the final alert no longer reads
 as an indefinite load. A module delayed beyond the guard recovered the exact controls the guard
 disabled when it eventually completed.
@@ -166,7 +205,7 @@ remained byte-identical while safe server state stayed usable. Malformed Repeate
 coerced or filtered without sharing Repeater history identities or blocking the editor.
 
 When `/api/project` never settled but `/api/version` still supplied the canonical project directory,
-the workstation became usable in `3436.1 ms`, `3499.4 ms`, and `3470.2 ms` in Chromium, Firefox, and
+the workstation became usable in Chromium, Firefox, and
 WebKit. Each engine started with unknown-owner legacy Repeater, Intruder, and preset values, then
 fault-injected the first project PUT for all three surfaces. New edits remained in both their exact
 canonical-directory browser keys and pending-retry keys, survived a reload, retried successfully,
@@ -291,6 +330,12 @@ or a component-library visual language.
   semantics, keyboard behavior, focus ownership, reduced motion, and accessible status text.
 
 ## Required source gates
+
+Current local results: build, `go vet ./...`, documentation checks, JavaScript
+syntax checks, and the control package (including its race run) passed.
+`go test ./...` and `go test -race ./...` each failed only the pre-existing
+`TestRunUpdateCheckOnly`: its live release lookup reports `release v2.0.8 not found`.
+The same failure was observed before this UI change; no race warnings were reported.
 
 Any branch that changes the runtime must pass these source gates in its owning validation phases:
 

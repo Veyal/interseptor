@@ -1,0 +1,17 @@
+{
+  "result": "pass",
+  "checks": {
+    "retention stale table survives failure and Retry recovers": "pass",
+    "mobile startup failure presents keyboard reload": "pass"
+  },
+  "failures": [],
+  "runtime": {
+    "application_source": {
+      "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c",
+      "runtime_sha256": "e55b744e3fab1b222c3922399aeb2590d32101fd41184dc5171ba13dfaaaa294",
+      "runtime_files": 253,
+      "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+    },
+    "base_url": "http://127.0.0.1:63286"
+  }
+}

@@ -388,7 +388,7 @@ function makeProxyListenerRow(addr){
   row.className='proxy-listener-row row';
   row.style.cssText='gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap';
   row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" aria-label="Proxy listener host" style="width:100%;text-align:left"></select></div>`+
-    `<div style="width:100px"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
+    `<div class="field" style="width:100px;margin-bottom:0"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
     `<button type="button" class="btn proxy-listener-del" title="Remove proxy listener" aria-label="Remove proxy listener" style="color:var(--red);padding:3px 10px">×</button>`;
   renderHostSelect(row.querySelector('.proxy-host-select'),host);
   row.querySelector('.proxy-listener-del').onclick=()=>{
@@ -539,8 +539,16 @@ export function openSettingsProxy(){
   if(row)setTimeout(()=>{row.scrollIntoView({block:'nearest',behavior:prefersReducedMotion()?'auto':'smooth'});row.querySelector('.proxy-host-select')?.focus();},50);
 }
 
+function syncSettingsPicker() {
+  const picker=$('#settingsSectionSelect');if(!picker)return;
+  const buttons=$$('#setNav button[data-sec]');
+  [...picker.options].forEach(option=>{option.hidden=!!buttons.find(button=>button.dataset.sec===option.value)?.hidden;});
+  picker.disabled=buttons.every(button=>button.hidden);
+  picker.value=buttons.find(button=>button.classList.contains('on'))?.dataset.sec||'proxy';
+}
+
 function syncSettingsNavA11y(active) {
-  $$('#setNav button').forEach(button => {
+  $$('#setNav button[data-sec]').forEach(button => {
     const sec = document.querySelector('.set-sec[data-sec="'+button.dataset.sec+'"]');
     if (sec) {
       if (!sec.id) sec.id = 'settings-section-'+button.dataset.sec;
@@ -553,10 +561,11 @@ function syncSettingsNavA11y(active) {
   });
 }
 
-$$('#setNav button').forEach(b=>b.onclick=()=>{
-  $$('#setNav button').forEach(x=>x.classList.toggle('on',x===b));
+$$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
+  $$('#setNav button[data-sec]').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
   syncSettingsNavA11y(b);
+  syncSettingsPicker();
   try{localStorage.setItem('setSec',b.dataset.sec);}catch(e){}
   // lazy-load retention stats the first time the project section is opened
   if(b.dataset.sec==='project'){retentionLoaded=true;loadRetention();}
@@ -564,7 +573,12 @@ $$('#setNav button').forEach(b=>b.onclick=()=>{
   if(b.dataset.sec==='devices'){loadAndroid();loadIOS();loadIOSSsh();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
 });
-syncSettingsNavA11y(document.querySelector('#setNav button.on')||document.querySelector('#setNav button'));
+syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||document.querySelector('#setNav button[data-sec]'));
+syncSettingsPicker();
+$('#settingsSectionSelect').onchange=event=>{
+  const button=$$('#setNav button[data-sec]').find(button=>button.dataset.sec===event.currentTarget.value);
+  if(button&&!button.hidden)button.click();
+};
 
 // Settings search — filter the left nav to sections whose label or body text
 // matches the query, so options are discoverable without knowing which group
@@ -573,7 +587,7 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on')||document.queryS
   const box=$('#setSearch'); if(!box) return;
   const empty=$('#setNavEmpty');
   // Cache each nav button's searchable haystack (label + its section's text).
-  const entries=$$('#setNav button').map(b=>{
+  const entries=$$('#setNav button[data-sec]').map(b=>{
     const sec=document.querySelector('.set-sec[data-sec="'+b.dataset.sec+'"]');
     return {btn:b,text:((b.textContent||'')+' '+(sec?sec.textContent||'':'')).toLowerCase()};
   });
@@ -593,6 +607,7 @@ syncSettingsNavA11y(document.querySelector('#setNav button.on')||document.queryS
     if(empty)empty.hidden=visibleCount>0;
     // If the query hid the active section, jump to the first remaining match.
     if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden))firstVisible.click();
+    syncSettingsPicker();
   };
   // Escape clears the filter.
   box.onkeydown=e=>{if(e.key==='Escape'){box.value='';box.oninput();box.blur();}};
@@ -883,6 +898,8 @@ function upstreamProxyFieldSnapshot(){
 }
 function renderUpstreamProxyFields(scheme,fillDefaultPort=false){
   scheme=scheme||$('#setUpstreamScheme')?.value||'direct';
+  const help=$('#upstreamSchemeHelp');
+  if(help){help.hidden=scheme!=='socks5'&&scheme!=='socks5h';help.textContent=scheme==='socks5h'?'The upstream proxy resolves target hostnames.':'Interseptor resolves target hostnames.';}
   const fields=$('#upstreamProxyFields');if(fields)fields.hidden=scheme==='direct';
   const advanced=$('#upstreamProxyAdvanced');if(advanced)advanced.hidden=scheme!=='https';
   const ca=$('#setUpstreamCAWrap');if(ca)ca.hidden=scheme!=='https';
@@ -1131,7 +1148,8 @@ export async function loadRetention(){
   const selection=snapshotRetentionSelection();
   retentionSelectionSnapshot=selection||new Set();
   const body=$('#retentionBody');
-  if(body)body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">Loading…</td></tr>';
+  const status=$('#retentionLoadState');
+  if(status){status.textContent='Refreshing…';status.style.display='block';}
   void loadRetentionPolicy();
   try{
     const d=await api('/api/hosts/stats');
@@ -1139,9 +1157,11 @@ export async function loadRetention(){
     retentionStats=d;
     renderRetention(d);
     restoreRetentionSelection(retentionSelectionSnapshot);
+    if(status){status.textContent='';status.style.display='none';}
   }catch(e){
     if(epoch!==retentionLoadEpoch)return null;
-    if(body)body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px;color:var(--red)">'+esc(e.message)+'</td></tr>';
+    if(!retentionStats&&body)body.innerHTML='';
+    renderLoadError(status,'Storage statistics',e,()=>loadRetention(),!!retentionStats);
   }
 }
 
