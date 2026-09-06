@@ -1,0 +1,43 @@
+{
+  "cases": {
+    "1440x900": "pass",
+    "390x844": "pass"
+  },
+  "failures": [],
+  "screenshots": [
+    {
+      "name": "1440x900-finding-edit-top.png",
+      "sha256": "1165f96bfffd80e91a5ca040223a08fad9be1c5c08014a7347e116f5ab111c13"
+    },
+    {
+      "name": "1440x900-finding-read-top.png",
+      "sha256": "2db57e4a6e0698b41ec29e4b8adfb0a61a926584fbbee973d4985fcc06c3f6ad"
+    },
+    {
+      "name": "1440x900-history-coherent.png",
+      "sha256": "02149808dcef4ae8c86156422d53a7a988d79efe5655ceeeb90c00aa90b10a11"
+    },
+    {
+      "name": "390x844-finding-edit-top.png",
+      "sha256": "98a9def47cc49da8179712897ccf1b36279f42f975acb848df4ec811fc214e1f"
+    },
+    {
+      "name": "390x844-finding-read-top.png",
+      "sha256": "a8ce2d356c9959ccfa475c19b119fa5102b4f2645581dfb059208240d480213e"
+    },
+    {
+      "name": "390x844-history-coherent.png",
+      "sha256": "130b1848eafab5df937af016de0bbf35a30a481a854d912ed8840a2d00b1b58b"
+    }
+  ],
+  "fixture": {
+    "history": "one generic example.com flow plus tls-diagnosis verdict ok / totalFlows 1; existing report remains the empty-diagnostics variant",
+    "findings": "one generic three-text-block finding; top read and top edit only"
+  },
+  "runtime": {
+    "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c",
+    "runtime_sha256": "2bb4e0b83e90b17c8de43d32d62185918c18de60b1d3a8d35dcbe93ad8db7c66",
+    "runtime_files": 253,
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+  }
+}

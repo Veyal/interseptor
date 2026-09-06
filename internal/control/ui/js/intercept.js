@@ -194,6 +194,8 @@ function showHeldLoadError(h,error){
 
 export function renderIntercept(){
   const ic=state.intercept||{};
+  const hint=$('#heldEmptyHint');
+  if(hint)hint.textContent=ic.enabled||ic.responseEnabled?'Waiting for matching '+(ic.enabled&&ic.responseEnabled?'requests or responses':ic.enabled?'requests':'responses')+'.':'Enable Requests or Responses to hold traffic.';
   const rq=ic.queue||[], rrq=ic.responseQueue||[];
   const focusedHeld=document.activeElement?.closest?.('#heldList .icpt-item[data-id][data-side]');
   const heldFocus=focusedHeld?{id:focusedHeld.dataset.id,side:focusedHeld.dataset.side}:null;

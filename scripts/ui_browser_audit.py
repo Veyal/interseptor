@@ -63,6 +63,21 @@ ENCODE_URI_COMPONENT_SAFE = "~()*!.'-_"
 BROWSER_ENGINES = ("chromium", "firefox", "webkit")
 
 
+def select_ui_option(page: Page, selector: str, value: str) -> None:
+    """Choose through the visible app dropdown, never a hidden native adapter."""
+    label = page.locator(selector + " option").evaluate_all(
+        "(options, value) => options.find(option => option.value === value)?.textContent", value
+    )
+    if label is None:
+        raise AssertionError(f"missing option {value!r} in {selector}")
+    trigger = page.locator(selector + "Ui")
+    trigger.click()
+    menu_id = trigger.get_attribute("aria-controls")
+    if not menu_id:
+        raise AssertionError(f"missing app dropdown menu for {selector}")
+    page.locator("#" + menu_id).get_by_role("option", name=label, exact=True).click()
+
+
 def browser_project_storage_key(base: str, project: str) -> str:
     return f"{base}.v2.{quote(str(project), safe=ENCODE_URI_COMPONENT_SAFE)}"
 
@@ -3005,7 +3020,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 result.require(legacy_rows == history_count, "legacy Repeater history migration fixture did not move the current rows")
 
                 changed_url = fixture_base + "/audit/repeater-edited"
-                page.locator("#repMethod").select_option("POST")
+                select_ui_option(page, "#repMethod", "POST")
                 page.locator("#repUrl").fill(changed_url)
                 page.locator("#repHeaders").fill("Content-Type: application/json\nX-Audit: stable")
                 page.locator("#repBody").fill('{"changed":true}')
@@ -3056,7 +3071,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 tab_b = page.locator("#repTabs .rep-tab.on").get_attribute("data-tid")
                 result.require(tab_b and tab_b != tab_a, "new Repeater tab did not receive a distinct identity")
                 page.locator("#repUrl").fill(fixture_base + "/audit/repeater-tab-b")
-                page.locator("#repMethod").select_option("GET")
+                select_ui_option(page, "#repMethod", "GET")
                 page.locator("#repHeaders").fill("")
                 page.locator("#repBody").fill("")
                 page.locator("#repSend").click()
@@ -3165,7 +3180,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.locator("#findNew").click()
                     page.wait_for_function("document.activeElement?.id==='fcTitle'")
                     page.locator("#fcTitle").fill("Generic UI audit finding")
-                    page.locator("#fcSeverity").select_option("Info")
+                    select_ui_option(page, "#fcSeverity", "Info")
                     page.locator("#fcSave").click()
                     page.wait_for_selector("#findCreateModal", state="hidden", timeout=10_000)
                 finally:
@@ -3189,7 +3204,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.locator("#findTarget").fill(f"{fixture_base}/audit/seed")
                 page.locator("#findFix").fill("Enforce authorization before returning the requested record.")
                 page.locator("#findRetest").fill("The same request returns 403 and no record data.")
-                page.locator("#findConfidence").select_option("firm")
+                select_ui_option(page, "#findConfidence", "firm")
                 page.locator("#findBody").click(position={"x": 4, "y": 4})
                 page.wait_for_function(
                     """async () => {
@@ -3203,7 +3218,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     timeout=10_000,
                 )
 
-                page.locator("#findNarrativePreset").select_option("Differential proof")
+                select_ui_option(page, "#findNarrativePreset", "Differential proof")
                 page.locator("#findApplyPreset").click()
                 steps = page.locator("#findBody .block-text")
                 result.require(steps.count() == 3, f"differential outline created {steps.count()} steps")
@@ -3321,9 +3336,10 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 # Force the product's documented anchor-download fallback so
                 # the real UI fetch/blob/filename path remains observable.
                 page.evaluate("Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true})")
+                page.locator(".find-export-options > summary").click()
                 for fmt in ("md", "html", "json"):
                     page.wait_for_function("!document.querySelector('#findExport')?.disabled")
-                    page.locator("#findExportFmt").select_option(fmt)
+                    select_ui_option(page, "#findExportFmt", fmt)
                     with page.expect_download(timeout=10_000) as download_info:
                         page.locator("#findExport").click()
                     download = download_info.value
@@ -3914,14 +3930,31 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     page.unroute("**/api/vault/remote", observe_vault_remote)
                 page.locator('#setNav button[data-sec="tls"]').click()
                 page.wait_for_selector("#tlsDiagPanel", state="visible", timeout=10_000)
-                page.locator('#setNav button[data-sec="devices"]').click()
-                page.wait_for_selector("#androidDeviceValue", state="visible", timeout=10_000)
-                for refresh_id in ("androidRefreshBtn", "iosRefreshBtn"):
-                    refresh = page.locator(f"#{refresh_id}")
-                    refresh.scroll_into_view_if_needed()
-                    result.require(refresh.is_visible() and refresh.is_enabled(), f"{refresh_id} is not reachable")
-                    refresh.click()
-                    page.wait_for_timeout(180)
+                # Device-tool availability varies across audit hosts. Exercise
+                # both states deterministically without touching real devices.
+                android_fixture = {"available": False, "devices": []}
+                def mock_android_status(route: Any) -> None:
+                    route.fulfill(status=200, content_type="application/json", body=json.dumps(android_fixture))
+                page.route("**/api/android/status", mock_android_status)
+                try:
+                    page.locator("#androidAdbSection").evaluate("element => element.style.display=''")
+                    with page.expect_response(lambda response: response.url.endswith("/api/android/status")):
+                        page.locator('#setNav button[data-sec="devices"]').click()
+                    page.wait_for_function("document.querySelector('#androidAdbSection')?.style.display==='none'")
+                    result.require(not page.locator("#androidDeviceValue").is_visible(), "unavailable ADB picker is exposed")
+                    android_fixture["available"] = True
+                    page.locator('#setNav button[data-sec="tls"]').click()
+                    page.locator('#setNav button[data-sec="devices"]').click()
+                    page.wait_for_selector("#androidDeviceValue", state="visible", timeout=10_000)
+                    result.require(page.locator("#androidDeviceValue").inner_text() == "No device connected", "empty Android picker state missing")
+                    for refresh_id in ("androidRefreshBtn", "iosRefreshBtn"):
+                        refresh = page.locator(f"#{refresh_id}")
+                        refresh.scroll_into_view_if_needed()
+                        result.require(refresh.is_visible() and refresh.is_enabled(), f"{refresh_id} is not reachable")
+                        refresh.click()
+                        page.wait_for_timeout(180)
+                finally:
+                    page.unroute("**/api/android/status", mock_android_status)
                 page.locator('#setNav button[data-sec="session"]').click()
                 page.wait_for_selector("#sessionLoadState", state="attached", timeout=10_000)
                 login_test = page.locator("#loginMacroTest")
@@ -3946,7 +3979,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                 page.locator('#setNav button[data-sec="api"]').click()
                 page.locator('#apiSub button[data-s="keys"]').click()
                 page.locator("#keyLabel").fill("ui-audit")
-                page.locator("#keyScope").select_option("read")
+                select_ui_option(page, "#keyScope", "read")
                 with page.expect_response(
                     lambda response: response.url.endswith("/api/keys") and response.request.method == "POST",
                     timeout=10_000,
@@ -4106,7 +4139,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         page.locator(f'#scopeBody input[data-k="host"][value="{scope_host}"]').count() == 0,
                         "isolated scope fixture already contained the audit marker",
                     )
-                    page.locator("#newScopeAction").select_option("include")
+                    select_ui_option(page, "#newScopeAction", "include")
                     page.locator("#newScopeHost").fill(scope_host)
                     page.locator("#newScopePath").fill("/audit-scope")
                     with page.expect_response(
@@ -4204,7 +4237,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     if not details.get_attribute("open"):
                         details.locator("summary").click()
                     page.wait_for_selector("#rulesBody", state="visible", timeout=10_000)
-                    page.locator("#newRuleType").select_option("req-header")
+                    select_ui_option(page, "#newRuleType", "req-header")
                     result.require(
                         page.locator('#rulesBody input[data-k="match"]').evaluate_all(
                             "(inputs, marker) => !inputs.some(input => input.value === marker)",
@@ -4737,14 +4770,14 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     "repeater": "#repUrl",
                     "intruder": "#intrTarget",
                     "scanner": "#scanRun",
-                    "map": "#mapDomain",
+                    "map": "#mapDomainUi",
                     "findings": "#findNew",
                     "notes": "#notesEdit",
                     "activity": "#actIntentFilter",
                     "settings": "#setSearch",
                 }
                 for name in TOP_LEVEL_TABS:
-                    page.locator(f'.tab[data-tab="{name}"]').click()
+                    select_ui_option(page, "#mobileToolSelect", name)
                     panel = page.locator(f'.panel[data-panel="{name}"]')
                     result.require(panel.is_visible(), f"mobile {name} panel is not visible")
                     box = panel.bounding_box()
@@ -4755,6 +4788,7 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                         page.evaluate("document.documentElement.scrollWidth===document.documentElement.clientWidth"),
                         f"mobile {name} panel introduces document overflow",
                     )
+                    result.require(page.evaluate("[...document.querySelectorAll('select')].every(el => el.getClientRects().length===0)"), f"mobile {name} exposes a native select")
                     key = page.locator(key_controls[name])
                     key.scroll_into_view_if_needed()
                     result.require(key.is_visible(), f"mobile {name} key control is not reachable")
@@ -4781,6 +4815,8 @@ def run_audit(args: argparse.Namespace, application_source: Optional[Dict[str, A
                     width, height = png_dimensions(path)
                     result.require((width, height) == dimensions, f"{path.name} is {width}x{height}, expected {dimensions[0]}x{dimensions[1]}")
                     screenshot_meta[name] = {"path": str(path), "width": width, "height": height}
+
+                page.locator(".find-export-options").evaluate("element => element.open=false")
 
                 # Retain the evidence-first Findings detail at every required
                 # viewport, not only the surrounding product surfaces.

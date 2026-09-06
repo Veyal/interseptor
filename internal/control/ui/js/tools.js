@@ -25,7 +25,7 @@ function repStatusLine(f){
 // REP_RES_EMPTY — the response pane's placeholder before any send. #repResView
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
-const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
 
 function setRepSendState(stateName,label){
   const button=$('#repSend');if(!button)return;

@@ -1,0 +1,651 @@
+{
+  "cleanup": "managed candidate removed",
+  "engines": {
+    "chromium": {
+      "captures": [
+        "chromium-desktop-panel-proxy.png",
+        "chromium-desktop-panel-intercept.png",
+        "chromium-desktop-panel-repeater.png",
+        "chromium-desktop-panel-intruder.png",
+        "chromium-desktop-panel-scanner.png",
+        "chromium-desktop-panel-map.png",
+        "chromium-desktop-panel-findings.png",
+        "chromium-desktop-panel-notes.png",
+        "chromium-desktop-panel-activity.png",
+        "chromium-desktop-panel-settings.png",
+        "chromium-desktop-settings-proxy.png",
+        "chromium-desktop-settings-tls.png",
+        "chromium-desktop-settings-devices.png",
+        "chromium-desktop-settings-scope.png",
+        "chromium-desktop-settings-scanner.png",
+        "chromium-desktop-settings-session.png",
+        "chromium-desktop-settings-project.png",
+        "chromium-desktop-settings-api.png",
+        "chromium-mobile-panel-proxy.png",
+        "chromium-mobile-panel-intercept.png",
+        "chromium-mobile-panel-repeater.png",
+        "chromium-mobile-panel-intruder.png",
+        "chromium-mobile-panel-scanner.png",
+        "chromium-mobile-panel-map.png",
+        "chromium-mobile-panel-findings.png",
+        "chromium-mobile-panel-notes.png",
+        "chromium-mobile-panel-activity.png",
+        "chromium-mobile-panel-settings.png",
+        "chromium-mobile-settings-proxy.png",
+        "chromium-mobile-settings-tls.png",
+        "chromium-mobile-settings-devices.png",
+        "chromium-mobile-settings-scope.png",
+        "chromium-mobile-settings-scanner.png",
+        "chromium-mobile-settings-session.png",
+        "chromium-mobile-settings-project.png",
+        "chromium-mobile-settings-api.png",
+        "chromium-mobile-project-dialog.png",
+        "chromium-mobile-light-theme.png"
+      ],
+      "checks": {
+        "findings populated edit controls": "NOT CHECKED in this empty-state capture",
+        "light theme": "pass",
+        "mobile custom tool select keyboard": "pass",
+        "mobile project dialog": "pass",
+        "mobile tabs hidden": "pass",
+        "mobile tool trigger touch target": "pass",
+        "settings custom select keyboard": "pass",
+        "settings search/filter/custom keyboard": "pass"
+      },
+      "errors": [],
+      "external_requests": [],
+      "failures": [],
+      "unexpected_external_requests": [],
+      "unexpected_page_or_console_errors": []
+    },
+    "firefox": {
+      "captures": [
+        "firefox-desktop-panel-proxy.png",
+        "firefox-desktop-panel-intercept.png",
+        "firefox-desktop-panel-repeater.png",
+        "firefox-desktop-panel-intruder.png",
+        "firefox-desktop-panel-scanner.png",
+        "firefox-desktop-panel-map.png",
+        "firefox-desktop-panel-findings.png",
+        "firefox-desktop-panel-notes.png",
+        "firefox-desktop-panel-activity.png",
+        "firefox-desktop-panel-settings.png",
+        "firefox-desktop-settings-proxy.png",
+        "firefox-desktop-settings-tls.png",
+        "firefox-desktop-settings-devices.png",
+        "firefox-desktop-settings-scope.png",
+        "firefox-desktop-settings-scanner.png",
+        "firefox-desktop-settings-session.png",
+        "firefox-desktop-settings-project.png",
+        "firefox-desktop-settings-api.png",
+        "firefox-mobile-panel-proxy.png",
+        "firefox-mobile-panel-intercept.png",
+        "firefox-mobile-panel-repeater.png",
+        "firefox-mobile-panel-intruder.png",
+        "firefox-mobile-panel-scanner.png",
+        "firefox-mobile-panel-map.png",
+        "firefox-mobile-panel-findings.png",
+        "firefox-mobile-panel-notes.png",
+        "firefox-mobile-panel-activity.png",
+        "firefox-mobile-panel-settings.png",
+        "firefox-mobile-settings-proxy.png",
+        "firefox-mobile-settings-tls.png",
+        "firefox-mobile-settings-devices.png",
+        "firefox-mobile-settings-scope.png",
+        "firefox-mobile-settings-scanner.png",
+        "firefox-mobile-settings-session.png",
+        "firefox-mobile-settings-project.png",
+        "firefox-mobile-settings-api.png",
+        "firefox-mobile-project-dialog.png",
+        "firefox-mobile-light-theme.png"
+      ],
+      "checks": {
+        "findings populated edit controls": "NOT CHECKED in this empty-state capture",
+        "light theme": "pass",
+        "mobile custom tool select keyboard": "pass",
+        "mobile project dialog": "pass",
+        "mobile tabs hidden": "pass",
+        "mobile tool trigger touch target": "pass",
+        "settings custom select keyboard": "pass",
+        "settings search/filter/custom keyboard": "pass"
+      },
+      "errors": [],
+      "external_requests": [],
+      "failures": [],
+      "unexpected_external_requests": [],
+      "unexpected_page_or_console_errors": []
+    },
+    "webkit": {
+      "captures": [
+        "webkit-desktop-panel-proxy.png",
+        "webkit-desktop-panel-intercept.png",
+        "webkit-desktop-panel-repeater.png",
+        "webkit-desktop-panel-intruder.png",
+        "webkit-desktop-panel-scanner.png",
+        "webkit-desktop-panel-map.png",
+        "webkit-desktop-panel-findings.png",
+        "webkit-desktop-panel-notes.png",
+        "webkit-desktop-panel-activity.png",
+        "webkit-desktop-panel-settings.png",
+        "webkit-desktop-settings-proxy.png",
+        "webkit-desktop-settings-tls.png",
+        "webkit-desktop-settings-devices.png",
+        "webkit-desktop-settings-scope.png",
+        "webkit-desktop-settings-scanner.png",
+        "webkit-desktop-settings-session.png",
+        "webkit-desktop-settings-project.png",
+        "webkit-desktop-settings-api.png",
+        "webkit-mobile-panel-proxy.png",
+        "webkit-mobile-panel-intercept.png",
+        "webkit-mobile-panel-repeater.png",
+        "webkit-mobile-panel-intruder.png",
+        "webkit-mobile-panel-scanner.png",
+        "webkit-mobile-panel-map.png",
+        "webkit-mobile-panel-findings.png",
+        "webkit-mobile-panel-notes.png",
+        "webkit-mobile-panel-activity.png",
+        "webkit-mobile-panel-settings.png",
+        "webkit-mobile-settings-proxy.png",
+        "webkit-mobile-settings-tls.png",
+        "webkit-mobile-settings-devices.png",
+        "webkit-mobile-settings-scope.png",
+        "webkit-mobile-settings-scanner.png",
+        "webkit-mobile-settings-session.png",
+        "webkit-mobile-settings-project.png",
+        "webkit-mobile-settings-api.png",
+        "webkit-mobile-project-dialog.png",
+        "webkit-mobile-light-theme.png"
+      ],
+      "checks": {
+        "findings populated edit controls": "NOT CHECKED in this empty-state capture",
+        "light theme": "pass",
+        "mobile custom tool select keyboard": "pass",
+        "mobile project dialog": "pass",
+        "mobile tabs hidden": "pass",
+        "mobile tool trigger touch target": "pass",
+        "settings custom select keyboard": "pass",
+        "settings search/filter/custom keyboard": "pass"
+      },
+      "errors": [],
+      "external_requests": [],
+      "failures": [],
+      "unexpected_external_requests": [],
+      "unexpected_page_or_console_errors": []
+    }
+  },
+  "limitations": [
+    "UI-only: no scanner, intruder, replay, interception, device actions, API-key generation, or target traffic.",
+    "Per-flow failure/retry and populated retention error use source-verified paths but were not runtime-mocked in this capture because the app initialises live flow state before routing can safely replace its API contracts."
+  ],
+  "result": "pass",
+  "runtime": {
+    "application_source": {
+      "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+      "runtime_files": 253,
+      "runtime_sha256": "e55b744e3fab1b222c3922399aeb2590d32101fd41184dc5171ba13dfaaaa294",
+      "worktree_base_commit": "c1ac41af5a3f01736b2291b2067468c2f3accb9c"
+    },
+    "base_url": "http://127.0.0.1:63974",
+    "project": "ui-audit-416721860a8a"
+  },
+  "screenshots": {
+    "chromium-desktop-panel-activity.png": {
+      "bytes": 48681,
+      "sha256": "c90dfaee045c9ef04ae1fb8db6a3a73776081693fbbf50e82c61f530cc9ee18b"
+    },
+    "chromium-desktop-panel-findings.png": {
+      "bytes": 62755,
+      "sha256": "fdddbb7b30e055fce8a07d3cfedcfbe026025f0a309aefe7485256696383497c"
+    },
+    "chromium-desktop-panel-intercept.png": {
+      "bytes": 56456,
+      "sha256": "f35375619e171a1a690e2752b3c1230ec65c3193bb64ea759f77d711fc862be1"
+    },
+    "chromium-desktop-panel-intruder.png": {
+      "bytes": 102415,
+      "sha256": "5c08890e9811ff841652ae303ca1ce1734e091f51c7377c3f0fb4e3f319ea2c6"
+    },
+    "chromium-desktop-panel-map.png": {
+      "bytes": 60399,
+      "sha256": "f7b7e8e0427fe20770a38ddbae42dabc58780ccfb56ef7a3c142e39d2aa50862"
+    },
+    "chromium-desktop-panel-notes.png": {
+      "bytes": 44941,
+      "sha256": "836af50d9806f32e165a1408523ed450f79ecc6b421d054c63663ef986fac72d"
+    },
+    "chromium-desktop-panel-proxy.png": {
+      "bytes": 133005,
+      "sha256": "a399a151ac2afd0bc83c7d93164c7b087a44e8af50d8a2569396424d5b55c3f1"
+    },
+    "chromium-desktop-panel-repeater.png": {
+      "bytes": 68751,
+      "sha256": "c2c65d956ac1be9559ca974770b236c32edbd7d0fd95bb31c7afd577b9cdab8e"
+    },
+    "chromium-desktop-panel-scanner.png": {
+      "bytes": 59016,
+      "sha256": "4995cc21e496e8a2fc0e8b8edec5f03f8ce06d81d21653b3d5846e4a385a460e"
+    },
+    "chromium-desktop-panel-settings.png": {
+      "bytes": 136611,
+      "sha256": "bb7be86651a0d35a4b7e5b14bae84272cf8de6ccf427eeb8f3788b237a06546c"
+    },
+    "chromium-desktop-settings-api.png": {
+      "bytes": 89441,
+      "sha256": "84408a7d79c74dce4046785edb37c34ab7a1abe8d6dda8bb733db6fbfa95cd98"
+    },
+    "chromium-desktop-settings-devices.png": {
+      "bytes": 180679,
+      "sha256": "ba01e1a374692862e7d2f14bf5d5a063d2b9bea3944f4c4582326eb37526cfcd"
+    },
+    "chromium-desktop-settings-project.png": {
+      "bytes": 186775,
+      "sha256": "7f4f1c80cdbfa726aac341fa39cf5b85799a8266a5953f72b905bdb9cd0f6ff4"
+    },
+    "chromium-desktop-settings-proxy.png": {
+      "bytes": 136611,
+      "sha256": "bb7be86651a0d35a4b7e5b14bae84272cf8de6ccf427eeb8f3788b237a06546c"
+    },
+    "chromium-desktop-settings-scanner.png": {
+      "bytes": 83086,
+      "sha256": "9479613bb9a2fcdf8ff7644d595ce8b98b1aa328689faea180c93897920b2e93"
+    },
+    "chromium-desktop-settings-scope.png": {
+      "bytes": 92379,
+      "sha256": "708bcc77c26de09883cad7448639e2dbbae588fce02a89b71bcb995c9884d674"
+    },
+    "chromium-desktop-settings-session.png": {
+      "bytes": 103188,
+      "sha256": "96f36cd57e98be4217f302882fc26270e91d106355203d909be39991d9fa0061"
+    },
+    "chromium-desktop-settings-tls.png": {
+      "bytes": 176020,
+      "sha256": "9c3fa869e933b6901d1c90a54528c92327ab5a22389d290bec1c218f32631447"
+    },
+    "chromium-mobile-light-theme.png": {
+      "bytes": 82208,
+      "sha256": "361265c835fd8310f2563d9f1c4b91d742d66fc6d2f724b55a678acc3d18dae0"
+    },
+    "chromium-mobile-panel-activity.png": {
+      "bytes": 25759,
+      "sha256": "a2f6021328d891185e2f351dbec8a8c87fa0fc9b0204291fc6ac11b79dad4d30"
+    },
+    "chromium-mobile-panel-findings.png": {
+      "bytes": 37153,
+      "sha256": "c89a8202d9b46d8ad2a80f66df8da716d6865fd1b64deab60e31e47681ac58f0"
+    },
+    "chromium-mobile-panel-intercept.png": {
+      "bytes": 31925,
+      "sha256": "c73c647c35ead545eecdffeb4266097d9c33f3bb2fb730dc6bbdc44fb85b8322"
+    },
+    "chromium-mobile-panel-intruder.png": {
+      "bytes": 69039,
+      "sha256": "6729493f15ce5db3a0a35b2e8e8c727d00fc810ecde2969ec2836d6efc87a68b"
+    },
+    "chromium-mobile-panel-map.png": {
+      "bytes": 37692,
+      "sha256": "1d665b277adb073bf39ee68a32381be94f80cdd459c326179ca8f89e41177cfd"
+    },
+    "chromium-mobile-panel-notes.png": {
+      "bytes": 21488,
+      "sha256": "2c431489471190fa2d0c5d83265e9b9c51059d10ee7f15f378955019b56c1ca8"
+    },
+    "chromium-mobile-panel-proxy.png": {
+      "bytes": 95204,
+      "sha256": "55582e40540965d4e92fc8befe29ca6dfdadae45c518873ecd0f58254fcaba81"
+    },
+    "chromium-mobile-panel-repeater.png": {
+      "bytes": 40769,
+      "sha256": "ea4234d3bb945bd9b7571864c2e3ae71958c7309e01a740d6e29c743199e2050"
+    },
+    "chromium-mobile-panel-scanner.png": {
+      "bytes": 34384,
+      "sha256": "2fe6dcd118fc2a30d758b79978a4c3ff456663eb76e2d5c6c221ff25551fb83c"
+    },
+    "chromium-mobile-panel-settings.png": {
+      "bytes": 51260,
+      "sha256": "e3730dc79a709e4f69ba9cec1af46b9ab23c77ea6f7b836b9c91aa1f63b0a8b6"
+    },
+    "chromium-mobile-project-dialog.png": {
+      "bytes": 98139,
+      "sha256": "c605327d342f98ff3df2c12c8b0f11fb2e4e06081136151333f3a679103d4d56"
+    },
+    "chromium-mobile-settings-api.png": {
+      "bytes": 51260,
+      "sha256": "e3730dc79a709e4f69ba9cec1af46b9ab23c77ea6f7b836b9c91aa1f63b0a8b6"
+    },
+    "chromium-mobile-settings-devices.png": {
+      "bytes": 88190,
+      "sha256": "511795edd461c28f7e93d325627eb183adc92b74d8f2457fe52bf2ed5bad348e"
+    },
+    "chromium-mobile-settings-project.png": {
+      "bytes": 88275,
+      "sha256": "7a62f9a8a9cb4e509d2a3aefc6b3ccc458254467ec170e2312273fae7506705d"
+    },
+    "chromium-mobile-settings-proxy.png": {
+      "bytes": 76114,
+      "sha256": "54803915d403317e3ea2249b0086fcc808b28fe4d317a25002f0ee7d1a166c20"
+    },
+    "chromium-mobile-settings-scanner.png": {
+      "bytes": 46715,
+      "sha256": "abfc0bb551498d43032f5a91b4158c7918967ec905b5685af0d30aa71f3c1a3d"
+    },
+    "chromium-mobile-settings-scope.png": {
+      "bytes": 50698,
+      "sha256": "4c9591836a1a5e8bf44b8e7c53439f6c9b543f167f267fcb6e7bc357d0131684"
+    },
+    "chromium-mobile-settings-session.png": {
+      "bytes": 64497,
+      "sha256": "9fefee8e834173ad4bf8619897061f4601d98d8fc13f96651b8cdedf6c0e896c"
+    },
+    "chromium-mobile-settings-tls.png": {
+      "bytes": 83535,
+      "sha256": "8620deb849368d6fa6adef72183ae04761a55671a0792d61b412bee63a2a1113"
+    },
+    "firefox-desktop-panel-activity.png": {
+      "bytes": 81230,
+      "sha256": "95c2aca44ff1e75d7109b2ebf489209b109226a420235d5956f9b581405b514d"
+    },
+    "firefox-desktop-panel-findings.png": {
+      "bytes": 94369,
+      "sha256": "170fb0b4d5bd88242942973d7ca56153293f2043db0bc04b34fe95dc29123422"
+    },
+    "firefox-desktop-panel-intercept.png": {
+      "bytes": 92219,
+      "sha256": "b7f315c40346467c9ae40a22345886aa46fcef93782ca30eaff51c399fd62394"
+    },
+    "firefox-desktop-panel-intruder.png": {
+      "bytes": 144996,
+      "sha256": "9278cbd2c4529c52322fda736ce94405301716b9414c81c1cbc3ef09992f076c"
+    },
+    "firefox-desktop-panel-map.png": {
+      "bytes": 95119,
+      "sha256": "9903374dd255af342232f172b4665f2517fee37aeaf88732e1ac7b6cbd804fa9"
+    },
+    "firefox-desktop-panel-notes.png": {
+      "bytes": 76101,
+      "sha256": "2e5402b5f2e4849a311edca1b5627111cc10cbe8cd19544ac5f5b8abbac3bd75"
+    },
+    "firefox-desktop-panel-proxy.png": {
+      "bytes": 176483,
+      "sha256": "a1d7c3c15d26b4fd1435a7db62f354c4d29b2802350541a15777c733b9c54d1f"
+    },
+    "firefox-desktop-panel-repeater.png": {
+      "bytes": 104584,
+      "sha256": "7651f2c46f84c0b2e378d0b00dca75e72d8bc9a865017f49a02e2e218cbeb2b5"
+    },
+    "firefox-desktop-panel-scanner.png": {
+      "bytes": 93496,
+      "sha256": "6f17fdcfb096da3311ab5ec31d15e8ec97d5ef8cc4b54804bcb370403c0733a6"
+    },
+    "firefox-desktop-panel-settings.png": {
+      "bytes": 176320,
+      "sha256": "0fab7d1737d4db9ad34020e2270e78293e0ba9734dac52bb3975cdfbd540468a"
+    },
+    "firefox-desktop-settings-api.png": {
+      "bytes": 128043,
+      "sha256": "90563daeedb120be1e6d59e9a8aa0af01c28b1da3127ac9b61b6eb37dcc86e0b"
+    },
+    "firefox-desktop-settings-devices.png": {
+      "bytes": 230381,
+      "sha256": "e9ade22c17ccabc229105be9e7201f4f0e16b745980e224910581516ef868837"
+    },
+    "firefox-desktop-settings-project.png": {
+      "bytes": 234527,
+      "sha256": "0eada4696527aa207ccb9f16d841a2a96093af310ec9c0a8faa8aa20fb4dc43c"
+    },
+    "firefox-desktop-settings-proxy.png": {
+      "bytes": 176320,
+      "sha256": "0fab7d1737d4db9ad34020e2270e78293e0ba9734dac52bb3975cdfbd540468a"
+    },
+    "firefox-desktop-settings-scanner.png": {
+      "bytes": 121866,
+      "sha256": "41e6d79008250185dab09d9867adee7f4fca1ca7dbfe925687284839058cb1a7"
+    },
+    "firefox-desktop-settings-scope.png": {
+      "bytes": 130373,
+      "sha256": "c99a51435fdca6915a453cc531c0e278662c1eb8f60832b9612cedc23346c47e"
+    },
+    "firefox-desktop-settings-session.png": {
+      "bytes": 142515,
+      "sha256": "385b2fdd510a9e333b4a323f3a347975d14b82093ddebe2c48b8c41c0587037f"
+    },
+    "firefox-desktop-settings-tls.png": {
+      "bytes": 221795,
+      "sha256": "7a23528ac2f1bc0d4ed5868c2231efb080ba4f919be809458d41782dfac3d6c0"
+    },
+    "firefox-mobile-light-theme.png": {
+      "bytes": 96018,
+      "sha256": "1c396ff179f97f5e4d33c7ca95c56ba8396aec39ecad33070996a4b54348ac96"
+    },
+    "firefox-mobile-panel-activity.png": {
+      "bytes": 33136,
+      "sha256": "c45c2177afdab150e45703c97d1a6d760e3b67d4080117a26c78e0ac8ac6296e"
+    },
+    "firefox-mobile-panel-findings.png": {
+      "bytes": 46535,
+      "sha256": "539ef5612bd9768fabf52394f8e1f6b6815e493b0684e9ead773d8eeb6eda2ad"
+    },
+    "firefox-mobile-panel-intercept.png": {
+      "bytes": 42666,
+      "sha256": "0a77d85b708c15d6e7e85b212803f4644c07edfa45357c70fb5ca8a16116ab75"
+    },
+    "firefox-mobile-panel-intruder.png": {
+      "bytes": 87645,
+      "sha256": "ae2a252ebe9c745c1524c620f27d8db4eb624b45d2741095509551217b5ebc86"
+    },
+    "firefox-mobile-panel-map.png": {
+      "bytes": 49593,
+      "sha256": "1f91b0594d102188ed16deb3cc0bd9f06345e3c9cbcaa4fce2937efc07ade7e3"
+    },
+    "firefox-mobile-panel-notes.png": {
+      "bytes": 28990,
+      "sha256": "d19ccc3924c409a1da4dbf464ddffb38def61b3f1a97deb1fcd8e92a3b193b2e"
+    },
+    "firefox-mobile-panel-proxy.png": {
+      "bytes": 117647,
+      "sha256": "f3064672c570f988a88e3470da9f2c60841ef06158a8cd05700d79db12143d1b"
+    },
+    "firefox-mobile-panel-repeater.png": {
+      "bytes": 58350,
+      "sha256": "aa3829dea29b39c02a21f36f2a84ce7d9971d6aad073477f49ac58b71512cd6c"
+    },
+    "firefox-mobile-panel-scanner.png": {
+      "bytes": 44189,
+      "sha256": "c0d7d135d12b7188c229254f128948dc2f0e047e1bc3e6c0db12cb21d4322092"
+    },
+    "firefox-mobile-panel-settings.png": {
+      "bytes": 63861,
+      "sha256": "179e843cbac2db8e708051ba5561431386f2c556ec0e010b8aeb8aff967ee67c"
+    },
+    "firefox-mobile-project-dialog.png": {
+      "bytes": 116465,
+      "sha256": "82af9846fb40a9aa143fe4834dfa69ff1121fef1d720ce77fe3071330eda02c8"
+    },
+    "firefox-mobile-settings-api.png": {
+      "bytes": 63861,
+      "sha256": "179e843cbac2db8e708051ba5561431386f2c556ec0e010b8aeb8aff967ee67c"
+    },
+    "firefox-mobile-settings-devices.png": {
+      "bytes": 105363,
+      "sha256": "21b3fe38d8c137da12984f9ea13c88c0423a88c6f77be75c482a37025dfe6494"
+    },
+    "firefox-mobile-settings-project.png": {
+      "bytes": 103144,
+      "sha256": "5564964bad4357712f62ab2721eb33c088ce6e7d411bfc5ea44455438876162d"
+    },
+    "firefox-mobile-settings-proxy.png": {
+      "bytes": 88988,
+      "sha256": "91afc19a9f7b3d050f519a8ad8f902129ac98e7df6c1ec4c1bd16a6ded13aa2b"
+    },
+    "firefox-mobile-settings-scanner.png": {
+      "bytes": 57870,
+      "sha256": "406517b94fde4fc42611cf5464d51cd7011227477f43cd4f5c1b0ae3daf45b21"
+    },
+    "firefox-mobile-settings-scope.png": {
+      "bytes": 61065,
+      "sha256": "697965f62f0600db6fc6b795a7da557293894748dd0a6f6a59ade6fce7db3af7"
+    },
+    "firefox-mobile-settings-session.png": {
+      "bytes": 76887,
+      "sha256": "80ab5bc0be6432d7371583b5201b8a9756c90c09c08dc69c0e713161a04304b9"
+    },
+    "firefox-mobile-settings-tls.png": {
+      "bytes": 97530,
+      "sha256": "c0ba2a30def2db303ee3c57f883dc9bd575169186922feed9773ce3af4b42f4c"
+    },
+    "webkit-desktop-panel-activity.png": {
+      "bytes": 119191,
+      "sha256": "074cf8a17eac28b66894eab82106f1221ffd921db3bb248800b2ce4a0e680018"
+    },
+    "webkit-desktop-panel-findings.png": {
+      "bytes": 139831,
+      "sha256": "c753f0d35e42ff09e67ba9eb3848f1e6fed1d398f6831e6330acbe3d1e45de73"
+    },
+    "webkit-desktop-panel-intercept.png": {
+      "bytes": 126488,
+      "sha256": "aa3d5d33c6a39b0a429c868375db513333f1cba5adb0511ce94abb9af82e7e95"
+    },
+    "webkit-desktop-panel-intruder.png": {
+      "bytes": 181586,
+      "sha256": "6c60a874e863b999b270a00f43aae4d27335114dbbfe06cb7ddfb0040ae06009"
+    },
+    "webkit-desktop-panel-map.png": {
+      "bytes": 132797,
+      "sha256": "dfc1b39ae498bfa7b801af98c96196ea9ef06a38da645579b52f0e05b9fcaa7d"
+    },
+    "webkit-desktop-panel-notes.png": {
+      "bytes": 113515,
+      "sha256": "90ab54565c0e3ee7bb31a1b04a250e119441ee9f14a334f0e0f64cd1825999cd"
+    },
+    "webkit-desktop-panel-proxy.png": {
+      "bytes": 208506,
+      "sha256": "83295547de054b81a3b85a6a2321c1952759696ca8b9bf7971044b21e9445c94"
+    },
+    "webkit-desktop-panel-repeater.png": {
+      "bytes": 144392,
+      "sha256": "76addda4b9ee4cb71c48847bd17770880c961676cf70f6ea42431031b6c94e82"
+    },
+    "webkit-desktop-panel-scanner.png": {
+      "bytes": 130502,
+      "sha256": "57a6bc0532b805a8def99da0a1f65f9ae840764d61d070c6ade8d9e7ed5a8165"
+    },
+    "webkit-desktop-panel-settings.png": {
+      "bytes": 226897,
+      "sha256": "080f42c4a212e70cd78640dbeb1026a35a8f3bcb6673dd6fbc8c52dffc18c121"
+    },
+    "webkit-desktop-settings-api.png": {
+      "bytes": 164692,
+      "sha256": "72f665c1a0251ebd060665511def16a6ea4ab16cb5b57f43f42ff4d9eec6451b"
+    },
+    "webkit-desktop-settings-devices.png": {
+      "bytes": 266954,
+      "sha256": "c31ae187fdf33b7f4c998e185838f9c43d60646f539a2a4245be5677016d34b3"
+    },
+    "webkit-desktop-settings-project.png": {
+      "bytes": 273187,
+      "sha256": "bde68448d055c641817ac180d3c48b88b5c4684afe53f80955ef8b0799d08a8d"
+    },
+    "webkit-desktop-settings-proxy.png": {
+      "bytes": 226897,
+      "sha256": "080f42c4a212e70cd78640dbeb1026a35a8f3bcb6673dd6fbc8c52dffc18c121"
+    },
+    "webkit-desktop-settings-scanner.png": {
+      "bytes": 154455,
+      "sha256": "e8d5413af0cce8acc8c5564ababa46c4cab32356c924016b7ee81f2c358cd04e"
+    },
+    "webkit-desktop-settings-scope.png": {
+      "bytes": 166494,
+      "sha256": "2a6b0a2b387aec788b600db8b52630c01bc6ad3cd6a9d4d585086ee40de0f229"
+    },
+    "webkit-desktop-settings-session.png": {
+      "bytes": 179620,
+      "sha256": "4dd0285de874f98c3287599e62fa119d662997de3b3ddc955102351f8cef4d0e"
+    },
+    "webkit-desktop-settings-tls.png": {
+      "bytes": 259003,
+      "sha256": "77b3b5153fcd5b7a2c5b1fcc68f98138ff750cd839d2f5531f23a264006f822e"
+    },
+    "webkit-mobile-light-theme.png": {
+      "bytes": 106110,
+      "sha256": "ee15e734da1e25e7dd89b29b78c0cf9b4cdee60742badc4d18b7aac0270b823a"
+    },
+    "webkit-mobile-panel-activity.png": {
+      "bytes": 42428,
+      "sha256": "1a6e9f77259eb02e154b2b455e4e93730e89aeb5064a329f6d7580af5f7576d3"
+    },
+    "webkit-mobile-panel-findings.png": {
+      "bytes": 61089,
+      "sha256": "1b862276f5c41e901d691f1bff84e9ed045f0d4e435ffe5f00ab9df723ded708"
+    },
+    "webkit-mobile-panel-intercept.png": {
+      "bytes": 49124,
+      "sha256": "1fd71f785b12843e1070e1cc70a3fede129d88b5ea7591c5f388ace9c1e9b43b"
+    },
+    "webkit-mobile-panel-intruder.png": {
+      "bytes": 92922,
+      "sha256": "229aa07acc620510dd1d94bad684982f86bae9ac4633aea0b6c8c556ed6cb584"
+    },
+    "webkit-mobile-panel-map.png": {
+      "bytes": 56784,
+      "sha256": "321a7cada3fe145075309ce4864b6e23e4c20804583ce6dfd96a62fb62d7e8ac"
+    },
+    "webkit-mobile-panel-notes.png": {
+      "bytes": 36382,
+      "sha256": "514911c86d6dbc304a8c6911b110d24ea5c72bcbd96168bac409af6df31b137f"
+    },
+    "webkit-mobile-panel-proxy.png": {
+      "bytes": 120244,
+      "sha256": "24878d6cf8a8b30ff3b31f5e6bbc4c7c8fdfc2310157962ed1aa6275ab67d539"
+    },
+    "webkit-mobile-panel-repeater.png": {
+      "bytes": 61385,
+      "sha256": "c1ec29e4d362978215b15557fc342741ac2252eba0432a360c548621fa92d39b"
+    },
+    "webkit-mobile-panel-scanner.png": {
+      "bytes": 54453,
+      "sha256": "0ccd00a97f2bbeb31391416a31e7d5ba865bc11377cc79cbecc867a86a73f01a"
+    },
+    "webkit-mobile-panel-settings.png": {
+      "bytes": 73383,
+      "sha256": "6878643c190282c07322a7b18c919ed03e392973a3da3921f88b9abf0383323e"
+    },
+    "webkit-mobile-project-dialog.png": {
+      "bytes": 124226,
+      "sha256": "2c34eaf9847cedc3d718d7eb11e48336ca1d1b54fb5c49f8aa67c4f33b44d9a9"
+    },
+    "webkit-mobile-settings-api.png": {
+      "bytes": 73383,
+      "sha256": "6878643c190282c07322a7b18c919ed03e392973a3da3921f88b9abf0383323e"
+    },
+    "webkit-mobile-settings-devices.png": {
+      "bytes": 114575,
+      "sha256": "cf0a3590164a494f5461d9107b66c09db461bb90c9fbea4f7bed8238eaa4c62e"
+    },
+    "webkit-mobile-settings-project.png": {
+      "bytes": 109881,
+      "sha256": "0bbc961656e6863e78680c3d2cd10dc49d6d1de6bdda5d3253dc6a8c6287e8aa"
+    },
+    "webkit-mobile-settings-proxy.png": {
+      "bytes": 107928,
+      "sha256": "ad76dc9dd4583e0b48e0f28a7e2d60b63eea61b768e123112d6ef447b287a32e"
+    },
+    "webkit-mobile-settings-scanner.png": {
+      "bytes": 64509,
+      "sha256": "f33afe4e7d64ab7bf626899dc5861b53df56988569986c6ba94d268935905b52"
+    },
+    "webkit-mobile-settings-scope.png": {
+      "bytes": 69501,
+      "sha256": "25ae4cfcd5efd3d72eb73eaf504cbf8112b17f00c51cb1c91f7e325f9f18a542"
+    },
+    "webkit-mobile-settings-session.png": {
+      "bytes": 87285,
+      "sha256": "83918f076df917eedfb5a18ff9151f5768c24fd71cfbb43b0e7df1d49a7394ff"
+    },
+    "webkit-mobile-settings-tls.png": {
+      "bytes": 107467,
+      "sha256": "7a32b5c9ad3271a356c74c377e5129ecfc2a1d771a9c7f5761894d12fc169431"
+    }
+  },
+  "verification_scope": "UI-only presentation and navigation; active operations excluded",
+  "visual_harness_sha256": "3109c844e3831500c59902e9eb4b1a0f5ad292d625528067abf034b8a2aac155"
+}

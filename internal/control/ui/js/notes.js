@@ -28,17 +28,23 @@ function showNotesLoadError(err) {
   el.querySelector('[data-notes-retry]')?.addEventListener('click',loadNotes);
 }
 
+let notesSaveError='';
 function setNotesStatus(kind){
   const s=$('#notesStatus');
   if(!s)return;
+  if(kind==='saving'||kind==='saved'){notesSaveError='';delete s.dataset.tooltip;}
+  if(kind==='dirty'&&notesSaveError)kind='error';
   s.dataset.state=kind;
+  const retry=$('#notesSaveRetry');if(retry)retry.hidden=kind!=='error';
   if(kind==='saving'){
     s.textContent='Saving…';s.style.opacity='1';s.style.color='var(--fg3)';
   }else if(kind==='saved'){
-    s.textContent='✓ saved';s.style.opacity='1';s.style.color='var(--accent)';
-    setTimeout(()=>{if(s.dataset.state==='saved')s.style.opacity='0.55';},1400);
+    s.textContent='Saved';s.style.opacity='1';s.style.color='var(--fg3)';
   }else if(kind==='dirty'){
-    s.textContent='…';s.style.opacity='0.75';s.style.color='var(--fg3)';
+    s.textContent='Unsaved changes';s.style.opacity='1';s.style.color='var(--fg3)';
+  }else if(kind==='error'){
+    s.textContent='Save failed'+(notesSaveError?': '+notesSaveError:'');s.style.opacity='1';s.style.color='var(--red)';
+    s.dataset.tooltip=notesSaveError;
   }else{
     s.textContent='';s.style.opacity='0';
   }
@@ -48,7 +54,8 @@ const notesAutosave=createAutosave({
   delay:800,
   onStatus:setNotesStatus,
   save:async v=>{
-    await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({notes:v})});
+    try{await api('/api/notes',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({notes:v})});}
+    catch(e){notesSaveError=e.message||'Could not save notes';throw e;}
     notesState.loaded=v;
   },
 });
@@ -107,6 +114,7 @@ export function focusNotes(){
 }
 
 $('#notesEdit')&&$('#notesEdit').addEventListener('input',scheduleNotesSave);
+$('#notesSaveRetry')&&($('#notesSaveRetry').onclick=()=>flushNotesSave());
 $('#notesEdit')&&$('#notesEdit').addEventListener('blur',()=>{flushNotesSave();});
 $('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
   const img=[...((e.clipboardData||{}).items||[])].find(it=>it.type&&it.type.indexOf('image/')===0);

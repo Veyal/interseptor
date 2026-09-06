@@ -429,7 +429,7 @@ func TestPersistedStateRecoveryWarningIsPersistentAndActionable(t *testing.T) {
 		"Editing this replacement tab will replace it.",
 		"mgr.persist=function()",
 		"document.activeElement===dismiss",
-		"document.querySelector('.tab.active:not(:disabled)')?.focus()",
+		"(mobileNavMedia.matches?$('#mobileToolSelectUi'):document.querySelector('.tab.active:not(:disabled)'))?.focus()",
 	} {
 		if !strings.Contains(core+tools+app, contract) {
 			t.Errorf("guarded saved-state recovery needs persistent, truthful feedback: missing %q", contract)

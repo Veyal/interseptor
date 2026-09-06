@@ -174,6 +174,23 @@ func TestUIThemeContrastMeetsWCAGAA(t *testing.T) {
 					}
 				}
 			}
+			// Check actual filled-label recipes as well as intended token pairs.
+			for _, selector := range []string{".badge", ".ai-tag"} {
+				body := regexp.MustCompile(regexp.QuoteMeta(selector) + `\{([^}]+)\}`).FindStringSubmatch(css)
+				if len(body) != 2 {
+					t.Fatalf("missing filled label %s", selector)
+				}
+				bg := regexp.MustCompile(`(?:^|;)background:([^;]+)`).FindStringSubmatch(body[1])
+				fg := regexp.MustCompile(`(?:^|;)color:([^;]+)`).FindStringSubmatch(body[1])
+				if len(bg) != 2 || len(fg) != 2 {
+					t.Fatalf("missing colors for %s", selector)
+				}
+				fill := resolve(t, vars, bg[1], page, 0)
+				label := resolve(t, vars, fg[1], fill, 0)
+				if got := contrastRatio(label, fill); got < wcagAA {
+					t.Errorf("%s %s text contrast %.2f:1, want >= %.2f:1", theme.name, selector, got, wcagAA)
+				}
+			}
 			// Filled controls: the label colour must be legible on the fill.
 			for _, pair := range [][2]string{
 				{"--onAccent", "--accentSolid"},
@@ -447,10 +464,10 @@ func TestUIStylesheetUsesTechnicalConsoleVisualSystem(t *testing.T) {
 	requireUIContains(t, css,
 		"--surface-frame:",
 		"--signal-grid:",
-		"background-image:linear-gradient(90deg,var(--signal-grid)",
+		"background-image:none",
 		"box-shadow:inset 2px 0 0 var(--accent)",
-		".nav-rail-group-label{font-family:var(--mono)",
-		".pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--mono)",
+		".nav-rail-group-label{font-family:var(--ui)",
+		".pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--ui)",
 	)
 }
 
@@ -510,7 +527,7 @@ func TestUIResponsiveShellConstrainsNarrowViewport(t *testing.T) {
 	if !strings.Contains(css, "@media (max-width:720px){") {
 		t.Fatal("narrow viewport media rule not found")
 	}
-	for _, contract := range []string{"#bar{min-width:0", "#appRow{flex-direction:column}", "#tabs{width:100%", "#main{width:100%;min-width:0", ".panel{min-width:0"} {
+	for _, contract := range []string{"#bar{min-width:0", "#appRow{flex-direction:column}", "#tabs{display:none}", "#main{width:100%;min-width:0", ".panel{min-width:0"} {
 		if !strings.Contains(css, contract) {
 			t.Errorf("narrow viewport rule missing %q", contract)
 		}

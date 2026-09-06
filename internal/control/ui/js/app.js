@@ -22,6 +22,8 @@ import { maybeShowSetup, openSetup } from './setup.js';
 import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from './tlsdiag.js';
 import { transitionView } from './motion.js';
 import { projectStorageReady, loadMapModule } from './project.js';
+import { initUiHints } from './hints.js';
+initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
 // unconditionally on load, and proxy.js's own import chain pulls in
@@ -85,6 +87,21 @@ $$('.tab').forEach(t=>{
   // Roving tabindex: only the active tab is in the tab sequence initially
   t.tabIndex=t.classList.contains('active')?0:-1;
 });
+function syncMobileToolNav(){
+  const select=$('#mobileToolSelect');if(!select)return;
+  const tabs=$$('.tab');
+  select.disabled=tabs.every(tab=>tab.disabled);
+  const projectButton=$('#mobileProjectBtn');if(projectButton)projectButton.disabled=select.disabled;
+  [...select.options].forEach(option=>{option.disabled=!!tabs.find(tab=>tab.dataset.tab===option.value)?.disabled;});
+  select.value=tabs.find(tab=>tab.classList.contains('active'))?.dataset.tab||'proxy';
+}
+$('#mobileToolSelect').onchange=e=>{
+  const tab=$$('.tab').find(tab=>tab.dataset.tab===e.currentTarget.value);
+  if(tab&&!tab.disabled)tab.click();
+  syncMobileToolNav();
+};
+new MutationObserver(syncMobileToolNav).observe($('#tabs'),{subtree:true,attributes:true,attributeFilter:['class','disabled']});
+syncMobileToolNav();
 const mobileNavMedia=matchMedia('(max-width:720px)');
 function syncMainNavigationOrientation(){
   const nav=$('#tabs');
@@ -512,6 +529,7 @@ document.addEventListener('keydown',e=>{
 $('#scClose').onclick=()=>closeModal($('#shortcutsModal'));
 
 /* ---- project badge → Projects picker (switch / create) ---- */
+$('#mobileProjectBtn').onclick=()=>{if(projectScopedUIReady)openProjectModal();};
 {const pb=$('#projBadge');if(pb){
   pb.addEventListener('click',openProjectModal);
   pb.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openProjectModal();}});
@@ -616,7 +634,7 @@ function completeProjectScopedUIHydration(statuses){
     const dismiss=status.querySelector('[data-workspace-warning-dismiss]');if(dismiss)dismiss.onclick=()=>{
       const restoreFocus=document.activeElement===dismiss;
       status.hidden=true;status.classList.remove('is-error');
-      if(restoreFocus)document.querySelector('.tab.active:not(:disabled)')?.focus();
+      if(restoreFocus)(mobileNavMedia.matches?$('#mobileToolSelectUi'):document.querySelector('.tab.active:not(:disabled)'))?.focus();
     };
   }
 }

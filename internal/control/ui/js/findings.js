@@ -218,7 +218,6 @@ function findingsEmptyHTML() {
     <div class="find-empty-actions">
       <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
        </div>
-    <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
   </div>`;
 }
 
@@ -240,7 +239,8 @@ function findingDetailEditPending() {
   const detail = $('#findDetail');
   const active = document.activeElement;
   return bodyEditing || bodySaveTimers.has(selFinding) || bodySavesInFlight > 0 || findingWritesInFlight > 0 ||
-    !!(findEditMode && detail && active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"]'));
+    !!(findEditMode && detail && (detail.querySelector('[role="combobox"][aria-expanded="true"]') ||
+      (active && detail.contains(active) && active.matches('input,textarea,select,[contenteditable="true"],[role="combobox"]'))));
 }
 
 function refreshDeferredFindingDetail() {

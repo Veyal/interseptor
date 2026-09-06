@@ -1,0 +1,929 @@
+{
+  "runtime": {
+    "worktree_base_commit": "20db6129b3be98bb7927bfd206fcf58b657a71b1",
+    "runtime_sha256": "c4a3f82fe6001fa5ac3e690058cb13960310eec7538ab3f2f2dcb5d447c15b36",
+    "runtime_files": 253,
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+  },
+  "scope": "UI-only visual/interaction verification; generic fixtures, no active security workflows",
+  "screenshots": [
+    {
+      "group": "matrix",
+      "file": "chromium-dark-proxy.png",
+      "sha256": "c55898e05d67ab67939b4baa52d9ab71e737bd1712b4005c377163a76d174813",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-dark-settings.png",
+      "sha256": "1ad814ed9b8618856216cf6b1fc270139a3e4255a4adbea6089d51a350dc5ebf",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-activity.png",
+      "sha256": "907ff24abe4bbc3a98d6b853ae75994fcc241f71f76704940bf55b3a1de2b997",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-findings.png",
+      "sha256": "65cf98c325353bd00fd67f4b7effc011d53e2b7296034ccce5fd3da8062599f4",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-intercept.png",
+      "sha256": "8bfa8561511b46af946955ee39beb7385e9f71a3a1730a256d0b59bc885b1ab0",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-intruder.png",
+      "sha256": "dec55b1016b42de1406340b7d9f913d09ace5f5e969ad0103205f4482d6c50a1",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-map.png",
+      "sha256": "4389c5cae0366dd4ce67530b1983c496f4f949457b3d738207c8df05e679849b",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-notes.png",
+      "sha256": "66cf10a9d18c704f28102e1c615eace1d340255543c2ff4d959d2760434d6469",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-proxy.png",
+      "sha256": "2d423de4f9f8f92c5c01b51346f177dd7d14303398e3da38b53ccd65c84aa72a",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-repeater.png",
+      "sha256": "63450f8794d06bd1a463491e889dc4cb42abf9f948c89273b1e5831bef198409",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-scanner.png",
+      "sha256": "10e751fed8f7d7c977565da5ab4d65589372462af864df9dc7f1b00cd9a527ab",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-api.png",
+      "sha256": "852c36c71c398f623edfd6419350f99dfd5ef743cf806cb44fde4e19256fd424",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-devices.png",
+      "sha256": "7fad250d28e4f35fb355c7f884bdff9efa9486455b432bab3a66ed4b48cfac55",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-project.png",
+      "sha256": "2d136b0ab20bd7b81c272869070dd5438e7a246885451a82fcbe256fb65df147",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-proxy.png",
+      "sha256": "b18c0031148da82ae6f914bae0be90b64c1a2499a26181c019eb7e756a6084bf",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-scanner.png",
+      "sha256": "0fbcad86e231a3e267ea9048f58b6b1d6ae5cd4e99c7b9fa15d97d669fdc66ee",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-scope.png",
+      "sha256": "fea7efe0f8701d07222c952c2023e2dff437350fc461f9a260671e1aa41472df",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-session.png",
+      "sha256": "a068b986e8bf511c48d80e6fdc2176feb058af2d70348d0640c51788c13ee446",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings-tls.png",
+      "sha256": "75b85fe2b8cbf8410796c984bb2f19208d8632ce61f898f32ddb7087e42bdd79",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-desktop-settings.png",
+      "sha256": "b18c0031148da82ae6f914bae0be90b64c1a2499a26181c019eb7e756a6084bf",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-light-settings.png",
+      "sha256": "130900358162b15eea954a8ed2b8e02bc66f33deb6fd9591a3babd39835e75a2",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-activity.png",
+      "sha256": "26d37c6b634aa4597b9361c26db9f52d6a78a5d716da130eb7bbd6a785755bcf",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-findings.png",
+      "sha256": "c203fa051eb9b58c0028d3067893b470f8c40951086590ad74c4dabe02b85dfd",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-intercept.png",
+      "sha256": "3a9d4482524f33f4e6c1c6ec33faa3be85108fbc9dfe938833fe37a814ca1c78",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-intruder.png",
+      "sha256": "c98f00985b13ea1a1295705227871905efbf76265ddcf0453f7659f974477d76",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-map.png",
+      "sha256": "cae9ca5e4cd0524de044b55f77f5cfd94d33c6ed9a8907b3e9093ffe7bf7b106",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-notes.png",
+      "sha256": "a0f8f76d556247ea83156e90e0671f44b1675900e1398cbdf58a0117cc6eb477",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-proxy.png",
+      "sha256": "134d7eb2c85586042de281e75bdd51503ad8d8f67411fa9d734d08cbfbb116cb",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-repeater.png",
+      "sha256": "323299a13a60312e4a14976bfb6ae495cc1c04cbad887d10804e61eddc4e7192",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-scanner.png",
+      "sha256": "db1b395a2dc784a827ffe0422bb1072f52e225fd2d7eead240147cb331fbc8f6",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-api.png",
+      "sha256": "26b61bbbf59691dbf207e7127c446e2d8fe16dacf3cdb78357cc22425851ed7e",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-devices.png",
+      "sha256": "b8364dd95b4ec1df1c9750c398f39ee032dac39dfa50c7fa65fecb94d151bfb4",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-project.png",
+      "sha256": "914532cf30e722ed82a846fe3ed788584dce749dc6b80746df33255dd3cae476",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-proxy.png",
+      "sha256": "c1c28df1795ef121f05df152cefffd511b35e901a94671bf22f003b5fe0fcf2e",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-scanner.png",
+      "sha256": "1da48e5c5f3dbef05e996751a72f3b401d922a44d0878d2096bf3459d65cf7bc",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-scope.png",
+      "sha256": "3be7357af11d2abc29eaa000d74d6f5974f31c99142fc39343c8cac353133d85",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-session.png",
+      "sha256": "cf38cdbe7de56bc4f89f32eedfda151f74ed7f12e00b7354f710a0b9ac5fa94f",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings-tls.png",
+      "sha256": "1c6d95c5b946ca551c619c50c31301644d4c7fda8cdcc9a597e2c87f9cb8e9a6",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "chromium-mobile-settings.png",
+      "sha256": "26b61bbbf59691dbf207e7127c446e2d8fe16dacf3cdb78357cc22425851ed7e",
+      "retained": true
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-dark-proxy.png",
+      "sha256": "a12f36006596369700c788fe453f4cabeffcc60f5fb9c090febd1f95872adcaa",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-dark-settings.png",
+      "sha256": "c92d5a78cc9010be3011cca9f4eb53170393dc56e459a53e8b27a79f74efb059",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-activity.png",
+      "sha256": "0694c80d420895e23c7fba23ce1a827606f5579e517c769164ae623746091104",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-findings.png",
+      "sha256": "4f40f1197820c0a6600b9470bd55957535c35f2413316f59a9250ad410db5bf2",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-intercept.png",
+      "sha256": "8d582471666279f44abf47b9613c9f0fbe4367e65b4a35b7bb03597a0cfa169a",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-intruder.png",
+      "sha256": "b10afdcdf548f4bcddb70784c60b7725e805b54a58d2a65e0ceaf966a1d18ca0",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-map.png",
+      "sha256": "6f3833f4e677e56faf98e848d851aa81d7d61690f02a5dcc6b6c5eed4c8027e1",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-notes.png",
+      "sha256": "70c9b8b87c87ae65122c44e6bef28b034668ac970073eaca4c25a2a5dc2a38ba",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-proxy.png",
+      "sha256": "13412717283a2539439fa5b44047ead4a6f4966265e34c4235f0f7e1c6299b57",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-repeater.png",
+      "sha256": "32fdfe399fd20a06964774e20de1b4e74e49b541e3e97f0b39d44250dd7c678f",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-scanner.png",
+      "sha256": "beab2a83a80d91d71f153cf6c2cf5c91b02ac4c4beff9b58093b05881b8d817e",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-api.png",
+      "sha256": "e4f7afbc31307c6b139d84e62ff050995e3375ef6f38c477015d7db737f7edc4",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-devices.png",
+      "sha256": "fad344bfa7cc676e22051ef199950d27c2268d00c93edfc9ca5d9cca32da3f16",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-project.png",
+      "sha256": "5c6b9a62e4b5bd70d0e9c63c7092ab6e408ac62a27c8b8025df57e9ad9fd3a5a",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-proxy.png",
+      "sha256": "71b57e98270c9bbce4e63095a045fc8832350f0b4949627f339724242803af27",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-scanner.png",
+      "sha256": "18952080f7da616417890553227f8886a740cce3f9dc557600367a3b82209916",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-scope.png",
+      "sha256": "17081275ab4e0d6a538263179f9a3004fa9110f1966cb6334203701ec8412907",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-session.png",
+      "sha256": "8e7a53f1610d46023100e3a4c6e9570b45b96a9a221cc750ade99ea8a601aab8",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings-tls.png",
+      "sha256": "bf2a560fe9d07a5e3b867571ea3e193f7577a9237948dabc00a7e409958351cc",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-desktop-settings.png",
+      "sha256": "71b57e98270c9bbce4e63095a045fc8832350f0b4949627f339724242803af27",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-light-settings.png",
+      "sha256": "0ad232963289ebbb4add940456d7ffe8da42b8cb3d651056a0cbfd0ddfe0a270",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-activity.png",
+      "sha256": "912a0a8b170062f30315cc1867b2ed2b2d10f1e09bdaef81a6eda4f0833d8df3",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-findings.png",
+      "sha256": "09a8fe513b0298aa9cb8d4922143ef27e0794473ddb0795996e5a9f427710ba3",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-intercept.png",
+      "sha256": "3fdd4c553f19727b99fbc011f3f57456fdd570aeb65263e144f879935d0d0448",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-intruder.png",
+      "sha256": "0b4561c02c9487f18f9d534564ebba68642b09c58e700d9c17c6b592e66501b6",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-map.png",
+      "sha256": "cccd74f0b714b413c28edd5a5f40c5286f40b570df565468d75f20936785b1d0",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-notes.png",
+      "sha256": "285e01cf00a90a671bbb76f9096d398d7498fb9393e1d6d31b2bdde9e64ec5f7",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-proxy.png",
+      "sha256": "6bc92d9e963841a604df065cc0ce4d0f9fe01be6c2bdfe9af0cb9bfa5d9f6570",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-repeater.png",
+      "sha256": "b432b74f17a807e1e937e9bcc805636b7fa16122c022c82fc492da338f18716d",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-scanner.png",
+      "sha256": "c5a5679e277042f4f8e4ff74f2b2e3d1a37570647e50fd10098c8933e5858e2c",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-api.png",
+      "sha256": "2aa763ccadd17a56b2980f94ca1b185f38a6eea5177c1331bcf4b68e7869b774",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-devices.png",
+      "sha256": "bcd8d53f231fbd97c5860aa5c5eca3ceb7642cbc94dc86a87b9cdd8ea11b6dda",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-project.png",
+      "sha256": "a4c2a3a35e8d9c8fd6daba781f5ff4e84506ab2a7fe3dcc9f7c0f8c1a785c18d",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-proxy.png",
+      "sha256": "3fb80a5975ffbe09b6dfba3b3de722ddb316dcb41fcde5b7fa9c45d4e1246b9f",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-scanner.png",
+      "sha256": "af18f447002f591813717f5df430050ef31c9ab6b6f75477e1bfe30b67b2a207",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-scope.png",
+      "sha256": "175d9f7e25ccbaa7939efac88498517ecc3876c6316ee6571127491e16b6e44b",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-session.png",
+      "sha256": "627c0c32cb7714be197b0d2a6bb518ac0a660243c3eaf88ebe290f1edde54b7e",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings-tls.png",
+      "sha256": "3dc8295a2abac4d6d275cbcabe925582dfc5098343e9ca5db0a258f2fc9ee2bb",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "firefox-mobile-settings.png",
+      "sha256": "2aa763ccadd17a56b2980f94ca1b185f38a6eea5177c1331bcf4b68e7869b774",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-dark-proxy.png",
+      "sha256": "63cba5d1d6a1839689b5146d3267d429b2aee8227bf410d03115b7ab2af64090",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-dark-settings.png",
+      "sha256": "63313d72cf29dda5cb2366415bc0d93005f2eeb10cf980941166b19bf3d04ded",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-activity.png",
+      "sha256": "9264eeeeb40fe4a6aaa1c9de9775cba9ccb120effa436a6e93db9d617302ebea",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-findings.png",
+      "sha256": "28fe4ccf1dc5ef066e93e8f15bb3929f43da534f2e81487fefbc191c1f0ca79f",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-intercept.png",
+      "sha256": "5744715acfc6ae73b62a5eefec191b50f6ffbedc9ae8a55963642c89531ea036",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-intruder.png",
+      "sha256": "04dd0dbe6afa22fd37c9e2945e7f3f7bd47af1ddf7630a79f30d9c12f6e1a5a4",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-map.png",
+      "sha256": "65d516d2872ba79201f7eaf656d004bbe9ceaf7a71bd277fee3ad4b93c9b9f2a",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-notes.png",
+      "sha256": "09d80b5b9703d7b935974a580db9564f8036f0157b910353585743d4b84e64d1",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-proxy.png",
+      "sha256": "a20fb6fb6863ef56ccb17d181305027ab8e22e2d32cf86743d9ff62803024c11",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-repeater.png",
+      "sha256": "662d797b4b263b6fa8c8d9e6c0439009aa76a2200c5885d30269c1a870775a2e",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-scanner.png",
+      "sha256": "eac68c2f2f807d8bf7221773e5f6d8ad5cc1e9c74b31e7be3abcf91e86e0de1e",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-api.png",
+      "sha256": "3f9e2243d8534d74cd223b337b6feaeb6f14d2db07e75de618897ae48876b1b5",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-devices.png",
+      "sha256": "ae3da3c13a4e517dc76e6082152d191aabb386b69e928f33e1758889944d12a9",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-project.png",
+      "sha256": "ae053372bc2e128e144a7f5096bdd388ee481244a81c1c32083345cc3c5516bc",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-proxy.png",
+      "sha256": "e31bab340a470d7f9d85552748384f3e188e0163aa53e8f6883f862dda7e18a2",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-scanner.png",
+      "sha256": "00291eb7c11b8e475f9230865abdd1bef605ee32519c267c9244d1b2553ef742",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-scope.png",
+      "sha256": "53cad10c15392e5d6a7dc779fb75deef4fb51cd8a1801791f6a7d1b15a149267",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-session.png",
+      "sha256": "20cbeffabb322b6a6ba0d71ea585fe448712f886199ece5885fafb5164af9f35",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings-tls.png",
+      "sha256": "7194bb9a35e523d523d8ad9bd75397070fbdcf08e4a6483acea2322549ec8f21",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-desktop-settings.png",
+      "sha256": "e31bab340a470d7f9d85552748384f3e188e0163aa53e8f6883f862dda7e18a2",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-light-settings.png",
+      "sha256": "b5f2ba772111dce91e48c27622e6f244d5f262bb4a6f9b7c0c56866d16504649",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-activity.png",
+      "sha256": "97bc373ecbe1439bb8ce9865ede7020c77c3ee5ae18d9aba976e5f2d5900ac31",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-findings.png",
+      "sha256": "10a6d9c8eb333d89617c18466a9d1d75cf03798882252f1df6ea5d6c1f1e2ba1",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-intercept.png",
+      "sha256": "1aad5b88f16ca5324ee40646ea15bdd8a763db0547d88278e7189a4d17e512f9",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-intruder.png",
+      "sha256": "1829834d6296260dfc1afbb1ece5a28d635ecac229d71e34788d60d7ddea8d6c",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-map.png",
+      "sha256": "33b0bac63196e45e323f6f8b28f8b15ac96abdce3ce4ce23a9149ce33f2af3a3",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-notes.png",
+      "sha256": "00d0a25df551aa14dec9600c5e87f2e4330936d1647722b43493171a0d6e0403",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-proxy.png",
+      "sha256": "55564dd36e4a45ca363d1ba28cb05e277f7e5978de497a40d0584ddaf409916b",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-repeater.png",
+      "sha256": "2e4d3e213c1a8b362c95ae54e99b9adeda5cae12d8768d827fcd70592edfd2fc",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-scanner.png",
+      "sha256": "077bd813d2f6c7e852f9e4433da79e9697539970db401cd9259254decf9faa79",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-api.png",
+      "sha256": "193e994580116e124d451204a49b57402d646f21fddac79658109a3f955bd053",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-devices.png",
+      "sha256": "440ad28d7491a49660576774968527d56ed2c227f033493d28706373011d9317",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-project.png",
+      "sha256": "bcf4f0ea1c4a64c5f9139cc82853fdeaa38da46e751e6aea1cb0925f6cc8d4a5",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-proxy.png",
+      "sha256": "7d1a3435d76824966a86ad129255357107364b2a2a3ec21a46c4c14599ae2cef",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-scanner.png",
+      "sha256": "e9b7a4a49449d1a4175de647b16f542fc50dc3fcb26fd890409a31b5abfe9413",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-scope.png",
+      "sha256": "9ba140158f6c917abb4107febc2303c489e019925222b45cd3222d7c591f3771",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-session.png",
+      "sha256": "0e4cecded12551442667816c2c128e35a4906ee4c09b831c7cfa1cb38f373926",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings-tls.png",
+      "sha256": "25f720944fdad1573f2f913dc408e6d9eeb3fbfc8faff6ffdfe4945bd367d48d",
+      "retained": false
+    },
+    {
+      "group": "matrix",
+      "file": "webkit-mobile-settings.png",
+      "sha256": "193e994580116e124d451204a49b57402d646f21fddac79658109a3f955bd053",
+      "retained": false
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-api.png",
+      "sha256": "f58196e3d54ea1980f3db978dfac74d4b2f4fa8aa370d05943911e6a9496cb7c",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-checks.png",
+      "sha256": "9e8596d191a3d966758f592a1ac047c9b834133b9b8044cbc2cb440c679ae80b",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-codecs.png",
+      "sha256": "366c87c622c4ec0c5dd632c70ab9c4c704bba70a8bdb87e6e5c076533a30c873",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-dark.png",
+      "sha256": "957e64d8c1e33309899a233aa1cbb25b593e8275723002ece1ec178f9008046a",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-decoder.png",
+      "sha256": "84e1d1c6944cec62f8bd01efab3708eab522bccf314cc510d7751aa8142c1649",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-finding-edit.png",
+      "sha256": "149731bba7f2525362d0f0ed6676d79796611d96c7115d9225b9d94b59d53750",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-finding-read.png",
+      "sha256": "64d7e048489ac60f5bc45b4d1d6b8954a7db27faedd87a1c9df00ea3e0f9d16c",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-guide.png",
+      "sha256": "63fb5c379966d26492816cf43a30a3248a5573907e07311db72b28757c7a555e",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-history.png",
+      "sha256": "7249389b4d643cd37e9791e5bce3233fa7182b7ada2b5c9bff6621b44fcaedfe",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-notes.png",
+      "sha256": "73c39164bd7d47aaa574f8c27dfe2304f9c38bac05428a7b2350b466bb0b9b5b",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-oob.png",
+      "sha256": "d33d0660f7cf92620374a459593f96bc5d93561a20dc01d19f4b028078bb3d0c",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-palette.png",
+      "sha256": "aac20300e8a75b4a40b01fd712c6cfccdae6af8ebe315e658c2a8eafee2e8a03",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "1440x900-shortcuts.png",
+      "sha256": "f241f9dca2b6d441834b5f1807cd5474fe0794e26f860d0faa9de5bff42ed126",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-api.png",
+      "sha256": "c783c87b1a1a95d9ee805f6be2e2b82c95f790d2629de7734ea5b08abd0b5253",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-checks.png",
+      "sha256": "03c3345efec97d5c2153cf510d3eb7992c568df80b1d8c5c415713cdf67d2704",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-codecs.png",
+      "sha256": "d22d489b384485a8ca8ba2591b6ad658ca1c0ab80ec9ac81a8caa10841fd6fb1",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-dark.png",
+      "sha256": "28175212378f3cd7b4fe218233f0a4436bfc81ea37d5e7ee09ee51affbf3d2b3",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-decoder.png",
+      "sha256": "162f7e2b3c11e7dc59562ff3aa51c30c8ba9eabc86b2e0d9b70b938d0e84328c",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-finding-edit.png",
+      "sha256": "c4de662bb33e6c29363b5640e6210f0fb481aa7ca8059299312fc6788d074488",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-finding-read.png",
+      "sha256": "ba143036c0bfc48e73821db4835373e5e53824d6140c67aacaec85f7847cab15",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-guide.png",
+      "sha256": "e88b04e3b4202079896c8029a6eb76bfd386ccaa925f494cdf361405fb74e022",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-history.png",
+      "sha256": "e66f2631f9d0b69ce9d77f22c3ccc526dda4fd088ec184727f7e65c1bece0947",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-notes.png",
+      "sha256": "3d6e2184e2f26e72d639400f95df92a5f5f3c44e052f8e36819505d9e04dda73",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-oob.png",
+      "sha256": "88135cdfdee83d7eb6d660a6648acf2fe96e373734aeaefe790fce8bddcee75f",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-palette.png",
+      "sha256": "ec7e9ae648a63e893142704cabfa926baf7e2599b4a1751b60d7314578c5c665",
+      "retained": true
+    },
+    {
+      "group": "secondary",
+      "file": "390x844-shortcuts.png",
+      "sha256": "9648d923a17fcd748f5df9526257fd0ef29610a979ec8b7e1c107c014fdb735d",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "1440x900-finding-edit-top.png",
+      "sha256": "1165f96bfffd80e91a5ca040223a08fad9be1c5c08014a7347e116f5ab111c13",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "1440x900-finding-read-top.png",
+      "sha256": "2db57e4a6e0698b41ec29e4b8adfb0a61a926584fbbee973d4985fcc06c3f6ad",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "1440x900-history-coherent.png",
+      "sha256": "02149808dcef4ae8c86156422d53a7a988d79efe5655ceeeb90c00aa90b10a11",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "390x844-finding-edit-top.png",
+      "sha256": "98a9def47cc49da8179712897ccf1b36279f42f975acb848df4ec811fc214e1f",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "390x844-finding-read-top.png",
+      "sha256": "a8ce2d356c9959ccfa475c19b119fa5102b4f2645581dfb059208240d480213e",
+      "retained": true
+    },
+    {
+      "group": "composition",
+      "file": "390x844-history-coherent.png",
+      "sha256": "130b1848eafab5df937af016de0bbf35a30a481a854d912ed8840a2d00b1b58b",
+      "retained": true
+    },
+    {
+      "group": "followup",
+      "file": "login-desktop-dark.png",
+      "sha256": "f894d0c89582076925d38754a94c8711db42c2a8948cc10915ae7df5aa2cba86",
+      "retained": true
+    },
+    {
+      "group": "followup",
+      "file": "login-desktop-light.png",
+      "sha256": "6227f4ed175b29e67677f3a9c90f71e2cd3b6fa62229d14d1c91c5ae2a87d59b",
+      "retained": true
+    },
+    {
+      "group": "followup",
+      "file": "login-mobile-dark.png",
+      "sha256": "90c056c6293c2e07157b15a5f507cab12eb9f99e2de5fa52a03222499bfa15d4",
+      "retained": true
+    },
+    {
+      "group": "followup",
+      "file": "login-mobile-light.png",
+      "sha256": "1df1fda90c13efa0c314dac9a8eb64807a3f36c13d1d3a503bdb068f422998bf",
+      "retained": true
+    }
+  ]
+}

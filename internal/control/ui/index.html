@@ -45,7 +45,6 @@
 <symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></symbol>
 <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></symbol>
 <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4L3 7v13l6-3 6 3 6-3V4l-6 3z"/><path d="M9 4v13M15 7v13"/></symbol>
-<symbol id="i-antenna" viewBox="0 0 24 24"><circle cx="12" cy="11" r="2"/><path d="M12 13v8M8.6 7.6a5 5 0 0 0 0 6.8M15.4 7.6a5 5 0 0 1 0 6.8M5.8 4.6a9 9 0 0 0 0 12.8M18.2 4.6a9 9 0 0 1 0 12.8"/></symbol>
 <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></symbol>
 <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9.5 3h5M10.5 3v6.5L5.4 18.8A1.5 1.5 0 0 0 6.7 21h10.6a1.5 1.5 0 0 0 1.3-2.2L13.5 9.5V3"/><path d="M8 15h8"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -64,10 +63,20 @@
 <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9.5 5v14M14.5 5v14"/></symbol>
 <symbol id="i-recycle" viewBox="0 0 24 24"><path d="M12 4.5l3 5M12 4.5l-3 5M4.5 15l3-5M4.5 15h5.5M19.5 15l-3-5M19.5 15H14M7.5 19.5h9"/><path d="M9 19.5l-2.5-4M15 19.5l2.5-4"/></symbol>
 <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M18 9.5h.01M18 13h.01M9 13h6"/></symbol>
+<symbol id="i-traffic" viewBox="0 0 24 24"><path d="M3 8h16l-4-4M21 16H5l4 4"/></symbol>
+<symbol id="i-gate" viewBox="0 0 24 24"><path d="M3 12h5m8 0h5M9 5v14M15 5v14"/></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 10V7a2 2 0 0 1 2-2h13l-3-3M20 14v3a2 2 0 0 1-2 2H5l3 3M19 5l-3 3M5 19l3-3"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5M7 12l3 3 7-7"/></symbol>
+<symbol id="i-nodes" viewBox="0 0 24 24"><circle cx="5" cy="5" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="19" r="2"/><path d="m7 5 10 1M6 7l5 10M18 8l-5 9"/></symbol>
+<symbol id="i-report" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h5"/></symbol>
+<symbol id="i-notebook" viewBox="0 0 24 24"><rect x="5" y="3" width="15" height="18" rx="2"/><path d="M3 7h4M3 12h4M3 17h4M11 8h5M11 12h5"/></symbol>
+<symbol id="i-timeline" viewBox="0 0 24 24"><path d="M6 3v18M11 5h9M11 12h6M11 19h9"/><circle cx="6" cy="5" r="1"/><circle cx="6" cy="12" r="1"/><circle cx="6" cy="19" r="1"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h6m4 0h6M4 12h10m4 0h2M4 18h2m4 0h10"/><circle cx="12" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></symbol>
 </defs></svg>
   <div id="bar">
-  <div id="logo"></div>
-  <span class="brand">INTERSEPTOR</span>
+  <div id="logo" aria-hidden="true"><svg class="icon" focusable="false"><use href="#i-traffic"/></svg></div>
+  <span class="brand">Interseptor</span>
   <span id="crumb" aria-live="polite"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
   <div class="spacer"></div>
   <div class="row" style="gap:6px" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button><span class="kv kv-dim" id="capStat"></span><span class="kv state-active" id="icptStat" aria-live="polite" style="display:none"></span></div>
@@ -81,33 +90,35 @@
 
 <div id="humanInputBar" role="region" aria-label="AI is asking for your input" aria-live="polite" hidden></div>
 
+<div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
+
+<div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
-  <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
-    <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture">Proxy</button>
-    <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept" data-group="Capture">Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
+    <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg>Proxy</button>
+    <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept" data-group="Capture"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-gate"/></svg>Intercept<span id="heldBadge" class="badge" style="display:none">0</span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="test">
     <div class="nav-rail-group-label">Test</div>
-    <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test">Repeater</button>
-    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test">Intruder<span id="intrBadge" class="nav-dot" aria-label="Unread Intruder updates"></span></button>
+    <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg>Repeater</button>
+    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-layers"/></svg>Intruder<span id="intrBadge" class="nav-dot" aria-label="Unread Intruder updates"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
-    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon">Scanner<span id="scanBadge" class="nav-dot" aria-label="Unread scanner updates"></span></button>
-    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon">Map<span id="mapBadge" class="nav-dot" aria-label="Unread map updates"></span></button>
+    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-label="Unread scanner updates"></span></button>
+    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-nodes"/></svg>Map<span id="mapBadge" class="nav-dot" aria-label="Unread map updates"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="report">
     <div class="nav-rail-group-label">Report</div>
-    <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report">Findings</button>
-    <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report">Notes</button>
-    <button class="tab" id="tab-activity"  role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report">Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
+    <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-report"/></svg>Findings</button>
+    <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-notebook"/></svg>Notes</button>
+    <button class="tab" id="tab-activity"  role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg>Activity<span id="actBadge" class="badge" style="display:none">0</span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="configure">
     <div class="nav-rail-group-label">Configure</div>
-    <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure">Settings</button>
+    <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg>Settings</button>
   </div>
   <div class="nav-rail-foot">
     <span class="nav-foot-proj" id="projBadge" role="button" tabindex="0" style="display:none" title="Active project — click to switch or create a project" aria-label="Active project — click to switch or create a project" aria-haspopup="dialog"></span>
@@ -130,7 +141,7 @@
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-haspopup="menu" aria-expanded="false">▦ Cols</button>
     </div>
     <details class="toolbar toolbar-secondary" id="flowSearchScripts">
-      <summary class="hint" style="cursor:pointer">Saved Starlark searches</summary>
+      <summary class="hint" style="cursor:pointer">Saved searches</summary>
       <div class="row" style="width:100%;gap:6px;flex-wrap:wrap">
         <select id="flowSearchScriptList" class="btn btn-field" aria-label="Saved search scripts"><option value="">new search…</option></select>
         <input id="flowSearchScriptName" class="btn btn-field" aria-label="Saved search name" placeholder="name" autocomplete="off">
@@ -165,7 +176,7 @@
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
-    <div id="rows"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-antenna"/></svg></div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p><p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p></div></div>
+    <div id="rows"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p></div></div>
     <div id="flowCapBanner" class="flow-cap-banner" role="status" aria-live="polite" style="display:none"><span id="flowCapMessage"></span><button type="button" class="btn xs" id="flowCapRetry" hidden>Retry</button></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
     <div id="inspect">
@@ -210,7 +221,8 @@
     <div id="noteBar" class="row note-bar" style="display:none">
       <span class="lbl"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> NOTE</span>
       <input id="noteInput" type="text" maxlength="2000" aria-label="Note for the selected flow" placeholder="Add a note for this flow — finding, payload, follow-up… (Enter to save)">
-      <span id="noteSaved" class="note-saved" style="opacity:0">✓ saved</span>
+      <span id="noteSaved" class="note-saved" role="status" aria-live="polite"></span>
+      <button type="button" class="btn xs" id="noteRetry" hidden>Retry save</button>
     </div>
   </div>
 
@@ -250,7 +262,7 @@
         <div class="state-empty" id="heldEmpty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pause"/></svg></div>
           <div class="state-empty-title">Nothing on hold</div>
-          <p class="state-empty-hint">Turn <b>Requests</b> on to pause matching traffic here — edit, then <b>Forward</b> or <b>Drop</b>.</p>
+          <p class="state-empty-hint" id="heldEmptyHint">Enable Requests or Responses to hold traffic.</p>
         </div>
       </section>
     </div>
@@ -308,7 +320,7 @@
           <div class="spacer"></div>
           <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button></div>
         </div>
-        <pre id="repResView"><div class="state-empty"><div class="state-empty-icon">▸</div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
+        <pre id="repResView"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
       </section>
     </div>
     </div>
@@ -334,7 +346,7 @@
     </div>
     <div class="intr-explain" id="intrHint"></div>
     <details class="intr-opts-disc">
-      <summary>Options — flags, extract, process, presets</summary>
+      <summary>Advanced options</summary>
       <div class="intr-opts-row">
         <label class="hint" for="intrGrep">Flag</label>
         <input id="intrGrep" class="btn btn-field" style="flex:1;min-width:140px;font-family:var(--mono)" aria-label="Grep — flag responses matching" placeholder="flag if response matches (regex/text)" spellcheck="false">
@@ -392,7 +404,7 @@ Content-Type: application/json
       </div>
     </div>
     <div class="toolbar toolbar-secondary scan-tools-bar">
-      <span class="hint scan-tools-label">Other tools — send real traffic:</span>
+      <span class="hint scan-tools-label">Tools</span>
       <div class="spacer"></div>
       <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
     </div>
@@ -402,7 +414,7 @@ Content-Type: application/json
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
           <div class="state-empty-title">No issues yet</div>
           <p class="state-empty-hint">Run a scan to find issues.</p>
-          <p class="state-empty-hint state-empty-cmdk">Press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to jump to any panel or tool.</p>
+
         </div>
       </div>
       <div id="scanDetail" class="pane scan-detail-pane">
@@ -424,13 +436,13 @@ Content-Type: application/json
         <button class="btn" id="findGuide" title="How to write a clear, reproducible technical finding">Writing guide</button>
 
         <span class="toolbar-divider"></span>
-        <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
-          <option value="md">Markdown</option><option value="html">HTML (embedded images)</option><option value="json">JSON</option>
-        </select>
-        <select id="findExportStatuses" class="btn find-export-statuses" aria-label="Report statuses"><option value="open,verified,fixed">Actionable / verified / fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option></select>
         <button class="btn find-export-btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export</button>
       </div>
-      <label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label>
+      <details class="set-disc find-export-options"><summary>Export options</summary><div class="find-export-fields">        <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
+          <option value="md">Markdown</option><option value="html">HTML (embedded images)</option><option value="json">JSON</option>
+        </select>
+        <select id="findExportStatuses" class="btn find-export-statuses" aria-label="Report statuses"><option value="open,verified,fixed">Open + verified + fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option><option value="needs_verification">Needs verification</option></select>
+<label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label></div></details>
     </div>
     <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
     <div id="scanFindingsView" class="find-view is-empty">
@@ -443,7 +455,7 @@ Content-Type: application/json
             <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
 
           </div>
-          <p class="state-empty-hint state-empty-cmdk find-closeout-hint"><span class="find-closeout-lead">Ready to wrap up?</span><span>Use <b>Export report</b> when your findings are ready.</span><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Open engagement close-out checklist <span aria-hidden="true">↗</span></a></p>
+
         </div>
       </div>
       <div id="findDetail" class="find-detail">
@@ -510,6 +522,7 @@ Content-Type: application/json
     <div class="toolbar">
       <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
+      <button type="button" class="btn" id="notesSaveRetry" hidden>Retry save</button>
 
       <div class="spacer"></div>
     </div>
@@ -532,9 +545,10 @@ Content-Type: application/json
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
     <div id="originTLSVerifyWarning" class="tls-diag-banner intercept-danger settings-origin-tls-warning" role="alert">Origin certificates are not verified. Interception/capture can accept impersonated servers. HTTPS upstream-proxy verification remains strict.</div>
     <div class="settings-wrap">
-      <nav class="settings-nav" id="setNav">
+      <nav class="settings-nav" id="setNav" aria-label="Settings sections">
+        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Target scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings — or press <kbd>Ctrl/⌘</kbd><kbd>K</kbd> to search everything (flows, panels, tools).</div>
+        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings.</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -556,52 +570,53 @@ Content-Type: application/json
       </nav>
       <div class="settings-body">
         <section class="set-sec" data-sec="proxy">
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg><h2>Proxy &amp; network</h2></header>
           <div class="section">
-            <h3>PROXY LISTENER</h3>
+            <h3>Proxy listener</h3>
             <div id="proxyListenersList"></div>
             <div class="row" style="gap:8px;margin-top:8px">
               <button class="btn" type="button" id="addProxyListenerBtn">+ Add listener</button>
-              <button class="btn btn-primary" id="saveAddrBtn">Apply &amp; rebind</button>
+              <button class="btn btn-primary" id="saveAddrBtn">Apply listener changes</button>
             </div>
-            <p class="hint" style="margin-top:8px">★ marks the suggested host for mobile Wi-Fi proxy.</p>
+            <p class="hint" style="margin-top:8px">Use the starred address for Wi-Fi devices.</p>
             <input type="hidden" id="setAddr">
           </div>
           <div class="section">
-            <h3>DEVICE PROXY</h3>
-            <p class="hint" style="margin-bottom:10px">Address phones use for Wi-Fi proxy. ADB USB still uses <b>127.0.0.1</b>.</p>
+            <h3>Device proxy</h3>
+            <p class="hint" style="margin-bottom:10px">Wi-Fi proxy address. USB uses <b>127.0.0.1</b>.</p>
             <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
               <div class="seg" id="deviceProxyModeSeg"><button type="button" class="on" data-mode="auto" aria-pressed="true">Auto</button><button type="button" data-mode="manual" aria-pressed="false">Manual</button></div>
               <span class="hint" id="deviceProxyResolved">…</span>
             </div>
             <div class="field" id="deviceProxyManualField" style="display:none">
-              <label for="deviceProxyManualHost">Manual host (port comes from listener)</label>
+              <label for="deviceProxyManualHost">Proxy host or IP</label>
               <input id="deviceProxyManualHost" placeholder="192.168.1.5" spellcheck="false" style="font-family:var(--mono)">
             </div>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" type="button" id="saveDeviceProxyBtn">Save device proxy</button></div>
           </div>
           <div class="section">
-            <h3>CONTROL UI</h3>
-            <p class="hint" style="margin-bottom:10px">Web UI and REST API listener. Bind <b>0.0.0.0</b> for remote OOB callbacks.</p>
+            <h3>Control UI</h3>
+            <p class="hint" style="margin-bottom:10px">Web UI and API address. Remote callbacks need a reachable host; 127.0.0.1 is local only.</p>
             <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
               <div class="field" style="flex:1;min-width:180px;max-width:none;margin-bottom:0"><label for="setControlHost">Host</label><select id="setControlHost" class="btn" aria-label="Control UI bind host" style="width:100%;text-align:left"></select></div>
               <div class="field" style="width:120px;flex:none;margin-bottom:0"><label for="setControlPort">Port</label><input id="setControlPort" aria-label="Control UI port" inputmode="numeric" placeholder="9966" style="width:100%"></div>
             </div>
             <input type="hidden" id="setControlAddr">
-            <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="saveControlAddrBtn">Apply &amp; rebind</button></div>
+            <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="saveControlAddrBtn">Apply listener changes</button></div>
           </div>
           <div class="section settings-feature-card" id="upstreamProxySection">
-            <h3>UPSTREAM PROXY</h3>
-            <p class="hint settings-lead">Route Interseptor's outbound requests through a corporate proxy, Burp, SSH dynamic forwarding, or another SOCKS service. Choose <b>Direct</b> when no second proxy is needed.</p>
+            <h3>Upstream proxy</h3>
+            <details class="set-disc settings-help"><summary>When to use an upstream proxy</summary><p class="hint">Route outbound requests through another proxy. Choose Direct to connect without one.</p></details>
             <div class="field settings-field-wide">
               <label for="setUpstreamScheme">Connection type</label>
               <select id="setUpstreamScheme" aria-describedby="upstreamSchemeHelp">
-                <option value="direct">Direct — no upstream proxy</option>
-                <option value="http">HTTP — standard proxy / CONNECT</option>
-                <option value="https">HTTPS — encrypted connection to proxy</option>
-                <option value="socks5">SOCKS5 — Interseptor resolves DNS</option>
-                <option value="socks5h">SOCKS5H — proxy resolves DNS</option>
+                <option value="direct">Direct</option>
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+                <option value="socks5">SOCKS5 — local DNS</option>
+                <option value="socks5h">SOCKS5H — proxy DNS</option>
               </select>
-              <p class="hint" id="upstreamSchemeHelp">SOCKS5H resolves target names through the proxy, which is useful for remote-only DNS and avoids local DNS leakage.</p>
+              <p class="hint" id="upstreamSchemeHelp" hidden></p>
             </div>
             <div id="upstreamProxyFields" hidden>
               <div class="settings-form-grid settings-form-grid-host">
@@ -612,7 +627,7 @@ Content-Type: application/json
                 <div class="field"><label for="setUpstreamUser">Username <span class="hint">(optional)</span></label><input id="setUpstreamUser" autocomplete="username"></div>
                 <div class="field"><label for="setUpstreamPassword">Password <span class="hint">(optional)</span></label><input id="setUpstreamPassword" type="password" autocomplete="current-password"></div>
               </div>
-              <p class="hint settings-inline-note">Leave both credential fields blank when the upstream proxy does not require authentication.</p>
+
               <details class="set-disc" id="upstreamProxyAdvanced">
                 <summary>Advanced trust settings</summary>
                 <div class="field settings-field-wide upstream-ca-field" id="setUpstreamCAWrap">
@@ -628,34 +643,35 @@ Content-Type: application/json
             </div>
           </div>
           <div class="section" id="sysProxySection">
-            <h3>SYSTEM PROXY</h3>
+            <h3>System proxy</h3>
             <p class="hint" style="margin-bottom:10px">Route this machine's traffic through Interseptor (macOS only).</p>
             <div class="row" style="gap:12px"><button type="button" class="uisw" id="sysProxyToggle" aria-pressed="false">System proxy is off</button><span id="sysProxyHint" class="hint"></span></div>
           </div>
           <div class="section">
-            <h3>CAPTURE POLICY</h3>
+            <h3>Capture policy</h3>
             <p class="hint" style="margin-bottom:10px">Store only <b>in-scope</b> traffic. Out-of-scope requests are still forwarded.</p>
             <div class="row" style="gap:12px"><button type="button" class="uisw" id="capScopeToggle" aria-pressed="false">Saving all traffic</button></div>
           </div>
           <div class="section">
-            <h3>BROWSER BACKGROUND TRAFFIC</h3>
-            <p class="hint" style="margin-bottom:10px">Known Firefox and Chromium telemetry, remote-settings, update, crash, Safe Browsing, suggestions, sponsored-content, and connectivity requests are forwarded without appearing in History or Intercept. Applies to new traffic; existing History is unchanged. Normal website and application traffic remains visible.</p>
+            <h3>Browser background traffic</h3>
+            <p class="hint">New traffic only; forwarding and existing History are unchanged.</p><details class="set-disc settings-help"><summary>What is hidden?</summary><p class="hint">Known Firefox and Chromium telemetry, remote-settings, update, crash, Safe Browsing, suggestions, sponsored-content, and connectivity requests. Normal website and application traffic remains visible.</p></details>
             <div class="row" style="gap:12px"><button type="button" class="uisw on" id="suppressTelemetryToggle" aria-pressed="true">Suppressing browser background traffic</button></div>
           </div>
           <div class="section">
-            <h3>ANDROID TELEMETRY</h3>
-            <p class="hint" style="margin-bottom:10px">Suppresses Play/GMS check-in, Crashlytics, Analytics, connectivity probes, and ad/measurement noise from capture. App backends, auth, and FCM push stay visible.</p>
+            <h3>Android telemetry</h3>
+            <p class="hint">App backends, auth, and FCM push stay visible.</p><details class="set-disc settings-help"><summary>What is hidden?</summary><p class="hint">Play/GMS check-in, Crashlytics, Analytics, connectivity probes, and ad/measurement requests.</p></details>
             <div class="row" style="gap:12px"><button type="button" class="uisw on" id="suppressAndroidTelemetryToggle" aria-pressed="true">Suppressing</button></div>
           </div>
           <div class="section">
-            <h3>INVISIBLE PROXY</h3>
+            <h3>Invisible proxy</h3>
             <p class="hint" style="margin-bottom:10px">Accept traffic from clients that aren't proxy-configured (e.g. redirected via iptables/pf, DNS spoofing, or port forwarding). Origin-form requests are forwarded to their <b>Host</b> header. <b>Off</b> by default.</p>
             <div class="row" style="gap:12px"><button type="button" class="uisw" id="invisibleProxyToggle" aria-pressed="false">Invisible proxy is off</button></div>
           </div>
         </section>
         <section class="set-sec" data-sec="tls" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg><h2>TLS &amp; certificates</h2></header>
           <div class="section" id="originTLSVerifySection">
-            <h3>ORIGIN CONNECTION SECURITY</h3>
+            <h3>Origin connection security</h3>
             <p class="hint settings-lead">Choose whether Interseptor verifies the real server after decrypting client traffic. This setting affects origins only; HTTPS upstream proxies are always verified.</p>
             <div class="field settings-field-wide">
               <label for="originTLSVerifyMode">Certificate policy</label>
@@ -667,19 +683,19 @@ Content-Type: application/json
             <div id="originTLSModeSummary" class="settings-info-callout">Compatibility mode accepts self-signed, expired, and hostname-mismatched origin certificates so authorized test environments remain reachable.</div>
           </div>
           <div class="section">
-            <h3>TLS CERTIFICATE AUTHORITY</h3>
+            <h3>TLS certificate authority</h3>
             <p class="hint" style="margin-bottom:12px">Install &amp; trust this CA to intercept HTTPS. HTTP works without it.</p>
             <a class="btn btn-primary" id="dlCaBtn" href="/api/ca.crt" download style="text-decoration:none;display:inline-block">Download CA certificate</a>
           </div>
           <div class="section" id="tlsBypassSection">
-            <h3>TLS PASSTHROUGH · SSL PINNING</h3>
+            <h3>TLS passthrough · SSL pinning</h3>
             <p class="hint" style="margin-bottom:10px">Domains listed here are tunneled straight through <b>without interception</b>, so pinned apps keep working while you focus on the domains you <i>can</i> intercept. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
             <div class="row" style="gap:12px;margin-bottom:10px"><button type="button" class="uisw" id="autoBypassToggle" aria-pressed="false">Auto-bypass on pinning failure is off</button><span class="hint">Adds a domain here automatically the first time its TLS handshake fails (pinning).</span></div>
             <textarea id="tlsBypassList" aria-label="TLS passthrough hosts" spellcheck="false" placeholder="api.pinned-app.com&#10;*.analytics.example.com" style="width:100%;min-height:96px;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.6;padding:8px 12px;background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea>
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="tlsBypassSave">Save passthrough list</button><span class="hint" id="tlsBypassCount"></span></div>
           </div>
           <div class="section" id="originTLSVerifyBypassSection">
-            <h3>ORIGIN TLS VERIFICATION EXCEPTIONS</h3>
+            <h3>Origin TLS verification exceptions</h3>
             <p class="hint" style="margin-bottom:10px"><b style="color:var(--red)">Warning:</b> matching origins stay intercepted, but Interseptor accepts any server certificate. This permits server impersonation. This is not TLS passthrough; captured traffic remains visible. One host per line — exact (<code>api.example.com</code>) or wildcard (<code>*.example.com</code>).</p>
             <div class="settings-info-callout settings-error-help"><b>IP certificate error?</b> If History says the certificate “doesn't contain any IP SANs”, use the certificate's hostname when possible. For an authorized test target, add its IP here instead.</div>
             <div class="settings-quick-add">
@@ -691,11 +707,11 @@ Content-Type: application/json
             <div class="row" style="gap:8px;margin-top:8px"><button class="btn btn-primary" id="originTLSVerifyBypassSave">Save verification exceptions</button><span class="hint" id="originTLSVerifyBypassCount"></span></div>
           </div>
           <div class="section" id="tlsPinningSection">
-            <h3>SSL PINNING &amp; MISSING TRAFFIC</h3>
+            <h3>SSL pinning &amp; missing traffic</h3>
             <p class="hint" style="margin-bottom:10px">Interseptor decrypts HTTPS only when the client trusts the CA. It does <b>not</b> bypass SSL pinning.</p>
             <div id="tlsDiagPanel" class="tls-diag-panel hint" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);line-height:1.6">Checking traffic…</div>
             <label class="hint" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tlsShowBanner" checked> Show TLS blocked banner in Proxy History</label>
-            <details class="ca-how" open><summary>Verdicts</summary>
+            <details class="ca-how"><summary>Troubleshooting reference</summary>
               <ul style="margin:8px 0 4px;padding-left:20px;color:var(--fg2);line-height:1.7">
                 <li><b style="color:var(--red)">TLS blocked</b> — the app sent CONNECT but rejected the MITM cert (<b>pinning or untrusted CA</b>). Look for red <b>PIN</b> rows in History.</li>
                 <li><b style="color:var(--amber)">No traffic</b> — nothing reached the proxy. Check proxy settings, <code>adb reverse</code>, or whether the app ignores the system proxy.</li>
@@ -749,8 +765,9 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="devices" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-toolbox"/></svg><h2>Mobile devices</h2></header>
           <div class="section" id="androidAdbSection" style="display:none">
-            <h3>ANDROID (ADB)</h3>
+            <h3>Android (ADB)</h3>
             <p class="hint" style="margin-bottom:10px"><code>adb</code> must be on PATH. <b>USB</b> uses <code>adb reverse</code>. <b>Wi-Fi</b> needs <code>0.0.0.0:PORT</code> binding.</p>
             <div class="android-toolbar">
               <div class="field android-device-field">
@@ -793,7 +810,7 @@ Content-Type: application/json
             <p class="hint" style="margin-top:6px"><b>Setup all</b> uses auto CA mode (emulator → system, phone → user). <b>System CA</b> needs root or emulator + reboot.</p>
           </div>
           <div class="section" id="iosSection">
-            <h3>iOS (SIMULATOR &amp; DEVICE)</h3>
+            <h3>iOS (simulator &amp; device)</h3>
             <p class="hint" style="margin-bottom:10px">macOS + Xcode for Simulator; download profile on device for physical iPhone. Does <b>not</b> bypass SSL pinning.</p>
             <div class="android-toolbar">
               <div class="field android-device-field">
@@ -829,7 +846,7 @@ Content-Type: application/json
             <p class="hint" style="margin-top:6px">After installing: Settings → General → VPN &amp; Device Management → trust it → About → <b>Certificate Trust Settings</b> → enable.</p>
           </div>
           <div class="section" id="iosSshSection">
-            <h3>iOS JAILBROKEN (SSH)</h3>
+            <h3>iOS jailbroken (SSH)</h3>
             <p class="hint" style="margin-bottom:10px">Automate jailbroken devices via SSH. Credentials are sent per request, <b>not</b> saved.</p>
             <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:8px">
               <div class="field" style="min-width:140px;flex:1">
@@ -866,8 +883,9 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><h2>Target scope</h2></header>
           <div class="section">
-            <h3>TARGET SCOPE</h3>
+            <h3>Target scope</h3>
             <p class="hint" style="margin-bottom:10px"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.example.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
             <div id="scopeLoadState" class="hint" role="status" aria-live="polite" style="display:none;margin-bottom:8px"></div>
             <p id="scopeDupWarn" class="hint" style="display:none;margin-bottom:8px;color:var(--amber)"></p>
@@ -884,8 +902,9 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="scanner" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg><h2>Scanner &amp; OOB</h2></header>
           <div class="section">
-            <h3>OUT-OF-BAND (OOB) CATCHER</h3>
+            <h3>Out-of-band (OOB) catcher</h3>
             <p class="hint" style="margin-bottom:12px">Default <code>127.0.0.1:9966/oob</code> only works for same-machine tests. Enable when you have a reachable base URL.</p>
             <label class="hint" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
               <input type="checkbox" id="setOobEnabled"> Enable OOB catcher
@@ -894,11 +913,12 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="api" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg><h2>API &amp; MCP</h2></header>
           <div class="section">
             <div class="seg" id="apiSub" style="margin-bottom:12px"><button type="button" class="on" data-s="keys" aria-pressed="true">API Keys</button><button type="button" data-s="allowlist" aria-pressed="false">Allowlist</button><button type="button" data-s="share" aria-pressed="false">Share</button><button type="button" data-s="rest" aria-pressed="false">REST</button><button type="button" data-s="mcp" aria-pressed="false">MCP</button></div>
             <div id="apiKeys" class="api-pane">
-              <h3>API KEYS</h3>
-              <p class="hint" style="margin-bottom:12px">Authenticate remote access. New tokens are shown once at creation. If you're signed in remotely, <b>Show session key</b> reveals the key in your current browser session so you can copy it again. <b>Read-only</b> keys can watch; <b>full</b> keys can act.</p>
+              <h3>API keys</h3>
+              <p class="hint">Read-only keys can view data. Full keys can change it.</p><details class="set-disc settings-help"><summary>Key creation and recovery</summary><p class="hint">New keys are shown once. Show session key reveals the key used by your current remote browser session.</p></details>
               <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
                 <input id="keyLabel" class="repurl" style="max-width:220px" aria-label="API key label" placeholder="label (e.g. ci-runner)">
                 <select id="keyScope" class="repurl" style="max-width:130px" aria-label="Key scope"><option value="full">Full access</option><option value="read">Read-only</option></select>
@@ -911,7 +931,7 @@ Content-Type: application/json
               <table class="rules-tbl"><thead><tr><th style="width:130px">Prefix</th><th>Label</th><th style="width:80px">Scope</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="keyList"></tbody></table>
             </div>
             <div id="apiAllowlist" class="api-pane" style="display:none">
-              <h3>IP ALLOWLIST</h3>
+              <h3>IP allowlist</h3>
               <p class="hint" style="margin-bottom:12px">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b></p>
               <div class="hint" id="allowClientIP" style="margin-bottom:10px"></div>
               <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -923,7 +943,7 @@ Content-Type: application/json
               <table class="rules-tbl"><thead><tr><th style="width:220px">IP / CIDR</th><th>Label</th><th style="width:150px">Created</th><th style="width:70px"></th></tr></thead><tbody id="allowList"></tbody></table>
             </div>
             <div id="apiShare" class="api-pane" style="display:none">
-              <h3>SHARE THIS SESSION</h3>
+              <h3>Share this session</h3>
               <p class="hint" style="margin-bottom:12px">Expose Interseptor over a Cloudflare tunnel so a teammate — or an AI agent on your VPS — can reach it with an access key. No public IP needed. <b style="color:var(--amber)">This publishes your captured traffic;</b> share read-only keys with reviewers and stop when done.</p>
               <div id="shareStatus" class="evidence" style="margin-bottom:12px">Loading…</div>
               <div id="sharePrereq" class="hint" style="margin-bottom:10px"></div>
@@ -959,19 +979,20 @@ Content-Type: application/json
               <div id="vaultResult" class="hint" style="margin-top:8px"></div>
             </div>
             <div id="apiRest" class="api-pane" style="display:none">
-              <h3>REST API REFERENCE</h3>
+              <h3>REST API reference</h3>
               <p class="hint" id="apiBase" style="margin-bottom:12px"></p>
               <div id="restLoadState" class="hint" role="status" aria-live="polite" style="display:none;margin-bottom:8px"></div>
               <table class="rules-tbl"><thead><tr><th style="width:64px">Method</th><th style="width:280px">Path</th><th>Description</th></tr></thead><tbody id="restList"></tbody></table>
             </div>
             <div id="apiMcp" class="api-pane" style="display:none">
-              <div ><h3>MODEL CONTEXT PROTOCOL</h3><div id="mcpBody"></div></div>
+              <div ><h3>Model context protocol</h3><div id="mcpBody"></div></div>
             </div>
           </div>
         </section>
         <section class="set-sec" data-sec="session" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><h2>Session &amp; authentication</h2></header>
           <div class="section">
-            <h3>SESSION · auth headers</h3>
+            <h3>Session · auth headers</h3>
             <div id="sessionLoadState" class="hint" role="status" aria-live="polite" style="display:none;margin-bottom:8px"></div>
             <p class="hint" style="margin-bottom:10px">Auto-applied to <b>Repeater</b> and <b>Intruder</b> sends. Sent only to in-scope hosts.</p>
             <label class="chk-row" style="margin-bottom:8px"><input type="checkbox" id="setSessionOn"> Apply session headers to outgoing sends</label>
@@ -1019,8 +1040,9 @@ Content-Type: application/json
           <div class="row" style="gap:8px;padding:14px 16px"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" style="display:none;font-size:var(--fs-xs);padding:2px 7px;border-radius:4px;background:var(--bg3)"></span></div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><h2>Project &amp; data</h2></header>
           <div class="section">
-            <h3>PROJECT</h3>
+            <h3>Project</h3>
             <div id="projectLoadState" class="hint" role="status" aria-live="polite" style="display:none;margin-bottom:8px"></div>
             <p class="hint" style="margin-bottom:12px">Each project has its own history, rules, and scope, kept under <code>~/.interseptor/projects/&lt;name&gt;/</code> by default — or a folder you choose below. CA and checks are shared globally. Switching restarts Interseptor.</p>
             <div class="field"><label>Active project</label><div style="font-size:var(--fs-md)"><b id="projNameHint" style="color:var(--accent)">default</b> · <span id="projDirHint" style="color:var(--fg3)">~/.interseptor</span></div></div>
@@ -1032,12 +1054,12 @@ Content-Type: application/json
               <div class="field" style="margin-bottom:0;flex:1;min-width:220px"><label for="projNew">New project</label><input id="projNew" aria-label="New project name" class="btn btn-field" style="width:100%" placeholder="acme-engagement"></div>
               <button class="btn" id="projNewBtn">Create &amp; open</button>
             </div>
-            <div class="field" style="margin-bottom:0;margin-top:8px"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-describedby="projSwitchNote" aria-label="New project save location" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="e.g. D:\engagements\acme-2026"></div>
+            <div class="field" style="margin-bottom:0;margin-top:8px"><label for="projNewPath">Save location <span class="hint">(optional — leave blank to use ~/.interseptor/projects/&lt;name&gt;)</span></label><input id="projNewPath" aria-describedby="projSwitchNote" aria-label="New project save location" class="btn btn-field font-mono" style="width:100%;font-size:var(--fs-xs)" placeholder="Project folder path"></div>
             <p class="hint" id="projSwitchNote" role="status" aria-live="polite" style="margin-top:12px;display:none;color:var(--accent)"></p>
             <div class="row" style="margin-top:14px"><button class="btn" id="runSetupBtn" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"/></svg> Run setup wizard again</button><span class="hint">Replays the first-run guide (proxy, CA, scope).</span></div>
           </div>
           <div class="section">
-            <h3>EXPORT / IMPORT</h3>
+            <h3>Export / import</h3>
             <p class="hint" style="margin-bottom:10px">Portable session bundle (JSON) — flows, rules, scope, upstream proxy. Import <b>merges</b> into the current project. Good for sharing traffic with other tools.</p>
             <div class="row" style="gap:8px">
               <a class="btn btn-primary" id="exportProject" href="/api/export/project" download style="text-decoration:none">Export project</a>
@@ -1063,7 +1085,7 @@ Content-Type: application/json
             </div>
           </div>
           <div class="section danger-zone" id="retentionSection">
-            <h3>DATA &amp; RETENTION</h3>
+            <h3>Data &amp; retention</h3>
             <p class="hint" style="margin-bottom:12px">Auto-prune old history, or purge noisy hosts. <b style="color:var(--red)">Deletion is permanent.</b></p>
             <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
               <label class="hint" style="display:flex;flex-direction:column;gap:4px">Max age (hours, 0=off)
@@ -1077,20 +1099,21 @@ Content-Type: application/json
             </div>
             <div id="retentionPolicyHint" class="hint" style="margin:-6px 0 12px"></div>
             <div id="retentionTotals" style="margin-bottom:12px;font-size:var(--fs-sm);color:var(--fg2)"></div>
+            <div id="retentionLoadState" class="hint" role="status" aria-live="polite"></div>
             <table class="rules-tbl" id="retentionTable">
               <thead><tr><th style="width:30px"><input type="checkbox" id="retSelectAll" title="Select / clear all hosts"></th><th>Host</th><th style="width:80px;text-align:right">Flows</th><th style="width:90px;text-align:right">Size</th><th style="width:72px"></th></tr></thead>
               <tbody id="retentionBody"><tr><td colspan="5" class="hint" style="padding:10px 8px">Loading…</td></tr></tbody>
             </table>
             <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
               <button class="btn btn-danger" id="retDeleteSelected" style="color:var(--red)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete selected</button>
-              <button class="btn" id="retKeepOnly">◉ Keep only selected</button>
+              <button class="btn" id="retKeepOnly">Delete all other hosts</button>
             </div>
             <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
               <input id="retPatternInput" class="btn btn-field field-grow" style="min-width:200px;max-width:340px;border:1px solid var(--line)" aria-label="Purge host pattern" placeholder="Pattern e.g. *.ads.example.com">
               <button class="btn btn-danger" id="retPurgePattern" style="color:var(--red)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Purge by pattern</button>
             </div>
             <div style="margin-top:16px">
-              <button class="btn" id="retGc"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-recycle"/></svg> Reclaim space (GC body files)</button>
+              <button class="btn" id="retGc"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-recycle"/></svg> Reclaim storage</button>
             </div>
           </div>
         </section>
@@ -1360,7 +1383,7 @@ Content-Type: application/json
       <div><div id="findGuideTitle" class="modal-shell-title">Technical finding template</div><div class="hint">Write for fast triage, independent reproduction, and retesting.</div></div>
       <button class="btn" id="findGuideClose" aria-label="Close finding writing guide">✕</button>
     </div>
-    <div class="modal-shell-body find-guide-body">
+    <div class="modal-shell-body find-guide-body"><p><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Engagement close-out checklist ↗</a></p>
       <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
       <section><span class="find-guide-n">2</span><div><h3>Claim</h3><p>Summarize who can do what, to which asset, and under which missing or failed control in one sentence.</p></div></section>
       <section><span class="find-guide-n">3</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
@@ -1441,7 +1464,7 @@ Content-Type: application/json
       </div>
       <textarea id="decIn" class="rep-edit" aria-label="Decoder input" spellcheck="false" style="height:120px;border:1px solid var(--line);border-radius:8px" placeholder="Paste a token, parameter, or blob…"></textarea>
       <div class="row" id="decOps" style="gap:6px;flex-wrap:wrap"></div>
-      <div class="row" style="gap:8px"><span class="hint" id="decErr"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
+      <div class="row" style="gap:8px"><span class="hint" id="decErr" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn" id="decUp" title="Use the output as the next input">↑ chain</button><button class="btn" id="decCopy">Copy output</button></div>
       <textarea id="decOut" class="rep-edit" aria-label="Decoder output" spellcheck="false" readonly style="height:170px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)" placeholder="output"></textarea>
     </div>
   </div>
@@ -1532,6 +1555,7 @@ Content-Type: application/json
     retry.setAttribute('data-workspace-retry','');
     retry.onclick=function(){location.reload();};
     status.appendChild(retry);
+    if(document.activeElement===document.body)retry.focus();
   }
   function onWorkspaceScriptError(event){
     var target=event&&event.target;

@@ -12,14 +12,14 @@
   /* Surfaces — an elevation ramp, not arbitrary greys. bg is the page; bg1/bg2/bg3
      are progressively raised. Every foreground token below is contrast-checked
      against all four by TestUIThemeContrastMeetsWCAGAA. */
-  --bg:#080c0b;--bg1:rgba(14, 22, 19, 0.82);--bg2:rgba(18, 29, 24, 0.92);--bg3:rgba(25, 39, 32, 0.94);
+  --bg:#111318;--bg1:#171a20;--bg2:#1c2028;--bg3:#252b35;
   --line:rgba(255, 255, 255, 0.08);--line2:rgba(255, 255, 255, 0.15);--surface-frame:rgba(255, 255, 255, 0.12);--signal-grid:rgba(16, 185, 129, 0.07);
   --fg:#f8fafc;--fg2:#cbd5e1;--fg3:#94a3b8;
   /* Two accents, deliberately: --accent is the text-safe tint (AA on every
      surface); --accentSolid is the fill behind --onAccent labels. Using one
      colour for both is what made the primary CTA a 2.54:1 button. */
-  --accent:#10b981;--accentSolid:#047857;--onAccent:#ffffff;
-  --sel:rgba(16, 185, 129, 0.15);--accentDim:rgba(16, 185, 129, 0.2);
+  --accent:#6ee7c2;--accentSolid:#047857;--onAccent:#ffffff;
+  --sel:rgba(110, 231, 194, 0.09);--accentDim:rgba(110, 231, 194, 0.14);
   --blue:#60a5fa;--amber:#f59e0b;--orange:#fb923c;--noteDim:rgba(245, 158, 11, 0.12);
   /* Same text/fill split for destructive actions. */
   --red:#f87171;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(239, 68, 68, 0.15);
@@ -27,7 +27,7 @@
   --warnLine:#b45309;--warnFg:#fcd34d;--dangerLine:#c44;--dangerFg:#fca5a5;--pendingFill:#e0a020;
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
   --ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
-  --grad-bg:linear-gradient(135deg, #080c0b 0%, #101a16 100%);
+  --grad-bg:linear-gradient(#111318, #111318);
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
 
   /* Spacing (8px base, 4px half-step) */
@@ -59,8 +59,8 @@
   --state-pending:var(--amber); --state-danger:var(--red);
   --content-note:var(--violet);
   /* Layout constants */
-  --nav-rail-w:188px; --side-panel-w:280px;
-  --topbar-h:44px; --ctxbar-h:40px;
+  --nav-rail-w:204px; --side-panel-w:280px;
+  --topbar-h:52px; --ctxbar-h:40px;
 }
 /* Light theme. This is NOT a mechanical inversion of the dark palette — that is
    what it used to be, and it failed AA on all secondary text and every accent
@@ -68,7 +68,7 @@
    --bg3 in particular was slate-300, a mid-tone rather than a raised surface,
    which dragged every foreground toward black to compensate. */
 :root[data-theme="light"]{
-  --bg:#f7faf8;--bg1:rgba(241, 247, 244, 0.9);--bg2:rgba(226, 239, 232, 0.94);--bg3:#dce9e1;
+  --bg:#ffffff;--bg1:#f7f8fa;--bg2:#f0f2f5;--bg3:#e7ebf0;
   --line:rgba(15, 23, 42, 0.1);--line2:rgba(15, 23, 42, 0.2);--surface-frame:rgba(15, 23, 42, 0.16);--signal-grid:rgba(6, 95, 70, 0.07);
   --fg:#0f172a;--fg2:#334155;--fg3:#475569;
   --accent:#065f46;--accentSolid:#047857;--onAccent:#ffffff;
@@ -77,7 +77,7 @@
   --red:#b91c1c;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(185, 28, 28, 0.08);
   --violet:#6d28d9;--cyan:#155e75;--focus-ring:#7c2d12;--scroll:rgba(0,0,0,0.15);--shadow:rgba(15, 23, 42, 0.1);--overlay:rgba(15, 23, 42, 0.5);
   --warnLine:#92400e;--warnFg:#78350f;--dangerLine:#b91c1c;--dangerFg:#991b1b;--pendingFill:#a16207;
-  --grad-bg:linear-gradient(135deg, #f7faf8 0%, #e2eee7 100%);
+  --grad-bg:linear-gradient(#f7f8fa, #f7f8fa);
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -124,14 +124,14 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* Empty/error-state art is large and decorative: thin the stroke so it does not
    read as a heavy blob at 34px. */
 .state-empty-icon .icon,.state-error-icon .icon{width:1em;height:1em;stroke-width:1.25;vertical-align:0}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:none}
 .blink{opacity:.65}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
 /* top bar */
-#bar{height:var(--topbar-h);flex:none;background:var(--bg2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--surface-frame);display:flex;align-items:center;gap:16px;padding:0 18px;user-select:none;z-index:10;box-shadow:inset 0 -1px 0 var(--line)}
-#logo{width:19px;height:19px;border-radius:var(--r-sm);background:var(--accent);border:1px solid var(--accent);box-shadow:0 0 10px var(--accentDim)}
-.brand{font-weight:700;letter-spacing:.5px}
+#bar{height:var(--topbar-h);flex:none;background:var(--bg1);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 18px;user-select:none;z-index:10;box-shadow:none}
+#logo{width:28px;height:28px;border-radius:var(--r-md);background:var(--accentSolid);border:none;box-shadow:none;;display:grid;place-items:center;color:var(--onAccent)}
+.brand{font-weight:650;letter-spacing:-.3px;;font-size:var(--fs-lg)}
 .tag{font-size:var(--fs-xs);color:var(--fg3);letter-spacing:1.5px}
 .kv{font-size:var(--fs-xs);color:var(--fg2)}
 .kv b{color:var(--fg);font-weight:600}
@@ -163,25 +163,25 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
    (replaces the old flat #tabs horizontal strip). Same element id (#tabs,
    role=tablist) as before — only its layout/placement changed, so existing
    JS selectors ($('#tabs'), .tab, data-tab, aria-controls) keep working. */
-#tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg1);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-right:1px solid var(--surface-frame);border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);padding:var(--sp-4) var(--sp-2);overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:inset -1px 0 0 var(--line)}
+#tabs{width:var(--nav-rail-w);height:auto;flex:none;background:var(--bg1);backdrop-filter:none;-webkit-backdrop-filter:none;border-right:none;border-bottom:none;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:20px 12px 12px;overflow-x:visible;overflow-y:auto;z-index:9;box-shadow:none}
 .workspace-hydration-status{margin:0 var(--sp-2) var(--sp-2);padding:var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--fg3);font-family:var(--mono);font-size:var(--fs-xs);line-height:var(--lh-tight)}
 .workspace-hydration-status.is-error{color:var(--warnFg);border-color:var(--warnLine);background:var(--noteDim)}
 #tabs[aria-busy="true"] .tab{opacity:.55;cursor:wait}
 .nav-rail-group{display:flex;flex-direction:column;gap:2px}
 .nav-rail-group+.nav-rail-group{margin-top:var(--sp-3)}
-.nav-rail-group-label{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--fg3);padding:5px 10px 4px}
+.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;text-transform:none;color:var(--fg3);padding:5px 12px 6px}
 .nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:var(--sp-2)}
-.tab{position:relative;font-family:var(--ui);font-size:var(--fs-sm);font-weight:600;color:var(--fg2);padding:9px 12px;border-radius:var(--r-sm);text-align:left;display:flex;align-items:center;width:100%;border-left:2px solid transparent;letter-spacing:.1px}
-.tab:focus{outline:3px solid var(--focus-ring);outline-offset:2px;box-shadow:0 0 0 2px var(--bg)}
+.tab{position:relative;font-family:var(--ui);font-size:var(--fs-md);font-weight:500;color:var(--fg2);padding:10px 12px;border-radius:var(--r-md);text-align:left;display:flex;align-items:center;gap:10px;width:100%;border-left:none;letter-spacing:.1px}
+.tab:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px;box-shadow:0 0 0 2px var(--bg)}
 .tab:hover{color:var(--fg);background:var(--bg3)}
-.tab.active{color:var(--accent);background:var(--accentDim);box-shadow:inset 2px 0 0 var(--accent)}
-.badge{font-size:var(--fs-xs);font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:var(--r-md);padding:1px 6px;margin-left:auto}
+.tab.active{color:var(--fg);background:var(--sel);box-shadow:inset 2px 0 0 var(--accent)}
+.badge{font-size:var(--fs-xs);font-weight:700;background:var(--accentSolid);color:var(--onAccent);border-radius:var(--r-md);padding:1px 6px;margin-left:auto}
 /* .nav-dot — lightweight off-screen-update indicator for rail items that don't
    have a numeric badge yet (Discover/Map). Mirrors .badge placement but as a
    plain dot, per the roadmap's "fold into the rail's badge system" ask. */
 .nav-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);margin-left:auto;flex:none;display:none}
 .nav-dot.on{display:block}
-.ai-tag{font-size:var(--fs-xs);font-weight:700;background:var(--accent);color:var(--onAccent);border-radius:var(--r-sm);padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
+.ai-tag{font-size:var(--fs-xs);font-weight:700;background:var(--accentSolid);color:var(--onAccent);border-radius:var(--r-sm);padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 /* .nav-foot-proj — active-project pill in the nav-rail foot (#projBadge). Replaces
    its inline recipe; `display` stays inline (JS toggles it at runtime). */
 .nav-foot-proj{padding:5px 9px;font-size:var(--fs-xs);font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:var(--r-md);cursor:pointer}
@@ -192,29 +192,29 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .flowtag{font-size:var(--fs-xs);font-weight:600;background:var(--bg3);color:var(--fg2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:0 5px;margin-left:5px;vertical-align:middle;cursor:pointer}
 .flowtag:hover{border-color:var(--accent);color:var(--fg)}
 
-#main{flex:1;min-width:0;min-height:0;position:relative;overflow:hidden}
-.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg);background-image:linear-gradient(90deg,var(--signal-grid) 1px,transparent 1px),linear-gradient(0deg,var(--signal-grid) 1px,transparent 1px);background-size:32px 32px}
+#main{flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;margin:12px 12px 12px 0;border:1px solid var(--line);border-radius:var(--r-xl)}
+.panel{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;background:var(--bg);background-image:none}
 .panel.active{display:flex}
 
 /* toolbar — single desktop row; scroll horizontally if the window is tight */
-.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;min-height:46px;padding:8px 16px;border-bottom:1px solid var(--surface-frame);background:var(--bg2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-x:auto;scrollbar-width:thin;box-shadow:inset 0 1px 0 var(--line)}
+.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;min-height:46px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none;overflow-x:auto;scrollbar-width:thin;box-shadow:none}
 /* .toolbar-secondary — second tier of a 2-tier toolbar (secondary/less-frequent
    actions demoted below the primary action row). Slightly dimmer + smaller
    padding so it reads as lower visual weight, per the "toolbar max 2 tiers" rule. */
-.toolbar-secondary{min-height:38px;padding-top:var(--sp-1);padding-bottom:var(--sp-1);background:var(--bg1);border-bottom:1px solid var(--line)}
+.toolbar-secondary{min-height:36px;padding-top:var(--sp-1);padding-bottom:var(--sp-1);background:var(--bg);border-bottom:1px solid var(--line)}
 .search{display:flex;align-items:center;flex:1 1 280px;min-width:200px;max-width:420px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);height:32px;overflow:hidden;transition:background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard)}
 .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentDim)}
 .search select.ui-select-native{height:100%;background:none;border:none;padding:0}
 .search input{flex:1;background:transparent;font-size:var(--fs-sm);padding:0 10px}
-.btn{font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;color:var(--fg2);min-height:30px;padding:6px 11px;border-radius:var(--r-md);background:var(--bg3);border:1px solid var(--line2);box-shadow:0 1px 1px var(--shadow);transition:color var(--motion-base) var(--motion-standard),background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard);white-space:nowrap;flex-shrink:0}
+.btn{font-family:var(--ui);font-size:var(--fs-sm);font-weight:550;color:var(--fg2);min-height:30px;padding:6px 11px;border-radius:var(--r-md);background:var(--bg2);border:1px solid var(--line);box-shadow:none;transition:color var(--motion-base) var(--motion-standard),background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard);white-space:nowrap;flex-shrink:0}
 /* Icon + label layout for real button-like elements. Excluded for input/
    select/textarea, which also carry .btn via .btn-field but are replaced
    elements with no children to lay out. */
 .btn:not(input):not(select):not(textarea){display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
-.btn:hover{color:var(--fg);background:color-mix(in srgb,var(--bg3) 78%,var(--accent) 22%);border-color:color-mix(in srgb,var(--line2) 55%,var(--accent) 45%);box-shadow:0 2px 6px var(--shadow)}
+.btn:hover{color:var(--fg);background:var(--bg3);border-color:var(--line2);box-shadow:none}
 .btn:active{filter:brightness(.94)}
-.btn.accent{color:var(--onAccent);background:var(--grad-accent);border:1px solid color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 2px 8px var(--accentDim)}
-.btn.accent:hover{filter:brightness(1.12);box-shadow:0 2px 10px var(--accentDim)}
+.btn.accent{color:var(--onAccent);background:var(--accentSolid);border:1px solid var(--accentSolid);box-shadow:none}
+.btn.accent:hover{filter:brightness(1.12);box-shadow:none}
 .btn.danger{background:var(--redDim);color:var(--red)}
 .btn.danger:hover{background:var(--redSolid);color:var(--onDanger)}
 .btn:disabled{opacity:.72;cursor:not-allowed}
@@ -224,8 +224,8 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* additive modifier aliases: same rules as .btn.accent / .btn.danger, named per the
    design-system convention (one .btn-primary per toolbar, .btn-danger for destructive actions).
    Not wired into markup yet — existing .btn.accent/.btn.danger call sites are untouched. */
-.btn-primary{color:var(--onAccent);background:var(--grad-accent);border:1px solid color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 2px 8px var(--accentDim)}
-.btn-primary:hover{filter:brightness(1.12);box-shadow:0 2px 10px var(--accentDim)}
+.btn-primary{color:var(--onAccent);background:var(--accentSolid);border:1px solid var(--accentSolid);box-shadow:none}
+.btn-primary:hover{filter:brightness(1.12);box-shadow:none}
 .btn-danger{background:var(--redDim);color:var(--red)}
 .btn-danger:hover{background:var(--redSolid);color:var(--onDanger)}
 /* .btn-compact — tight padding for inline action buttons in dense rows (Proxy
@@ -260,7 +260,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* --flow-cols is set by proxy.js (applyFlowGrid) on #flowHead and #rows; the
    fallback is the default visible-column template for the pre-JS/first paint. */
 .thead,.trow{display:grid;align-items:center;grid-template-columns:var(--flow-cols,44px 64px minmax(110px,1.2fr) minmax(150px,2.4fr) 52px 64px 60px)}
-.thead{flex:none;height:32px;background:var(--bg2);border-bottom:1px solid var(--line2);font-size:var(--fs-xs);font-weight:700;letter-spacing:.8px;color:var(--fg2);padding:0 6px;backdrop-filter:blur(4px);position:sticky;top:0;z-index:5;cursor:pointer}
+.thead{flex:none;height:32px;background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;color:var(--fg2);padding:0 6px;backdrop-filter:none;position:sticky;top:0;z-index:5;cursor:pointer}
 .thead>div{padding:0 4px;cursor:pointer;user-select:none;transition:color var(--motion-fast) var(--motion-standard);position:relative}
 .thead>div.sorted{color:var(--accent)}
 .thead>div:hover{color:var(--fg)}
@@ -301,14 +301,13 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .sel-bar{align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:var(--r-md)}
 .sel-bar .sel-count{font-weight:700;flex:none}
 .sel-bar .sel-clear{margin-left:auto}
-/* .note-bar — the per-flow note editor strip below the inspector (Proxy's
-   #noteBar). `display` stays inline (toggled at runtime); #noteSaved's
-   `opacity` also stays inline (it's an animated save-confirmation flash, not
-   a static style). */
-.note-bar{align-items:center;gap:8px;padding:6px 10px;border-top:1px solid var(--line)}
+/* Per-flow note editor and persistent save feedback below the inspector. */
+.note-bar{flex:none;align-items:center;flex-wrap:wrap;gap:8px;padding:6px 10px;border-top:1px solid var(--line)}
 .note-bar .lbl{flex:none}
-.note-bar input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:var(--r-md);padding:5px 8px;font-size:var(--fs-sm);font-family:inherit}
+.note-bar input{flex:1;min-width:100px;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:var(--r-md);padding:5px 8px;font-size:var(--fs-sm);font-family:inherit}
 .note-bar .note-saved{flex:none;color:var(--accent);font-size:var(--fs-xs);transition:opacity var(--motion-base) var(--motion-standard)}
+.note-bar .note-saved[data-state=error]{color:var(--red);flex:0 1 auto;overflow-wrap:anywhere}
+.note-bar .note-saved[data-state=pending]{color:var(--fg2)}
 .col-picker{position:fixed;z-index:150;background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);padding:6px 0;min-width:168px;box-shadow:var(--elev-2)}
 .col-picker label{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;font-size:var(--fs-sm);color:var(--fg);user-select:none}
 .col-picker label:hover{background:var(--bg3)}
@@ -318,8 +317,8 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 #inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0;background:var(--bg1);box-shadow:0 -4px 12px rgba(0,0,0,0.2)}
 .pane{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg1);border-right:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
 .pane:last-child{border-right:none}
-.pane-head{flex:none;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg2);border-bottom:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
-.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:1.1px;color:var(--fg3)}
+.pane-head{flex:none;height:38px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line);box-shadow:none}
+.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;letter-spacing:.2px;color:var(--fg3)}
 /* .micro-label — standalone all-caps section header inside a modal (REQUEST LOG,
    CONFIRMED FINDINGS, QUICK TUNNEL, RESULTS, INTERACTIONS, etc.) and the
    "HOW TO TRUST IT" label in the TLS section. Replaces the recurring inline
@@ -367,7 +366,7 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 
 /* intercept */
 .section{padding:14px 16px;border-bottom:1px solid var(--line)}
-.section h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.8px;color:var(--fg3);margin-bottom:10px}
+.section h3{font-size:var(--fs-xs);font-weight:600;letter-spacing:.2px;color:var(--fg3);margin-bottom:10px}
 .toggle{font-family:var(--ui);display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-sm);font-weight:700;padding:7px 14px;border-radius:var(--r-md);background:var(--bg3);white-space:nowrap;flex-shrink:0}
 .toggle.on{color:var(--accent);background:var(--accentDim)}
 .held{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:6px;cursor:pointer;font-size:var(--fs-xs)}
@@ -447,11 +446,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 
 /* .state-empty — shared empty-state component (icon + title + one-line hint
    + optional action), modeled on Intercept's former .icpt-empty. */
-.state-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;gap:10px;font-family:var(--ui);white-space:normal}
-.state-empty-icon{line-height:1;filter:saturate(.8);opacity:.6}
-.state-empty-icon .icon{width:34px;height:34px}
+.state-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;gap:12px;font-family:var(--ui);white-space:normal}
+.state-empty-icon{line-height:1;filter:none;opacity:1;;color:var(--accent);width:76px;height:76px;display:grid;place-items:center;border:1px solid var(--line2);border-radius:var(--r-xl);background:var(--bg1);box-shadow:6px 6px 0 var(--bg2);margin-bottom:12px}
+.state-empty-icon .icon{width:30px;height:30px;;stroke-width:1.5}
 .state-empty-title{font-size:var(--fs-xl);font-weight:700;color:var(--fg);letter-spacing:-.2px}
-.state-empty-hint{max-width:500px;margin:0;color:var(--fg3);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.state-empty-hint{max-width:360px;margin:0;color:var(--fg3);font-size:var(--fs-md);line-height:var(--lh-normal)}
 /* .state-empty-cmdk — the command-palette callout line added to a few
    representative empty states (Proxy history, Scanner issues) per the
    redesign roadmap's "surface the palette in every empty state" goal. Dimmer
@@ -474,11 +473,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 
    radius/shadow recipe via duplicated inline styles or per-modal classes;
    this codifies that recipe as a reusable base without touching them yet. */
-.modal-shell{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-3);display:flex;flex-direction:column;overflow:hidden}
-.modal-shell-head{flex:none;display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--line)}
-.modal-shell-title{font-weight:700;color:var(--accent);flex:1}
+.modal-shell{background:var(--bg);border:1px solid var(--line2);border-radius:var(--r-xl);box-shadow:var(--elev-3);display:flex;flex-direction:column;overflow:hidden;animation:surface-enter var(--motion-base) var(--motion-enter)}
+.modal-shell-head{flex:none;display:flex;align-items:center;gap:var(--sp-2);padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal-shell-title{font-weight:650;color:var(--fg);flex:1;font-size:var(--fs-lg)}
 .modal-shell-body{flex:1;overflow:auto;padding:var(--sp-4)}
-.modal-shell-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--line)}
+.modal-shell-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-2);padding:12px 20px;border-top:1px solid var(--line);background:var(--bg1)}
 /* .modal-overlay — fixed full-viewport dim layer behind a .modal-shell dialog.
    display is intentionally NOT set here: the initial inline style="display:none"
    hides the layer and JS flips el.style.display='flex' at runtime (inline wins
@@ -494,7 +493,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* AI activity feed */
 .act-filter{width:150px;font-weight:400;margin-left:var(--sp-2)}
 .act-clear{margin-left:var(--sp-2)}
-.act-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:var(--fs-xs)}
+.act-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
 .act-row.act-jump{cursor:pointer}
 /* workflow separator: a thicker top rule marks where one AI workflow ends and the next begins */
 .act-row.act-grp{border-top:2px solid var(--line2);margin-top:3px}
@@ -578,8 +577,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-edit[readonly]{opacity:.88;cursor:default}
 /* .notes-edit — the Notes panel editor (#notesEdit textarea). Captures its former
    inline recipe (flex:1 + full-bleed mono editor on --bg1). */
-.notes-edit{flex:1;border:none;resize:none;background:var(--bg1);color:var(--fg);font-family:var(--mono);font-size:var(--fs-md);line-height:1.6;padding:16px 18px}
-.rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;background:var(--bg2);border-bottom:1px solid var(--line2)}
+.notes-edit{flex:1;border:none;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:var(--fs-md);line-height:1.8;padding:24px}
+.rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;background:var(--bg1);border-bottom:1px solid var(--line)}
 .rep-tab{display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:none;border-radius:var(--r-md) 7px 0 0;background:transparent;color:var(--fg2);white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
 .rep-tab:hover{background:var(--bg3);color:var(--fg)}
 .rep-tab.on{background:var(--bg);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
@@ -592,7 +591,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-tab-add:hover{color:var(--fg);background:var(--bg2)}
 .rep-tab-add[aria-disabled="true"]{cursor:not-allowed;color:var(--fg3);background:var(--bg3);opacity:.72}
 /* repeater request line + workspace */
-.rep-line{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line2);background:var(--bg2)}
+.rep-line{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
 .rep-method{height:30px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line2);color:var(--fg);padding:0 10px;font-weight:700;cursor:pointer;flex:none}
 .rep-method:hover{border-color:var(--accent)}
 .rep-line .repurl{font-family:var(--mono)}
@@ -651,34 +650,29 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-progbar>div{height:100%;background:var(--accent);width:0;transition:width var(--motion-base) var(--motion-standard)}
 .settings-wrap{flex:1;display:flex;min-height:0}
 .settings-origin-tls-warning{flex:none;padding:10px 26px;border-bottom:1px solid var(--dangerLine);background:var(--redDim);color:var(--dangerFg);font-family:var(--ui);font-size:var(--fs-sm);line-height:1.45}
-.settings-nav{flex:none;width:196px;border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:3px;overflow:auto;background:var(--bg1)}
-.settings-search{font-family:var(--ui);width:100%;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;font-size:var(--fs-sm);color:var(--fg);margin-bottom:8px}
+.settings-nav{flex:none;width:218px;border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:3px;overflow:auto;background:var(--bg)}
+.settings-picker{display:none}
+.proxy-listener-row .ui-select-trigger{min-height:36px;background:var(--bg2)}
+.settings-search{font-family:var(--ui);width:100%;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;font-size:var(--fs-sm);color:var(--fg);margin-bottom:8px}
 .settings-search::placeholder{color:var(--fg3)}
 .settings-search:focus{border-color:var(--accent)}
 .settings-nav-empty{font-family:var(--ui);font-size:var(--fs-sm);color:var(--fg3);padding:8px 12px;line-height:1.5}
 .settings-nav-empty kbd{font-size:var(--fs-xs);padding:1px 4px}
 .settings-nav-group{display:flex;flex-direction:column;gap:3px}
 .settings-nav-group+.settings-nav-group{margin-top:var(--sp-3)}
-.settings-nav-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--fg3);padding:6px 12px 2px}
+.settings-nav-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;text-transform:none;color:var(--fg3);padding:6px 12px 2px}
 .settings-nav-group[hidden]{display:none}
-.settings-nav button{font-family:var(--ui);text-align:left;padding:9px 12px;border-radius:var(--r-md);border:none;background:transparent;color:var(--fg2);cursor:pointer;font-size:var(--fs-md);font-weight:600}
+.settings-nav button{font-family:var(--ui);text-align:left;padding:9px 12px;border-radius:var(--r-md);border:none;background:transparent;color:var(--fg2);cursor:pointer;font-size:var(--fs-sm);font-weight:500}
 .settings-nav button:hover{background:var(--bg3);color:var(--fg)}
-.settings-nav button.on{background:var(--sel);color:var(--fg)}
-.settings-body{flex:1;overflow:auto;padding:26px}
+.settings-nav button.on{background:var(--sel);color:var(--accent)}
+.settings-body{flex:1;overflow:auto;padding:28px 36px;;background:var(--bg)}
 .settings-body .set-sec[hidden]{display:none}
-.settings-body .section{padding:22px 24px;margin:0 0 16px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg1)}
+.settings-body .section{padding:24px 0;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
 .settings-body .section:last-child{margin-bottom:0}
-/* Panels that aren't a card grid (single-card panels like Target scope / AI /
-   Scanner / API, and the Session panel whose extra "sections" are collapsible
-   <details>): one normal-width card, left-aligned — don't drag a lone form
-   edge-to-edge, and stack the collapsibles vertically. */
+/* Keep settings on one consistent reading path; table-heavy sections can use
+   the available width without introducing competing columns of controls. */
 .settings-body .set-sec:not([hidden])>.section{max-width:760px}
-/* Multi-card panels (Proxy & network, Project & data, TLS/CA): a responsive 2–3
-   column card grid for a real wide-desktop layout instead of one tall single-column
-   scroll. The trigger requires ≥2 real card sections (not the <details> collapsibles),
-   so Session stays a vertical flow. :has() is supported in every evergreen browser;
-   where it isn't, this is ignored and the block layout above applies. */
-.settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details)){display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:16px;align-items:start}
+.settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details)){display:grid;grid-template-columns:minmax(0,880px);gap:0;align-items:start}
 .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details))>.section{max-width:none;min-width:0;margin:0}
 /* A gridded section carrying a data table (e.g. Data & retention) spans the full
    width so the table isn't squeezed into one column with dead space beside it. */
@@ -687,8 +681,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    enhanced .ui-select-btn shrinks to content width and leaves a large gap before
    the Port field. */
 .proxy-listener-row .ui-select,.proxy-listener-row .ui-select .ui-select-trigger{width:100%}
-.settings-body .section h3{font-family:var(--ui);font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
-.settings-body .field{max-width:460px;margin-bottom:18px}
+.settings-body .section h3{font-family:var(--ui);font-size:var(--fs-lg);font-weight:600;letter-spacing:0;text-transform:none;color:var(--fg);margin-bottom:12px}
+.settings-body .field{max-width:460px;margin-bottom:20px}
 .settings-body .field:last-of-type{margin-bottom:14px}
 .settings-lead{line-height:1.6;margin-bottom:16px}
 .settings-field-wide{max-width:none!important}
@@ -757,7 +751,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 
 /* Danger zone — destructive/irreversible settings get a red-bordered card so they
    read as distinct from ordinary configuration. */
-.settings-body .section.danger-zone{border-color:var(--red);background:var(--redDim)}
+.settings-body .section.danger-zone{padding:16px;border:1px solid var(--dangerLine);border-radius:var(--r-md);background:var(--redDim);margin-top:16px}
 .settings-body .section.danger-zone h3{color:var(--red)}
 .settings-body .section.danger-zone h3::before{content:'\26A0\FE0E  '}
 
@@ -787,7 +781,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* .find-toolbar-row/.find-view are shared by the Scanner + Findings toolbars/split
    views (same "row of controls" / "list+detail split" shape in both panels). */
 .find-toolbar-row{gap:6px;flex:1;flex-wrap:wrap}
-.findings-toolbar{display:flex;align-items:center;gap:16px;min-height:60px;padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--line2)}
+.findings-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;min-height:60px;padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--line2)}
 .findings-toolbar-title{display:flex;align-items:baseline;gap:9px;min-width:150px;font-family:var(--ui)}
 .findings-toolbar-title strong{font-size:var(--fs-xl);letter-spacing:-.2px;color:var(--fg)}
 .findings-eyebrow{font-size:var(--fs-xs);font-weight:700;letter-spacing:1.2px;color:var(--accent)}
@@ -827,9 +821,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-row .sev{font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
 .find-row .find-meta{grid-column:2/-1;font-size:var(--fs-xs);color:var(--fg3);line-height:1.45}
 .find-id-badge{font-family:var(--mono);font-size:var(--fs-md);font-weight:700;color:var(--accent);flex:none}
-.find-header-sticky{position:sticky;top:0;z-index:2;background:var(--bg1);padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.find-header-sticky{position:sticky;top:0;z-index:2;background:var(--bg);padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:12px}
 .find-sec-impact-sticky .find-sticky-impact{font-size:var(--fs-lg);line-height:1.45;padding:10px 12px;background:var(--noteDim);border-left:3px solid var(--amber);border-radius:0 6px 6px 0;white-space:pre-wrap}
-.find-meta-strip{margin:10px 0 16px;border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;background:var(--bg2)}
+.find-meta-strip{margin:10px 0 16px;border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;background:var(--bg1)}
 .find-meta-strip summary{cursor:pointer;font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
 .find-meta-strip-body{margin-top:8px;font-size:var(--fs-md);line-height:1.5}
 .find-report-step{display:grid;grid-template-columns:28px 1fr;gap:10px;margin:0 0 14px;align-items:start}
@@ -868,7 +862,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-verif-banner{margin:10px 0 0;padding:10px 12px;border:1px solid var(--amber);border-radius:var(--r-md);background:color-mix(in srgb, var(--amber) 12%, transparent)}
 .find-verif-title{font-size:var(--fs-sm);font-weight:700;color:var(--amber);margin-bottom:6px}
 .find-verif-text{width:100%;min-height:56px;resize:vertical;font:inherit;font-size:var(--fs-sm);line-height:1.45;color:var(--fg);background:var(--bg1);border:1px solid var(--line2);border-radius:var(--r-md);padding:8px 10px}
-.find-detail{flex:1;min-width:0;overflow:auto;padding:24px 32px;background:var(--bg1)}
+.find-detail{flex:1;min-width:0;overflow:auto;padding:24px;background:var(--bg)}
 .find-article{max-width:760px;min-width:0;margin:0 auto;background:var(--bg2);padding:24px;border-radius:var(--r-lg);box-shadow:var(--elev-2);border:1px solid var(--line2)}
 .find-header{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--line)}
 .find-header-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
@@ -885,7 +879,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-view.is-empty .scan-list{width:auto;flex:1;border-right:none;display:flex}
 .find-view.is-empty .find-detail{display:none}
 .find-empty{width:100%;max-width:560px;margin:0 auto;padding:40px 24px}
-.find-empty .state-empty-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;margin-bottom:6px;border:1px solid var(--line2);border-radius:var(--r-lg);background:var(--bg2);opacity:1;box-shadow:var(--elev-1)}
+.find-empty .state-empty-icon{display:flex;align-items:center;justify-content:center;width:76px;height:76px;margin-bottom:6px;border:1px solid var(--line2);border-radius:var(--r-xl);background:var(--bg1);opacity:1;box-shadow:6px 6px 0 var(--bg2);;color:var(--accent)}
 .find-empty .state-empty-icon .icon{width:24px;height:24px}
 .find-empty .state-empty-title{font-size:var(--fs-2xl);color:var(--fg);letter-spacing:-.3px}
 .find-empty .state-empty-hint{max-width:470px;color:var(--fg3)}
@@ -914,7 +908,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-doc{font-size:var(--fs-lg);line-height:1.65;color:var(--fg);min-width:0}
 .find-doc-empty{padding:8px 0;font-size:var(--fs-sm);color:var(--fg3);font-style:italic}
 .find-block{position:relative;margin:0 0 2px;padding-right:52px}
-.find-block:hover .find-block-controls,.find-block:focus-within .find-block-controls{opacity:1;pointer-events:auto}
+.find-block:hover .find-block-controls,.find-block:focus-within .find-block-controls,.find-editing .find-block-controls{opacity:1;pointer-events:auto}
 .find-doc-text .find-text-view.md{margin:0;cursor:text}
 .find-doc-text .find-text-view.md>:first-child{margin-top:0}
 .find-doc-text .find-text-view.md>:last-child{margin-bottom:0}
@@ -1125,12 +1119,14 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #sseStatus #sseLabel{display:none}
   #sseStatus.reconnecting #sseLabel{display:inline}
   #appRow{flex-direction:column}
-  #tabs{width:100%;height:44px;min-height:44px;flex-direction:row;align-items:center;gap:3px;padding:4px 6px;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line2);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+  #tabs{display:none}
   .nav-rail-group{display:contents}
   .nav-rail-group-label,.nav-rail-foot{display:none}
   .tab{width:auto;min-height:34px;padding:6px 10px;flex:none}
   #main{width:100%;min-width:0;overflow:hidden}
   .panel{min-width:0;overflow:hidden}
+  #panel-proxy.active{overflow-y:auto}
+  #panel-proxy.active #rows{flex:1 0 100px}
   #panel-proxy.active #inspect{height:38%;flex-direction:column}
   #panel-proxy.active #inspect .pane{flex:1;min-height:110px}
   .icpt-bar{flex-wrap:wrap;overflow-x:visible}
@@ -1183,7 +1179,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
 
 /* top-bar capture liveness dot */
 #capDot{background:var(--fg3);box-shadow:none;transition:background var(--motion-base) var(--motion-standard)}
-#capDot.live{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse var(--motion-live) var(--motion-standard) infinite}
+#capDot.live{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:none}
 
 /* keyboard-shortcut cheatsheet — desktop card grid */
 kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:var(--r-sm);padding:2px 7px;color:var(--fg);white-space:nowrap;line-height:1.3}
@@ -1259,7 +1255,7 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .check-status-ok{border-color:var(--accent)}
 .check-status-finding{border-color:var(--amber)}
 .check-status-pending{border-color:var(--line2)}
-.notes-status{font-size:var(--fs-xs);min-width:4.5em;opacity:0;transition:opacity var(--motion-base) var(--motion-standard)}
+.notes-status{overflow-wrap:anywhere;white-space:normal;font-size:var(--fs-xs);min-width:4.5em;opacity:0;transition:opacity var(--motion-base) var(--motion-standard)}
 /* .notes-ai-dialog now only supplies size on top of the shared .modal-shell recipe. */
 .notes-ai-dialog{width:min(960px,94vw);max-height:86vh}
 .notes-ai-panes{flex:1;display:flex;min-height:360px;border-top:1px solid var(--line)}
@@ -1335,21 +1331,23 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
   .find-view .scan-list{width:100%;height:auto;max-height:210px;flex:none;border-right:none;border-bottom:1px solid var(--line2)}
   .find-view .find-detail{min-height:0}
   .settings-wrap{flex-direction:column;overflow:auto}
-  .settings-nav{width:100%;max-height:none;border-right:none;border-bottom:1px solid var(--line);overflow:visible;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px}
-  .settings-search{grid-column:1/-1;margin-bottom:2px}
-  .settings-nav-group{display:contents}
+  .settings-nav{width:100%;max-height:none;border-right:none;border-bottom:1px solid var(--line);overflow:visible;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px}
+  .settings-search{flex:1 1 180px;min-width:0;width:auto;margin-bottom:0}
+  .settings-nav-group{display:none}
+  .settings-picker{display:flex;align-items:center;gap:8px;flex:1 1 240px;min-width:0;font-size:var(--fs-sm)}
+  .settings-picker .ui-select{flex:1;min-width:0}
+  .settings-picker .ui-select-trigger{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);text-align:left;min-height:36px}
   .settings-nav-group-label{display:none}
   .settings-nav-group+.settings-nav-group{margin-top:0}
   .settings-nav button{min-width:0;padding:8px 9px;text-align:center;line-height:1.3}
   .settings-nav-empty{grid-column:1/-1}
   .settings-body{overflow:visible;padding:14px}
   .settings-body .set-sec:not([hidden]):has(> .section:not(details) ~ .section:not(details)){grid-template-columns:minmax(0,1fr)}
-  .settings-body .section{padding:18px}
+  .settings-body .section{padding:16px 0}
   .settings-form-grid,.settings-form-grid-host,.settings-quick-add{grid-template-columns:minmax(0,1fr)}
   .settings-quick-add .btn{width:100%}
 }
 @media (max-width:600px){
-  .settings-nav{grid-template-columns:repeat(3,minmax(0,1fr))}
   .settings-nav button{font-size:var(--fs-sm)}
   .btn.find-mobile-back{display:inline-flex}
   .find-view .find-detail.find-mobile-detail-visible{display:block}
@@ -1357,6 +1355,73 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
   .find-view:has(.find-mobile-detail-visible) .scan-list{display:none}
   .find-view .scan-list.find-mobile-list-visible{display:flex}
   .find-detail{padding:14px 16px}
+  .find-header-sticky{position:static}
   .find-article{padding:16px;border-radius:var(--r-md)}
   .find-evidence-help{display:block;width:100%;margin:0}
 }
+
+/* App-rendered controls: platform widgets never paint in the workspace. */
+select{display:none!important}
+button,input,textarea{appearance:none;-webkit-appearance:none}
+input[type=checkbox],input[type=radio]{appearance:none;-webkit-appearance:none;display:inline-grid;place-content:center;vertical-align:middle;width:16px;height:16px;min-width:16px;flex:none;border:1px solid var(--fg3);border-radius:3px;background:var(--bg);cursor:pointer}
+input[type=checkbox]:checked,input[type=radio]:checked{background:var(--accentSolid);border-color:var(--accentSolid)}
+input[type=checkbox]:checked::before{content:'';width:8px;height:4px;border-left:2px solid var(--onAccent);border-bottom:2px solid var(--onAccent);transform:rotate(-45deg) translateY(-1px)}
+input[type=checkbox]:indeterminate::before{content:'';width:8px;height:2px;background:var(--fg)}
+input[type=radio]{border-radius:50%}
+input[type=radio]:checked::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--onAccent)}
+input[type=checkbox]:disabled,input[type=radio]:disabled{opacity:.5;cursor:not-allowed}
+input[type=number]{appearance:textfield;-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-search-decoration{-webkit-appearance:none}
+summary{list-style:none;cursor:pointer}
+summary::-webkit-details-marker{display:none}
+summary::before{content:'▸';color:var(--fg3);margin-right:7px}
+details[open]>summary::before{content:'▾'}
+.settings-help{margin:8px 0 12px}
+.settings-help p{margin-top:8px;max-width:65ch;line-height:1.6}
+.find-export-options{flex:1 1 100%;order:3;min-width:0;padding-top:4px}
+.find-export-fields{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:10px}
+.find-export-fields .find-groupby{width:auto}
+.mobile-tool-nav{display:none}
+.ui-tooltip{pointer-events:none;position:fixed;z-index:10000;max-width:min(340px,calc(100vw - 16px));padding:8px 10px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--bg2);color:var(--fg);font:var(--fs-sm)/1.5 var(--ui);box-shadow:var(--elev-2);overflow-wrap:anywhere;white-space:pre-line}
+@media (max-width:720px){
+  .mobile-tool-nav{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
+  .mobile-tool-nav .ui-select{flex:1;min-width:0}
+  .mobile-tool-nav .ui-select-trigger{min-height:36px}
+}
+
+@media (forced-colors:active){
+  input[type=checkbox],input[type=radio]{forced-color-adjust:none;background:Canvas;border-color:ButtonText}
+  input[type=checkbox]:checked,input[type=radio]:checked{background:Highlight;border-color:Highlight}
+  input[type=checkbox]:checked::before{border-color:HighlightText}
+  input[type=radio]:checked::before{background:HighlightText}
+  input[type=checkbox]:indeterminate::before{background:ButtonText}
+  input[type=checkbox]:disabled,input[type=radio]:disabled{border-color:GrayText;opacity:1}
+  input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px solid Highlight;outline-offset:3px}
+}
+
+/* Feature identity: shared vector family at navigation and content scales. */
+.nav-icon{width:18px;height:18px;color:var(--fg3);flex:none;pointer-events:none}
+.tab.active .nav-icon{color:var(--accent)}
+#logo .icon{width:20px;height:20px;stroke-width:2}
+.settings-section-heading{display:flex;align-items:center;gap:12px;padding:0 0 22px;margin-bottom:0;border-bottom:1px solid var(--line);max-width:880px;grid-column:1/-1;animation:surface-enter var(--motion-base) var(--motion-enter)}
+.settings-section-heading .icon{width:24px;height:24px;color:var(--accent)}
+.settings-section-heading h2{font-size:var(--fs-2xl);font-weight:650;letter-spacing:-.5px;line-height:var(--lh-tight)}
+@media (max-width:900px){
+  #main{margin:0;border:none;border-radius:0}
+  .settings-body{padding:20px 18px}
+  .settings-section-heading{padding-bottom:16px}
+}
+@media (max-width:600px){
+  .settings-body{padding:16px}
+  .settings-body .section{padding:20px 0}
+  .settings-section-heading h2{font-size:var(--fs-xl)}
+  .state-empty{padding:28px 18px}
+  .state-empty-icon,.find-empty .state-empty-icon{width:60px;height:60px;margin-bottom:8px}
+}
+
+@keyframes surface-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+.history-welcome{min-height:100%;height:auto}
+
+.history-welcome-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}

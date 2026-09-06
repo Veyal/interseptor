@@ -8,7 +8,7 @@ import (
 func TestUIStaticEditorsHaveAccessibleNames(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	for _, contract := range []string{
-		`<label for="deviceProxyManualHost">Manual host`,
+		`<label for="deviceProxyManualHost">Proxy host or IP`,
 		`id="setSessionHeaders" aria-label="Session headers`,
 		`<label for="macroReq">Refresh request`,
 		`<label for="loginMacroReq">Login request`,

@@ -14,21 +14,21 @@ import (
 	"testing"
 )
 
-func TestUIBrowserAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
+func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	repoRoot := filepath.Clean("../..")
-	reportBytes, err := os.ReadFile(filepath.Join(repoRoot, "docs/ui-audit/browser-audit.json"))
+	reportBytes, err := os.ReadFile(filepath.Join(repoRoot, "docs/ui-audit/redesign/manifest.json"))
 	if err != nil {
-		t.Fatalf("read retained UI browser audit: %v", err)
+		t.Fatalf("read retained visual audit manifest: %v", err)
 	}
 	var report struct {
-		ApplicationSource struct {
+		Runtime struct {
 			RuntimeSHA256      string `json:"runtime_sha256"`
 			RuntimeFiles       int    `json:"runtime_files"`
 			AuditHarnessSHA256 string `json:"audit_harness_sha256"`
-		} `json:"application_source"`
+		} `json:"runtime"`
 	}
 	if err := json.Unmarshal(reportBytes, &report); err != nil {
-		t.Fatalf("decode retained UI browser audit: %v", err)
+		t.Fatalf("decode retained visual audit manifest: %v", err)
 	}
 
 	cmd := exec.Command("git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "go.mod", "go.sum", "cmd", "internal")
@@ -72,16 +72,16 @@ func TestUIBrowserAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	}
 
 	gotDigest := hex.EncodeToString(digest.Sum(nil))
-	if gotDigest != report.ApplicationSource.RuntimeSHA256 || len(paths) != report.ApplicationSource.RuntimeFiles {
-		t.Fatalf("retained UI audit source identity is stale: got %s across %d files, evidence records %s across %d files", gotDigest, len(paths), report.ApplicationSource.RuntimeSHA256, report.ApplicationSource.RuntimeFiles)
+	if gotDigest != report.Runtime.RuntimeSHA256 || len(paths) != report.Runtime.RuntimeFiles {
+		t.Fatalf("retained visual audit source identity is stale: got %s across %d files, evidence records %s across %d files", gotDigest, len(paths), report.Runtime.RuntimeSHA256, report.Runtime.RuntimeFiles)
 	}
 	harness, err := os.ReadFile(filepath.Join(repoRoot, "scripts/ui_browser_audit.py"))
 	if err != nil {
 		t.Fatalf("read UI audit harness: %v", err)
 	}
 	harnessDigest := sha256.Sum256(harness)
-	if got := hex.EncodeToString(harnessDigest[:]); got != report.ApplicationSource.AuditHarnessSHA256 {
-		t.Fatalf("retained UI audit harness identity is stale: got %s, evidence records %s", got, report.ApplicationSource.AuditHarnessSHA256)
+	if got := hex.EncodeToString(harnessDigest[:]); got != report.Runtime.AuditHarnessSHA256 {
+		t.Fatalf("retained visual audit harness identity is stale: got %s, evidence records %s", got, report.Runtime.AuditHarnessSHA256)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestUIBrowserAuditRetainsCoreAndFindingsScreenshots(t *testing.T) {
 			} `json:"screenshots"`
 		} `json:"metrics"`
 		EngineReports map[string]struct {
-			Cases map[string]string `json:"cases"`
+			Cases   map[string]string `json:"cases"`
 			Metrics struct {
 				BrowserEngine string `json:"browser_engine"`
 				Screenshots   map[string]struct {

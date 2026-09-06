@@ -54,7 +54,7 @@ export function renderActivity(){
   const a=all.filter(passesFilter);
   const total=all.length;
   $('#actCount').textContent=total?(a.length<total?a.length+' / '+total:total+(total===1?' action':' actions')):'';
-  if(!total){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-antenna"/></svg></div><div class="state-empty-title">No AI activity yet</div><p class="state-empty-hint">Point your AI assistant at this project over MCP (API → MCP) and its every move shows up here, live.</p></div>';return;}
+  if(!total){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg></div><div class="state-empty-title">No AI activity yet</div><p class="state-empty-hint">Assistant activity appears here when connected through Settings → API &amp; MCP.</p></div>';return;}
   if(!a.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No activity matches the current filter.</p></div>';return;}
   box.innerHTML=a.map((it,i)=>{
     const fid=flowIdFromActivity(it);
