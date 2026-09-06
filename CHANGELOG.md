@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.10] - 2026-09-06
+
 ### Changed
 
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.9` release.
 - Redesigned the shared visual system with neutral dark/light surfaces, original feature icons, calmer toolbars and dialogs, clear Settings section headers, compact connection references, and reduced-motion-aware entrances.
 
 - Consolidated mobile tool navigation and added a searchable custom Settings section picker; listener port fields now use the shared input styling.
