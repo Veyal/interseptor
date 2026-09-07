@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Add CVSS preview discard and exact-revert recovery, preserving newer typing while pending saves settle.
+- Add CVSS preview discard and exact-revert recovery, clearing only abandoned Apply-owned save drafts while preserving newer typing and independent edits as pending saves settle.
 
 - Persist complete merged evidence and server-owned image provenance in the initial revision; preserve unapplied CVSS drafts across refreshes, block exports until finding drafts are saved, and assess grouped report readiness only for exported findings.
 

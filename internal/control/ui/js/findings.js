@@ -73,6 +73,7 @@ let findingWritesInFlight = 0;
 const findingWriteQueues = new Map();
 const findingDrafts = createFindingDraftStore();
 const cvssPreviewDrafts = createFindingDraftStore();
+const cvssApplyDraftTokens = new Map();
 let findingDetailRefreshDeferred = false;
 let findingDetailPointerActive = false;
 bindFindingPointerGuard($('#findDetail'));
@@ -779,16 +780,42 @@ function findingWriteQueue(id) {
   return queue;
 }
 
+async function applyCvssFinding(id, { vector, severity }) {
+  const previewTokens = cvssPreviewDrafts.tokens(id);
+  try {
+    const result = await patchFinding(id, { cvss: vector, severity }, tokens => cvssApplyDraftTokens.set(id, tokens));
+    cvssPreviewDrafts.acknowledge(id, previewTokens);
+    if (result?.latest) await loadFindings();
+  } catch (error) {
+    if (!findingWriteQueues.has(id) && cvssPreviewDrafts.tokens(id).vector !== previewTokens.vector && cvssPreviewDrafts.values(id).vector === acknowledgedFindingValue(id, 'cvss', '')) {
+      stageCvssPreview(id, acknowledgedFindingValue(id, 'cvss', ''));
+    }
+    throw error;
+  }
+}
+
+function discardCvssApplyDrafts(id, tokens = cvssApplyDraftTokens.get(id)) {
+  if (tokens) {
+    findingDrafts.acknowledge(id, tokens);
+    if (cvssApplyDraftTokens.get(id) === tokens) cvssApplyDraftTokens.delete(id);
+  }
+  updateFindingSaveFeedback(id);
+}
+
 function stageCvssPreview(id, vector) {
   const savingVector = Object.prototype.hasOwnProperty.call(findingWriteQueues.get(id)?.latestValues || {}, 'cvss');
-  if (!savingVector && vector === acknowledgedFindingValue(id, 'cvss', '')) cvssPreviewDrafts.discard(id, 'vector');
-  else cvssPreviewDrafts.stage(id, { vector });
+  if (!savingVector && vector === acknowledgedFindingValue(id, 'cvss', '')) {
+    cvssPreviewDrafts.discard(id, 'vector');
+    discardCvssApplyDrafts(id);
+  } else cvssPreviewDrafts.stage(id, { vector });
 }
 
 async function discardCvssPreview(id) {
   const tokens = cvssPreviewDrafts.tokens(id);
+  const applyTokens = cvssApplyDraftTokens.get(id);
   while (findingWriteQueues.has(id)) await new Promise(resolve => setTimeout(resolve, 20));
   cvssPreviewDrafts.acknowledge(id, tokens);
+  discardCvssApplyDrafts(id, applyTokens || null);
   return acknowledgedFindingValue(id, 'cvss', '');
 }
 
@@ -806,9 +833,10 @@ function acknowledgedFindingValue(id, key, fallback) {
     : fallback;
 }
 
-function enqueueFindingPatch(id, fields) {
+function enqueueFindingPatch(id, fields, onStaged) {
   const queue = findingWriteQueue(id);
   const tokens = findingDrafts.stage(id, fields);
+  onStaged?.(tokens);
   for (const key of Object.keys(fields)) {
     queue.latest[key] = tokens[key];
     queue.latestValues[key] = fields[key];
@@ -884,18 +912,24 @@ async function retryFindingSaves(id) {
   try {
     await flushPendingBodySave(id);
     const fields = findingDrafts.values(id);
-    if (Object.keys(fields).length) await patchFinding(id, fields);
+    const applyTokens = cvssApplyDraftTokens.get(id);
+    const currentTokens = findingDrafts.tokens(id);
+    if (Object.keys(fields).length) await patchFinding(id, fields, tokens => {
+      if (!applyTokens || cvssApplyDraftTokens.get(id) !== applyTokens) return;
+      const retained = Object.fromEntries(Object.entries(applyTokens).filter(([key, token]) => currentTokens[key] === token).map(([key]) => [key, tokens[key]]));
+      cvssApplyDraftTokens.set(id, retained);
+    });
     await loadFindings();
   } catch (error) { toast(error.message, 'error'); }
   finally { if(button?.isConnected)button.disabled=false; updateFindingSaveFeedback(id); }
 }
 
-async function patchFinding(id, fields) {
+async function patchFinding(id, fields, onStaged) {
   findingWritesInFlight++;
   const stateEl = $('#findSaveState');
   if (stateEl && bodyFindingId === id) stateEl.textContent = 'Saving…';
   try {
-    const result = await enqueueFindingPatch(id, fields);
+    const result = await enqueueFindingPatch(id, fields, onStaged);
     if (result?.latest) {
       const current = $('#findSaveState');
       if (current && bodyFindingId === id) current.textContent = 'Saved';
@@ -1086,12 +1120,7 @@ function renderFindingDetail() {
   </article>`;
   initUiSelects(box);
   const cvssEditor = box.querySelector('#findCvssEditor');
-  if (edit && cvssEditor) bindCvssEditor(cvssEditor, async ({ vector, severity }) => {
-    const tokens = cvssPreviewDrafts.tokens(f.id);
-    const result = await patchFinding(f.id, { cvss: vector, severity });
-    cvssPreviewDrafts.acknowledge(f.id, tokens);
-    if (result?.latest) await loadFindings();
-  }, vector => stageCvssPreview(f.id, vector), () => discardCvssPreview(f.id));
+  if (edit && cvssEditor) bindCvssEditor(cvssEditor, fields => applyCvssFinding(f.id, fields), vector => stageCvssPreview(f.id, vector), () => discardCvssPreview(f.id));
   box.querySelectorAll('[data-find-section]').forEach(link => link.addEventListener('click', event => {
     if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault(); activateFindingSection(link.dataset.findSection, {focus:true});
