@@ -19,10 +19,6 @@ links; original report hashes and the transformation are recorded. All other
 values and all probe, helper, and PNG bytes are unchanged. Earlier release
 evidence remains historical and intact.
 
-Runtime SHA-256: `4d372c41c869cc3dd6e50016812325a697906e4d65c5124807f2425a9a4a13f2`
-across 276 files. Tested binary: `2.1.0-local`, SHA-256
-`e22dcf5befd9a5939647caad88f90bc232df05000a5274e2438d8466206ac5fe`.
-
 To repeat the focused probe, create a new copy and supply the repository, current
 source/binary hashes, and owned temporary fixture paths before execution. The
 retained probe references a generic temporary frozen-helper path; supply the
