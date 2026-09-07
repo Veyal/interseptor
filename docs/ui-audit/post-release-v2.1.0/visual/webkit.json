@@ -1,0 +1,146 @@
+{
+  "binary_sha256": "e22dcf5befd9a5939647caad88f90bc232df05000a5274e2438d8466206ac5fe",
+  "binary_version": "interseptor v2.1.0-local",
+  "cases": {
+    "390 light-dark mobile controls reachable without overflow": "pass",
+    "UI restore selected distinct older revision with retained relationships": "pass",
+    "desktop claim custom-select and calculator": "pass",
+    "desktop cleanup preview": "pass",
+    "desktop deleted dialog": "pass",
+    "desktop session timeline": "pass"
+  },
+  "engine": "webkit",
+  "external_requests": [],
+  "failures": [],
+  "finding_id": 1,
+  "flow_ids": [
+    2,
+    1
+  ],
+  "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+  "revision_restore": {
+    "history_after": 6,
+    "history_before": 5,
+    "newer_title": "QA newer distinct title",
+    "retained_targets": [
+      [
+        "https://example.com/records/1",
+        [
+          2
+        ]
+      ],
+      [
+        "https://example.com/records/2",
+        [
+          1
+        ]
+      ]
+    ],
+    "selected_revision": 4,
+    "snapshot_title": "QA older selected snapshot"
+  },
+  "runtime_expected": "4d372c41c869cc3dd6e50016812325a697906e4d65c5124807f2425a9a4a13f2",
+  "runtime_observed": "4d372c41c869cc3dd6e50016812325a697906e4d65c5124807f2425a9a4a13f2",
+  "screenshots": [
+    {
+      "path": "screenshots/webkit-desktop-light-cleanup-preview.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "8acb4855cd43e3c5179d38e7855cb52a3f05c6f09362e4720826d57a6b90a90c"
+    },
+    {
+      "path": "screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "03cee292ee974ce12539fe3adb9fdfb957dc394100f93e93deb3e45bbe46561e"
+    },
+    {
+      "path": "screenshots/webkit-desktop-light-claim-controls.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "8820743e38d792fea32245500bb07876b2f1ddea6c84727a87958c59ff5a8677"
+    },
+    {
+      "path": "screenshots/webkit-desktop-light-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "24dd7edcabf84fecdd24e8179f3d0aed0e2348e817f5a722375c0059b08b4ea8"
+    },
+    {
+      "path": "screenshots/webkit-desktop-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "25be61886223363f6ba891d62e86766afd878e1e831c7f2acff3df97a20e2434"
+    },
+    {
+      "path": "screenshots/webkit-desktop-light-session-timeline.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "75a2c7c041095e7afbedaa287b6ba35703a9d46688765d0100298ae680c11e51"
+    },
+    {
+      "path": "screenshots/webkit-mobile-light-claim.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227"
+    },
+    {
+      "path": "screenshots/webkit-mobile-dark-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "0.72",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "f41039dd80bc395bb0436cc9f5bac3570ed08b91baee2d51607e9193e9b9e1fc"
+    },
+    {
+      "path": "screenshots/webkit-mobile-light-cleanup.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3"
+    },
+    {
+      "path": "screenshots/webkit-mobile-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "38c912f108872282299cf8e6aa150eb3681cb35e0c8460b1b0a7440607cff0ab"
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import (
 
 func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	repoRoot := filepath.Clean("../..")
-	manifestDir := filepath.Join(repoRoot, "docs/ui-audit/release-v2.1.0-verified")
+	manifestDir := filepath.Join(repoRoot, "docs/ui-audit/post-release-v2.1.0")
 	reportBytes, err := os.ReadFile(filepath.Join(manifestDir, "manifest.json"))
 	if err != nil {
 		t.Fatalf("read retained visual audit manifest: %v", err)

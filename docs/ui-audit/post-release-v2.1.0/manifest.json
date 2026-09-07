@@ -1,0 +1,227 @@
+{
+  "accepted_runs": {
+    "visual": {
+      "cases_per_engine": 6,
+      "engines": [
+        "chromium",
+        "firefox",
+        "webkit"
+      ],
+      "motion": "default",
+      "report": "visual/report.json"
+    }
+  },
+  "binary": {
+    "sha256": "e22dcf5befd9a5939647caad88f90bc232df05000a5274e2438d8466206ac5fe",
+    "version": "2.1.0-local"
+  },
+  "evidence": [
+    {
+      "file": "probes/frozen-helper.py",
+      "kind": "dependency",
+      "sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9"
+    },
+    {
+      "file": "probes/interseptor-findings-postrelease-v2.1.0-probe-ui-settled.py",
+      "kind": "probe",
+      "sha256": "964ef63d2995c9efafc40aaa01cd0cb4dd90d53838a80e8e4084f0b7583aaaf1"
+    },
+    {
+      "file": "visual/chromium.json",
+      "kind": "report",
+      "sha256": "66e16ad44c50c19eaf12b120606065dbd79fba7d84263e6fdeed6f4e95dca842"
+    },
+    {
+      "file": "visual/firefox.json",
+      "kind": "report",
+      "sha256": "c793cec0d237634fab47e664e5696c66600d400940e1a24ce1ec635f87a597c3"
+    },
+    {
+      "file": "visual/report.json",
+      "kind": "report",
+      "sha256": "74aa9befb81d480dbd8a4d5f45c859bb93686786c86f9cde19d6bc94d37f7f51"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "41fbfd023bb532ad8d45262e0f1d938f2a9b89e21b656458dda5be7574d2e86e"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "177f5f6f1568c6614b2f1ac9a1dc17fa812e886bd38f02124e97879c01554821"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "be59a9af70a5fd4925c5effcf1312f018c9f9e767a2efb08b431d20e7ff7246f"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "412c26151a4375e7f5247fee12d431b5e16c0c76e5830bf1afa35c302b52bb4d"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "1935dfced0d94d0fb234e34b380fa12cf5354f166cfa2859e7affc8bf00f2973"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "babe3f71c19c2b4a3784c6667760c560a15e18a114954d0bea81e267bb9f5a77"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "d9ad7b38244ed901dae9caef14f77026737357b4ce7c5a7865feaef002dbdc5a"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "c30d84edeb7b2864c86b46e36bcf5dd957fdce29d6e3076aa7697025b01294b8"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "a6fcf0e6bd243a78640ff4adc67006f36502b1e29e15892efa318fdecb396b73"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "fd03cb369d96676d4059b8e77ebf7641bea33dd3e5e5686158ac49c9c7c63607"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "4b2b131cec59f3bad258ba374e2cb5cd1fa1911f1b994523b5fffe19a7ac1fe9"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "155acb83535f0302fbf55204eac07b107b10b7da9fdb36ec4aa6e9aa12ae8e94"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "0442092789e1144d0f123c854e66a31ecef81b74f25c629ff0859e07c8ce4003"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "798dbe88e2911c92a3fa32959aed617d5b7bbdc0113573456acf4a7cfb291365"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "44da58a38fea9466e69e50dce31dd000f61b08eb57097c1ea959e83ba142dbcd"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "fdbd3dcc91cc1afadaf73692f29d250273d970768d3fc1755969fd469bd0c26b"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "e03c9143d46bfa03c5aa8022f5308967c0071c322173385e2d79e6452dcdb546"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "d3cdfb9d4eb2eea77fcbf1755b2ac681cadda27321c0e994fec4ddb9bbd10ab1"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "24dd7edcabf84fecdd24e8179f3d0aed0e2348e817f5a722375c0059b08b4ea8"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "8820743e38d792fea32245500bb07876b2f1ddea6c84727a87958c59ff5a8677"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "8acb4855cd43e3c5179d38e7855cb52a3f05c6f09362e4720826d57a6b90a90c"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "25be61886223363f6ba891d62e86766afd878e1e831c7f2acff3df97a20e2434"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "03cee292ee974ce12539fe3adb9fdfb957dc394100f93e93deb3e45bbe46561e"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "75a2c7c041095e7afbedaa287b6ba35703a9d46688765d0100298ae680c11e51"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "f41039dd80bc395bb0436cc9f5bac3570ed08b91baee2d51607e9193e9b9e1fc"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "38c912f108872282299cf8e6aa150eb3681cb35e0c8460b1b0a7440607cff0ab"
+    },
+    {
+      "file": "visual/webkit.json",
+      "kind": "report",
+      "sha256": "aa46f447dd1d6b86682c50be8cb8ce3611dc71c0f60cf9154602a695bc86a331"
+    }
+  ],
+  "publication_reports": [
+    {
+      "file": "visual/report.json",
+      "original_sha256": "d1c9b0b34dccd7060177e5343b451f00529006a3bb62fb637badecd7fe3728eb",
+      "transformation": "Only local probe and screenshot paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/webkit.json",
+      "original_sha256": "51a459f57f35ee001ad447909ff155c6f30f5c2ce1fcc04596ea2c0bbddbf140",
+      "transformation": "Only local probe and screenshot paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/chromium.json",
+      "original_sha256": "5c3b0b7442c8e7bbb2dc1a2734d4d08156f654f8384867d376b2998ef7d6f319",
+      "transformation": "Only local probe and screenshot paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/firefox.json",
+      "original_sha256": "bb6fa2aeb1ca8e715c013d78c098d3196a092e39a989c2b636b23701b6796a5a",
+      "transformation": "Only local probe and screenshot paths are made relative to this report. All other values are unchanged."
+    }
+  ],
+  "runtime": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 276,
+    "runtime_sha256": "4d372c41c869cc3dd6e50016812325a697906e4d65c5124807f2425a9a4a13f2"
+  }
+}

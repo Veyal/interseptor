@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.1.0` release.
+- Retain [18 visual checks](docs/ui-audit/post-release-v2.1.0.md) for the version-only maintenance build, with current source identity and unchanged release evidence.
+
 ## [2.1.0] - 2026-09-08
 
 ### Added
