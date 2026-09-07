@@ -1,13 +1,13 @@
 # v2.1.0 final release verification
 
-The final source includes the merge-provenance, CVSS draft/discard, export-save,
-and grouped-report readiness fixes made after the [initial candidate audit](release-v2.1.0.md).
-All 27 checks passed in Chromium, Firefox, and WebKit with default motion.
+The current source includes the finding deletion/evidence-write guards and
+revision-input validation made after the earlier final-release capture. All 27
+checks passed in Chromium, Firefox, and WebKit with default motion.
 
 The six visual checks per engine cover cleanup preview, restoring a distinct
 older revision with target links intact, custom claim/CVSS controls, deleted
 findings, passive session inspection, and reachable 390px light/dark controls.
-Thirty settled screenshots accompany the [visual report](release-v2.1.0-verified/visual/report.json).
+Thirty settled screenshots accompany the [visual report](release-v2.1.0-verified/current-1083cd00/visual/report.json).
 
 The three additional journeys per engine verify:
 
@@ -18,7 +18,7 @@ The three additional journeys per engine verify:
 - Discarding a failed Apply restores the saved vector, clears its owned drafts,
   and permits Done, actual project creation/switching back, and export.
 
-The [journey report](release-v2.1.0-verified/journeys/report.json) includes six
+The [journey report](release-v2.1.0-verified/current-1083cd00/journeys/report.json) includes six
 downloaded exports from disposable loopback fixtures. No engagement or live
 project data was used. Project switching used a separate fixture that permits
 restart; the standard managed visual fixture intentionally disables switching.
@@ -29,12 +29,13 @@ artifact hash. Published JSON reports are **path-normalized copies**: only local
 probe, screenshot, and download paths become relative artifact links. All
 results, assertions, captured file hashes, and other values remain unchanged.
 Each report's original SHA-256 is retained in `publication_reports`. Exact raw
-reports and unsuccessful probe attempts remain local; the original candidate
-evidence is unchanged. The accepted reports do not represent those earlier
-locator, timing, export-format, or fixture-setup failures as passing runs.
+reports, including two unsuccessful Chromium locator/timing attempts before the
+accepted saved-state retry, remain in the isolated evidence root. The earlier
+release capture remains unchanged in this directory and is identified in the
+manifest as historical evidence.
 
-Runtime SHA-256: `5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b`
+Runtime SHA-256: `1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5`
 across 276 files. Tested CLI: `2.0.10-local`, SHA-256
-`b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996`.
+`c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12`.
 Release artifacts receive `2.1.0` through linker flags. This is focused release
 verification; the broader feature audit remains in the earlier retained reports.

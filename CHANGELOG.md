@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Guard finding deletion with the shared save and evidence boundary, preserve failed drafts for Retry, and block export, project switching, and revision restore during deletion.
 - Reject invalid finding/revision IDs and malformed revision pagination cursors in HTTP and MCP requests.
 
+### Changed
+
+- Refresh the retained final-release browser evidence against the current Findings runtime in Chromium, Firefox, and WebKit; preserve the earlier capture and record the exact current probes, binary, screenshots, exports, and report hashes.
+
 ## [2.1.0] - 2026-09-08
 
 ### Added
