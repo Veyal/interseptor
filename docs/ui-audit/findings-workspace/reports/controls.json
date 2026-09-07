@@ -1,0 +1,68 @@
+{
+  "base_url": "http://127.0.0.1:49711",
+  "facts": [
+    {
+      "case": "phone-findings-severity-dropdown",
+      "menuRect": {
+        "height": 226,
+        "width": 180,
+        "x": 12,
+        "y": 259
+      },
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "case": "phone-column-picker",
+      "pickerRect": {
+        "height": 238,
+        "width": 168,
+        "x": 214,
+        "y": 187
+      },
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "case": "desktop-upstream-scheme-dropdown",
+      "menuRect": {
+        "height": 190,
+        "width": 420,
+        "x": 459,
+        "y": 656.140625
+      },
+      "subtitleOptionCount": 0,
+      "viewport": [
+        1440,
+        900
+      ]
+    }
+  ],
+  "runtime_digest": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "screenshots": [
+    {
+      "capture_filename": "phone-findings-severity-dropdown.png",
+      "path": "screenshots/controls/phone-findings-severity-dropdown.png",
+      "retained": true,
+      "sha256": "9d399c8a9049c5474187d8812eb3754a9d483beee4ba9cc2591950b45e477c64"
+    },
+    {
+      "capture_filename": "phone-column-picker.png",
+      "path": "screenshots/controls/phone-column-picker.png",
+      "retained": true,
+      "sha256": "eeaddb7b5edee20865a714c4038db753596b70cdefadf13da744b9832939de43"
+    },
+    {
+      "capture_filename": "desktop-upstream-scheme-dropdown.png",
+      "path": "screenshots/controls/desktop-upstream-scheme-dropdown.png",
+      "retained": true,
+      "sha256": "0d1fcc2cd0b821fd619cf4a0f7561e8e8eff2281972d171e8afe937abc23a7e8"
+    }
+  ],
+  "script_sha256": "1a5052e58aa96bdce020b92ac458218a68c36461e257b576578b2d57967d98c2",
+  "shared_probe_sha256": "0f06d6a481d15a1d93090ef178ba1491c485e379855409886df1a56c5533ef0f"
+}

@@ -207,7 +207,9 @@ CREATE TABLE IF NOT EXISTS findings (
   detail TEXT NOT NULL DEFAULT '',
   evidence TEXT NOT NULL DEFAULT '',
   fix TEXT NOT NULL DEFAULT '',
-  retest TEXT NOT NULL DEFAULT ''
+  retest TEXT NOT NULL DEFAULT '',
+  targets TEXT NOT NULL DEFAULT '[]',
+  proof_review TEXT NOT NULL DEFAULT '{}'
 );
 
 -- PoC request/response evidence attached to a finding (many flows per finding).
@@ -319,6 +321,8 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE findings ADD COLUMN summary TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN confidence TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN retest TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN targets TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE findings ADD COLUMN proof_review TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN verification_instructions TEXT NOT NULL DEFAULT ''`,
@@ -336,6 +340,10 @@ func Open(dir string) (*Store, error) {
 	}
 	s := &Store{db: db, bodiesDir: bodiesDir}
 	if err := s.ensureFlowsFTS(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.ensureFindingRevisions(); err != nil {
 		db.Close()
 		return nil, err
 	}

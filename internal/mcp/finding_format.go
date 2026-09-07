@@ -14,16 +14,24 @@ import (
 const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draft, complete before report-ready):
 1. Claim — title plus a concise summary of the vulnerable behavior
 2. Risk — impact (attacker outcome) and why (failed security boundary / root cause)
-3. Affected target — exact host, app, endpoint, environment, CWE, and CVSS when known
+3. Affected targets — ordered targets with methods, URL, role, variant, relation, and flow_ids. First entry is primary; preserve every affected endpoint.
+   - Link annotated evidence per target; only documented setup/chain targets may use evidenceException
+   - Environment: production|staging|development|testing|local (legacy prod is preserved)
+   - CVSS:4.0 vector is required for report readiness; the calculated score must match severity
 4. Reproduction — ordered typed blocks with role=context|setup|baseline|action|result|control|retest|observation
    - Before → Action → After is only the "Differential proof" preset for authz/state-change cases
-   - Passive/exposure findings can use Observation → Result; input cases can use Action → Result
+   - Outlines organize the narrative; readiness separately requires evidenced action, observed result, and a negative/control case
 5. Evidence — every report-ready finding needs a captured flow and/or image, with a short proof statement
-   - Prefer a real browser screenshot when the UI visually proves the claim
+   - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
    - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot
 6. Fix and retest — remediation plus the expected secure behavior / negative test in retest
-7. Review — confidence=tentative|firm|certain; needs_verification requires verificationInstructions and must say "NOT confirmed" when execution was not proven
+7. Review — confidence=tentative|firm|certain; proofReview.execution=demonstrated only for impact actually observed
+   - A permissive response or reachable prerequisite alone does not establish the claimed impact
+   - Otherwise use prerequisite_only or not_executed with an explicit proofReview.reason; status stays needs_verification
+   - Narrow impact to what evidence establishes. Mark unproven execution as "NOT confirmed". Keep verificationInstructions for the remaining review
+   - Keep secrets redacted; a length or digest can establish equality without publishing the value
+   - For integrity evidence, describe only the bounded, reversible observed change and preserve its flow
 
 Use structured blocks arrays when available; legacy body JSON remains accepted. Stub create (title only) is allowed.
 Do NOT file walls of freeform markdown. Put summary/impact/why/fix/retest in their fields, reproduction in text blocks, and raw proof in flow/image blocks.`
@@ -48,7 +56,7 @@ func findingBlocksSchema() map[string]any {
 				"hash":         map[string]any{"type": "string", "description": "existing content hash; upload new images with add_finding_image"},
 				"mime":         map[string]any{"type": "string"},
 				"caption":      map[string]any{"type": "string"},
-				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|operator_upload|tool_output|other"},
+				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|generated_image|operator_upload|tool_output|other"},
 				"sourceFlowId": map[string]any{"type": "integer", "description": "originating flow for captured flows or generated flow previews"},
 			},
 			"required": []string{"type"},
@@ -179,10 +187,27 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 	}
 
 	if reCredMention.MatchString(a.text) && !reCredBoldOrTable.MatchString(a.text) {
-		warns = append(warns, "credentials/secrets mentioned but not highlighted — put them in a markdown table or **bold** list in a PoC step note")
+		warns = append(warns, "credentials/secrets mentioned — redact values; use a length or digest when it is sufficient evidence")
 	}
 
 	return nil, warns
+}
+
+func findingTargetsSchema() map[string]any {
+	return map[string]any{"type": "array", "maxItems": 64, "description": "Ordered affected targets; first is primary. Link captured evidence through flow_ids.", "items": obj(map[string]any{
+		"url": pt("string"), "methods": map[string]any{"type": "array", "items": pt("string")}, "method": p("string", "single-method input alias"),
+		"role": p("string", "identity prerequisite"), "variant": p("string", "parameter, object identifier, or variant"), "relation": p("string", "affected|source|sink|setup|chain"), "note": pt("string"),
+		"flow_ids": map[string]any{"type": "array", "items": pt("integer")}, "image_hashes": map[string]any{"type": "array", "items": pt("string")}, "evidenceException": p("string", "documented reason for setup/chain target without its own evidence"),
+	}, "url")}
+}
+
+func findingProofReviewSchema() map[string]any {
+	ref := obj(map[string]any{"flowId": pt("integer"), "hash": pt("string")})
+	claims := map[string]any{}
+	for _, key := range []string{"authenticated_without_required_factor", "browser_execution", "account_control", "state_change"} {
+		claims[key] = obj(map[string]any{"note": p("string", "Reviewer observation, not an automatic verification flag"), "evidence": map[string]any{"type": "array", "maxItems": 16, "items": ref}}, "note", "evidence")
+	}
+	return obj(map[string]any{"claims": obj(claims), "execution": p("string", "demonstrated|prerequisite_only|not_executed"), "reason": p("string", "required when impact was not demonstrated"), "visual": p("boolean", "true when a real browser screenshot is required to establish the visual claim"), "evidence": obj(map[string]any{"action": ref, "result": ref, "control": ref})})
 }
 
 func narrativeArtifacts(body, detail string) findingArtifacts {

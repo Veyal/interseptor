@@ -20,6 +20,14 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   visible context.
 - Include the selection generation in dependent body or detail renderers so a
   re-selection invalidates work started for an older snapshot.
+- For shared response panes, invalidate pending reads on every tab load and new
+  send, including an empty or pending tab. Clear the previous preview immediately
+  and check the render generation, owner, response ID, mode, and send state after
+  each await. Carry response MIME and length through send and history adoption;
+  gate HTML mode by MIME and bind large-preview opt-in to that response ID.
+- Reuse `renderHTMLResponse` for passive captured HTML in History and Repeater.
+  Keep HTTP headers outside `srcdoc`, escape its attribute, and retain the empty
+  iframe sandbox; a response preview must not grant scripts or same-origin access.
 - Keep successful values, authoritative empty values, and read failures
   distinct. Never persist a local fallback after a failed hydration read.
 - Bound project-identity reads and fail closed when neither authoritative
@@ -88,6 +96,14 @@ storage, lazy feature imports, or editors that persist server-backed drafts.
   draft is dirty, or a write is in flight, then apply the latest deferred view.
   Capture and restore any stable focusable detail control—not only form fields—
   when that deferred remount becomes safe.
+- Findings retains open disclosures by their stable DOM IDs during remounts.
+  Give each new review disclosure and repeated claim field an identity tied to
+  its capability, so a trailing save cannot close it or move focus to a sibling.
+  Verify by opening the disclosure while an earlier save is settling.
+- A blur callback can run between pointer press and click in WebKit. Keep the
+  pressed detail control mounted through click dispatch before flushing a
+  deferred refresh; release the guard on pointer cancellation and window blur.
+  An old release callback must not end a newer pointer interaction.
 - Keep authoritative lifecycle transitions separate from display-only renders.
   Filtering or opening history may repaint results, but must not change run
   ownership, locks, completion capture, polling, or the authoritative fallback.

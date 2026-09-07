@@ -39,3 +39,13 @@ Contrast-check actual filled label recipes (`.badge`, `.ai-tag`) as well as toke
 pairs: a text-safe light accent cannot serve as the fill behind white text.
 Screenshot fixtures must keep list data and diagnostic/statistics state coherent;
 preserve diagnostic variants separately rather than hiding real warnings.
+
+Keep palette transport values compatible with the API (tag colors use hex).
+Theme tokens belong in rendering, not saved payloads. Exercise every preset and
+Clear through the visible menu, then verify persistence and light/dark contrast.
+
+Open a short context menu before a long one when checking placement. Reset the
+previous inline width and measure wrapped height before positioning. Check text
+Range bounds against adjacent values and the row, not only menu-box overflow.
+Labels must remain readable while secondary values may ellipsize. Verify focus
+returns to the trigger after dismissal and survives an acknowledged tag refresh.

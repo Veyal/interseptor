@@ -1,0 +1,2872 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": {},
+  "engines": {
+    "chromium": {
+      "cases": {
+        "1024x768:boot": {
+          "status": "pass"
+        },
+        "1024x768:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1024x768:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1024x768:panel:activity": {
+          "status": "pass"
+        },
+        "1024x768:panel:findings": {
+          "status": "pass"
+        },
+        "1024x768:panel:intercept": {
+          "status": "pass"
+        },
+        "1024x768:panel:intruder": {
+          "status": "pass"
+        },
+        "1024x768:panel:map": {
+          "status": "pass"
+        },
+        "1024x768:panel:notes": {
+          "status": "pass"
+        },
+        "1024x768:panel:proxy": {
+          "status": "pass"
+        },
+        "1024x768:panel:repeater": {
+          "status": "pass"
+        },
+        "1024x768:panel:scanner": {
+          "status": "pass"
+        },
+        "1024x768:panel:settings": {
+          "status": "pass"
+        },
+        "1024x768:reduced-motion": {
+          "status": "pass"
+        },
+        "1024x768:settings:api": {
+          "status": "pass"
+        },
+        "1024x768:settings:devices": {
+          "status": "pass"
+        },
+        "1024x768:settings:project": {
+          "status": "pass"
+        },
+        "1024x768:settings:proxy": {
+          "status": "pass"
+        },
+        "1024x768:settings:scanner": {
+          "status": "pass"
+        },
+        "1024x768:settings:scope": {
+          "status": "pass"
+        },
+        "1024x768:settings:session": {
+          "status": "pass"
+        },
+        "1024x768:settings:tls": {
+          "status": "pass"
+        },
+        "1440x900:boot": {
+          "status": "pass"
+        },
+        "1440x900:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1440x900:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1440x900:panel:activity": {
+          "status": "pass"
+        },
+        "1440x900:panel:findings": {
+          "status": "pass"
+        },
+        "1440x900:panel:intercept": {
+          "status": "pass"
+        },
+        "1440x900:panel:intruder": {
+          "status": "pass"
+        },
+        "1440x900:panel:map": {
+          "status": "pass"
+        },
+        "1440x900:panel:notes": {
+          "status": "pass"
+        },
+        "1440x900:panel:proxy": {
+          "status": "pass"
+        },
+        "1440x900:panel:repeater": {
+          "status": "pass"
+        },
+        "1440x900:panel:scanner": {
+          "status": "pass"
+        },
+        "1440x900:panel:settings": {
+          "status": "pass"
+        },
+        "1440x900:reduced-motion": {
+          "status": "pass"
+        },
+        "1440x900:settings:api": {
+          "status": "pass"
+        },
+        "1440x900:settings:devices": {
+          "status": "pass"
+        },
+        "1440x900:settings:project": {
+          "status": "pass"
+        },
+        "1440x900:settings:proxy": {
+          "status": "pass"
+        },
+        "1440x900:settings:scanner": {
+          "status": "pass"
+        },
+        "1440x900:settings:scope": {
+          "status": "pass"
+        },
+        "1440x900:settings:session": {
+          "status": "pass"
+        },
+        "1440x900:settings:tls": {
+          "status": "pass"
+        },
+        "390x844:boot": {
+          "status": "pass"
+        },
+        "390x844:mobile-custom-tool-selector": {
+          "status": "pass"
+        },
+        "390x844:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "390x844:no-visible-native-select": {
+          "status": "pass"
+        },
+        "390x844:panel:activity": {
+          "status": "pass"
+        },
+        "390x844:panel:findings": {
+          "status": "pass"
+        },
+        "390x844:panel:intercept": {
+          "status": "pass"
+        },
+        "390x844:panel:intruder": {
+          "status": "pass"
+        },
+        "390x844:panel:map": {
+          "status": "pass"
+        },
+        "390x844:panel:notes": {
+          "status": "pass"
+        },
+        "390x844:panel:proxy": {
+          "status": "pass"
+        },
+        "390x844:panel:repeater": {
+          "status": "pass"
+        },
+        "390x844:panel:scanner": {
+          "status": "pass"
+        },
+        "390x844:panel:settings": {
+          "status": "pass"
+        },
+        "390x844:reduced-motion": {
+          "status": "pass"
+        },
+        "390x844:settings:api": {
+          "status": "pass"
+        },
+        "390x844:settings:devices": {
+          "status": "pass"
+        },
+        "390x844:settings:project": {
+          "status": "pass"
+        },
+        "390x844:settings:proxy": {
+          "status": "pass"
+        },
+        "390x844:settings:scanner": {
+          "status": "pass"
+        },
+        "390x844:settings:scope": {
+          "status": "pass"
+        },
+        "390x844:settings:session": {
+          "status": "pass"
+        },
+        "390x844:settings:tls": {
+          "status": "pass"
+        },
+        "dark-computed": {
+          "status": "pass"
+        },
+        "export-dialog": {
+          "status": "pass"
+        },
+        "findings:edit": {
+          "status": "pass"
+        },
+        "findings:evidence": {
+          "status": "pass"
+        },
+        "findings:overview": {
+          "status": "pass"
+        },
+        "findings:read": {
+          "status": "pass"
+        },
+        "findings:remediation": {
+          "status": "pass"
+        },
+        "findings:review": {
+          "status": "pass"
+        },
+        "fixture-population": {
+          "status": "pass"
+        },
+        "http-popup": {
+          "status": "pass"
+        },
+        "inline-request-response": {
+          "status": "pass"
+        }
+      },
+      "console_errors": [],
+      "page_errors": []
+    },
+    "firefox": {
+      "cases": {
+        "1024x768:boot": {
+          "status": "pass"
+        },
+        "1024x768:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1024x768:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1024x768:panel:activity": {
+          "status": "pass"
+        },
+        "1024x768:panel:findings": {
+          "status": "pass"
+        },
+        "1024x768:panel:intercept": {
+          "status": "pass"
+        },
+        "1024x768:panel:intruder": {
+          "status": "pass"
+        },
+        "1024x768:panel:map": {
+          "status": "pass"
+        },
+        "1024x768:panel:notes": {
+          "status": "pass"
+        },
+        "1024x768:panel:proxy": {
+          "status": "pass"
+        },
+        "1024x768:panel:repeater": {
+          "status": "pass"
+        },
+        "1024x768:panel:scanner": {
+          "status": "pass"
+        },
+        "1024x768:panel:settings": {
+          "status": "pass"
+        },
+        "1024x768:reduced-motion": {
+          "status": "pass"
+        },
+        "1024x768:settings:api": {
+          "status": "pass"
+        },
+        "1024x768:settings:devices": {
+          "status": "pass"
+        },
+        "1024x768:settings:project": {
+          "status": "pass"
+        },
+        "1024x768:settings:proxy": {
+          "status": "pass"
+        },
+        "1024x768:settings:scanner": {
+          "status": "pass"
+        },
+        "1024x768:settings:scope": {
+          "status": "pass"
+        },
+        "1024x768:settings:session": {
+          "status": "pass"
+        },
+        "1024x768:settings:tls": {
+          "status": "pass"
+        },
+        "1440x900:boot": {
+          "status": "pass"
+        },
+        "1440x900:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1440x900:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1440x900:panel:activity": {
+          "status": "pass"
+        },
+        "1440x900:panel:findings": {
+          "status": "pass"
+        },
+        "1440x900:panel:intercept": {
+          "status": "pass"
+        },
+        "1440x900:panel:intruder": {
+          "status": "pass"
+        },
+        "1440x900:panel:map": {
+          "status": "pass"
+        },
+        "1440x900:panel:notes": {
+          "status": "pass"
+        },
+        "1440x900:panel:proxy": {
+          "status": "pass"
+        },
+        "1440x900:panel:repeater": {
+          "status": "pass"
+        },
+        "1440x900:panel:scanner": {
+          "status": "pass"
+        },
+        "1440x900:panel:settings": {
+          "status": "pass"
+        },
+        "1440x900:reduced-motion": {
+          "status": "pass"
+        },
+        "1440x900:settings:api": {
+          "status": "pass"
+        },
+        "1440x900:settings:devices": {
+          "status": "pass"
+        },
+        "1440x900:settings:project": {
+          "status": "pass"
+        },
+        "1440x900:settings:proxy": {
+          "status": "pass"
+        },
+        "1440x900:settings:scanner": {
+          "status": "pass"
+        },
+        "1440x900:settings:scope": {
+          "status": "pass"
+        },
+        "1440x900:settings:session": {
+          "status": "pass"
+        },
+        "1440x900:settings:tls": {
+          "status": "pass"
+        },
+        "390x844:boot": {
+          "status": "pass"
+        },
+        "390x844:mobile-custom-tool-selector": {
+          "status": "pass"
+        },
+        "390x844:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "390x844:no-visible-native-select": {
+          "status": "pass"
+        },
+        "390x844:panel:activity": {
+          "status": "pass"
+        },
+        "390x844:panel:findings": {
+          "status": "pass"
+        },
+        "390x844:panel:intercept": {
+          "status": "pass"
+        },
+        "390x844:panel:intruder": {
+          "status": "pass"
+        },
+        "390x844:panel:map": {
+          "status": "pass"
+        },
+        "390x844:panel:notes": {
+          "status": "pass"
+        },
+        "390x844:panel:proxy": {
+          "status": "pass"
+        },
+        "390x844:panel:repeater": {
+          "status": "pass"
+        },
+        "390x844:panel:scanner": {
+          "status": "pass"
+        },
+        "390x844:panel:settings": {
+          "status": "pass"
+        },
+        "390x844:reduced-motion": {
+          "status": "pass"
+        },
+        "390x844:settings:api": {
+          "status": "pass"
+        },
+        "390x844:settings:devices": {
+          "status": "pass"
+        },
+        "390x844:settings:project": {
+          "status": "pass"
+        },
+        "390x844:settings:proxy": {
+          "status": "pass"
+        },
+        "390x844:settings:scanner": {
+          "status": "pass"
+        },
+        "390x844:settings:scope": {
+          "status": "pass"
+        },
+        "390x844:settings:session": {
+          "status": "pass"
+        },
+        "390x844:settings:tls": {
+          "status": "pass"
+        },
+        "dark-computed": {
+          "status": "pass"
+        },
+        "export-dialog": {
+          "status": "pass"
+        },
+        "findings:edit": {
+          "status": "pass"
+        },
+        "findings:evidence": {
+          "status": "pass"
+        },
+        "findings:overview": {
+          "status": "pass"
+        },
+        "findings:read": {
+          "status": "pass"
+        },
+        "findings:remediation": {
+          "status": "pass"
+        },
+        "findings:review": {
+          "status": "pass"
+        },
+        "http-popup": {
+          "status": "pass"
+        },
+        "inline-request-response": {
+          "status": "pass"
+        }
+      },
+      "console_errors": [],
+      "page_errors": []
+    },
+    "webkit": {
+      "cases": {
+        "1024x768:boot": {
+          "status": "pass"
+        },
+        "1024x768:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1024x768:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1024x768:panel:activity": {
+          "status": "pass"
+        },
+        "1024x768:panel:findings": {
+          "status": "pass"
+        },
+        "1024x768:panel:intercept": {
+          "status": "pass"
+        },
+        "1024x768:panel:intruder": {
+          "status": "pass"
+        },
+        "1024x768:panel:map": {
+          "status": "pass"
+        },
+        "1024x768:panel:notes": {
+          "status": "pass"
+        },
+        "1024x768:panel:proxy": {
+          "status": "pass"
+        },
+        "1024x768:panel:repeater": {
+          "status": "pass"
+        },
+        "1024x768:panel:scanner": {
+          "status": "pass"
+        },
+        "1024x768:panel:settings": {
+          "status": "pass"
+        },
+        "1024x768:reduced-motion": {
+          "status": "pass"
+        },
+        "1024x768:settings:api": {
+          "status": "pass"
+        },
+        "1024x768:settings:devices": {
+          "status": "pass"
+        },
+        "1024x768:settings:project": {
+          "status": "pass"
+        },
+        "1024x768:settings:proxy": {
+          "status": "pass"
+        },
+        "1024x768:settings:scanner": {
+          "status": "pass"
+        },
+        "1024x768:settings:scope": {
+          "status": "pass"
+        },
+        "1024x768:settings:session": {
+          "status": "pass"
+        },
+        "1024x768:settings:tls": {
+          "status": "pass"
+        },
+        "1440x900:boot": {
+          "status": "pass"
+        },
+        "1440x900:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "1440x900:no-visible-native-select": {
+          "status": "pass"
+        },
+        "1440x900:panel:activity": {
+          "status": "pass"
+        },
+        "1440x900:panel:findings": {
+          "status": "pass"
+        },
+        "1440x900:panel:intercept": {
+          "status": "pass"
+        },
+        "1440x900:panel:intruder": {
+          "status": "pass"
+        },
+        "1440x900:panel:map": {
+          "status": "pass"
+        },
+        "1440x900:panel:notes": {
+          "status": "pass"
+        },
+        "1440x900:panel:proxy": {
+          "status": "pass"
+        },
+        "1440x900:panel:repeater": {
+          "status": "pass"
+        },
+        "1440x900:panel:scanner": {
+          "status": "pass"
+        },
+        "1440x900:panel:settings": {
+          "status": "pass"
+        },
+        "1440x900:reduced-motion": {
+          "status": "pass"
+        },
+        "1440x900:settings:api": {
+          "status": "pass"
+        },
+        "1440x900:settings:devices": {
+          "status": "pass"
+        },
+        "1440x900:settings:project": {
+          "status": "pass"
+        },
+        "1440x900:settings:proxy": {
+          "status": "pass"
+        },
+        "1440x900:settings:scanner": {
+          "status": "pass"
+        },
+        "1440x900:settings:scope": {
+          "status": "pass"
+        },
+        "1440x900:settings:session": {
+          "status": "pass"
+        },
+        "1440x900:settings:tls": {
+          "status": "pass"
+        },
+        "390x844:boot": {
+          "status": "pass"
+        },
+        "390x844:mobile-custom-tool-selector": {
+          "status": "pass"
+        },
+        "390x844:no-horizontal-overflow": {
+          "status": "pass"
+        },
+        "390x844:no-visible-native-select": {
+          "status": "pass"
+        },
+        "390x844:panel:activity": {
+          "status": "pass"
+        },
+        "390x844:panel:findings": {
+          "status": "pass"
+        },
+        "390x844:panel:intercept": {
+          "status": "pass"
+        },
+        "390x844:panel:intruder": {
+          "status": "pass"
+        },
+        "390x844:panel:map": {
+          "status": "pass"
+        },
+        "390x844:panel:notes": {
+          "status": "pass"
+        },
+        "390x844:panel:proxy": {
+          "status": "pass"
+        },
+        "390x844:panel:repeater": {
+          "status": "pass"
+        },
+        "390x844:panel:scanner": {
+          "status": "pass"
+        },
+        "390x844:panel:settings": {
+          "status": "pass"
+        },
+        "390x844:reduced-motion": {
+          "status": "pass"
+        },
+        "390x844:settings:api": {
+          "status": "pass"
+        },
+        "390x844:settings:devices": {
+          "status": "pass"
+        },
+        "390x844:settings:project": {
+          "status": "pass"
+        },
+        "390x844:settings:proxy": {
+          "status": "pass"
+        },
+        "390x844:settings:scanner": {
+          "status": "pass"
+        },
+        "390x844:settings:scope": {
+          "status": "pass"
+        },
+        "390x844:settings:session": {
+          "status": "pass"
+        },
+        "390x844:settings:tls": {
+          "status": "pass"
+        },
+        "dark-computed": {
+          "status": "pass"
+        },
+        "export-dialog": {
+          "status": "pass"
+        },
+        "findings:edit": {
+          "status": "pass"
+        },
+        "findings:evidence": {
+          "status": "pass"
+        },
+        "findings:overview": {
+          "status": "pass"
+        },
+        "findings:read": {
+          "status": "pass"
+        },
+        "findings:remediation": {
+          "status": "pass"
+        },
+        "findings:review": {
+          "status": "pass"
+        },
+        "http-popup": {
+          "status": "pass"
+        },
+        "inline-request-response": {
+          "status": "pass"
+        }
+      },
+      "console_errors": [],
+      "page_errors": []
+    }
+  },
+  "failures": [],
+  "finished_unix": 1788757847.2500632,
+  "fixture": {
+    "findings": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "fixture_url": "http://127.0.0.1:52390",
+    "flow": 1
+  },
+  "probe_sha256": "51e863530230d1e569f083527be4ace88868a88e2da92adefd67e6bef238f5a5",
+  "screenshots": [
+    {
+      "capture_filename": "chromium-1440x900-panel-proxy.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-proxy.png",
+      "retained": true,
+      "sha256": "2d3052ac7b022e3341fd7478b522fd62af34424fc7eae31fb652a7387482781c",
+      "surface": "panel:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-intercept.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-intercept.png",
+      "retained": true,
+      "sha256": "4dfb510ff58372ad399ca99f3cf7c1206805b2c5171b4ca1ef5a48de19539ef6",
+      "surface": "panel:intercept",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-repeater.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-repeater.png",
+      "retained": true,
+      "sha256": "3afe70716160765cd0e534303f2606496f6f56fc20af3fe66df7726c93543bca",
+      "surface": "panel:repeater",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-intruder.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-intruder.png",
+      "retained": true,
+      "sha256": "4f9e9e2cf22c3919eb0bc9d51d57ca292355325856fe87366219cb3d186f8e28",
+      "surface": "panel:intruder",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-scanner.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-scanner.png",
+      "retained": true,
+      "sha256": "99a8039487ab4dce624c0ba569d9821f3d6c5d4c2d8a2f0bfd8152bc52bb2512",
+      "surface": "panel:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-map.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-map.png",
+      "retained": true,
+      "sha256": "37db36040c74f1db251194af856a84dc44710834f753421b7e3d70112f7a01db",
+      "surface": "panel:map",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-findings.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-findings.png",
+      "retained": true,
+      "sha256": "1aecef1651ccba79ff6c5ca325354910a584b59dd2db77efdbfa75b8e16f8d14",
+      "surface": "panel:findings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-notes.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-notes.png",
+      "retained": true,
+      "sha256": "7d7dcce998098cc960f154a7001f69ea685e3bc5ee292cdf418f3592ded3a7f6",
+      "surface": "panel:notes",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-activity.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-panel-activity.png",
+      "retained": true,
+      "sha256": "4ead51ec6bd059bb242f6a2814b19bbe9cd3aa2d56c91c38966748106eb534c8",
+      "surface": "panel:activity",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-panel-settings.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "e365eee078f8caa24533ddf4d31b33d4b9695e08299606294b83ac516422f729",
+      "surface": "panel:settings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-proxy.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-proxy.png",
+      "retained": true,
+      "sha256": "e365eee078f8caa24533ddf4d31b33d4b9695e08299606294b83ac516422f729",
+      "surface": "settings:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-tls.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-tls.png",
+      "retained": true,
+      "sha256": "7fb9eb3bed2b644b66f941a0a7bc793f61608e6399eaa47d257b0c1d0bae4f9f",
+      "surface": "settings:tls",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-devices.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "b5587fdace617fa25878007b3660c7b6e7a1c0c4dda7fc9914da2b76ceeb693c",
+      "surface": "settings:devices",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-scope.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-scope.png",
+      "retained": true,
+      "sha256": "6bd88fc30a25c6b60466df67e3ea0144fdad07ab7d5934f65ad87abf49317122",
+      "surface": "settings:scope",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-scanner.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-scanner.png",
+      "retained": true,
+      "sha256": "f65c4de2d6c2cc75dd15c4b2cc2933f5280abca2e798c49ea9193685c7476b75",
+      "surface": "settings:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-session.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-session.png",
+      "retained": true,
+      "sha256": "8044f6d1d3ba68e9e75429b9502049a9f0ca247bab948b61b6cea28b14cad738",
+      "surface": "settings:session",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-project.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "1cbe4bad2553704bef26a7857587f37ca038ba086a9807a17ac96779ec0b6402",
+      "surface": "settings:project",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-settings-api.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-1440x900-settings-api.png",
+      "retained": true,
+      "sha256": "6b5e3394c784f594c2bdede7ceaa392380a80eb3d9148b988844b33e0573d9d0",
+      "surface": "settings:api",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-proxy.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "f8262bbe42bd9b8111cc16eed071e38f138b19dbcdf511bd33446d631bb25968",
+      "surface": "panel:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-intercept.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "52ed062a754efedebc37dc1f6268a422b854cc218f0fbd22ea93c55f2cac6e91",
+      "surface": "panel:intercept",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-repeater.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "7431bea5725a918f16bbb8ba193f6f828d4373c0110e477b367e7c9802051c91",
+      "surface": "panel:repeater",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-intruder.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "9852b8a8aec20f336de2c122595053a56012564afea32bbf2d9a0caf8f23cb82",
+      "surface": "panel:intruder",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-scanner.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "a357abf5a4e4858f5be5c1fb74124bcdef81cf31c0ffa79a675b7d57ab590117",
+      "surface": "panel:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-map.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "46ce784a61d2dadbf74eb1281b8697cd50f66e3a5bbc45f7cf85d10cafc864d7",
+      "surface": "panel:map",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-findings.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "a0cb527f72a89abe7d99fa576ca237ff1719a3f5657122141212b557246ba11f",
+      "surface": "panel:findings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-notes.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "774193d2c67ee09d20c8ffc6733ab60e23b1a5a3caaff1aa4c7bc3333f19c4c5",
+      "surface": "panel:notes",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-activity.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "b11455419c001a4ce5bcbab5c4d4be03799e650c5ad4c6124d573edadc3c2a09",
+      "surface": "panel:activity",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-panel-settings.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "041ae2378d5161d2c81a2247847dbc388505dad8c22a44193d221da45a4d4f83",
+      "surface": "panel:settings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-proxy.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "7749caff716aedfafdffa0ca0cbeacb12f0137e01ee8ee715490cd5a19ae6c92",
+      "surface": "settings:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-tls.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "042131f8b7e43c748df17b4ab9ea227de5720830f09ac8626b7a6442199cd513",
+      "surface": "settings:tls",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-devices.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "a6c552db7a720b1b018eaab443b81dd2491dc74a3efe0083980b18380789ccfa",
+      "surface": "settings:devices",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-scope.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "199eef7c9524bfb65d2a9389d4701c9b7180fc2c5459e30fc2f15459ef978312",
+      "surface": "settings:scope",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-scanner.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "f787248e8a42d63eedd4f8820a1f8a7af6f4490cb605b43fc609b70f245f32db",
+      "surface": "settings:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-session.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "dda8c33ce7bc5e4cf2703bb7e7e9a88fd80a207c522374ca68a1f41ac79652f6",
+      "surface": "settings:session",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-project.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "6fc0d6dcb7eb00c59bd8af3d486d6731b5e6997bb732dc20d4a94a5b4a560523",
+      "surface": "settings:project",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-1024x768-settings-api.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "c9564ef1ba649a2cd7a3208d4c438c545fa702da9eadfd51127a9647d74dc317",
+      "surface": "settings:api",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-proxy.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-proxy.png",
+      "retained": true,
+      "sha256": "b9300840afeb66de809d83a33e265e191f59a1f77a852e6eb32d3e894763947a",
+      "surface": "panel:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-intercept.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-intercept.png",
+      "retained": true,
+      "sha256": "7ede11bb48505daffd36b066a17138773ae5465b15a196f24aaf2dddd785d9a1",
+      "surface": "panel:intercept",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-repeater.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-repeater.png",
+      "retained": true,
+      "sha256": "5cdafaaf2c81a86ef790ccfee1d6e9e3c472d884b0a2ca8a0aaf602229f39633",
+      "surface": "panel:repeater",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-intruder.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-intruder.png",
+      "retained": true,
+      "sha256": "f1f69be808a6ef8f71cb00bf3b564025e48716d3dfb4ce7d6b09ff4eef8059c2",
+      "surface": "panel:intruder",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-scanner.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-scanner.png",
+      "retained": true,
+      "sha256": "056a3a5d0179fe64893f6382ceaffcba0808291cbeaf1ec35fdef6c3281ef045",
+      "surface": "panel:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-map.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-map.png",
+      "retained": true,
+      "sha256": "fd8cbfbeb2b687b6241b778d5c4415fc34c0233cfa322ecdb9f8950cd4d5c743",
+      "surface": "panel:map",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-findings.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-findings.png",
+      "retained": true,
+      "sha256": "f1da0cc507afdb99c0ca5322bbfc44a4ff6585accb60832cc1439c00b08bfd2b",
+      "surface": "panel:findings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-notes.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-notes.png",
+      "retained": true,
+      "sha256": "f772e059cb9235a3eb0cc54ef3e7e1d4bc6224c3ff8c5c333a1493c4fe4625aa",
+      "surface": "panel:notes",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-activity.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-panel-activity.png",
+      "retained": true,
+      "sha256": "a39255c10961fd3c6f4ef2088c9fdc372a2f365ec134e79c378b0a1762834f84",
+      "surface": "panel:activity",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-panel-settings.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "c26c8baf6bd78bcd20ce3c0ebe6fe2096f6525f5989587e72d68912b428d823d",
+      "surface": "panel:settings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-proxy.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-proxy.png",
+      "retained": true,
+      "sha256": "17218caa088f585f9fc83ace1846d583f7388852ede89af42097a3e9a0ac1874",
+      "surface": "settings:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-tls.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-tls.png",
+      "retained": true,
+      "sha256": "1c6d95c5b946ca551c619c50c31301644d4c7fda8cdcc9a597e2c87f9cb8e9a6",
+      "surface": "settings:tls",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-devices.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "b8364dd95b4ec1df1c9750c398f39ee032dac39dfa50c7fa65fecb94d151bfb4",
+      "surface": "settings:devices",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-scope.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-scope.png",
+      "retained": true,
+      "sha256": "3be7357af11d2abc29eaa000d74d6f5974f31c99142fc39343c8cac353133d85",
+      "surface": "settings:scope",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-scanner.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-scanner.png",
+      "retained": true,
+      "sha256": "1da48e5c5f3dbef05e996751a72f3b401d922a44d0878d2096bf3459d65cf7bc",
+      "surface": "settings:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-session.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-session.png",
+      "retained": true,
+      "sha256": "fdb63780992f2c40b137d1f1cb6a8c7dfc58f0da7bac023687dac62783d0bc08",
+      "surface": "settings:session",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-project.png",
+      "engine": "chromium",
+      "retained": false,
+      "sha256": "fef2fcc6df2770153f4665ba6a2fe8b3999cdba19b8e0d3bbf3c20f1fb965110",
+      "surface": "settings:project",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-settings-api.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-390x844-settings-api.png",
+      "retained": true,
+      "sha256": "a5d6559a0ada5a3e90d0273a189607a9c17a9cfac9ee98ee59bcafd6e96f0129",
+      "surface": "settings:api",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-overview.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-overview.png",
+      "retained": true,
+      "sha256": "39ccdba4deee0bdb7b35bdd0d6830df6e933daf20986dae23435940710f3752e",
+      "surface": "findings:overview",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-evidence.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-evidence.png",
+      "retained": true,
+      "sha256": "3bb71f76607c634912d93ceb4fc538f4d1bc79062d3ef007348a79b820e03522",
+      "surface": "findings:evidence",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-remediation.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-remediation.png",
+      "retained": true,
+      "sha256": "b447fe70dd7b5680b3f425d75268a76b0f7914b5e516edfd90b764ce6f6379aa",
+      "surface": "findings:remediation",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-review.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-review.png",
+      "retained": true,
+      "sha256": "41dd873dd0384503006a37e7fbd06e24c2f601f5a629eb6d24f7a41a3707f757",
+      "surface": "findings:review",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-read.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-read.png",
+      "retained": true,
+      "sha256": "ef9fff6a60472e28411eb1954fefc7e57ab27ec028fdadaf734660b81d025d00",
+      "surface": "findings:read",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-findings-edit.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-findings-edit.png",
+      "retained": true,
+      "sha256": "51653097e0efa53acb0d2bc4f6b35e19060780ea295c6746b56757c5911abb80",
+      "surface": "findings:edit",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-inline-http.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-inline-http.png",
+      "retained": true,
+      "sha256": "eb88ffe34e7c5beb171914f167c5ee003827531ae27db6efa30ed7f1dabc945a",
+      "surface": "inline-http",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-export-dialog.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-export-dialog.png",
+      "retained": true,
+      "sha256": "9cfd7f4b7ff0eda2ef57f979e60a9a4b907b8df603dc42ca3afdfa1303241bc1",
+      "surface": "export-dialog",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-http-popup.png",
+      "engine": "chromium",
+      "path": "screenshots/matrix/chromium-http-popup.png",
+      "retained": true,
+      "sha256": "39c560e9407cee5436c0e798ead490a2cb5ba679ee3ee464d8c0ae0718b64532",
+      "surface": "http-popup",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "576e6f4ff07a4a6a0baea4d04d9db807390fe77cb3fba1229b8cf8f2b3f4c605",
+      "surface": "panel:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-intercept.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "228facb6074bef7e0c6d94959eb00bbf7059f3855b0a6f8410c2032e0a472d07",
+      "surface": "panel:intercept",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-repeater.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "d24ee6932999832a3c7745f60ce644c39e69a5608453c72b071b885656e8896e",
+      "surface": "panel:repeater",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-intruder.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ba34c9489b262f36635fcb40f60089f51002772d0887394a648dd798ff294965",
+      "surface": "panel:intruder",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "00bd4347a6786a1e6d0534b62490a283fbfe3f066831e45b3898ec92ce97d096",
+      "surface": "panel:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-map.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "f12fc261ac75b2c55ac2b7be112410173f92dde23ba2e4c1d8a883bc2bcd4f9b",
+      "surface": "panel:map",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-findings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b5887b8297d3a4ad325e80849a5e125ba95696fbc157a0a153af287aa0e5b917",
+      "surface": "panel:findings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-notes.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "c1d5beb588f3df65289577ec7b11aa370a900b18ba6be3a08000576f79382409",
+      "surface": "panel:notes",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-activity.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "645325014dcc32e93c72815e9a5f4846d725d88fe3f0a030af3aa852f93b4c41",
+      "surface": "panel:activity",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-panel-settings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b3cced415f4b91f0f1e0fc22301a2fca2f436bac2b7bb79a33386e141a16aa11",
+      "surface": "panel:settings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b3cced415f4b91f0f1e0fc22301a2fca2f436bac2b7bb79a33386e141a16aa11",
+      "surface": "settings:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-tls.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "4211626613c42b16f98a26c5578adee4a1b452926d9be78b5043bf0746ad1779",
+      "surface": "settings:tls",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-devices.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "9825fd8e8a468cc3cd886744848cc27321a78148d8cb28ed29a0cfbcb07e552e",
+      "surface": "settings:devices",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-scope.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "34837ed1577b4d7ee50d9215bd54fef340ae4f6dad85f8552e2e34f31a1f169c",
+      "surface": "settings:scope",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "8e05110c07d7a237bdea27d102c425ddc8eed8ada3d5ed815652a04ed88cadbf",
+      "surface": "settings:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-session.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "2c48e0d6447c83d2f283c69c8171e484f969be7136c697dc17cf2ae597c76c51",
+      "surface": "settings:session",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-project.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ec73e2c0c075b15a57f9d4141e5a4c9069daabe67a71b9f0718f02fcdc749f8a",
+      "surface": "settings:project",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1440x900-settings-api.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "fd1b36253449eb7047de9fa93795bfd74e5656969d9046456b7998ff4cc475ac",
+      "surface": "settings:api",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "90f5b90a4c9a56ebd3e9a8bfa9d48575041eb372eada4cb09d32666618b62c47",
+      "surface": "panel:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-intercept.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "6f7de774294b45aac4c1e46b0dfb45b666b280d9cf8b1a0a26b27f9eaa111da4",
+      "surface": "panel:intercept",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-repeater.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "c95f3887f6a6d237b7ba7fc4d85afd2f62f6e35de0b373c5abb9d1e08eea8ece",
+      "surface": "panel:repeater",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-intruder.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "517994da0cdcc4e08b14fd8941f2e51a2351ef9e58fd3cff5b5bd62c20b7ed81",
+      "surface": "panel:intruder",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "cfb7c23bc327d29f08268558ce6e5bf25acf1fb431a1f2d77960ed9c7bd6931b",
+      "surface": "panel:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-map.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "5e38bc5c92ab8feae85cc7c897cb302be1ba60eeb86c2473639b6f5dfa8838f1",
+      "surface": "panel:map",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-findings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b8c4d8444e1d70e8961ea564c3b9315a457ca0d22eae94799ce37c59de5011ce",
+      "surface": "panel:findings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-notes.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "2288e6a2b821cd3a9a86222369606c89d6158d5a9cca6298a97da93253d3fc33",
+      "surface": "panel:notes",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-activity.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "2654866e6d6a343414ea062a9e5b28b3ca2decb3f7be1c494ddec2bb517eaea1",
+      "surface": "panel:activity",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-panel-settings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b742745459d959bb2b5a35f9ddd336e94924734ae1e155599b8430e42b36f37a",
+      "surface": "panel:settings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "b742745459d959bb2b5a35f9ddd336e94924734ae1e155599b8430e42b36f37a",
+      "surface": "settings:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-tls.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "8bde3a78f842447d286cb55ea239fd3c8d819e91e85baeca6bfcda6e919513ec",
+      "surface": "settings:tls",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-devices.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ff55f48dd69cf2fa4667eec31b88361d454202df5d87793503ae13800d9228c7",
+      "surface": "settings:devices",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-scope.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "9b230fb5e0ed9f33484bff1e83296a1b587b3d40df1cd4afc97bb83aa46a9b66",
+      "surface": "settings:scope",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "6b86e3d83a979216e25a0364bffd43c122d91ec2e434f193d6cab5c2d0e083ce",
+      "surface": "settings:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-session.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "10a24eb05685f3f926de7836bc334906aed5a7230276348b3db44e47b2571b14",
+      "surface": "settings:session",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-project.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "cf953887b4f2639415011381015f828d5a74d8ce3fea6c51c63c77ea8bb83dc8",
+      "surface": "settings:project",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-1024x768-settings-api.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "60b71f7eaa3feb478a3828f305216096f015c729ff916d583716115e73995bb3",
+      "surface": "settings:api",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ee5dda0766c6a963655cc4996ab466c35c55022112a4ceb4a66e019823b5170a",
+      "surface": "panel:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-intercept.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ef11fe860e11c0f0fa9d3425adb333bd6f3c0282be3c03ab825ad97bc4b2d2ba",
+      "surface": "panel:intercept",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-repeater.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "d019b27a7c4a8be72dc497e54a3fe14574160c2a1ac0b49d6a6cc32693ce5ae3",
+      "surface": "panel:repeater",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-intruder.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "eb70d4db2c81901d195347d7f8e557bd34cb61c4f4d6b1343a57c91420f2195b",
+      "surface": "panel:intruder",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "c5a5679e277042f4f8e4ff74f2b2e3d1a37570647e50fd10098c8933e5858e2c",
+      "surface": "panel:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-map.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "397e84f3cd61c180ca7406f7e94e17ea990232c2aad84e6b3ce401b77ae5744f",
+      "surface": "panel:map",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-findings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "f1bc36ddad4da5908782f5f5fb9dac547a773de95e87ca3f630124c134238e35",
+      "surface": "panel:findings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-notes.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "2897bab5bc4fa20e90db40f44dd8c37934af7f8bf03b468d3a350a80df0a1474",
+      "surface": "panel:notes",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-activity.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "912a0a8b170062f30315cc1867b2ed2b2d10f1e09bdaef81a6eda4f0833d8df3",
+      "surface": "panel:activity",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-panel-settings.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "1467788f1ec240ba6187cc056c59d04ef4f4f640e5a41b97a080d232b1b7c5fa",
+      "surface": "panel:settings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-proxy.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "1467788f1ec240ba6187cc056c59d04ef4f4f640e5a41b97a080d232b1b7c5fa",
+      "surface": "settings:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-tls.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "3dc8295a2abac4d6d275cbcabe925582dfc5098343e9ca5db0a258f2fc9ee2bb",
+      "surface": "settings:tls",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-devices.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "bcd8d53f231fbd97c5860aa5c5eca3ceb7642cbc94dc86a87b9cdd8ea11b6dda",
+      "surface": "settings:devices",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-scope.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "175d9f7e25ccbaa7939efac88498517ecc3876c6316ee6571127491e16b6e44b",
+      "surface": "settings:scope",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-scanner.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "af18f447002f591813717f5df430050ef31c9ab6b6f75477e1bfe30b67b2a207",
+      "surface": "settings:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-session.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "c1e727e8eef210a520f3d99a4018009dd1c02fc2ccfcf37c60d3ab4f6bf46b7d",
+      "surface": "settings:session",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-project.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "0d661c9d6598f459afe89702d7dbbaf73de73887e1099e96584cc5192ddd7784",
+      "surface": "settings:project",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-settings-api.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "be59dced0aece65bc129c2f78c33ceb19360f0a2ff4d2cbdd9c12b8be8f94544",
+      "surface": "settings:api",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-overview.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "1e5105ce5378d94920be55042bc1c0a4d42e6c3a29b9b6a3849ce8cc0a93d6d7",
+      "surface": "findings:overview",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-evidence.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "cb8e3220ad938cf44a32d210859ce487ad01ac25865901cb758857339c0950e2",
+      "surface": "findings:evidence",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-remediation.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "85f5ef8b9aa11699d583ee7a1525f6dbf218d0f67debb239fcae81dc828bf67c",
+      "surface": "findings:remediation",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-review.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "d11d58da4061fed7ede8459f5b1427a41fdfe75651ab2d5df0c320712b4c2c68",
+      "surface": "findings:review",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-read.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "cb8e3220ad938cf44a32d210859ce487ad01ac25865901cb758857339c0950e2",
+      "surface": "findings:read",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-findings-edit.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "f9f43ec7c759543f83cb61f917903989116dc8188622035defc24271fbe49e84",
+      "surface": "findings:edit",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-inline-http.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "ad985013e638e817f844718a44514d84e7582ae977dc6aa6471e77c479836da7",
+      "surface": "inline-http",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-export-dialog.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "9d06c0a8df68ccdcda484ce0fad7e5ba2635795298e5a05551e0f1bfbbd076f4",
+      "surface": "export-dialog",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-http-popup.png",
+      "engine": "firefox",
+      "retained": false,
+      "sha256": "81247f3e2cf4ca4a9ac469dcac53e9e4c5dd16227a36c14c5685b32f67a660e3",
+      "surface": "http-popup",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "382ec057a308e76964755641a9003f8ccbd5d09565854d8e5d71188fe54701fe",
+      "surface": "panel:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-intercept.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "a3c0abb39cd462b8db4cabe1d191b09db8f9e4eb1a760aed3897c21ba7eff313",
+      "surface": "panel:intercept",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-repeater.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "3499e7eb90a563afbd42dbc79699cb773fd33d62e86d581564f975e19640b604",
+      "surface": "panel:repeater",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-intruder.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "0e1e50d3d226eb44882b5a7ceab20f1ff6f1d5fdca7a059451bccd0e1660a858",
+      "surface": "panel:intruder",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "e4294336277ce77297633e38a03d481186c72842fa61d3df81dad10b0e8ab391",
+      "surface": "panel:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-map.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "2e5520101f097349331836436f2f32ee3b44cedecbd46fdedc601c868ba90550",
+      "surface": "panel:map",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-findings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "f65f3d46f9bdaea89b9dd42428caa577ec358d301204a157118365c4ed7e37e8",
+      "surface": "panel:findings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-notes.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "995f0bef24e9991b61faac38ca21308923c53c558a273d191836385f623738b5",
+      "surface": "panel:notes",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-activity.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "39e023b2bf6691486404a08223201bf239e34909d6840f61675f292f8fa39384",
+      "surface": "panel:activity",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-panel-settings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "0d7e1727285477ede2632ff8102142a60f34193d9c43ebdd944e70a84ca3da51",
+      "surface": "panel:settings",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "0d7e1727285477ede2632ff8102142a60f34193d9c43ebdd944e70a84ca3da51",
+      "surface": "settings:proxy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-tls.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "5b6e7a720ab0537a1b6a92ba4be63b33363eed676e4b709bed98eb02f6674d63",
+      "surface": "settings:tls",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-devices.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "16603e667ed0a54037930d406bf88791c20bcee16f3565f54f881d1153bd1371",
+      "surface": "settings:devices",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-scope.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "8f01c822a2dad458f5d404f3e2dc7440f357cd6a36f62b0738aa282d9e5a5269",
+      "surface": "settings:scope",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "66f8ed4433b8cda5a0dced1a32612d2b0f4e0950ce4081781a84199c0bb59d86",
+      "surface": "settings:scanner",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-session.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "1b74c57825cfb3ce4e8314658467dea7333cee46bd060ac911d8282abaffd816",
+      "surface": "settings:session",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-project.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "cf685970fda03b241ee5ad8f07e4e7ad7e973bc16712ae1b5375c03a9ccf8975",
+      "surface": "settings:project",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1440x900-settings-api.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "d6622b92ef781e54c4dbd65073d232883c3be9f497fe7db93c016658662c7190",
+      "surface": "settings:api",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "e94193e9560bd68541d312ce7ac508fdd9b3ca30b56a75cc3ef5b545c499e7de",
+      "surface": "panel:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-intercept.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "9eed49c863b37549f3f4ff90966ed03779beeac55ccca6286df2d8ced4b55676",
+      "surface": "panel:intercept",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-repeater.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "46a2c25c6d81956ae40c2167dfa1e55ad2ddfca1baef5b9237b937fe7cebbf68",
+      "surface": "panel:repeater",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-intruder.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "2525b96581906500385b3b7d3a8fb0a65c26e57f07b3dbc5589cae9052b16c32",
+      "surface": "panel:intruder",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "05f930b9261b5203ad88d6d793bc23ac7b7b976f35b04c7ca13b96ea26e7991e",
+      "surface": "panel:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-map.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "7d67ba4ff5175b86bd71bf286b0d35c4865a0abc0161fa61c112f405374f7f41",
+      "surface": "panel:map",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-findings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "848241a1c22a1962b17d49d9f8983f4afeb9019e25e1ca3f4355b90b8553982a",
+      "surface": "panel:findings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-notes.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "668133de2b07f37ed1e25f4342cb430a578c1939382f355944992d00baeef547",
+      "surface": "panel:notes",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-activity.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "40cc49d934f010c7dc7fd121f4472069d0a40525ae0dad09249f67e79d728d23",
+      "surface": "panel:activity",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-panel-settings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "3174e5242a264edaeba4c2298d038b9694621cd55b42d04180ec3083fa19e1a1",
+      "surface": "panel:settings",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "3174e5242a264edaeba4c2298d038b9694621cd55b42d04180ec3083fa19e1a1",
+      "surface": "settings:proxy",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-tls.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "837866a0dc56e3c4f2fdc5edfd1bf9fd45e9aba73bf96184e644633c084840f6",
+      "surface": "settings:tls",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-devices.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "dd9e4b950710094ca066ff0055a65b904ee4e48ce50e60c696372bb72b0e896c",
+      "surface": "settings:devices",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-scope.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "97613ebb7fa35eaabb0684dd7a2951fafdd0000c62283262ca0acc514550ec3c",
+      "surface": "settings:scope",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "732cec4cbd51c94b6f3a7be22a0909c88e1231b2969df37f4709c4a8c7b4e733",
+      "surface": "settings:scanner",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-session.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "98e74a22945967429729ccd6b55f3e4f15a56346e24f8625594b1c96b9ca3b28",
+      "surface": "settings:session",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-project.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "588f02ec57c1df9f743b762f1442bbda00cb7d439744c1ee41ec7310dfc89f5e",
+      "surface": "settings:project",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-1024x768-settings-api.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "0bb93faaf84b9428d46b2169eb409e8989f8f39c90341f22f3cac048a9895f90",
+      "surface": "settings:api",
+      "viewport": [
+        1024,
+        768
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "914f01dcd4e42534ab093ff63457490dd83973246502ad1473cee7efcfcb2cec",
+      "surface": "panel:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-intercept.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "38aa9e03f7638f21e8e9e79c6f51243f1187a9c852fcb9378ae0b555767bfe5c",
+      "surface": "panel:intercept",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-repeater.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "97bfffbd8b5b62192321433d56ca22a194181db727d896ca4e19b447b762a58d",
+      "surface": "panel:repeater",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-intruder.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "9bd498d923bbb5aefdb981baad214d06420e1b2d9eec59941d22d2401f0070e5",
+      "surface": "panel:intruder",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "077bd813d2f6c7e852f9e4433da79e9697539970db401cd9259254decf9faa79",
+      "surface": "panel:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-map.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "f1512d1d63d40c3a52445f491520ef9b31f2cdf08d939043e64e5c70b5c2ddae",
+      "surface": "panel:map",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-findings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "5454f28bf1b4d465e3dea7fb30ebfca6b7bfc2cfa7a4ff717e7bcfeac0f42a5c",
+      "surface": "panel:findings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-notes.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "bc5a4a1c58c5070bb76b63d423a08dce3695b56e315db070943a075ece689983",
+      "surface": "panel:notes",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-activity.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "97bc373ecbe1439bb8ce9865ede7020c77c3ee5ae18d9aba976e5f2d5900ac31",
+      "surface": "panel:activity",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-panel-settings.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "93939b1cc3c9f6f3f00a1f36587c7277df90481f1a23a7884de833d8d299cfe1",
+      "surface": "panel:settings",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-proxy.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "93939b1cc3c9f6f3f00a1f36587c7277df90481f1a23a7884de833d8d299cfe1",
+      "surface": "settings:proxy",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-tls.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "25f720944fdad1573f2f913dc408e6d9eeb3fbfc8faff6ffdfe4945bd367d48d",
+      "surface": "settings:tls",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-devices.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "440ad28d7491a49660576774968527d56ed2c227f033493d28706373011d9317",
+      "surface": "settings:devices",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-scope.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "9ba140158f6c917abb4107febc2303c489e019925222b45cd3222d7c591f3771",
+      "surface": "settings:scope",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-scanner.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "e9b7a4a49449d1a4175de647b16f542fc50dc3fcb26fd890409a31b5abfe9413",
+      "surface": "settings:scanner",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-session.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "233d672ea5c5784dd95724569cd1215a2ce821300df4c66a715e31900f1a4358",
+      "surface": "settings:session",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-project.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "560dc15155e4f2e55e7caeb94c0e88ac7c2ab5a3b83a71e84a4afd9a06b625d5",
+      "surface": "settings:project",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-settings-api.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "86c0a00049a0376afa0f7b314f5dc78f93236e152bb1ebf933a6cab29c37e212",
+      "surface": "settings:api",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-overview.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "a48d09f9737aa64a26eab81569d9ce0e6fe827a7b85391ea30a90bf48e77ccd9",
+      "surface": "findings:overview",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-evidence.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "d320c66c7ed1c18139d5add1a9632199b3e590e185e4fdbcbe30561a4a3a4e89",
+      "surface": "findings:evidence",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-remediation.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "e5a33a9260a03c844f680f96d29c177e913e980325b389fbd1f0c30c794aef29",
+      "surface": "findings:remediation",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-review.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "3d3a691e1e6db55a55ebcb0d8016435821e1e3571914c83f7eb5f2da056c10de",
+      "surface": "findings:review",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-read.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "d320c66c7ed1c18139d5add1a9632199b3e590e185e4fdbcbe30561a4a3a4e89",
+      "surface": "findings:read",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-findings-edit.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "9fc64ecb84bfa0e5bde69c61dbc242f3326672bd48c6ee82b153ed2558035662",
+      "surface": "findings:edit",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-inline-http.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "34171f0152d240f481ba4b70a29c1c17485c9812b6fe6fce438fa3a8ffbca18f",
+      "surface": "inline-http",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-export-dialog.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "7876d396a9eca4bb7302b4b836b60c12f37d2b1a6e03a8e5f93ff8a3088cb611",
+      "surface": "export-dialog",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "webkit-http-popup.png",
+      "engine": "webkit",
+      "retained": false,
+      "sha256": "ea4fd3ae9f9604498696656f4306ac6618154666dc58396f72aacf43476f6a63",
+      "surface": "http-popup",
+      "viewport": [
+        1440,
+        900
+      ]
+    }
+  ],
+  "session": {
+    "base": "http://127.0.0.1:52037",
+    "probe_sha256": "51e863530230d1e569f083527be4ace88868a88e2da92adefd67e6bef238f5a5",
+    "project": "ui-audit-a67428bd7147",
+    "proxy": "127.0.0.1:52038",
+    "source": {
+      "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+      "runtime_files": 257,
+      "runtime_sha256": "f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+      "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+    },
+    "started_unix": 1788757729.39166
+  },
+  "started_unix": 1788757817.470974,
+  "unhandled_js_errors": {
+    "chromium": [],
+    "firefox": [],
+    "webkit": []
+  }
+}

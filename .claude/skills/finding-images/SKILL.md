@@ -61,3 +61,17 @@ Click any screenshot (or markdown `.md-img`) → full-viewport lightbox: scroll 
 Prefer a real browser/device screenshot when visual state proves the issue. Use `render_flow_preview`
 only for generated HTTP visuals. A caption identifies the artifact; `proof` states the exact
 security-relevant claim it establishes.
+
+For visual claims, readiness requires a non-missing, annotated result artifact classified as
+`browser_screenshot` (an operator declaration, not independently authenticated provenance).
+`operator_upload` remains unclassified. Neither `flow_preview` nor `generated_image` qualifies;
+body edits and repeated uploads must preserve the generated origin of a known hash.
+
+
+### Ingestion and classification
+
+`source` is reviewer classification; server-owned `provenance` keeps original ingestion metadata.
+Do not copy client-supplied provenance into canonical storage. Reclassification must preserve the
+original ingestion and stamp the writing boundary/time. Known generated hashes cannot become
+browser/device proof when reused. Historical revision image hashes are GC roots even after the
+finding is deleted. Do not weaken those roots to reclaim space.

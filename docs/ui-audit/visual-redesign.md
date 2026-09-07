@@ -1,5 +1,8 @@
 # Visual redesign — 2026-09-06
 
+Historical review. The later [Findings workspace and shared-surface review](findings-workspace.md)
+owns the current redesign and its new verification evidence.
+
 The candidate uses a neutral workbench theme, a consistent original SVG feature
 family, clearer Settings hierarchy, and brief surface entrances. Existing custom
 controls, keyboard interaction, data ownership, and essential warnings remain.

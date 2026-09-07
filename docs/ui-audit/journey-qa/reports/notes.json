@@ -1,0 +1,66 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": [
+    {
+      "name": "desktop primary navigation and custom-control invariant",
+      "status": "pass"
+    },
+    {
+      "name": "desktop all 8 Settings sections via custom section controls",
+      "status": "pass"
+    },
+    {
+      "name": "project create safely rejects while managed candidate locks switching",
+      "status": "pass"
+    },
+    {
+      "name": "Notes edit preview and reload persistence",
+      "status": "pass"
+    },
+    {
+      "name": "BUG Notes delayed-save then immediate Edit preserves selected edit pane",
+      "status": "pass"
+    },
+    {
+      "name": "MOCK Notes failed-save exposes Retry and recovers on real retry",
+      "status": "pass"
+    },
+    {
+      "name": "phone custom tools and Settings pickers; no visible native selects",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "expected_mock_console_errors": [
+    "console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ],
+  "finished_unix": 1788758318.206468,
+  "mocked_or_skipped": [
+    "Active scanner, Intruder payload execution, Authz probes, share/tunnel, OOB callback, API/MCP key generation, device/system operations: deliberately not run.",
+    "Activity-to-flow detail needs an MCP-originated activity event; no MCP service used.",
+    "Project create/select/rename and import/export are disabled by the required managed-candidate canSwitch lock, so their real mutation paths are blocked by the safety harness."
+  ],
+  "probe_sha256": "76bb48e08052dc4d0a86b95edba288aa4e6376b7ccd29caf39b00ac3b0e0957d",
+  "screenshots": [
+    {
+      "capture_filename": "notes-delayed-save-immediate-edit.png",
+      "name": "notes-delayed-save-immediate-edit",
+      "path": "screenshots/notes/notes-delayed-save-immediate-edit.png",
+      "retained": true,
+      "sha256": "6737533f3632562f274813546a137d80b59d2fced227a8ee9fac0005c6a7b7e6"
+    },
+    {
+      "capture_filename": "phone-custom-tools-and-settings-picker.png",
+      "name": "phone-custom-tools-and-settings-picker",
+      "path": "screenshots/notes/phone-custom-tools-and-settings-picker.png",
+      "retained": true,
+      "sha256": "ced4ef06955779275d1847bdfce78a3c0d845ff7cb7758457e1aa7979654075c"
+    }
+  ],
+  "started_unix": 1788758315.340148,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 7
+  }
+}

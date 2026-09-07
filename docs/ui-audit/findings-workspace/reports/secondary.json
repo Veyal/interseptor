@@ -1,0 +1,98 @@
+{
+  "base": "http://127.0.0.1:52268",
+  "cases": [
+    {
+      "name": "desktop Map Tree/Table/Graph/Params plus path-host search",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Repeater response Raw/Pretty/Decoded and History drawer",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Intruder Lists/numeric panels/Race repeat and History drawer",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Notes Edit/Preview",
+      "status": "pass"
+    },
+    {
+      "name": "desktop API Settings Keys/Allowlist/Share/REST/MCP tabs",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Command palette search and safe navigation selection",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Custom Checks Code/Docs navigation",
+      "status": "pass"
+    },
+    {
+      "name": "desktop Message Codecs Code/Docs navigation",
+      "status": "pass"
+    },
+    {
+      "name": "phone Map Tree/Table/Graph/Params plus path-host search",
+      "status": "pass"
+    },
+    {
+      "name": "phone Repeater response Raw/Pretty/Decoded and History drawer",
+      "status": "pass"
+    },
+    {
+      "name": "phone Intruder Lists/numeric panels/Race repeat and History drawer",
+      "status": "pass"
+    },
+    {
+      "name": "phone Notes Edit/Preview",
+      "status": "pass"
+    },
+    {
+      "name": "phone API Settings Keys/Allowlist/Share/REST/MCP tabs",
+      "status": "pass"
+    },
+    {
+      "name": "phone Command palette search and safe navigation selection",
+      "status": "pass"
+    },
+    {
+      "name": "phone Custom Checks Code/Docs navigation",
+      "status": "pass"
+    },
+    {
+      "name": "phone Message Codecs Code/Docs navigation",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788716915.430444,
+  "probe": "probes/interseptor_secondary_surfaces.py",
+  "probe_sha256": "4c348959fad6932f1732a5f9b6ecdbca06bd203722690ce99bcd36b88fa17332",
+  "screenshots": [
+    {
+      "capture_filename": "desktop-map-secondary.png",
+      "name": "desktop-map-secondary",
+      "path": "screenshots/secondary/desktop-map-secondary.png",
+      "retained": true,
+      "sha256": "49b0d0979df5a295fb9727ba153781b7abf4264a942993b57e8df53f76c9053a"
+    },
+    {
+      "capture_filename": "phone-intruder-secondary.png",
+      "name": "phone-intruder-secondary",
+      "path": "screenshots/secondary/phone-intruder-secondary.png",
+      "retained": true,
+      "sha256": "2f8510ac4696013adc891b04a73c98894177e31085b17e4f28bc65a03d0df20c"
+    }
+  ],
+  "started_unix": 1788716905.877931,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 16
+  },
+  "untested": [
+    "Repeater Send; Intruder Start; scanner runs and custom-check test/save; codec test/save; API-key creation/reveal; allowlist/share/REST/MCP mutations; device/auth/server configuration. These are excluded UI-only operational actions."
+  ]
+}

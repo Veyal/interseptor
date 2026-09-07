@@ -77,7 +77,7 @@ func TestUIJourneyMapActivityLabelsAndRetryStates(t *testing.T) {
 		"renderLoadError(",
 		"finally",
 	)
-	requireUIRegex(t, activity, `if\(row\.classList\.contains\('act-jump'\)\)\{.*?wireRowKey\(row,open\)`)
+	requireUIRegex(t, activity, `(?s)if\(id\)\{.*?selectFlow\(id\);return;\}.*?row\.onclick=open;wireRowKey\(row,open\)`)
 	requireUIContains(t, settings, "renderLoadError(", "finally")
 	requireUIContains(t, scanner, "renderLoadError(", "finally")
 	requireUIContains(t, index,
@@ -285,9 +285,8 @@ func TestUIJourneyFindingAttachedFlowRepeaterAction(t *testing.T) {
 		`.find-evidence-actions`,
 		`.find-report-stepbody`,
 	)
-	if strings.Contains(findings, "Copy URL") || strings.Contains(findings, "Copy link") {
-		t.Error("finding flow actions retain copy controls")
-	}
+	// Copy belongs to reader navigation and captured evidence; replay continues
+	// to use the shared helper rather than reconstructing a request here.
 	if strings.Contains(findings, "fetch('/api/flows") || strings.Contains(findings, "api('/api/flows/'+id+'/raw") {
 		t.Error("finding flow action reconstructs request instead of using Repeater helper")
 	}

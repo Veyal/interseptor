@@ -1,0 +1,232 @@
+{
+  "application_source": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 257,
+    "runtime_sha256": "5f8866062d1f1b61e84cd7d84b3caca5488b09c26e2913560fb33b18e8ea1c2f",
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+  },
+  "base_url": "http://127.0.0.1:52424",
+  "cleanup": "ok",
+  "console_after-webkit-dark-desktop": [],
+  "console_after-webkit-light-phone": [],
+  "console_after-webkit-light-reduced-phone": [],
+  "dark_readability": {
+    "webkit": {
+      "chipBackground": "rgb(37, 43, 53)",
+      "chipColor": "rgb(110, 231, 194)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    }
+  },
+  "executed_probe": "probes/webkit.py",
+  "failures": [],
+  "finished_unix": 1788762993.672841,
+  "import": {
+    "body": "{\"imported\":28}\n",
+    "status": 200
+  },
+  "keyboard": {
+    "enter_focus_chip": true,
+    "enter_status": 204,
+    "escape_focus_chip": true,
+    "escape_repetitions": [
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      },
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      },
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      }
+    ],
+    "open_focus": "red#ff5b5b"
+  },
+  "kind": "after",
+  "light_readability": {
+    "webkit": {
+      "chipBackground": "rgb(231, 235, 240)",
+      "chipColor": "rgb(6, 95, 70)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    }
+  },
+  "menus": {
+    "after-webkit-dark-desktop": {
+      "menu": {
+        "bottom": 865,
+        "height": 832,
+        "left": 473,
+        "right": 847.375,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 33,
+        "width": 374.375
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 830,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    "after-webkit-light-phone": {
+      "menu": {
+        "bottom": 814,
+        "height": 806,
+        "left": 8,
+        "right": 382,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 374
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 804,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    "after-webkit-light-reduced-phone": {
+      "menu": {
+        "bottom": 782,
+        "height": 774,
+        "left": 8,
+        "right": 367,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 359
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 772,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    }
+  },
+  "motion": {
+    "after-webkit-dark-desktop": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-webkit-light-phone": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-webkit-light-reduced-phone": {
+      "animationDuration": "0s",
+      "animationName": "none",
+      "side": "above"
+    }
+  },
+  "page_errors_after-webkit-dark-desktop": [],
+  "page_errors_after-webkit-light-phone": [],
+  "page_errors_after-webkit-light-reduced-phone": [],
+  "palette": [
+    {
+      "chip_style": "color:var(--red);border-color:var(--red)",
+      "expected": "#ff5b5b",
+      "name": "red",
+      "persisted": "#ff5b5b",
+      "request_body": "{\"color\":\"#ff5b5b\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--amber);border-color:var(--amber)",
+      "expected": "#ffb02e",
+      "name": "amber",
+      "persisted": "#ffb02e",
+      "request_body": "{\"color\":\"#ffb02e\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--blue);border-color:var(--blue)",
+      "expected": "#4aa8ff",
+      "name": "blue",
+      "persisted": "#4aa8ff",
+      "request_body": "{\"color\":\"#4aa8ff\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--violet);border-color:var(--violet)",
+      "expected": "#c08cff",
+      "name": "violet",
+      "persisted": "#c08cff",
+      "request_body": "{\"color\":\"#c08cff\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--cyan);border-color:var(--cyan)",
+      "expected": "#3fd8d0",
+      "name": "cyan",
+      "persisted": "#3fd8d0",
+      "request_body": "{\"color\":\"#3fd8d0\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--fg3);border-color:var(--fg3)",
+      "expected": "#8e8e99",
+      "name": "gray",
+      "persisted": "#8e8e99",
+      "request_body": "{\"color\":\"#8e8e99\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--accent);border-color:var(--accent)",
+      "expected": "#00c389",
+      "name": "green",
+      "persisted": "#00c389",
+      "request_body": "{\"color\":\"#00c389\"}",
+      "status": 204
+    },
+    {
+      "chip_style": "",
+      "name": "clear",
+      "persisted": "",
+      "request_body": "{\"color\":\"\"}",
+      "status": 204
+    }
+  ],
+  "probe_sha256": "2ef473afb531cdbca29549447a179dadfb295ae743878a3afa674144a57329b0",
+  "project": "ui-audit-1a29b5cb41cf",
+  "requests": [],
+  "screenshots": {
+    "after-webkit-dark-desktop.png": {
+      "file": "screenshots/webkit/after-webkit-dark-desktop.png",
+      "sha256": "b91a0d9b2971274444737392d647e592e565762c0a481c01757864ed2ebffaeb"
+    },
+    "after-webkit-light-phone.png": {
+      "file": "screenshots/webkit/after-webkit-light-phone.png",
+      "sha256": "45d3097db8e2951a377672ded780ac891674dc0c5ab5f6b0d9d373b6d5abe076"
+    },
+    "after-webkit-light-reduced-phone.png": {
+      "file": "screenshots/webkit/after-webkit-light-reduced-phone.png",
+      "sha256": "f711dcb3dc61ac286208cb82ceee7593346ebf573265773328518391946f9591"
+    }
+  },
+  "started_unix": 1788762971.624772,
+  "tag_seed": {
+    "body": "{\"count\":1}\n",
+    "status": 200
+  }
+}

@@ -7,12 +7,14 @@ package mcp
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +25,16 @@ import (
 	"github.com/Veyal/interseptor/internal/version"
 )
 
-const protocolVersion = "2024-11-05"
+const (
+	// ProtocolVersion is the only MCP protocol revision currently implemented.
+	ProtocolVersion = "2024-11-05"
+	// SchemaVersion is the compatibility marker for the Interseptor MCP tool
+	// contract. The live SchemaHash detects the exact registered schemas.
+	SchemaVersion = "1"
+
+	protocolVersion = ProtocolVersion
+	schemaVersion   = SchemaVersion
+)
 
 // Server is an MCP stdio server backed by the control API at base.
 type Server struct {
@@ -144,6 +155,7 @@ func (s *Server) Serve(in io.Reader, out io.Writer) error {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 func (s *Server) handleLine(line []byte, out io.Writer) {
@@ -184,15 +196,39 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 	switch method {
 	case "initialize":
 		var p struct {
-			ProtocolVersion string `json:"protocolVersion"`
+			ProtocolVersion          string `json:"protocolVersion"`
+			SchemaVersion            string `json:"schemaVersion"`
+			SchemaHash               string `json:"schemaHash"`
+			InterseptorSchemaVersion string `json:"interseptorSchemaVersion"`
+			InterseptorSchemaHash    string `json:"interseptorSchemaHash"`
 		}
-		json.Unmarshal(params, &p)
-		ver := p.ProtocolVersion
-		if ver == "" {
-			ver = protocolVersion
+		if trimmed := bytes.TrimSpace(params); len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
+			if err := json.Unmarshal(trimmed, &p); err != nil {
+				return nil, &rpcError{Code: -32602, Message: "invalid initialize params: " + err.Error()}
+			}
 		}
+		clientSchemaVersion := p.InterseptorSchemaVersion
+		if clientSchemaVersion == "" {
+			clientSchemaVersion = p.SchemaVersion
+		}
+		clientSchemaHash := p.InterseptorSchemaHash
+		if clientSchemaHash == "" {
+			clientSchemaHash = p.SchemaHash
+		}
+		serverSchemaHash := s.SchemaHash()
+		if clientSchemaVersion != "" && clientSchemaVersion != schemaVersion {
+			return nil, schemaMismatchError(clientSchemaVersion, clientSchemaHash, serverSchemaHash)
+		}
+		if clientSchemaHash != "" && clientSchemaHash != serverSchemaHash {
+			return nil, schemaMismatchError(clientSchemaVersion, clientSchemaHash, serverSchemaHash)
+		}
+		// MCP version negotiation returns a version this server actually
+		// implements. A client that cannot support it must disconnect.
 		return map[string]any{
-			"protocolVersion": ver,
+			"protocolVersion": protocolVersion,
+			"apiVersion":      version.String(),
+			"schemaVersion":   schemaVersion,
+			"schemaHash":      serverSchemaHash,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "interseptor", "version": version.String()},
 			"instructions":    mcpInstructions(),
@@ -206,6 +242,76 @@ func (s *Server) dispatch(method string, params json.RawMessage) (any, *rpcError
 	default:
 		return nil, &rpcError{Code: -32601, Message: "method not found: " + method}
 	}
+}
+
+func schemaMismatchError(clientVersion, clientHash, serverHash string) *rpcError {
+	client := clientVersion
+	if client == "" {
+		client = "unknown"
+	}
+	return &rpcError{
+		Code:    -32600,
+		Message: fmt.Sprintf("Interseptor MCP schema mismatch: client=%s server=%s; restart/reconnect the MCP client to reload tools/list and input schemas", client, schemaVersion),
+		Data: map[string]any{
+			"clientSchemaVersion": clientVersion,
+			"clientSchemaHash":    clientHash,
+			"serverSchemaVersion": schemaVersion,
+			"serverSchemaHash":    serverHash,
+			"reconnectRequired":   true,
+		},
+	}
+}
+
+// Capabilities returns the small, machine-readable MCP contract summary used
+// by the control API and diagnostics. Finding fields are derived from the live
+// registered tool schemas so new finding arguments do not require a second
+// hand-maintained capability list.
+func (s *Server) Capabilities() map[string]any {
+	create := []string(nil)
+	if t, ok := s.tools["create_finding"]; ok {
+		create = schemaPropertyNames(t.schema)
+	}
+	update := []string(nil)
+	if t, ok := s.tools["update_finding"]; ok {
+		update = schemaPropertyNames(t.schema)
+	}
+	return map[string]any{
+		"name":            "interseptor",
+		"apiVersion":      version.String(),
+		"protocolVersion": protocolVersion,
+		"schemaVersion":   schemaVersion,
+		"schemaHash":      s.SchemaHash(),
+		"finding": map[string]any{
+			"createFields": create,
+			"updateFields": update,
+		},
+	}
+}
+
+// SchemaHash returns a deterministic SHA-256 digest of the live MCP tool
+// names, descriptions, and JSON schemas. encoding/json sorts map keys, making
+// the digest stable across processes while still changing for schema edits.
+func (s *Server) SchemaHash() string {
+	payload := struct {
+		SchemaVersion string           `json:"schemaVersion"`
+		Tools         []map[string]any `json:"tools"`
+	}{SchemaVersion: schemaVersion, Tools: s.toolList()}
+	b, _ := json.Marshal(payload)
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func schemaPropertyNames(schema map[string]any) []string {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return []string{}
+	}
+	keys := make([]string, 0, len(props))
+	for key := range props {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func (s *Server) toolList() []map[string]any {
@@ -828,6 +934,7 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 
 // registerTools wires every tool to a control-API endpoint.
 func (s *Server) registerTools() {
+	s.registerFindingReviewTools()
 	s.add("list_flows",
 		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
@@ -1059,17 +1166,19 @@ func (s *Server) registerTools() {
 			"severity":                 pt("string"),
 			"status":                   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed"),
 			"summary":                  p("string", "concise statement of the vulnerable behavior"),
-			"target":                   p("string", "affected host/app/endpoint"),
+			"target":                   p("string", "legacy primary target; first targets entry takes precedence"),
+			"targets":                  findingTargetsSchema(),
+			"proofReview":              findingProofReviewSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability — which security property breaks"),
 			"confidence":               p("string", "tentative|firm|certain"),
 			"cwe":                      p("string", "optional CWE id or class, e.g. CWE-639 or IDOR"),
-			"environment":              p("string", "optional: prod|staging|local"),
+			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
 			"detail":                   p("string", "legacy opening text — prefer impact/why fields + PoC body"),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
-			"cvss":                     p("string", "CVSS score or vector string"),
+			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human"),
 			"blocks":                   findingBlocksSchema(),
 			"body":                     p("string", "legacy JSON blocks string; do not send together with blocks"),
@@ -1119,6 +1228,11 @@ func (s *Server) registerTools() {
 				"title": argStr(a, "title"), "severity": argStr(a, "severity"), "status": argStr(a, "status"),
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
+			}
+			for _, key := range []string{"targets", "proofReview"} {
+				if v, ok := a[key]; ok {
+					reqBody[key] = v
+				}
 			}
 			if v := argStr(a, "summary"); v != "" {
 				reqBody["summary"] = v
@@ -1230,16 +1344,18 @@ func (s *Server) registerTools() {
 			"title":                    pt("string"),
 			"summary":                  p("string", "concise statement of the vulnerable behavior"),
 			"target":                   pt("string"),
+			"targets":                  findingTargetsSchema(),
+			"proofReview":              findingProofReviewSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability"),
 			"confidence":               p("string", "tentative|firm|certain"),
 			"cwe":                      p("string", "optional CWE id or class"),
-			"environment":              p("string", "optional: prod|staging|local"),
+			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
 			"detail":                   pt("string"),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
-			"cvss":                     p("string", "CVSS score or vector"),
+			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
 			"blocks":                   findingBlocksSchema(),
 			"body":                     p("string", "legacy FULL JSON blocks string; do not send together with blocks"),
@@ -1307,7 +1423,7 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "summary", "target", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
@@ -1521,6 +1637,7 @@ func (s *Server) registerTools() {
 		"Render the engagement report from the canonical finding records and evidence. Passive scan is omitted by default. HTML is self-contained; JSON preserves the machine-readable blocks/readiness/provenance contract. Responses above the 4 MiB MCP transfer limit return an explicit error and must be narrowed or downloaded through the control API.",
 		obj(map[string]any{
 			"includeIssues": p("boolean", "include passive-scan issues appendix (default false)"),
+			"mode":          p("string", "final blocks incomplete findings with actionable checks; draft permits incomplete export (default for legacy clients)"),
 			"format":        p("string", "md (default), html, or json"),
 			"statuses":      p("string", "comma-separated finding statuses, or all"),
 			"tag":           p("string", "optional finding tag filter"),
@@ -1528,6 +1645,9 @@ func (s *Server) registerTools() {
 		func(a map[string]any) (string, error) {
 			p := "/api/findings/report"
 			q := url.Values{}
+			if mode := argStr(a, "mode"); mode != "" {
+				q.Set("mode", mode)
+			}
 			if argBool(a, "includeIssues", false) {
 				q.Set("issues", "1")
 			}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interseptor — Engagement Report</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;color:#1a1a1a;background:#fff;margin:0;padding:32px 24px}
+article.md{max-width:860px;margin:0 auto}
+h1{font-size:22px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid #ddd}
+h2{font-size:17px;margin:22px 0 10px;color:#111}
+h3{font-size:14px;margin:18px 0 8px;color:#222}
+p{margin:8px 0}
+ul,ol{margin:8px 0 8px 4px;padding-left:20px}
+li{margin:4px 0}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px}
+pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:6px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
+pre code{background:none;border:none;padding:0;font-size:inherit}
+table{table-layout:fixed;overflow-wrap:anywhere;width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+th,td{border:1px solid #ddd;padding:7px 10px;text-align:left;vertical-align:top}
+th{background:#f5f5f5;font-weight:700}
+blockquote{border-left:3px solid #0a8f62;margin:12px 0;padding:8px 14px;background:#f7f7f7;color:#333;border-radius:0 6px 6px 0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+hr{border:none;border-top:1px solid #ddd;margin:20px 0}
+em{font-style:italic;color:#444}
+strong{font-weight:700}
+.meta{color:#555;font-style:italic}
+@media print{body{padding:12px}h2,h3,h4{break-after:avoid}pre,img,tr{break-inside:avoid}a,code,p,li{overflow-wrap:anywhere}}
+</style>
+</head>
+<body>
+<article class="md">
+<h1>Interseptor — Engagement Report</h1>
+<p class="meta"><em>1 finding: 1 Low</em></p>
+<h2>Summary</h2>
+<table><tr><th>Severity</th><th>Count</th></tr><tr><td>Low</td><td>1</td></tr><tr><td><strong>Total</strong></td><td><strong>1</strong></td></tr></table>
+<table><tr><th>Status</th><th>Count</th></tr><tr><td>needs_verification</td><td>1</td></tr></table>
+<h2>Low</h2>
+<h3>1. QA multi-target assessment</h3>
+<ul>
+<li><strong>Status:</strong> needs_verification</li>
+<li><strong>Impact verification:</strong> not_executed</li>
+<li><strong>action evidence:</strong> flow #1</li>
+<li><strong>result evidence:</strong> flow #1</li>
+<li><strong>control evidence:</strong> flow #1</li>
+<li><strong>Verification limit:</strong> Bounded local fixture deliberately does not execute impact.</li>
+<li><strong>Readiness gaps:</strong> impact, why, proof, fix, retest, confidence, execution, severity</li>
+<li><strong>CVSS:</strong> CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N</li>
+<li><strong>Calculated CVSS v4.0:</strong> 8.7 (HIGH, CVSS-B)</li>
+<li><strong>Environment:</strong> development</li>
+</ul>
+<p><strong>Summary:</strong> Generic only.</p>
+<p><strong>Target:</strong> <code>https://example.com/api/source</code></p>
+<p><strong>Affected targets:</strong></p>
+<p>1. <code>https://example.com/api/source</code></p>
+<ul>
+<li>Methods: POST</li>
+<li>Relation: source</li>
+<li>Role / prerequisite: anonymous</li>
+<li>Evidence flows: #1</li>
+</ul>
+<p>2. <code>https://example.com/api/sink</code></p>
+<ul>
+<li>Methods: GET, PATCH</li>
+<li>Relation: sink</li>
+<li>Role / prerequisite: administrator</li>
+<li>Evidence flows: #1</li>
+</ul>
+<p>3. <code>https://example.com/api/setup</code></p>
+<ul>
+<li>Relation: setup</li>
+<li>Evidence exception: Generic setup step has no separate captured flow.</li>
+</ul>
+<p><strong>Reproduction &amp; Evidence:</strong></p>
+<p class="meta">_Evidence: role=action, proof=Generic local request initiated the bounded QA flow., source=captured_flow, source flow #1._</p>
+<blockquote><code>POST 127.0.0.1/assessment-action</code> → <strong>200</strong><br>&gt;</blockquote>
+<p><strong>Request</strong></p>
+<pre><code>POST /assessment-action HTTP/1.1
+Accept-Encoding: identity
+Content-Length: 16
+Content-Type: application/json
+Host: 127.0.0.1:49275
+X-Interseptor-Audit: generic-loopback
+
+{&quot;fixture&quot;:true}</code></pre>
+<p><strong>Response</strong></p>
+<pre><code>HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Length: 69
+Content-Type: application/json
+Date: Mon, 07 Sep 2026 12:39:39 GMT
+Server: BaseHTTP/0.6 Python/3.9.6
+
+{&quot;ok&quot;:true,&quot;method&quot;:&quot;POST&quot;,&quot;path&quot;:&quot;/assessment-action&quot;,&quot;received&quot;:16}</code></pre>
+<p class="meta">_Evidence: role=result, source=browser_screenshot (operator-declared browser capture)._</p>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLMeAAAAABJRU5ErkJggg==" alt="browser-result.png" style="max-width:100%"></p>
+</article>
+</body>
+</html>

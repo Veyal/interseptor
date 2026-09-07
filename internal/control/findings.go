@@ -114,6 +114,7 @@ type findingListSummary struct {
 	Title            string                  `json:"title"`
 	Summary          string                  `json:"summary,omitempty"`
 	Target           string                  `json:"target,omitempty"`
+	TargetCount      int                     `json:"targetCount"`
 	Confidence       string                  `json:"confidence,omitempty"`
 	Tags             []string                `json:"tags"`
 	TagCount         int                     `json:"tagCount"`
@@ -146,9 +147,9 @@ func findingListSummaries(fs []store.Finding) ([]findingListSummary, int, bool) 
 		}
 		out = append(out, findingListSummary{
 			ID: f.ID, Severity: f.Severity, Status: f.Status,
-			Title:      truncateFindingSummary(f.Title, maxFindingSummaryText),
-			Summary:    truncateFindingSummary(f.Summary, maxFindingSummaryText),
-			Target:     truncateFindingSummary(f.Target, maxFindingSummaryText),
+			Title:   truncateFindingSummary(f.Title, maxFindingSummaryText),
+			Summary: truncateFindingSummary(f.Summary, maxFindingSummaryText),
+			Target:  truncateFindingSummary(f.Target, maxFindingSummaryText), TargetCount: len(f.Targets),
 			Confidence: f.Confidence, Tags: tags, TagCount: len(f.Tags), Ready: f.Ready,
 			Missing: append([]string(nil), f.Missing...), Readiness: f.Readiness,
 			MissingFlowIDs: missingFlows, MissingFlowCount: missingFlowCount,
@@ -200,6 +201,21 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fs = filterReportFindings(fs, q.Get("statuses"))
+	mode := q.Get("mode")
+	if mode == "" {
+		mode = "draft"
+	}
+	if mode != "draft" && mode != "final" {
+		httpErr(w, 400, "mode must be draft or final")
+		return
+	}
+	quality := assessReportQuality(fs)
+	if mode == "final" && !quality.Ready {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "Final report needs review. Resolve the listed checks or export a draft.", "quality": quality})
+		return
+	}
+	w.Header().Set("X-Interseptor-Report-Mode", mode)
+
 	var issues []store.Issue
 	if q.Get("issues") == "1" {
 		if iss, err := h.st.ListIssues(); err == nil {
@@ -220,7 +236,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
-		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues})
+		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode})
 	case "html":
 		h.enrichFindingReportImages(fs)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -395,27 +411,29 @@ func (h *findingsAPI) reportBody(hash string, headers map[string][]string) (map[
 
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Severity                 string                `json:"severity"`
-		Status                   string                `json:"status"`
-		Source                   string                `json:"source"`
-		Title                    string                `json:"title"`
-		Summary                  string                `json:"summary"`
-		Target                   string                `json:"target"`
-		Confidence               string                `json:"confidence"`
-		Detail                   string                `json:"detail"`
-		Evidence                 string                `json:"evidence"`
-		Fix                      string                `json:"fix"`    // remediation — optional
-		Impact                   string                `json:"impact"` // what an attacker gains / business consequence
-		Why                      string                `json:"why"`    // why this is a vulnerability
-		Cwe                      string                `json:"cwe"`
-		Environment              string                `json:"environment"` // prod | staging | local
-		Cvss                     string                `json:"cvss"`
-		VerificationInstructions string                `json:"verificationInstructions"`
-		Retest                   string                `json:"retest"`
-		Body                     string                `json:"body"`    // JSON blocks (PoC timeline)
-		Blocks                   *[]store.FindingBlock `json:"blocks"`  // canonical structured alternative to body
-		FlowIDs                  []int64               `json:"flowIds"` // optional: attach these PoC flows on create
-		Tags                     []string              `json:"tags"`    // report-scoping labels (cms, api, …)
+		Severity                 string                   `json:"severity"`
+		Status                   string                   `json:"status"`
+		Source                   string                   `json:"source"`
+		Title                    string                   `json:"title"`
+		Summary                  string                   `json:"summary"`
+		Target                   string                   `json:"target"`
+		Targets                  store.FindingTargets     `json:"targets"`
+		ProofReview              store.FindingProofReview `json:"proofReview"`
+		Confidence               string                   `json:"confidence"`
+		Detail                   string                   `json:"detail"`
+		Evidence                 string                   `json:"evidence"`
+		Fix                      string                   `json:"fix"`    // remediation — optional
+		Impact                   string                   `json:"impact"` // what an attacker gains / business consequence
+		Why                      string                   `json:"why"`    // why this is a vulnerability
+		Cwe                      string                   `json:"cwe"`
+		Environment              string                   `json:"environment"` // production | staging | development | testing | local; legacy prod
+		Cvss                     string                   `json:"cvss"`
+		VerificationInstructions string                   `json:"verificationInstructions"`
+		Retest                   string                   `json:"retest"`
+		Body                     string                   `json:"body"`    // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock    `json:"blocks"`  // canonical structured alternative to body
+		FlowIDs                  []int64                  `json:"flowIds"` // optional: attach these PoC flows on create
+		Tags                     []string                 `json:"tags"`    // report-scoping labels (cms, api, …)
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -450,7 +468,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	f := &store.Finding{
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
-		Title: in.Title, Summary: in.Summary, Target: in.Target, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
+		Title: in.Title, Summary: in.Summary, Target: in.Target, Targets: in.Targets, ProofReview: in.ProofReview, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
 		Impact: in.Impact, Why: in.Why, Cwe: in.Cwe, Environment: in.Environment,
 		Cvss: in.Cvss, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
 		Tags: in.Tags,
@@ -459,7 +477,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	id, err := h.st.CreateFinding(f)
+	id, err := h.st.CreateFinding(f, findingAPIChange(""))
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") {
 			httpErr(w, http.StatusBadRequest, err.Error())
@@ -475,7 +493,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	// the caller as warnings instead.
 	var warnings []string
 	for _, fid := range in.FlowIDs {
-		if err := h.st.AttachFlow(id, fid, "", -1); err != nil {
+		if err := h.st.AttachFlow(id, fid, "", -1, findingAPIChange("")); err != nil {
 			warnings = append(warnings, fmt.Sprintf("failed to attach flow %d: %v", fid, err))
 		}
 	}
@@ -568,25 +586,27 @@ func (h *findingsAPI) requireFinding(w http.ResponseWriter, id int64) bool {
 func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
-		Severity                 *string               `json:"severity"`
-		Status                   *string               `json:"status"`
-		Title                    *string               `json:"title"`
-		Summary                  *string               `json:"summary"`
-		Target                   *string               `json:"target"`
-		Confidence               *string               `json:"confidence"`
-		Detail                   *string               `json:"detail"`
-		Evidence                 *string               `json:"evidence"`
-		Fix                      *string               `json:"fix"`
-		Impact                   *string               `json:"impact"`
-		Why                      *string               `json:"why"`
-		Cwe                      *string               `json:"cwe"`
-		Environment              *string               `json:"environment"`
-		Cvss                     *string               `json:"cvss"`
-		VerificationInstructions *string               `json:"verificationInstructions"`
-		Retest                   *string               `json:"retest"`
-		Body                     *string               `json:"body"`   // JSON blocks (PoC timeline)
-		Blocks                   *[]store.FindingBlock `json:"blocks"` // canonical structured alternative to body
-		Tags                     *[]string             `json:"tags"`   // when present (incl. []), replaces the tag set
+		Severity                 *string                   `json:"severity"`
+		Status                   *string                   `json:"status"`
+		Title                    *string                   `json:"title"`
+		Summary                  *string                   `json:"summary"`
+		Target                   *string                   `json:"target"`
+		Targets                  *store.FindingTargets     `json:"targets"`
+		ProofReview              *store.FindingProofReview `json:"proofReview"`
+		Confidence               *string                   `json:"confidence"`
+		Detail                   *string                   `json:"detail"`
+		Evidence                 *string                   `json:"evidence"`
+		Fix                      *string                   `json:"fix"`
+		Impact                   *string                   `json:"impact"`
+		Why                      *string                   `json:"why"`
+		Cwe                      *string                   `json:"cwe"`
+		Environment              *string                   `json:"environment"`
+		Cvss                     *string                   `json:"cvss"`
+		VerificationInstructions *string                   `json:"verificationInstructions"`
+		Retest                   *string                   `json:"retest"`
+		Body                     *string                   `json:"body"`   // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock     `json:"blocks"` // canonical structured alternative to body
+		Tags                     *[]string                 `json:"tags"`   // when present (incl. []), replaces the tag set
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -632,7 +652,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags); err != nil {
+	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview}); err != nil {
 		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -651,7 +671,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 
 func (h *findingsAPI) deleteFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err := h.st.DeleteFinding(id); err != nil {
+	if err := h.st.DeleteFinding(id, findingAPIChange("")); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
@@ -685,7 +705,7 @@ func (h *findingsAPI) attachFindingFlow(w http.ResponseWriter, r *http.Request) 
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	if err := h.st.AttachFlowWithMetadata(id, in.FlowID, in.Note, pos, in.Role, in.Proof, "captured_flow", in.FlowID); err != nil {
+	if err := h.st.AttachFlowWithMetadata(id, in.FlowID, in.Note, pos, in.Role, in.Proof, "captured_flow", in.FlowID, findingAPIChange("")); err != nil {
 		if errors.Is(err, store.ErrFlowNotFound) {
 			httpErr(w, http.StatusNotFound, err.Error())
 			return
@@ -712,7 +732,7 @@ func (h *findingsAPI) detachFindingFlow(w http.ResponseWriter, r *http.Request) 
 	if !h.requireFinding(w, id) {
 		return
 	}
-	if err := h.st.DetachFlow(id, flowID); err != nil {
+	if err := h.st.DetachFlow(id, flowID, findingAPIChange("")); err != nil {
 		httpInternalErr(w, err)
 		return
 	}
@@ -751,7 +771,7 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 		pos = *in.Position
 	}
 	role, source, proof := in.Role, in.Source, in.Proof
-	_, _, err = h.st.PutAndAttachImage(id, mime, raw, in.Caption, pos, role, proof, source, in.SourceFlowID)
+	_, _, err = h.st.PutAndAttachImage(id, mime, raw, in.Caption, pos, role, proof, source, in.SourceFlowID, findingAPIChange(""))
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return

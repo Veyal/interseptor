@@ -1,0 +1,49 @@
+{
+  "base": "http://127.0.0.1:57532",
+  "cases": [
+    {
+      "name": "History local capture \u2192 Inspector \u2192 Repeater editable request",
+      "status": "pass"
+    },
+    {
+      "name": "Repeater ordinary local echo send \u2192 tab history",
+      "status": "pass"
+    },
+    {
+      "name": "Repeater editor draft persists across reload",
+      "status": "pass"
+    },
+    {
+      "name": "Captured flow appears in Map table/search \u2192 Inspector \u2192 History",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788758586.0605261,
+  "probe_sha256": "7ac85a9ff61607dca478b0b1d8380a7771386c62894fbbb392ce048d27d4aba5",
+  "screenshots": [
+    {
+      "capture_filename": "repeater-local-echo-history.png",
+      "name": "repeater-local-echo-history",
+      "path": "screenshots/local-flow/repeater-local-echo-history.png",
+      "retained": true,
+      "sha256": "0b9202891d635575c08cf0a0e43af9d9fa5516acf11dc148b1796105221bf3e5"
+    },
+    {
+      "capture_filename": "map-local-flow-inspector.png",
+      "name": "map-local-flow-inspector",
+      "path": "screenshots/local-flow/map-local-flow-inspector.png",
+      "retained": true,
+      "sha256": "3d8989f45c0b46aef2ad59e2dadd29ef92d8590e984cf2b983484fe186add67e"
+    }
+  ],
+  "skipped": [
+    "Activity flow detail needs a real MCP activity event; excluded to avoid connecting MCP."
+  ],
+  "started_unix": 1788758582.576129,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 4
+  }
+}

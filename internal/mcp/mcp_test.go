@@ -681,6 +681,90 @@ func TestMCPProtocolAndTools(t *testing.T) {
 	}
 }
 
+func TestMCPInitializeReportsLiveSchemaMetadata(t *testing.T) {
+	srv := New("http://127.0.0.1:1")
+
+	result, rpcErr := srv.dispatch("initialize", json.RawMessage(`{"protocolVersion":"2024-11-05"}`))
+	if rpcErr != nil {
+		t.Fatalf("initialize: %+v", rpcErr)
+	}
+	initResult, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("initialize result type = %T", result)
+	}
+	if got := initResult["protocolVersion"]; got != protocolVersion {
+		t.Fatalf("protocolVersion = %#v, want %q", got, protocolVersion)
+	}
+	if got := initResult["schemaVersion"]; got != schemaVersion {
+		t.Fatalf("schemaVersion = %#v, want %q", got, schemaVersion)
+	}
+	if got, ok := initResult["schemaHash"].(string); !ok || len(got) != 64 {
+		t.Fatalf("schemaHash = %#v, want a SHA-256 hex digest", initResult["schemaHash"])
+	}
+	if got := initResult["apiVersion"]; got != version.String() {
+		t.Fatalf("apiVersion = %#v, want %q", got, version.String())
+	}
+
+	caps := srv.Capabilities()
+	if got := caps["schemaHash"]; got != initResult["schemaHash"] {
+		t.Fatalf("initialize schemaHash = %#v, capabilities schemaHash = %#v", initResult["schemaHash"], got)
+	}
+}
+
+func TestMCPInitializeRejectsExplicitSchemaMismatch(t *testing.T) {
+	srv := New("http://127.0.0.1:1")
+	_, rpcErr := srv.dispatch("initialize", json.RawMessage(`{"protocolVersion":"2024-11-05","schemaVersion":"stale"}`))
+	if rpcErr == nil {
+		t.Fatal("stale explicit schema version should be rejected")
+	}
+	if rpcErr.Code != -32600 || !strings.Contains(strings.ToLower(rpcErr.Message), "reconnect") {
+		t.Fatalf("mismatch error = %+v, want -32600 with reconnect guidance", rpcErr)
+	}
+
+	if _, rpcErr := srv.dispatch("initialize", json.RawMessage(`{"protocolVersion":"2024-11-05","schemaVersion":"`+schemaVersion+`"}`)); rpcErr != nil {
+		t.Fatalf("matching explicit schema version: %+v", rpcErr)
+	}
+}
+
+func TestMCPCapabilitiesReflectLiveFindingSchemas(t *testing.T) {
+	caps := New("http://127.0.0.1:1").Capabilities()
+	finding, ok := caps["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("finding capabilities = %#v", caps["finding"])
+	}
+	for operation, want := range map[string]string{
+		"createFields": "targets",
+		"updateFields": "proofReview",
+	} {
+		fields, ok := finding[operation].([]string)
+		if !ok {
+			t.Fatalf("%s = %#v, want []string", operation, finding[operation])
+		}
+		found := false
+		for _, field := range fields {
+			if field == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%s = %v, missing live field %q", operation, fields, want)
+		}
+	}
+}
+
+func TestMCPSchemaHashChangesWithLiveSchema(t *testing.T) {
+	srv := New("http://127.0.0.1:1")
+	before := srv.SchemaHash()
+	tool := srv.tools["create_finding"]
+	properties := tool.schema["properties"].(map[string]any)
+	properties["exampleExtension"] = map[string]any{"type": "string"}
+	srv.tools["create_finding"] = tool
+	if after := srv.SchemaHash(); after == before {
+		t.Fatalf("schema hash did not change after live tool schema mutation: %q", after)
+	}
+}
+
 func TestStreamableHTTPTransport(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/api/flows" {

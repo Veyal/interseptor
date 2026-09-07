@@ -5,6 +5,7 @@ export function initUiHints(root=document){
   tip.id='uiTooltip';tip.className='ui-tooltip';tip.hidden=true;
   tip.setAttribute('role','tooltip');document.body.appendChild(tip);
   let owner=null,timer=null,pointer=null;
+  const coarsePointer=()=>window.matchMedia?.('(pointer: coarse)').matches||innerWidth<600;
   function adopt(el){
     if(!el.hasAttribute('title'))return;
     const text=el.getAttribute('title')||'';
@@ -24,7 +25,11 @@ export function initUiHints(root=document){
     }
     owner=null;tip.hidden=true;
   }
-  function show(el){
+  function show(el,source='focus'){
+    // Hover hints are noisy and frequently cover the control being used on
+    // touch-sized layouts. Keyboard focus still gets the same accessible hint.
+    if(source==='pointer'&&coarsePointer())return;
+    if(source==='focus'&&coarsePointer()&&!el?.matches(':focus-visible'))return;
     if(!el?.dataset.tooltip?.trim()||el.getAttribute('aria-expanded')==='true')return;
     clearTimeout(timer);if(owner===el)return;hide();owner=el;
     tip.textContent=el.dataset.tooltip;tip.hidden=false;
@@ -56,7 +61,7 @@ export function initUiHints(root=document){
   document.addEventListener('pointerover',e=>{
     if(e.pointerType==='touch')return;
     pointer={x:e.clientX,y:e.clientY};
-    if(!pointerInHint())show(e.target.closest?.('[data-tooltip]'));
+    if(!pointerInHint())show(e.target.closest?.('[data-tooltip]'),'pointer');
   });
   document.addEventListener('pointermove',e=>{
     if(e.pointerType==='touch')return;
@@ -65,11 +70,15 @@ export function initUiHints(root=document){
     if(pointerInHint())clearTimeout(timer);else leave();
   });
   document.addEventListener('pointerleave',()=>{pointer=null;leave();});
-  document.addEventListener('focusin',e=>show(e.target.closest?.('[data-tooltip]')));
+  document.addEventListener('focusin',e=>{
+    const target=e.target.closest?.('[data-tooltip]');
+    if(target)show(target,'focus');else hide();
+  });
   document.addEventListener('pointerout',leave);
   document.addEventListener('focusout',leave);
   document.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});
   document.addEventListener('pointerdown',hide);
+  document.addEventListener('contextmenu',hide,true);
   window.addEventListener('resize',hide);
   window.addEventListener('scroll',e=>{if(!tip.contains(e.target))hide();},true);
 }

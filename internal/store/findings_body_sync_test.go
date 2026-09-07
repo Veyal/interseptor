@@ -264,39 +264,41 @@ func TestUpdateFindingPreservesPersistedMissingFlowMarker(t *testing.T) {
 	if len(got.Blocks) != 1 || !got.Blocks[0].Missing || got.Blocks[0].Note != "edited note" {
 		t.Fatalf("missing marker was not retained: %+v", got.Blocks)
 	}
-	if len(got.Flows) != 0 {
-		t.Fatalf("missing peer evidence attached to unrelated local flow: %+v", got.Flows)
+	if len(got.Flows) != 1 || !got.Flows[0].Missing || got.Flows[0].Method != "" || got.Flows[0].Host != "" {
+		t.Fatalf("missing peer projection resolved unrelated traffic: %+v", got.Flows)
+	}
+	var attached int
+	if err := s.db.QueryRow(`SELECT count(*) FROM finding_flows WHERE finding_id=?`, got.ID).Scan(&attached); err != nil || attached != 0 {
+		t.Fatalf("missing peer reference acquired live attachment: %d %v", attached, err)
 	}
 }
 
 func TestFindingReadinessSummary(t *testing.T) {
-	f := &Finding{Title: "x", Summary: "summary", Target: "example.com", Impact: "impact", Why: "why", Fix: "fix", Retest: "retest", Confidence: "firm", Severity: "Medium", Blocks: []FindingBlock{{Type: "image", Hash: "abc", Role: "result", Missing: false, Proof: "screen proves impact"}, {Type: "flow", FlowID: 1, Missing: false, Proof: "response proves impact"}}}
+	f := completeAssessment()
+	f.Blocks = append(f.Blocks, FindingBlock{Type: "image", Hash: "abc", Role: "result", Source: "browser_screenshot", Proof: "Observed visual result"})
 	r := f.ReadinessSummary()
-	if r.Stage != "report_ready" || r.ImageCount != 1 || r.ScreenshotCount != 1 || r.AnnotatedEvidenceCount != 2 || r.VisualProofRecommended {
+	if r.Stage != "report_ready" || r.ImageCount != 1 || r.ScreenshotCount != 1 || r.AnnotatedEvidenceCount != 4 || r.VisualProofRecommended {
 		t.Fatalf("summary=%+v", r)
 	}
 }
 
 func TestFindingReadinessScreenshotOnlyCanBeReportReady(t *testing.T) {
-	f := &Finding{Title: "x", Summary: "summary", Target: "example.com", Impact: "impact", Why: "why", Fix: "fix", Retest: "verify control is enforced", Confidence: "certain", Blocks: []FindingBlock{{Type: "image", Role: "result", Proof: "browser shows unauthorized data"}}}
-	if got := f.ReadinessSummary().Stage; got != "report_ready" {
-		t.Fatalf("stage=%q", got)
+	f := completeAssessment()
+	f.ProofReview.Visual = true
+	f.Blocks = nil
+	for _, role := range []string{"action", "result", "control"} {
+		f.Blocks = append(f.Blocks, FindingBlock{Type: "image", Hash: "example-" + role, Role: role, Source: "browser_screenshot", Proof: "Observed " + role})
+	}
+	if r := f.ReadinessSummary(); r.Stage != "report_ready" {
+		t.Fatalf("readiness=%+v", r)
 	}
 }
 
 func TestFindingReadinessDoesNotRequireProofOnTextSteps(t *testing.T) {
-	f := &Finding{
-		Title: "x", Summary: "summary", Target: "example.com", Impact: "impact", Why: "why",
-		Fix: "fix", Retest: "verify control is enforced", Confidence: "certain",
-		Blocks: []FindingBlock{
-			{Type: "text", Role: "baseline", MD: "Sign in as the lower-privileged user."},
-			{Type: "text", Role: "action", MD: "Request another user's resource."},
-			{Type: "text", Role: "result", MD: "Observe the unauthorized response."},
-			{Type: "image", Role: "result", Proof: "browser shows the unauthorized resource"},
-		},
-	}
+	f := completeAssessment()
+	f.Blocks = append(f.Blocks, FindingBlock{Type: "text", Role: "context", MD: "Use the recorded example fixture."})
 	r := f.ReadinessSummary()
-	if r.Stage != "report_ready" || len(r.Gaps) != 0 || r.AnnotatedEvidenceCount != 1 {
+	if r.Stage != "report_ready" || len(r.Gaps) != 0 || r.AnnotatedEvidenceCount != 3 {
 		t.Fatalf("summary=%+v", r)
 	}
 }
@@ -318,14 +320,7 @@ func TestFindingReadinessDoesNotTreatLegacyFlowCaptionAsProof(t *testing.T) {
 }
 
 func TestFindingCompatibilityReadinessDerivesFromCanonicalEnvelope(t *testing.T) {
-	f := &Finding{
-		Severity: "Critical", Title: "Authorization bypass", Summary: "A user can read another account.",
-		Target: "https://example.com/orders/2", Impact: "Sensitive order data is disclosed.",
-		Why: "The object authorization check is missing.", Fix: "Enforce ownership before loading the order.",
-		Retest: "Repeat the cross-account request and confirm a denial.", Confidence: "certain",
-		Blocks: []FindingBlock{{Type: "text", Role: "action", MD: "Request the other account's order."},
-			{Type: "image", Role: "result", Proof: "The response contains the other account's order."}},
-	}
+	f := completeAssessment()
 	f.EnrichCompleteness()
 	if !f.Ready || len(f.Missing) != 0 {
 		t.Fatalf("compatibility readiness=%t missing=%v", f.Ready, f.Missing)

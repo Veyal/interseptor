@@ -1,0 +1,25 @@
+{
+  "base": "http://127.0.0.1:52071",
+  "cases": [
+    {
+      "name": "failed-finding-draft-can-be-unselected",
+      "status": "pass"
+    },
+    {
+      "guard_text": "Save or retry Findings before switching projects.",
+      "name": "unselected-failed-finding-draft-blocks-mocked-project-switch-zero-post",
+      "status": "pass",
+      "switch_post_count": 0
+    },
+    {
+      "name": "unselected-failed-finding-draft-revisit-and-retry-persists",
+      "retry_patch_failures": 1,
+      "status": "pass"
+    }
+  ],
+  "failures": [],
+  "finished_unix": 1788757795.908937,
+  "probe_sha256": "7f66a7c69ccfaeeb662971e20bf39860aaeca0fe0e2b7f96261aa3d45400562e",
+  "runtime_digest": "f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+  "started_unix": 1788757794.564021
+}

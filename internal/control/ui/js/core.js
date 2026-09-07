@@ -6,6 +6,8 @@
 // Everything is `export`ed; feature modules import what they reference. Mutations
 // to the shared `state` object are visible across modules (live object binding).
 
+import { placeFloatingSurface } from './surface-position.js';
+
 export const $=s=>document.querySelector(s);
 export const $$=s=>Array.from(document.querySelectorAll(s));
 export const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -23,6 +25,18 @@ export const escAttr=s=>esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // pass a label for icon-only controls so screen readers still announce them.
 export const icon=(name,label)=>`<svg class="icon" ${label?`role="img" aria-label="${escAttr(label)}"`:'aria-hidden="true"'} focusable="false"><use href="#i-${name}"/></svg>`;
 
+// A project switch reloads the page. Features own their drafts and register a
+// synchronous check here, avoiding imports between their save implementations.
+const projectSwitchGuards=[];
+export function registerProjectSwitchGuard(check){projectSwitchGuards.push(check);}
+export function projectSwitchBlocker(){
+  for(const check of projectSwitchGuards){
+    try{const message=check();if(message)return message;}
+    catch(e){return 'Could not verify saved work. Retry before switching projects.';}
+  }
+  return '';
+}
+
 export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,queue:[]},
   rules:[],scope:[],views:[],inScopeOnly:false,showManual:true,flowTruncated:false,selected:new Set(),lastSelIdx:-1,view:{req:'pretty',res:'pretty'},sort:{key:'id',dir:-1},proxyAddr:'127.0.0.1:8080',deviceProxy:'127.0.0.1:8080',deviceProxyMode:'auto',controlAddr:'127.0.0.1:9966',
   filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
@@ -31,6 +45,10 @@ export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,que
 export function toast(m, sev){
   const c = $('#toast');
   if (!c) return;
+  // Keep transient feedback from obscuring the compact workspace. Older notices
+  // are less useful than the latest result, so evict them before appending.
+  const visible = c.querySelectorAll('.toast-item');
+  for (let i = 0; i < visible.length - 3; i++) visible[i].remove();
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
@@ -434,6 +452,7 @@ let uiSelectSeq=0;
 function closeUiSelectMenu(inst){
   if(!inst)return;
   inst.menu.hidden=true;
+  inst.menu.removeAttribute('data-motion-side');
   inst.menu.classList.remove('ui-select-menu-fixed');
   inst.menu.style.cssText='';
   if(inst.menuZIndexSaved){
@@ -481,20 +500,18 @@ function openUiSelectMenu(inst){
   inst.menu.style.width=Math.max(r.width,120)+'px';
   inst.menu.style.setProperty('z-index',String(uiSelectMenuZIndex(inst)));
   inst.menu.hidden=false;
-  // Defensive: should <body> itself ever sit under a transformed/filtered ancestor
-  // (which would re-establish a fixed containing block), nudge the menu back onto
-  // the trigger by the delta between intended and rendered position. No-op normally.
-  const got=inst.menu.getBoundingClientRect();
-  const dx=r.left-got.left,dy=(r.bottom+4)-got.top;
-  if(dx||dy){
-    inst.menu.style.left=(r.left+dx)+'px';
-    inst.menu.style.top=(r.bottom+4+dy)+'px';
-  }
+  const vv=window.visualViewport;
+  const placement=placeFloatingSurface(r,Math.max(r.width,160),Math.min(320,inst.menu.scrollHeight+2),{width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0});
+  inst.menu.style.left=placement.left+'px';
+  inst.menu.style.top=placement.top+'px';
+  inst.menu.style.width=placement.width+'px';
+  inst.menu.style.maxHeight=placement.maxHeight+'px';
   inst.trigger.setAttribute('aria-expanded','true');
   uiSelectOpen=inst;
   const selected=[...inst.sel.options].findIndex(o=>o.selected&&!o.disabled);
   inst.setActive(selected>=0?selected:inst.firstEnabled());
   scrollUiSelectMenuToSelected(inst.menu);
+  inst.menu.dataset.motionSide=placement.side;
 }
 
 export function syncUiSelectStyles(sel){
@@ -1013,6 +1030,13 @@ export function contentTypeFromRaw(raw){
   const m=head.match(/^content-type:\s*(\S.*?)(?:\s*;|\s*$)/im);
   return m?m[1].trim():'';
 }
+// Shared passive HTML preview for captured responses. Headers stay outside the
+// document, and the empty sandbox grants no script or same-origin permissions.
+export function renderHTMLResponse(raw){
+  const separator=/\r?\n\r?\n/.exec(raw);
+  const body=separator?raw.slice(separator.index+separator[0].length):'';
+  return `<iframe class="http-render-frame" sandbox="" title="Rendered HTML" referrerpolicy="no-referrer" srcdoc="${escAttr(body)}"></iframe>`;
+}
 function highlightBody(body,pretty,mime){
   if(!pretty||body.length>PRETTY_MAX) return esc(body);
   const kind=bodyHighlightKind(body,mime);
@@ -1100,25 +1124,10 @@ export function copyText(t,msg){
 }
 export function fallbackCopy(t,msg){const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast(msg||'copied');}catch(e){toast('copy failed');}document.body.removeChild(ta);}
 
-// saveFile opens the native Save dialog when available (File System Access API),
-// otherwise triggers a download with the suggested filename.
+// Use the browser download flow without opening an app-requested native picker.
 export async function saveFile(blob,suggestedName,mimeType){
   const name=suggestedName||'download';
   const type=mimeType||blob.type||'application/octet-stream';
-  if(window.showSaveFilePicker){
-    try{
-      const ext=name.includes('.')?name.slice(name.lastIndexOf('.')).toLowerCase():'';
-      const types=[];
-      if(ext==='.har')types.push({description:'HTTP Archive',accept:{'application/json':['.har']}});
-      const handle=await window.showSaveFilePicker({suggestedName:name,types:types.length?types:undefined});
-      const writable=await handle.createWritable();
-      await writable.write(blob instanceof Blob?blob:new Blob([blob],{type}));
-      await writable.close();
-      return handle.name;
-    }catch(e){
-      if(e&&e.name==='AbortError')throw e;
-    }
-  }
   const url=URL.createObjectURL(blob instanceof Blob?blob:new Blob([blob],{type}));
   const a=document.createElement('a');
   a.href=url;a.download=name;a.click();
@@ -1189,17 +1198,22 @@ export function hideCtxMenu({restoreFocus=false}={}){
   const wasOpen=ctx.classList.contains('show');
   if(ctx._keyHandler){document.removeEventListener('keydown',ctx._keyHandler);ctx._keyHandler=null;}
   ctx.classList.remove('show');ctx._acts=null;
+  ctx.removeAttribute('data-motion-side');
+  if(ctx._returnTrigger?.isConnected)ctx._returnTrigger.setAttribute('aria-expanded','false');
   if(restoreFocus&&wasOpen&&ctx._returnFocus?.isConnected&&typeof ctx._returnFocus.focus==='function'){
     ctx._returnFocus?.focus({preventScroll:true});
   }
-  ctx._returnFocus=null;
+  ctx._returnFocus=null;ctx._returnTrigger=null;
 }
 
 // openCtxMenu renders sectioned items on #ctxmenu and positions at (x,y).
-export function openCtxMenu(x,y,sections){
+export function openCtxMenu(x,y,sections,trigger=null){
   const ctx=$('#ctxmenu');if(!ctx)return;
   closeAllUiSelects(); // ctx/Views menus and ui-select dropdowns are one mutually-exclusive group
-  ctx._returnFocus=document.activeElement;
+  hideCtxMenu();
+  ctx._returnFocus=trigger||document.activeElement;
+  ctx._returnTrigger=trigger||null;
+  if(trigger){trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','true');}
   ctx.setAttribute('role','menu');
   const acts=[];let html='';
   sections.forEach(sec=>{
@@ -1209,11 +1223,11 @@ export function openCtxMenu(x,y,sections){
     items.forEach(it=>{
       if(it.sep){html+='<div class="ctx-sep"></div>';return;}
       const dStyle=it.danger?' style="color:var(--red)"':'';
-      const right=it.val!=null?`<span class="mono"${dStyle}>${esc(it.val)}</span>`:'';
+      const right=it.val!=null?`<span class="mono ctx-value"${dStyle}>${esc(it.val)}</span>`:'';
       // it.icon names a sprite symbol. Labels are escaped, so markup cannot be
       // smuggled through it.label — the icon has to be its own field.
       const glyph=it.icon?icon(it.icon):'';
-      html+=`<div class="ctx-item${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}${esc(it.label)}</span>${right}</div>`;
+      html+=`<div class="ctx-item${right?' ctx-has-value':''}${it.on?' on':''}" role="menuitem" tabindex="-1" data-i="${acts.length}"${it.danger&&it.val==null?dStyle:''}><span class="lbl"${dStyle}>${glyph}<span class="ctx-label-text">${esc(it.label)}</span></span>${right}</div>`;
       acts.push(it.act);
     });
   });
@@ -1222,10 +1236,16 @@ export function openCtxMenu(x,y,sections){
   const items=ctx.querySelectorAll('.ctx-item');
   items.forEach((el,i)=>el.classList.toggle('on',i===0));
   ctx.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>{const fn=ctx._acts[Number(el.dataset.i)];hideCtxMenu({restoreFocus:true});if(fn)fn();});
-  ctx.style.left=x+'px';ctx.style.top=y+'px';ctx.classList.add('show');
-  const r=ctx.getBoundingClientRect();
-  if(r.right>innerWidth)ctx.style.left=Math.max(4,x-r.width)+'px';
-  if(r.bottom>innerHeight)ctx.style.top=Math.max(4,y-r.height)+'px';
+  // Measure this menu afresh: the previous menu's constrained width must not
+  // squeeze the next menu, and wrapping must settle before height placement.
+  ctx.style.left='0px';ctx.style.top='0px';ctx.style.width='max-content';ctx.style.maxHeight='none';ctx.classList.add('show');
+  const anchor=trigger?.getBoundingClientRect?.()||{left:x,top:y,right:x,bottom:y};
+  const vv=window.visualViewport;
+  const viewport={width:vv?.width||innerWidth,height:vv?.height||innerHeight,left:vv?.offsetLeft||0,top:vv?.offsetTop||0};
+  ctx.style.width=Math.min(ctx.getBoundingClientRect().width,Math.max(0,viewport.width-16))+'px';
+  const size=ctx.getBoundingClientRect();
+  const placement=placeFloatingSurface(anchor,size.width,size.height,viewport);
+  ctx.style.left=placement.left+'px';ctx.style.top=placement.top+'px';ctx.style.width=placement.width+'px';ctx.style.maxHeight=placement.maxHeight+'px';
   const paintSel=(moveFocus=false)=>{items.forEach((el,i)=>{const on=i===ctx._sel;el.classList.toggle('on',on);el.tabIndex=on?0:-1;});const cur=items[ctx._sel];if(cur){cur.scrollIntoView({block:'nearest'});if(moveFocus)cur.focus({preventScroll:true});}};
   ctx._keyHandler=e=>{
     if(!ctx.classList.contains('show'))return;
@@ -1238,6 +1258,7 @@ export function openCtxMenu(x,y,sections){
   document.addEventListener('keydown',ctx._keyHandler);
   paintSel();
   if(items[0])items[0].focus();
+  ctx.dataset.motionSide=placement.side;
 }
 
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
@@ -1334,7 +1355,7 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findExportModal','findDeletedModal','sessionInspectModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];
@@ -1366,6 +1387,9 @@ function registerModal(modalEl){
   if(entry)return entry;
   const dialog=modalEl.matches('[role="dialog"]')?modalEl:modalEl.querySelector('[role="dialog"]');
   if(!dialog)return null;
+  // Controls can become disabled after opening (for example during a project
+  // switch). Every fallback focus path still needs a focusable dialog shell.
+  if(!dialog.hasAttribute('tabindex'))dialog.tabIndex=-1;
   entry={el:modalEl,dialog,previousFocus:null,onEscape:null,onDismiss:null,initialFocus:null,
     previousInlineZIndex:'',previousZIndexPriority:'',zIndexSaved:false};
   modalRegistry.set(modalEl,entry);

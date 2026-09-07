@@ -1,0 +1,10 @@
+{
+  "case": "pending switch modal guard",
+  "classification": "Historical intermediate-build regression caught during verification; project APIs were mocked and no actual restart occurred.",
+  "observed": "AssertionError: Tab escaped the pending Project dialog: [{\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}, {\"id\": \"\", \"inside\": false}]",
+  "original_report_sha256": "e0bc3fbe759ebf700384daf83b052774d68144120a87f942b5e5fbf264096b41",
+  "probe_sha256": "f8127e524f124738c4fa4c53c075d7b84c227e59f3d6a8fdaf868c4fbbf85ddb",
+  "runtime_sha256": "93a665533455792617133628396072b5950b8290d480f0ff9c4df2a60c9b7c8c",
+  "screenshot": "screenshots/baseline/disabled-dialog-focus.png",
+  "screenshot_sha256": "6c3c90fbc39436c8aa393afecca1dec95b501b9c43f117bd88d31be6f1b935a6"
+}

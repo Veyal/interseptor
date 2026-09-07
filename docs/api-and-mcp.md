@@ -31,6 +31,14 @@ arguments (types, required fields, accepted variants) inline, so an agent can re
 definition instead of guessing. The **Settings → API & MCP** section shows a copy-paste config
 and the live tool list.
 
+The MCP `initialize` result includes the running `apiVersion`, a stable `schemaVersion`, and a
+`schemaHash` computed from the live tool registry. Clients that explicitly send `schemaVersion` or
+`schemaHash` during initialization receive a reconnect diagnostic when their contract is stale;
+clients that omit these optional fields remain compatible. `GET /api/mcp/capabilities` exposes the
+same metadata plus the currently supported create and update finding fields. This endpoint is a
+diagnostic capability surface, not a promise that a client-side schema cache can be invalidated
+without reconnecting.
+
 For a task-oriented walkthrough (recon → auth → scan → record findings), see
 [docs/product/mcp-cookbook.md](product/mcp-cookbook.md).
 
@@ -65,7 +73,9 @@ export. The stable envelope is:
 | --- | --- |
 | `title`, `summary` | Short, report-ready claim and one-sentence statement of the vulnerable behavior |
 | `severity`, `confidence`, `cwe`, `cvss`, `environment` | Review and prioritization metadata |
-| `target` | Affected host, application, endpoint, account, or other scope |
+| `target`, `targets` | Primary summary and ordered endpoints: URL, methods, role, variant, relation, flow_ids, and documented setup/chain evidence exceptions |
+| `proofReview` | execution (`demonstrated`, `prerequisite_only`, `not_executed`), reason, and visual-proof requirement |
+| `cvssScore`, `cvssRating`, `cvssNomenclature` | Calculated, read-only CVSS v4 results; severity mismatch remains a readiness gap |
 | `impact` | What an attacker gains or the business/security consequence |
 | `why` | The broken security property or trust boundary |
 | `blocks` | Ordered typed reproduction and evidence records |
@@ -164,3 +174,25 @@ POST and PUT accept JSON `{name, scope, script}`. `scope` normalizes to `anywher
 
 Auth and trust rules for both surfaces (loopback vs. key-authorized remote access, scoped keys,
 CSRF handling) are covered in [Security model](architecture.md#security-model).
+
+Finding environments accept `production`, `staging`, `development`, `testing`, `local`, and legacy
+`prod`. Unsupported values fail validation instead of being silently stored as local. See
+[capability readiness and affected targets](findings-and-reporting.md#capability-based-report-readiness)
+for the complete report checklist, metadata, and backward compatibility behavior.
+
+
+### Finding review tools
+
+The UI and MCP share the report-quality and evidence contracts:
+
+- `finding_readiness` returns actionable field/capability checks; `export_report` accepts `mode=final`
+  to enforce them or `mode=draft` to retain incomplete work.
+- `preview_finding_targets` previews deduplication and optional path templates without saving.
+- `evaluate_finding_cvss` previews a CVSS v4 vector without updating a finding.
+- `list_finding_revisions`, `get_finding_revision`, and `restore_finding_revision` expose immutable
+  finding history and recovery. Restore appends a revision and cannot reconstruct separately purged
+  traffic. Historical snapshots require the same care as current evidence.
+
+Capability declarations under `proofReview.claims` are reviewer observations linked to retained
+artifacts, never automatic confirmation of exploitation. Image provenance is server-stamped and is
+separate from a reviewer's browser/device classification. See [Findings and reporting](findings-and-reporting.md).

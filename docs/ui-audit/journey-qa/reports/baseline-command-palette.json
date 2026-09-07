@@ -1,0 +1,10 @@
+{
+  "case": "pending accepted Project switch opens command palette via Meta+K",
+  "classification": "Historical failing observation from an isolated candidate; project APIs were mocked and no actual project restart occurred.",
+  "observed": "Meta+K opened the command palette while an accepted mocked project switch remained pending.",
+  "original_report_sha256": "16e0e2bcdbe6504926cb3f72691a600502a925f436a71193120c5882ceac1ed5",
+  "probe_sha256": "b614acc61963552d8140a04425504554fd73fbcd6730cbf28f7de09025b22d1f",
+  "runtime_sha256": "677cee57cf5c05673d04ee241cb24be3b503f96f7221b7ffb82ec07529d5caf8",
+  "screenshot": "screenshots/baseline/command-palette.png",
+  "screenshot_sha256": "57f0f8039ba8c4071c11a016affc42f8cec1f93e44752b4c1c689e8127290f45"
+}

@@ -235,6 +235,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 // into a finding — so it is neutralized before being written verbatim into the
 // exported report; see sanitizeLine/sanitizeBody for what each does and why.
 func renderFinding(b *strings.Builder, n int, f store.Finding) {
+	f.EnrichCompleteness()
 	fmt.Fprintf(b, "\n### %d. %s\n", n, sanitizeLine(f.Title))
 	if f.Status != "" {
 		b.WriteString("- **Status:** " + sanitizeLine(f.Status) + "\n")
@@ -242,11 +243,35 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	if f.Confidence != "" {
 		b.WriteString("- **Confidence:** " + sanitizeLine(f.Confidence) + "\n")
 	}
+	if f.ProofReview.Execution != "" {
+		b.WriteString("- **Impact verification:** " + sanitizeLine(f.ProofReview.Execution) + "\n")
+	}
+	for _, role := range []string{"action", "result", "control"} {
+		if ref, ok := f.ProofReview.Evidence[role]; ok {
+			label := ref.Hash
+			if ref.FlowID > 0 {
+				label = fmt.Sprintf("flow #%d", ref.FlowID)
+			}
+			if ref.Missing {
+				label += " (missing)"
+			}
+			b.WriteString("- **" + role + " evidence:** " + sanitizeLine(label) + "\n")
+		}
+	}
+	if f.ProofReview.Reason != "" {
+		b.WriteString("- **Verification limit:** " + sanitizeLine(f.ProofReview.Reason) + "\n")
+	}
+	if f.Readiness != nil && len(f.Readiness.Gaps) > 0 {
+		b.WriteString("- **Readiness gaps:** " + strings.Join(f.Readiness.Gaps, ", ") + "\n")
+	}
 	if f.VerificationInstructions != "" {
 		b.WriteString("- **Verification:** " + sanitizeLine(f.VerificationInstructions) + "\n")
 	}
 	if f.Cvss != "" {
 		b.WriteString("- **CVSS:** " + sanitizeLine(f.Cvss) + "\n")
+		if f.CvssScore != nil {
+			fmt.Fprintf(b, "- **Calculated CVSS v4.0:** %.1f (%s, %s)\n", *f.CvssScore, f.CvssRating, f.CvssNomenclature)
+		}
 	}
 	if f.Cwe != "" {
 		b.WriteString("- **CWE:** " + sanitizeLine(f.Cwe) + "\n")
@@ -279,6 +304,8 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	if f.Target != "" {
 		b.WriteString("**Target:** `" + code(f.Target) + "`\n\n")
 	}
+
+	renderFindingTargets(b, f.Targets)
 
 	hasPoC := len(f.Blocks) > 0 || f.Detail != "" || f.Evidence != "" || len(f.Flows) > 0
 	if hasPoC {
@@ -393,7 +420,16 @@ func blockEvidenceMeta(bl store.FindingBlock) string {
 		parts = append(parts, "proof="+sanitizeLine(bl.Proof))
 	}
 	if bl.Source != "" {
-		parts = append(parts, "source="+sanitizeLine(bl.Source))
+		label := bl.Source
+		switch bl.Source {
+		case "flow_preview":
+			label += " (generated HTTP preview; not browser proof)"
+		case "browser_screenshot":
+			label += " (operator-declared browser capture)"
+		case "operator_upload":
+			label += " (uploaded image; capture origin not confirmed)"
+		}
+		parts = append(parts, "source="+sanitizeLine(label))
 	}
 	if bl.SourceFlowID > 0 {
 		parts = append(parts, fmt.Sprintf("source flow #%d", bl.SourceFlowID))
@@ -659,4 +695,39 @@ func groupFindingsByTag(active []store.Finding, order []string, omit map[string]
 		sections = append(sections, tagSection{Title: "Untagged", Findings: untagged})
 	}
 	return sections
+}
+
+// Keep endpoint details in short vertical records so long URLs remain printable.
+func renderFindingTargets(b *strings.Builder, targets store.FindingTargets) {
+	if len(targets) == 0 {
+		return
+	}
+	b.WriteString("**Affected targets:**\n\n")
+	for i, t := range targets {
+		fmt.Fprintf(b, "%d. `%s`\n\n", i+1, code(t.URL))
+		fields := [][2]string{{"Methods", strings.Join(t.Methods, ", ")}, {"Relation", t.Relation}, {"Role / prerequisite", t.Role}, {"Variant", t.Variant}, {"Note", t.Note}, {"Evidence exception", t.EvidenceException}}
+		for _, field := range fields {
+			if field[1] != "" {
+				b.WriteString("- " + field[0] + ": " + sanitizeLine(field[1]) + "\n")
+			}
+		}
+		if len(t.ImageHashes) > 0 {
+			b.WriteString("- Browser capture hashes: " + sanitizeLine(strings.Join(t.ImageHashes, ", ")) + "\n")
+		}
+		if len(t.FlowIDs) > 0 {
+			ids := []string{}
+			for _, id := range t.FlowIDs {
+				label := fmt.Sprintf("#%d", id)
+				for _, missing := range t.MissingFlowIDs {
+					if missing == id {
+						label += " (missing)"
+						break
+					}
+				}
+				ids = append(ids, label)
+			}
+			b.WriteString("- Evidence flows: " + strings.Join(ids, ", ") + "\n")
+		}
+		b.WriteString("\n")
+	}
 }

@@ -1009,8 +1009,11 @@ function graphTipShow(n, ev){
   tip.innerHTML = html;
   tip.style.display = 'block';
   const wrap = $('#mapGraphWrap').getBoundingClientRect();
-  tip.style.left = Math.min(wrap.width - 200, ev.clientX - wrap.left + 12) + 'px';
-  tip.style.top = (ev.clientY - wrap.top + 12) + 'px';
+  const tipWidth=tip.offsetWidth||200,tipHeight=tip.offsetHeight||60;
+  const localX=ev.clientX-wrap.left+12,localY=ev.clientY-wrap.top+12;
+  const maxLeft=Math.max(8,wrap.width-tipWidth-8),maxTop=Math.max(8,wrap.height-tipHeight-8);
+  tip.style.left=Math.max(8,Math.min(maxLeft,localX))+'px';
+  tip.style.top=Math.max(8,Math.min(maxTop,localY))+'px';
 }
 
 function graphTipHide(){ const t = $('#mapGraphTip'); if(t) t.style.display = 'none'; }

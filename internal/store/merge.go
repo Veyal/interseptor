@@ -55,9 +55,9 @@ func queryPeerFindings(peer *sql.DB) (*sql.Rows, error) {
 	}
 	query := fmt.Sprintf(`SELECT id, severity, status, source, title, target, detail,
 		evidence, fix, %s, %s, %s, %s, %s, %s, %s,
-		%s, %s, %s FROM findings`, optional("body"), optional("impact"), optional("why"),
+		%s, %s, %s, %s, %s FROM findings`, optional("body"), optional("impact"), optional("why"),
 		optional("cwe"), optional("environment"), optional("cvss"), optional("verification_instructions"),
-		optional("summary"), optional("confidence"), optional("retest"))
+		optional("summary"), optional("confidence"), optional("retest"), optional("targets"), optional("proof_review"))
 	return peer.Query(query)
 }
 
@@ -207,7 +207,7 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		var f Finding
 		if err := frows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss, &f.VerificationInstructions,
-			&f.Summary, &f.Confidence, &f.Retest); err != nil {
+			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
 			frows.Close()
 			return stats, err
 		}
@@ -305,6 +305,7 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 		// Keep those blocks visible as missing evidence by creating the finding
 		// with only resolvable blocks, then restoring the complete body and the
 		// orphan attachment rows in one small follow-up transaction.
+		remapFindingTargets(&f, peerToLocal)
 		fullPeerBody := f.Body
 		var missing []missingMergedFlow
 		f.Body, missing = splitMissingMergedFlowBlocks(fullPeerBody, peerToLocal)
@@ -351,8 +352,14 @@ func preflightPeerFindings(peer *sql.DB) error {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment,
-			&f.Cvss, &f.VerificationInstructions, &f.Summary, &f.Confidence, &f.Retest); err != nil {
+			&f.Cvss, &f.VerificationInstructions, &f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
 			return err
+		}
+		if err := validateFindingEnvironment(f.Environment); err != nil {
+			return fmt.Errorf("preflight peer finding %d: %w", f.ID, err)
+		}
+		if err := normalizeFindingAssessment(&f); err != nil {
+			return fmt.Errorf("preflight peer finding %d: %w", f.ID, err)
 		}
 		if err := validateFindingNarrativeSize(f); err != nil {
 			return fmt.Errorf("preflight peer finding %d: %w", f.ID, err)
@@ -740,7 +747,7 @@ func flowSig(f Flow) string {
 
 // findingSignatures returns the set of finding signatures already present in db.
 func (s *Store) findingSignatures(db *sql.DB) (map[string]bool, error) {
-	rows, err := db.Query(`SELECT title, target, severity, source, detail FROM findings`)
+	rows, err := db.Query(`SELECT title, target, severity, source, detail, targets FROM findings`)
 	if err != nil {
 		return nil, err
 	}
@@ -748,7 +755,7 @@ func (s *Store) findingSignatures(db *sql.DB) (map[string]bool, error) {
 	out := map[string]bool{}
 	for rows.Next() {
 		var f Finding
-		if err := rows.Scan(&f.Title, &f.Target, &f.Severity, &f.Source, &f.Detail); err != nil {
+		if err := rows.Scan(&f.Title, &f.Target, &f.Severity, &f.Source, &f.Detail, &f.Targets); err != nil {
 			return nil, err
 		}
 		out[findingSig(f)] = true
@@ -760,6 +767,7 @@ func (s *Store) findingSignatures(db *sql.DB) (map[string]bool, error) {
 func findingSig(f Finding) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\n%s\n%s\n%s\n%s", f.Title, f.Target, f.Severity, f.Source, f.Detail)
+	h.Write(findingTargetsSignature(f.Targets))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

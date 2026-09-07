@@ -16,7 +16,8 @@ import (
 
 func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	repoRoot := filepath.Clean("../..")
-	reportBytes, err := os.ReadFile(filepath.Join(repoRoot, "docs/ui-audit/redesign/manifest.json"))
+	manifestDir := filepath.Join(repoRoot, "docs/ui-audit/release-v2.1.0")
+	reportBytes, err := os.ReadFile(filepath.Join(manifestDir, "manifest.json"))
 	if err != nil {
 		t.Fatalf("read retained visual audit manifest: %v", err)
 	}
@@ -26,6 +27,11 @@ func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 			RuntimeFiles       int    `json:"runtime_files"`
 			AuditHarnessSHA256 string `json:"audit_harness_sha256"`
 		} `json:"runtime"`
+		Evidence []struct {
+			File   string `json:"file"`
+			SHA256 string `json:"sha256"`
+			Kind   string `json:"kind"`
+		} `json:"evidence"`
 	}
 	if err := json.Unmarshal(reportBytes, &report); err != nil {
 		t.Fatalf("decode retained visual audit manifest: %v", err)
@@ -82,6 +88,24 @@ func TestUIVisualAuditEvidenceMatchesCurrentRuntime(t *testing.T) {
 	harnessDigest := sha256.Sum256(harness)
 	if got := hex.EncodeToString(harnessDigest[:]); got != report.Runtime.AuditHarnessSHA256 {
 		t.Fatalf("retained visual audit harness identity is stale: got %s, evidence records %s", got, report.Runtime.AuditHarnessSHA256)
+	}
+	kinds := make(map[string]int)
+	for _, evidence := range report.Evidence {
+		if evidence.File == "" || filepath.IsAbs(evidence.File) || strings.HasPrefix(filepath.Clean(evidence.File), "..") {
+			t.Fatalf("invalid retained evidence path: %q", evidence.File)
+		}
+		content, err := os.ReadFile(filepath.Join(manifestDir, filepath.FromSlash(evidence.File)))
+		if err != nil {
+			t.Fatalf("read current visual evidence %s: %v", evidence.File, err)
+		}
+		digest := sha256.Sum256(content)
+		if got := hex.EncodeToString(digest[:]); got != evidence.SHA256 {
+			t.Errorf("current visual evidence %s has changed: got %s, want %s", evidence.File, got, evidence.SHA256)
+		}
+		kinds[evidence.Kind]++
+	}
+	if kinds["report"] < 1 || kinds["probe"] < 1 || kinds["screenshot"] < 8 {
+		t.Errorf("current visual audit must retain its reports, executed probes and representative screenshots: %v", kinds)
 	}
 }
 

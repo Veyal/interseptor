@@ -1,0 +1,280 @@
+{
+  "binary_expected_sha256": "5e7fab26f77148ade6a7e970674b1aab29d2e3c3faba2de5d9e40a1f0dad7106",
+  "probe": "/tmp/interseptor-findings-visual-probe.py",
+  "probe_sha256": "89577b4ba11f60794e50f595e75d4ca61a442603179e61e3ce436703f7090340",
+  "reports": [
+    {
+      "binary_sha256": "5e7fab26f77148ade6a7e970674b1aab29d2e3c3faba2de5d9e40a1f0dad7106",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "390 light-dark mobile controls reachable without overflow": "pass",
+        "UI restore selected distinct older revision with retained relationships": "pass",
+        "desktop claim custom-select and calculator": "pass",
+        "desktop cleanup preview": "pass",
+        "desktop deleted dialog": "pass",
+        "desktop session timeline": "pass"
+      },
+      "engine": "firefox",
+      "external_requests": [],
+      "failures": [],
+      "finding_id": 1,
+      "flow_ids": [
+        2,
+        1
+      ],
+      "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+      "revision_restore": {
+        "history_after": 6,
+        "history_before": 5,
+        "newer_title": "QA newer distinct title",
+        "retained_targets": [
+          [
+            "https://example.com/records/1",
+            [
+              2
+            ]
+          ],
+          [
+            "https://example.com/records/2",
+            [
+              1
+            ]
+          ]
+        ],
+        "selected_revision": 4,
+        "snapshot_title": "QA older selected snapshot"
+      },
+      "runtime_expected": "955814eda9dff97c129f2de7562f9f0a15d5d6c0117c0bd11e5bfafd1ba2d27b",
+      "runtime_observed": "955814eda9dff97c129f2de7562f9f0a15d5d6c0117c0bd11e5bfafd1ba2d27b",
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-cleanup-preview.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "48ee34733cc94c30b90080d25a197dbc131c59d9196a62670d332abd8e2f83a1"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "bd41e8c08cadc0ddb18d8b6aeb6226ed261662efe047e37742b15c0034a42dc1"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-claim-controls.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "42a847dc584e5e483dccc3755120b450ba5fcef6dde1d11ed822278c3b9218b9"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-calculator.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "86ecb33f538026e41745bbe7ebf65b23ac3767f4ca97e97e5e570b810cbdc9e8"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-deleted-dialog.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "1ab1de971c64d0ee3db367651f9fea9c8a5223f6d3c18b716734af7df20fa74b"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-desktop-light-session-timeline.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "19c58bafdaf986faa77d42b9c2f91da02741f2824f7fdfc5ff163b01862dd14a"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-mobile-light-claim.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-mobile-dark-calculator.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "8a29dbfbdb17ce917f55cb82a8a319d3209d5bdf8f76e84e151c4fe88792229c"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-mobile-light-cleanup.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/firefox-mobile-light-deleted-dialog.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "5b655cc27e7f23201a83b48bb4649719d8701796749a2061e4b3d21140ddf8cc"
+        }
+      ]
+    },
+    {
+      "binary_sha256": "5e7fab26f77148ade6a7e970674b1aab29d2e3c3faba2de5d9e40a1f0dad7106",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "390 light-dark mobile controls reachable without overflow": "pass",
+        "UI restore selected distinct older revision with retained relationships": "pass",
+        "desktop claim custom-select and calculator": "pass",
+        "desktop cleanup preview": "pass",
+        "desktop deleted dialog": "pass",
+        "desktop session timeline": "pass"
+      },
+      "engine": "webkit",
+      "external_requests": [],
+      "failures": [],
+      "finding_id": 1,
+      "flow_ids": [
+        2,
+        1
+      ],
+      "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+      "revision_restore": {
+        "history_after": 6,
+        "history_before": 5,
+        "newer_title": "QA newer distinct title",
+        "retained_targets": [
+          [
+            "https://example.com/records/1",
+            [
+              2
+            ]
+          ],
+          [
+            "https://example.com/records/2",
+            [
+              1
+            ]
+          ]
+        ],
+        "selected_revision": 4,
+        "snapshot_title": "QA older selected snapshot"
+      },
+      "runtime_expected": "955814eda9dff97c129f2de7562f9f0a15d5d6c0117c0bd11e5bfafd1ba2d27b",
+      "runtime_observed": "955814eda9dff97c129f2de7562f9f0a15d5d6c0117c0bd11e5bfafd1ba2d27b",
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-cleanup-preview.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "c43da2e74f5480ebf72116c7353c2294729bda1342ae4c82f2ce88747383e6a4"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "a1194dccffb7bd5129c1a0a3fcf86e42595166bb3983194a01d3737a89390de0"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-claim-controls.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "4def13a29e18a7f8b27c803022a3df03fd85a167579a14874253a39430eeb35c"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-calculator.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "f05166936c894dbe8d691773ad783818328fd4fc819f2901ca4fb11c698ea8ff"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-deleted-dialog.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "92e416dcef95b52244c6019adacd553dd5df738edf681a002780839cb9a5f015"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-desktop-light-session-timeline.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "33dfe692edf47567a9d036285ee7f8b4db965bbebe25386a545884ac46931747"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-mobile-light-claim.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-mobile-dark-calculator.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "1b64a19e6fe0e171dc79d3f3508d100eee01566cf3abd9439a1dd312214afc44"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-mobile-light-cleanup.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3"
+        },
+        {
+          "path": "/tmp/interseptor-findings-visual-run-20260907-gecko-webkit/screenshots/webkit-mobile-light-deleted-dialog.png",
+          "settled": {
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "de63642ea79f0d5567cfb867874e4a1cacfe963ab59a41105ab387cafeecff04"
+        }
+      ]
+    }
+  ],
+  "runtime_expected_sha256": "955814eda9dff97c129f2de7562f9f0a15d5d6c0117c0bd11e5bfafd1ba2d27b"
+}

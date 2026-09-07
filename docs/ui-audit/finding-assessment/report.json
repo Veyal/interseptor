@@ -1,0 +1,123 @@
+{
+  "finished_unix": 1788784804.4799411,
+  "probe": "/private/tmp/interseptor_assessment_browser_qa.py",
+  "probe_sha256": "0eeacd86ca01baab248d6d92f81896dab53665fac9706bad67d18c55537df5ac",
+  "reports": [
+    {
+      "application_source": {
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+        "runtime_files": 259,
+        "runtime_sha256": "1cc3ea14dd0021dccba889b29f439b7c5112a4202041c670b3dde5cd65042b80",
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+      },
+      "cases": {
+        "desktop-and-390-light-dark-keyboard-dropdown": "pass",
+        "environment-custom-selector-and-invalid-api": "pass",
+        "failed-patch-recovery-retains-review-draft": "pass",
+        "html-browser-print-pdf-preserves-targets": "pass",
+        "md-html-json-all-statuses-include-targets": "pass",
+        "review-mapping-and-cvss": "pass",
+        "review-mapping-cvss-and-screenshot-provenance": "pass",
+        "search-nonprimary-target": "pass",
+        "targets-ui-add-edit-reorder-remove-and-persist": "pass"
+      },
+      "engine": "chromium",
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/chromium-light-desktop-targets.png",
+          "sha256": "533b8da44ca8fb213a1725054ec9bfdef53d42b1366f8e9bdd7cece647dd2a60"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/chromium-light-desktop-edit.png",
+          "sha256": "e5a2fb2d2de13a6109635c9e0ca0251fdf39dfe4a287336281121b739dd0ea9f"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/chromium-dark-390x844-edit.png",
+          "sha256": "538c8ddeab04ff8209932a0d5f4bdafa3a45889a123d4806ab843238b4d19c5e"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/chromium-light-390x844-edit.png",
+          "sha256": "920113efd89fc7ad2ffc731503bcc49abe580bd166531c6bdc8f0c76a60bcdfb"
+        }
+      ]
+    },
+    {
+      "application_source": {
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+        "runtime_files": 259,
+        "runtime_sha256": "1cc3ea14dd0021dccba889b29f439b7c5112a4202041c670b3dde5cd65042b80",
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+      },
+      "cases": {
+        "desktop-and-390-light-dark-keyboard-dropdown": "pass",
+        "environment-custom-selector-and-invalid-api": "pass",
+        "failed-patch-recovery-retains-review-draft": "pass",
+        "md-html-json-all-statuses-include-targets": "pass",
+        "review-mapping-and-cvss": "pass",
+        "review-mapping-cvss-and-screenshot-provenance": "pass",
+        "search-nonprimary-target": "pass",
+        "targets-ui-add-edit-reorder-remove-and-persist": "pass"
+      },
+      "engine": "firefox",
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/firefox-light-desktop-targets.png",
+          "sha256": "81eae2066eb5fead91274e6d4c487884be32069add13e75de38d14f3075fa8bc"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/firefox-light-desktop-edit.png",
+          "sha256": "9374c1803073e4df51f3e1ab1034d1a2146f80c8c7d0984b8b3784e641985425"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/firefox-dark-390x844-edit.png",
+          "sha256": "af4cded599a8565982731296280b9a8ee508a8fb2a460309ed1901e61331d596"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/firefox-light-390x844-edit.png",
+          "sha256": "0605592c272a6125a73610b7d23e86cfbc4f3e948c8516796335cf2689ef50ab"
+        }
+      ]
+    },
+    {
+      "application_source": {
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+        "runtime_files": 259,
+        "runtime_sha256": "1cc3ea14dd0021dccba889b29f439b7c5112a4202041c670b3dde5cd65042b80",
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+      },
+      "cases": {
+        "desktop-and-390-light-dark-keyboard-dropdown": "pass",
+        "environment-custom-selector-and-invalid-api": "pass",
+        "failed-patch-recovery-retains-review-draft": "pass",
+        "md-html-json-all-statuses-include-targets": "pass",
+        "review-mapping-and-cvss": "pass",
+        "review-mapping-cvss-and-screenshot-provenance": "pass",
+        "search-nonprimary-target": "pass",
+        "targets-ui-add-edit-reorder-remove-and-persist": "pass"
+      },
+      "engine": "webkit",
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/webkit-light-desktop-targets.png",
+          "sha256": "8e7b35f6cb00d6f40fc6ad51c2789a9e0da8fb0c4f06992ea1977ba0334c38ae"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/webkit-light-desktop-edit.png",
+          "sha256": "ff739133ec664fcfb1e930157539de87d8b78f5f2086d063f5950600cb7a07b6"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/webkit-dark-390x844-edit.png",
+          "sha256": "ff9eca9a21fac497ed209f76c18d2718ffe73597a50103a20c3c00d40e4f96fc"
+        },
+        {
+          "path": "/tmp/interseptor-assessment-browser-qa-final15/screenshots/webkit-light-390x844-edit.png",
+          "sha256": "d4650dda7e97611d8144fb629f244c91cc5ab3979dd7a072193bf248cacdca8e"
+        }
+      ]
+    }
+  ],
+  "started_unix": 1788784658.752821
+}

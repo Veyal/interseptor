@@ -1,0 +1,123 @@
+{
+  "base": "http://127.0.0.1:52071",
+  "cases": {
+    "chromium:captured-generic-http-flow": {
+      "status": "pass"
+    },
+    "chromium:create-edit-all-sections-and-evidence-ui": {
+      "fid": 1,
+      "status": "pass",
+      "title": "Generic Findings journey 1788757764570921000"
+    },
+    "chromium:export-bytes-and-recoverable-error": {
+      "downloads": [
+        {
+          "capture_filename": "interseptor-findings.md",
+          "format": "md",
+          "path": "downloads/findings/interseptor-findings.md",
+          "retained": true,
+          "sha256": "bd39836be11f590414d5cadc21ffec5a951770ddbe7372e01817272f423f50de",
+          "size": 1445,
+          "suggested": "interseptor-findings.md"
+        },
+        {
+          "capture_filename": "interseptor-findings.html",
+          "format": "html",
+          "path": "downloads/findings/interseptor-findings.html",
+          "retained": true,
+          "sha256": "29dbbd27a3e055323475a60a12c6b7c05d6c0ecdba98dca64e4e10d09ab9608a",
+          "size": 3922,
+          "suggested": "interseptor-findings.html"
+        },
+        {
+          "capture_filename": "interseptor-findings.json",
+          "format": "json",
+          "path": "downloads/findings/interseptor-findings.json",
+          "retained": true,
+          "sha256": "5cb9434d515be73a477580459775557fab40b2239c8977b6b0daab82946c35f7",
+          "size": 2859,
+          "suggested": "interseptor-findings.json"
+        }
+      ],
+      "native_picker_property_accesses": 0,
+      "status": "pass"
+    },
+    "chromium:failed-edit-retains-and-retries": {
+      "status": "pass"
+    },
+    "chromium:reload-deeplink-back-forward-inline-copy": {
+      "status": "pass"
+    },
+    "chromium:search-custom-filters-readiness-navigation": {
+      "status": "pass"
+    },
+    "firefox:phone-connected-evidence-export-custom-selector": {
+      "status": "pass"
+    },
+    "webkit:phone-connected-evidence-export-custom-selector": {
+      "status": "pass"
+    }
+  },
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "failures": [],
+  "finished_unix": 1788757774.54436,
+  "page_errors": [],
+  "probe_sha256": "23d36c30ac2555b2ce607114ee990dd78328f133284f6ed9dacafe464b080b09",
+  "proxy": "127.0.0.1:52072",
+  "report_sha256_source": "23d36c30ac2555b2ce607114ee990dd78328f133284f6ed9dacafe464b080b09",
+  "screenshots": [
+    {
+      "capture_filename": "chromium-1440x900-inline-http-copy.png",
+      "engine": "chromium",
+      "path": "screenshots/findings/chromium-1440x900-inline-http-copy.png",
+      "retained": true,
+      "sha256": "4b0484e2ead1e0cf96037fd62f44f3ee3a314701d75201d6bc5dd525dff3c02b",
+      "surface": "inline-http-copy",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-1440x900-desktop-final.png",
+      "engine": "chromium",
+      "path": "screenshots/findings/chromium-1440x900-desktop-final.png",
+      "retained": true,
+      "sha256": "53cc1974f6830fb4c4dbb27f63d34abdebb2685c58ab5e964d9fcf2d413d181b",
+      "surface": "desktop-final",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "firefox-390x844-phone-evidence-export.png",
+      "engine": "firefox",
+      "path": "screenshots/findings/firefox-390x844-phone-evidence-export.png",
+      "retained": true,
+      "sha256": "dd99b2c96d770de83156d65609d03910081af6643533758fb6522c23f4eac268",
+      "surface": "phone-evidence-export",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "capture_filename": "webkit-390x844-phone-evidence-export.png",
+      "engine": "webkit",
+      "path": "screenshots/findings/webkit-390x844-phone-evidence-export.png",
+      "retained": true,
+      "sha256": "82b33d8562019291c7ec7c6ba3e8b590ea430e54379976336a16943c11bb5601",
+      "surface": "phone-evidence-export",
+      "viewport": [
+        390,
+        844
+      ]
+    }
+  ],
+  "source_hashes": "runtime=f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+  "started_unix": 1788757763.710481
+}

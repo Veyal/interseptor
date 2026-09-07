@@ -5,10 +5,10 @@
 import { $, esc, escAttr, api, state, toast, openCtxMenu, renderLoadError } from './core.js';
 import { filterByTag, renderRows } from './proxy.js';
 
-// A small preset palette using theme CSS variables (follows light/dark).
+// Persist stable hex values; render presets with theme colors for contrast.
 export const TAG_COLORS = [
-  ['red', 'var(--red)'], ['amber', 'var(--amber)'], ['green', 'var(--green)'],
-  ['blue', 'var(--blue)'], ['violet', 'var(--violet)'], ['cyan', 'var(--cyan)'], ['gray', 'var(--fg3)'],
+  ['red', '#ff5b5b', 'var(--red)'], ['amber', '#ffb02e', 'var(--amber)'], ['green', '#00c389', 'var(--accent)'],
+  ['blue', '#4aa8ff', 'var(--blue)'], ['violet', '#c08cff', 'var(--violet)'], ['cyan', '#3fd8d0', 'var(--cyan)'], ['gray', '#8e8e99', 'var(--fg3)'],
 ];
 let tagLoadError=null;
 let tagLoadEpoch=0;
@@ -17,7 +17,8 @@ const tagColorLanes=new Map();
 
 // tagChipStyle returns the inline style for a chip in a tag's color ('' = default).
 export function tagChipStyle(tag) {
-  const c = state.tagColors[tag];
+  const saved = state.tagColors[tag];
+  const c = TAG_COLORS.find(([, hex]) => hex === saved?.toLowerCase())?.[2] || saved;
   return c ? `color:${c};border-color:${c}` : '';
 }
 
@@ -43,6 +44,7 @@ export function renderTagBar() {
   const bar = $('#tagBar'); if (!bar) return;
   if(tagLoadError){bar.style.display='flex';renderLoadError(bar,'Tags',tagLoadError,loadTags,state.tags.length>0);return;}
   if (!state.tags.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const focusedTag=bar.contains(document.activeElement)?document.activeElement.dataset.tag:null;
   bar.style.display = 'flex';
   bar.innerHTML = state.tags.map(t => {
     const on = state.filters.tag === t.tag;
@@ -51,20 +53,27 @@ export function renderTagBar() {
   }).join('');
   bar.querySelectorAll('.tagchip').forEach(b => {
     b.onclick = () => filterByTag(b.dataset.tag);
-    b.oncontextmenu = e => { e.preventDefault(); openColorMenu(e.clientX, e.clientY, b.dataset.tag); };
+    b.oncontextmenu = e => { e.preventDefault(); openColorMenu(e.clientX, e.clientY, b.dataset.tag, b); };
+    b.onkeydown = e => {
+      if(e.key!=='ContextMenu'&&!(e.shiftKey&&e.key==='F10'))return;
+      e.preventDefault();
+      const box=b.getBoundingClientRect();
+      openColorMenu(box.left, box.bottom, b.dataset.tag, b);
+    };
+    if(b.dataset.tag===focusedTag)b.focus({preventScroll:true});
   });
 }
 
-function openColorMenu(x, y, tag) {
+function openColorMenu(x, y, tag, trigger) {
   openCtxMenu(x, y, [
     {
       head: 'COLOR · ' + tag,
       items: TAG_COLORS.map(([name, hex]) => ({
-        label: name, val: hex, on: state.tagColors[tag] === hex, act: () => setTagColor(tag, hex),
+        label: name, val: hex, on: state.tagColors[tag]?.toLowerCase() === hex, act: () => setTagColor(tag, hex),
       })).concat([{ label: 'Clear color', danger: true, act: () => setTagColor(tag, '') }]),
     },
     { items: [{ label: 'Filter by this tag', act: () => filterByTag(tag) }] },
-  ]);
+  ], trigger);
 }
 
 async function setTagColor(tag, color) {

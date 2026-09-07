@@ -261,13 +261,13 @@ func TestUISelectableRowsExposeTheirCurrentState(t *testing.T) {
 		"aria-current=\"${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}\"",
 		"el.setAttribute('aria-current',selected?'true':'false')",
 	)
-	requireUIContracts(t, "js/findings.js", "aria-current=\"${f.id === selFinding ? 'true' : 'false'}\"")
+	requireUIContracts(t, "js/findings.js", "aria-current=\"${f.id === selFinding ? 'page' : 'false'}\"")
 	requireUIContracts(t, "js/tools.js", "aria-current=\"${f.id===t.resId?'true':'false'}\"")
 }
 
 func TestUIActivityOnlyMakesActionableRowsKeyboardStops(t *testing.T) {
 	activity := requireUIContracts(t, "js/activity.js",
-		"${fid?' tabindex=\"0\" role=\"button\"':''}",
+		"act-expandable", "aria-controls=\"actDetail-${i}\"", "aria-expanded=\"${expanded}\"", "detail.hidden=expanded",
 	)
 	if strings.Contains(activity, `class="act-row${fid?' act-jump':''}${grp}" tabindex="0"`) {
 		t.Fatal("non-actionable Activity entries must not be keyboard stops")

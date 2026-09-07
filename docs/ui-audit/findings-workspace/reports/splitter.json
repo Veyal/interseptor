@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "ariaValueMax": 552,
+      "ariaValueMin": 120,
+      "ariaValueNow": 317,
+      "flowId": "1",
+      "inspectHeight": 317.390625,
+      "name": "inspector/chromium/splitter-height",
+      "status": "pass"
+    },
+    {
+      "ariaValueMax": 552,
+      "ariaValueMin": 120,
+      "ariaValueNow": 317,
+      "flowId": "1",
+      "inspectHeight": 317.3999938964844,
+      "name": "inspector/firefox/splitter-height",
+      "status": "pass"
+    },
+    {
+      "ariaValueMax": 552,
+      "ariaValueMin": 120,
+      "ariaValueNow": 317,
+      "flowId": "1",
+      "inspectHeight": 317.390625,
+      "name": "inspector/webkit/splitter-height",
+      "status": "pass"
+    }
+  ],
+  "runtime_digest": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "script_sha256": "a297621a7e01f1373d83a74de59c05dbbe896244ab60668bc60d58f658e76022",
+  "shared_probe_sha256": "0f06d6a481d15a1d93090ef178ba1491c485e379855409886df1a56c5533ef0f"
+}
