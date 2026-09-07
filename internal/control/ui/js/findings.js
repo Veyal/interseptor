@@ -1,6 +1,6 @@
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
 import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
-registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size?'Save or retry Findings before switching projects.':'');
+registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel } from './finding-assessment.js';
 import { flowPopup, closeFlowPopup } from './flowmodal.js';
@@ -16,6 +16,8 @@ let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
 let findingsLoadEpoch=0;
 const findingAttachPending=new Set();
+const findingDeletesPending = new Set();
+const findingEvidenceWrites = new Map();
 
 function findingsLoadState() {
   if (findingsLoadStateEl?.isConnected) return findingsLoadStateEl;
@@ -667,11 +669,13 @@ function wireFlowPreviewButtons(container) {
       if (!id || !fid || btn.disabled) return;
       btn.disabled = true; const label = btn.textContent; btn.textContent = 'Generating…';
       try {
-        await settleFindingBodyBeforeEvidence(fid);
-        const sourceBlock = bodyBlocks.find(block => block.type === 'flow' && block.flowId === id);
-        const updated = await api('/api/findings/' + fid + '/flow-preview', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ flowId: id, caption: 'Generated HTTP report preview for flow #' + id, role: sourceBlock?.role || 'result', proof: sourceBlock?.proof || '', source: 'flow_preview', sourceFlowId: id }) });
-        applyFindingEvidenceResponse(updated);
-        toast('report image attached');
+        await withFindingEvidenceWrite(fid, async () => {
+          await settleFindingBodyBeforeEvidence(fid);
+          const sourceBlock = bodyBlocks.find(block => block.type === 'flow' && block.flowId === id);
+          const updated = await api('/api/findings/' + fid + '/flow-preview', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ flowId: id, caption: 'Generated HTTP report preview for flow #' + id, role: sourceBlock?.role || 'result', proof: sourceBlock?.proof || '', source: 'flow_preview', sourceFlowId: id }) });
+          applyFindingEvidenceResponse(updated);
+          toast('report image attached');
+        });
       } catch (err) { toast(err.message, 'error'); }
       finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = label; } }
     };
@@ -686,6 +690,7 @@ function renderFindBody(fid) {
 }
 
 function scheduleSave(fid) {
+  if (findingMutationBlocked(fid)) return;
   const previous = bodySaveTimers.get(fid);
   if (previous) clearTimeout(previous);
   const stateEl = $('#findSaveState');
@@ -780,6 +785,54 @@ function findingWriteQueue(id) {
   return queue;
 }
 
+function findingMutationBlocked(id) {
+  return findingDeletesPending.has(id) || !findings.some(finding => finding.id === id);
+}
+
+async function withFindingEvidenceWrite(id, write) {
+  if (findingMutationBlocked(id)) throw new Error('Finding is being deleted or is no longer available.');
+  findingEvidenceWrites.set(id, (findingEvidenceWrites.get(id) || 0) + 1);
+  try { return await write(); }
+  finally {
+    const remaining = findingEvidenceWrites.get(id) - 1;
+    if (remaining) findingEvidenceWrites.set(id, remaining);
+    else findingEvidenceWrites.delete(id);
+  }
+}
+
+async function deleteFinding(id) {
+  if (findingMutationBlocked(id)) throw new Error('Finding is being deleted or is no longer available.');
+  captureActiveFindingTextEditor(id);
+  const bodySave = flushPendingBodySave(id);
+  findingDeletesPending.add(id);
+  const detail = $('#findDetail');
+  if (selFinding === id && detail) detail.inert = true;
+  try {
+    await Promise.allSettled([bodySave]);
+    while (findingWriteQueues.has(id) || findingAttachPending.has(id) || findingEvidenceWrites.has(id)) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    if (findingDrafts.has(id) || cvssPreviewDrafts.has(id)) {
+      updateFindingSaveFeedback(id);
+      throw new Error('Use Retry to save finding changes, or Apply/Discard the CVSS preview, before deleting.');
+    }
+    await api('/api/findings/' + id, { method: 'DELETE' });
+    findingsLoadEpoch++;
+    findings = findings.filter(finding => finding.id !== id);
+    findingDrafts.acknowledge(id, findingDrafts.tokens(id));
+    cvssPreviewDrafts.acknowledge(id, cvssPreviewDrafts.tokens(id));
+    cvssApplyDraftTokens.delete(id);
+    clearTimeout(bodySaveTimers.get(id));
+    bodySaveTimers.delete(id);
+    bodySaveSnapshots.delete(id);
+    findingWriteQueues.delete(id);
+  } finally {
+    findingDeletesPending.delete(id);
+    if (selFinding === id && detail) detail.inert = false;
+    updateFindingSaveFeedback(id);
+  }
+}
+
 async function applyCvssFinding(id, { vector, severity }) {
   const previewTokens = cvssPreviewDrafts.tokens(id);
   const result = await patchFinding(id, { cvss: vector, severity }, tokens => cvssApplyDraftTokens.set(id, tokens));
@@ -796,6 +849,7 @@ function discardCvssApplyDrafts(id, tokens = cvssApplyDraftTokens.get(id)) {
 }
 
 function stageCvssPreview(id, vector) {
+  if (findingMutationBlocked(id)) return;
   const savingVector = Object.prototype.hasOwnProperty.call(findingWriteQueues.get(id)?.latestValues || {}, 'cvss');
   if (!savingVector && vector === acknowledgedFindingValue(id, 'cvss', '')) {
     cvssPreviewDrafts.discard(id, 'vector');
@@ -827,6 +881,7 @@ function acknowledgedFindingValue(id, key, fallback) {
 }
 
 function enqueueFindingPatch(id, fields, onStaged) {
+  if (findingMutationBlocked(id)) return Promise.reject(new Error('Finding is being deleted or is no longer available.'));
   const queue = findingWriteQueue(id);
   const tokens = findingDrafts.stage(id, fields);
   onStaged?.(tokens);
@@ -944,6 +999,7 @@ async function patchFinding(id, fields, onStaged) {
 
 function renderFindingDetail() {
   const box = $('#findDetail'); if (!box) return;
+  box.inert = findingDeletesPending.has(selFinding);
   findingDetailRefreshDeferred = false;
   const savedFinding = findings.find(x => x.id === selFinding);
   if (!savedFinding) {
@@ -1160,11 +1216,11 @@ function renderFindingDetail() {
     button.click();
   }
   bindFindingRevisions(box, f.id, {
-    canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight,
+    canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
     restored: async () => { renderedFindingKey=''; await loadFindings(); renderFindingDetail(); },
   });
   bindFindingAssessment(box, f, {
-    stage: fields => { findingDrafts.stage(f.id, fields); updateFindingSaveFeedback(f.id); },
+    stage: fields => { if (findingMutationBlocked(f.id)) return; findingDrafts.stage(f.id, fields); updateFindingSaveFeedback(f.id); },
     save: fields => patchFinding(f.id, fields),
     refresh: async ({ targetsChanged = false } = {}) => {
       await loadFindings();
@@ -1199,6 +1255,7 @@ function renderFindingDetail() {
   const blurPatch = (id, key, getVal) => {
     const el = $(id); if (!el) return;
     const commit = async () => {
+      if (findingMutationBlocked(f.id)) return;
       const v = getVal(el);
       const previous = acknowledgedFindingValue(f.id, key, f[key] || '');
       const expected = pendingFindingValue(f.id, key, previous);
@@ -1266,13 +1323,13 @@ function renderFindingDetail() {
     const visible = visibleFindings();
     const at = visible.findIndex(x => x.id === f.id);
     const next = visible[at + 1] || visible[at - 1] || null;
-    if (!await uiConfirm('Delete finding', `Delete <b>${esc(f.title)}</b>? This cannot be undone.`, 'Delete', 'btn danger', 'var(--red)')) return;
+    if (!await uiConfirm('Delete finding', `Delete <b>${esc(f.title)}</b>? You can recover it from Deleted findings.`, 'Delete', 'btn danger', 'var(--red)')) return;
     deleteBtn.disabled = true;
     deleteBtn.setAttribute('aria-busy', 'true');
     try {
-      await api('/api/findings/' + f.id, { method: 'DELETE' });
-      cvssPreviewDrafts.discard(f.id, 'vector');
-      selFinding = next?.id || null;
+      await deleteFinding(f.id);
+      if (selFinding === f.id) selFinding = next?.id || null;
+      renderFindings();
       toast('finding deleted');
       await loadFindings();
     } catch (err) {
@@ -1306,11 +1363,13 @@ function renderFindingDetail() {
     const attachScreenshot = async file => {
       if (!file || !file.type?.startsWith('image/')) { toast('choose an image file', 'error'); return; }
       try {
-        const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('failed to read image')); r.readAsDataURL(file); });
-        await settleFindingBodyBeforeEvidence(f.id);
-        const updated = await api('/api/findings/' + f.id + '/images', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: dataUrl, mime: file.type, caption: file.name || 'Screenshot evidence', role: 'result', source: 'operator_upload' }) });
-        applyFindingEvidenceResponse(updated);
-        toast('screenshot attached');
+        await withFindingEvidenceWrite(f.id, async () => {
+          const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('failed to read image')); r.readAsDataURL(file); });
+          await settleFindingBodyBeforeEvidence(f.id);
+          const updated = await api('/api/findings/' + f.id + '/images', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data: dataUrl, mime: file.type, caption: file.name || 'Screenshot evidence', role: 'result', source: 'operator_upload' }) });
+          applyFindingEvidenceResponse(updated);
+          toast('screenshot attached');
+        });
       } catch (err) { toast(err.message, 'error'); }
     };
     $('#findImageFile').onchange = async e => { const file = e.target.files?.[0]; e.target.value = ''; await attachScreenshot(file); };
@@ -1465,6 +1524,7 @@ export function updateFindPocBtn() {
 async function attachFlowsToFinding(findingId, ids) {
   if (!ids.length) return {attached:0,failed:[]};
   findingId=Number(findingId);
+  if(findingMutationBlocked(findingId)){toast('Finding is being deleted or is no longer available.', 'error');return {attached:0,failed:ids.slice()};}
   if(findingAttachPending.has(findingId)){toast('flow attachment already in progress');return {attached:0,failed:ids.slice(),pending:true};}
   findingAttachPending.add(findingId);
   const failed=[];
@@ -1728,10 +1788,10 @@ async function settleFindingsBeforeExport() {
   captureActiveFindingTextEditor(bodyFindingId);
   do {
     await Promise.allSettled([...bodySaveSnapshots.keys()].map(id => flushPendingBodySave(id)));
-    if (bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size) {
+    if (bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size || findingDeletesPending.size || findingEvidenceWrites.size) {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
-  } while (bodySaveTimers.size || bodySaveSnapshots.size || bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size);
+  } while (bodySaveTimers.size || bodySaveSnapshots.size || bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size || findingDeletesPending.size || findingEvidenceWrites.size);
   if (findingDrafts.hasAny() || cvssPreviewDrafts.hasAny()) {
     throw new Error('Save or retry finding changes and Apply CVSS previews before exporting.');
   }
@@ -1889,6 +1949,6 @@ $('#ffpAttach') && ($('#ffpAttach').onclick = async () => {
 $('#selAddFinding') && ($('#selAddFinding').onclick = pickFindingForSelection);
 
 $('#findDeletedOpen')?.addEventListener('click', () => openDeletedFindings({
- canRestore: () => !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight,
+ canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight && !findingAttachPending.size && !findingDeletesPending.size && !findingEvidenceWrites.size,
  restored: async id => { renderedFindingKey=''; await loadFindings(); openFinding(id); },
 }));

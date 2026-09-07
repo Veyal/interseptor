@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Guard finding deletion with the shared save and evidence boundary, preserve failed drafts for Retry, and block export, project switching, and revision restore during deletion.
+- Reject invalid finding/revision IDs and malformed revision pagination cursors in HTTP and MCP requests.
+
 ## [2.1.0] - 2026-09-08
 
 ### Added
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Settle finding-owned writes before deletion, retain recovery controls on failure, and validate revision IDs and pagination without silently coercing invalid input.
 - Add CVSS preview discard and exact-revert recovery, clearing only abandoned Apply-owned save drafts while preserving newer typing and independent edits; reconcile exact reverts when the shared save queue settles, including after unrelated writes.
 - Persist complete merged evidence and server-owned image provenance in the initial revision; preserve unapplied CVSS drafts across refreshes, block exports until finding drafts are saved, and assess grouped report readiness only for exported findings.
 - Preserve open claim, CVSS, and revision-history disclosures during Findings background refreshes; keep claim-field focus tied to its capability and defer remounts until pointer clicks finish.

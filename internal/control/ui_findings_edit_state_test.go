@@ -129,7 +129,7 @@ func TestUIFindingsExportWaitsAndBlocksUnresolvedDrafts(t *testing.T) {
 	}
 	script := `
  let bodyFindingId=1,bodySavesInFlight=0,findingWritesInFlight=0;
- const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingWriteQueues=new Map(),findingAttachPending=new Set();
+ const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingWriteQueues=new Map(),findingAttachPending=new Set(),findingDeletesPending=new Set(),findingEvidenceWrites=new Map();
  let dirty=false,previewDirty=false,requests=0,downloads=0,errors=[];
  const findingDrafts={hasAny:()=>dirty},cvssPreviewDrafts={hasAny:()=>previewDirty};
  const controls={findExport:{disabled:false,setAttribute(){},removeAttribute(){}},findExportMode:{value:'final'}};

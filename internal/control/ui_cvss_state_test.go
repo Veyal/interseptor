@@ -84,7 +84,7 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  const findingWriteQueues=new Map(),cvssApplyDraftTokens=new Map(),cvssPreviewDrafts=createFindingDraftStore(),findingDrafts=createFindingDraftStore();
  const findings=[{id:1,cvss:'',severity:'Info'},{id:2,cvss:'B',severity:'Low'}];
  let bodyFindingId=1,selFinding=1,findingWritesInFlight=0,bodySavesInFlight=0,findEditMode=true,renders=0,guard;
- const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingAttachPending=new Set();
+ const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingAttachPending=new Set(),findingDeletesPending=new Set(),findingEvidenceWrites=new Map();
  const control=value=>({value,disabled:false,textContent:'',hidden:false,isConnected:true,handlers:{},classList:{toggle(){}},addEventListener(k,fn){this.handlers[k]=fn;}});
  const controls={findSaveState:control(''),findSaveRecovery:control(''),findSaveRetry:control(''),findToggleEdit:control('')};
  const $=s=>controls[s.slice(1)];

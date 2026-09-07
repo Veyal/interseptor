@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Veyal/interseptor/internal/store"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -152,6 +153,84 @@ func TestFinalGroupedReportUsesOutputMembership(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+func TestFindingRevisionHTTPValidation(t *testing.T) {
+	h, st, _ := newHub(t)
+	api := &findingsAPI{Hub: h}
+	for _, handler := range []struct {
+		name     string
+		serve    func(http.ResponseWriter, *http.Request)
+		revision bool
+	}{{"list", api.findingRevisions, false}, {"get", api.findingRevision, true}, {"restore", api.restoreFinding, true}} {
+		keys := []string{"id"}
+		if handler.revision {
+			keys = append(keys, "revisionId")
+		}
+		for _, key := range keys {
+			for _, value := range []string{"", "0", "-1", "abc", "9223372036854775808"} {
+				r := httptest.NewRequest("GET", "/", nil)
+				r.SetPathValue("id", "1")
+				r.SetPathValue("revisionId", "1")
+				r.SetPathValue(key, value)
+				w := httptest.NewRecorder()
+				handler.serve(w, r)
+				if w.Code != 400 {
+					t.Fatalf("%s %s=%q: %d %s", handler.name, key, value, w.Code, w.Body.String())
+				}
+			}
+		}
+	}
+	for _, before := range []string{"-1", "abc", "1.5", "9223372036854775808", "%zz", "1&before=2"} {
+		r := httptest.NewRequest("GET", "/?before="+before, nil)
+		r.SetPathValue("id", "1")
+		w := httptest.NewRecorder()
+		api.findingRevisions(w, r)
+		if w.Code != 400 {
+			t.Fatalf("before=%q: %d %s", before, w.Code, w.Body.String())
+		}
+	}
+	handler := h.Handler()
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Host = "localhost"
+		r.RemoteAddr = "127.0.0.1:12345"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	created := request("POST", "/api/findings", `{"title":"Revision pagination"}`)
+	var finding struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &finding); err != nil || finding.ID == 0 {
+		t.Fatalf("create: %s %v", created.Body.String(), err)
+	}
+	path := "/api/findings/" + strconv.FormatInt(finding.ID, 10)
+	if r := request("PATCH", path, `{"title":"Second revision"}`); r.Code != 200 {
+		t.Fatal(r.Body.String())
+	}
+	revisions, err := st.ListFindingRevisions(finding.ID, 100)
+	if err != nil || len(revisions) != 2 {
+		t.Fatalf("revisions: %v %v", revisions, err)
+	}
+	path = "/api/finding-revisions/" + strconv.FormatInt(finding.ID, 10)
+	for _, query := range []string{"", "?before=", "?before=0", "?before=" + strconv.FormatInt(revisions[0].ID, 10)} {
+		r := request("GET", path+query, "")
+		var page struct {
+			Revisions []store.FindingRevision `json:"revisions"`
+		}
+		if err := json.Unmarshal(r.Body.Bytes(), &page); err != nil || r.Code != 200 {
+			t.Fatalf("page %q: %d %s %v", query, r.Code, r.Body.String(), err)
+		}
+		want := 2
+		if strings.Contains(query, "before=") && query != "?before=" && query != "?before=0" {
+			want = 1
+		}
+		if len(page.Revisions) != want {
+			t.Fatalf("page %q has %d revisions", query, len(page.Revisions))
 		}
 	}
 }
