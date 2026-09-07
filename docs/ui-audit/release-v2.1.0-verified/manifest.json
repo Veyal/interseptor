@@ -1,0 +1,317 @@
+{
+  "accepted_runs": {
+    "journeys": {
+      "cases_per_engine": 3,
+      "engines": [
+        "chromium",
+        "firefox",
+        "webkit"
+      ],
+      "motion": "default",
+      "report": "journeys/report.json"
+    },
+    "visual": {
+      "cases_per_engine": 6,
+      "engines": [
+        "chromium",
+        "firefox",
+        "webkit"
+      ],
+      "motion": "default",
+      "report": "visual/report.json"
+    }
+  },
+  "binary": {
+    "sha256": "b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996",
+    "version": "2.0.10-local"
+  },
+  "evidence": [
+    {
+      "file": "journeys/chromium.json",
+      "kind": "report",
+      "sha256": "61fc454352193af850064bb7fd4cbec48b025e19be1c08e569f8f0d6d256aff1"
+    },
+    {
+      "file": "journeys/downloads/chromium-discarded-failed-preview.md",
+      "kind": "download",
+      "sha256": "493fc0149d44d94aff5b8d683577124597cd2bc28bea9a198979d2bcd759ec59"
+    },
+    {
+      "file": "journeys/downloads/chromium-saved-summary.json",
+      "kind": "download",
+      "sha256": "a2c105f850a49f02c3b36dd1463d3d281cc90905b6365f4f63347392a37d6f0a"
+    },
+    {
+      "file": "journeys/downloads/firefox-discarded-failed-preview.md",
+      "kind": "download",
+      "sha256": "2b6e5fff9c05ab23a590422b57b33ca0d24ff6278cd59b8c1f1e14bd54a32d52"
+    },
+    {
+      "file": "journeys/downloads/firefox-saved-summary.json",
+      "kind": "download",
+      "sha256": "45ea0be10227a9c4444fd1ba71bff5c99b1f3771afe0f68078d739eccc66c0b4"
+    },
+    {
+      "file": "journeys/downloads/webkit-discarded-failed-preview.md",
+      "kind": "download",
+      "sha256": "1239a903ac93bfd0721fbdacd5d38e3dacfc73191bf17675b755dc16454af195"
+    },
+    {
+      "file": "journeys/downloads/webkit-saved-summary.json",
+      "kind": "download",
+      "sha256": "f84608274f004c3e30aea4e254863b00756e9f63c8cdca2b8645dc2b05895984"
+    },
+    {
+      "file": "journeys/firefox.json",
+      "kind": "report",
+      "sha256": "db2498c5649955b1186de2545b8ed1b048160d55b356ecc8e72417612b20612c"
+    },
+    {
+      "file": "journeys/report.json",
+      "kind": "report",
+      "sha256": "e141bd43bcdde7f8d8d1d0281bc5a7b069899c71e8cf3c69fa69559b904edfef"
+    },
+    {
+      "file": "journeys/webkit.json",
+      "kind": "report",
+      "sha256": "9598006cc069a44867b762234b8dae2099c0a0874909857befa67ef27c8dbc23"
+    },
+    {
+      "file": "probes/interseptor-findings-cvss-export-final-aeb43510-probe-v6.py",
+      "kind": "probe",
+      "sha256": "ddefff07f78b6424b2c247552847a969160833bdcc0457bf3806fe6044b2cd7e"
+    },
+    {
+      "file": "probes/interseptor-findings-visual-final-aeb43510-base-probe-ui-settled.py",
+      "kind": "probe",
+      "sha256": "6b71361fb83196b661db6808bbffa50b81fe03c54b89cc8024da13797c9815fc"
+    },
+    {
+      "file": "probes/interseptor-findings-visual-final-aeb43510-base-probe.py",
+      "kind": "probe",
+      "sha256": "0c17fab195fc22f2b4e3e24b02dcdabe7444c7bb525592f914c7a1b950209335"
+    },
+    {
+      "file": "probes/interseptor_findings_improvements_qa_frozen.py",
+      "kind": "dependency",
+      "sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9"
+    },
+    {
+      "file": "visual/chromium.json",
+      "kind": "report",
+      "sha256": "d708bada72a68543317edfd3be54468066158a0426bb0d315c225d76800599c0"
+    },
+    {
+      "file": "visual/firefox.json",
+      "kind": "report",
+      "sha256": "5b9e75ce3c6973e460a242a4a5b401b896188aa37143c363ae499096a7a15b08"
+    },
+    {
+      "file": "visual/report.json",
+      "kind": "report",
+      "sha256": "eaa89838269bd77f9cac49d23c7dc914cf720ed50651db627266e720c6c0bc98"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "33b79f8e982296d59edf7c648c53d9e8cb4e88a30e371ae214c704a69cad76fb"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "242cc006718cd02455c2c1ba04a734eaa740239a5eeb5f4d8203d3ec716aafc3"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "81128158098cf0382b8b9f6d7519cfe5eefc01b472e170fa3df0a7fdb951d534"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "bfbe810d0f945987154b65789283ea6996e7e04379275aec03998fd495f3b838"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "effd6b39c0d859e004123c73dd68d54c161d7313358ea5cef9a1d6fc980f2b57"
+    },
+    {
+      "file": "visual/screenshots/chromium-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "a7893f5b7cd63ce93d38c82399529e5e746d769515dc301a63677c1fbf8e3ebc"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "d9ad7b38244ed901dae9caef14f77026737357b4ce7c5a7865feaef002dbdc5a"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "c30d84edeb7b2864c86b46e36bcf5dd957fdce29d6e3076aa7697025b01294b8"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "a6fcf0e6bd243a78640ff4adc67006f36502b1e29e15892efa318fdecb396b73"
+    },
+    {
+      "file": "visual/screenshots/chromium-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "3bda55fc2711e5f73e3930e770f38ff8ae6308c38e78e72a5e48de19ebaa03ce"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "b5763f29e7f90d214bc843a4c8df553af1677afc4e9c8694646904d172c08012"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "08e6f5d787a736a7f2dbf54026fde690a1d17050198424ddfe85f107f5d7f48e"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "eb0c57f4ff4313afa5b19d4bc34d3da0bbc96e8095efb8026d7a269cef543c88"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "0c5ccb199621cde506e509adc1d7fd822ec0645b76be08448ac02b7868b41427"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "7af3ab163b7422a540e4b18d160e3c6bb5885bfc817280a16097b6f41930bc11"
+    },
+    {
+      "file": "visual/screenshots/firefox-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "6418430e3256eae3ba3025e0d4d5d6459c04f588b66841d84bb1bc43bd969972"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "e03c9143d46bfa03c5aa8022f5308967c0071c322173385e2d79e6452dcdb546"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907"
+    },
+    {
+      "file": "visual/screenshots/firefox-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "ee38820d91abe62308c23106827c999d6433b98f41a4fc00804163c6d4cab8d7"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-calculator.png",
+      "kind": "screenshot",
+      "sha256": "068712c3e479122d43291ba8ed87e42acea862883a2cf419d1879586f83d6a24"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-claim-controls.png",
+      "kind": "screenshot",
+      "sha256": "1f6fd372b825dc69675993f3704ed1c25b54717a4a5b5d002851c9c18976f5b4"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-cleanup-preview.png",
+      "kind": "screenshot",
+      "sha256": "c81706bb8331662a1786a63dc7c75705907fcbd81a053cc039528c6f66b16701"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "a1a66a409f38c29aa5687da65a4ad5b7c890c1e40948cfc644a9d957971fc21e"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+      "kind": "screenshot",
+      "sha256": "dc0bf57e585dac7a9f2a4459aedb04bb0ad2b18e40b0015ffc14d66259390b4d"
+    },
+    {
+      "file": "visual/screenshots/webkit-desktop-light-session-timeline.png",
+      "kind": "screenshot",
+      "sha256": "bc774f870054fa3ab1f25190ef01bf853ddae7220d7f5431845608ebd46645f2"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-dark-calculator.png",
+      "kind": "screenshot",
+      "sha256": "f41039dd80bc395bb0436cc9f5bac3570ed08b91baee2d51607e9193e9b9e1fc"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-claim.png",
+      "kind": "screenshot",
+      "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-cleanup.png",
+      "kind": "screenshot",
+      "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3"
+    },
+    {
+      "file": "visual/screenshots/webkit-mobile-light-deleted-dialog.png",
+      "kind": "screenshot",
+      "sha256": "33215903143fd26bfec25fdb93a193d5294f1d436d58c19d236dd4f678981252"
+    },
+    {
+      "file": "visual/webkit.json",
+      "kind": "report",
+      "sha256": "85af15730a0fc8f8395ca4b40dd3c0cdc5449cfbf577ca0a31826c7272bd0a3d"
+    }
+  ],
+  "publication_reports": [
+    {
+      "file": "visual/report.json",
+      "original_sha256": "13f344c4b035a1530e78053c9bb9d394db90420adc1f68481193f9f0a43689db",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/chromium.json",
+      "original_sha256": "4bccd9599d9ece235436884dde08fae222d3fe2460639ed0ba6865e7bd9b422c",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/firefox.json",
+      "original_sha256": "2e2af2307b7a179585ead81e19255fc5d67371fedc802a9956f26afc624054fb",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "visual/webkit.json",
+      "original_sha256": "5e299c42cb047e64ee61e8a832a912bb2eb021652a8b3421fd46ac797f3b916a",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "journeys/report.json",
+      "original_sha256": "a8ee9d0d4023beede5b1c90e20a3eab5fea85ffb3d260e668fee8f7c498b6bab",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "journeys/chromium.json",
+      "original_sha256": "c2eaaf61dd5de4274d2af936afc3ed69f1e37c9e0f08b9e0ae051c1dde7e017d",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "journeys/firefox.json",
+      "original_sha256": "cf7629f201c8646e0cc8fad5cacd970d8b884474a3f3f739b581aeaa47812b8f",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    },
+    {
+      "file": "journeys/webkit.json",
+      "original_sha256": "6f3cf45d52c09b459987bf19e0c9e2513c5c6187d650ca0f4792b948aa0e4db7",
+      "transformation": "Only local probe, screenshot and download paths are made relative to this report. All other values are unchanged."
+    }
+  ],
+  "runtime": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 276,
+    "runtime_sha256": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b"
+  }
+}

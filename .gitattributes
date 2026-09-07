@@ -1,2 +1,3 @@
 # Retained browser-download evidence preserves exact exported bytes.
 docs/ui-audit/*/downloads/** whitespace=-blank-at-eof
+docs/ui-audit/release-v2.1.0-verified/journeys/downloads/** whitespace=-blank-at-eof

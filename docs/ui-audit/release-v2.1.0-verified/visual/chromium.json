@@ -1,0 +1,146 @@
+{
+  "binary_sha256": "b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996",
+  "binary_version": "interseptor v2.0.10-local",
+  "cases": {
+    "390 light-dark mobile controls reachable without overflow": "pass",
+    "UI restore selected distinct older revision with retained relationships": "pass",
+    "desktop claim custom-select and calculator": "pass",
+    "desktop cleanup preview": "pass",
+    "desktop deleted dialog": "pass",
+    "desktop session timeline": "pass"
+  },
+  "engine": "chromium",
+  "external_requests": [],
+  "failures": [],
+  "finding_id": 1,
+  "flow_ids": [
+    2,
+    1
+  ],
+  "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+  "revision_restore": {
+    "history_after": 6,
+    "history_before": 5,
+    "newer_title": "QA newer distinct title",
+    "retained_targets": [
+      [
+        "https://example.com/records/1",
+        [
+          2
+        ]
+      ],
+      [
+        "https://example.com/records/2",
+        [
+          1
+        ]
+      ]
+    ],
+    "selected_revision": 4,
+    "snapshot_title": "QA older selected snapshot"
+  },
+  "runtime_expected": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b",
+  "runtime_observed": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b",
+  "screenshots": [
+    {
+      "path": "screenshots/chromium-desktop-light-cleanup-preview.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "81128158098cf0382b8b9f6d7519cfe5eefc01b472e170fa3df0a7fdb951d534"
+    },
+    {
+      "path": "screenshots/chromium-desktop-light-expanded-before-after-diff.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "effd6b39c0d859e004123c73dd68d54c161d7313358ea5cef9a1d6fc980f2b57"
+    },
+    {
+      "path": "screenshots/chromium-desktop-light-claim-controls.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "242cc006718cd02455c2c1ba04a734eaa740239a5eeb5f4d8203d3ec716aafc3"
+    },
+    {
+      "path": "screenshots/chromium-desktop-light-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "33b79f8e982296d59edf7c648c53d9e8cb4e88a30e371ae214c704a69cad76fb"
+    },
+    {
+      "path": "screenshots/chromium-desktop-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "bfbe810d0f945987154b65789283ea6996e7e04379275aec03998fd495f3b838"
+    },
+    {
+      "path": "screenshots/chromium-desktop-light-session-timeline.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "a7893f5b7cd63ce93d38c82399529e5e746d769515dc301a63677c1fbf8e3ebc"
+    },
+    {
+      "path": "screenshots/chromium-mobile-light-claim.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "c30d84edeb7b2864c86b46e36bcf5dd957fdce29d6e3076aa7697025b01294b8"
+    },
+    {
+      "path": "screenshots/chromium-mobile-dark-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "0.72",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "d9ad7b38244ed901dae9caef14f77026737357b4ce7c5a7865feaef002dbdc5a"
+    },
+    {
+      "path": "screenshots/chromium-mobile-light-cleanup.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "a6fcf0e6bd243a78640ff4adc67006f36502b1e29e15892efa318fdecb396b73"
+    },
+    {
+      "path": "screenshots/chromium-mobile-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "3bda55fc2711e5f73e3930e770f38ff8ae6308c38e78e72a5e48de19ebaa03ce"
+    }
+  ]
+}

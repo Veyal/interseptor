@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-09-07
+## [2.1.0] - 2026-09-08
 
 ### Added
 
@@ -23,9 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Add CVSS preview discard and exact-revert recovery, clearing only abandoned Apply-owned save drafts while preserving newer typing and independent edits; reconcile exact reverts when the shared save queue settles, including after unrelated writes.
-
 - Persist complete merged evidence and server-owned image provenance in the initial revision; preserve unapplied CVSS drafts across refreshes, block exports until finding drafts are saved, and assess grouped report readiness only for exported findings.
-
 - Preserve open claim, CVSS, and revision-history disclosures during Findings background refreshes; keep claim-field focus tied to its capability and defer remounts until pointer clicks finish.
 - Add sandboxed HTML Render to Repeater responses, preserve response ownership during tab/view changes, and remove repeated click/selection instructions from History row hints.
 - Preserve development, testing, and production finding environments; reject unsupported values without silently mapping development to local (#67).
@@ -42,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Retain [27 final release checks](docs/ui-audit/release-v2.1.0-verified.md) across Chromium, Firefox, and WebKit, including default-motion visuals and CVSS/export/project-switch recovery. Publish relative report paths with original report hashes and unchanged executed probes, screenshots, and exports.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.10` release; release artifacts use the `2.1.0` tag version.
 - Add restrained, placement-aware menu entrances, dropdown-caret feedback and Settings/detail reveals; keep dismissal immediate, suppress stale hints and remove idle toggle pulsing.
 - Added source-bound menu and connected-journey QA evidence, including browser downloads, persistence/recovery checks, dialog interactions, and explicit operational coverage limits.
