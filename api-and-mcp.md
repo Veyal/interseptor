@@ -93,7 +93,7 @@ Use `blocks` as the source of truth for reproduction. A block is `text`, `flow`,
 may carry `role` (`context`, `setup`, `baseline`, `action`, `result`, `control`, `retest`, or
 `observation`), `proof` (the exact claim established), and `source`. Flow evidence uses
 `source=captured_flow` and `sourceFlowId`; generated HTTP previews use `source=flow_preview`.
-Image evidence can use `browser_screenshot`, `operator_upload`, `tool_output`, or `other`.
+See [image source classifications]({{ "/findings-and-reporting/" | relative_url }}#evidence-rules) for image evidence values.
 Prefer a real browser/device screenshot when it visibly proves the issue, and attach the captured
 flow as the inspectable request/response record. The API validates and stores images by content
 hash (maximum 5 MiB); it does not store image data inside the finding body.

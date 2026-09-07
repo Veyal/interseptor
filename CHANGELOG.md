@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Extend the retained-export whitespace exception to the current release evidence directory without changing exported bytes.
+- Document device screenshot classification and link duplicate image-source guidance to the Findings reference.
 - Guard finding deletion with the shared save and evidence boundary, preserve failed drafts for Retry, and block export, project switching, and revision restore during deletion.
 - Reject invalid finding/revision IDs and malformed revision pagination cursors in HTTP and MCP requests.
 

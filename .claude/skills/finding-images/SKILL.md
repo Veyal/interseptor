@@ -62,10 +62,9 @@ Prefer a real browser/device screenshot when visual state proves the issue. Use 
 only for generated HTTP visuals. A caption identifies the artifact; `proof` states the exact
 security-relevant claim it establishes.
 
-For visual claims, readiness requires a non-missing, annotated result artifact classified as
-`browser_screenshot` (an operator declaration, not independently authenticated provenance).
-`operator_upload` remains unclassified. Neither `flow_preview` nor `generated_image` qualifies;
-body edits and repeated uploads must preserve the generated origin of a known hash.
+For visual claims, use the readiness and image source rules in
+[Findings and reporting](../../../docs/findings-and-reporting.md#evidence-rules).
+Body edits and repeated uploads must preserve the generated origin of a known hash.
 
 
 ### Ingestion and classification

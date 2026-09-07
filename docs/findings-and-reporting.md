@@ -78,7 +78,7 @@ Before **Report ready**, the Review pane checks these items separately:
 - An annotated artifact for the triggering **action/request**.
 - An annotated artifact for the **observed result** supporting the impact.
 - An annotated **negative/control case** that distinguishes expected behavior.
-- For a visual claim (`proofReview.visual=true`), a real browser screenshot of the observed result.
+- For a visual claim (`proofReview.visual=true`), a real browser or device screenshot of the observed result.
 - An explicit `proofReview.execution=demonstrated` assessment.
 - A valid **CVSS v4.0 vector**, its calculated score, and matching severity.
 - Evidence for every affected target, along with claim, remediation, retest, and confidence.
@@ -94,10 +94,9 @@ Use redaction, a length, or a digest when that is sufficient to establish a conf
 Do not publish secret values. Integrity evidence should document a bounded, reversible observed
 change and retain its associated flow. Never manufacture missing execution evidence.
 
-`browser_screenshot` is an **operator-declared** browser capture; it is not independently authenticated
-by Interseptor. `operator_upload` means the origin has not been confirmed. `flow_preview` and
-`generated_image` are generated artifacts and cannot satisfy the visual-proof check. Classify actual
-uploaded browser captures explicitly in the image's origin selector.
+Visual-proof eligibility follows the [image source classifications](#evidence-rules).
+Classify actual uploaded browser or device captures explicitly in the image's origin selector.
+Generated artifacts cannot satisfy the visual-proof check.
 
 CVSS scores follow the supplied vector's Base/Threat/Environmental metrics. The API returns
 `cvssScore`, `cvssRating`, and `cvssNomenclature`. Severity bands are Info at 0.0, Low at 0.1–3.9,
@@ -114,12 +113,12 @@ not rewritten automatically.
 In Overview, add targets, expand a card to edit it, and move cards up or down. The first URL becomes
 the primary `target` shown in the list; additional targets are shown as a count. Search matches all
 URLs, methods, roles, relations, and variants. In a target card, select its annotated attached flows.
-One flow or browser capture can support several targets. Target `image_hashes` link declared browser captures. Missing evidence is identified per target in Review.
+One flow or browser/device capture can support several targets. Target `image_hashes` link declared captures. Missing evidence is identified per target in Review.
 
 Each `targets` entry stores `url`, `methods` (or the single-method input alias `method`), `role`,
 `variant`, `relation`, `note`, and optional `flow_ids`. A `setup` or `chain` target can document why it
 has no separate evidence in `evidenceException`; affected targets cannot use this exception. A single
-visual-only target can be supported by declared browser captures. Replacing `targets` with `[]`
+visual-only target can be supported by declared browser or device captures. Replacing `targets` with `[]`
 removes all targets; omitted fields are retained by PATCH. Old scalar targets appear as one target
 without losing their original text. Legacy primary-target edits preserve the other targets.
 
@@ -181,7 +180,8 @@ Image provenance is explicit:
 
 | Source | Meaning |
 |---|---|
-| `browser_screenshot` | Operator-declared capture of real browser/device state; not independently authenticated. |
+| `browser_screenshot` | Operator-declared capture of real browser state; not independently authenticated. |
+| `device_screenshot` | Operator-declared capture of real device state; not independently authenticated. |
 | `flow_preview` | Generated Interseptor rendering of HTTP evidence; retains `sourceFlowId`. |
 | `generated_image` | Generated illustration or synthetic image; never qualifies as real visual proof. |
 | `operator_upload` | Operator-supplied image whose capture mechanism is not otherwise recorded. |
@@ -244,7 +244,7 @@ or image references remain visible rather than being silently removed.
 2. Call `get_finding` before changing an existing record.
 3. Use `create_finding` or `update_finding` with the report envelope, ordered `targets`, `proofReview`, and a structured `blocks` array.
 4. Use `add_finding_poc` for captured flows; set `role`, `note`, and `proof`.
-5. Use `add_finding_image` for real screenshots, with `source=browser_screenshot` when accurate.
+5. Use `add_finding_image` for real screenshots, choosing the accurate [image source classification](#evidence-rules).
 6. Use `render_flow_preview` with `findingId`, `role`, and `proof` for generated HTTP evidence.
 7. Read the returned `readiness` gaps and correct them before treating the record as complete.
 
