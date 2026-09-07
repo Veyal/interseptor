@@ -299,32 +299,11 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 			trows.Close()
 		}
 
-		// CreateFinding deliberately rejects new orphan flow references. A merge
-		// is different: a peer can retain the finding and its evidence after the
-		// referenced flow was purged (or when an old archive omitted that flow).
-		// Keep those blocks visible as missing evidence by creating the finding
-		// with only resolvable blocks, then restoring the complete body and the
-		// orphan attachment rows in one small follow-up transaction.
 		remapFindingTargets(&f, peerToLocal)
-		fullPeerBody := f.Body
-		var missing []missingMergedFlow
-		f.Body, missing = splitMissingMergedFlowBlocks(fullPeerBody, peerToLocal)
-		f.Body = remapBodyFlowIDs(f.Body, peerToLocal)
-		fullBody := markMissingMergedFlowBlocks(fullPeerBody, peerToLocal)
-		fullBody = remapBodyFlowIDs(fullBody, peerToLocal)
-		fullFinding := f
-		fullFinding.Body = fullBody
-		if err := validateFindingNarrativeSize(fullFinding); err != nil {
-			return stats, fmt.Errorf("validate merged finding: %w", err)
-		}
+		f.Body = remapBodyFlowIDs(markMissingMergedFlowBlocks(f.Body, peerToLocal), peerToLocal)
 		_, err = s.CreateFinding(&f)
 		if err != nil {
 			return stats, fmt.Errorf("insert merged finding: %w", err)
-		}
-		if len(missing) > 0 {
-			if err := s.restoreMissingMergedFlowBlocks(f.ID, fullBody); err != nil {
-				return stats, fmt.Errorf("restore merged missing flow evidence: %w", err)
-			}
 		}
 		seenFindings[sig] = true
 		stats.FindingsAdded++
@@ -433,44 +412,6 @@ func worstCaseMergedBody(body string) string {
 	return string(encoded)
 }
 
-// splitMissingMergedFlowBlocks removes flow blocks whose peer flow was not
-// imported, allowing CreateFinding to validate the rest of the body. The
-// removed blocks are returned in body order so they can be restored as visible
-// missing evidence after the finding row exists.
-type missingMergedFlow struct {
-	record blockRecord
-	ord    int
-}
-
-func splitMissingMergedFlowBlocks(body string, peerToLocal map[int64]int64) (string, []missingMergedFlow) {
-	if strings.TrimSpace(body) == "" {
-		return body, nil
-	}
-	var recs []blockRecord
-	if err := json.Unmarshal([]byte(body), &recs); err != nil {
-		return body, nil
-	}
-	kept := make([]blockRecord, 0, len(recs))
-	var missing []missingMergedFlow
-	for ord, rec := range recs {
-		if rec.Type == "flow" && rec.FlowID > 0 {
-			// A merge remaps every flow that exists in the peer. Any remaining
-			// reference therefore intentionally represents a purged/unavailable
-			// flow and must remain in the report as missing evidence.
-			if _, ok := peerToLocal[rec.FlowID]; !ok {
-				missing = append(missing, missingMergedFlow{record: rec, ord: ord})
-				continue
-			}
-		}
-		kept = append(kept, rec)
-	}
-	if len(missing) == 0 {
-		return body, nil
-	}
-	encoded, _ := json.Marshal(kept)
-	return string(encoded), missing
-}
-
 func markMissingMergedFlowBlocks(body string, peerToLocal map[int64]int64) string {
 	var recs []blockRecord
 	if err := json.Unmarshal([]byte(body), &recs); err != nil {
@@ -485,41 +426,6 @@ func markMissingMergedFlowBlocks(body string, peerToLocal map[int64]int64) strin
 	}
 	encoded, _ := json.Marshal(recs)
 	return string(encoded)
-}
-
-func (s *Store) restoreMissingMergedFlowBlocks(findingID int64, body string) error {
-	if err := validateFindingBodySize(body); err != nil {
-		return err
-	}
-	var recs []blockRecord
-	if err := json.Unmarshal([]byte(body), &recs); err != nil {
-		return fmt.Errorf("decode merged body: %w", err)
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE findings SET body=? WHERE id=?`, body, findingID); err != nil {
-		return err
-	}
-	// Rebuild all attachment rows in body order. Missing blocks are deliberately
-	// omitted by syncFindingFlowsFromBody, so they cannot bind to a reused local
-	// flow id.
-	if _, err := tx.Exec(`DELETE FROM finding_flows WHERE finding_id=?`, findingID); err != nil {
-		return err
-	}
-	ord := 0
-	for _, rec := range recs {
-		if rec.Type != "flow" || rec.Missing {
-			continue
-		}
-		if _, err := tx.Exec(`INSERT INTO finding_flows (finding_id, flow_id, ord, note) VALUES (?,?,?,?)`, findingID, rec.FlowID, ord, rec.Note); err != nil {
-			return err
-		}
-		ord++
-	}
-	return tx.Commit()
 }
 
 func (s *Store) validatePeerFindingImages(peer *sql.DB) error {

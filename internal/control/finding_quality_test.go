@@ -2,6 +2,8 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/Veyal/interseptor/internal/store"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -106,5 +108,50 @@ func TestFindingRevisionHTTPRecoveryAndAttribution(t *testing.T) {
 	revisions, _ = st.ListFindingRevisions(created.ID, 100)
 	if revisions[0].Action != "restore" || revisions[0].Reason != "Restore reviewed text" {
 		t.Fatal("restore event lost")
+	}
+}
+
+func TestFinalGroupedReportUsesOutputMembership(t *testing.T) {
+	for _, format := range []string{"md", "html", "json"} {
+		for _, tc := range []struct {
+			name     string
+			tags     []string
+			excluded bool
+		}{{"omitted", []string{"omit"}, true}, {"included", []string{"keep"}, false}, {"mixed", []string{"omit", "keep"}, false}, {"untagged", nil, false}} {
+			t.Run(format+"/"+tc.name, func(t *testing.T) {
+				h, st, _ := newHub(t)
+				ids := []int64{}
+				for range 3 {
+					id, err := st.InsertFlow(&store.Flow{Method: "GET", Scheme: "https", Host: "example.com", Path: "/", Status: 200})
+					if err != nil {
+						t.Fatal(err)
+					}
+					ids = append(ids, id)
+				}
+				ready := &store.Finding{Title: "Ready finding", Summary: "Observed behavior", Target: "https://example.com/a", Severity: "Critical", Status: "verified", Impact: "Bounded impact", Why: "Expected boundary", Fix: "Correct boundary", Retest: "Confirm secure behavior", Confidence: "certain", Cvss: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", ProofReview: store.FindingProofReview{Execution: "demonstrated"}, Tags: []string{"keep"}, Body: fmt.Sprintf(`[{"type":"flow","flowId":%d,"role":"action","proof":"Recorded action"},{"type":"flow","flowId":%d,"role":"result","proof":"Observed result"},{"type":"flow","flowId":%d,"role":"control","proof":"Expected control"}]`, ids[0], ids[1], ids[2])}
+				if _, err := st.CreateFinding(ready); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := st.CreateFinding(&store.Finding{Title: "Incomplete finding", Tags: tc.tags}); err != nil {
+					t.Fatal(err)
+				}
+				for _, group := range []string{"", "&groupBy=tag"} {
+					for _, mode := range []string{"draft", "final"} {
+						req := httptest.NewRequest("GET", "/api/findings/report?format="+format+"&mode="+mode+"&omitTags=OMIT"+group, nil)
+						req.Host = "localhost"
+						req.RemoteAddr = "127.0.0.1:12345"
+						r := httptest.NewRecorder()
+						h.Handler().ServeHTTP(r, req)
+						want := 409
+						if mode == "draft" || (tc.excluded && format != "json" && group != "") {
+							want = 200
+						}
+						if r.Code != want {
+							t.Fatalf("%s %s: got %d want %d: %s", group, mode, r.Code, want, r.Body.String())
+						}
+					}
+				}
+			})
+		}
 	}
 }

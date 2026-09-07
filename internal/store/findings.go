@@ -110,10 +110,12 @@ func NormalizeFindingBody(body string) (string, error) {
 			if recs[i].FlowID <= 0 {
 				return "", fmt.Errorf("body block[%d]: flow block missing flowId", i)
 			}
-			if _, ok := seenFlows[recs[i].FlowID]; ok {
-				continue
+			if !recs[i].Missing {
+				if _, ok := seenFlows[recs[i].FlowID]; ok {
+					continue
+				}
+				seenFlows[recs[i].FlowID] = struct{}{}
 			}
-			seenFlows[recs[i].FlowID] = struct{}{}
 		case "image":
 			recs[i].Type = "image"
 		default:

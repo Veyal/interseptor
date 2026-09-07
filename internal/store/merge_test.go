@@ -1189,3 +1189,70 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 		t.Fatalf("re-merge must not duplicate flows, got %d", len(flows))
 	}
 }
+
+func TestMergeInitialRevisionPreservesMissingEvidenceAndProvenance(t *testing.T) {
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	generated, err := local.CreateFinding(&Finding{Title: "Generated preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _, err := local.PutAndAttachImage(generated, "image/png", tinyPNG, "Preview", -1, "result", "Preview only", "flow_preview", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedFlow(t, local, "example.com", "/unrelated", "", 1000)
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &Finding{Title: "Imported evidence", Body: fmt.Sprintf(`[{"type":"flow","flowId":1,"missing":true,"note":"Retained missing evidence"},{"type":"image","hash":%q,"mime":"image/png","source":"browser_screenshot"}]`, hash)}
+	if _, err = peer.CreateFinding(f); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = peer.PutAndAttachImage(f.ID, "image/png", tinyPNG, "Capture", -1, "result", "Claimed screenshot", "browser_screenshot", 0); err != nil {
+		t.Fatal(err)
+	}
+	bodies := peer.BodiesDir()
+	peer.Close()
+	if _, err = local.MergeFrom(filepath.Join(peerDir, currentDBName), bodies, "peer"); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imported Finding
+	for _, candidate := range fs {
+		if candidate.Title == f.Title {
+			imported = candidate
+		}
+	}
+	check := func(got *Finding) {
+		t.Helper()
+		if len(got.Blocks) != 2 || !got.Blocks[0].Missing || got.Blocks[0].Note != "Retained missing evidence" || got.Blocks[1].Source != "flow_preview" || got.Blocks[1].Provenance == nil || got.Blocks[1].Provenance.Ingestion != "generated" {
+			t.Fatalf("incomplete or untruthful imported evidence: %+v", got.Blocks)
+		}
+		var n int
+		if err := local.db.QueryRow(`SELECT COUNT(*) FROM finding_flows WHERE finding_id=?`, got.ID).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("unsafe associations: %d %v", n, err)
+		}
+	}
+	check(&imported)
+	revisions, err := local.ListFindingRevisions(imported.ID, 100)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("initial revisions: %+v %v", revisions, err)
+	}
+	if err = local.RestoreFindingRevision(imported.ID, revisions[0].ID, FindingChange{}); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := local.GetFinding(imported.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(restored)
+}

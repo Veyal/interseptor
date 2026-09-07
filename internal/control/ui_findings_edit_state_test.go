@@ -119,3 +119,34 @@ func TestUIFindingsDebouncesBodiesPerFinding(t *testing.T) {
 		t.Error("one finding must not cancel another finding's pending body save")
 	}
 }
+
+func TestUIFindingsExportWaitsAndBlocksUnresolvedDrafts(t *testing.T) {
+	source := readUIAsset(t, "js/findings.js")
+	start := strings.Index(source, "async function settleFindingsBeforeExport(")
+	end := strings.Index(source, "$('#findExport') &&")
+	if start < 0 || end <= start {
+		t.Fatal("missing export draft barrier")
+	}
+	script := `
+ let bodyFindingId=1,bodySavesInFlight=0,findingWritesInFlight=0;
+ const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingWriteQueues=new Map(),findingAttachPending=new Set();
+ let dirty=false,previewDirty=false,requests=0,downloads=0,errors=[];
+ const findingDrafts={hasAny:()=>dirty},cvssPreviewDrafts={hasAny:()=>previewDirty};
+ const controls={findExport:{disabled:false,setAttribute(){},removeAttribute(){}},findExportMode:{value:'final'}};
+ const $=s=>controls[s.slice(1)],captureActiveFindingTextEditor=()=>{},flushPendingBodySave=async id=>{bodySaveSnapshots.delete(id);bodySaveTimers.delete(id);};
+ const fetch=async()=>{requests++;return {ok:true,blob:async()=>({type:'text/plain'})}},saveFile=async()=>downloads++,toast=(message,type)=>{if(type==='error')errors.push(message)},closeModal=()=>{};
+ ` + source[start:end] + `
+ for(const mode of ['draft','final']) {
+ controls.findExportMode.value=mode;findingWriteQueues.set(1,{running:true});dirty=true;
+ const before=requests;const pending=exportFindingsReport();await new Promise(r=>setTimeout(r,5));
+ if(requests!==before||downloads!==before)throw Error('export ran while write pending');
+ dirty=false;findingWriteQueues.clear();await pending;
+ if(requests!==before+1||downloads!==requests)throw Error('settled write did not export');
+ dirty=true;const rejected=requests;await exportFindingsReport();if(requests!==rejected||!errors.at(-1).includes('Save or retry'))throw Error('rejected write exported stale content');
+ dirty=false;previewDirty=true;await exportFindingsReport();if(requests!==rejected)throw Error('unapplied preview exported');previewDirty=false;
+ }
+ `
+	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("export drafts: %v\n%s", err, out)
+	}
+}

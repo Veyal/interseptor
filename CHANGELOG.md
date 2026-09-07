@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Persist complete merged evidence and server-owned image provenance in the initial revision; preserve unapplied CVSS drafts across refreshes, block exports until finding drafts are saved, and assess grouped report readiness only for exported findings.
+
 - Preserve open claim, CVSS, and revision-history disclosures during Findings background refreshes; keep claim-field focus tied to its capability and defer remounts until pointer clicks finish.
 - Add sandboxed HTML Render to Repeater responses, preserve response ownership during tab/view changes, and remove repeated click/selection instructions from History row hints.
 - Preserve development, testing, and production finding environments; reject unsupported values without silently mapping development to local (#67).

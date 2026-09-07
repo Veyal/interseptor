@@ -47,7 +47,7 @@ export function renderCvssEditor(initialVector = '') {
 // bindCvssEditor deliberately keeps preview separate from persistence. Typing
 // or selecting a metric can only evaluate; Apply is the sole operation that
 // sends both cvss and the matching normalized severity to the finding API.
-export function bindCvssEditor(root, onApply) {
+export function bindCvssEditor(root, onApply, onPreviewChange = () => {}) {
   const input = root.querySelector('#findCvss');
   const status = root.querySelector('[data-cvss-status]');
   const previewButton = root.querySelector('[data-cvss-preview]');
@@ -110,8 +110,8 @@ export function bindCvssEditor(root, onApply) {
     const token = generation;
     timer = setTimeout(() => { timer = null; runPreview(token); }, 180);
   };
-  input.addEventListener('input', () => { syncSelectsFromInput(); schedulePreview(); });
-  for (const select of selects) select.addEventListener('change', () => { updateVectorFromSelects(); schedulePreview(); });
+  input.addEventListener('input', () => { syncSelectsFromInput(); onPreviewChange(input.value); schedulePreview(); });
+  for (const select of selects) select.addEventListener('change', () => { updateVectorFromSelects(); onPreviewChange(input.value); schedulePreview(); });
   previewButton.addEventListener('click', () => {
     if (timer) clearTimeout(timer);
     invalidate();

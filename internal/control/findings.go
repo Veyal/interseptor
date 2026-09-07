@@ -209,6 +209,11 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, "mode must be draft or final")
 		return
 	}
+	groupByTag := strings.EqualFold(q.Get("groupBy"), "tag")
+	omitTags := splitCSV(q.Get("omitTags"))
+	if groupByTag && format != "json" {
+		fs = report.FilterGroupedFindings(fs, omitTags)
+	}
 	quality := assessReportQuality(fs)
 	if mode == "final" && !quality.Ready {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "Final report needs review. Resolve the listed checks or export a draft.", "quality": quality})
@@ -229,8 +234,6 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 	if includeBodies {
 		h.enrichFindingReportBodies(fs)
 	}
-	groupByTag := strings.EqualFold(q.Get("groupBy"), "tag")
-	omitTags := splitCSV(q.Get("omitTags"))
 	tagOrder := splitCSV(q.Get("tagOrder"))
 	switch format {
 	case "json":

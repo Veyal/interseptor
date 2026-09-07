@@ -409,3 +409,18 @@ func fmtInt64(n int64) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+func TestNormalizeFindingBodyRetainsMissingFlowIDCollision(t *testing.T) {
+	body := `[{"type":"flow","flowId":1,"missing":true,"note":"Peer evidence unavailable"},{"type":"flow","flowId":1,"note":"Mapped capture"}]`
+	out, err := NormalizeFindingBody(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blocks []blockRecord
+	if err = json.Unmarshal([]byte(out), &blocks); err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 2 || !blocks[0].Missing || blocks[1].Missing {
+		t.Fatalf("missing evidence collided with mapped flow: %s", out)
+	}
+}

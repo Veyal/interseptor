@@ -49,6 +49,7 @@ export function createFindingDraftStore() {
       records.set(id, record);
       return tokens;
     },
+    tokens: id => Object.fromEntries([...(records.get(id) || [])].map(([key, draft]) => [key, draft.token])),
     acknowledge(id, tokens) {
       const record = records.get(id);
       for (const [key, token] of Object.entries(tokens)) {

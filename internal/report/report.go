@@ -570,6 +570,20 @@ func orVal(s, def string) string {
 	return s
 }
 
+func FilterGroupedFindings(findings []store.Finding, omitTags []string) []store.Finding {
+	omit := map[string]bool{}
+	for _, tag := range store.NormalizeTags(omitTags) {
+		omit[tag] = true
+	}
+	out := make([]store.Finding, 0, len(findings))
+	for _, f := range findings {
+		if f.Status == "false_positive" || !findingOnlyOmittedTags(f, omit) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // ProjectGroupedByTag is like Project but sections active findings under ## Tag: <name>
 // headings. tagOrder prefers section order (e.g. cms, website, app, api); remaining
 // tags follow alphabetically; untagged findings go last under ## Untagged.
@@ -583,12 +597,9 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 	order := store.NormalizeTags(tagOrder)
 
 	var active, excluded []store.Finding
-	for _, f := range findings {
+	for _, f := range FilterGroupedFindings(findings, omitTags) {
 		if f.Status == "false_positive" {
 			excluded = append(excluded, f)
-			continue
-		}
-		if findingOnlyOmittedTags(f, omit) {
 			continue
 		}
 		active = append(active, f)

@@ -1,6 +1,6 @@
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
 import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
-registerProjectSwitchGuard(()=>findingDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size?'Save or retry Findings before switching projects.':'');
+registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel } from './finding-assessment.js';
 import { flowPopup, closeFlowPopup } from './flowmodal.js';
@@ -72,6 +72,7 @@ let findingWritesInFlight = 0;
 // coalesce by field while the current request is in flight.
 const findingWriteQueues = new Map();
 const findingDrafts = createFindingDraftStore();
+const cvssPreviewDrafts = createFindingDraftStore();
 let findingDetailRefreshDeferred = false;
 let findingDetailPointerActive = false;
 bindFindingPointerGuard($('#findDetail'));
@@ -907,9 +908,10 @@ function renderFindingDetail() {
     return;
   }
   const f = {...savedFinding, ...findingDrafts.values(selFinding)};
-  if(findingDrafts.has(selFinding))findEditMode=true;
+  if(findingDrafts.has(selFinding)||cvssPreviewDrafts.has(selFinding))findEditMode=true;
+  const cvssPreview = cvssPreviewDrafts.values(f.id).vector ?? f.cvss ?? '';
   const edit = findEditMode;
-  const key = JSON.stringify([f, edit]);
+  const key = JSON.stringify([f, edit, cvssPreview]);
   if (box.dataset.findingId === String(f.id) && renderedFindingKey === key && box.querySelector('.find-workspace')) return;
   const sameFinding = box.dataset.findingId === String(f.id);
   const previousFocus = sameFinding ? captureFindingFocus() : null;
@@ -1063,7 +1065,7 @@ function renderFindingDetail() {
         <label for="findStatus">Status</label><select id="findStatus" aria-label="Finding status">${statusSel}</select>
         <label for="findConfidence">Confidence</label><select id="findConfidence" aria-label="Finding confidence"><option value="">Not set</option><option value="tentative"${f.confidence === 'tentative' ? ' selected' : ''}>Tentative</option><option value="firm"${f.confidence === 'firm' ? ' selected' : ''}>Firm</option><option value="certain"${f.confidence === 'certain' ? ' selected' : ''}>Certain</option></select>
         <label for="findEnv">Environment</label><select id="findEnv" aria-label="Environment">${envOpts}</select>
-        <div id="findCvssEditor" class="cvss-editor">${renderCvssEditor(f.cvss || '')}</div>
+        <div id="findCvssEditor" class="cvss-editor">${renderCvssEditor(cvssPreview)}</div>
         <label for="findCwe">CWE</label><input id="findCwe" class="find-field-text" type="text" value="${escAttr(f.cwe || '')}">
       </div><details class="find-danger"><summary>Delete finding</summary><p>Removes this finding and its evidence references.</p><button type="button" class="btn danger" id="findDelete">Delete finding</button></details>` : `<dl class="find-review-facts"><div><dt>Status</dt><dd>${esc(statusLabel(f.status))}</dd></div><div><dt>Confidence</dt><dd>${esc(f.confidence || 'Not set')}</dd></div></dl>`}
     </div>
@@ -1072,9 +1074,11 @@ function renderFindingDetail() {
   initUiSelects(box);
   const cvssEditor = box.querySelector('#findCvssEditor');
   if (edit && cvssEditor) bindCvssEditor(cvssEditor, async ({ vector, severity }) => {
+    const tokens = cvssPreviewDrafts.tokens(f.id);
     const result = await patchFinding(f.id, { cvss: vector, severity });
+    cvssPreviewDrafts.acknowledge(f.id, tokens);
     if (result?.latest) await loadFindings();
-  });
+  }, vector => cvssPreviewDrafts.stage(f.id, { vector }));
   box.querySelectorAll('[data-find-section]').forEach(link => link.addEventListener('click', event => {
     if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault(); activateFindingSection(link.dataset.findSection, {focus:true});
@@ -1118,7 +1122,7 @@ function renderFindingDetail() {
     button.click();
   }
   bindFindingRevisions(box, f.id, {
-    canRestore: () => !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight,
+    canRestore: () => !cvssPreviewDrafts.hasAny() && !findingDrafts.hasAny() && !bodySaveTimers.size && !bodySavesInFlight && !findingWritesInFlight,
     restored: async () => { renderedFindingKey=''; await loadFindings(); renderFindingDetail(); },
   });
   bindFindingAssessment(box, f, {
@@ -1146,6 +1150,7 @@ function renderFindingDetail() {
           $('#findSaveRetry')?.focus({preventScroll:true});
           return;
         }
+        if(cvssPreviewDrafts.has(f.id)){toast('Apply the CVSS preview before finishing edits.', 'error');return;}
         if(selFinding===f.id){findEditMode = false;renderFindingDetail();}
       } catch (err) { toast(err.message, 'error'); }
       finally {if(te.isConnected){te.disabled=false;te.textContent='Done';}updateFindingSaveFeedback(f.id);}
@@ -1228,6 +1233,7 @@ function renderFindingDetail() {
     deleteBtn.setAttribute('aria-busy', 'true');
     try {
       await api('/api/findings/' + f.id, { method: 'DELETE' });
+      cvssPreviewDrafts.discard(f.id, 'vector');
       selFinding = next?.id || null;
       toast('finding deleted');
       await loadFindings();
@@ -1680,6 +1686,19 @@ $('#fcSave') && ($('#fcSave').onclick = async () => {
 $('#findGuide') && ($('#findGuide').onclick = () => openModal($('#findGuideModal')));
 $('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
 
+async function settleFindingsBeforeExport() {
+  captureActiveFindingTextEditor(bodyFindingId);
+  do {
+    await Promise.allSettled([...bodySaveSnapshots.keys()].map(id => flushPendingBodySave(id)));
+    if (bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  } while (bodySaveTimers.size || bodySaveSnapshots.size || bodySavesInFlight || findingWritesInFlight || findingWriteQueues.size || findingAttachPending.size);
+  if (findingDrafts.hasAny() || cvssPreviewDrafts.hasAny()) {
+    throw new Error('Save or retry finding changes and Apply CVSS previews before exporting.');
+  }
+}
+
 async function exportFindingsReport() {
   const fmt = $('#findExportFmt')?.value || 'md';
   const mode = $('#findExportMode')?.value || 'final';
@@ -1689,6 +1708,7 @@ async function exportFindingsReport() {
   if (button?.disabled) return;
   if (button) { button.disabled = true; button.setAttribute('aria-busy','true'); button.textContent = 'Exporting…'; }
   try {
+    await settleFindingsBeforeExport();
     const res = await fetch('/api/findings/report?format=' + encodeURIComponent(fmt) + '&statuses=' + encodeURIComponent(statuses) + '&mode=' + encodeURIComponent(mode) + group, { credentials: 'same-origin' });
     if (!res.ok) {
       const result = await res.json().catch(()=>({}));
