@@ -1,0 +1,446 @@
+{
+  "binary_expected_sha256": "7dd54c9614c0b42d046cd14e58afeaffe9366c2c524ffe2c1dd0bfe4be1b59d6",
+  "probe": "../probes/interseptor-findings-visual-final-cf601a6d-probe-ui-settled.py",
+  "probe_sha256": "a9efacc8df378ed588501aa913b6909ff95f7dac37e923017f682498dffc29b4",
+  "reports": [
+    {
+      "binary_sha256": "7dd54c9614c0b42d046cd14e58afeaffe9366c2c524ffe2c1dd0bfe4be1b59d6",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "390 light-dark mobile controls reachable without overflow": "pass",
+        "UI restore selected distinct older revision with retained relationships": "pass",
+        "desktop claim custom-select and calculator": "pass",
+        "desktop cleanup preview": "pass",
+        "desktop deleted dialog": "pass",
+        "desktop session timeline": "pass"
+      },
+      "engine": "chromium",
+      "external_requests": [],
+      "failures": [],
+      "finding_id": 1,
+      "flow_ids": [
+        2,
+        1
+      ],
+      "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+      "revision_restore": {
+        "history_after": 6,
+        "history_before": 5,
+        "newer_title": "QA newer distinct title",
+        "retained_targets": [
+          [
+            "https://example.com/records/1",
+            [
+              2
+            ]
+          ],
+          [
+            "https://example.com/records/2",
+            [
+              1
+            ]
+          ]
+        ],
+        "selected_revision": 4,
+        "snapshot_title": "QA older selected snapshot"
+      },
+      "runtime_expected": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "runtime_observed": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "screenshots": [
+        {
+          "path": "screenshots/chromium-desktop-light-cleanup-preview.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d354cd793d8ee407a6eb9b1ec9b028860fc6d972593df005594b43e026384f1e"
+        },
+        {
+          "path": "screenshots/chromium-desktop-light-expanded-before-after-diff.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d238038c9d4fa3e4be7b497e2a607b76b1e7df68b3506fc385ad8cf5ad2dda8f"
+        },
+        {
+          "path": "screenshots/chromium-desktop-light-claim-controls.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "41defc5e54d15cafab917e5c5bfe801bf9476c29331af4e9eeca235d22b58a52"
+        },
+        {
+          "path": "screenshots/chromium-desktop-light-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "3139805e4ae775ecdf5e40ccc609a068a5209c32f86ada50d2f62c0179868f8e"
+        },
+        {
+          "path": "screenshots/chromium-desktop-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "03d2301ec563c4f23d27c5ec144dded6b1d729173205d9a3e3f3a6825bccb141"
+        },
+        {
+          "path": "screenshots/chromium-desktop-light-session-timeline.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "cdced2a492246de21c671f8030b5f5b145e94c9631e65a7bb8698729b1b8fea0"
+        },
+        {
+          "path": "screenshots/chromium-mobile-light-claim.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "c30d84edeb7b2864c86b46e36bcf5dd957fdce29d6e3076aa7697025b01294b8"
+        },
+        {
+          "path": "screenshots/chromium-mobile-dark-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "0.72",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d9ad7b38244ed901dae9caef14f77026737357b4ce7c5a7865feaef002dbdc5a"
+        },
+        {
+          "path": "screenshots/chromium-mobile-light-cleanup.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "a6fcf0e6bd243a78640ff4adc67006f36502b1e29e15892efa318fdecb396b73"
+        },
+        {
+          "path": "screenshots/chromium-mobile-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "e9f2504ac056b738bbc9c783b6905ea08baa672afb893eef114170949e85c1f6"
+        }
+      ]
+    },
+    {
+      "binary_sha256": "7dd54c9614c0b42d046cd14e58afeaffe9366c2c524ffe2c1dd0bfe4be1b59d6",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "390 light-dark mobile controls reachable without overflow": "pass",
+        "UI restore selected distinct older revision with retained relationships": "pass",
+        "desktop claim custom-select and calculator": "pass",
+        "desktop cleanup preview": "pass",
+        "desktop deleted dialog": "pass",
+        "desktop session timeline": "pass"
+      },
+      "engine": "firefox",
+      "external_requests": [],
+      "failures": [],
+      "finding_id": 1,
+      "flow_ids": [
+        2,
+        1
+      ],
+      "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+      "revision_restore": {
+        "history_after": 6,
+        "history_before": 5,
+        "newer_title": "QA newer distinct title",
+        "retained_targets": [
+          [
+            "https://example.com/records/1",
+            [
+              2
+            ]
+          ],
+          [
+            "https://example.com/records/2",
+            [
+              1
+            ]
+          ]
+        ],
+        "selected_revision": 4,
+        "snapshot_title": "QA older selected snapshot"
+      },
+      "runtime_expected": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "runtime_observed": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "screenshots": [
+        {
+          "path": "screenshots/firefox-desktop-light-cleanup-preview.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "8df64f30f5766007ba5527d4881c2f74e1f6d1d9d7975df12e8aa04bdf326202"
+        },
+        {
+          "path": "screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "3af37f2fc7f199823bcab5ed6f9b0a54b920795a1710db524e42a10e6976b18a"
+        },
+        {
+          "path": "screenshots/firefox-desktop-light-claim-controls.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "3eee13a867ab361ee2432ff51a211d7fd7c6fd514abcb10564db8353e51d6015"
+        },
+        {
+          "path": "screenshots/firefox-desktop-light-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "7e77394528499ea6690c948b90d634420d8002696878e287a797ec6e598812bc"
+        },
+        {
+          "path": "screenshots/firefox-desktop-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "c9072c4666288727bf0b9f3a7795a9757fd827ad42e68b787a15ef9293497b82"
+        },
+        {
+          "path": "screenshots/firefox-desktop-light-session-timeline.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "4bda948d1926330cfb01184f04c3ad0084ab3b1866f984a48073c0e91b9bb9d0"
+        },
+        {
+          "path": "screenshots/firefox-mobile-light-claim.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc"
+        },
+        {
+          "path": "screenshots/firefox-mobile-dark-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "0.72",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "e03c9143d46bfa03c5aa8022f5308967c0071c322173385e2d79e6452dcdb546"
+        },
+        {
+          "path": "screenshots/firefox-mobile-light-cleanup.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907"
+        },
+        {
+          "path": "screenshots/firefox-mobile-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "3ec641fbe62fd88d3ea01961a1f141853516d827784ed8122b7ea9b7cd748584"
+        }
+      ]
+    },
+    {
+      "binary_sha256": "7dd54c9614c0b42d046cd14e58afeaffe9366c2c524ffe2c1dd0bfe4be1b59d6",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "390 light-dark mobile controls reachable without overflow": "pass",
+        "UI restore selected distinct older revision with retained relationships": "pass",
+        "desktop claim custom-select and calculator": "pass",
+        "desktop cleanup preview": "pass",
+        "desktop deleted dialog": "pass",
+        "desktop session timeline": "pass"
+      },
+      "engine": "webkit",
+      "external_requests": [],
+      "failures": [],
+      "finding_id": 1,
+      "flow_ids": [
+        2,
+        1
+      ],
+      "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+      "revision_restore": {
+        "history_after": 6,
+        "history_before": 5,
+        "newer_title": "QA newer distinct title",
+        "retained_targets": [
+          [
+            "https://example.com/records/1",
+            [
+              2
+            ]
+          ],
+          [
+            "https://example.com/records/2",
+            [
+              1
+            ]
+          ]
+        ],
+        "selected_revision": 4,
+        "snapshot_title": "QA older selected snapshot"
+      },
+      "runtime_expected": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "runtime_observed": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb",
+      "screenshots": [
+        {
+          "path": "screenshots/webkit-desktop-light-cleanup-preview.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "c43d696b4a7edb8ae893190bd9d49d2f1b945243a7a7e066dc253e7d6b9b6459"
+        },
+        {
+          "path": "screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "7469316e854af0b2d419eab60d4bb14c94cd2449ec8cf6a0803bcd9e23d5bb65"
+        },
+        {
+          "path": "screenshots/webkit-desktop-light-claim-controls.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d70e878456b2ee6fa8c9cc1f5e1ce17e3a5001f585140f219ae20d28c128beec"
+        },
+        {
+          "path": "screenshots/webkit-desktop-light-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "661d74f3e5bd52771dd7258c659181854fa98f10a6a5d670601ea975f91b63c1"
+        },
+        {
+          "path": "screenshots/webkit-desktop-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "299150506f6965819f7beda3a80566045241f7a31ac537537abfddb7e2ab652e"
+        },
+        {
+          "path": "screenshots/webkit-desktop-light-session-timeline.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "cb88bcb8543f3594ed8838e8963052d82f098eeb43ed3a82613d0353754e3887"
+        },
+        {
+          "path": "screenshots/webkit-mobile-light-claim.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227"
+        },
+        {
+          "path": "screenshots/webkit-mobile-dark-calculator.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "0.72",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "f41039dd80bc395bb0436cc9f5bac3570ed08b91baee2d51607e9193e9b9e1fc"
+        },
+        {
+          "path": "screenshots/webkit-mobile-light-cleanup.png",
+          "settled": {
+            "isModal": false,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3"
+        },
+        {
+          "path": "screenshots/webkit-mobile-light-deleted-dialog.png",
+          "settled": {
+            "isModal": true,
+            "opacity": "1",
+            "stable": true,
+            "transform": "none"
+          },
+          "sha256": "7c7fda335cf4d6a046e9ca0bfeff7e46a91ee1a95d6ecb20da120f90e75e92d9"
+        }
+      ]
+    }
+  ],
+  "runtime_expected_sha256": "75052a9827615f6b40f4cf31a5b3f5084617fbfd9e3229b3c7322e32a83c90fb"
+}

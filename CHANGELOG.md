@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Retain [27 final release checks](docs/ui-audit/release-v2.1.0-verified.md) across Chromium, Firefox, and WebKit, including default-motion visuals and CVSS/export/project-switch recovery. Publish relative report paths with original report hashes and unchanged executed probes, screenshots, and exports.
+- Publish [18 final-source visual checks](docs/ui-audit/release-v2.1.0-verified.md) across Chromium, Firefox, and WebKit after import/help/comment corrections, retaining the prior 27-check visual and CVSS/export/project-switch recovery coverage as historical. Preserve relative report paths, original report hashes, and exact executed probes, screenshots, and exports.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.10` release; release artifacts use the `2.1.0` tag version.
 - Add restrained, placement-aware menu entrances, dropdown-caret feedback and Settings/detail reveals; keep dismissal immediate, suppress stale hints and remove idle toggle pulsing.
 - Added source-bound menu and connected-journey QA evidence, including browser downloads, persistence/recovery checks, dialog interactions, and explicit operational coverage limits.
