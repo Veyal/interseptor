@@ -127,6 +127,33 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  await rejectApply('A');const retry=retryFindingSaves(1);await tick();requests.at(-1).reject(Error('retry failed'));await retry;
  await discard.handlers.click();await unblocked();
  const revertedPending=await beginApply('A');type('');revertedPending.request.reject(Error('save failed'));await revertedPending.pending;await unblocked();
+ for(const scenario of ['cwe-success','cwe-failure','different-preview','independent-severity']) {
+  const savedVector=findings[0].cvss;
+  const applying=await beginApply('Queued Apply');
+  const cweWrite=patchFinding(1,{cwe:'CWE-20'}).then(()=>null,error=>error);
+  type(scenario==='different-preview'?'New preview B':savedVector);
+  const independent=scenario==='independent-severity'?findingDrafts.stage(1,{severity:'Low'}):null;
+  applying.request.reject(Error('Apply failed'));await applying.pending;
+  const cweRequest=requests.at(-1);
+  if(cweRequest===applying.request||cweRequest.fields.cwe!=='CWE-20'||!findingWriteQueues.has(1))throw Error('CWE did not remain pending after Apply failed');
+  if(scenario==='cwe-failure')cweRequest.reject(Error('CWE failed'));else cweRequest.resolve({});
+  await cweWrite;
+  const remaining=findingDrafts.values(1);
+  if(scenario==='different-preview') {
+   if(cvssPreviewDrafts.values(1).vector!=='New preview B'||remaining.cvss!=='Queued Apply'||remaining.severity!=='High')throw Error('queue idle discarded differing preview or its drafts');
+   await discard.handlers.click();await unblocked();
+  } else {
+   if(cvssPreviewDrafts.has(1)||remaining.cvss!==undefined||(!independent&&remaining.severity!==undefined))throw Error('queue idle left abandoned Apply values');
+   if(independent){if(remaining.severity!=='Low')throw Error('queue idle discarded independent severity');findingDrafts.acknowledge(1,independent);updateFindingSaveFeedback(1);}
+   if(scenario==='cwe-failure') {
+    if(remaining.cwe!=='CWE-20'||!findingDrafts.failed(1)||controls.findSaveRecovery.hidden||!guard())throw Error('CWE failure not retained for recovery');
+    const retryCwe=retryFindingSaves(1);await tick();const retryRequest=requests.at(-1);
+    if(JSON.stringify(retryRequest.fields)!==JSON.stringify({cwe:'CWE-20'}))throw Error('Retry included abandoned Apply fields');
+    retryRequest.resolve({});await retryCwe;
+   }
+   await unblocked();const beforeRetry=requests.length;await retryFindingSaves(1);if(requests.length!==beforeRetry)throw Error('Retry resurrected discarded Apply');
+  }
+ }
  const pending=await beginApply('B');type('');const discarding=discard.handlers.click();await tick();if(!discard.disabled)throw Error('discard failed to wait for Apply');pending.request.resolve({});await pending.pending;await discarding;
  if(input.value!=='B'||findings[0].cvss!=='B')throw Error('discard ignored settled persisted vector');await unblocked();
  const delayed=await beginApply('C');type('invalid');const oldDiscard=discard.handlers.click();type('newer typing');

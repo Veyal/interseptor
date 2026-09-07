@@ -782,16 +782,9 @@ function findingWriteQueue(id) {
 
 async function applyCvssFinding(id, { vector, severity }) {
   const previewTokens = cvssPreviewDrafts.tokens(id);
-  try {
-    const result = await patchFinding(id, { cvss: vector, severity }, tokens => cvssApplyDraftTokens.set(id, tokens));
-    cvssPreviewDrafts.acknowledge(id, previewTokens);
-    if (result?.latest) await loadFindings();
-  } catch (error) {
-    if (!findingWriteQueues.has(id) && cvssPreviewDrafts.tokens(id).vector !== previewTokens.vector && cvssPreviewDrafts.values(id).vector === acknowledgedFindingValue(id, 'cvss', '')) {
-      stageCvssPreview(id, acknowledgedFindingValue(id, 'cvss', ''));
-    }
-    throw error;
-  }
+  const result = await patchFinding(id, { cvss: vector, severity }, tokens => cvssApplyDraftTokens.set(id, tokens));
+  cvssPreviewDrafts.acknowledge(id, previewTokens);
+  if (result?.latest) await loadFindings();
 }
 
 function discardCvssApplyDrafts(id, tokens = cvssApplyDraftTokens.get(id)) {
@@ -874,8 +867,11 @@ async function drainFindingWrites(id) {
     }
   } finally {
     queue.running = false;
-    if (!queue.pendingFields && !queue.pendingWaiters.length) findingWriteQueues.delete(id);
-    else void drainFindingWrites(id);
+    if (!queue.pendingFields && !queue.pendingWaiters.length) {
+      findingWriteQueues.delete(id);
+      const preview = cvssPreviewDrafts.values(id).vector;
+      if (cvssPreviewDrafts.has(id) && preview === acknowledgedFindingValue(id, 'cvss', '')) stageCvssPreview(id, preview);
+    } else void drainFindingWrites(id);
   }
 }
 
