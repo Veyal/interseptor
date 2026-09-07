@@ -1481,7 +1481,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("add_finding_image",
-		"Attach real visual evidence such as a browser/device screenshot. Pass base64 image data or a data URL; uploads default to source=operator_upload, so set source=browser_screenshot only when the capture provenance is known and explain exactly what it proves. Generated HTTP images should use render_flow_preview so provenance and sourceFlowId are retained.",
+		"Attach real visual evidence such as a browser/device screenshot. Pass base64 image data or a data URL; uploads default to source=operator_upload, so set source=browser_screenshot or source=device_screenshot only when the capture provenance is known and explain exactly what it proves. Generated HTTP images should use render_flow_preview so provenance and sourceFlowId are retained.",
 		obj(map[string]any{
 			"findingId":    pt("integer"),
 			"data":         p("string", "raw base64 or data:image/...;base64,... (max 5 MiB)"),
@@ -1489,7 +1489,7 @@ func (s *Server) registerTools() {
 			"caption":      p("string", "concise visible description"),
 			"role":         p("string", "context|setup|baseline|action|result|control|retest|observation"),
 			"proof":        p("string", "what the screenshot establishes"),
-			"source":       p("string", "browser_screenshot|operator_upload|tool_output|other"),
+			"source":       p("string", "browser_screenshot|device_screenshot|operator_upload|tool_output|other"),
 			"sourceFlowId": p("integer", "originating flow when independently known"),
 			"position":     p("integer", "0-based block index; omit to append"),
 		}, "findingId", "data"),

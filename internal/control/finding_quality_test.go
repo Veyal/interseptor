@@ -3,12 +3,13 @@ package control
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Veyal/interseptor/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func TestFinalReportGateAndDraftRecovery(t *testing.T) {

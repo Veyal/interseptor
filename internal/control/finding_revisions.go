@@ -1,10 +1,11 @@
 package control
 
 import (
-	"github.com/Veyal/interseptor/internal/store"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 func findingAPIChange(reason string) store.FindingChange {

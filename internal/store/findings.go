@@ -282,7 +282,7 @@ type FindingBlock struct {
 	Caption      string                  `json:"caption,omitempty"` // type=="image": optional caption
 	Role         string                  `json:"role,omitempty"`    // context/setup/baseline/action/result/control/retest/observation
 	Proof        string                  `json:"proof,omitempty"`   // exact claim this evidence establishes
-	Source       string                  `json:"source,omitempty"`  // captured_flow/flow_preview/browser_screenshot/operator_upload/tool_output/other
+	Source       string                  `json:"source,omitempty"`  // captured_flow/flow_preview/browser_screenshot/device_screenshot/operator_upload/tool_output/other
 	SourceFlowID int64                   `json:"sourceFlowId,omitempty"`
 	Provenance   *FindingImageProvenance `json:"provenance,omitempty"`
 

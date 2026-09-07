@@ -1,8 +1,9 @@
 package control
 
 import (
-	"github.com/Veyal/interseptor/internal/store"
 	"net/http"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 type reportFindingQuality struct {

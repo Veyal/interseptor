@@ -1,8 +1,12 @@
 # v2.1.0 final release verification
 
-The current source includes the finding deletion/evidence-write guards and
+The retained capture includes the finding deletion/evidence-write guards and
 revision-input validation made after the earlier final-release capture. All 27
 checks passed in Chromium, Firefox, and WebKit with default motion.
+
+This capture predates the MCP screenshot-help, evidence-block comment, and Go
+import-grouping corrections. Its source identity remains unchanged; a new
+current-source visual run is required before release acceptance.
 
 The six visual checks per engine cover cleanup preview, restoring a distinct
 older revision with target links intact, custom claim/CVSS controls, deleted
