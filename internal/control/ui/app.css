@@ -13,6 +13,7 @@
      are progressively raised. Every foreground token below is contrast-checked
      against all four by TestUIThemeContrastMeetsWCAGAA. */
   --bg:#111318;--bg1:#171a20;--bg2:#1c2028;--bg3:#252b35;
+  --document-bg:#ffffff; /* Captured HTML keeps the browser's light document canvas. */
   --line:rgba(255, 255, 255, 0.08);--line2:rgba(255, 255, 255, 0.15);--surface-frame:rgba(255, 255, 255, 0.12);--signal-grid:rgba(16, 185, 129, 0.07);
   --fg:#f8fafc;--fg2:#cbd5e1;--fg3:#94a3b8;
   /* Two accents, deliberately: --accent is the text-safe tint (AA on every
@@ -331,6 +332,7 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .seg button{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:4px 8px;border-radius:var(--r-sm);cursor:pointer}
 .seg button.on{color:var(--accent);background:var(--accentDim);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
 .pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:var(--fs-xs);line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+.http-render-frame{display:block;box-sizing:border-box;width:100%;height:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:var(--document-bg)}
 .sel-decode{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--noteDim);border-bottom:1px solid var(--line);font-size:var(--fs-xs);min-height:0;max-height:56px}
 .sel-decode[hidden]{display:none!important}
 .sel-decode-kind{flex:none;font-size:var(--fs-xs);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--amber)}
@@ -486,6 +488,52 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* .modal-overlay-high — stacking modifier for dialogs that must float above other
    open modals (confirm/prompt/setup). Applied in addition to .modal-overlay. */
 .modal-overlay-high{z-index:240}
+
+/* Passive session inspector: timeline first, with role comparison demoted to a
+   compact summary. Buttons are used for roles so the UI remains consistent on
+   macOS and does not depend on native select styling. */
+.session-inspect-dialog{width:min(1080px,96vw);height:min(88vh,820px)}
+.session-inspect-toolbar{display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--bg1)}
+.session-inspect-safety{font-size:var(--fs-xs);color:var(--fg3);line-height:1.4}
+.session-inspect-state.is-error{color:var(--red)}
+.session-inspect-body{padding:0;overflow:auto;background:var(--bg1)}
+.session-inspect-section{padding:16px 20px;border-bottom:1px solid var(--line)}
+.session-inspect-section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.session-inspect-section-head h3{font-size:var(--fs-lg);font-weight:650}
+.session-diff-list,.session-timeline-list{display:grid;gap:8px}
+.session-diff-card,.session-event{border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg);padding:10px 12px}
+.session-diff-card{display:grid;gap:8px}
+.session-diff-title,.session-event-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.session-diff-title code,.session-event-target{font-family:var(--mono);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.session-diff-badges{display:flex;gap:6px;flex-wrap:wrap}
+.session-role-group{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line2);border-radius:var(--r-md);background:var(--bg2)}
+.session-role{min-height:24px;padding:3px 7px;border-radius:var(--r-sm);font-size:var(--fs-xs);color:var(--fg3)}
+.session-role:hover{color:var(--fg);background:var(--bg3)}
+.session-role[aria-pressed="true"]{color:var(--onAccent);background:var(--accentSolid)}
+.session-event{display:grid;gap:8px}
+.session-event-head{font-size:var(--fs-xs);color:var(--fg3)}
+.session-event-id{font-family:var(--mono);color:var(--accent)}
+.session-event-target{color:var(--fg2)}
+.session-status{font-family:var(--mono);font-weight:700;color:var(--fg)}
+.session-status.is-error{color:var(--red)}
+.session-status.is-ok{color:var(--accent)}
+.session-observation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.session-observation{padding:7px 9px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg2);min-width:0}
+.session-observation-label{display:block;margin-bottom:3px;color:var(--fg3);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.3px}
+.session-observation-value{display:block;color:var(--fg2);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.session-cookie-list{display:flex;gap:5px;flex-wrap:wrap}
+.session-cookie{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border-radius:var(--r-sm);border:1px solid var(--line2);font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2)}
+.session-cookie small{color:var(--fg3);font-family:var(--ui)}
+.session-transition-list{display:grid;gap:4px;margin-top:8px;padding-left:14px;border-left:2px solid var(--line2)}
+.session-transition{font-size:var(--fs-xs);color:var(--fg2)}
+.session-transition.candidate{color:var(--amber)}
+.session-empty{padding:14px;border:1px dashed var(--line2);border-radius:var(--r-md);color:var(--fg3);font-size:var(--fs-sm)}
+@media (max-width:720px){
+  .session-inspect-dialog{width:100vw;height:100dvh;max-height:none;border-radius:0}
+  .session-inspect-toolbar{padding:9px 12px}
+  .session-inspect-section{padding:12px}
+  .session-observation-grid{grid-template-columns:1fr}
+}
 .icpt-mr>summary::before{content:'▸';color:var(--fg3);margin-right:7px;font-size:var(--fs-xs)}
 .icpt-mr[open]>summary::before{content:'▾'}
 .icpt-mr-body{padding:0 14px 14px;max-height:240px;overflow:auto}
@@ -598,6 +646,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 #repSend{display:inline-flex;align-items:center;gap:6px;flex:none}
 #repSend .kbd{font-size:var(--fs-xs);font-weight:600;opacity:.75}
 .rep-work{flex:1;display:flex;min-height:0;background:var(--bg)}
+.rep-res>.pane-head{height:auto;min-height:38px;flex-wrap:wrap;padding-top:6px;padding-bottom:6px}
+.rep-res .statusline{min-width:0;overflow-wrap:anywhere}
+#repResSeg{flex:none;margin-left:auto}
 .rep-sub{flex:none;padding:7px 10px 2px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;color:var(--fg3)}
 .rep-sub.row{display:flex;align-items:center;gap:8px;padding:7px 10px 4px}
 .rep-req-seg button{padding:2px 8px;font-size:var(--fs-xs)}
@@ -1137,6 +1188,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
   .rep-work,.intr-work{overflow-y:auto}
   .rep-hist{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
   .rep-req,.rep-res,.intr-config,.intr-results{min-height:260px}
+  .rep-res:has(.http-render-frame){min-height:440px}
   .rep-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;overflow:visible}
   #repMethod{grid-column:1;grid-row:1;min-width:74px}#repUrl{grid-column:2;grid-row:1;min-width:0}#repSend{grid-column:3;grid-row:1}
   #repHistToggle{grid-column:1;grid-row:2}#repPostmanImport{grid-column:2/4;grid-row:2;justify-self:start}

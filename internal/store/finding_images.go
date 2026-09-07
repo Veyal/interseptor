@@ -27,7 +27,7 @@ func (s *Store) PutImageBytes(mime string, data []byte) (hash string, n int64, e
 // PutAndAttachImage atomically protects the upload-to-attachment window from
 // body GC. Callers handling screenshots or rendered flow previews should use
 // this operation when they already know the destination finding.
-func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, caption string, pos int, role, proof, source string, sourceFlowID int64) (string, int64, error) {
+func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, caption string, pos int, role, proof, source string, sourceFlowID int64, changes ...FindingChange) (string, int64, error) {
 	s.bodyMu.Lock()
 	defer s.bodyMu.Unlock()
 	// If the upload is rejected by the destination finding (for example because
@@ -40,7 +40,9 @@ func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, cap
 	if err != nil {
 		return "", 0, err
 	}
-	if err := s.AttachImageWithMetadata(findingID, hash, resolvedMIME, caption, pos, role, proof, source, sourceFlowID); err != nil {
+	change := firstFindingChange(changes)
+	change.ImageIngestion = "upload"
+	if err := s.AttachImageWithMetadata(findingID, hash, resolvedMIME, caption, pos, role, proof, source, sourceFlowID, change); err != nil {
 		// A finalized upload is already present at this point. It is safe to
 		// remove it only when this call created the file; the body lock prevents
 		// concurrent image uploads in this store from racing this check.
@@ -339,7 +341,7 @@ func (s *Store) AttachImage(findingID int64, hash, mime, caption string, pos int
 }
 
 // AttachImageWithMetadata preserves semantic evidence role and provenance.
-func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64) error {
+func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64, changes ...FindingChange) error {
 	if err := validateFindingEvidenceMetadata(role, source, sourceFlowID); err != nil {
 		return err
 	}
@@ -357,12 +359,19 @@ func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption str
 		return err
 	}
 	defer tx.Rollback()
+	if err := revisionBefore(tx, findingID); err != nil {
+		return err
+	}
 
 	narrative, err := scanFindingNarrative(findingNarrativeRow(tx, findingID))
 	if err != nil {
 		return err
 	}
 	newBody := insertImageIntoBodyWithMetadata(narrative.Body, hash, mime, caption, pos, role, proof, source, sourceFlowID)
+	newBody, err = stampFindingImageProvenance(tx, narrative.Body, newBody, firstFindingChange(changes))
+	if err != nil {
+		return err
+	}
 	// Validate the complete canonical body before committing the attachment.
 	// This keeps screenshot evidence subject to the same aggregate limit as
 	// create/update paths and ensures a rejected attach cannot mutate the row.
@@ -377,6 +386,9 @@ func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption str
 	if _, err := tx.Exec(
 		`UPDATE findings SET body=?, detail=CASE WHEN ?<>'' THEN ? ELSE detail END, updated_ts=? WHERE id=?`,
 		newBody, detailSync, detailSync, time.Now().UnixMilli(), findingID); err != nil {
+		return err
+	}
+	if err := appendFindingRevision(tx, findingID, "update", firstFindingChange(changes)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -403,10 +415,10 @@ func insertImageIntoBodyWithMetadata(bodyJSON, hash, mime, caption string, pos i
 			if strings.TrimSpace(proof) != "" {
 				recs[i].Proof = strings.TrimSpace(proof)
 			}
-			if strings.TrimSpace(source) != "" {
+			if strings.TrimSpace(source) != "" && r.Source != "flow_preview" && r.Source != "generated_image" {
 				recs[i].Source = normalizeFindingBlockSource(source)
 			}
-			if sourceFlowID != 0 {
+			if sourceFlowID != 0 && r.Source != "flow_preview" && r.Source != "generated_image" {
 				recs[i].SourceFlowID = sourceFlowID
 			}
 			j, _ := json.Marshal(recs)
@@ -453,7 +465,7 @@ func (s *Store) enrichImageBlocks(blocks []FindingBlock) {
 // deleted while still attached to a finding.
 func (s *Store) FindingImageHashes() (map[string]struct{}, error) {
 	out := make(map[string]struct{})
-	rows, err := s.db.Query(`SELECT body FROM findings WHERE body != ''`)
+	rows, err := s.db.Query(`SELECT body FROM findings WHERE body != '' UNION ALL SELECT COALESCE(json_extract(snapshot,'$.body'),'') FROM finding_revisions`)
 	if err != nil {
 		return nil, err
 	}

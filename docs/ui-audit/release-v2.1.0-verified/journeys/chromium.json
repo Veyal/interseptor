@@ -1,0 +1,24 @@
+{
+  "binary_expected": "b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996",
+  "binary_observed": "b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996",
+  "binary_version": "interseptor v2.0.10-local",
+  "cases": {
+    "delayed CVSS A preserves newer B and failed retry retains B": "pass",
+    "export waits for saved edit and blocks failed Draft and Final": "pass",
+    "failed Apply discard restores vector and unblocks Done project switch and export": "pass"
+  },
+  "downloads": [
+    {
+      "path": "downloads/chromium-saved-summary.json",
+      "sha256": "a2c105f850a49f02c3b36dd1463d3d281cc90905b6365f4f63347392a37d6f0a"
+    },
+    {
+      "path": "downloads/chromium-discarded-failed-preview.md",
+      "sha256": "493fc0149d44d94aff5b8d683577124597cd2bc28bea9a198979d2bcd759ec59"
+    }
+  ],
+  "engine": "chromium",
+  "failures": [],
+  "runtime_expected": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b",
+  "runtime_observed": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b"
+}

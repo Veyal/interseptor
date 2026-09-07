@@ -1,0 +1,148 @@
+{
+  "coverage_note": "Chromium/Firefox run ended on a WebKit harness error reading a 204 response body. The separate WebKit follow-up passes the remaining cases without that invalid body read.",
+  "date": "2026-09-07",
+  "evidence": [
+    {
+      "file": "probes/chromium-firefox.py",
+      "kind": "probe",
+      "sha256": "1f75836179dc2dcebab56ec519dbfa51c8af36e37ba7a99bfe5841b89afdf7ed"
+    },
+    {
+      "file": "probes/webkit.py",
+      "kind": "probe",
+      "sha256": "2ef473afb531cdbca29549447a179dadfb295ae743878a3afa674144a57329b0"
+    },
+    {
+      "file": "reports/baseline-menu-order.json",
+      "kind": "report",
+      "sha256": "bf694d258a54c6286076a34453a34cb2b626e9ae2e8731bfcd42f4ffa1a722ca"
+    },
+    {
+      "file": "reports/baseline-tag-color.json",
+      "kind": "report",
+      "sha256": "5fa0a7b70979cc8f57a27ac4a28b8629b6372b7208eca5c4e4eedecc90176f52"
+    },
+    {
+      "file": "reports/chromium-firefox.json",
+      "kind": "report",
+      "sha256": "df6b83dc439ed66f9930c0c37250048963422dbd087ad4b7b09a7381e9edb766"
+    },
+    {
+      "file": "reports/webkit.json",
+      "kind": "report",
+      "sha256": "d6237efe824386cd113875804cb108814abde1dabffe05f5cf8c14e27a7f11d8"
+    },
+    {
+      "file": "screenshots/baseline/before-history-menu-desktop.png",
+      "kind": "screenshot",
+      "sha256": "f8e816dd3fef8ce8a70ca2929128ec214295082efaf4e233af932d3222af852a"
+    },
+    {
+      "file": "screenshots/baseline/before-history-menu-phone.png",
+      "kind": "screenshot",
+      "sha256": "ca3cf7008f539fa252b8efe165c87eb11a7a4d0b94b98e7de63aea5e1fd14656"
+    },
+    {
+      "file": "screenshots/baseline/before-tag-red-400.png",
+      "kind": "screenshot",
+      "sha256": "7d1d0e04ebaf7c60bccd1daa29efcf35fb7ed8b090963bf72fdbad2bbe7ccd6c"
+    },
+    {
+      "file": "screenshots/baseline/ordered-history-desktop.png",
+      "kind": "screenshot",
+      "sha256": "0a409673058edde25874fe850abd2d5ee94f28a664e902340b39568e0d3f2f63"
+    },
+    {
+      "file": "screenshots/baseline/ordered-history-phone.png",
+      "kind": "screenshot",
+      "sha256": "54fc88c764d6e8a044b8a5b5716248a6a866b2f1874bab25be9ad026103aabf4"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-dark-desktop.png",
+      "kind": "screenshot",
+      "sha256": "dcd2ec93b5369ebee3af863818ce7ec0094e22393efb2eebccc420da0ab3570e"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-light-1440px-repeat.png",
+      "kind": "screenshot",
+      "sha256": "558472ec984009a5217d0e03e54ff6b2e04fe956d3bc8f5753b69b741b84c084"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-light-768px-repeat.png",
+      "kind": "screenshot",
+      "sha256": "e840e1a450a3fa72cdb2c3b0e2c4e35d9c0e08a69de1a89a1ada0cb9b1dfa692"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-light-landscape.png",
+      "kind": "screenshot",
+      "sha256": "0efd0a4dbf7fd7cc05135fc8699e091057525791707f2cbbea6740a6a52a1a25"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-light-phone.png",
+      "kind": "screenshot",
+      "sha256": "c9ba8ef2fd485810da93c4041c4b375d5df746febabc2703f457122ef11e35f8"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-chromium-light-reduced-phone.png",
+      "kind": "screenshot",
+      "sha256": "2d03956359be256f5055f235b6f4ba5d2729ebfaa6e8296e45d0fc7b1066b4d6"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-firefox-dark-desktop.png",
+      "kind": "screenshot",
+      "sha256": "ac4f9d52284c5717c8d4966c03762c118543ddab628d715957759ec67e3efbc8"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-firefox-light-phone.png",
+      "kind": "screenshot",
+      "sha256": "6243a70b77b045e923fbba3d1e2ed9881117389fd4bdb1f002c5ed1d4c40389f"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-firefox-light-reduced-phone.png",
+      "kind": "screenshot",
+      "sha256": "e58d4ff424ef6322f5f052b6c19b3d950ace316c2c67ae4e9c20d7a1d8fcc58b"
+    },
+    {
+      "file": "screenshots/chromium-firefox/after-webkit-light-phone.png",
+      "kind": "screenshot",
+      "sha256": "45d3097db8e2951a377672ded780ac891674dc0c5ab5f6b0d9d373b6d5abe076"
+    },
+    {
+      "file": "screenshots/webkit/after-webkit-dark-desktop.png",
+      "kind": "screenshot",
+      "sha256": "b91a0d9b2971274444737392d647e592e565762c0a481c01757864ed2ebffaeb"
+    },
+    {
+      "file": "screenshots/webkit/after-webkit-light-phone.png",
+      "kind": "screenshot",
+      "sha256": "45d3097db8e2951a377672ded780ac891674dc0c5ab5f6b0d9d373b6d5abe076"
+    },
+    {
+      "file": "screenshots/webkit/after-webkit-light-reduced-phone.png",
+      "kind": "screenshot",
+      "sha256": "f711dcb3dc61ac286208cb82ceee7593346ebf573265773328518391946f9591"
+    }
+  ],
+  "normalization": "Temporary data/output paths removed; evidence paths are relative. Executed probe and PNG bytes are unchanged. Original report hashes retained.",
+  "reports": [
+    {
+      "file": "reports/chromium-firefox.json",
+      "original_report_sha256": "c6a54330d1ad44ac371f1c2993b4f0759fbc1c6b155bfcf5097e41743a3479a5",
+      "probe_sha256": "1f75836179dc2dcebab56ec519dbfa51c8af36e37ba7a99bfe5841b89afdf7ed",
+      "runtime_sha256": "5f8866062d1f1b61e84cd7d84b3caca5488b09c26e2913560fb33b18e8ea1c2f"
+    },
+    {
+      "file": "reports/webkit.json",
+      "original_report_sha256": "4ec5cc0da790cfcdd4c871ce66a512b7d56270b0da35080817df52d15123dc26",
+      "probe_sha256": "2ef473afb531cdbca29549447a179dadfb295ae743878a3afa674144a57329b0",
+      "runtime_sha256": "5f8866062d1f1b61e84cd7d84b3caca5488b09c26e2913560fb33b18e8ea1c2f"
+    }
+  ],
+  "runtime": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 257,
+    "runtime_sha256": "5f8866062d1f1b61e84cd7d84b3caca5488b09c26e2913560fb33b18e8ea1c2f",
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+  },
+  "scope": "Focused context-menu geometry, tag-color API/persistence, and restrained motion follow-up. Earlier all-menu evidence retains its own source identity. Generic disposable UI fixtures only."
+}

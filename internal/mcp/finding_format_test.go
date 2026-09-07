@@ -219,3 +219,34 @@ func TestCreateFindingForwardsWhyAndFormat(t *testing.T) {
 		t.Fatalf("body = %+v", gotBody)
 	}
 }
+
+func TestMCPFindingAssessmentFieldsReachAPI(t *testing.T) {
+	for _, tool := range []string{"create_finding", "update_finding"} {
+		t.Run(tool, func(t *testing.T) {
+			var received map[string]any
+			mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+					t.Error(err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"id":42,"ready":false}`))
+			}))
+			defer mock.Close()
+			s := New(mock.URL)
+			s.report = func(Activity) {}
+			args := map[string]any{"id": 42, "title": "Example review", "environment": "development", "targets": []any{map[string]any{"url": "https://example.com/a", "methods": []string{"GET"}, "role": "reader"}}, "proofReview": map[string]any{"execution": "not_executed", "reason": "Evidence unavailable", "visual": true}}
+			call, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
+			var out strings.Builder
+			if err := s.Serve(strings.NewReader(string(call)+"\n"), &out); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"environment", "targets", "proofReview"} {
+				want, _ := json.Marshal(args[key])
+				got, _ := json.Marshal(received[key])
+				if string(want) != string(got) {
+					t.Fatalf("%s lost %s: %s, want %s", tool, key, got, want)
+				}
+			}
+		})
+	}
+}

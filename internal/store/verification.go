@@ -27,7 +27,15 @@ const findingVerificationCols = `id, finding_id, run_id, vuln_class, gates, repr
 // field so re-verifying a finding overwrites the prior record in place; v.ID is
 // set to the resulting row id.
 func (s *Store) SaveFindingVerification(v *FindingVerification) (int64, error) {
-	_, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if err := revisionBefore(tx, v.FindingID); err != nil {
+		return 0, err
+	}
+	_, err = tx.Exec(
 		`INSERT INTO finding_verification
 		   (finding_id, run_id, vuln_class, gates, repro_count, oob_token, baseline_flow, payload_flow, confidence, ts)
 		 VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -48,7 +56,13 @@ func (s *Store) SaveFindingVerification(v *FindingVerification) (int64, error) {
 	}
 	// LastInsertId is unreliable across an upsert that took the UPDATE branch, so
 	// read the row's id back by its unique finding_id.
-	if err := s.db.QueryRow(`SELECT id FROM finding_verification WHERE finding_id=?`, v.FindingID).Scan(&v.ID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM finding_verification WHERE finding_id=?`, v.FindingID).Scan(&v.ID); err != nil {
+		return 0, err
+	}
+	if err := appendFindingRevision(tx, v.FindingID, "update", FindingChange{Source: "verification"}); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return v.ID, nil

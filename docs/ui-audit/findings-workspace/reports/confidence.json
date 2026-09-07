@@ -1,0 +1,13 @@
+{
+  "active": "findConfidenceUi",
+  "base_url": "http://127.0.0.1:49711",
+  "bottom": 681.6688842773438,
+  "detailScroll": 0,
+  "fullyVisible": true,
+  "reviewTop": 404.49700927734375,
+  "role": "combobox",
+  "runtime_digest": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "script_sha256": "9bfc5566b29c35d1e07a36c5de33930c1ea28c37f0c8c992e3f9c1224b9f1105",
+  "top": 646.6688842773438,
+  "viewport": 844
+}

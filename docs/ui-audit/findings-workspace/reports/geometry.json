@@ -1,0 +1,58 @@
+{
+  "base": "http://127.0.0.1:49711",
+  "engines": {
+    "chromium": {
+      "results_after_scroll": {
+        "bottom": 844.5,
+        "top": 681.5,
+        "visible": true
+      },
+      "results_initial": {
+        "bottom": 1050.5,
+        "top": 887.5
+      },
+      "scroll_container": {
+        "client_height": 490,
+        "scroll_height": 696,
+        "scroll_top": 206
+      },
+      "template_height": 180
+    },
+    "firefox": {
+      "results_after_scroll": {
+        "bottom": 843.5,
+        "top": 680.5,
+        "visible": true
+      },
+      "results_initial": {
+        "bottom": 1051.5,
+        "top": 888.5
+      },
+      "scroll_container": {
+        "client_height": 489,
+        "scroll_height": 697,
+        "scroll_top": 208
+      },
+      "template_height": 180
+    },
+    "webkit": {
+      "results_after_scroll": {
+        "bottom": 844.5,
+        "top": 681.5,
+        "visible": true
+      },
+      "results_initial": {
+        "bottom": 1050.5,
+        "top": 887.5
+      },
+      "scroll_container": {
+        "client_height": 490,
+        "scroll_height": 696,
+        "scroll_top": 206
+      },
+      "template_height": 180
+    }
+  },
+  "failures": [],
+  "probe_sha256": "3b66a5fccb310c32ea068b80dcbd7fcef556c81c938a5ecb03331f29fd8d6ab9"
+}

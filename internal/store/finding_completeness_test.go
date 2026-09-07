@@ -51,9 +51,18 @@ func TestFindingCompletenessDraftVsReady(t *testing.T) {
 	_ = s.AttachFlowWithMetadata(id, f1, "Before: own account", -1, "baseline", "Establishes authorized access to the current user's record.", "captured_flow", f1)
 	_ = s.AttachFlowWithMetadata(id, f2, "After: other user data", -1, "result", "Shows the same session receiving another user's data.", "captured_flow", f2)
 
-	// Still High default Medium — only  need 1 poc for Medium. Make it High to require 2.
-	sev := "High"
-	_ = s.UpdateFinding(id, &sev, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	f3, _ := s.InsertFlow(&Flow{Method: "GET", Host: "example.com", Path: "/control", Status: 403})
+	if err := s.AttachFlowWithMetadata(id, f1, "Recorded action", -1, "action", "Records the triggering request.", "captured_flow", f1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AttachFlowWithMetadata(id, f3, "Control", -1, "control", "Records expected denial.", "captured_flow", f3); err != nil {
+		t.Fatal(err)
+	}
+	sev, vector := "Critical", testCVSS4
+	review := FindingProofReview{Execution: "demonstrated"}
+	if err := s.UpdateFindingCanonical(id, &sev, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &vector, nil, nil, nil, nil, nil, FindingMetadataPatch{ProofReview: &review}); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err = s.GetFinding(id)
 	if err != nil {

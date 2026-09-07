@@ -70,7 +70,7 @@ func TestQueryPeerFindingsSupportsLegacySchemaWithoutEnvelopeColumns(t *testing.
 	if err := rows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 		&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe,
 		&f.Environment, &f.Cvss, &f.VerificationInstructions, &f.Summary,
-		&f.Confidence, &f.Retest); err != nil {
+		&f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
 		t.Fatalf("scan legacy finding: %v", err)
 	}
 	if f.Title != "Legacy issue" || f.Body != "" || f.Impact != "" || f.Why != "" || f.Cwe != "" || f.Environment != "" || f.Cvss != "" || f.VerificationInstructions != "" || f.Summary != "" || f.Confidence != "" || f.Retest != "" {
@@ -190,8 +190,17 @@ func TestMergeFromPreservesMissingCanonicalAndLegacyFlowEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get merged finding: %v", err)
 	}
-	if len(got.Flows) != 0 || len(got.Blocks) != 3 {
-		t.Fatalf("merged evidence flows=%+v blocks=%+v, want 0 attached flows/3 blocks", got.Flows, got.Blocks)
+	if len(got.Flows) != 2 || len(got.Blocks) != 3 {
+		t.Fatalf("merged evidence must expose both missing references: %+v", got)
+	}
+	for _, flow := range got.Flows {
+		if !flow.Missing || flow.Method != "" || flow.Host != "" {
+			t.Fatalf("missing projection leaked local flow: %+v", flow)
+		}
+	}
+	var attached int
+	if err := local.db.QueryRow(`SELECT count(*) FROM finding_flows WHERE finding_id=?`, got.ID).Scan(&attached); err != nil || attached != 0 {
+		t.Fatalf("missing references attached to live IDs: %d %v", attached, err)
 	}
 	for _, block := range got.Blocks {
 		if block.Type == "flow" && !block.Missing {
@@ -353,8 +362,12 @@ func TestFindingMissingMarkerWinsOverLocalFlowIDCollision(t *testing.T) {
 	if err != nil || len(got.Blocks) != 1 || !got.Blocks[0].Missing {
 		t.Fatalf("missing marker was resolved: finding=%+v err=%v", got, err)
 	}
-	if len(got.Flows) != 0 {
-		t.Fatalf("marked missing block must not attach local flow: %+v", got.Flows)
+	if len(got.Flows) != 1 || !got.Flows[0].Missing || got.Flows[0].Method != "" || got.Flows[0].Host != "" {
+		t.Fatalf("missing projection resolved unrelated traffic: %+v", got.Flows)
+	}
+	var attached int
+	if err := s.db.QueryRow(`SELECT count(*) FROM finding_flows WHERE finding_id=?`, fid).Scan(&attached); err != nil || attached != 0 {
+		t.Fatalf("missing ref persisted live attachment: %d %v", attached, err)
 	}
 	if err := s.UpdateFinding(fid, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("resave marked missing body: %v", err)
@@ -914,7 +927,7 @@ func TestMergePreviewRejectsMalformedFindingBody(t *testing.T) {
 		t.Fatalf("open local: %v", err)
 	}
 	defer local.Close()
-	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "invalid body") {
+	if _, err := local.MergePreview(peerDBPath, peerBodies, "peer"); err == nil || !strings.Contains(err.Error(), "body must be") {
 		t.Fatalf("MergePreview error=%v, want invalid finding body", err)
 	}
 }
@@ -1175,4 +1188,71 @@ func TestMergeFromUnionsAndIsIdempotent(t *testing.T) {
 	if flows, _ := local.QueryFlows(100); len(flows) != 3 {
 		t.Fatalf("re-merge must not duplicate flows, got %d", len(flows))
 	}
+}
+
+func TestMergeInitialRevisionPreservesMissingEvidenceAndProvenance(t *testing.T) {
+	local, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	generated, err := local.CreateFinding(&Finding{Title: "Generated preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _, err := local.PutAndAttachImage(generated, "image/png", tinyPNG, "Preview", -1, "result", "Preview only", "flow_preview", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedFlow(t, local, "example.com", "/unrelated", "", 1000)
+	peerDir := t.TempDir()
+	peer, err := Open(peerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &Finding{Title: "Imported evidence", Body: fmt.Sprintf(`[{"type":"flow","flowId":1,"missing":true,"note":"Retained missing evidence"},{"type":"image","hash":%q,"mime":"image/png","source":"browser_screenshot"}]`, hash)}
+	if _, err = peer.CreateFinding(f); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = peer.PutAndAttachImage(f.ID, "image/png", tinyPNG, "Capture", -1, "result", "Claimed screenshot", "browser_screenshot", 0); err != nil {
+		t.Fatal(err)
+	}
+	bodies := peer.BodiesDir()
+	peer.Close()
+	if _, err = local.MergeFrom(filepath.Join(peerDir, currentDBName), bodies, "peer"); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := local.ListFindings("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imported Finding
+	for _, candidate := range fs {
+		if candidate.Title == f.Title {
+			imported = candidate
+		}
+	}
+	check := func(got *Finding) {
+		t.Helper()
+		if len(got.Blocks) != 2 || !got.Blocks[0].Missing || got.Blocks[0].Note != "Retained missing evidence" || got.Blocks[1].Source != "flow_preview" || got.Blocks[1].Provenance == nil || got.Blocks[1].Provenance.Ingestion != "generated" {
+			t.Fatalf("incomplete or untruthful imported evidence: %+v", got.Blocks)
+		}
+		var n int
+		if err := local.db.QueryRow(`SELECT COUNT(*) FROM finding_flows WHERE finding_id=?`, got.ID).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("unsafe associations: %d %v", n, err)
+		}
+	}
+	check(&imported)
+	revisions, err := local.ListFindingRevisions(imported.ID, 100)
+	if err != nil || len(revisions) != 1 {
+		t.Fatalf("initial revisions: %+v %v", revisions, err)
+	}
+	if err = local.RestoreFindingRevision(imported.ID, revisions[0].ID, FindingChange{}); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := local.GetFinding(imported.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(restored)
 }

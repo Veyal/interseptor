@@ -13,15 +13,15 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if strings.Contains(index, `<option value="pdf">`) {
 		t.Error("findings export must not advertise PDF when the browser cannot produce it")
 	}
-	if !strings.Contains(index, `<option value="html">HTML (embedded images)</option>`) {
+	if !strings.Contains(index, `<option value="html">HTML with images</option>`) {
 		t.Error("findings export must identify self-contained HTML as the image-preserving handoff")
 	}
-	for _, want := range []string{`role="listbox"`, `id="findEvidenceRail"`, `id="findNarrativePreset"`, `id="findBackToList"`} {
+	for _, want := range []string{`<nav id="findList"`, `id="findEvidenceRail"`, `id="findNarrativePreset"`, `id="findBackToList"`} {
 		if !strings.Contains(index, want) && !strings.Contains(findings, want) {
 			t.Errorf("missing findings evidence-first contract %q", want)
 		}
 	}
-	for _, want := range []string{"aria-selected", "Differential proof", "Input → Result", "Exposure proof", "Control failure", "find-evidence-screenshot", "find-attach-flow", "find-save-state", "paste", "What this proves", "Proof annotation needed", "sourceFlowId", "find-block-role"} {
+	for _, want := range []string{"aria-current", "Differential proof", "Input → Result", "Exposure proof", "Control failure", "find-evidence-screenshot", "find-attach-flow", "find-save-state", "paste", "What this proves", "Proof annotation needed", "sourceFlowId", "find-block-role"} {
 		if !strings.Contains(findings, want) {
 			t.Errorf("findings UI missing %q", want)
 		}

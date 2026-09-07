@@ -44,7 +44,7 @@ li{margin:4px 0}
 code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px}
 pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:6px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
 pre code{background:none;border:none;padding:0;font-size:inherit}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+table{table-layout:fixed;overflow-wrap:anywhere;width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
 th,td{border:1px solid #ddd;padding:7px 10px;text-align:left;vertical-align:top}
 th{background:#f5f5f5;font-weight:700}
 blockquote{border-left:3px solid #0a8f62;margin:12px 0;padding:8px 14px;background:#f7f7f7;color:#333;border-radius:0 6px 6px 0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
@@ -52,7 +52,7 @@ hr{border:none;border-top:1px solid #ddd;margin:20px 0}
 em{font-style:italic;color:#444}
 strong{font-weight:700}
 .meta{color:#555;font-style:italic}
-@media print{body{padding:12px}}
+@media print{body{padding:12px}h2,h3,h4{break-after:avoid}pre,img,tr{break-inside:avoid}a,code,p,li{overflow-wrap:anywhere}}
 `
 
 // markdownToHTML converts the subset of Markdown emitted by Project/Findings into HTML.

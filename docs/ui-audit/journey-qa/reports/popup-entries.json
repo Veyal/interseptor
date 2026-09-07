@@ -1,0 +1,931 @@
+{
+  "cases": [
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/findGuideModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/findExportModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/findCreateModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/checksModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/codecsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/projModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/shortcutsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/chromium/setupModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "fixture": "generic operator_upload image",
+      "name": "feature/chromium/imgLightbox",
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/0:flowSearchScripts",
+      "owner": {
+        "sec": "proxy",
+        "tab": "proxy"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/1:Match & Replace rules",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intercept"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/2:Advanced options",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intruder"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/3:findTagsDisclosure",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/4:findTechnicalDetails",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/5:When to use an upstream proxy",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/7:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/8:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/9:Troubleshooting reference",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/10:Bypass pinning (on device)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/11:macOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/12:Windows",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/13:Firefox (uses its own store)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/14:iOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/15:Android",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/16:Linux (system / CLI)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/18:Connection help",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/19:Claude Desktop / stdio",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/20:Available tools (97)",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/21:Per-host overrides",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/22:Token macro (CSRF / re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/23:Login macro (session re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/4:findTechnicalDetails",
+      "owner": {
+        "sec": "session",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/17:Key creation and recovery",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/24:CUSTOM \u00b7 PASSIVE (0)",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/25:BUILT-IN \u00b7 PASSIVE (30) \u2014 click to edit",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/26:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/chromium/6:upstreamProxyAdvanced",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/chromium/24:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/chromium/tags",
+      "status": "pass"
+    },
+    {
+      "entry": "ui-only-no-save",
+      "name": "disclosure/chromium/upstream-advanced",
+      "status": "pass"
+    },
+    {
+      "name": "control/chromium/custom-select-bottom",
+      "status": "pass"
+    },
+    {
+      "name": "control/chromium/column-picker-escape-focus",
+      "status": "pass"
+    },
+    {
+      "entry": "direct-component",
+      "name": "control/chromium/toast-stack",
+      "status": "pass"
+    },
+    {
+      "name": "control/chromium/tooltip-keyboard-escape",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/findGuideModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/findExportModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/findCreateModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/checksModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/codecsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/projModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/shortcutsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/firefox/setupModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "fixture": "generic operator_upload image",
+      "name": "feature/firefox/imgLightbox",
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/0:flowSearchScripts",
+      "owner": {
+        "sec": "proxy",
+        "tab": "proxy"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/1:Match & Replace rules",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intercept"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/2:Advanced options",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intruder"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/3:findTagsDisclosure",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/4:findTechnicalDetails",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/5:When to use an upstream proxy",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/7:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/8:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/9:Troubleshooting reference",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/10:Bypass pinning (on device)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/11:macOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/12:Windows",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/13:Firefox (uses its own store)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/14:iOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/15:Android",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/16:Linux (system / CLI)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/18:Connection help",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/19:Claude Desktop / stdio",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/20:Available tools (97)",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/21:Per-host overrides",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/22:Token macro (CSRF / re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/23:Login macro (session re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/4:findTechnicalDetails",
+      "owner": {
+        "sec": "session",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/17:Key creation and recovery",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/24:CUSTOM \u00b7 PASSIVE (0)",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/25:BUILT-IN \u00b7 PASSIVE (30) \u2014 click to edit",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/26:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/firefox/6:upstreamProxyAdvanced",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/firefox/24:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/firefox/tags",
+      "status": "pass"
+    },
+    {
+      "entry": "ui-only-no-save",
+      "name": "disclosure/firefox/upstream-advanced",
+      "status": "pass"
+    },
+    {
+      "name": "control/firefox/custom-select-bottom",
+      "status": "pass"
+    },
+    {
+      "name": "control/firefox/column-picker-escape-focus",
+      "status": "pass"
+    },
+    {
+      "entry": "direct-component",
+      "name": "control/firefox/toast-stack",
+      "status": "pass"
+    },
+    {
+      "name": "control/firefox/tooltip-keyboard-escape",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/findGuideModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/findExportModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/findCreateModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/checksModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/codecsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/projModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/shortcutsModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "name": "feature/webkit/setupModal",
+      "status": "pass"
+    },
+    {
+      "entry": "full-feature",
+      "fixture": "generic operator_upload image",
+      "name": "feature/webkit/imgLightbox",
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/0:flowSearchScripts",
+      "owner": {
+        "sec": "proxy",
+        "tab": "proxy"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/1:Match & Replace rules",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intercept"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/2:Advanced options",
+      "owner": {
+        "sec": "proxy",
+        "tab": "intruder"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/3:findTagsDisclosure",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/4:findTechnicalDetails",
+      "owner": {
+        "sec": "proxy",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/5:When to use an upstream proxy",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/7:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/8:What is hidden?",
+      "owner": {
+        "sec": "proxy",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/9:Troubleshooting reference",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/10:Bypass pinning (on device)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/11:macOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/12:Windows",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/13:Firefox (uses its own store)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/14:iOS",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/15:Android",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/16:Linux (system / CLI)",
+      "owner": {
+        "sec": "tls",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/18:Connection help",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/19:Claude Desktop / stdio",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/20:Available tools (97)",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/21:Per-host overrides",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/22:Token macro (CSRF / re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/23:Login macro (session re-auth)",
+      "owner": {
+        "sec": "session",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/4:findTechnicalDetails",
+      "owner": {
+        "sec": "session",
+        "tab": "findings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/17:Key creation and recovery",
+      "owner": {
+        "sec": "api",
+        "tab": "settings"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/24:CUSTOM \u00b7 PASSIVE (0)",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/25:BUILT-IN \u00b7 PASSIVE (30) \u2014 click to edit",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/26:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "status": "pass"
+    },
+    {
+      "name": "disclosure/webkit/6:upstreamProxyAdvanced",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/webkit/24:checksPacks",
+      "owner": {
+        "sec": "api",
+        "tab": "scanner"
+      },
+      "reason": "not reachable in supplied generic fixture/UI state",
+      "status": "skipped"
+    },
+    {
+      "name": "disclosure/webkit/tags",
+      "status": "pass"
+    },
+    {
+      "entry": "ui-only-no-save",
+      "name": "disclosure/webkit/upstream-advanced",
+      "status": "pass"
+    },
+    {
+      "name": "control/webkit/custom-select-bottom",
+      "status": "pass"
+    },
+    {
+      "name": "control/webkit/column-picker-escape-focus",
+      "status": "pass"
+    },
+    {
+      "entry": "direct-component",
+      "name": "control/webkit/toast-stack",
+      "status": "pass"
+    },
+    {
+      "name": "control/webkit/tooltip-keyboard",
+      "reason": "macOS WebKit Playwright keyboard-access mode omits buttons from Tab traversal",
+      "status": "skipped"
+    },
+    {
+      "name": "control/webkit/tooltip-keyboard-escape",
+      "status": "pass"
+    }
+  ],
+  "image_path": "screenshots/popup-entries/popup-actual-image.png",
+  "runtime_digest": "f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+  "script_sha256": "600969b7389e4949820cf8354ccdfb804a7bb4f7a31224bef00fde6cf8d3957f",
+  "shared_probe_sha256": "0f06d6a481d15a1d93090ef178ba1491c485e379855409886df1a56c5533ef0f"
+}

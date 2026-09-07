@@ -6,6 +6,8 @@
 <title>Interseptor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='4'%20fill='%2300e08a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/surfaces.css">
+<link rel="stylesheet" href="/findings.css">
 <!-- Modulepreload hints for the tabs users most often visit right after Proxy
      (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
      doesn't stall on module fetch/parse (Phase 4a, UI-REDESIGN-ROADMAP.md §4). -->
@@ -138,7 +140,7 @@
       <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views ▾</button>
       <div class="spacer"></div>
-      <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-haspopup="menu" aria-expanded="false">▦ Cols</button>
+      <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false">▦ Cols</button>
     </div>
     <details class="toolbar toolbar-secondary" id="flowSearchScripts">
       <summary class="hint" style="cursor:pointer">Saved searches</summary>
@@ -175,7 +177,7 @@
       <button class="btn sel-clear" id="selClear">Clear</button>
     </div>
     <div class="thead" id="flowHead"></div>
-    <div id="colPicker" class="col-picker" role="menu" aria-label="History columns" style="display:none"></div>
+    <div id="colPicker" class="col-picker" role="group" aria-label="History columns" style="display:none"></div>
     <div id="rows"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div><div class="state-empty-title">No traffic yet</div><p class="state-empty-hint">Point a client at the proxy to start capturing.</p></div></div>
     <div id="flowCapBanner" class="flow-cap-banner" role="status" aria-live="polite" style="display:none"><span id="flowCapMessage"></span><button type="button" class="btn xs" id="flowCapRetry" hidden>Retry</button></div>
     <div id="inspectSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize inspector panel" tabindex="0"></div>
@@ -318,7 +320,7 @@
       <section class="pane rep-res">
         <div class="pane-head"><span class="lbl">RESPONSE</span><span id="repStatus" class="statusline" role="status" aria-live="polite"></span>
           <div class="spacer"></div>
-          <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button></div>
+          <div class="seg" id="repResSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="render" aria-pressed="false" hidden>Render</button></div>
         </div>
         <pre id="repResView"><div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div></pre>
       </section>
@@ -430,23 +432,28 @@ Content-Type: application/json
   <!-- FINDINGS -->
   <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
     <div class="toolbar findings-toolbar">
-      <div class="findings-toolbar-title"><span class="findings-eyebrow">REPORT</span><strong>Findings</strong><span id="findCount" class="count"></span></div>
+      <div class="findings-toolbar-title"><strong>Findings</strong><span id="findCount" class="count" role="status" aria-live="polite"></span></div>
       <div class="findings-toolbar-actions">
-        <button class="btn btn-primary" id="findNew">＋ New finding</button>
+        <button class="btn btn-primary" id="findNew" aria-label="New finding">＋ New finding</button>
         <button class="btn" id="findGuide" title="How to write a clear, reproducible technical finding">Writing guide</button>
 
         <span class="toolbar-divider"></span>
-        <button class="btn find-export-btn" id="findExport" title="Download curated findings report (PoCs included; passive scan omitted)">⤓ Export</button>
+        <button type="button" class="btn" id="findDeletedOpen">Deleted</button>
+          <button class="btn find-export-btn" id="findExportOpen" aria-haspopup="dialog" aria-controls="findExportModal">⤓ Export</button>
       </div>
-      <details class="set-disc find-export-options"><summary>Export options</summary><div class="find-export-fields">        <select id="findExportFmt" class="btn btn-field find-export-select" title="Report download format" aria-label="Report format">
-          <option value="md">Markdown</option><option value="html">HTML (embedded images)</option><option value="json">JSON</option>
-        </select>
-        <select id="findExportStatuses" class="btn find-export-statuses" aria-label="Report statuses"><option value="open,verified,fixed">Open + verified + fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option><option value="needs_verification">Needs verification</option></select>
-<label class="hint find-groupby" title="Section the Markdown/HTML report by finding tag"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label></div></details>
     </div>
-    <div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div>
     <div id="scanFindingsView" class="find-view is-empty">
-      <div id="findList" class="scan-list" role="listbox" aria-label="Security findings" aria-orientation="vertical">
+      <aside class="find-browser" aria-label="Browse findings">
+        <div class="find-browser-tools">
+          <input id="findSearch" type="search" placeholder="Search findings…" aria-label="Search findings by title, target, tag or ID">
+          <div class="find-browser-filters">
+            <select id="findFilterSeverity" aria-label="Filter findings by severity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Info</option></select>
+            <select id="findFilterStatus" aria-label="Filter findings by status"><option value="">All statuses</option><option value="open">Open</option><option value="needs_verification">Needs verification</option><option value="verified">Verified</option><option value="fixed">Fixed</option><option value="false_positive">False positive</option><option value="wont_fix">Won't fix</option></select>
+          </div>
+        </div>
+        <details id="findTagsDisclosure" class="find-tags-disclosure" hidden><summary id="findTagsSummary">Tags</summary><div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div></details>
+        <div id="findOutsideFilter" class="find-outside-filter" hidden><span>Open finding is outside these filters.</span><button type="button" class="btn xs">Clear filters</button></div>
+      <nav id="findList" class="scan-list" aria-label="Security findings">
         <div class="state-empty find-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
           <div class="state-empty-title">No findings yet</div>
@@ -457,7 +464,8 @@ Content-Type: application/json
           </div>
 
         </div>
-      </div>
+      </nav>
+      </aside>
       <div id="findDetail" class="find-detail">
         <div class="state-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"/></svg></div>
@@ -1125,8 +1133,8 @@ Content-Type: application/json
 
 <div id="ctxmenu"></div>
 <div id="flowModal" class="modal-overlay" style="display:none">
-  <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell" style="width:min(1100px,94vw);height:min(82vh,820px)">
-    <div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line);gap:10px">
+  <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell flow-inspector" data-mobile-side="res">
+    <div class="row flow-inspector-toolbar">
       <div id="fmTitle" style="flex:1;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
       <div class="seg" id="fmSeg"><button type="button" data-v="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-v="pretty" aria-pressed="true">Pretty</button><button type="button" data-v="compare" hidden aria-pressed="false">Compare</button></div>
       <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
@@ -1134,8 +1142,9 @@ Content-Type: application/json
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>
       <button class="btn" id="fmClose" aria-label="Close">✕</button>
     </div>
-    <div style="flex:1;display:flex;min-height:0">
-      <div class="pane" style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)"><div class="pane-head"><span class="lbl">REQUEST</span></div>
+    <div class="flow-inspector-sides seg" id="fmSides" role="group" aria-label="Captured flow side"><button type="button" data-side="req" aria-controls="fmReqPane" aria-pressed="false">Request</button><button type="button" data-side="res" aria-controls="fmResPane" aria-pressed="true" class="on">Response</button></div>
+    <div class="flow-inspector-panes">
+      <div class="pane flow-inspector-request" id="fmReqPane" role="region" aria-label="Captured request"><div class="pane-head"><span class="lbl">REQUEST</span></div>
         <div class="sel-decode" id="fmReqDecode" hidden>
           <span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
           <code class="sel-decode-out"></code>
@@ -1144,7 +1153,7 @@ Content-Type: application/json
           <button type="button" class="btn sel-decode-close" title="Dismiss">✕</button>
         </div>
         <pre id="fmReq"></pre></div>
-      <div class="pane" style="flex:1;min-width:0;display:flex;flex-direction:column"><div class="pane-head"><span class="lbl">RESPONSE</span><span id="fmStatus" class="statusline"></span></div>
+      <div class="pane flow-inspector-response" id="fmResPane" role="region" aria-label="Captured response"><div class="pane-head"><span class="lbl">RESPONSE</span><span id="fmStatus" class="statusline"></span></div>
         <div class="sel-decode" id="fmResDecode" hidden>
           <span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
           <code class="sel-decode-out"></code>
@@ -1345,6 +1354,34 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<div id="sessionInspectModal" class="modal-overlay" style="display:none">
+  <div role="dialog" aria-modal="true" aria-labelledby="sessionInspectTitle" class="modal-shell session-inspect-dialog">
+    <div class="modal-shell-head">
+      <div>
+        <h2 id="sessionInspectTitle" class="modal-shell-title">Session inspection</h2>
+        <p class="hint">Passive comparison of selected captures. No requests are sent.</p>
+      </div>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="sessionInspectClose" aria-label="Close session inspection">✕</button>
+    </div>
+    <div class="session-inspect-toolbar">
+      <span class="session-inspect-safety" id="sessionInspectSafety" role="status"></span>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="sessionInspectRefresh">Refresh captures</button>
+    </div>
+    <div class="modal-shell-body session-inspect-body">
+      <div id="sessionInspectState" class="hint" role="status" aria-live="polite">Select captured flows to inspect their session timeline.</div>
+      <section id="sessionInspectDiff" class="session-inspect-section" hidden aria-labelledby="sessionInspectDiffTitle">
+        <div class="session-inspect-section-head"><h3 id="sessionInspectDiffTitle">Role comparison</h3><span class="hint">Observed differences use fingerprints; values stay redacted.</span></div>
+        <div id="sessionInspectDiffList"></div>
+      </section>
+      <section id="sessionInspectTimeline" class="session-inspect-section" hidden aria-labelledby="sessionInspectTimelineTitle">
+        <div class="session-inspect-section-head"><h3 id="sessionInspectTimelineTitle">Chronological timeline</h3><span class="hint">Candidate transitions are labelled for review.</span></div>
+        <div id="sessionInspectTimelineList"></div>
+      </section>
+    </div>
+  </div>
+</div>
 <div id="authzModal" class="modal-overlay" style="display:none">
   <div role="dialog" aria-modal="true" aria-labelledby="authzModalTitle" class="modal-shell" style="max-width:760px;max-height:88vh;width:94%">
     <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
@@ -1387,12 +1424,24 @@ Content-Type: application/json
       <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
       <section><span class="find-guide-n">2</span><div><h3>Claim</h3><p>Summarize who can do what, to which asset, and under which missing or failed control in one sentence.</p></div></section>
       <section><span class="find-guide-n">3</span><div><h3>Impact</h3><p>State what an attacker gains, the required access, and the affected data or operation. Do not restate the payload.</p></div></section>
-      <section><span class="find-guide-n">4</span><div><h3>Technical context</h3><p>Record the exact target, environment, CWE, CVSS vector/score, scope tags, and why the behavior violates a security boundary.</p></div></section>
-      <section><span class="find-guide-n">5</span><div><h3>Reproduction</h3><p>Choose the shortest structure that proves the claim. Before → Action → After is useful for differential authorization or state-change tests; exposure, input/result, and control-failure findings use different step roles.</p></div></section>
-      <section><span class="find-guide-n">6</span><div><h3>Evidence</h3><p>Prioritize a screenshot when it makes the result immediately understandable, and attach captured request/response flows when the traffic exists in Interseptor. State exactly what each item proves; redact secrets and unrelated personal data.</p></div></section>
+      <section><span class="find-guide-n">4</span><div><h3>Technical context</h3><p>List all affected targets and their roles. Record environment, CWE, and a CVSS v4.0 vector; severity must match the calculated score.</p></div></section>
+      <section><span class="find-guide-n">5</span><div><h3>Reproduction</h3><p>Attach evidence for the triggering action, observed result, and a negative/control case. A reachable prerequisite alone does not demonstrate the claimed impact.</p></div></section>
+      <section><span class="find-guide-n">6</span><div><h3>Evidence</h3><p>For visual claims, attach a real browser capture of the observed result. Classify its origin; generated previews do not qualify. Annotate each item and redact secrets; use a length or digest where sufficient.</p></div></section>
       <section><span class="find-guide-n">7</span><div><h3>Remediation and retest</h3><p>Recommend the failed control, then record the expected secure result so another tester can verify the fix.</p></div></section>
-      <div class="find-guide-check"><strong>Ready-to-report check</strong><span>A pentester unfamiliar with the target can reproduce it; a developer can identify the failed control; a retester knows the expected secure result.</span></div>
+      <div class="find-guide-check"><strong>Ready-to-report check</strong><span>Review highlights action, result, control, visual proof, CVSS, and target evidence separately. If impact was not demonstrated, record why and keep Needs verification. Never infer missing execution.</span></div>
     </div>
+  </div>
+</div>
+<div id="findExportModal" class="modal-overlay" style="display:none">
+  <div role="dialog" aria-modal="true" aria-labelledby="findExportTitle" class="modal-shell find-export-dialog">
+    <div class="modal-shell-head"><h2 id="findExportTitle" class="modal-shell-title">Export findings</h2><button type="button" class="btn" id="findExportClose" aria-label="Close export">✕</button></div>
+    <div class="modal-shell-body find-export-fields">
+      <label for="findExportMode">Readiness</label><select id="findExportMode" aria-label="Report readiness"><option value="final">Final · require complete review</option><option value="draft">Draft · allow incomplete findings</option></select>
+      <label for="findExportFmt">Format</label><select id="findExportFmt" aria-label="Report format"><option value="md">Markdown</option><option value="html">HTML with images</option><option value="json">JSON</option></select>
+      <label for="findExportStatuses">Include</label><select id="findExportStatuses" aria-label="Report statuses"><option value="open,verified,fixed">Open, verified and fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option><option value="needs_verification">Needs verification</option></select>
+      <label class="find-groupby"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label><div id="findExportChecks" class="find-export-checks" role="status" aria-live="polite" hidden></div>
+    </div>
+    <div class="modal-shell-foot"><span class="hint">Includes attached evidence.</span><div class="spacer"></div><button type="button" class="btn btn-primary" id="findExport">Download report</button></div>
   </div>
 </div>
 <div id="findCreateModal" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center">

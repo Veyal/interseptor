@@ -1,0 +1,10 @@
+{
+  "case": "Delayed Notes save: Preview then Edit before acknowledgement",
+  "classification": "Historical failing observation. Other failures in the original report were harness errors; this report does not claim they were product bugs.",
+  "observed": "Edit aria-pressed=true while editor display=none and Preview display=block.",
+  "original_report_sha256": "b4d54129d5e3f5e92ce599f1672103c69cb2326b114257fd4ee4a5c66d0bd37e",
+  "probe_sha256": "6dd3de74ee2031191de47f70cf533ae48eadd11c4929259dda64b02dbbd14203",
+  "runtime_sha256": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "screenshot": "screenshots/baseline/notes-race.png",
+  "screenshot_sha256": "6d2977e91ef1e2af71f7df0c02b2fee315c408e53690f9a0d92c223aa125a4cf"
+}

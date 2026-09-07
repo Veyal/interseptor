@@ -1,0 +1,10 @@
+{
+  "case": "failed Notes draft then accepted mocked Project dialog switch",
+  "classification": "Historical failing observation from an isolated candidate; project APIs were mocked and no actual project restart occurred.",
+  "observed": "Failed Notes draft and visible Retry were lost after the UI accepted a mocked project switch and reloaded.",
+  "original_report_sha256": "a706e1600e37776b48659b3f9675d23bd1a7999da6fbdeb3f31855dd4caab63a",
+  "probe_sha256": "8940eed9956816faded9cef49ef932936066d7f414308ea2bf9ea4c5e3595c81",
+  "runtime_sha256": "1ddc11a278f85b9e87281c495f2754fe896309dcd147cbc737bc647a0ce3b01a",
+  "screenshot": "screenshots/baseline/notes-project-switch.png",
+  "screenshot_sha256": "7d76230155b48d8de591c66a71d5431c25453ebbae36c0ff9fe0c35a9f703795"
+}

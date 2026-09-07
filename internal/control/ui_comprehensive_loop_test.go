@@ -266,7 +266,7 @@ func TestUIMapCollapseAndGraphLabelsMatchVisibleState(t *testing.T) {
 
 func TestUIContextMenuMovesAndRestoresFocus(t *testing.T) {
 	requireUIContracts(t, "js/core.js",
-		"ctx._returnFocus=document.activeElement",
+		"ctx._returnFocus=trigger||document.activeElement",
 		`role="menuitem" tabindex="-1"`,
 		"items[0].focus()",
 		"ctx._returnFocus?.focus",

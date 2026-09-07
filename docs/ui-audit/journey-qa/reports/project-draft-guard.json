@@ -1,0 +1,144 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": [
+    {
+      "events": [
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "body": "{\"notes\":\"## generic guard retry\\n\\nexact durable recovery text\"}",
+          "event": "notes.put.rejected"
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        }
+      ],
+      "name": "rejected Notes PUT blocks Project POST; exact Retry saves and persists",
+      "status": "pass"
+    },
+    {
+      "name": "Notes guard and recovery",
+      "status": "pass"
+    },
+    {
+      "events": [
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "body": "{\"target\":\"generic-next\"}",
+          "event": "project.switch.post"
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 1
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 2
+        }
+      ],
+      "name": "Settings search/section excluded; dirty persisted field blocks POST; rejected switch restores modal",
+      "status": "pass"
+    },
+    {
+      "name": "Settings exclusions and rejected switch recovery",
+      "status": "pass"
+    },
+    {
+      "events": [
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 0
+        },
+        {
+          "body": "{\"target\":\"generic-next\"}",
+          "event": "project.switch.post"
+        },
+        {
+          "current": "generic-current",
+          "event": "project.get",
+          "poll": 1
+        },
+        {
+          "current": "generic-next",
+          "event": "project.get",
+          "poll": 2
+        },
+        {
+          "current": "generic-next",
+          "event": "project.get",
+          "poll": 3
+        },
+        {
+          "current": "generic-next",
+          "event": "project.get",
+          "poll": 4
+        }
+      ],
+      "name": "clean delayed accepted switch blocks Escape/backdrop/inputs until target identity",
+      "status": "pass"
+    },
+    {
+      "name": "Delayed accepted Project switch modal lock",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788758248.222909,
+  "mocked": [
+    "All Project API identities/switch outcomes are generic browser routes; Notes PUT is fault-injected only until Retry. No candidate project restart is requested."
+  ],
+  "probe_sha256": "f06acc158be56f861b2417a41c39f6bd554591d297ea12542c1532bd0b075eca",
+  "started_unix": 1788758242.735553,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 6
+  }
+}

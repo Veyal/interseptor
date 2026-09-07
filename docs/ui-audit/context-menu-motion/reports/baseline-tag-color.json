@@ -1,0 +1,1176 @@
+{
+  "application_source": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 257,
+    "runtime_sha256": "f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+  },
+  "base_url": "http://127.0.0.1:63268",
+  "cleanup": "ok",
+  "console_desktop": [
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+  ],
+  "console_phone": [],
+  "failures": [],
+  "finished_unix": 1788761277.682139,
+  "import": {
+    "body": "{\"imported\":1}\n",
+    "status": 200
+  },
+  "kind": "before",
+  "menu_desktop": {
+    "items": [
+      {
+        "item": {
+          "bottom": 390,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Filter this hostvery-long-service-name.example.com",
+          "top": 356,
+          "width": 356
+        },
+        "label": {
+          "bottom": 379.5,
+          "height": 13,
+          "left": 490,
+          "right": 565.03125,
+          "text": "Filter this host",
+          "top": 366.5,
+          "width": 75.03125
+        },
+        "value": {
+          "bottom": 379.5,
+          "height": 13,
+          "left": 573.03125,
+          "right": 782.265625,
+          "text": "very-long-service-name.example.com",
+          "top": 366.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 424,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Exclude this hostvery-long-service-name.example.com",
+          "top": 390,
+          "width": 356
+        },
+        "label": {
+          "bottom": 413.5,
+          "height": 13,
+          "left": 490,
+          "right": 579.359375,
+          "text": "Exclude this host",
+          "top": 400.5,
+          "width": 89.359375
+        },
+        "value": {
+          "bottom": 413.5,
+          "height": 13,
+          "left": 587.359375,
+          "right": 796.59375,
+          "text": "very-long-service-name.example.com",
+          "top": 400.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 458,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Filter domainexample.com (+subs)",
+          "top": 424,
+          "width": 356
+        },
+        "label": {
+          "bottom": 447.5,
+          "height": 13,
+          "left": 490,
+          "right": 558.15625,
+          "text": "Filter domain",
+          "top": 434.5,
+          "width": 68.15625
+        },
+        "value": {
+          "bottom": 447.5,
+          "height": 13,
+          "left": 566.15625,
+          "right": 684.40625,
+          "text": "example.com (+subs)",
+          "top": 434.5,
+          "width": 118.25
+        }
+      },
+      {
+        "item": {
+          "bottom": 492,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Add domain to scope*.example.com",
+          "top": 458,
+          "width": 356
+        },
+        "label": {
+          "bottom": 481.5,
+          "height": 13,
+          "left": 490,
+          "right": 600.96875,
+          "text": "Add domain to scope",
+          "top": 468.5,
+          "width": 110.96875
+        },
+        "value": {
+          "bottom": 481.5,
+          "height": 13,
+          "left": 608.96875,
+          "right": 688.828125,
+          "text": "*.example.com",
+          "top": 468.5,
+          "width": 79.859375
+        }
+      },
+      {
+        "item": {
+          "bottom": 526,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Add host to scopevery-long-service-name.example.com",
+          "top": 492,
+          "width": 356
+        },
+        "label": {
+          "bottom": 515.5,
+          "height": 13,
+          "left": 490,
+          "right": 585.484375,
+          "text": "Add host to scope",
+          "top": 502.5,
+          "width": 95.484375
+        },
+        "value": {
+          "bottom": 515.5,
+          "height": 13,
+          "left": 593.484375,
+          "right": 802.71875,
+          "text": "very-long-service-name.example.com",
+          "top": 502.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 571,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Delete all from hostvery-long-service-name.example.com",
+          "top": 537,
+          "width": 356
+        },
+        "label": {
+          "bottom": 560.5,
+          "height": 13,
+          "left": 490,
+          "right": 612.265625,
+          "text": "Delete all from host",
+          "top": 547.5,
+          "width": 122.265625
+        },
+        "value": {
+          "bottom": 560.5,
+          "height": 13,
+          "left": 620.265625,
+          "right": 828,
+          "text": "very-long-service-name.example.com",
+          "top": 547.5,
+          "width": 207.734375
+        }
+      },
+      {
+        "item": {
+          "bottom": 629,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Export raw request",
+          "top": 595,
+          "width": 356
+        },
+        "label": {
+          "bottom": 618.5,
+          "height": 13,
+          "left": 490,
+          "right": 589.109375,
+          "text": "Export raw request",
+          "top": 605.5,
+          "width": 99.109375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 674,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Export raw response",
+          "top": 640,
+          "width": 356
+        },
+        "label": {
+          "bottom": 663.5,
+          "height": 13,
+          "left": 490,
+          "right": 597.5,
+          "text": "Export raw response",
+          "top": 650.5,
+          "width": 107.5
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 719,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Send to Repeater",
+          "top": 685,
+          "width": 356
+        },
+        "label": {
+          "bottom": 708.5,
+          "height": 13,
+          "left": 490,
+          "right": 580.875,
+          "text": "Send to Repeater",
+          "top": 695.5,
+          "width": 90.875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 753,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Send to Intruder",
+          "top": 719,
+          "width": 356
+        },
+        "label": {
+          "bottom": 742.5,
+          "height": 13,
+          "left": 490,
+          "right": 575.3125,
+          "text": "Send to Intruder",
+          "top": 729.5,
+          "width": 85.3125
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 787,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Copy URL",
+          "top": 753,
+          "width": 356
+        },
+        "label": {
+          "bottom": 776.5,
+          "height": 13,
+          "left": 490,
+          "right": 542,
+          "text": "Copy URL",
+          "top": 763.5,
+          "width": 52
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 821,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Copy as cURL",
+          "top": 787,
+          "width": 356
+        },
+        "label": {
+          "bottom": 810.5,
+          "height": 13,
+          "left": 490,
+          "right": 563.34375,
+          "text": "Copy as cURL",
+          "top": 797.5,
+          "width": 73.34375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 855,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Copy replay link \u00b7 current session",
+          "top": 821,
+          "width": 356
+        },
+        "label": {
+          "bottom": 844.5,
+          "height": 13,
+          "left": 490,
+          "right": 663.984375,
+          "text": "Copy replay link \u00b7 current session",
+          "top": 831.5,
+          "width": 173.984375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 889,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Copy replay link \u00b7 flow's session",
+          "top": 855,
+          "width": 356
+        },
+        "label": {
+          "bottom": 878.5,
+          "height": 13,
+          "left": 490,
+          "right": 656.921875,
+          "text": "Copy replay link \u00b7 flow's session",
+          "top": 865.5,
+          "width": 166.921875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 934,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Export raw response",
+          "top": 900,
+          "width": 356
+        },
+        "label": {
+          "bottom": 923.5,
+          "height": 13,
+          "left": 490,
+          "right": 597.5,
+          "text": "Export raw response",
+          "top": 910.5,
+          "width": 107.5
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 968,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Scan this hostvery-long-service-name.example.com",
+          "top": 934,
+          "width": 356
+        },
+        "label": {
+          "bottom": 957.5,
+          "height": 13,
+          "left": 490,
+          "right": 585,
+          "text": "Scan this host",
+          "top": 944.5,
+          "width": 95
+        },
+        "value": {
+          "bottom": 957.5,
+          "height": 13,
+          "left": 593,
+          "right": 802.234375,
+          "text": "very-long-service-name.example.com",
+          "top": 944.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 1002,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Authz testroles",
+          "top": 968,
+          "width": 356
+        },
+        "label": {
+          "bottom": 991.5,
+          "height": 13,
+          "left": 490,
+          "right": 564.25,
+          "text": "Authz test",
+          "top": 978.5,
+          "width": 74.25
+        },
+        "value": {
+          "bottom": 991.5,
+          "height": 13,
+          "left": 572.25,
+          "right": 599.390625,
+          "text": "roles",
+          "top": 978.5,
+          "width": 27.140625
+        }
+      },
+      {
+        "item": {
+          "bottom": 1036,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Use as login macro",
+          "top": 1002,
+          "width": 356
+        },
+        "label": {
+          "bottom": 1025.5,
+          "height": 13,
+          "left": 490,
+          "right": 610.515625,
+          "text": "Use as login macro",
+          "top": 1012.5,
+          "width": 120.515625
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 1094,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Filter \u00b7 very-long-generic-label-for-pale",
+          "top": 1060,
+          "width": 356
+        },
+        "label": {
+          "bottom": 1083.5,
+          "height": 13,
+          "left": 490,
+          "right": 718.46875,
+          "text": "Filter \u00b7 very-long-generic-label-for-pale",
+          "top": 1070.5,
+          "width": 228.46875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 1128,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "\u2715 Remove \u00b7 very-long-generic-label-for-pale",
+          "top": 1094,
+          "width": 356
+        },
+        "label": {
+          "bottom": 1117.5,
+          "height": 13,
+          "left": 490,
+          "right": 724.390625,
+          "text": "\u2715 Remove \u00b7 very-long-generic-label-for-pale",
+          "top": 1104.5,
+          "width": 234.390625
+        },
+        "value": {
+          "bottom": 1111,
+          "height": 0,
+          "left": 732.390625,
+          "right": 732.390625,
+          "text": "",
+          "top": 1111,
+          "width": 0
+        }
+      },
+      {
+        "item": {
+          "bottom": 1162,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Tag\u2026",
+          "top": 1128,
+          "width": 356
+        },
+        "label": {
+          "bottom": 1151.5,
+          "height": 13,
+          "left": 490,
+          "right": 538.375,
+          "text": "Tag\u2026",
+          "top": 1138.5,
+          "width": 48.375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 1220,
+          "height": 34,
+          "left": 481,
+          "right": 837,
+          "text": "Add to finding",
+          "top": 1186,
+          "width": 356
+        },
+        "label": {
+          "bottom": 1209.5,
+          "height": 13,
+          "left": 490,
+          "right": 584.46875,
+          "text": "Add to finding",
+          "top": 1196.5,
+          "width": 94.46875
+        },
+        "value": null
+      }
+    ],
+    "menu": {
+      "bottom": 892,
+      "height": 566,
+      "left": 475,
+      "right": 843,
+      "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGS \u00b7 very-long-generic-label-for-paleFilter \u00b7 very-long-generic-label-for-pale\u2715 Remove \u00b7 very-long-generic-label-for-paleTag\u2026FINDINGSAdd to finding",
+      "top": 326,
+      "width": 368
+    },
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  "menu_phone": {
+    "items": [
+      {
+        "item": {
+          "bottom": 72,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Filter this hostvery-long-service-name.example.com",
+          "top": 38,
+          "width": 356
+        },
+        "label": {
+          "bottom": 61.5,
+          "height": 13,
+          "left": 29,
+          "right": 104.03125,
+          "text": "Filter this host",
+          "top": 48.5,
+          "width": 75.03125
+        },
+        "value": {
+          "bottom": 61.5,
+          "height": 13,
+          "left": 112.03125,
+          "right": 321.265625,
+          "text": "very-long-service-name.example.com",
+          "top": 48.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 106,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Exclude this hostvery-long-service-name.example.com",
+          "top": 72,
+          "width": 356
+        },
+        "label": {
+          "bottom": 95.5,
+          "height": 13,
+          "left": 29,
+          "right": 118.359375,
+          "text": "Exclude this host",
+          "top": 82.5,
+          "width": 89.359375
+        },
+        "value": {
+          "bottom": 95.5,
+          "height": 13,
+          "left": 126.359375,
+          "right": 335.59375,
+          "text": "very-long-service-name.example.com",
+          "top": 82.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 140,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Filter domainexample.com (+subs)",
+          "top": 106,
+          "width": 356
+        },
+        "label": {
+          "bottom": 129.5,
+          "height": 13,
+          "left": 29,
+          "right": 97.15625,
+          "text": "Filter domain",
+          "top": 116.5,
+          "width": 68.15625
+        },
+        "value": {
+          "bottom": 129.5,
+          "height": 13,
+          "left": 105.15625,
+          "right": 223.40625,
+          "text": "example.com (+subs)",
+          "top": 116.5,
+          "width": 118.25
+        }
+      },
+      {
+        "item": {
+          "bottom": 174,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Add domain to scope*.example.com",
+          "top": 140,
+          "width": 356
+        },
+        "label": {
+          "bottom": 163.5,
+          "height": 13,
+          "left": 29,
+          "right": 139.96875,
+          "text": "Add domain to scope",
+          "top": 150.5,
+          "width": 110.96875
+        },
+        "value": {
+          "bottom": 163.5,
+          "height": 13,
+          "left": 147.96875,
+          "right": 227.828125,
+          "text": "*.example.com",
+          "top": 150.5,
+          "width": 79.859375
+        }
+      },
+      {
+        "item": {
+          "bottom": 208,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Add host to scopevery-long-service-name.example.com",
+          "top": 174,
+          "width": 356
+        },
+        "label": {
+          "bottom": 197.5,
+          "height": 13,
+          "left": 29,
+          "right": 124.484375,
+          "text": "Add host to scope",
+          "top": 184.5,
+          "width": 95.484375
+        },
+        "value": {
+          "bottom": 197.5,
+          "height": 13,
+          "left": 132.484375,
+          "right": 341.71875,
+          "text": "very-long-service-name.example.com",
+          "top": 184.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 253,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Delete all from hostvery-long-service-name.example.com",
+          "top": 219,
+          "width": 356
+        },
+        "label": {
+          "bottom": 242.5,
+          "height": 13,
+          "left": 29,
+          "right": 151.265625,
+          "text": "Delete all from host",
+          "top": 229.5,
+          "width": 122.265625
+        },
+        "value": {
+          "bottom": 242.5,
+          "height": 13,
+          "left": 159.265625,
+          "right": 367,
+          "text": "very-long-service-name.example.com",
+          "top": 229.5,
+          "width": 207.734375
+        }
+      },
+      {
+        "item": {
+          "bottom": 311,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Export raw request",
+          "top": 277,
+          "width": 356
+        },
+        "label": {
+          "bottom": 300.5,
+          "height": 13,
+          "left": 29,
+          "right": 128.109375,
+          "text": "Export raw request",
+          "top": 287.5,
+          "width": 99.109375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 356,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Export raw response",
+          "top": 322,
+          "width": 356
+        },
+        "label": {
+          "bottom": 345.5,
+          "height": 13,
+          "left": 29,
+          "right": 136.5,
+          "text": "Export raw response",
+          "top": 332.5,
+          "width": 107.5
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 401,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Send to Repeater",
+          "top": 367,
+          "width": 356
+        },
+        "label": {
+          "bottom": 390.5,
+          "height": 13,
+          "left": 29,
+          "right": 119.875,
+          "text": "Send to Repeater",
+          "top": 377.5,
+          "width": 90.875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 435,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Send to Intruder",
+          "top": 401,
+          "width": 356
+        },
+        "label": {
+          "bottom": 424.5,
+          "height": 13,
+          "left": 29,
+          "right": 114.3125,
+          "text": "Send to Intruder",
+          "top": 411.5,
+          "width": 85.3125
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 469,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Copy URL",
+          "top": 435,
+          "width": 356
+        },
+        "label": {
+          "bottom": 458.5,
+          "height": 13,
+          "left": 29,
+          "right": 81,
+          "text": "Copy URL",
+          "top": 445.5,
+          "width": 52
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 503,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Copy as cURL",
+          "top": 469,
+          "width": 356
+        },
+        "label": {
+          "bottom": 492.5,
+          "height": 13,
+          "left": 29,
+          "right": 102.34375,
+          "text": "Copy as cURL",
+          "top": 479.5,
+          "width": 73.34375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 537,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Copy replay link \u00b7 current session",
+          "top": 503,
+          "width": 356
+        },
+        "label": {
+          "bottom": 526.5,
+          "height": 13,
+          "left": 29,
+          "right": 202.984375,
+          "text": "Copy replay link \u00b7 current session",
+          "top": 513.5,
+          "width": 173.984375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 571,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Copy replay link \u00b7 flow's session",
+          "top": 537,
+          "width": 356
+        },
+        "label": {
+          "bottom": 560.5,
+          "height": 13,
+          "left": 29,
+          "right": 195.921875,
+          "text": "Copy replay link \u00b7 flow's session",
+          "top": 547.5,
+          "width": 166.921875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 616,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Export raw response",
+          "top": 582,
+          "width": 356
+        },
+        "label": {
+          "bottom": 605.5,
+          "height": 13,
+          "left": 29,
+          "right": 136.5,
+          "text": "Export raw response",
+          "top": 592.5,
+          "width": 107.5
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 650,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Scan this hostvery-long-service-name.example.com",
+          "top": 616,
+          "width": 356
+        },
+        "label": {
+          "bottom": 639.5,
+          "height": 13,
+          "left": 29,
+          "right": 124,
+          "text": "Scan this host",
+          "top": 626.5,
+          "width": 95
+        },
+        "value": {
+          "bottom": 639.5,
+          "height": 13,
+          "left": 132,
+          "right": 341.234375,
+          "text": "very-long-service-name.example.com",
+          "top": 626.5,
+          "width": 209.234375
+        }
+      },
+      {
+        "item": {
+          "bottom": 684,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Authz testroles",
+          "top": 650,
+          "width": 356
+        },
+        "label": {
+          "bottom": 673.5,
+          "height": 13,
+          "left": 29,
+          "right": 103.25,
+          "text": "Authz test",
+          "top": 660.5,
+          "width": 74.25
+        },
+        "value": {
+          "bottom": 673.5,
+          "height": 13,
+          "left": 111.25,
+          "right": 138.390625,
+          "text": "roles",
+          "top": 660.5,
+          "width": 27.140625
+        }
+      },
+      {
+        "item": {
+          "bottom": 718,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Use as login macro",
+          "top": 684,
+          "width": 356
+        },
+        "label": {
+          "bottom": 707.5,
+          "height": 13,
+          "left": 29,
+          "right": 149.515625,
+          "text": "Use as login macro",
+          "top": 694.5,
+          "width": 120.515625
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 776,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Filter \u00b7 very-long-generic-label-for-pale",
+          "top": 742,
+          "width": 356
+        },
+        "label": {
+          "bottom": 765.5,
+          "height": 13,
+          "left": 29,
+          "right": 257.46875,
+          "text": "Filter \u00b7 very-long-generic-label-for-pale",
+          "top": 752.5,
+          "width": 228.46875
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 810,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "\u2715 Remove \u00b7 very-long-generic-label-for-pale",
+          "top": 776,
+          "width": 356
+        },
+        "label": {
+          "bottom": 799.5,
+          "height": 13,
+          "left": 29,
+          "right": 263.390625,
+          "text": "\u2715 Remove \u00b7 very-long-generic-label-for-pale",
+          "top": 786.5,
+          "width": 234.390625
+        },
+        "value": {
+          "bottom": 793,
+          "height": 0,
+          "left": 271.390625,
+          "right": 271.390625,
+          "text": "",
+          "top": 793,
+          "width": 0
+        }
+      },
+      {
+        "item": {
+          "bottom": 844,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Tag\u2026",
+          "top": 810,
+          "width": 356
+        },
+        "label": {
+          "bottom": 833.5,
+          "height": 13,
+          "left": 29,
+          "right": 77.375,
+          "text": "Tag\u2026",
+          "top": 820.5,
+          "width": 48.375
+        },
+        "value": null
+      },
+      {
+        "item": {
+          "bottom": 902,
+          "height": 34,
+          "left": 20,
+          "right": 376,
+          "text": "Add to finding",
+          "top": 868,
+          "width": 356
+        },
+        "label": {
+          "bottom": 891.5,
+          "height": 13,
+          "left": 29,
+          "right": 123.46875,
+          "text": "Add to finding",
+          "top": 878.5,
+          "width": 94.46875
+        },
+        "value": null
+      }
+    ],
+    "menu": {
+      "bottom": 427,
+      "height": 419,
+      "left": 14,
+      "right": 382,
+      "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGS \u00b7 very-long-generic-label-for-paleFilter \u00b7 very-long-generic-label-for-pale\u2715 Remove \u00b7 very-long-generic-label-for-paleTag\u2026FINDINGSAdd to finding",
+      "top": 8,
+      "width": 368
+    },
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  "original_report_sha256": "49aedb717c385e058f37178cd67cf2f77adcda653153586d19daadbdcf77f401",
+  "page_errors_desktop": [],
+  "page_errors_phone": [],
+  "project": "ui-audit-45b5759cba0d",
+  "repo_head": null,
+  "requests": [
+    {
+      "body": "{\"error\":\"color must be a hex like #4aa8ff\"}\n",
+      "status": 400,
+      "url": "http://127.0.0.1:63268/api/tags/very-long-generic-label-for-pale/color"
+    }
+  ],
+  "screenshots": {
+    "before-history-menu-desktop.png": {
+      "file": "screenshots/baseline/before-history-menu-desktop.png",
+      "sha256": "f8e816dd3fef8ce8a70ca2929128ec214295082efaf4e233af932d3222af852a"
+    },
+    "before-history-menu-phone.png": {
+      "file": "screenshots/baseline/before-history-menu-phone.png",
+      "sha256": "ca3cf7008f539fa252b8efe165c87eb11a7a4d0b94b98e7de63aea5e1fd14656"
+    },
+    "before-tag-red-400.png": {
+      "file": "screenshots/baseline/before-tag-red-400.png",
+      "sha256": "7d1d0e04ebaf7c60bccd1daa29efcf35fb7ed8b090963bf72fdbad2bbe7ccd6c"
+    }
+  },
+  "started_unix": 1788761260.9293492,
+  "tag_menu": {
+    "html": "<div class=\"ctx-head\">COLOR \u00b7 very-long-generic-label-for-pale</div><div class=\"ctx-item on\" role=\"menuitem\" tabindex=\"0\" data-i=\"0\"><span class=\"lbl\">red</span><span class=\"mono\">var(--red)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"1\"><span class=\"lbl\">amber</span><span class=\"mono\">var(--amber)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"2\"><span class=\"lbl\">green</span><span class=\"mono\">var(--green)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"3\"><span class=\"lbl\">blue</span><span class=\"mono\">var(--blue)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"4\"><span class=\"lbl\">violet</span><span class=\"mono\">var(--violet)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"5\"><span class=\"lbl\">cyan</span><span class=\"mono\">var(--cyan)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"6\"><span class=\"lbl\">gray</span><span class=\"mono\">var(--fg3)</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"7\" style=\"color:var(--red)\"><span class=\"lbl\" style=\"color:var(--red)\">Clear color</span></div><div class=\"ctx-item\" role=\"menuitem\" tabindex=\"-1\" data-i=\"8\"><span class=\"lbl\">Filter by this tag</span></div>",
+    "items": [
+      "redvar(--red)",
+      "ambervar(--amber)",
+      "greenvar(--green)",
+      "bluevar(--blue)",
+      "violetvar(--violet)",
+      "cyanvar(--cyan)",
+      "grayvar(--fg3)",
+      "Clear color",
+      "Filter by this tag"
+    ]
+  },
+  "tag_seed": {
+    "body": "{\"count\":1}\n",
+    "status": 200
+  },
+  "tags_after_seed": {
+    "tags": [
+      {
+        "count": 1,
+        "tag": "very-long-generic-label-for-pale"
+      }
+    ]
+  }
+}

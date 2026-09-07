@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "chromium/upstream-advanced-fresh-ui-only",
+      "status": "pass"
+    },
+    {
+      "name": "chromium/checks-packs-fresh",
+      "status": "pass"
+    },
+    {
+      "name": "firefox/upstream-advanced-fresh-ui-only",
+      "status": "pass"
+    },
+    {
+      "name": "firefox/checks-packs-fresh",
+      "status": "pass"
+    },
+    {
+      "name": "webkit/upstream-advanced-fresh-ui-only",
+      "status": "pass"
+    },
+    {
+      "name": "webkit/checks-packs-fresh",
+      "status": "pass"
+    },
+    {
+      "name": "webkit/shortcuts-command-palette-entry",
+      "status": "pass"
+    }
+  ],
+  "runtime_digest": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "script_sha256": "f95f72d4aa4cb4b2f85fcf4e7a899e3087b723422bdd80902004d42b1c54953c"
+}

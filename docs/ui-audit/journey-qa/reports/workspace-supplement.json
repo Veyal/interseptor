@@ -1,0 +1,67 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": [
+    {
+      "kind": "mixed",
+      "name": "MIXED History note rejected\u2192Retry\u2192Saved exact reload; saved view reappears and applies filter",
+      "status": "pass"
+    },
+    {
+      "kind": "real",
+      "name": "REAL Postman import creates unsent exact request that persists across reload",
+      "status": "pass"
+    },
+    {
+      "kind": "mock",
+      "name": "MOCK Activity exact generic flow ID selects its History row",
+      "status": "pass"
+    },
+    {
+      "kind": "mock",
+      "name": "MOCK held queue opens exact raw editor without Forward or Drop",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788758235.585988,
+  "mocked": [
+    "Generic 503 fault injection for History note; generic read-only Activity and Intercept routes only. No Forward, Drop, Send, scan, authz, or external operation."
+  ],
+  "probe_sha256": "05dac35ffda7336f08ae9c8364aaab6e07e5d60d14b377605fbd56b974eae943",
+  "screenshots": [
+    {
+      "capture_filename": "history-note-retry-and-saved-view.png",
+      "name": "history-note-retry-and-saved-view",
+      "path": "screenshots/workspace-supplement/history-note-retry-and-saved-view.png",
+      "retained": true,
+      "sha256": "d999560f8d335ec47bb79ea9cfd3cd5b731e2da3aa07b12fe814757ab8a33f51"
+    },
+    {
+      "capture_filename": "postman-unsent-exact-persisted.png",
+      "name": "postman-unsent-exact-persisted",
+      "path": "screenshots/workspace-supplement/postman-unsent-exact-persisted.png",
+      "retained": true,
+      "sha256": "cb21fb81022424f952789cd1674f0dc2f8eb3fa87f2bb8596359dcb0bc900188"
+    },
+    {
+      "capture_filename": "mock-activity-correct-flow.png",
+      "name": "mock-activity-correct-flow",
+      "path": "screenshots/workspace-supplement/mock-activity-correct-flow.png",
+      "retained": true,
+      "sha256": "dba6f3ca4e6fa356747df21b3b846915c872386bf84f20d4001c9ad90157041c"
+    },
+    {
+      "capture_filename": "mock-held-queue-exact-editor.png",
+      "name": "mock-held-queue-exact-editor",
+      "path": "screenshots/workspace-supplement/mock-held-queue-exact-editor.png",
+      "retained": true,
+      "sha256": "9ad6ca8c11039d8ea99bdf3e65d1958ce16939d7489487c92c45033ce4bef9e7"
+    }
+  ],
+  "started_unix": 1788758231.987348,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 4
+  }
+}

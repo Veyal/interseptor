@@ -1,0 +1,134 @@
+{
+  "started_unix": 1788787446.794317,
+  "finished_unix": 1788787778.660514,
+  "probe": "/private/tmp/interseptor-repeater-render-qa-20260907-final-r2/probe.py",
+  "probe_sha256": "0ecd1bea42c153d681f449ea34b7b1618e81849d2e1141dc793fbcb968cab059",
+  "reports": [
+    {
+      "engine": "chromium",
+      "cases": {
+        "html-send-render-sandbox-header-separation": "pass",
+        "raw-pretty-decoded-render-transitions": "pass",
+        "new-html-replaces-previous-preview": "pass",
+        "json-render-hidden-pretty-fallback": "pass",
+        "pending-error-clear-stale-preview": "pass",
+        "per-tab-response-ownership": "pass",
+        "repeater-history-render": "pass",
+        "history-render-parity-row-hover-click-ctrl": "pass"
+      },
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/chromium-1440-light-repeater-render-a.png",
+          "sha256": "b0b2e0f7e769d7e940f3819e9bb7c673b358cb04250b1397c6ad37c35d7af7e3"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/chromium-1024-light-repeater-response-modes.png",
+          "sha256": "5503543999e98c807ae35ba9656a73479c56d342d387393ddbb0cacbeee46039"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/chromium-390-light-repeater-render.png",
+          "sha256": "a2b01612d4a2c280df6b14dfc47d7f8dba8e97cb9d167953587bcf56d8f35583"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/chromium-390-dark-repeater-render.png",
+          "sha256": "4efe725a47dd21de30f5829ae8cdde651f32ad687cc6d574171ee8c8e2fa3303"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/chromium-390-dark-history-render.png",
+          "sha256": "e7123c17d1093a0625eec0174170fc0d1ae5c67813e48f4b76722d885a002d7e"
+        }
+      ],
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    },
+    {
+      "engine": "firefox",
+      "cases": {
+        "html-send-render-sandbox-header-separation": "pass",
+        "raw-pretty-decoded-render-transitions": "pass",
+        "new-html-replaces-previous-preview": "pass",
+        "json-render-hidden-pretty-fallback": "pass",
+        "pending-error-clear-stale-preview": "pass",
+        "per-tab-response-ownership": "pass",
+        "repeater-history-render": "pass",
+        "history-render-parity-row-hover-click-ctrl": "pass"
+      },
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/firefox-1440-light-repeater-render-a.png",
+          "sha256": "70c01d8ab68a29fbf92beccff332a7a1b131085ba6d652d6e86e1c82eede2b49"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/firefox-1024-light-repeater-response-modes.png",
+          "sha256": "6915aaa7731107c5524d9da28e34e0c0f4b07a054da72e89ed41e01e6cbdf050"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/firefox-390-light-repeater-render.png",
+          "sha256": "ab8fc96ec925d5c1612ca4f6c3df7dc8b61cf3ca1c54825d062b5425faf04613"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/firefox-390-dark-repeater-render.png",
+          "sha256": "6c0ce1ca9fe60fbbecff3575558b3fe257c54da8eb09cc8f6ca821548fab66c9"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/firefox-390-dark-history-render.png",
+          "sha256": "aa7b1f9d8893a94f932fa60ce1c41ab7b4232cd78265d84151b1439405704fcf"
+        }
+      ],
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    },
+    {
+      "engine": "webkit",
+      "cases": {
+        "html-send-render-sandbox-header-separation": "pass",
+        "raw-pretty-decoded-render-transitions": "pass",
+        "new-html-replaces-previous-preview": "pass",
+        "json-render-hidden-pretty-fallback": "pass",
+        "pending-error-clear-stale-preview": "pass",
+        "per-tab-response-ownership": "pass",
+        "repeater-history-render": "pass",
+        "history-render-parity-row-hover-click-ctrl": "pass"
+      },
+      "failures": [],
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/webkit-1440-light-repeater-render-a.png",
+          "sha256": "75777aa709f1e5105ddb079ad7d18559bf420116581d9eed5464ec32bbc09172"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/webkit-1024-light-repeater-response-modes.png",
+          "sha256": "92c6a46c5c332e44e9b1dfdf8ad4262000a0a3fd451eaccf6bc862094658b829"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/webkit-390-light-repeater-render.png",
+          "sha256": "cab657922427e63066afff113b388271d2da60c73d98067fa5e6f2dc5e259adb"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/webkit-390-dark-repeater-render.png",
+          "sha256": "56a558a9be8ffc3ddbf4e5252d37dcbd254f614bcd7856b5caf16d7a6f59716c"
+        },
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-final-r2/run/screenshots/webkit-390-dark-history-render.png",
+          "sha256": "c1086669c7e8bdc44e27592f6648b33cc6352b698ac3eba671a088772048b556"
+        }
+      ],
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    }
+  ]
+}

@@ -94,7 +94,7 @@ func (h *findingsAPI) attachFindingFlowPreview(w http.ResponseWriter, r *http.Re
 	if in.Position != nil {
 		pos = *in.Position
 	}
-	_, _, err = h.st.PutAndAttachImage(findingID, "image/png", pngBytes, caption, pos, in.Role, in.Proof, "flow_preview", in.FlowID)
+	_, _, err = h.st.PutAndAttachImage(findingID, "image/png", pngBytes, caption, pos, in.Role, in.Proof, "flow_preview", in.FlowID, findingAPIChange(""))
 	if err != nil {
 		httpErr(w, http.StatusBadRequest, err.Error())
 		return

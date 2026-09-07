@@ -465,7 +465,7 @@ function cmdkPaint(){
   const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
 }
 function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
-function cmdkOpen(){if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
+function cmdkOpen(){if(workflowShortcutBlocked())return;if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
 function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
 
 /* ---- global keyboard shortcuts ---- */

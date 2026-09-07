@@ -53,10 +53,14 @@ func TestUIDynamicSecurityEditorsHaveAccessibleNames(t *testing.T) {
 		"js/apipanel.js": {
 			`aria-label="Remove allowlist entry ${escAttr(e.cidr)}"`,
 		},
+		"js/finding-assessment.js": {
+			`<label class="find-target-field">`,
+			`<label for="findExecution">Observed impact</label>`,
+			`aria-label="Remove target ${i + 1}"`,
+		},
 		"js/findings.js": {
 			`aria-label="Finding impact"`,
 			`aria-label="Why this is a finding"`,
-			`aria-label="Affected target"`,
 			`aria-label="Finding remediation"`,
 			`aria-label="Evidence annotation"`,
 			`aria-label="Screenshot caption"`,

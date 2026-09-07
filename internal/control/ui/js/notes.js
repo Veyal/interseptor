@@ -1,4 +1,5 @@
-import { $, api, toast, renderMD, accordionize, createAutosave } from './core.js';
+import { $, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave } from './core.js';
+registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
 export const notesState={loaded:'',mode:'edit'};
@@ -134,10 +135,11 @@ $('#notesEdit')&&$('#notesEdit').addEventListener('paste',e=>{
   };
   rd.readAsDataURL(file);
 });
-$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+$('#notesSeg')&&$('#notesSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   notesState.mode=b.dataset.m;$('#notesSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   const edit=notesState.mode==='edit';
-  if(!edit)await flushNotesSave();
+  // Rendering uses the local draft; a slow save must not own the selected view.
+  if(!edit)void flushNotesSave();
   $('#notesEdit').style.display=edit?'block':'none';$('#notesPreview').style.display=edit?'none':'block';
   if(!edit)showNotesPreview();
 });

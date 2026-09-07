@@ -1,0 +1,32 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": [
+    {
+      "kind": "real",
+      "name": "REAL HAR/project import increases count and exact flow fields survive reload",
+      "status": "pass"
+    },
+    {
+      "kind": "mixed",
+      "name": "MIXED named scope disable + rejected/accepted capture writes durable",
+      "status": "pass"
+    },
+    {
+      "kind": "mixed",
+      "name": "MIXED exact Notes retry/reload; Compare identities; Decoder exact output",
+      "status": "pass"
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788757872.517257,
+  "mocked": [
+    "Generic 503 fault injection for Notes and capture preference writes."
+  ],
+  "probe_sha256": "aab6df88c5e2c7725339ef961fbc93e063cca946a9eb2902f0576fea0bcd183f",
+  "started_unix": 1788757867.8335328,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 3
+  }
+}

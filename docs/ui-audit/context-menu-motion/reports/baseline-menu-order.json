@@ -1,0 +1,196 @@
+{
+  "checks": {
+    "desktop": {
+      "history_after_short": {
+        "authz": {
+          "item": {
+            "bottom": 1015,
+            "left": 481,
+            "right": 721,
+            "text": "Authz testroles",
+            "top": 981,
+            "width": 240
+          },
+          "label": {
+            "bottom": 1004.5,
+            "left": 490,
+            "right": 564.25,
+            "text": "Authz test",
+            "top": 991.5,
+            "width": 74.25
+          },
+          "value": {
+            "bottom": 1004.5,
+            "left": 572.25,
+            "right": 599.390625,
+            "text": "roles",
+            "top": 991.5,
+            "width": 27.140625
+          }
+        },
+        "menu": {
+          "bottom": 892,
+          "clientHeight": 564,
+          "left": 475,
+          "right": 727,
+          "scrollHeight": 911,
+          "scrollWidth": 250,
+          "styleWidth": "252px",
+          "top": 326,
+          "width": 252
+        },
+        "scan": {
+          "item": {
+            "bottom": 981,
+            "left": 481,
+            "right": 721,
+            "text": "Scan this hostvery-long-service-name.example.com",
+            "top": 947,
+            "width": 240
+          },
+          "label": {
+            "bottom": 970.5,
+            "left": 490,
+            "right": 556.828125,
+            "text": "Scan this host",
+            "top": 957.5,
+            "width": 66.828125
+          },
+          "value": {
+            "bottom": 970.5,
+            "left": 564.828125,
+            "right": 712,
+            "text": "very-long-service-name.example.com",
+            "top": 957.5,
+            "width": 147.171875
+          }
+        }
+      },
+      "short": {
+        "authz": null,
+        "menu": {
+          "bottom": 602,
+          "clientHeight": 338,
+          "left": 307,
+          "right": 561,
+          "scrollHeight": 353,
+          "scrollWidth": 252,
+          "styleWidth": "254px",
+          "top": 262,
+          "width": 254
+        },
+        "scan": null
+      }
+    },
+    "phone": {
+      "history_after_short": {
+        "authz": {
+          "item": {
+            "bottom": 697,
+            "left": 136,
+            "right": 376,
+            "text": "Authz testroles",
+            "top": 663,
+            "width": 240
+          },
+          "label": {
+            "bottom": 686.5,
+            "left": 145,
+            "right": 219.25,
+            "text": "Authz test",
+            "top": 673.5,
+            "width": 74.25
+          },
+          "value": {
+            "bottom": 686.5,
+            "left": 227.25,
+            "right": 254.390625,
+            "text": "roles",
+            "top": 673.5,
+            "width": 27.140625
+          }
+        },
+        "menu": {
+          "bottom": 427,
+          "clientHeight": 417,
+          "left": 130,
+          "right": 382,
+          "scrollHeight": 911,
+          "scrollWidth": 250,
+          "styleWidth": "252px",
+          "top": 8,
+          "width": 252
+        },
+        "scan": {
+          "item": {
+            "bottom": 663,
+            "left": 136,
+            "right": 376,
+            "text": "Scan this hostvery-long-service-name.example.com",
+            "top": 629,
+            "width": 240
+          },
+          "label": {
+            "bottom": 652.5,
+            "left": 145,
+            "right": 211.828125,
+            "text": "Scan this host",
+            "top": 639.5,
+            "width": 66.828125
+          },
+          "value": {
+            "bottom": 652.5,
+            "left": 219.828125,
+            "right": 367,
+            "text": "very-long-service-name.example.com",
+            "top": 639.5,
+            "width": 147.171875
+          }
+        }
+      },
+      "short": {
+        "authz": null,
+        "menu": {
+          "bottom": 715,
+          "clientHeight": 338,
+          "left": 102,
+          "right": 356,
+          "scrollHeight": 353,
+          "scrollWidth": 252,
+          "styleWidth": "254px",
+          "top": 375,
+          "width": 254
+        },
+        "scan": null
+      }
+    }
+  },
+  "cleanup": "ok",
+  "failures": [],
+  "import": {
+    "body": "{\"imported\":1}\n",
+    "status": 200
+  },
+  "original_report_sha256": "eed4b976f8532943b61818e75f526cab89fa02b8a627bd16bb5429e9b2c3f437",
+  "runtime": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 257,
+    "runtime_sha256": "f3d5c07378696b8fd459afceba6ca4cfda3315fa00fee04bd773a4f95fea9218",
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+  },
+  "screenshots": {
+    "ordered-history-desktop.png": {
+      "file": "screenshots/baseline/ordered-history-desktop.png",
+      "sha256": "0a409673058edde25874fe850abd2d5ee94f28a664e902340b39568e0d3f2f63"
+    },
+    "ordered-history-phone.png": {
+      "file": "screenshots/baseline/ordered-history-phone.png",
+      "sha256": "54fc88c764d6e8a044b8a5b5716248a6a866b2f1874bab25be9ad026103aabf4"
+    }
+  },
+  "started_unix": 1788761445.6735182,
+  "tag_seed": {
+    "body": "{\"count\":1}\n",
+    "status": 200
+  }
+}

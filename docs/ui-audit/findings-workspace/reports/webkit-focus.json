@@ -1,0 +1,10 @@
+{
+  "case": {
+    "entry": "direct-focus-event",
+    "name": "control/webkit/tooltip-focus-event-escape",
+    "note": "Tab traversal is separately skipped by macOS WebKit keyboard-access profile",
+    "status": "pass"
+  },
+  "runtime_digest": "907c942a4eef7e8a70cf3477c3b66d89a21110256bf43f86883a272bf39ffc7b",
+  "script_sha256": "9c9f726ffe0b51cbd0a2c6ffd074468ea650a208ed637b886f02f3baf1b09cf8"
+}

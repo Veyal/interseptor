@@ -48,6 +48,7 @@ export function renderActivity(){
   const box=$('#actFeed');if(!box)return;
   if(activityLoadError)return;
   const focusedId=box.querySelector(':focus[data-activity-id]')?.dataset.activityId||'';
+  const openIds=new Set([...box.querySelectorAll('.act-expandable[aria-expanded="true"]')].map(row=>row.dataset.activityId));
   const all=state.activity;
   // Filter first, then group: separators must reflect the visible subset only,
   // so sameWorkflow() compares each row against the previous *visible* row.
@@ -63,21 +64,30 @@ export function renderActivity(){
     const status=it.ok?'Success':'Error';
     const activityId=it.id!=null?String(it.id):String(it._uiId||(it._uiId='client-'+Date.now()+'-'+i));
     const label=(it.tool||'activity')+': '+status+'. '+(it.summary||it.result||'');
-    return `<div class="act-row${fid?' act-jump':''}${grp}"${fid?' tabindex="0" role="button"':''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}" title="${fid?'Open flow #'+fid+' in History':''}">
+    const expandable=!fid;
+    const expanded=expandable&&openIds.has(activityId);
+    const detail=expandable?`<div class="act-detail" id="actDetail-${i}"${expanded?'':' hidden'}><div><b>Summary</b><span>${esc(it.summary||'—')}</span></div><div><b>Result</b><span>${esc(it.result||'—')}</span></div>${it.intent?`<div><b>Intent</b><span>${esc(it.intent)}</span></div>`:''}</div>`:'';
+    return `<div class="act-row${fid?' act-jump':''}${expandable?' act-expandable':''}${expanded?' expanded':''}${grp}" tabindex="0" role="button"${expandable?` aria-expanded="${expanded}" aria-controls="actDetail-${i}"`:''} data-activity-id="${escAttr(activityId)}" data-flow="${fid||''}" data-i="${i}" aria-label="${escAttr(label)}"${fid?' title="Open flow #'+fid+' in History"':''}>
     <span class="ok" aria-hidden="true" style="background:${it.ok?'var(--accent)':'var(--red)'}" title="${status}"></span>
     <span class="act-tool">${esc(it.tool)}</span>
     <span class="act-sum">${esc(it.summary||'')}</span>
     <span class="act-res">${esc(it.result||'')}</span>
     <span class="act-meta">${duration} · ${actTime(it.ts)}</span>
     ${it.intent?`<span class="act-intent" title="the AI's stated reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-thought"/></svg> ${esc(it.intent)}</span>`:''}
+    ${detail}
   </div>`;
   }).join('');
   box.querySelectorAll('.act-row').forEach(row=>{const open=()=>{
+    if(window.getSelection()?.toString())return;
     const id=Number(row.dataset.flow);
-    if(!id)return;
-    document.querySelector('.tab[data-tab="proxy"]').click();
-    selectFlow(id);
-  };if(row.classList.contains('act-jump')){row.onclick=open;wireRowKey(row,open);}});
+    if(id){document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(id);return;}
+    if(!row.classList.contains('act-expandable'))return;
+    const detail=row.querySelector('.act-detail');if(!detail)return;
+    const expanded=row.getAttribute('aria-expanded')==='true';
+    row.setAttribute('aria-expanded',expanded?'false':'true');
+    detail.hidden=expanded;
+    row.classList.toggle('expanded',!expanded);
+  };row.onclick=open;wireRowKey(row,open);});
   restoreActivityFocus(box,focusedId);
 }
 function restoreActivityFocus(box,focusedId){

@@ -1,4 +1,5 @@
-import { $, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
+registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
 import { prefersReducedMotion } from './motion.js';
@@ -1018,6 +1019,13 @@ function loginMacroBody(){
     refreshSecs:parseInt(($('#loginMacroRefresh')||{}).value,10)||0,reauthOn401:!!($('#loginMacro401')||{}).checked};
 }
 const SESSION_DIRTY_FIELDS=['setSessionOn','setSessionUnscoped','setSessionHeaders','macroOn','macroReq','macroTarget','macroExtract','macroMode','macroName','loginMacroOn','loginMacroReq','loginMacroTarget','loginMacroRefresh','loginMacro401'];
+// Only persisted settings count as drafts. Search, section navigation and the
+// project-name form also emit input events, but must not prevent switching.
+function hasUnsavedSettingsFields(){
+  return [...SESSION_DIRTY_FIELDS,...upstreamProxyFieldIds,'proxyListenersList','deviceProxyModeSeg','deviceProxyManualHost',
+    'setControlHost','setControlPort','setControlAddr','tlsBypassList','originTLSVerifyBypassList','originTLSVerifyMode',
+    'setOobEnabled','hostHdrList','retMaxAge','retMaxFlows'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');
+}
 function sessionFormPayload(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
   return {enabled:$('#setSessionOn').checked,unscoped:!!($('#setSessionUnscoped')&&$('#setSessionUnscoped').checked),headers:$('#setSessionHeaders').value,macro,loginMacro:loginMacroBody(),hostHeaders:collectHostHeaders()};
@@ -1449,6 +1457,24 @@ function clearProjectPathFeedback(){
     note.setAttribute('role','status');note.setAttribute('aria-live','polite');
   });
 }
+const projectSwitchDisabledControls=new Map();
+function setProjectSwitchModalBusy(busy){
+  const modal=$('#projModal');if(!modal)return;
+  if(busy){
+    // Invalidate an earlier list load before it can enable replacement rows.
+    projectModalLoadEpoch++;
+    modal.querySelectorAll('button,input,textarea,select').forEach(control=>{
+      if(!projectSwitchDisabledControls.has(control))projectSwitchDisabledControls.set(control,control.disabled);
+      control.disabled=true;
+    });
+    const note=$('#pmSwitchNote');if(note)note.tabIndex=-1;
+    openModal(modal,{initialFocus:note,onEscape:()=>{},onDismiss:()=>{}});
+  }else{
+    projectSwitchDisabledControls.forEach((disabled,control)=>{control.disabled=disabled;});
+    projectSwitchDisabledControls.clear();
+    if(modal.style.display==='flex')openModal(modal,{initialFocus:$('#pmClose')});
+  }
+}
 export async function doSwitchProject(target,path){
   if(!target&&!path)return;
   if(projectSwitchPending){toast('a project switch is already in progress');return;}
@@ -1457,6 +1483,8 @@ export async function doSwitchProject(target,path){
     const message='Custom save location must be an absolute folder path.';
     setProjectPathInvalid(path,true);setProjectSwitchFeedback(message,'error');toast(message,'error');return;
   }
+  const blocker=projectSwitchBlocker();
+  if(blocker){setProjectSwitchFeedback(blocker,'error');toast(blocker,'error');return;}
   setProjectPathInvalid('',false);
   const switchEpoch=++projectSwitchEpoch;
   projectSwitchPending=true;
@@ -1464,6 +1492,8 @@ export async function doSwitchProject(target,path){
   // Surface the "restarting…" message wherever it's visible — the Settings panel
   // note and the top-bar Projects modal share this one switch path.
   const setNote=(text,kind='status')=>setProjectSwitchFeedback(text,kind);
+  setNote('Switching projects…');
+  setProjectSwitchModalBusy(true);
   // The old process keeps serving (same version, same "ok") for a few hundred ms
   // after the switch is requested while the new one is still binding — polling
   // /api/version can't tell them apart and would reload straight back into the
@@ -1476,7 +1506,7 @@ export async function doSwitchProject(target,path){
   try{const accepted=await api('/api/project/switch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path}:{target})});
     if(!accepted||!accepted.switching)throw new Error('project switch was not accepted');
     expected=String(accepted.switching);
-  }catch(e){projectSwitchPending=false;setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
+  }catch(e){projectSwitchPending=false;setProjectSwitchModalBusy(false);setNote('Project switch failed: '+e.message,'error');toast(e.message,'error');loadProject();return;}
   setNote(path?`Switching to "${target||path}" (${path}) — restarting & reconnecting…`:`Switching to "${target}" — restarting & reconnecting…`);
   const deadline=Date.now()+30000;
   const poll=async()=>{
@@ -1487,7 +1517,7 @@ export async function doSwitchProject(target,path){
       if(reached){projectSwitchPending=false;projectSwitchTimer=null;location.reload();return;}
     }
     catch(e){}
-    if(Date.now()>=deadline){projectSwitchPending=false;projectSwitchTimer=null;setNote('Project switch was not confirmed within 30 seconds. Retry the switch, or reload manually after the new process is ready.','error');loadProject();return;}
+    if(Date.now()>=deadline){projectSwitchPending=false;projectSwitchTimer=null;setProjectSwitchModalBusy(false);setNote('Project switch was not confirmed within 30 seconds. Retry the switch, or reload manually after the new process is ready.','error');loadProject();return;}
     projectSwitchTimer=setTimeout(poll,500);
   };
   projectSwitchTimer=setTimeout(poll,500);
@@ -1540,6 +1570,7 @@ async function renderProjModal(){
   }
 }
 export async function openProjectModal(){
+  if(projectSwitchPending)return;
   const m=$('#projModal');if(!m)return;
   const note=$('#pmNote');if(note){note.style.display='none';note.textContent='';}
   clearProjectPathFeedback();
@@ -1549,7 +1580,7 @@ export async function openProjectModal(){
   const rendered=await renderProjModal();
   if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();
 }
-{const c=$('#pmClose');if(c)c.onclick=()=>closeModal($('#projModal'));}
+{const c=$('#pmClose');if(c)c.onclick=()=>{if(!projectSwitchPending)closeModal($('#projModal'));};}
 {const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{
   const v=(($('#pmNew')||{}).value||'').trim();
   const path=(($('#pmNewPath')||{}).value||'').trim();

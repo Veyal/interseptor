@@ -1,0 +1,600 @@
+{
+  "activity_motion": {
+    "duration": "0.18s",
+    "name": "surface-enter"
+  },
+  "application_source": {
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0",
+    "runtime_files": 257,
+    "runtime_sha256": "5f8866062d1f1b61e84cd7d84b3caca5488b09c26e2913560fb33b18e8ea1c2f",
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c"
+  },
+  "base_url": "http://127.0.0.1:51999",
+  "cleanup": "ok",
+  "console_after-chromium-dark-desktop": [],
+  "console_after-chromium-light-phone": [],
+  "console_after-chromium-light-reduced-phone": [],
+  "console_after-firefox-dark-desktop": [],
+  "console_after-firefox-light-phone": [],
+  "console_after-firefox-light-reduced-phone": [],
+  "dark_readability": {
+    "chromium": {
+      "chipBackground": "rgb(37, 43, 53)",
+      "chipColor": "rgb(110, 231, 194)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    },
+    "firefox": {
+      "chipBackground": "rgb(37, 43, 53)",
+      "chipColor": "rgb(110, 231, 194)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    }
+  },
+  "dropdown_motion": {
+    "animationDuration": "0.12s",
+    "animationName": "floating-enter",
+    "side": "below"
+  },
+  "executed_probe": "probes/chromium-firefox.py",
+  "failures": [
+    "Error: Response.text: Protocol error (Network.getResponseBody): Missing content of resource for given requestId"
+  ],
+  "finished_unix": 1788762831.836704,
+  "idle_switch_animation": "none",
+  "import": {
+    "body": "{\"imported\":28}\n",
+    "status": 200
+  },
+  "keyboard": {
+    "enter_focus_chip": true,
+    "enter_status": 204,
+    "escape_focus_chip": true,
+    "escape_repetitions": [
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      },
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      },
+      {
+        "open_focus": "red#ff5b5b",
+        "restored_chip": true
+      }
+    ],
+    "open_focus": "red#ff5b5b"
+  },
+  "kind": "after",
+  "light_readability": {
+    "chromium": {
+      "chipBackground": "rgb(231, 235, 240)",
+      "chipColor": "rgb(6, 95, 70)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    },
+    "firefox": {
+      "chipBackground": "rgb(231, 235, 240)",
+      "chipColor": "rgb(6, 95, 70)",
+      "pageBackground": "rgba(0, 0, 0, 0)",
+      "style": "color:var(--accent);border-color:var(--accent)"
+    }
+  },
+  "menus": {
+    "after-chromium-dark-desktop": {
+      "menu": {
+        "bottom": 865,
+        "height": 832,
+        "left": 475,
+        "right": 849.375,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 33,
+        "width": 374.375
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 830,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    "after-chromium-light-1440px-repeat": {
+      "menu": {
+        "bottom": 865,
+        "height": 832,
+        "left": 475,
+        "right": 849.375,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 33,
+        "width": 374.375
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 830,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    "after-chromium-light-768px-repeat": {
+      "menu": {
+        "bottom": 878,
+        "height": 832,
+        "left": 375,
+        "right": 749.375,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 46,
+        "width": 374.375
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 830,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 900,
+        "width": 768
+      }
+    },
+    "after-chromium-light-landscape": {
+      "menu": {
+        "bottom": 353,
+        "height": 345,
+        "left": 375,
+        "right": 749.375,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 374.375
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 343,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 375,
+        "width": 812
+      }
+    },
+    "after-chromium-light-phone": {
+      "menu": {
+        "bottom": 822,
+        "height": 814,
+        "left": 8,
+        "right": 382,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 374
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 812,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    "after-chromium-light-reduced-phone": {
+      "menu": {
+        "bottom": 790,
+        "height": 782,
+        "left": 8,
+        "right": 367,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 359
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 780,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "after-firefox-dark-desktop": {
+      "menu": {
+        "bottom": 865,
+        "height": 836,
+        "left": 475,
+        "right": 849.3833312988281,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 29,
+        "width": 374.3833312988281
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 834,
+        "scrollHeight": 834
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1440
+      }
+    },
+    "after-firefox-light-phone": {
+      "menu": {
+        "bottom": 822,
+        "height": 814,
+        "left": 8,
+        "right": 382,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 374
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 812,
+        "scrollHeight": 834
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    "after-firefox-light-reduced-phone": {
+      "menu": {
+        "bottom": 790,
+        "height": 782,
+        "left": 8,
+        "right": 367,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 359
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 780,
+        "scrollHeight": 834
+      },
+      "viewport": {
+        "height": 812,
+        "width": 375
+      }
+    },
+    "after-webkit-light-phone": {
+      "menu": {
+        "bottom": 814,
+        "height": 806,
+        "left": 8,
+        "right": 382,
+        "text": "HOST \u00b7 very-long-service-name.example.comFilter this hostvery-long-service-name.example.comExclude this hostvery-long-service-name.example.comFilter domainexample.com (+subs)Add domain to scope*.example.comAdd host to scopevery-long-service-name.example.comDelete all from hostvery-long-service-name.example.comREQUESTExport raw requestExport raw responseSend to RepeaterSend to IntruderCopy URLCopy as cURLCopy replay link \u00b7 current sessionCopy replay link \u00b7 flow's sessionExport raw responseScan this hostvery-long-service-name.example.comAuthz testrolesUse as login macroTAGSTag\u2026FINDINGSAdd to finding",
+        "top": 8,
+        "width": 374
+      },
+      "overflow": [],
+      "overlap": [],
+      "pairCount": 20,
+      "scroll": {
+        "clientHeight": 804,
+        "scrollHeight": 830
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    }
+  },
+  "motion": {
+    "after-chromium-dark-desktop": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-chromium-light-1440px-repeat": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-chromium-light-768px-repeat": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-chromium-light-landscape": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-chromium-light-phone": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-chromium-light-reduced-phone": {
+      "animationDuration": "0s",
+      "animationName": "none",
+      "side": "above"
+    },
+    "after-firefox-dark-desktop": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-firefox-light-phone": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    },
+    "after-firefox-light-reduced-phone": {
+      "animationDuration": "0s",
+      "animationName": "none",
+      "side": "above"
+    },
+    "after-webkit-light-phone": {
+      "animationDuration": "0.12s",
+      "animationName": "floating-enter",
+      "side": "above"
+    }
+  },
+  "page_errors_after-chromium-dark-desktop": [],
+  "page_errors_after-chromium-light-phone": [],
+  "page_errors_after-chromium-light-reduced-phone": [],
+  "page_errors_after-firefox-dark-desktop": [],
+  "page_errors_after-firefox-light-phone": [],
+  "page_errors_after-firefox-light-reduced-phone": [],
+  "palette": [
+    {
+      "chip_style": "color:var(--red);border-color:var(--red)",
+      "expected": "#ff5b5b",
+      "name": "red",
+      "persisted": "#ff5b5b",
+      "request_body": "{\"color\":\"#ff5b5b\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--amber);border-color:var(--amber)",
+      "expected": "#ffb02e",
+      "name": "amber",
+      "persisted": "#ffb02e",
+      "request_body": "{\"color\":\"#ffb02e\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--blue);border-color:var(--blue)",
+      "expected": "#4aa8ff",
+      "name": "blue",
+      "persisted": "#4aa8ff",
+      "request_body": "{\"color\":\"#4aa8ff\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--violet);border-color:var(--violet)",
+      "expected": "#c08cff",
+      "name": "violet",
+      "persisted": "#c08cff",
+      "request_body": "{\"color\":\"#c08cff\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--cyan);border-color:var(--cyan)",
+      "expected": "#3fd8d0",
+      "name": "cyan",
+      "persisted": "#3fd8d0",
+      "request_body": "{\"color\":\"#3fd8d0\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--fg3);border-color:var(--fg3)",
+      "expected": "#8e8e99",
+      "name": "gray",
+      "persisted": "#8e8e99",
+      "request_body": "{\"color\":\"#8e8e99\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--accent);border-color:var(--accent)",
+      "expected": "#00c389",
+      "name": "green",
+      "persisted": "#00c389",
+      "request_body": "{\"color\":\"#00c389\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "",
+      "name": "clear",
+      "persisted": "",
+      "request_body": "{\"color\":\"\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--red);border-color:var(--red)",
+      "expected": "#ff5b5b",
+      "name": "red",
+      "persisted": "#ff5b5b",
+      "request_body": "{\"color\":\"#ff5b5b\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--amber);border-color:var(--amber)",
+      "expected": "#ffb02e",
+      "name": "amber",
+      "persisted": "#ffb02e",
+      "request_body": "{\"color\":\"#ffb02e\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--blue);border-color:var(--blue)",
+      "expected": "#4aa8ff",
+      "name": "blue",
+      "persisted": "#4aa8ff",
+      "request_body": "{\"color\":\"#4aa8ff\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--violet);border-color:var(--violet)",
+      "expected": "#c08cff",
+      "name": "violet",
+      "persisted": "#c08cff",
+      "request_body": "{\"color\":\"#c08cff\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--cyan);border-color:var(--cyan)",
+      "expected": "#3fd8d0",
+      "name": "cyan",
+      "persisted": "#3fd8d0",
+      "request_body": "{\"color\":\"#3fd8d0\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--fg3);border-color:var(--fg3)",
+      "expected": "#8e8e99",
+      "name": "gray",
+      "persisted": "#8e8e99",
+      "request_body": "{\"color\":\"#8e8e99\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "color:var(--accent);border-color:var(--accent)",
+      "expected": "#00c389",
+      "name": "green",
+      "persisted": "#00c389",
+      "request_body": "{\"color\":\"#00c389\"}",
+      "response_body": "",
+      "status": 204
+    },
+    {
+      "chip_style": "",
+      "name": "clear",
+      "persisted": "",
+      "request_body": "{\"color\":\"\"}",
+      "response_body": "",
+      "status": 204
+    }
+  ],
+  "probe_sha256": "1f75836179dc2dcebab56ec519dbfa51c8af36e37ba7a99bfe5841b89afdf7ed",
+  "project": "ui-audit-16bd2d3cd2b4",
+  "rapid_navigation": {
+    "after-chromium-dark-desktop": [
+      "proxy",
+      "intercept",
+      "repeater",
+      "intruder",
+      "scanner",
+      "map",
+      "findings",
+      "notes",
+      "activity",
+      "settings"
+    ],
+    "after-chromium-light-phone": [
+      "proxy",
+      "intercept",
+      "repeater",
+      "intruder",
+      "scanner",
+      "map",
+      "findings",
+      "notes",
+      "activity",
+      "settings"
+    ],
+    "after-chromium-light-reduced-phone": [
+      "proxy",
+      "intercept",
+      "repeater",
+      "intruder",
+      "scanner",
+      "map",
+      "findings",
+      "notes",
+      "activity",
+      "settings"
+    ]
+  },
+  "requests": [],
+  "screenshots": {
+    "after-chromium-dark-desktop.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-dark-desktop.png",
+      "sha256": "dcd2ec93b5369ebee3af863818ce7ec0094e22393efb2eebccc420da0ab3570e"
+    },
+    "after-chromium-light-1440px-repeat.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-light-1440px-repeat.png",
+      "sha256": "558472ec984009a5217d0e03e54ff6b2e04fe956d3bc8f5753b69b741b84c084"
+    },
+    "after-chromium-light-768px-repeat.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-light-768px-repeat.png",
+      "sha256": "e840e1a450a3fa72cdb2c3b0e2c4e35d9c0e08a69de1a89a1ada0cb9b1dfa692"
+    },
+    "after-chromium-light-landscape.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-light-landscape.png",
+      "sha256": "0efd0a4dbf7fd7cc05135fc8699e091057525791707f2cbbea6740a6a52a1a25"
+    },
+    "after-chromium-light-phone.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-light-phone.png",
+      "sha256": "c9ba8ef2fd485810da93c4041c4b375d5df746febabc2703f457122ef11e35f8"
+    },
+    "after-chromium-light-reduced-phone.png": {
+      "file": "screenshots/chromium-firefox/after-chromium-light-reduced-phone.png",
+      "sha256": "2d03956359be256f5055f235b6f4ba5d2729ebfaa6e8296e45d0fc7b1066b4d6"
+    },
+    "after-firefox-dark-desktop.png": {
+      "file": "screenshots/chromium-firefox/after-firefox-dark-desktop.png",
+      "sha256": "ac4f9d52284c5717c8d4966c03762c118543ddab628d715957759ec67e3efbc8"
+    },
+    "after-firefox-light-phone.png": {
+      "file": "screenshots/chromium-firefox/after-firefox-light-phone.png",
+      "sha256": "6243a70b77b045e923fbba3d1e2ed9881117389fd4bdb1f002c5ed1d4c40389f"
+    },
+    "after-firefox-light-reduced-phone.png": {
+      "file": "screenshots/chromium-firefox/after-firefox-light-reduced-phone.png",
+      "sha256": "e58d4ff424ef6322f5f052b6c19b3d950ace316c2c67ae4e9c20d7a1d8fcc58b"
+    },
+    "after-webkit-light-phone.png": {
+      "file": "screenshots/chromium-firefox/after-webkit-light-phone.png",
+      "sha256": "45d3097db8e2951a377672ded780ac891674dc0c5ab5f6b0d9d373b6d5abe076"
+    }
+  },
+  "settings_motion": {
+    "duration": "0.18s",
+    "name": "surface-enter"
+  },
+  "started_unix": 1788762798.810682,
+  "tag_seed": {
+    "body": "{\"count\":1}\n",
+    "status": 200
+  }
+}

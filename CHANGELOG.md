@@ -9,9 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-08
+
+### Added
+
+- Add append-only finding revisions, field diffs, deleted-finding restore, and a value-free audit summary export; retain historical image blobs and preserve legacy evidence relationships (#75).
+- Preview affected-target deduplication and optional path templates while preserving methods, roles, variants, notes, and evidence links (#74).
+- Add shared actionable claim/readiness checks, reviewer-declared capability evidence, and an explicit Final report gate with a Draft export path (#70, #76).
+- Preserve image ingestion provenance separately from browser/device classification, stamp classification changes, and prevent generated previews from becoming visual proof when reused (#69).
+- Add a passive Session inspector for selected History captures: redacted cookie/query observations (including malformed request targets), candidate transitions, and comparison of captured role contexts. It does not send requests or infer authentication/MFA success (#71 safe subset, #72 observed-data subset).
+- Expose MCP contract version/hash and live finding capabilities with explicit reconnect diagnostics, and add interactive CVSS v4 evaluation with deliberate vector/severity Apply (#68, #73).
+
 ### Fixed
 
+- Include supported device screenshot classification in MCP help and evidence-block comments; normalize Go import grouping in finding review handlers and their test.
+- Extend the retained-export whitespace exception to the current release evidence directory without changing exported bytes.
+- Document device screenshot classification and link duplicate image-source guidance to the Findings reference.
+- Guard finding deletion with the shared save and evidence boundary, preserve failed drafts for Retry, and block export, project switching, and revision restore during deletion.
+- Reject invalid finding/revision IDs and malformed revision pagination cursors in HTTP and MCP requests.
+- Add CVSS preview discard and exact-revert recovery, clearing only abandoned Apply-owned save drafts while preserving newer typing and independent edits; reconcile exact reverts when the shared save queue settles, including after unrelated writes.
+- Persist complete merged evidence and server-owned image provenance in the initial revision; preserve unapplied CVSS drafts across refreshes, block exports until finding drafts are saved, and assess grouped report readiness only for exported findings.
+- Preserve open claim, CVSS, and revision-history disclosures during Findings background refreshes; keep claim-field focus tied to its capability and defer remounts until pointer clicks finish.
+- Add sandboxed HTML Render to Repeater responses, preserve response ownership during tab/view changes, and remove repeated click/selection instructions from History row hints.
+- Preserve development, testing, and production finding environments; reject unsupported values without silently mapping development to local (#67).
+- Require explicit impact verification, separately annotated action/result/control evidence, real declared browser captures for visual claims, and calculated CVSS v4 scores with matching severity before report readiness (#65).
+- Support ordered affected targets with methods, roles, variants, evidence links, setup/chain exceptions, search, editor reordering, report exports, and full archive merge compatibility; preserve target ownership after failed structural saves (#66).
+
+- Save tag palette choices as valid hex colors while keeping chips readable in both themes, and keep context-menu labels separate from long values when switching between menus.
+- Block project switching while Notes, Finding, History-note or Settings drafts remain unsaved, keep the switching dialog active until reconnection or failure recovery, and prevent command-palette shortcuts from bypassing an active dialog.
+- Keep keyboard focus inside dialogs when all of their controls become disabled.
+- Keep the latest Notes Edit/Preview selection while autosave is pending, and download reports without opening an app-requested native Save picker.
 - **Private-release self-update feedback.** Explain the token requirement when GitHub deliberately returns 404 for a private release, instead of surfacing an opaque releases-page failure.
+- Retain unsaved Finding fields and evidence after a rejected save, keep Done in the editor until recovery, and provide an inline Retry action tied to the correct finding.
+- Keep the mobile Intruder request editor readable when its payload controls and results stack vertically.
+
+### Changed
+
+- Publish [18 final-source visual checks](docs/ui-audit/release-v2.1.0-verified.md) across Chromium, Firefox, and WebKit after import/help/comment corrections, retaining the prior 27-check visual and CVSS/export/project-switch recovery coverage as historical. Preserve relative report paths, original report hashes, and exact executed probes, screenshots, and exports.
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.0.10` release; release artifacts use the `2.1.0` tag version.
+- Add restrained, placement-aware menu entrances, dropdown-caret feedback and Settings/detail reveals; keep dismissal immediate, suppress stale hints and remove idle toggle pulsing.
+- Added source-bound menu and connected-journey QA evidence, including browser downloads, persistence/recovery checks, dialog interactions, and explicit operational coverage limits.
+- Preserve exact browser-export evidence bytes, allowing their generated trailing blank lines while retaining other whitespace checks.
+- Label local CLI builds from `make build` and `make run` with a `-local` version suffix, using the latest reachable tag or the source-archive fallback.
+- Rebuilt Findings as a searchable workspace with linked Overview, Evidence, Remediation and Review sections, section-focused editing, inline captured HTTP inspection, preserved reader state, and a dedicated export dialog.
+- Improved floating menu placement, themed disclosures, compact mobile dialogs, request/response inspection, tooltip behavior, Activity expansion, Settings text-editor boundaries and Inspector keyboard size feedback.
 
 ## [2.0.10] - 2026-09-06
 

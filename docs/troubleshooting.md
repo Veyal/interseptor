@@ -62,6 +62,13 @@ URL, headers, and body before sending. Interseptor reuses a tab for the same sch
 queryless path; query values remain in the loaded request. A deleted/missing evidence flow cannot be
 sent and must be recaptured.
 
+## Repeater response shows HTML source
+
+Choose **Render** above the response to preview HTML. The tab appears for HTML responses,
+including responses selected from Repeater's History. Raw, Pretty, and Decoded remain available.
+Render displays the captured body in a sandbox with scripts disabled; JavaScript-driven pages
+may therefore look incomplete. Large HTML responses offer **Download body** or **Show anyway**.
+
 ## Saved workspace does not finish loading
 
 Wait for the workspace status to offer **Reload** rather than clearing browser data. Reload retries

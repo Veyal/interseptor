@@ -83,6 +83,12 @@ shared by main navigation and Proxy's **Search in Map** action. Feature behavior
 feature module; `app.js` owns global navigation, shortcuts, SSE dispatch, and boot. No build step or
 bundler; the binary stays single and static.
 
+Findings uses `finding-workspace.js` for section routes and filtering, with
+`findings.js` retaining data and editor ownership. `findings.css` styles its
+searchable list, section reader and inline evidence. `surfaces.css` supplies
+shared popup and disclosure styling; `surface-position.js` bounds floating
+menus to the visual viewport. These assets are embedded alongside `app.css`.
+
 Workspace startup has two independent safety boundaries. A small classic-script guard runs before
 the ES-module graph and replaces the static loading state with a Reload action if those modules
 cannot load or evaluate. Once `app.js` is running, project identity and Repeater/Intruder state

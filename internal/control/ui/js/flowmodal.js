@@ -3,6 +3,19 @@ import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
 /* ---- flow inspect popup (Map graph/table, Scanner findings, …) ---- */
 let fmOpenEpoch=0;
 const fmSideEpoch={req:0,res:0};
+export function closeFlowPopup({updateRoute=true}={}){
+  fmOpenEpoch++;fmSideEpoch.req++;fmSideEpoch.res++;
+  if($('#flowModal')?.style.display==='flex')closeModal($('#flowModal'));
+  const match=location.hash.match(/^#finding-(\d+)\/flow-\d+$/i);
+  if(updateRoute&&match)history.replaceState(null,'',`#finding-${match[1]}/evidence`);
+}
+function setFlowInspectorSide(side){
+  $('#flowModal .flow-inspector')?.setAttribute('data-mobile-side',side);
+  $('#fmSides')?.querySelectorAll('[data-side]').forEach(button=>{
+    const active=button.dataset.side===side;button.classList.toggle('on',active);button.setAttribute('aria-pressed',String(active));
+  });
+}
+$('#fmSides')?.querySelectorAll('[data-side]').forEach(button=>button.onclick=()=>setFlowInspectorSide(button.dataset.side));
 function fmFlowUrl(d){
   if(!d) return '';
   const port = d.port && !((d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80)) ? ':'+d.port : '';
@@ -15,14 +28,15 @@ export async function flowPopup(id){
   try{d=await api('/api/flows/'+id);}catch(e){if(epoch===fmOpenEpoch)toast('flow: '+e.message);return;}
   if(epoch!==fmOpenEpoch)return;
   state.fm = { id, detail: d, url: fmFlowUrl(d), pretty: true, compare: false };
+  setFlowInspectorSide(d.status||d.resLen||d.resBodyHash?'res':'req');
   const compareBtn=$('#fmSeg').querySelector('[data-v="compare"]');
   const hasCompare=!!(d.originalReqBodyHash||d.originalResBodyHash||d.originalReqHeaders||d.originalResHeaders);
   if(compareBtn){compareBtn.hidden=!hasCompare;compareBtn.disabled=!hasCompare;}
-  $('#fmTitle').innerHTML = `<span style="color:${methodColor(d.method)};font-weight:700">${esc(d.method)}</span> <span style="font-family:var(--mono);color:var(--fg2)">${esc((d.scheme||'http')+'://'+d.host+d.path)}</span>`;
+  $('#fmTitle').innerHTML = `<span style="color:${methodColor(d.method)};font-weight:700">${esc(d.method)}</span> <span style="font-family:var(--mono);color:var(--fg2)">${esc(state.fm.url)}</span>`;
   $('#fmStatus').textContent = d.status ? `${d.status} ${statusText(d.status)}`+(d.durationMs ? ` · ${fmtDur(d.durationMs)}` : '') : (d.error || '');
   $('#fmStatus').style.color = statusColor(d.status);
   $('#fmSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.v === 'pretty'; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  openModal($('#flowModal'));
+  openModal($('#flowModal'),{onEscape:closeFlowPopup,onDismiss:closeFlowPopup});
   fmRenderSide('req'); fmRenderSide('res');
 }
 
@@ -76,10 +90,13 @@ export async function fmRenderSide(side){
     if(!current())return;
     el._rawText=raw;
     el.innerHTML=highlightHTTP(pretty?prettify(raw):raw,pretty,mime);
-  }catch(e){if(current())el.textContent='(error: '+e.message+')';}
+  }catch(e){if(current()){
+    el.innerHTML=`<span role="alert">${esc(e.message)}</span> <button type="button" class="btn" data-fm-retry>Retry</button>`;
+    el.querySelector('[data-fm-retry]').onclick=()=>fmRenderSide(side);
+  }}
 }
 
-$('#fmClose') && ($('#fmClose').onclick = () => {fmOpenEpoch++;fmSideEpoch.req++;fmSideEpoch.res++;closeModal($('#flowModal'));});
+$('#fmClose') && ($('#fmClose').onclick = () => closeFlowPopup());
 $('#fmCopyUrl') && ($('#fmCopyUrl').onclick = () => {
   const url = state.fm && (state.fm.url || fmFlowUrl(state.fm.detail));
   if(url) copyText(url, 'URL copied');

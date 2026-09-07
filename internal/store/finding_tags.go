@@ -13,6 +13,9 @@ func (s *Store) SetFindingTags(findingID int64, tags []string) ([]string, error)
 		return nil, err
 	}
 	defer tx.Rollback()
+	if err := revisionBefore(tx, findingID); err != nil {
+		return nil, err
+	}
 	var exists int
 	if err := tx.QueryRow(`SELECT 1 FROM findings WHERE id=?`, findingID).Scan(&exists); err != nil {
 		return nil, err
@@ -26,6 +29,9 @@ func (s *Store) SetFindingTags(findingID int64, tags []string) ([]string, error)
 		}
 	}
 	if _, err := tx.Exec(`UPDATE findings SET updated_ts=? WHERE id=?`, time.Now().UnixMilli(), findingID); err != nil {
+		return nil, err
+	}
+	if err := appendFindingRevision(tx, findingID, "update", FindingChange{}); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

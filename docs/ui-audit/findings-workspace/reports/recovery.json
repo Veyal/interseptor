@@ -1,0 +1,41 @@
+{
+  "base": "http://127.0.0.1:49711",
+  "cases": {
+    "body-500-switch-back-evidence-loadfindings-retry-exact": {
+      "status": "pass"
+    },
+    "fresh-deeplink-and-exact-back-forward-identity": {
+      "status": "pass"
+    },
+    "inline-req-res-refresh-missing-filter-back-forward": {
+      "status": "pass"
+    },
+    "newer-scalar-wins-after-failure": {
+      "status": "pass"
+    },
+    "scalar-failed-patch-retains-and-retries": {
+      "status": "pass"
+    }
+  },
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "failures": [],
+  "fid": 3,
+  "finished_unix": 1788715992.328009,
+  "other_fid": 4,
+  "page_errors": [],
+  "probe_sha256": "0ef8e8f3943d23934e0a0e96dc098e2eb6e58bff8483fe572872abcd43d66480",
+  "screenshots": [],
+  "started_unix": 1788715987.500041,
+  "unhandled_console_errors": []
+}

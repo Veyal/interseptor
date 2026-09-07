@@ -1,0 +1,51 @@
+{
+  "base": "http://127.0.0.1:49711",
+  "failures": [],
+  "fixture_only": true,
+  "fixtures": {
+    "/api/android/status": {
+      "available": false,
+      "devices": [],
+      "externalBindAllowed": false
+    },
+    "/api/ios/ssh/status": {
+      "externalBindAllowed": false
+    },
+    "/api/ios/status": {
+      "devices": [],
+      "externalBindAllowed": false,
+      "simctlAvailable": false
+    },
+    "/api/network/hosts": {
+      "hosts": [
+        {
+          "address": "127.0.0.1",
+          "label": "Loopback (fixture)"
+        }
+      ]
+    }
+  },
+  "probe_sha256": "bca9547a505cf2c6c45255c65f3f1da4e4245786a26ca302937c95a05c3e162b",
+  "shots": [
+    {
+      "capture_filename": "chromium-1440x900-devices-generic-fixture.png",
+      "path": "screenshots/devices/chromium-1440x900-devices-generic-fixture.png",
+      "retained": true,
+      "sha256": "85d54326a1083f6d28011a35042b67150a9d5208e85f436d9d220b55e91b6373",
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    {
+      "capture_filename": "chromium-390x844-devices-generic-fixture.png",
+      "path": "screenshots/devices/chromium-390x844-devices-generic-fixture.png",
+      "retained": true,
+      "sha256": "0d2f8576701da15a37ab0b73a68c35496ffbc125c1d203a76ffb94e8879756b5",
+      "viewport": [
+        390,
+        844
+      ]
+    }
+  ]
+}

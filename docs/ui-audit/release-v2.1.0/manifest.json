@@ -1,0 +1,192 @@
+{
+  "runtime": {
+    "runtime_sha256": "7f342c0709e2ba0620072b020245fd61c744ac39045ec2bdd8acac824e52edf0",
+    "runtime_files": 276,
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+  },
+  "binary": {
+    "version": "2.0.10-local",
+    "sha256": "1db1e11eb1881b4d6295749f459bf2737938d217ef459e4aaf970bf288a593d7"
+  },
+  "accepted_runs": [
+    {
+      "engine": "firefox",
+      "report": "initial-run.json"
+    },
+    {
+      "engine": "webkit",
+      "report": "initial-run.json"
+    },
+    {
+      "engine": "chromium",
+      "report": "chromium-retry.json"
+    }
+  ],
+  "evidence": [
+    {
+      "file": "chromium-retry.json",
+      "sha256": "40361bd452ba7404dae935868d7057e8ca674e15dff37a12fd24254b6d56ac62",
+      "kind": "report"
+    },
+    {
+      "file": "initial-run.json",
+      "sha256": "3f5e9edcbd1456aa03b76b7c11a279146d3f6de65a8526a32551256781b54382",
+      "kind": "report"
+    },
+    {
+      "file": "probe.py",
+      "sha256": "739b42c75d5237414f2f2f79bd4c775559d47cadf398215ff550988fdd202747",
+      "kind": "probe"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-calculator.png",
+      "sha256": "153a45cd282011d28b0fd116dec940b34f5336149afc66f864592ee55e921088",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-claim-controls.png",
+      "sha256": "ce33c90d26731211b20fca1d39b58e5829404e20f6ebe9be9e5956f0d28fd4da",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-cleanup-preview.png",
+      "sha256": "4fa9c1524e4a95aa5cd281f9f3f2c7bca2f8f871afc266c1b438ba9e6360b35a",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-deleted-dialog.png",
+      "sha256": "27b994311dcc6b0d6155e5b805f84a63b49cdfd125e1d8ed496993f907eeb695",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-expanded-before-after-diff.png",
+      "sha256": "2f108c131a2186db54418288f9d5574d98ca33e2b3a33f977a7aab7a0d4e90e8",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-desktop-light-session-timeline.png",
+      "sha256": "3216081b5ff1af7a039ac38077345c770c45556ae1ed4e8b77c93a337ffe5106",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-mobile-dark-calculator.png",
+      "sha256": "57c0acd70d0cbbbaa68a2b3eb3b7e2f63e2c3fd2818225a639472bdbfb0aed3d",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-mobile-light-claim.png",
+      "sha256": "c30d84edeb7b2864c86b46e36bcf5dd957fdce29d6e3076aa7697025b01294b8",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-mobile-light-cleanup.png",
+      "sha256": "a6fcf0e6bd243a78640ff4adc67006f36502b1e29e15892efa318fdecb396b73",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/chromium-mobile-light-deleted-dialog.png",
+      "sha256": "d0dfad696b603b57246219d2877c0a29584c9c45e2bd1917bc5850fe6629780f",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-calculator.png",
+      "sha256": "8bb669a82aa62627a9f4990cb27ee624a56267a96db36ea404f9f540f0dd90d8",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-claim-controls.png",
+      "sha256": "d8681cf320e97b7ac95905a850ad3c86517c20562bbd3d1a2efc168132cde76c",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-cleanup-preview.png",
+      "sha256": "d6f6d8413bf8e11481127e22faed12c721a9f2e15769b7dc1879e55186120131",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-deleted-dialog.png",
+      "sha256": "39655e849f70dcb68ef2b79537f8b1dacd2bbbe74fd0c0ce750525c3e7994b42",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+      "sha256": "3f0e56ed6ec1885ad5d3d5c84475607b52ac32f8cdc3fdd79be34db12ebab676",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-desktop-light-session-timeline.png",
+      "sha256": "70ef98fe084daf87a6d82811b5e88531a800102f2ccd82f0e9ea479ceb8ecd3e",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-mobile-dark-calculator.png",
+      "sha256": "8a29dbfbdb17ce917f55cb82a8a319d3209d5bdf8f76e84e151c4fe88792229c",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-mobile-light-claim.png",
+      "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-mobile-light-cleanup.png",
+      "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/firefox-mobile-light-deleted-dialog.png",
+      "sha256": "70327963e04c646278a8d995a9639548d5dc47bec71fc806c0ad18c3a738b4a5",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-calculator.png",
+      "sha256": "7f136b637d6395a02d1b4a75d66db62e73b28ddca1442fa73a643dfd76436e49",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-claim-controls.png",
+      "sha256": "03688a0ee42bb53fc653cd4d7b8a09ed81bd337e4b45723b04d998c99ad7c4de",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-cleanup-preview.png",
+      "sha256": "721600d4047a3effb3d7a8a7fb2dd5b4ea0d5a696b74f764bdb9140d28ef50cd",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-deleted-dialog.png",
+      "sha256": "6783425855364169e84ec1aef2b0dcf74a87bfdac42295b9806a8efa8a6ea0fd",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-expanded-before-after-diff.png",
+      "sha256": "f72e36d171e0f9a08c92f07d9538b31aade7b4bbf411b81e787868e472d4e546",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-desktop-light-session-timeline.png",
+      "sha256": "f9b93cd9fe13b32b3d5f4c361fe6540e135c94c6af6f6db68682137479719664",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-mobile-dark-calculator.png",
+      "sha256": "1b64a19e6fe0e171dc79d3f3508d100eee01566cf3abd9439a1dd312214afc44",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-mobile-light-claim.png",
+      "sha256": "d91fbcf3a24efd77113b4bcd0935f524f7c1d89c00d982b7c5434ab65587a227",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-mobile-light-cleanup.png",
+      "sha256": "d5b54764672db92f63fd5e8f73af2809e68072a84d48206610cfe2672335e4f3",
+      "kind": "screenshot"
+    },
+    {
+      "file": "screenshots/webkit-mobile-light-deleted-dialog.png",
+      "sha256": "b19553846b58e28bfe1d7d2d552ae0c65a4aece2e84f2b02afda14997a0854e8",
+      "kind": "screenshot"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/store"
 	"github.com/Veyal/interseptor/internal/version"
 )
@@ -93,7 +94,14 @@ type apiRoute struct {
 }
 
 var apiRoutes = []apiRoute{
+	{"GET", "/api/findings/readiness", "Report completeness checks; filters statuses and tag"},
+	{"GET", "/api/findings/deleted", "List recoverable deleted findings"},
+	{"GET", "/api/finding-revisions/{id}", "List immutable revision metadata; ?before= for pagination"},
+	{"GET", "/api/finding-revisions/{id}/{revisionId}", "Historical snapshot and field-level diff"},
+	{"POST", "/api/finding-revisions/{id}/{revisionId}/restore", "Restore a version as a new revision; body {reason?}"},
+	{"POST", "/api/finding-targets/preview", "Preview deduplication and optional templates; body {targets?,legacy?}; no persistence"},
 	{"GET", "/api/flows", "List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host, search, searchScope=anywhere|body|id, savedSearch, hasNote=1, scheme, status, before, limit, inScope=1, includeTools=1. By default excludes Repeater/Intruder (History-shaped); includeTools=1 returns all sources"},
+	{"GET", "/api/flows/session-inspect", "Passive session timeline for selected captured flow ids (ids=1,2&roles=anonymous,user); cookie values are redacted, fingerprints are short, and browser decisions/MFA completion/side effects remain unknown"},
 	{"GET", "/api/flow-searches", "List project-scoped saved flow searches without source"},
 	{"POST", "/api/flow-searches", "Compile and save a project-scoped Starlark flow search. Body: {name,scope,script}"},
 	{"POST", "/api/flow-searches/test", "Compile a Starlark flow search without saving. Body: {name,scope,script}"},
@@ -155,9 +163,9 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=&tag=; view=summary returns a bounded lightweight projection)"},
 	{"GET", "/api/findings/tags", "List tags in use on findings with counts (and optional colors from tag_meta)"},
 	{"GET", "/api/findings/report", "Curated findings as Markdown/HTML/JSON (?format=html|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=; ?issues=1; ?includeBodies=0)"},
-	{"POST", "/api/findings", "Create an evidence-first finding. Body: {title, summary?, severity?, status?, confidence?, target?, impact?, why?, cwe?, environment?, fix?, retest?, cvss?, verificationInstructions?, blocks?|body?, flowIds?, tags?, detail?, evidence?} — title required (stub OK); send blocks or legacy body, not both"},
+	{"POST", "/api/findings", "Create an evidence-first finding. Body: {title, summary?, severity?, status?, confidence?, target?, targets?, proofReview?, impact?, why?, cwe?, environment?, fix?, retest?, cvss?, verificationInstructions?, blocks?|body?, flowIds?, tags?, detail?, evidence?} — title required (stub OK); send blocks or legacy body, not both"},
 	{"GET", "/api/findings/{id}", "Get one canonical finding with typed blocks, proof/provenance, PoC flows, tags, structured readiness, and legacy ready/missing compatibility"},
-	{"PATCH", "/api/findings/{id}", "Update only sent finding fields. Accepts summary/confidence/retest and structured blocks; send blocks or legacy body, not both"},
+	{"PATCH", "/api/findings/{id}", "Update only sent finding fields. Accepts summary/confidence/retest, ordered targets, proofReview, CVSS v4 vector, and structured blocks; send blocks or legacy body, not both"},
 	{"DELETE", "/api/findings/{id}", "Permanently delete a finding"},
 	{"POST", "/api/findings/{id}/flows", "Attach a captured flow as evidence. Body: {flowId, role?, note?, proof?, position?}; role identifies reproduction purpose and proof states exactly what the flow establishes"},
 	{"DELETE", "/api/findings/{id}/flows/{flowId}", "Detach a PoC flow from a finding"},
@@ -235,6 +243,8 @@ var apiRoutes = []apiRoute{
 	{"PUT", "/api/checks/disabled", "Disable/enable custom checks by id list. Body: {disabled: [ids]}"},
 	{"GET", "/api/reference", "Machine-readable route catalog"},
 	{"GET", "/api/mcp", "MCP tool descriptor + client config snippet"},
+	{"GET", "/api/mcp/capabilities", "Live MCP contract metadata and supported finding fields"},
+	{"POST", "/api/finding-cvss", "Evaluate a CVSS v4.0 vector without changing a finding. Body: {vector}; NONE is exposed as INFO for finding severity display"},
 	{"GET", "/api/flows/{id}/curl", "Reconstruct the flow's request as a runnable curl command"},
 	{"GET", "/api/ui/{panel}", "Project-scoped UI state blob (panel=repeater|intruder|intruder-presets)"},
 	{"PUT", "/api/ui/{panel}", "Save project-scoped UI state (JSON body)"},
@@ -315,6 +325,12 @@ var mcpDescriptor = map[string]any{
 	// Legacy default; apiMCP overwrites with mcpHTTPClientConfig(host) per request.
 	"clientConfig": mcpHTTPClientConfig("http://127.0.0.1:9966"),
 	"tools": []map[string]string{
+		{"name": "finding_readiness", "desc": "Actionable finding and final report completeness checks"},
+		{"name": "list_finding_revisions", "desc": "Immutable finding revision metadata"},
+		{"name": "get_finding_revision", "desc": "Historical finding snapshot and field-level diff"},
+		{"name": "restore_finding_revision", "desc": "Restore report content as a new revision"},
+		{"name": "preview_finding_targets", "desc": "Preview target cleanup while preserving evidence"},
+		{"name": "evaluate_finding_cvss", "desc": "Preview CVSS v4 score and severity"},
 		{"name": "list_flows", "desc": "List/search captured proxy flows"},
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},
 		{"name": "analyze_flow", "desc": "Compact summary: headers, params, scanner hits, scope"},
@@ -417,4 +433,8 @@ var mcpDescriptor = map[string]any{
 
 func (h *metaAPI) apiMCP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mcpDescriptorForRequest(r.Host))
+}
+
+func (h *metaAPI) apiMCPCapabilities(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, mcp.New(h.loopbackControlBase()).Capabilities())
 }

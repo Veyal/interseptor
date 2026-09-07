@@ -1,0 +1,146 @@
+{
+  "binary_sha256": "b33246d19f37870dbb9cda1aa856c08381e08bb9e41d423161fe55a879049996",
+  "binary_version": "interseptor v2.0.10-local",
+  "cases": {
+    "390 light-dark mobile controls reachable without overflow": "pass",
+    "UI restore selected distinct older revision with retained relationships": "pass",
+    "desktop claim custom-select and calculator": "pass",
+    "desktop cleanup preview": "pass",
+    "desktop deleted dialog": "pass",
+    "desktop session timeline": "pass"
+  },
+  "engine": "firefox",
+  "external_requests": [],
+  "failures": [],
+  "finding_id": 1,
+  "flow_ids": [
+    2,
+    1
+  ],
+  "frozen_helper_sha256": "46b846ef3f9501f356d182ab438c3ac887303e6c3650c603bcecc201aacef9d9",
+  "revision_restore": {
+    "history_after": 6,
+    "history_before": 5,
+    "newer_title": "QA newer distinct title",
+    "retained_targets": [
+      [
+        "https://example.com/records/1",
+        [
+          2
+        ]
+      ],
+      [
+        "https://example.com/records/2",
+        [
+          1
+        ]
+      ]
+    ],
+    "selected_revision": 4,
+    "snapshot_title": "QA older selected snapshot"
+  },
+  "runtime_expected": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b",
+  "runtime_observed": "5ab87841e71bfc9cb1e7693b96fc97e5cde63fec1e037a8efccde05b9bb8e52b",
+  "screenshots": [
+    {
+      "path": "screenshots/firefox-desktop-light-cleanup-preview.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "eb0c57f4ff4313afa5b19d4bc34d3da0bbc96e8095efb8026d7a269cef543c88"
+    },
+    {
+      "path": "screenshots/firefox-desktop-light-expanded-before-after-diff.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "7af3ab163b7422a540e4b18d160e3c6bb5885bfc817280a16097b6f41930bc11"
+    },
+    {
+      "path": "screenshots/firefox-desktop-light-claim-controls.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "08e6f5d787a736a7f2dbf54026fde690a1d17050198424ddfe85f107f5d7f48e"
+    },
+    {
+      "path": "screenshots/firefox-desktop-light-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "b5763f29e7f90d214bc843a4c8df553af1677afc4e9c8694646904d172c08012"
+    },
+    {
+      "path": "screenshots/firefox-desktop-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "0c5ccb199621cde506e509adc1d7fd822ec0645b76be08448ac02b7868b41427"
+    },
+    {
+      "path": "screenshots/firefox-desktop-light-session-timeline.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "6418430e3256eae3ba3025e0d4d5d6459c04f588b66841d84bb1bc43bd969972"
+    },
+    {
+      "path": "screenshots/firefox-mobile-light-claim.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "d6e726ccfd3c6b1a3ad39f92ff7224682b6cfca7e3e2e1b1b4e3ce3dd6d0a6bc"
+    },
+    {
+      "path": "screenshots/firefox-mobile-dark-calculator.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "0.72",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "e03c9143d46bfa03c5aa8022f5308967c0071c322173385e2d79e6452dcdb546"
+    },
+    {
+      "path": "screenshots/firefox-mobile-light-cleanup.png",
+      "settled": {
+        "isModal": false,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "8c7c3c3bf15b629adfa80b932e620f6f6b335ccdfc6652b6032b70b571c0f907"
+    },
+    {
+      "path": "screenshots/firefox-mobile-light-deleted-dialog.png",
+      "settled": {
+        "isModal": true,
+        "opacity": "1",
+        "stable": true,
+        "transform": "none"
+      },
+      "sha256": "ee38820d91abe62308c23106827c999d6433b98f41a4fc00804163c6d4cab8d7"
+    }
+  ]
+}

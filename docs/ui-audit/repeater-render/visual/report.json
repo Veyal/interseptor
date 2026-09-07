@@ -1,0 +1,78 @@
+{
+  "probe": "/private/tmp/interseptor-repeater-render-qa-20260907-visual-final-r3/probe.py",
+  "probe_sha256": "05aeed9eb277822eeb306e7cdd58aef4693811d2d71a63738e17fb1b3e09341e",
+  "application_source": {
+    "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+    "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+    "runtime_files": 259,
+    "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+  },
+  "results": [
+    {
+      "engine": "chromium",
+      "case": "settled-dark-mobile-repeater-render",
+      "failure": null,
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-visual-final-r3/run/screenshots/chromium-390-dark-repeater-render-settled.png",
+          "sha256": "bd2bd43e45f06f5674666045473ce44435576d4cd64f47970868b8dd874db903"
+        }
+      ],
+      "theme": {
+        "theme": "dark",
+        "actual": "rgb(37, 43, 53)",
+        "expected": "rgb(37, 43, 53)"
+      },
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    },
+    {
+      "engine": "firefox",
+      "case": "settled-dark-mobile-repeater-render",
+      "failure": null,
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-visual-final-r3/run/screenshots/firefox-390-dark-repeater-render-settled.png",
+          "sha256": "3dff286affa0820c1a86afde298673db3ad6a4dd8797459692d7de4020f99b27"
+        }
+      ],
+      "theme": {
+        "theme": "dark",
+        "actual": "rgb(37, 43, 53)",
+        "expected": "rgb(37, 43, 53)"
+      },
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    },
+    {
+      "engine": "webkit",
+      "case": "settled-dark-mobile-repeater-render",
+      "failure": null,
+      "screenshots": [
+        {
+          "path": "/tmp/interseptor-repeater-render-qa-20260907-visual-final-r3/run/screenshots/webkit-390-dark-repeater-render-settled.png",
+          "sha256": "11e0ee28ba940ecb06a7ee94a794fe090fd568448021f034ccdac36d7b124695"
+        }
+      ],
+      "theme": {
+        "theme": "dark",
+        "actual": "rgb(37, 43, 53)",
+        "expected": "rgb(37, 43, 53)"
+      },
+      "application_source": {
+        "worktree_base_commit": "40b532a797ce132868768afdd64bf6872f12922c",
+        "runtime_sha256": "3a4534b279d9244ccffe636fb0c9c0e0663f02a3aecb311b37baa95a6f2361ec",
+        "runtime_files": 259,
+        "audit_harness_sha256": "514e2b40c2cd79d3eed78f58cf0d2cfee06003abe1d2ef68a97b374e92209be0"
+      }
+    }
+  ]
+}

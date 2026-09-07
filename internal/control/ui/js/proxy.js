@@ -1,13 +1,17 @@
-import { $, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon, renderLoadError } from './core.js';
+registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
+import { openSessionInspector } from './session-inspection.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
+import { placeFloatingSurface } from './surface-position.js';
+import { renderHTMLResponse } from './core.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -265,8 +269,16 @@ function setFlowCol(key,on){
 function renderColPicker(){
   const menu=$('#colPicker');
   if(!menu)return;
+  const focused=menu.querySelector(':focus')?.dataset.col;
   menu.innerHTML=FLOW_COLUMNS.map(c=>`<label><input type="checkbox" data-col="${c.key}"${state.flowCols.includes(c.key)?' checked':''}> ${esc(c.label)}</label>`).join('');
   menu.querySelectorAll('input[data-col]').forEach(inp=>inp.onchange=()=>setFlowCol(inp.dataset.col,inp.checked));
+  if(focused)menu.querySelector(`[data-col="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
+}
+function closeColPicker(restoreFocus=false){
+  const menu=$('#colPicker'),btn=$('#colPickerBtn');
+  if(!menu||menu.style.display!=='block')return;
+  menu.style.display='none';btn?.setAttribute('aria-expanded','false');
+  if(restoreFocus)btn?.focus({preventScroll:true});
 }
 function toggleColPicker(){
   const menu=$('#colPicker'),btn=$('#colPickerBtn');
@@ -277,14 +289,12 @@ function toggleColPicker(){
     renderColPicker();
     const r=btn.getBoundingClientRect();
     menu.style.display='block';
-    const left=Math.min(r.left,window.innerWidth-menu.offsetWidth-8);
-    menu.style.left=Math.max(8,left)+'px';
-    menu.style.top=(r.bottom+4)+'px';
+    const vv=window.visualViewport;
+    const pos=placeFloatingSurface(r,168,menu.scrollHeight+2,{left:vv?.offsetLeft||0,top:vv?.offsetTop||0,width:vv?.width||innerWidth,height:vv?.height||innerHeight});
+    Object.assign(menu.style,{left:pos.left+'px',top:pos.top+'px',width:pos.width+'px',maxHeight:pos.maxHeight+'px'});
     btn.setAttribute('aria-expanded','true');
-  }else{
-    menu.style.display='none';
-    btn.setAttribute('aria-expanded','false');
-  }
+    menu.querySelector('input')?.focus({preventScroll:true});
+  }else closeColPicker(true);
 }
 
 function flowExcluded(f){return (f.flags&EXCLUDE_NORM)!==0&&(f.flags&FLAG_AI)===0;}
@@ -344,7 +354,8 @@ function flowRowHTML(f){
   const pending=!f.status&&!f.error;
   const hasNote=!!(f.note&&String(f.note).trim());
   const stHTML=f.status?String(f.status):(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
-  const rowTitle=(pending?'[pending] ':'')+(hasNote?String(f.note).trim()+' · ':'')+'Click inspect · Shift+click range · Ctrl/Cmd+click toggle';
+  const rowTitle=[pending?'[pending]':'',hasNote?String(f.note).trim():''].filter(Boolean).join(' · ');
+  const title=rowTitle?` title="${escAttr(rowTitle)}"`:'';
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
@@ -355,7 +366,7 @@ function flowRowHTML(f){
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
     time:`<div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>`,
   };
-  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}" title="${escAttr(rowTitle)}">
+  return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
       ${state.flowCols.map(k=>cells[k]).join('')}
     </div>`;
 }
@@ -1236,8 +1247,7 @@ export async function renderSide(side){
       el._rawText=raw;
       el._pretty=view==='pretty';
       if(side==='res'&&view==='render'&&mime&&/html/i.test(mime)){
-        const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';
-        el.innerHTML=`<iframe sandbox="" title="Rendered HTML" srcdoc="${escAttr(body)}" style="width:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>`;
+        el.innerHTML=renderHTMLResponse(raw);
         return;
       }
       let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);
@@ -1308,7 +1318,15 @@ loadFlowColW();
 renderFlowHead();
 {const b=$('#colPickerBtn');if(b)b.onclick=e=>{e.stopPropagation();toggleColPicker();};}
 {const m=$('#colPicker');if(m)m.onclick=e=>e.stopPropagation();}
-document.addEventListener('click',()=>{const menu=$('#colPicker'),btn=$('#colPickerBtn');if(menu&&menu.style.display==='block'){menu.style.display='none';if(btn)btn.setAttribute('aria-expanded','false');}});
+document.addEventListener('click',()=>closeColPicker());
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&$('#colPicker')?.style.display==='block'){
+    e.preventDefault();e.stopImmediatePropagation();closeColPicker(true);
+  }
+},true);
+document.addEventListener('focusin',e=>{if(!e.target.closest('#colPicker,#colPickerBtn'))closeColPicker();});
+window.addEventListener('resize',()=>closeColPicker());
+window.visualViewport?.addEventListener('resize',()=>closeColPicker());
 
 $('#fMethod').onchange=e=>setFilter('method',e.target.value);
 $('#fStatus').onchange=e=>setFilter('status',e.target.value);
@@ -1482,7 +1500,8 @@ async function deleteView(id,name){
 }
 function openViewsMenu(){
   const btn=$('#viewsBtn'); if(!btn)return;
-  {const cp=$('#colPicker');if(cp)cp.style.display='none';} // Views joins the toolbar menu group
+  btn.setAttribute('aria-haspopup','menu');
+  {const cp=$('#colPicker'),cpb=$('#colPickerBtn');if(cp)cp.style.display='none';if(cpb)cpb.setAttribute('aria-expanded','false');} // Views joins the toolbar menu group
   const r=btn.getBoundingClientRect();
   const sections=[];
   if(viewsLoadError){
@@ -1492,7 +1511,7 @@ function openViewsMenu(){
     sections.push({head:'DELETE VIEW',items:state.views.map(v=>({label:v.name,danger:true,act:()=>deleteView(v.id,v.name)}))});
   }
   if(!viewsLoadError)sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
-  openCtxMenu(r.left, r.bottom+2, sections);
+  openCtxMenu(r.left, r.bottom+2, sections, btn);
 }
 $('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
 /* ---- target scope ---- */
@@ -1707,6 +1726,9 @@ function deleteHost(f){
 // active session/auth; session=flow replays it exactly as captured.
 function replayLink(f,session){return location.origin+'/replay/'+f.id+'?session='+session;}
 function copyReplayLink(f,session){copyText(replayLink(f,session),'replay link copied');}
+function sessionInspectionSelection(id){
+  return state.selected?.size>1&&state.selected.has(id)?[...state.selected]:[id];
+}
 async function exportRawFlow(f,side,variant=''){
   try{
     const query=new URLSearchParams({side});
@@ -1738,6 +1760,7 @@ function flowGlobalSection(f,head,side='both'){
   const items=[
     ...exportItems,
     {sep:true},
+    {label:'Inspect session timeline',icon:'timeline',val:state.selected?.size>1&&state.selected.has(f.id)?`${state.selected.size} selected captures`:'selected capture',act:()=>openSessionInspector(sessionInspectionSelection(f.id))},
     {label:'Send to Repeater',act:()=>sendToRepeater(f)},
     {label:'Send to Intruder',act:()=>sendToIntruder(f)},
     {label:'Copy URL',act:()=>copyURL(f)},
@@ -1868,6 +1891,10 @@ if(inspectMoreActions)inspectMoreActions.onclick=()=>{
   showCtx(r.left,r.bottom+2,f,'');
 };
 document.addEventListener('click',e=>{if(!ctx.contains(e.target))hideCtx({restoreFocus:false});});
+document.addEventListener('interceptor:session-open-flow',e=>{
+  const id=Number(e.detail);
+  if(Number.isSafeInteger(id)&&id>0)selectFlow(id);
+});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(hasOpenModal())return;if(ctx.classList.contains('show')){hideCtx({restoreFocus:true});return;}closeInspector();}});
 // Suppress the browser's native context menu app-wide, but keep it where it's
 // genuinely useful: editable fields (paste/cut) and over a live text selection (copy).
@@ -2024,21 +2051,36 @@ $('#selDelete').onclick=async()=>{
   const splitter=document.getElementById('inspectSplitter');
   const inspect=document.getElementById('inspect');
   if(!splitter||!inspect)return;
-
+  const proxyPanel=inspect.closest('.panel');
+  function maxHeight(){return Math.max(MIN_H,(proxyPanel?.clientHeight||750)*MAX_PCT);}
   function clamp(h){
-    const proxyPanel=inspect.closest('.panel');
-    const maxH=proxyPanel?(proxyPanel.clientHeight*MAX_PCT):600;
-    return Math.max(MIN_H,Math.min(maxH,h));
+    return Math.max(MIN_H,Math.min(maxHeight(),h));
+  }
+  function syncRange(){
+    const height=clamp(inspect.offsetHeight||Number.parseFloat(inspect.style.height)||MIN_H);
+    splitter.setAttribute('aria-valuemin',String(MIN_H));
+    splitter.setAttribute('aria-valuemax',String(Math.round(maxHeight())));
+    splitter.setAttribute('aria-valuenow',String(Math.round(height)));
   }
   function applyHeight(h){
     h=clamp(h);
     inspect.style.height=h+'px';
     inspect.style.flex='none';
+    syncRange();
     try{localStorage.setItem(SPLITTER_KEY,String(h));}catch(e){}
   }
 
   // Restore persisted height on load.
   try{const saved=localStorage.getItem(SPLITTER_KEY);if(saved){const h=parseInt(saved,10);if(h>=MIN_H)applyHeight(h);}}catch(e){}
+  syncRange();
+  if(typeof ResizeObserver!=='undefined'){
+    const observer=new ResizeObserver(()=>{
+      if(proxyPanel?.clientHeight&&inspect.style.height)inspect.style.height=clamp(Number.parseFloat(inspect.style.height))+'px';
+      syncRange();
+    });
+    observer.observe(inspect);
+    if(proxyPanel)observer.observe(proxyPanel);
+  }
 
   // Pointer drag.
   let dragY=null,dragH=null;

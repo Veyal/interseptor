@@ -42,9 +42,14 @@ page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins on
 ```bash
 git clone https://github.com/Veyal/interseptor.git
 cd interseptor
-CGO_ENABLED=0 go build -o interseptor ./cmd/interseptor
+make build
 ./interseptor
 ```
+
+`make build` and `make run` stamp local CLI builds with `<version>-local`
+(for example, `2.0.10-local`). The version comes from the latest reachable Git
+tag, or the declared fallback version in a source archive. Published release
+binaries keep their normal version. Plain `go build` does not apply this stamp.
 
 ### Prebuilt binaries
 
@@ -91,7 +96,7 @@ intentionally use the compatibility filename `interceptor.db`. Delete the runtim
 | `INTERSEPTOR_PROJECT` | Env equivalent of `--project`: open a specific project by name/path. |
 | `INTERSEPTOR_PROXY_ADDR` | Override the proxy listen address(es) (also how the launcher gives each spawned instance its own port). |
 | `INTERSEPTOR_NO_UPDATE_CHECK` | Disable the background update check Interseptor runs on every startup. |
-| `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Raises the GitHub API rate limit used for update checks (first non-empty wins). |
+| `GITHUB_TOKEN` / `INTERSEPTOR_GITHUB_TOKEN` / `GH_TOKEN` | Authenticates update checks and downloads (first non-empty wins). Required when this repository's GitHub releases are private; the token needs repository access. |
 
 The proxy bind address is also runtime-configurable in **Settings** (and persisted).
 

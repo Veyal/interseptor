@@ -1,0 +1,144 @@
+/* Shared floating surfaces and compact-layout affordances.
+   Loaded after app.css so feature styles retain ownership of their content. */
+
+#ctxmenu {
+  min-width: min(210px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: min(70vh, calc(100dvh - 16px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+#ctxmenu .ctx-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 34px; }
+#ctxmenu .ctx-has-value { grid-template-columns: minmax(0, 1fr) minmax(0, 42%); }
+#ctxmenu .lbl { min-width: 0; white-space: normal; }
+#ctxmenu .ctx-label-text { min-width: 0; overflow-wrap: anywhere; }
+#ctxmenu .ctx-value { min-width: 0; max-width: none; text-align: right; }
+#ctxmenu .ctx-head { overflow-wrap: anywhere; }
+
+/* Animate only after measuring and placing a floating surface. Closing stays
+   synchronous so focus and rapid repeated selections never wait on an effect. */
+#ctxmenu[data-motion-side],.ui-select-menu[data-motion-side] {
+  --surface-offset: -3px;
+  animation: floating-enter var(--motion-fast) var(--motion-enter);
+}
+#ctxmenu[data-motion-side="above"],.ui-select-menu[data-motion-side="above"] { --surface-offset: 3px; }
+@keyframes floating-enter {
+  from { opacity: .72; transform: translateY(var(--surface-offset)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tab,.find-section-nav a,.ctx-item {
+  transition: color var(--motion-fast) var(--motion-standard),background-color var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard),box-shadow var(--motion-fast) var(--motion-standard);
+}
+.btn:active:not(:disabled) { box-shadow: inset 0 1px 3px var(--shadow); transition-duration: var(--motion-instant); }
+.ui-select-caret { transition: transform var(--motion-fast) var(--motion-standard); }
+.ui-select-trigger[aria-expanded="true"] .ui-select-caret { transform: rotate(180deg); }
+.set-sec:not([hidden]),.act-detail:not([hidden]) { animation: surface-enter var(--motion-base) var(--motion-enter); }
+.set-sec .settings-section-heading { animation: none; }
+.uisw.on .uisw-led { animation: none; }
+.col-picker{min-width:0;max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain}
+.field textarea{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;font-size:var(--fs-sm);line-height:1.6;min-width:0}
+
+.ui-select-menu-fixed {
+  max-width: min(420px, calc(100vw - 16px));
+  overscroll-behavior: contain;
+}
+.ui-select-menu{padding:4px;border-radius:10px;box-shadow:var(--elev-3)}
+.ui-select-opt{flex-direction:row;align-items:center;gap:10px;min-height:36px;padding:9px 10px;border-radius:6px;font-weight:500}
+.ui-select-opt-title{font-weight:500}
+.ui-select-opt.active{outline:1px solid var(--accent);outline-offset:-1px}
+.ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:12px}
+.ui-select-trigger[aria-expanded=true]{border-color:var(--accent);background:var(--bg2)}
+details[class]>summary{min-height:32px;align-content:center}
+details[class]>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
+details[class][open]>summary::before{content:'';transform:rotate(45deg);margin-bottom:3px}
+details[class]>summary:hover{color:var(--fg)}
+details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) var(--motion-enter)}
+@media(prefers-reduced-motion:reduce){details[class]>summary::before{transition:none}details[class][open]>:not(summary){animation:none}}
+
+#toast {
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(35vh, 260px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-items: stretch;
+}
+#toast .toast-item {
+  max-width: none;
+  overflow-wrap: anywhere;
+}
+
+.act-row.act-expandable { cursor: pointer; }
+.act-row.act-expandable:hover,
+.act-row.act-expandable:focus-visible,
+.act-row.act-expandable.expanded { background: var(--bg1); }
+.act-detail {
+  flex-basis: 100%;
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0 17px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg1);
+  color: var(--fg2);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.act-detail[hidden] { display: none; }
+.act-detail > div { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 8px; }
+.act-detail b { color: var(--fg3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .35px; }
+
+/* Keep all shared modal shells usable when the viewport is shorter than their
+   desktop design height. Individual dialogs may still supply a smaller maximum. */
+.modal-overlay > .modal-shell {
+  min-height: 0;
+  max-height: calc(100dvh - 24px);
+}
+.modal-shell > .modal-shell-body,
+.modal-shell > .checks-work,
+.modal-shell > .notes-ai-panes {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+#mapGraphTip {
+  max-width: min(360px, calc(100% - 16px));
+  max-height: min(40vh, 220px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.flow-inspector{width:min(1180px,calc(100vw - 32px));height:min(86dvh,900px)}
+.flow-inspector-toolbar{flex:none;display:flex;flex-wrap:wrap;padding:14px 18px;gap:10px;border-bottom:1px solid var(--line);background:var(--bg1)}
+.flow-inspector-toolbar #fmTitle{flex:1 1 260px!important;min-width:0}
+.flow-inspector-panes{flex:1;display:flex;min-height:0;min-width:0}
+.flow-inspector-panes>.pane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.flow-inspector-request{border-right:1px solid var(--line)}
+.flow-inspector-panes pre{padding:16px;font-size:12px;line-height:1.7}
+.flow-inspector-sides{display:none}
+.act-expandable .act-tool::after{content:' +';color:var(--fg3)}
+.act-expandable.expanded .act-tool::after{content:' −'}
+
+/* Fixed payload controls must not consume the stacked request editor's height. */
+@media (max-width: 720px) {
+  .intr-config { flex: none; }
+  #intrTemplate { min-height: 180px; }
+}
+
+@media (max-width: 600px) {
+  #ctxmenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  #toast { width: calc(100vw - 24px); max-height: 30dvh; }
+  .act-detail { margin-left: 0; }
+  .flow-inspector{width:100vw;height:100dvh;border:0;border-radius:0;max-height:none!important}
+  .flow-inspector-toolbar{padding:12px;gap:8px}
+  .flow-inspector-toolbar #fmTitle{order:0;flex:1 1 calc(100% - 48px)!important}
+  .flow-inspector-toolbar #fmClose{order:1}
+  .flow-inspector-toolbar #fmSeg{order:2;margin-right:auto}
+  .flow-inspector-toolbar #fmCopyUrl,.flow-inspector-toolbar #fmCopyLink,.flow-inspector-toolbar #fmProxy{order:3;padding:6px;font-size:10px}
+  .flow-inspector-sides{display:flex;flex:none;padding:10px 12px;border-bottom:1px solid var(--line);gap:4px;border-radius:0}
+  .flow-inspector-sides button{flex:1;min-height:36px}
+  .flow-inspector[data-mobile-side=res] .flow-inspector-request,.flow-inspector[data-mobile-side=req] .flow-inspector-response{display:none}
+  .flow-inspector-request{border-right:0}
+}

@@ -158,8 +158,8 @@ func TestUIFoundationModalRegistryCoversEveryDialog(t *testing.T) {
 
 	re := regexp.MustCompile(`<div id="([^"]+(?:Modal|Lightbox))"`)
 	dialogs := re.FindAllStringSubmatch(index, -1)
-	if len(dialogs) != 17 {
-		t.Fatalf("found %d dialogs, want exactly 17 live dialogs", len(dialogs))
+	if len(dialogs) != 19 {
+		t.Fatalf("found %d dialogs, want exactly 19 live dialogs", len(dialogs))
 	}
 	for _, dialog := range dialogs {
 		if !strings.Contains(core, "'"+dialog[1]+"'") {

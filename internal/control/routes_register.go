@@ -36,6 +36,7 @@ func (h *Hub) routes() {
 
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
+	h.mux.HandleFunc("GET /api/flows/session-inspect", f.inspectSession)
 	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
 	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
 	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
@@ -126,10 +127,16 @@ func (h *Hub) registerScopeRoutes(sc *scopeAPI) {
 
 func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("GET /api/findings", fd.listFindings)
+	h.mux.HandleFunc("GET /api/findings/deleted", fd.deletedFindings)
+	h.mux.HandleFunc("GET /api/finding-revisions/{id}", fd.findingRevisions)
+	h.mux.HandleFunc("GET /api/finding-revisions/{id}/{revisionId}", fd.findingRevision)
+	h.mux.HandleFunc("POST /api/finding-revisions/{id}/{revisionId}/restore", fd.restoreFinding)
 	h.mux.HandleFunc("GET /api/findings/tags", fd.listFindingTags)
 	h.mux.HandleFunc("GET /api/findings/report", fd.findingsReport)
+	h.mux.HandleFunc("GET /api/findings/readiness", fd.reportReadiness)
 	h.mux.HandleFunc("GET /api/findings/images/{hash}", fd.getFindingImage)
 	h.mux.HandleFunc("POST /api/findings", fd.createFinding)
+	h.mux.HandleFunc("POST /api/finding-targets/preview", fd.previewFindingTargets)
 	h.mux.HandleFunc("GET /api/findings/{id}", fd.getFinding)
 	h.mux.HandleFunc("PATCH /api/findings/{id}", fd.updateFinding)
 	h.mux.HandleFunc("DELETE /api/findings/{id}", fd.deleteFinding)
@@ -254,6 +261,8 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("POST /api/human-input/{id}/respond", meta.respondHumanInput)
 	h.mux.HandleFunc("GET /api/reference", meta.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", meta.apiMCP)
+	h.mux.HandleFunc("GET /api/mcp/capabilities", meta.apiMCPCapabilities)
+	h.mux.HandleFunc("POST /api/finding-cvss", meta.evaluateCVSS)
 	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /mcp", h.handleMCP)
 	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)

@@ -280,6 +280,47 @@ func TestMCPDescriptorReportsResolvedVersion(t *testing.T) {
 	}
 }
 
+func TestMCPCapabilitiesEndpointReportsLiveFindingFields(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/mcp/capabilities")
+	if err != nil {
+		t.Fatalf("GET MCP capabilities: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var got struct {
+		SchemaVersion string `json:"schemaVersion"`
+		SchemaHash    string `json:"schemaHash"`
+		Finding       struct {
+			CreateFields []string `json:"createFields"`
+			UpdateFields []string `json:"updateFields"`
+		} `json:"finding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.SchemaVersion == "" || len(got.SchemaHash) != 64 {
+		t.Fatalf("metadata = %+v, want schema version and SHA-256 hash", got)
+	}
+	if !containsString(got.Finding.CreateFields, "targets") || !containsString(got.Finding.UpdateFields, "proofReview") {
+		t.Fatalf("finding capabilities = %+v", got.Finding)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestListFlowsJSON(t *testing.T) {
 	h, s, _ := newHub(t)
 	s.InsertFlow(&store.Flow{TS: time.UnixMilli(1), Method: "GET", Scheme: "https", Host: "x.com", Path: "/a", Status: 200})

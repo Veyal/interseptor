@@ -19,6 +19,9 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 		return stats, fmt.Errorf("open peer db: %w", err)
 	}
 	defer peer.Close()
+	if err := preflightPeerFindings(peer); err != nil {
+		return stats, err
+	}
 
 	peerBodies := map[string]struct{}{}
 	if peerBodiesDir != "" {
@@ -127,7 +130,7 @@ func (s *Store) MergePreview(peerDBPath, peerBodiesDir, label string) (MergeStat
 		var f Finding
 		if err := frows.Scan(&f.ID, &f.Severity, &f.Status, &f.Source, &f.Title, &f.Target,
 			&f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss, &f.VerificationInstructions,
-			&f.Summary, &f.Confidence, &f.Retest); err != nil {
+			&f.Summary, &f.Confidence, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
 			frows.Close()
 			return stats, err
 		}

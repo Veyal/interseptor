@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interseptor — Engagement Report</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;color:#1a1a1a;background:#fff;margin:0;padding:32px 24px}
+article.md{max-width:860px;margin:0 auto}
+h1{font-size:22px;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid #ddd}
+h2{font-size:17px;margin:22px 0 10px;color:#111}
+h3{font-size:14px;margin:18px 0 8px;color:#222}
+p{margin:8px 0}
+ul,ol{margin:8px 0 8px 4px;padding-left:20px}
+li{margin:4px 0}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px}
+pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f4f4f4;border:1px solid #e0e0e0;border-radius:6px;padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:10px 0}
+pre code{background:none;border:none;padding:0;font-size:inherit}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+th,td{border:1px solid #ddd;padding:7px 10px;text-align:left;vertical-align:top}
+th{background:#f5f5f5;font-weight:700}
+blockquote{border-left:3px solid #0a8f62;margin:12px 0;padding:8px 14px;background:#f7f7f7;color:#333;border-radius:0 6px 6px 0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+hr{border:none;border-top:1px solid #ddd;margin:20px 0}
+em{font-style:italic;color:#444}
+strong{font-weight:700}
+.meta{color:#555;font-style:italic}
+@media print{body{padding:12px}}
+</style>
+</head>
+<body>
+<article class="md">
+<h1>Interseptor — Engagement Report</h1>
+<p class="meta"><em>1 finding: 1 High</em></p>
+<h2>Summary</h2>
+<table><tr><th>Severity</th><th>Count</th></tr><tr><td>High</td><td>1</td></tr><tr><td><strong>Total</strong></td><td><strong>1</strong></td></tr></table>
+<table><tr><th>Status</th><th>Count</th></tr><tr><td>verified</td><td>1</td></tr></table>
+<h2>High</h2>
+<h3>1. Generic Findings journey 1788757764570921000</h3>
+<ul>
+<li><strong>Status:</strong> verified</li>
+<li><strong>Confidence:</strong> firm</li>
+<li><strong>Tags:</strong> generic, qa</li>
+</ul>
+<p><strong>Summary:</strong> Generic UI-only summary</p>
+<p><strong>Impact:</strong> Generic fixture impact</p>
+<p><strong>Why:</strong> Generic fixture reason</p>
+<p><strong>Target:</strong> <code>https://example.com/findings-journey</code></p>
+<p><strong>Reproduction &amp; Evidence:</strong></p>
+<p class="meta"><em>Step: role=observation.</em></p>
+<p>Generic local reproduction step</p>
+<p class="meta">_Evidence: role=result, source=captured_flow, source flow #1._</p>
+<blockquote><code>POST 127.0.0.1/fixture/request-response?example=1</code> → <strong>200</strong><br>&gt;</blockquote>
+<p><strong>Request</strong></p>
+<pre><code>POST /fixture/request-response?example=1 HTTP/1.1
+Accept-Encoding: identity
+Content-Length: 16
+Content-Type: application/json
+Host: 127.0.0.1:52146
+X-Interseptor-Audit: generic-loopback
+
+{&quot;fixture&quot;:true}</code></pre>
+<p><strong>Response</strong></p>
+<pre><code>HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Length: 86
+Content-Type: application/json
+Date: Mon, 07 Sep 2026 05:09:24 GMT
+Server: BaseHTTP/0.6 Python/3.9.6
+
+{&quot;ok&quot;:true,&quot;method&quot;:&quot;POST&quot;,&quot;path&quot;:&quot;/fixture/request-response?example=1&quot;,&quot;received&quot;:16}</code></pre>
+<p class="meta">_Evidence: role=result, source=operator_upload._</p>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWJiYGD4DwAAAP//cGajQwAAAAZJREFUAwABDgEC81VxbAAAAABJRU5ErkJggg==" alt="generic-fixture.png" style="max-width:100%"></p>
+<p><strong>Remediation:</strong> Generic remediation</p>
+<p><strong>Retest:</strong> Generic secure retest</p>
+</article>
+</body>
+</html>

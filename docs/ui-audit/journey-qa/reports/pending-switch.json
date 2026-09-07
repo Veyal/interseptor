@@ -1,0 +1,84 @@
+{
+  "base": "http://127.0.0.1:52037",
+  "cases": [
+    {
+      "background_pointer_intercepted": true,
+      "name": "pending switch keeps Tab focus in dialog; blocks Cmd+K and actual background Notes pointer/typing",
+      "notes_text": "## generic modal guard\n\nbackground input must stay unchanged v3",
+      "project_polls": 2,
+      "project_switch_posts": 1,
+      "status": "pass",
+      "tab_focus": [
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        },
+        {
+          "id": "",
+          "inside": true
+        }
+      ]
+    }
+  ],
+  "console_errors": [],
+  "finished_unix": 1788757805.749921,
+  "kind": "mixed: real Notes persistence plus generic mocked pending Project identity",
+  "mocked": [
+    "GET /api/project and POST /api/project/switch are generic routes and never trigger a candidate project restart."
+  ],
+  "probe_sha256": "927bb76105d112ac25b46f3ca911370d65246ba91269de49702598d09ba526d2",
+  "screenshots": [
+    {
+      "capture_filename": "pending-switch-tab-cmdk-background-guard.png",
+      "path": "screenshots/pending-switch/pending-switch-tab-cmdk-background-guard.png",
+      "retained": true,
+      "sha256": "021820e2a41df9a61efe2a703a397b71cbd2b6eb260265d86108b4c2af24ec95"
+    }
+  ],
+  "started_unix": 1788757802.7233222,
+  "summary": {
+    "console_errors": 0,
+    "fail": 0,
+    "pass": 1
+  }
+}

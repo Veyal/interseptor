@@ -1,0 +1,80 @@
+{
+  "base_probe": "../probes/current-visual-probe.py",
+  "base_probe_sha256": "beb2d21a5df117020762e8dd3b74e2a2b0e6c9e6cf798252b87122cec60aea16",
+  "probe": "../probes/current-journey-probe.py",
+  "probe_sha256": "2a4ed5f36357877408414a5d2d50ed9dbd1c97704e027c75b06181fdf0f1eff2",
+  "reports": [
+    {
+      "binary_expected": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_observed": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "delayed CVSS A preserves newer B and failed retry retains B": "pass",
+        "export waits for saved edit and blocks failed Draft and Final": "pass",
+        "failed Apply discard restores vector and unblocks Done project switch and export": "pass"
+      },
+      "downloads": [
+        {
+          "path": "downloads/chromium-saved-summary.json",
+          "sha256": "c5c9a91df6a1cd0426a01cb916ef0b3359c49e5c86ea6f2c14c9e751e515b54f"
+        },
+        {
+          "path": "downloads/chromium-discarded-failed-preview.md",
+          "sha256": "baeadd137f6ce3cd9114ca9b5767a838f813ac65aa8ddea121c94a29ab30aba9"
+        }
+      ],
+      "engine": "chromium",
+      "failures": [],
+      "runtime_expected": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5",
+      "runtime_observed": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5"
+    },
+    {
+      "binary_expected": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_observed": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "delayed CVSS A preserves newer B and failed retry retains B": "pass",
+        "export waits for saved edit and blocks failed Draft and Final": "pass",
+        "failed Apply discard restores vector and unblocks Done project switch and export": "pass"
+      },
+      "downloads": [
+        {
+          "path": "downloads/firefox-saved-summary.json",
+          "sha256": "468eafa08230e725e7f5a9d8f400740a146f1a9b05a510fe0130ad7b8ad88056"
+        },
+        {
+          "path": "downloads/firefox-discarded-failed-preview.md",
+          "sha256": "716e3b889734d9b599961ecab5953ff2ea8aee831dc61669eceaf89a20042134"
+        }
+      ],
+      "engine": "firefox",
+      "failures": [],
+      "runtime_expected": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5",
+      "runtime_observed": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5"
+    },
+    {
+      "binary_expected": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_observed": "c02ef1a3d1fa887359ebefd3edd4d2ac41e39928def23c3f1ae46e50c7d9ba12",
+      "binary_version": "interseptor v2.0.10-local",
+      "cases": {
+        "delayed CVSS A preserves newer B and failed retry retains B": "pass",
+        "export waits for saved edit and blocks failed Draft and Final": "pass",
+        "failed Apply discard restores vector and unblocks Done project switch and export": "pass"
+      },
+      "downloads": [
+        {
+          "path": "downloads/webkit-saved-summary.json",
+          "sha256": "18392cceaaa61e6b5a5bffe71a36396dc303b328e8cb3020b82018af2a513536"
+        },
+        {
+          "path": "downloads/webkit-discarded-failed-preview.md",
+          "sha256": "1f489e78878bb0ef230238f902e3e99d86b3203de0b276d002b8ef57165a45e1"
+        }
+      ],
+      "engine": "webkit",
+      "failures": [],
+      "runtime_expected": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5",
+      "runtime_observed": "1083cd00e5eca944321c6af51b95118ddf32120055a9cf31379ca1ef3d4122a5"
+    }
+  ]
+}

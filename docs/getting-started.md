@@ -35,9 +35,14 @@ page with its changelog; `@latest` resolves to the newest tag, `@vX.Y.Z` pins on
 ```bash
 git clone https://github.com/Veyal/interseptor.git
 cd interseptor
-CGO_ENABLED=0 go build -o interseptor ./cmd/interseptor
+make build
 ./interseptor
 ```
+
+`make build` and `make run` stamp local CLI builds with `<version>-local`
+(for example, `2.0.10-local`). The version comes from the latest reachable Git
+tag, or the declared fallback version in a source archive. Published release
+binaries keep their normal version. Plain `go build` does not apply this stamp.
 
 ### Prebuilt binaries
 

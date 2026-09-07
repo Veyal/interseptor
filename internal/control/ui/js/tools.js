@@ -1,5 +1,6 @@
 import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
+import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -26,6 +27,18 @@ function repStatusLine(f){
 // is a <pre> (it renders raw/highlighted HTTP once a response arrives), so the
 // shared .state-empty block is nested inside it rather than replacing the tag.
 const REP_RES_EMPTY='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg></div><div class="state-empty-title">No response yet</div><p class="state-empty-hint">Send a request to see the response.</p></div>';
+let repResponseEpoch=0;
+
+function repSyncResView(t){
+  const isHTML=!!t.resId&&/html/i.test(t.resMime||'');
+  if(t.resView==='render'&&t.resId&&!isHTML)t.resView='pretty';
+  t.resView=t.resView||'pretty';
+  $('#repResSeg').querySelectorAll('button').forEach(button=>{
+    const on=button.dataset.view===t.resView;
+    button.classList.toggle('on',on);button.setAttribute('aria-pressed',on?'true':'false');
+    if(button.dataset.view==='render'){button.hidden=!isHTML;button.disabled=!!(t.sendPending||t.sendError);}
+  });
+}
 
 function setRepSendState(stateName,label){
   const button=$('#repSend');if(!button)return;
@@ -594,6 +607,7 @@ function repCodecBadge(t){
 export function repNewTab(){repSaveEditor();const t=repTabs.create();if(!t)return null;repTabs.active=t.tid;renderRepTabs();return t;}
 export function repLoadEditor(){
   const t=repCur();if(!t)return;
+  repResponseEpoch++;
   if(t.sendPending)setRepSendState('pending','Sending…');
   else if(t.sendError)setRepSendState('error','Send failed');
   else setRepSendState('idle','Send ▸');
@@ -604,8 +618,9 @@ export function repLoadEditor(){
   else $('#repBody').value=repBodyForDisplay(t.body,rv);
   repCodecBadge(t);
   repRefreshHL();
-  $('#repResSeg').querySelectorAll('button').forEach(x=>{const on=x.dataset.view===(t.resView||'pretty');x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
-  if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
+  repSyncResView(t);
+  if(t.sendPending){$('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';$('#repResView').textContent='sending…';}
+  else if(t.sendError){$('#repStatus').textContent='send failed';$('#repStatus').style.color='var(--red)';$('#repResView').textContent='(error: '+t.sendError+')';}
   else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
   refreshRepHistory(t);
@@ -665,6 +680,7 @@ export async function repSend(){
   const sendEpoch=t.sendEpoch;
   const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
   t.sendPending=true;
+  repResponseEpoch++;repSyncResView(t);
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
   $('#repResView').innerHTML='<span style="color:var(--fg3)">sending…</span>';
@@ -672,6 +688,7 @@ export async function repSend(){
     const flow=await api('/api/repeater/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     if(!current())return;
     t.sendError='';t.resId=flow.id;t.status=repStatusLine(flow);t.color=statusColor(flow.status);
+    t.resMime=flow.mime||'';t.resLen=flow.resLen||0;
     await repRecordHistory(t,flow);
     if(!current())return;
     t.sendPending=false;repPersist();
@@ -701,13 +718,23 @@ export async function repSend(){
   }
 }
 export async function renderRepResponse(){
-  const t=repCur();if(!t||!t.resId)return;
+  const epoch=++repResponseEpoch;
+  const t=repCur();if(!t||!t.resId||t.sendPending||t.sendError)return;
+  repSyncResView(t);
   const resId=t.resId,resView=t.resView||'pretty';
+  const current=()=>repResponseEpoch===epoch&&repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError;
+  $('#repResView').innerHTML='<span class="hint">Loading response…</span>';
+  if(resView==='render'&&t.resLen>RENDER_CAP&&t.largeRenderId!==resId){
+    $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.8">Large HTML response · <b>${fmtSize(t.resLen)}</b><br><a class="btn" href="${flowBodyDownloadHref(resId,'res')}" download="${escAttr(flowBodyDownloadName(resId,'res',t.resMime))}">Download body</a> <button type="button" class="btn" data-rep-render-anyway>Show anyway</button></div>`;
+    const button=$('#repResView').querySelector('[data-rep-render-anyway]');
+    if(button)button.onclick=()=>{if(current()){t.largeRenderId=resId;void renderRepResponse();}};
+    return;
+  }
   try{
     // Message-codec Decoded view (same engine as History inspect).
     if(resView==='decoded'){
       const d=await api('/api/flows/'+resId+'/decoded?side=res');
-      if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
+      if(!current())return;
       if(!d.matched){
         $('#repResView').innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this response.<br>
           Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
@@ -727,9 +754,9 @@ export async function renderRepResponse(){
     const raw=await api('/api/flows/'+resId+'/raw?side=res');
     // A tab switch during the fetch would otherwise paint this response into the
     // now-active tab's shared #repResView pane.
-    if(repCur()!==t||t.resId!==resId||t.resView!==resView||t.sendPending||t.sendError)return;
-    $('#repResView').innerHTML=highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
-  }catch(e){if(repCur()===t&&t.resId===resId&&t.resView===resView&&!t.sendPending&&!t.sendError)$('#repResView').textContent='(error: '+e.message+')';}
+    if(!current())return;
+    $('#repResView').innerHTML=resView==='render'?renderHTMLResponse(raw):highlightHTTP(resView==='pretty'?prettify(raw):raw,resView==='pretty',contentTypeFromRaw(raw));
+  }catch(e){if(current())$('#repResView').textContent='(error: '+e.message+')';}
 }
 async function migrateLegacyRepHistory(t){
   if(!t.historyNeedsMigration)return true;
@@ -812,6 +839,7 @@ export async function repLoadSend(id){
     t.reqView='pretty';t.resView='pretty';t.sourceFlowId=id;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;t.label='';t.requestAdoptionPristine=false;
     t.reqEditEpoch=(t.reqEditEpoch||0)+1;
     t.sendError='';t.resId=id;t.status=repStatusLine(d);t.color=statusColor(d.status);t.title=repTitle(t);
+    t.resMime=d.mime||'';t.resLen=d.resLen||0;
     renderRepTabs();repLoadEditor();repPersist();
   }catch(e){if(current())toast('History item #'+id+' is no longer available: '+e.message,'warn');}
 }
@@ -952,6 +980,7 @@ $('#repResSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   t.resView=b.dataset.view;
   $('#repResSeg').querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});
   renderRepResponse();
+  repPersistDebounced();
 });
 
 /* ---- intruder ---- */

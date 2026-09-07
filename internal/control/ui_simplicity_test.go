@@ -199,7 +199,8 @@ func TestUIFindingRefreshPreservesCustomSelection(t *testing.T) {
 	src := readUIAsset(t, "js/findings.js")
 	start := strings.Index(src, "function findingDetailEditPending()")
 	end := strings.Index(src[start:], "function refreshDeferredFindingDetail()")
-	script := `let bodyEditing=false,bodySaveTimers=new Set(),selFinding=1,bodySavesInFlight=0,findingWritesInFlight=0,findEditMode=true,open=false;
+	script := `let bodyEditing=false,findingDetailPointerActive=false,bodySaveTimers=new Set(),selFinding=1,bodySavesInFlight=0,findingWritesInFlight=0,findEditMode=true,open=false;
+const findingDrafts=new Set();
 const detail={contains:el=>el?.inside,querySelector:()=>open?{}:null};const $=()=>detail;
 const document={activeElement:null};
 function focus(kind,inside=true){document.activeElement={inside,matches:selector=>selector.includes(kind)}}
@@ -207,7 +208,8 @@ function focus(kind,inside=true){document.activeElement={inside,matches:selector
 focus('[role="combobox"]');if(!findingDetailEditPending())throw new Error('focused custom dropdown may be replaced');
 open=true;focus('[role="option"]',false);if(!findingDetailEditPending())throw new Error('portaled dropdown may be replaced');
 open=false;focus('textarea');if(!findingDetailEditPending())throw new Error('text editor protection regressed');
-focus('button');if(findingDetailEditPending())throw new Error('unrelated button blocks refresh');`
+focus('button');if(findingDetailEditPending())throw new Error('unrelated button blocks refresh');
+findingDrafts.add(1);if(!findingDetailEditPending())throw new Error('unsaved draft may be replaced by server refresh');`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("finding refresh ownership: %v\n%s", err, out)
 	}
