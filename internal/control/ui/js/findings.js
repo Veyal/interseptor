@@ -779,6 +779,19 @@ function findingWriteQueue(id) {
   return queue;
 }
 
+function stageCvssPreview(id, vector) {
+  const savingVector = Object.prototype.hasOwnProperty.call(findingWriteQueues.get(id)?.latestValues || {}, 'cvss');
+  if (!savingVector && vector === acknowledgedFindingValue(id, 'cvss', '')) cvssPreviewDrafts.discard(id, 'vector');
+  else cvssPreviewDrafts.stage(id, { vector });
+}
+
+async function discardCvssPreview(id) {
+  const tokens = cvssPreviewDrafts.tokens(id);
+  while (findingWriteQueues.has(id)) await new Promise(resolve => setTimeout(resolve, 20));
+  cvssPreviewDrafts.acknowledge(id, tokens);
+  return acknowledgedFindingValue(id, 'cvss', '');
+}
+
 function pendingFindingValue(id, key, fallback) {
   const queue = findingWriteQueues.get(id);
   return queue && Object.prototype.hasOwnProperty.call(queue.latestValues, key)
@@ -1078,7 +1091,7 @@ function renderFindingDetail() {
     const result = await patchFinding(f.id, { cvss: vector, severity });
     cvssPreviewDrafts.acknowledge(f.id, tokens);
     if (result?.latest) await loadFindings();
-  }, vector => cvssPreviewDrafts.stage(f.id, { vector }));
+  }, vector => stageCvssPreview(f.id, vector), () => discardCvssPreview(f.id));
   box.querySelectorAll('[data-find-section]').forEach(link => link.addEventListener('click', event => {
     if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault(); activateFindingSection(link.dataset.findSection, {focus:true});

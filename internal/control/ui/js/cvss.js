@@ -41,21 +41,23 @@ function displayRating(rating) {
 export function renderCvssEditor(initialVector = '') {
   const parsed = parseVector(initialVector);
   const metrics = METRICS.map(([key, label, options]) => `<label class="cvss-metric"><span>${esc(label)}</span><select data-cvss-metric="${key}" aria-label="${escAttr(label)}"><option value="">—</option>${options.map(([value, name]) => `<option value="${value}"${parsed.values[key] === value ? ' selected' : ''}>${esc(value)} · ${esc(name)}</option>`).join('')}</select></label>`).join('');
-  return `<label for="findCvss">CVSS v4.0 vector</label><input id="findCvss" class="find-field-text cvss-vector" type="text" value="${escAttr(initialVector)}" autocomplete="off" spellcheck="false" aria-describedby="findCvssStatus"><details id="findCvssCalculator" class="cvss-calculator"><summary>Metric calculator</summary><div class="cvss-metrics">${metrics}</div></details><div class="cvss-editor-actions"><button type="button" class="btn" data-cvss-preview>Preview</button><button type="button" class="btn btn-primary" data-cvss-apply disabled>Apply vector + severity</button></div><p class="hint cvss-status" id="findCvssStatus" data-cvss-status role="status" aria-live="polite"></p>`;
+  return `<label for="findCvss">CVSS v4.0 vector</label><input id="findCvss" class="find-field-text cvss-vector" type="text" value="${escAttr(initialVector)}" autocomplete="off" spellcheck="false" aria-describedby="findCvssStatus"><details id="findCvssCalculator" class="cvss-calculator"><summary>Metric calculator</summary><div class="cvss-metrics">${metrics}</div></details><div class="cvss-editor-actions"><button type="button" class="btn" data-cvss-preview>Preview</button><button type="button" class="btn btn-primary" data-cvss-apply disabled>Apply vector + severity</button><button type="button" class="btn" data-cvss-discard>Discard preview</button></div><p class="hint cvss-status" id="findCvssStatus" data-cvss-status role="status" aria-live="polite"></p>`;
 }
 
 // bindCvssEditor deliberately keeps preview separate from persistence. Typing
 // or selecting a metric can only evaluate; Apply is the sole operation that
 // sends both cvss and the matching normalized severity to the finding API.
-export function bindCvssEditor(root, onApply, onPreviewChange = () => {}) {
+export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDiscard = null) {
   const input = root.querySelector('#findCvss');
   const status = root.querySelector('[data-cvss-status]');
   const previewButton = root.querySelector('[data-cvss-preview]');
   const applyButton = root.querySelector('[data-cvss-apply]');
+  const discardButton = root.querySelector('[data-cvss-discard]');
   const selects = [...root.querySelectorAll('[data-cvss-metric]')];
   if (!input || !status || !previewButton || !applyButton) return;
 
   let generation = 0;
+  let editGeneration = 0;
   let timer = null;
   let latest = null;
   let latestVector = '';
@@ -71,12 +73,13 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}) {
     latestVector = '';
     applyButton.disabled = true;
   };
-  const syncSelectsFromInput = () => {
+  const syncSelectsFromInput = (reset = false) => {
     const parsed = parseVector(input.value);
-    if (!parsed.valid) return;
+    if (!parsed.valid && !reset) return;
     for (const select of selects) {
       const value = parsed.values[select.dataset.cvssMetric];
       if (value && [...select.options].some(option => option.value === value)) select.value = value;
+      else if (reset) select.value = '';
     }
   };
   const updateVectorFromSelects = () => {
@@ -110,12 +113,32 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}) {
     const token = generation;
     timer = setTimeout(() => { timer = null; runPreview(token); }, 180);
   };
-  input.addEventListener('input', () => { syncSelectsFromInput(); onPreviewChange(input.value); schedulePreview(); });
-  for (const select of selects) select.addEventListener('change', () => { updateVectorFromSelects(); onPreviewChange(input.value); schedulePreview(); });
+  input.addEventListener('input', () => { editGeneration++; syncSelectsFromInput(); onPreviewChange(input.value); schedulePreview(); });
+  for (const select of selects) select.addEventListener('change', () => { editGeneration++; updateVectorFromSelects(); onPreviewChange(input.value); schedulePreview(); });
   previewButton.addEventListener('click', () => {
     if (timer) clearTimeout(timer);
     invalidate();
     runPreview(generation);
+  });
+  if (onDiscard) discardButton?.addEventListener('click', async () => {
+    if (discardButton.disabled) return;
+    if (timer) { clearTimeout(timer); timer = null; }
+    invalidate();
+    const token = editGeneration;
+    discardButton.disabled = true;
+    try {
+      const vector = await onDiscard();
+      if (token !== editGeneration || !root.isConnected) return;
+      if (timer) { clearTimeout(timer); timer = null; }
+      invalidate();
+      input.value = vector;
+      syncSelectsFromInput(true);
+      setStatus('Preview discarded');
+    } catch (error) {
+      if (token === editGeneration && root.isConnected) setStatus(error.message || 'Could not discard preview', true);
+    } finally {
+      if (root.isConnected) discardButton.disabled = false;
+    }
   });
   applyButton.addEventListener('click', async () => {
     if (!latest || latestVector !== input.value.trim()) return;

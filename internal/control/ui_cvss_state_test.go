@@ -50,3 +50,55 @@ func TestCVSSPreviewDraftSurvivesRemountAndRetry(t *testing.T) {
 		t.Fatalf("CVSS remount: %v\n%s", err, out)
 	}
 }
+
+func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
+	source := regexp.MustCompile(`(?m)^import .*;\n`).ReplaceAllString(readUIAsset(t, "js/cvss.js"), "")
+	workspace := readUIAsset(t, "js/finding-workspace.js")
+	workspace = workspace[strings.Index(workspace, "export function createFindingDraftStore"):]
+	findingsSource := readUIAsset(t, "js/findings.js")
+	start := strings.Index(findingsSource, "function stageCvssPreview(")
+	end := strings.Index(findingsSource, "function enqueueFindingPatch(")
+	if start < 0 || end <= start {
+		t.Fatal("missing finding-owned preview recovery")
+	}
+	if !strings.Contains(findingsSource, "vector => stageCvssPreview(f.id, vector), () => discardCvssPreview(f.id)") {
+		t.Fatal("CVSS recovery callbacks not wired")
+	}
+	script := `
+ const esc=x=>x,escAttr=x=>x;
+ let previews=0,patches=0;
+ const api=async(path,opts)=>{previews++;const vector=JSON.parse(opts.body).vector;if(!vector||vector==='invalid')throw Error('Invalid vector');return {canonicalVector:vector,score:8.7,rating:'HIGH',nomenclature:'CVSS-B'};};
+ ` + strings.ReplaceAll(workspace, "export ", "") + strings.ReplaceAll(source, "export ", "") + `
+ const findingWriteQueues=new Map(),cvssPreviewDrafts=createFindingDraftStore(),findings=[{id:1,cvss:''},{id:2,cvss:'B'}];
+ ` + findingsSource[start:end] + `
+ const control=value=>({value,disabled:false,textContent:'',handlers:{},classList:{toggle(){}},addEventListener(k,fn){this.handlers[k]=fn;}});
+ const input=control(''),status=control(''),preview=control(''),apply=control(''),discard=control('');
+ const metric={value:'H',dataset:{cvssMetric:'VC'},options:[{value:''},{value:'H'}],addEventListener(){}};
+ const root={isConnected:true,querySelector:s=>({'#findCvss':input,'[data-cvss-status]':status,'[data-cvss-preview]':preview,'[data-cvss-apply]':apply,'[data-cvss-discard]':discard}[s]),querySelectorAll:()=>[metric]};
+ let complete,reject;
+ bindCvssEditor(root,async({vector})=>{patches++;const tokens=cvssPreviewDrafts.tokens(1);findingWriteQueues.set(1,{latestValues:{cvss:vector}});try{await new Promise((resolve,fail)=>{complete=resolve;reject=fail;});findings[0].cvss=vector;cvssPreviewDrafts.acknowledge(1,tokens);}finally{findingWriteQueues.delete(1);}},vector=>stageCvssPreview(1,vector),()=>discardCvssPreview(1));
+ const type=value=>{input.value=value;input.handlers.input();};
+ const evaluate=async()=>{preview.handlers.click();await new Promise(resolve=>setTimeout(resolve,0));};
+ stageCvssPreview(2,'Other draft');
+ type('invalid');await evaluate();if(!apply.disabled||!cvssPreviewDrafts.has(1))throw Error('invalid fixture not retained');
+ await discard.handlers.click();if(input.value!==''||cvssPreviewDrafts.has(1)||metric.value!==''||patches)throw Error('empty persisted vector not restored without PATCH');
+ if(!cvssPreviewDrafts.has(2))throw Error('discard cleared another finding');
+ type('invalid');type('');if(cvssPreviewDrafts.has(1))throw Error('exact empty revert remains blocked');
+ findings[0].cvss='A';type('');await discard.handlers.click();if(input.value!=='A'||cvssPreviewDrafts.has(1))throw Error('empty preview did not restore saved vector');
+ type('invalid');type('A');if(cvssPreviewDrafts.has(1))throw Error('exact saved revert remains blocked');
+ type('B');await evaluate();const saving=apply.handlers.click();type('A');if(!cvssPreviewDrafts.has(1))throw Error('revert to old value lost while Apply pending');
+ const discarding=discard.handlers.click();await new Promise(resolve=>setTimeout(resolve,5));if(!discard.disabled||input.value!=='A')throw Error('discard did not wait for Apply');
+ complete();await saving;await discarding;
+ if(input.value!=='B'||cvssPreviewDrafts.has(1)||patches!==1)throw Error('discard did not use settled persisted value');
+ type('C');await evaluate();const savingAgain=apply.handlers.click();type('invalid');const oldDiscard=discard.handlers.click();type('newer typing');complete();await savingAgain;await oldDiscard;
+ if(input.value!=='newer typing'||cvssPreviewDrafts.values(1).vector!=='newer typing')throw Error('old completion discarded newer typing');
+ await discard.handlers.click();if(input.value!=='C'||cvssPreviewDrafts.has(1))throw Error('newer draft not recoverable');
+ type('D');await evaluate();const failing=apply.handlers.click();type('invalid');const discardAfterFailure=discard.handlers.click();reject(Error('save failed'));await failing;await discardAfterFailure;
+ if(input.value!=='C'||cvssPreviewDrafts.has(1)||patches!==3)throw Error('failed Apply discard used unsaved value');
+ cvssPreviewDrafts.discard(2,'vector');if(cvssPreviewDrafts.hasAny())throw Error('discard leaves draft guards blocked');
+ root.isConnected=false;await new Promise(resolve=>setTimeout(resolve,220));
+ `
+	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("CVSS preview recovery: %v\n%s", err, out)
+	}
+}
