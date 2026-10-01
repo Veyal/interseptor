@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Document Cloud Agent Go toolchain behavior and a local run command in AGENTS.md.
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.1.0` release.
 - Retain [18 visual checks](docs/ui-audit/post-release-v2.1.0.md) for the version-only maintenance build, with current source identity and unchanged release evidence.
 
