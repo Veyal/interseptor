@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"sort"
@@ -46,11 +47,23 @@ type heldItem struct {
 }
 
 type compiledRule struct {
+	id      int64
 	enabled bool
 	typ     string
 	re      *regexp.Regexp
 	replace string
+	bigBody bool
 }
+
+// ruleScanLimit is how much of a body an ordinary body rule may read. A larger
+// body skips matching unless the rule sets BigBody. The interactive hold path
+// keeps its own 64 MB cap and does not use this limit.
+const ruleScanLimit = 2 << 20
+
+// RuleScanLimit is the exported scan cap (2 MB) for callers outside this package.
+const RuleScanLimit = ruleScanLimit
+
+var skippedBodyRuleLog sync.Map
 
 // Engine owns the hold queue and the compiled rule set.
 type Engine struct {
@@ -310,7 +323,7 @@ func (e *Engine) SetRules(rules []store.Rule) error {
 		if err != nil {
 			return fmt.Errorf("rule %d (%s): %w", r.ID, r.Type, err)
 		}
-		compiled = append(compiled, compiledRule{enabled: r.Enabled, typ: r.Type, re: re, replace: r.Replace})
+		compiled = append(compiled, compiledRule{id: r.ID, enabled: r.Enabled, typ: r.Type, re: re, replace: r.Replace, bigBody: r.BigBody})
 	}
 	e.mu.Lock()
 	e.rules = compiled
@@ -323,6 +336,7 @@ func (e *Engine) ApplyRules(req *http.Request) error {
 	e.mu.Lock()
 	rules := e.rules
 	e.mu.Unlock()
+	var bodyRules []compiledRule
 	for _, cr := range rules {
 		if !cr.enabled {
 			continue
@@ -331,12 +345,10 @@ func (e *Engine) ApplyRules(req *http.Request) error {
 		case "req-header":
 			applyHeaderRule(req, cr.re, cr.replace)
 		case "req-body":
-			if err := applyBodyRule(req, cr.re, cr.replace); err != nil {
-				return err
-			}
+			bodyRules = append(bodyRules, cr)
 		}
 	}
-	return nil
+	return applyRequestBodyRules(req, bodyRules)
 }
 
 func parseEditedRequest(raw []byte, orig *http.Request) (*http.Request, error) {
@@ -445,28 +457,53 @@ func applyHeaderRule(req *http.Request, re *regexp.Regexp, replace string) {
 // match-&-replace rule; a larger body is forwarded untransformed.
 const maxBodyRuleBytes = 64 << 20
 
-func applyBodyRule(req *http.Request, re *regexp.Regexp, replace string) error {
-	if req.Body == nil {
+func applyRequestBodyRules(req *http.Request, rules []compiledRule) error {
+	if len(rules) == 0 || req == nil || req.Body == nil {
 		return nil
 	}
-	body, err := io.ReadAll(io.LimitReader(req.Body, maxBodyRuleBytes+1))
+	limit := int64(ruleScanLimit)
+	for _, cr := range rules {
+		if cr.bigBody {
+			limit = maxBodyRuleBytes
+			break
+		}
+	}
+	body, err := io.ReadAll(io.LimitReader(req.Body, limit+1))
 	if err != nil {
 		req.Body.Close()
 		return err
 	}
-	if int64(len(body)) > maxBodyRuleBytes {
+	if int64(len(body)) > limit {
 		// Too large to buffer for a body rule — forward untransformed, preserving
-		// Close so the original body isn't leaked.
+		// Close so the original body isn't leaked. Log once per rule.
+		for _, cr := range rules {
+			logSkippedBodyRule(cr.id, cr.typ)
+		}
 		req.Body = struct {
 			io.Reader
 			io.Closer
 		}{io.MultiReader(bytes.NewReader(body), req.Body), req.Body}
 		return nil
 	}
+	overScan := int64(len(body)) > ruleScanLimit
+	for _, cr := range rules {
+		if overScan && !cr.bigBody {
+			logSkippedBodyRule(cr.id, cr.typ)
+			continue
+		}
+		body = cr.re.ReplaceAll(body, []byte(cr.replace))
+	}
 	req.Body.Close()
-	nb := re.ReplaceAll(body, []byte(replace))
-	req.Body = io.NopCloser(bytes.NewReader(nb))
-	req.ContentLength = int64(len(nb))
-	req.Header.Set("Content-Length", strconv.Itoa(len(nb)))
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	req.ContentLength = int64(len(body))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	return nil
+}
+
+func logSkippedBodyRule(id int64, kind string) {
+	key := kind + ":" + strconv.FormatInt(id, 10)
+	if _, loaded := skippedBodyRuleLog.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+	log.Printf("intercept: skip %s rule %d: body exceeds %d bytes (set bigBody to scan larger bodies)", kind, id, ruleScanLimit)
 }

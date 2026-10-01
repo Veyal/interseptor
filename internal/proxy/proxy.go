@@ -89,6 +89,9 @@ type Server struct {
 // New builds a proxy Server. ca, eng, and events may each be nil.
 func New(st *store.Store, cap *capture.Capturer, ca *tlsca.CA, eng *intercept.Engine, events Events) *Server {
 	s := &Server{st: st, cap: cap, ca: ca, eng: eng, events: events}
+	if st != nil {
+		st.SetWSFlushNotify(func(ids []int64) { s.notifyWSFrames(ids) })
+	}
 	s.tr = &http.Transport{
 		// Honor an optionally-configured chained upstream proxy (race-safe).
 		Proxy: func(*http.Request) (*url.URL, error) {
@@ -260,7 +263,7 @@ func (s *Server) Serve(ln net.Listener) error {
 // hopHeaders are stripped when forwarding (RFC 7230 §6.1).
 var hopHeaders = []string{
 	"Proxy-Connection", "Keep-Alive", "Proxy-Authorization",
-	"Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade",
+	"Te", "Trailer", "Transfer-Encoding", "Upgrade",
 }
 
 // hopRequestHeaders are stripped only from outbound requests (not from
@@ -957,6 +960,24 @@ func (s *Server) gateAndForward(flow *proxyFlow, r *http.Request) (*http.Respons
 	return resp, false, nil
 }
 
+// isBodylessResponse reports whether the HTTP response must not contain a message body
+// according to RFC 9112 Section 6.3 (1xx, 204, 304, or any response to a HEAD request).
+func isBodylessResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	if resp.StatusCode >= 100 && resp.StatusCode < 200 {
+		return true
+	}
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
+		return true
+	}
+	if resp.Request != nil && strings.EqualFold(resp.Request.Method, http.MethodHead) {
+		return true
+	}
+	return false
+}
+
 // writeResponseHTTP streams the upstream response to an http.ResponseWriter
 // while tee'ing the body to the store, then records the flow.
 func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, flow *proxyFlow) {
@@ -980,7 +1001,7 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 	flow.ResHeaders = resp.Header.Clone()
 	flow.Mime = resp.Header.Get("Content-Type")
 	removeHopHeaders(resp.Header)
-	if resp.ContentLength < 0 && len(resp.TransferEncoding) == 0 {
+	if !isBodylessResponse(resp) && resp.ContentLength < 0 && len(resp.TransferEncoding) == 0 {
 		resp.TransferEncoding = []string{"chunked"}
 	}
 	copyHeader(w.Header(), resp.Header)
@@ -1010,10 +1031,10 @@ func (s *Server) writeResponseHTTP(w http.ResponseWriter, resp *http.Response, f
 		flow.Error = "capture resp: " + err.Error()
 	}
 	// Now that the body is fully read, resp.Trailer holds the trailer values —
-	// forward them (the plain-HTTP path previously dropped them).
+	// forward them using http.TrailerPrefix so net/http writes them on the wire.
 	for k, vv := range resp.Trailer {
 		for _, v := range vv {
-			w.Header().Add(k, v)
+			w.Header().Add(http.TrailerPrefix+k, v)
 		}
 	}
 
@@ -1061,7 +1082,7 @@ func (s *Server) writeResponseConn(conn net.Conn, resp *http.Response, flow *pro
 		resp.ProtoMajor, resp.ProtoMinor = 1, 1
 		resp.Proto = "HTTP/1.1"
 	}
-	if resp.ContentLength < 0 && len(resp.TransferEncoding) == 0 {
+	if !isBodylessResponse(resp) && resp.ContentLength < 0 && len(resp.TransferEncoding) == 0 {
 		resp.TransferEncoding = []string{"chunked"}
 	}
 
@@ -1110,12 +1131,30 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 		return 0, nil, nil, false, false
 	}
 
-	lr := io.LimitReader(resp.Body, maxTransformBody+1)
+	readLimit := int64(maxTransformBody)
+	skipLargeBody := false
+	if hasRules {
+		scanLimit, hasBody, allowBig := s.eng.ResponseBodyScanLimit()
+		if hasBody && !allowBig {
+			if hold {
+				// Hold still needs the 64 MB editor buffer. Body rules that did
+				// not opt in are skipped once the captured body exceeds 2 MB.
+				skipLargeBody = true
+			} else {
+				readLimit = scanLimit
+			}
+		}
+	}
+
+	lr := io.LimitReader(resp.Body, readLimit+1)
 	b, rerr := io.ReadAll(lr)
-	if rerr != nil || int64(len(b)) > maxTransformBody {
+	if rerr != nil || int64(len(b)) > readLimit {
 		// Too large to buffer/transform (or a mid-body read error) — restore the
 		// stream and forward it untransformed, rather than buffering unbounded or
 		// forwarding a silently-truncated body. Rules/hold don't apply over the cap.
+		if hasRules {
+			s.eng.NoteSkippedResponseBodyRules()
+		}
 		resp.Body = restoreBody(b, resp.Body)
 		return 0, nil, nil, false, false
 	}
@@ -1125,7 +1164,7 @@ func (s *Server) maybeInterceptResponse(flow *proxyFlow, resp *http.Response) (s
 	originalBody := append([]byte(nil), b...)
 	originalHeaders := h.Clone()
 	if hasRules {
-		h, b = s.eng.ApplyResponseRules(h, b)
+		h, b = s.eng.ApplyResponseRules(h, b, skipLargeBody && int64(len(b)) > intercept.RuleScanLimit)
 		if !bytes.Equal(originalBody, b) {
 			flow.OriginalResHeaders = cloneHeaders(originalHeaders)
 			flow.OriginalResBodyHash, _ = s.storeBytes(originalBody)
@@ -1199,19 +1238,34 @@ func buildRawResponse(status int, h http.Header, body []byte) []byte {
 
 // parseRawResponse parses an (edited) raw response: status line + headers via
 // http.ReadResponse, body taken as everything after the blank line.
+// Line-ending normalization applies to the head only — the body is kept
+// verbatim, so bare-LF text and binary payloads survive an edit round-trip.
 func parseRawResponse(raw []byte) (int, http.Header, []byte, error) {
-	norm := strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n", "\r\n")
-	head, body := norm, ""
-	if i := strings.Index(norm, "\r\n\r\n"); i >= 0 {
-		head = norm[:i] + "\r\n\r\n"
-		body = norm[i+4:]
-	}
-	resp, err := http.ReadResponse(bufio.NewReader(strings.NewReader(head)), nil)
+	head, body := splitRawResponseHead(raw)
+	norm := strings.ReplaceAll(strings.ReplaceAll(string(head), "\r\n", "\n"), "\n", "\r\n")
+	resp, err := http.ReadResponse(bufio.NewReader(strings.NewReader(norm+"\r\n\r\n")), nil)
 	if err != nil {
 		return 0, nil, nil, err
 	}
 	resp.Body.Close()
-	return resp.StatusCode, resp.Header, []byte(body), nil
+	return resp.StatusCode, resp.Header, body, nil
+}
+
+// splitRawResponseHead splits a raw response at the head/body boundary — the
+// first blank line, accepting CRLF or LF line endings (and a mixed boundary,
+// which an edited head can produce). The head is returned without its final
+// line ending; the body is returned verbatim.
+func splitRawResponseHead(raw []byte) (head, body []byte) {
+	best, bodyOff := -1, 0
+	for _, sep := range []string{"\r\n\r\n", "\r\n\n", "\n\r\n", "\n\n"} {
+		if i := strings.Index(string(raw), sep); i >= 0 && (best < 0 || i < best) {
+			best, bodyOff = i, i+len(sep)
+		}
+	}
+	if best < 0 {
+		return raw, nil
+	}
+	return raw[:best], raw[bodyOff:]
 }
 
 // fail records an errored flow and writes a 502 to the client. Used only before
@@ -1323,14 +1377,17 @@ func isLoopbackName(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// recordRequest inserts a flow the moment its request is sent upstream — before
-// the response is known — so it shows in history immediately. Idempotent: it is
-// a no-op once the flow has an ID. record() later fills in the response.
+// recordRequest queues a flow the moment its request is sent upstream — before
+// the response is known — so history can show it immediately. The SQLite write
+// is asynchronous; this returns without waiting on the database. Idempotent:
+// it is a no-op once the flow has an ID. record() later queues the response.
+// Live flow.new is emitted from this in-memory flow, not from the flusher.
 func (s *Server) recordRequest(flow *proxyFlow) {
 	if flow.ID != 0 || !s.persistable(flow) {
 		return
 	}
-	if _, err := s.st.InsertFlow(flow.Flow); err != nil {
+	ok, err := s.st.EnqueueInsertFlow(flow.Flow)
+	if err != nil || !ok {
 		log.Printf("proxy: insert flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
@@ -1340,15 +1397,17 @@ func (s *Server) recordRequest(flow *proxyFlow) {
 	}
 }
 
-// record persists a flow's final state. If it was already inserted at request
-// time (recordRequest), this updates that row in place and emits a flow.update;
-// otherwise — e.g. a request dropped before it was ever sent — it inserts and
-// emits flow.new.
+// record queues a flow's final state. If it was already queued at request
+// time (recordRequest), this queues an update of that row and emits flow.update
+// from the in-memory flow; otherwise — e.g. a request dropped before it was
+// ever sent — it queues an insert and emits flow.new. Neither path waits on
+// SQLite. The queue keeps the insert ahead of the update.
 func (s *Server) record(flow *proxyFlow) {
 	if flow.ID != 0 {
-		// Already inserted at request time — always finish it (the scope decision
+		// Already queued at request time — always finish it (the scope decision
 		// was made then) so an in-flight scope change can't strand a half-flow.
-		if err := s.st.UpdateFlow(flow.Flow); err != nil {
+		ok, err := s.st.EnqueueUpdateFlow(flow.Flow)
+		if err != nil || !ok {
 			log.Printf("proxy: update flow %d (%s %s%s): %v", flow.ID, flow.Method, flow.Host, flow.Path, err)
 			return
 		}
@@ -1361,7 +1420,8 @@ func (s *Server) record(flow *proxyFlow) {
 	if !s.persistable(flow) {
 		return
 	}
-	if _, err := s.st.InsertFlow(flow.Flow); err != nil {
+	ok, err := s.st.EnqueueInsertFlow(flow.Flow)
+	if err != nil || !ok {
 		log.Printf("proxy: persist flow %s %s%s: %v", flow.Method, flow.Host, flow.Path, err)
 		return
 	}
@@ -1418,6 +1478,11 @@ func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
 			r.Body.Close()
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			r.ContentLength = int64(len(body))
+			if isChunked(r.TransferEncoding, r.Header) {
+				r.TransferEncoding = nil
+				r.Header.Del("Transfer-Encoding")
+				r.Header.Set("Content-Length", strconv.Itoa(len(body)))
+			}
 		}
 	}
 
@@ -1439,6 +1504,24 @@ func dumpRequest(r *http.Request) (raw []byte, truncated bool) {
 	b.WriteString("\r\n")
 	b.Write(body)
 	return b.Bytes(), truncated
+}
+
+func isChunked(te []string, h http.Header) bool {
+	for _, v := range te {
+		if strings.EqualFold(v, "chunked") {
+			return true
+		}
+	}
+	if h != nil {
+		for _, v := range h["Transfer-Encoding"] {
+			for _, part := range strings.Split(v, ",") {
+				if strings.EqualFold(strings.TrimSpace(part), "chunked") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func writeSimpleResponse(conn net.Conn, code int, msg string) {

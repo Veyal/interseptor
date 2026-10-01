@@ -51,6 +51,6 @@ func (s *Server) recordTLSFailure(host string, port int, clientAddr string, r *h
 	})
 	s.record(flow)
 	if flow.ID != 0 {
-		_, _ = s.st.AddFlowTags(flow.ID, []string{"tls-failed", "ssl-pinning?"})
+		s.st.AddFlowTagsNonBlocking(flow.ID, []string{"tls-failed", "ssl-pinning?"})
 	}
 }

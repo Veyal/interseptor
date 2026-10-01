@@ -21,7 +21,7 @@ func TestApplyResponseRules(t *testing.T) {
 		t.Fatal("expected HasResponseRules true")
 	}
 	h := http.Header{"Server": {"nginx/1.21"}, "Content-Type": {"text/plain"}}
-	nh, body := e.ApplyResponseRules(h, []byte("a secret value"))
+	nh, body := e.ApplyResponseRules(h, []byte("a secret value"), false)
 	if nh.Get("Server") != "redacted" {
 		t.Fatalf("res-header rule not applied: %q", nh.Get("Server"))
 	}

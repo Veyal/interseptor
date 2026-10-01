@@ -60,6 +60,56 @@ func TestDumpRequestBypassesInterceptOnBodyReadError(t *testing.T) {
 	}
 }
 
+func TestDumpRequestNormalizesChunkedBody(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/data", io.NopCloser(strings.NewReader("hello world")))
+	req.TransferEncoding = []string{"chunked"}
+	req.Header.Set("Transfer-Encoding", "chunked")
+	req.ContentLength = -1
+
+	raw, bypass := dumpRequest(req)
+	if bypass {
+		t.Fatal("expected dumpRequest not to bypass")
+	}
+	rawStr := string(raw)
+	if strings.Contains(rawStr, "Transfer-Encoding") {
+		t.Fatalf("expected raw request not to contain Transfer-Encoding, got:\n%s", rawStr)
+	}
+	if !strings.Contains(rawStr, "Content-Length: 11") {
+		t.Fatalf("expected raw request to have Content-Length: 11, got:\n%s", rawStr)
+	}
+	if req.Header.Get("Transfer-Encoding") != "" {
+		t.Fatalf("expected req.Header Transfer-Encoding to be removed")
+	}
+	if req.ContentLength != 11 {
+		t.Fatalf("expected req.ContentLength=11, got %d", req.ContentLength)
+	}
+}
+
+func TestIsBodylessResponse(t *testing.T) {
+	cases := []struct {
+		code   int
+		method string
+		want   bool
+	}{
+		{204, "GET", true},
+		{304, "GET", true},
+		{101, "GET", true},
+		{200, "HEAD", true},
+		{404, "HEAD", true},
+		{200, "GET", false},
+		{404, "POST", false},
+	}
+	for _, tc := range cases {
+		r := &http.Response{
+			StatusCode: tc.code,
+			Request:    httptest.NewRequest(tc.method, "http://example.com/", nil),
+		}
+		if got := isBodylessResponse(r); got != tc.want {
+			t.Errorf("isBodylessResponse(%d, %s) = %v, want %v", tc.code, tc.method, got, tc.want)
+		}
+	}
+}
+
 // wsTextFrame builds an RFC 6455 text frame (payload < 126 bytes).
 func wsTextFrame(payload string, masked bool) []byte {
 	p := []byte(payload)
@@ -82,13 +132,21 @@ func waitWSFrames(t *testing.T, s *store.Store, flowID int64, n int) []*store.WS
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		fr, _ := s.QueryWSFrames(flowID, 50)
+		limit := n
+		if limit < 50 {
+			limit = 50
+		}
+		fr, _ := s.QueryWSFrames(flowID, limit)
 		if len(fr) >= n {
 			return fr
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	fr, _ := s.QueryWSFrames(flowID, 50)
+	limit := n
+	if limit < 50 {
+		limit = 50
+	}
+	fr, _ := s.QueryWSFrames(flowID, limit)
 	t.Fatalf("expected %d ws frames, got %d", n, len(fr))
 	return nil
 }
@@ -733,6 +791,144 @@ func TestProxyTunnelsWebSocketUpgrade(t *testing.T) {
 	if !sawSend {
 		t.Fatalf("expected a captured send frame with preview, got %+v", frames)
 	}
+}
+
+func TestProxyPersistsAllRelayedWSFrames(t *testing.T) {
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("upstream listen: %v", err)
+	}
+	defer upLn.Close()
+	go func() {
+		c, err := upLn.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		br := bufio.NewReader(c)
+		req, err := http.ReadRequest(br)
+		if err != nil {
+			return
+		}
+		if req.Header.Get("Upgrade") == "" {
+			io.WriteString(c, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+			return
+		}
+		io.WriteString(c, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+		io.Copy(c, br)
+	}()
+
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	srv := New(s, capture.New(s), nil, nil, nil)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial proxy: %v", err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	fmt.Fprintf(c, "GET http://%s/ws HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"+
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		upLn.Addr().String(), upLn.Addr().String())
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+	if err != nil {
+		t.Fatalf("read handshake response: %v", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("expected 101, got %d", resp.StatusCode)
+	}
+
+	const n = 70
+	for i := 0; i < n; i++ {
+		payload := fmt.Sprintf("p%02d", i)
+		frame := wsTextFrame(payload, true)
+		if _, err := c.Write(frame); err != nil {
+			t.Fatalf("write frame %d: %v", i, err)
+		}
+		got := make([]byte, len(frame))
+		if _, err := io.ReadFull(br, got); err != nil {
+			t.Fatalf("read echo %d: %v", i, err)
+		}
+	}
+
+	f := waitFlows(t, s, 1)[0]
+	frames := waitWSFrames(t, s, f.ID, n*2)
+	saw := map[string]bool{}
+	for _, fr := range frames {
+		if fr.Dir == "send" {
+			saw[fr.Preview] = true
+		}
+	}
+	for i := 0; i < n; i++ {
+		payload := fmt.Sprintf("p%02d", i)
+		if !saw[payload] {
+			t.Fatalf("missing persisted send frame %s (%d frames)", payload, len(frames))
+		}
+	}
+}
+
+func TestResponseBodyRuleDoesNotReadPastScanLimit(t *testing.T) {
+	eng := intercept.New()
+	if err := eng.SetRules([]store.Rule{{
+		ID: 3, Enabled: true, Type: "res-body", Match: "a", Replace: "b",
+	}}); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	srv := &Server{eng: eng}
+	const total = int64(intercept.RuleScanLimit) + 1<<20
+	cr := &countReader{r: &byteNReader{left: total}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"text/plain"}},
+		Body:       io.NopCloser(cr),
+		Request:    httptest.NewRequest(http.MethodGet, "https://example.com/big", nil),
+	}
+	flow := srv.newFlow(&store.Flow{Host: "example.com"})
+	_, _, _, transformed, dropped := srv.maybeInterceptResponse(flow, resp)
+	if transformed || dropped {
+		t.Fatalf("oversized body transformed=%v dropped=%v", transformed, dropped)
+	}
+	if cr.n > int64(intercept.RuleScanLimit)+1 {
+		t.Fatalf("response body rule consumed %d bytes, want at most %d", cr.n, int64(intercept.RuleScanLimit)+1)
+	}
+}
+
+type countReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+type byteNReader struct{ left int64 }
+
+func (b *byteNReader) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	for i := range p {
+		p[i] = 'a'
+	}
+	b.left -= int64(len(p))
+	return len(p), nil
 }
 
 func TestProxyRelaysDeclinedUpgradeResponseBody(t *testing.T) {
@@ -2505,4 +2701,44 @@ func relaySOCKS5(client net.Conn, destinations chan<- string) {
 	go func() { _, _ = io.Copy(origin, client); done <- struct{}{} }()
 	_, _ = io.Copy(client, origin)
 	<-done
+}
+
+// parseRawResponse may normalize line endings in the head only — never in the
+// body. Rewriting bare LF bytes to CRLF silently corrupts edited bodies (Unix
+// text, binary payloads) on the response-intercept edit path.
+func TestParseRawResponsePreservesBodyVerbatim(t *testing.T) {
+	raw := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nline1\nline2\x00\xffbin")
+	st, h, b, err := parseRawResponse(raw)
+	if err != nil {
+		t.Fatalf("parseRawResponse: %v", err)
+	}
+	if st != http.StatusOK {
+		t.Fatalf("status=%d, want 200", st)
+	}
+	if got := h.Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("Content-Type=%q, want text/plain", got)
+	}
+	want := "line1\nline2\x00\xffbin"
+	if string(b) != want {
+		t.Fatalf("body=%q, want %q (bare LF and binary bytes must survive verbatim)", b, want)
+	}
+}
+
+// A head edited with LF-only line endings must still parse (head normalization)
+// while an LF-ended body stays untouched.
+func TestParseRawResponseNormalizesLFHead(t *testing.T) {
+	raw := []byte("HTTP/1.1 404 Not Found\nX-Trace: abc\n\nbody-lf\n")
+	st, h, b, err := parseRawResponse(raw)
+	if err != nil {
+		t.Fatalf("parseRawResponse: %v", err)
+	}
+	if st != http.StatusNotFound {
+		t.Fatalf("status=%d, want 404", st)
+	}
+	if got := h.Get("X-Trace"); got != "abc" {
+		t.Fatalf("X-Trace=%q, want abc", got)
+	}
+	if want := "body-lf\n"; string(b) != want {
+		t.Fatalf("body=%q, want %q", b, want)
+	}
 }

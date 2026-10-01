@@ -15,11 +15,14 @@ type Rule struct {
 	Type    string
 	Match   string
 	Replace string
+	// BigBody opts a body rule into the 64 MB transform cap. When false, a body
+	// over the 2 MB scan limit is forwarded unchanged.
+	BigBody bool `json:"bigBody,omitempty"`
 }
 
 // ListRules returns all rules ordered by ord then id.
 func (s *Store) ListRules() ([]Rule, error) {
-	rows, err := s.db.Query(`SELECT id, ord, enabled, type, match, replace FROM rules ORDER BY ord, id`)
+	rows, err := s.db.Query(`SELECT id, ord, enabled, type, match, replace, big_body FROM rules ORDER BY ord, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +30,7 @@ func (s *Store) ListRules() ([]Rule, error) {
 	var out []Rule
 	for rows.Next() {
 		var r Rule
-		if err := rows.Scan(&r.ID, &r.Ord, &r.Enabled, &r.Type, &r.Match, &r.Replace); err != nil {
+		if err := rows.Scan(&r.ID, &r.Ord, &r.Enabled, &r.Type, &r.Match, &r.Replace, &r.BigBody); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -38,8 +41,8 @@ func (s *Store) ListRules() ([]Rule, error) {
 // CreateRule inserts a rule and returns its id.
 func (s *Store) CreateRule(r *Rule) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO rules (ord, enabled, type, match, replace) VALUES (?,?,?,?,?)`,
-		r.Ord, r.Enabled, r.Type, r.Match, r.Replace)
+		`INSERT INTO rules (ord, enabled, type, match, replace, big_body) VALUES (?,?,?,?,?,?)`,
+		r.Ord, r.Enabled, r.Type, r.Match, r.Replace, r.BigBody)
 	if err != nil {
 		return 0, err
 	}
@@ -54,8 +57,8 @@ func (s *Store) CreateRule(r *Rule) (int64, error) {
 // UpdateRule overwrites the rule identified by r.ID.
 func (s *Store) UpdateRule(r *Rule) error {
 	res, err := s.db.Exec(
-		`UPDATE rules SET ord=?, enabled=?, type=?, match=?, replace=? WHERE id=?`,
-		r.Ord, r.Enabled, r.Type, r.Match, r.Replace, r.ID)
+		`UPDATE rules SET ord=?, enabled=?, type=?, match=?, replace=?, big_body=? WHERE id=?`,
+		r.Ord, r.Enabled, r.Type, r.Match, r.Replace, r.BigBody, r.ID)
 	if err != nil {
 		return err
 	}
@@ -112,6 +115,7 @@ type FlowFilter struct {
 // QueryFlowsFilter returns flows matching f, newest first. Filtering and paging
 // are pushed down to SQL so large histories never materialize in memory.
 func (s *Store) QueryFlowsFilter(f FlowFilter) ([]*Flow, error) {
+	s.syncFlows()
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 200

@@ -79,13 +79,13 @@ func isAuthPath(path string) bool {
 	return false
 }
 
-// TagIfAuth calls st.AddFlowTags(id, ["auth"]) when the given path looks like
-// an auth endpoint. The call is best-effort: any error is silently ignored so
-// the capture/forwarding path is never affected. It is safe to call
-// concurrently and is a no-op when path does not match.
+// TagIfAuth tags id with "auth" when path looks like an authentication
+// endpoint. The call is best-effort and does not wait on SQLite when that
+// flow is still in the write-behind queue, so capture never stalls forwarding.
+// It is safe to call concurrently and is a no-op when path does not match.
 func (c *Capturer) TagIfAuth(id int64, path string) {
 	if id == 0 || !isAuthPath(path) {
 		return
 	}
-	_, _ = c.st.AddFlowTags(id, []string{"auth"})
+	c.st.AddFlowTagsNonBlocking(id, []string{"auth"})
 }

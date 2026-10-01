@@ -169,9 +169,43 @@ func (e *Engine) HasResponseRules() bool {
 	return false
 }
 
+// ResponseBodyScanLimit reports how many response body bytes to buffer for
+// match-and-replace. hasBody is true when an enabled res-body rule exists.
+// allowBig is true when any such rule opts into the 64 MB cap; otherwise the
+// cap is RuleScanLimit (2 MB).
+func (e *Engine) ResponseBodyScanLimit() (limit int64, hasBody, allowBig bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	limit = ruleScanLimit
+	for _, cr := range e.rules {
+		if !cr.enabled || cr.typ != "res-body" {
+			continue
+		}
+		hasBody = true
+		if cr.bigBody {
+			return maxBodyRuleBytes, true, true
+		}
+	}
+	return limit, hasBody, false
+}
+
+// NoteSkippedResponseBodyRules logs once per enabled res-body rule that is not
+// opted into big bodies. Call it when a response body exceeds the scan limit.
+func (e *Engine) NoteSkippedResponseBodyRules() {
+	e.mu.Lock()
+	rules := e.rules
+	e.mu.Unlock()
+	for _, cr := range rules {
+		if cr.enabled && cr.typ == "res-body" && !cr.bigBody {
+			logSkippedBodyRule(cr.id, cr.typ)
+		}
+	}
+}
+
 // ApplyResponseRules applies enabled response-side rules to a response's headers
-// and body, returning the transformed pair.
-func (e *Engine) ApplyResponseRules(h http.Header, body []byte) (http.Header, []byte) {
+// and body, returning the transformed pair. skipLargeBody omits res-body rules
+// that have not opted into big bodies (header rules still run).
+func (e *Engine) ApplyResponseRules(h http.Header, body []byte, skipLargeBody bool) (http.Header, []byte) {
 	e.mu.Lock()
 	rules := e.rules
 	e.mu.Unlock()
@@ -183,6 +217,10 @@ func (e *Engine) ApplyResponseRules(h http.Header, body []byte) (http.Header, []
 		case "res-header":
 			h = applyResHeaderRule(h, cr.re, cr.replace)
 		case "res-body":
+			if skipLargeBody && !cr.bigBody {
+				logSkippedBodyRule(cr.id, cr.typ)
+				continue
+			}
 			body = cr.re.ReplaceAll(body, []byte(cr.replace))
 		}
 	}

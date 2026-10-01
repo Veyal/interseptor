@@ -4,7 +4,6 @@ title: Rule packs
 classification: current
 source: docs/rule-packs.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Rule packs
 
 A **rule pack** is a shareable bundle of passive Starlark checks
@@ -103,4 +102,14 @@ def check(flow):
 
 The front-matter is parsed and surfaced in `list_checks`
 so a pack listing can show what each check does without reading its source.
+
+## Match-and-replace body size
+
+Match-and-replace rules (`req-body` / `res-body` on `POST`/`PUT /api/rules`) are
+not the Starlark checks inside a pack. An enabled body rule reads at most 2 MB.
+A larger body is forwarded unchanged and that rule is skipped (logged once per
+rule). Set `"bigBody": true` on the rule JSON to opt that rule into the 64 MB
+transform cap. The interactive intercept hold still buffers up to 64 MB either
+way. The rules table keeps a stored `bigBody` value when you edit the rule in
+the UI.
 

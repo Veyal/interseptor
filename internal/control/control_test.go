@@ -759,6 +759,36 @@ func TestRuleCreateAndList(t *testing.T) {
 	}
 }
 
+func TestRuleBigBodyRoundTrip(t *testing.T) {
+	h, st, eng := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/rules", "application/json", strings.NewReader(
+		`{"type":"req-body","match":"a","replace":"b","enabled":true,"bigBody":true}`))
+	if err != nil {
+		t.Fatalf("POST rule: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		t.Fatalf("create status %d", resp.StatusCode)
+	}
+	rules, err := st.ListRules()
+	if err != nil {
+		t.Fatalf("ListRules: %v", err)
+	}
+	if len(rules) != 1 || !rules[0].BigBody {
+		t.Fatalf("stored rules = %+v", rules)
+	}
+	if err := eng.SetRules(rules); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	limit, hasBody, allowBig := eng.ResponseBodyScanLimit()
+	if hasBody || allowBig || limit != intercept.RuleScanLimit {
+		t.Fatalf("request-only bigBody rule reported response scan limit=%d hasBody=%v allowBig=%v", limit, hasBody, allowBig)
+	}
+}
+
 func TestRejectBadRuleRegex(t *testing.T) {
 	h, _, _ := newHub(t)
 	ts := httptest.NewServer(h.Handler())

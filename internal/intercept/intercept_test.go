@@ -1,6 +1,7 @@
 package intercept
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -273,6 +274,87 @@ func TestApplyHeaderRule(t *testing.T) {
 	if got := req.Header.Get("User-Agent"); got != "interseptor" {
 		t.Fatalf("header rule not applied: %q", got)
 	}
+}
+
+func TestApplyBodyRuleSkipsOversizedBodyWithoutReadingItAll(t *testing.T) {
+	e := New()
+	if err := e.SetRules([]store.Rule{{
+		ID: 9, Enabled: true, Type: "req-body", Match: `a`, Replace: "b",
+	}}); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	const total = int64(ruleScanLimit) + 1<<20
+	cr := &countReader{r: &byteNReader{left: total}}
+	req := newReq(t, "POST", "https://example.com/submit", "")
+	req.Body = io.NopCloser(cr)
+	req.ContentLength = -1
+	if err := e.ApplyRules(req); err != nil {
+		t.Fatalf("ApplyRules: %v", err)
+	}
+	if cr.n > int64(ruleScanLimit)+1 {
+		t.Fatalf("body rule consumed %d bytes, want at most %d", cr.n, int64(ruleScanLimit)+1)
+	}
+	rest, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("read remainder: %v", err)
+	}
+	if int64(len(rest)) != total {
+		t.Fatalf("forwarded %d bytes, want %d", len(rest), total)
+	}
+	if bytes.Contains(rest, []byte("b")) {
+		t.Fatal("oversized body was rewritten")
+	}
+}
+
+func TestApplyBodyRuleBigBodyOptInReadsPastScanLimit(t *testing.T) {
+	e := New()
+	if err := e.SetRules([]store.Rule{{
+		ID: 4, Enabled: true, Type: "req-body", Match: `a+`, Replace: "b", BigBody: true,
+	}}); err != nil {
+		t.Fatalf("SetRules: %v", err)
+	}
+	const total = int64(ruleScanLimit) + 32
+	cr := &countReader{r: &byteNReader{left: total}}
+	req := newReq(t, "POST", "https://example.com/submit", "")
+	req.Body = io.NopCloser(cr)
+	req.ContentLength = -1
+	if err := e.ApplyRules(req); err != nil {
+		t.Fatalf("ApplyRules: %v", err)
+	}
+	if cr.n != total {
+		t.Fatalf("big_body rule read %d bytes, want %d", cr.n, total)
+	}
+	body, _ := io.ReadAll(req.Body)
+	if string(body) != "b" {
+		t.Fatalf("big_body rewrite = %q", body)
+	}
+}
+
+type countReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+type byteNReader struct{ left int64 }
+
+func (b *byteNReader) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	for i := range p {
+		p[i] = 'a'
+	}
+	b.left -= int64(len(p))
+	return len(p), nil
 }
 
 func TestApplyBodyRule(t *testing.T) {

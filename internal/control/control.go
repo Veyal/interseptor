@@ -293,6 +293,7 @@ type ruleJSON struct {
 	Type    string `json:"type"`
 	Match   string `json:"match"`
 	Replace string `json:"replace"`
+	BigBody bool   `json:"bigBody,omitempty"`
 }
 
 type heldJSON struct {
@@ -1029,7 +1030,7 @@ func (h *flowAPI) createRule(w http.ResponseWriter, r *http.Request) {
 	if !validRule(w, in) {
 		return
 	}
-	rule := store.Rule{Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}
+	rule := store.Rule{Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace, BigBody: in.BigBody}
 	id, err := h.st.CreateRule(&rule)
 	if err != nil {
 		httpInternalErr(w, err)
@@ -1054,7 +1055,7 @@ func (h *flowAPI) updateRule(w http.ResponseWriter, r *http.Request) {
 	if !validRule(w, in) {
 		return
 	}
-	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace}); err != nil {
+	if err := h.st.UpdateRule(&store.Rule{ID: id, Ord: in.Ord, Enabled: in.Enabled, Type: in.Type, Match: in.Match, Replace: in.Replace, BigBody: in.BigBody}); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			httpErr(w, http.StatusNotFound, "rule not found")
 			return
