@@ -35,12 +35,15 @@ type command struct{ name, site, root string }
 
 var (
 	publicDocs = map[string]pageMeta{
+		"docs/workspace.md":       {"workspace", "Workspace guide", "current"},
+		"docs/settings.md":        {"settings", "Settings", "current"},
 		"docs/getting-started.md": {"getting-started", "Getting started", "current"}, "docs/api-and-mcp.md": {"api-and-mcp", "API and MCP", "current"}, "docs/history-search.md": {"history-search", "History search", "current"}, "docs/architecture.md": {"architecture", "Architecture", "current"}, "docs/custom-checks.md": {"custom-checks", "Custom checks", "current"}, "docs/rule-packs.md": {"rule-packs", "Rule packs", "current"}, "docs/vault.md": {"vault", "Project vault", "current"}, "docs/engagement-closeout.md": {"engagement-closeout", "Engagement close-out", "current"}, "docs/content-discovery.md": {"content-discovery", "Content discovery", "current"}, "docs/http2.md": {"http2", "HTTP/2", "current"}, "docs/message-codecs.md": {"message-codecs", "Message codecs", "current"}, "docs/extensions.md": {"extensions", "Extensions", "current"}, "docs/benchmarks.md": {"benchmarks", "Benchmarks", "reference"}, "docs/product/mcp-cookbook.md": {"mcp-cookbook", "MCP cookbook", "current"},
 		"docs/proxy-and-tls.md": {"proxy-and-tls", "Proxy, TLS, and networking", "current"}, "docs/findings-and-reporting.md": {"findings-and-reporting", "Findings and reporting", "current"}, "docs/cli-reference.md": {"cli-reference", "CLI reference", "reference"}, "docs/projects-and-data.md": {"projects-and-data", "Projects and data", "current"}, "docs/mobile-testing.md": {"mobile-testing", "Mobile testing", "current"}, "docs/troubleshooting.md": {"troubleshooting", "Troubleshooting", "reference"},
 	}
 	markdownLink  = regexp.MustCompile(`\]\(([^)]+)\)`)
 	featureTitle  = regexp.MustCompile(`(?m)^- \*\*([^*]+)\*\*`)
 	hrefPattern   = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
+	idPattern     = regexp.MustCompile(`(?i)\s+id=["']([^"']+)["']`)
 	searchHeading = regexp.MustCompile(`(?m)^(#{2,3})[ \t]+(.+?)[ \t]*$`)
 	fencedBlock   = regexp.MustCompile("(?s)```.*?```")
 	htmlTag       = regexp.MustCompile(`<[^>]+>`)
@@ -157,6 +160,20 @@ func validateFeatures(features []Feature, canonical string) error {
 	return nil
 }
 
+func validateFeatureGuides(features []Feature) error {
+	pages := map[string]bool{}
+	for _, meta := range publicDocs {
+		pages["/"+meta.Slug+"/"] = true
+	}
+	for _, feature := range features {
+		guide, err := url.Parse(feature.Link)
+		if err != nil || guide.Scheme != "" || guide.Host != "" || !pages[guide.Path] {
+			return fmt.Errorf("feature %s has no published guide: %s", feature.ID, feature.Link)
+		}
+	}
+	return nil
+}
+
 func rewriteLinks(body, source string) string {
 	return markdownLink.ReplaceAllStringFunc(body, func(link string) string {
 		target := link[2 : len(link)-1]
@@ -190,7 +207,7 @@ func pageContent(root, source string, meta pageMeta) (string, error) {
 		return "", err
 	}
 	body := rewriteLinks(string(data), source)
-	return fmt.Sprintf("---\nlayout: default\ntitle: %s\nclassification: %s\nsource: %s\n---\n<p class=\"eyebrow\">%s</p>\n%s\n", meta.Title, meta.Class, source, strings.ToUpper(meta.Class), body), nil
+	return fmt.Sprintf("---\nlayout: default\ntitle: %s\nclassification: %s\nsource: %s\n---\n%s\n", meta.Title, meta.Class, source, body), nil
 }
 
 func loadFeatures(root string) ([]Feature, string, error) {
@@ -207,6 +224,9 @@ func loadFeatures(root string) ([]Feature, string, error) {
 		return nil, "", fmt.Errorf("parse published features: %w", err)
 	}
 	if err := validateFeatures(features, string(canonical)); err != nil {
+		return nil, "", err
+	}
+	if err := validateFeatureGuides(features); err != nil {
 		return nil, "", err
 	}
 	return features, string(canonical), nil
@@ -298,7 +318,28 @@ func generate(root string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(root, "website/data/search.json"), data, 0o644)
+	if err := os.WriteFile(filepath.Join(root, "website/data/search.json"), data, 0o644); err != nil {
+		return err
+	}
+	release, err := releaseJSON(root)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, "_data/release.json"), release, 0o644)
+}
+
+// Read the published entry rather than the development fallback, which can lag
+// a tag until post-release maintenance. Unreleased work never advances the badge.
+func releaseJSON(root string) ([]byte, error) {
+	data, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if err != nil {
+		return nil, err
+	}
+	match := regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$`).FindSubmatch(data)
+	if match == nil {
+		return nil, errors.New("changelog has no published release")
+	}
+	return json.MarshalIndent(map[string]string{"version": string(match[1]), "date": string(match[2])}, "", "  ")
 }
 
 func check(root string) error {
@@ -318,6 +359,9 @@ func check(root string) error {
 		if string(got) != want {
 			return fmt.Errorf("generated page stale: %s.md", meta.Slug)
 		}
+		if err := validateProjectLinks(root, want); err != nil {
+			return fmt.Errorf("%s: %w", meta.Slug, err)
+		}
 	}
 	want, err := searchJSON(root, features)
 	if err != nil {
@@ -330,7 +374,92 @@ func check(root string) error {
 	if string(got) != string(want) {
 		return errors.New("generated search index stale")
 	}
+	want, err = releaseJSON(root)
+	if err != nil {
+		return err
+	}
+	got, err = os.ReadFile(filepath.Join(root, "_data/release.json"))
+	if err != nil {
+		return fmt.Errorf("missing release metadata: %w", err)
+	}
+	if string(got) != string(want) {
+		return errors.New("generated release metadata stale")
+	}
 	return nil
+}
+
+// validateProjectLinks fails when a markdown link targets
+// https://github.com/Veyal/interseptor/(blob|tree)/main/<path> and that path is
+// not in the local repo. Other absolute links are left alone. Fenced samples
+// are not links on the published page.
+func validateProjectLinks(root, body string) error {
+	body = fencedBlock.ReplaceAllString(body, "")
+	var dead []string
+	seen := map[string]bool{}
+	for _, match := range markdownLink.FindAllStringSubmatch(body, -1) {
+		target := markdownLinkTarget(match[1])
+		rel, kind, ok := projectLinkPath(target)
+		if !ok || seen[target] {
+			continue
+		}
+		seen[target] = true
+		if !projectPathExists(root, rel, kind) {
+			dead = append(dead, target)
+		}
+	}
+	if len(dead) == 0 {
+		return nil
+	}
+	return fmt.Errorf("dead project link(s):\n%s", strings.Join(dead, "\n"))
+}
+
+func markdownLinkTarget(raw string) string {
+	target := strings.TrimSpace(raw)
+	if i := strings.IndexAny(target, " \t"); i >= 0 {
+		target = target[:i]
+	}
+	return strings.Trim(target, "<>")
+}
+
+func projectLinkPath(raw string) (rel, kind string, ok bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Host, "github.com") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(u.Path, "/")
+	const prefix = "Veyal/interseptor/"
+	if !strings.HasPrefix(rest, prefix) {
+		return "", "", false
+	}
+	rest = strings.TrimPrefix(rest, prefix)
+	kind, rest, ok = strings.Cut(rest, "/")
+	if !ok || (kind != "blob" && kind != "tree") {
+		return "", "", false
+	}
+	branch, rel, found := strings.Cut(rest, "/")
+	if !found || branch != "main" {
+		return "", "", false
+	}
+	rel = path.Clean(rel)
+	if rel == "." || rel == "" || strings.HasPrefix(rel, "../") || strings.Contains(rel, "..") {
+		return rel, kind, true
+	}
+	return rel, kind, true
+}
+
+func projectPathExists(root, rel, kind string) bool {
+	if rel == "" || rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "..") {
+		return false
+	}
+	local := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Stat(local)
+	if err != nil {
+		return false
+	}
+	if kind == "tree" {
+		return info.IsDir()
+	}
+	return !info.IsDir()
 }
 
 func expectedSitePages() []string {
@@ -357,7 +486,7 @@ func validateBuiltSite(site, basePath string) error {
 			return fmt.Errorf("missing built page %s: %w", page, err)
 		}
 	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+	for _, asset := range []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg", "website/data/search.json"} {
 		if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(asset))); err != nil {
 			return fmt.Errorf("missing built asset %s: %w", asset, err)
 		}
@@ -379,7 +508,7 @@ func validateBuiltSite(site, basePath string) error {
 				return fmt.Errorf("%s has link outside base path: %s", file, href)
 			}
 			parsed, err := url.Parse(href)
-			if err != nil || parsed.Scheme != "" || parsed.Host != "" || strings.HasPrefix(href, "#") {
+			if err != nil || parsed.Scheme != "" || parsed.Host != "" {
 				continue
 			}
 			local := parsed.Path
@@ -387,13 +516,34 @@ func validateBuiltSite(site, basePath string) error {
 				local = strings.TrimPrefix(local, basePath)
 			}
 			local = strings.TrimPrefix(local, "/")
-			if local == "" {
+			if local == "" && parsed.Path == "" {
+				local, err = filepath.Rel(site, file)
+				if err != nil {
+					return err
+				}
+			} else if local == "" {
 				local = "index.html"
 			} else if strings.HasSuffix(local, "/") {
 				local += "index.html"
 			}
 			if _, err := os.Stat(filepath.Join(site, filepath.FromSlash(local))); err != nil {
 				return fmt.Errorf("%s has broken local href %s", file, href)
+			}
+			if parsed.Fragment != "" && strings.HasSuffix(local, ".html") {
+				target, err := os.ReadFile(filepath.Join(site, filepath.FromSlash(local)))
+				if err != nil {
+					return err
+				}
+				found := false
+				for _, id := range idPattern.FindAllStringSubmatch(string(target), -1) {
+					if id[1] == parsed.Fragment {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("%s has broken local heading %s", file, href)
+				}
 			}
 		}
 		return nil

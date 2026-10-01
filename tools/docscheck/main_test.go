@@ -1,11 +1,37 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestReleaseMetadataUsesPublishedChangelogEntry(t *testing.T) {
+	root := t.TempDir()
+	changelog := "# Changelog\n\n## [Unreleased]\n\nPending work.\n\n## [2.1.0] - 2026-09-08\n\nCurrent release.\n\n## [2.0.10] - 2026-09-06\n"
+	if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte(changelog), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := releaseJSON(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct{ Version, Date string }
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != "2.1.0" || got.Date != "2026-09-08" {
+		t.Fatalf("published release metadata = %+v", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte("## [Unreleased]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := releaseJSON(root); err == nil {
+		t.Fatal("missing published release must not produce a misleading version badge")
+	}
+}
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
@@ -65,6 +91,17 @@ func TestValidateFeaturesRejectsDuplicateIDsAndNumbers(t *testing.T) {
 	features := []Feature{{Number: "01", ID: "same", Title: "One", Text: "text"}, {Number: "01", ID: "same", Title: "Two", Text: "text"}}
 	if err := validateFeatures(features, "- **One**\n- **Two**\n"); err == nil {
 		t.Fatal("expected duplicate validation error")
+	}
+}
+
+func TestFeatureGuidesResolveToPublishedPages(t *testing.T) {
+	for _, link := range []string{"", "/missing/", "https://example.com/guide"} {
+		if err := validateFeatureGuides([]Feature{{ID: "example", Link: link}}); err == nil {
+			t.Errorf("feature guide %q must resolve to a public documentation page", link)
+		}
+	}
+	if err := validateFeatureGuides([]Feature{{ID: "example", Link: "/findings-and-reporting/#revision-history-and-recovery"}}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -144,6 +181,8 @@ func TestPublicDocumentationIncludesOperatorAndReportingGuides(t *testing.T) {
 		"docs/projects-and-data.md",
 		"docs/mobile-testing.md",
 		"docs/troubleshooting.md",
+		"docs/workspace.md",
+		"docs/settings.md",
 	} {
 		if _, ok := publicDocs[source]; !ok {
 			t.Errorf("publicDocs missing %s", source)
@@ -186,7 +225,7 @@ func builtSiteFixture(t *testing.T) string {
 		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(file, []byte(`<a href="/interseptor/features/">Features</a>`), 0o644); err != nil {
+		if err := os.WriteFile(file, []byte(`<a href="/interseptor/features/">Features</a><h2 id="scanner">Scanner</h2>`), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -196,7 +235,7 @@ func builtSiteFixture(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(site, "assets", "site.css"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, asset := range []string{"website/assets/site.css", "website/assets/search.js", "website/data/search.json"} {
+	for _, asset := range []string{"website/assets/site.css", "website/assets/site.js", "website/assets/search.js", "website/assets/mark.svg", "website/data/search.json"} {
 		file := filepath.Join(site, filepath.FromSlash(asset))
 		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 			t.Fatal(err)
@@ -240,5 +279,45 @@ func TestValidateBuiltSiteRequiresSearchIndex(t *testing.T) {
 	}
 	if err := validateBuiltSite(site, "/interseptor"); err == nil || !strings.Contains(err.Error(), "website/data/search.json") {
 		t.Fatalf("validateBuiltSite without search index = %v, want missing search asset", err)
+	}
+}
+
+func TestValidateProjectLinksRejectsDeadBlobAndAcceptsLive(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	live := strings.Join([]string{
+		"[readme](https://github.com/Veyal/interseptor/blob/main/README.md)",
+		"[docs](https://github.com/Veyal/interseptor/tree/main/docs/)",
+		"[external](https://example.com/does-not-exist)",
+		"[other repo](https://github.com/golang/go/blob/master/README.md)",
+		"```",
+		"[fenced](https://github.com/Veyal/interseptor/blob/main/not-checked-inside-fence.md)",
+		"```",
+	}, "\n")
+	if err := validateProjectLinks(root, live); err != nil {
+		t.Fatalf("live and external links: %v", err)
+	}
+	dead := "[gone](https://github.com/Veyal/interseptor/blob/main/no/such-file.md)"
+	if err := validateProjectLinks(root, dead); err == nil {
+		t.Fatal("dead blob/main link must fail")
+	}
+	deadTree := "[gone](https://github.com/Veyal/interseptor/tree/main/missing-dir/)"
+	if err := validateProjectLinks(root, deadTree); err == nil {
+		t.Fatal("dead tree/main link must fail")
+	}
+}
+
+func TestValidateBuiltSiteRejectsMissingFragments(t *testing.T) {
+	site := builtSiteFixture(t)
+	if err := os.WriteFile(filepath.Join(site, "index.html"), []byte(`<a href="/interseptor/features/#renamed-heading">Guide</a>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateBuiltSite(site, "/interseptor"); err == nil {
+		t.Fatal("a guide pointing at a missing heading must fail site validation")
 	}
 }
