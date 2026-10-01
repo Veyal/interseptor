@@ -138,7 +138,12 @@ func Send(req Request) (*Result, error) {
 			res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: op, Text: "(close)", Len: len(payload)})
 			break
 		}
-		if op == opPing || op == opPong {
+		if op == opPing {
+			// RFC 6455 §5.5.2: upon receipt of a Ping, send a Pong with matching payload
+			_, _ = conn.Write(encodeClientFrame(opPong, payload))
+			continue
+		}
+		if op == opPong {
 			continue
 		}
 		res.Frames = append(res.Frames, Frame{Dir: "recv", Opcode: op, Text: string(payload), Len: len(payload)})
@@ -163,6 +168,13 @@ func writeHandshake(conn net.Conn, u *url.URL, key string, extra map[string]stri
 	b.WriteString("Sec-WebSocket-Version: 13\r\n")
 	for k, v := range extra {
 		if k == "" {
+			continue
+		}
+		if strings.EqualFold(k, "Host") ||
+			strings.EqualFold(k, "Upgrade") ||
+			strings.EqualFold(k, "Connection") ||
+			strings.EqualFold(k, "Sec-WebSocket-Key") ||
+			strings.EqualFold(k, "Sec-WebSocket-Version") {
 			continue
 		}
 		fmt.Fprintf(&b, "%s: %s\r\n", k, v)
