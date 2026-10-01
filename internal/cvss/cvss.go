@@ -1,4 +1,4 @@
-// Package cvss contains the shared CVSS v4.0 evaluation contract used by the
+// Package cvss contains the shared CVSS v3.1 and v4.0 evaluation contract used by the
 // control API and the findings editor.
 package cvss
 
@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	cvss31 "github.com/pandatix/go-cvss/31"
 	cvss40 "github.com/pandatix/go-cvss/40"
 )
 
-// Evaluation is the operator-facing result of evaluating a CVSS v4.0 vector.
+// Evaluation is the operator-facing result of evaluating a CVSS vector.
 // Vector preserves the submitted spelling; CanonicalVector is available for a
 // deliberate Apply operation without rewriting an existing finding on preview.
 type Evaluation struct {
@@ -21,13 +22,36 @@ type Evaluation struct {
 	Nomenclature    string  `json:"nomenclature"`
 }
 
-// Evaluate parses and scores one complete CVSS v4.0 vector. A CVSS v4 NONE
+// Evaluate parses and scores one complete CVSS v3.1 or v4.0 vector. A CVSS NONE
 // rating is exposed as Info for the finding UI while RawRating retains the
 // specification's name.
 func Evaluate(vector string) (Evaluation, error) {
 	vector = strings.TrimSpace(vector)
 	if vector == "" {
-		return Evaluation{}, fmt.Errorf("CVSS v4.0 vector is required")
+		return Evaluation{}, fmt.Errorf("CVSS vector is required")
+	}
+	if strings.HasPrefix(strings.ToUpper(vector), "CVSS:3.1") {
+		v, err := cvss31.ParseVector(vector)
+		if err != nil {
+			return Evaluation{}, fmt.Errorf("invalid CVSS v3.1 vector: %w", err)
+		}
+		score := v.BaseScore()
+		rawRating, err := cvss31.Rating(score)
+		if err != nil {
+			return Evaluation{}, fmt.Errorf("evaluate CVSS v3.1 vector: %w", err)
+		}
+		rating := rawRating
+		if rating == "NONE" {
+			rating = "INFO"
+		}
+		return Evaluation{
+			Vector:          vector,
+			CanonicalVector: v.Vector(),
+			Score:           score,
+			Rating:          rating,
+			RawRating:       rawRating,
+			Nomenclature:    "CVSS-3.1",
+		}, nil
 	}
 	v, err := cvss40.ParseVector(vector)
 	if err != nil {

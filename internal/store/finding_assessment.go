@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	cvss31 "github.com/pandatix/go-cvss/31"
 	cvss40 "github.com/pandatix/go-cvss/40"
 )
 
@@ -163,7 +164,11 @@ func normalizeFindingAssessment(f *Finding) error {
 	default:
 		return fmt.Errorf("%w: execution must be demonstrated, prerequisite_only, or not_executed", ErrInvalidFinding)
 	}
-	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(f.Cvss)), "CVSS:4.0") {
+	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(f.Cvss)), "CVSS:3.1") {
+		if _, err := cvss31.ParseVector(strings.TrimSpace(f.Cvss)); err != nil {
+			return fmt.Errorf("%w: invalid CVSS v3.1 vector: %v", ErrInvalidFinding, err)
+		}
+	} else if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(f.Cvss)), "CVSS:4.0") {
 		if _, err := cvss40.ParseVector(strings.TrimSpace(f.Cvss)); err != nil {
 			return fmt.Errorf("%w: invalid CVSS v4.0 vector: %v", ErrInvalidFinding, err)
 		}
@@ -179,9 +184,24 @@ func (f *Finding) enrichAssessment() {
 	f.CvssScore = nil
 	f.CvssRating = ""
 	f.CvssNomenclature = ""
-	if v, err := cvss40.ParseVector(strings.TrimSpace(f.Cvss)); err == nil {
+	raw := strings.TrimSpace(f.Cvss)
+	if strings.HasPrefix(strings.ToUpper(raw), "CVSS:3.1") {
+		if v, err := cvss31.ParseVector(raw); err == nil {
+			score := v.BaseScore()
+			rating, _ := cvss31.Rating(score)
+			if rating == "NONE" {
+				rating = "INFO"
+			}
+			f.CvssScore = &score
+			f.CvssRating = rating
+			f.CvssNomenclature = "CVSS-3.1"
+		}
+	} else if v, err := cvss40.ParseVector(raw); err == nil {
 		score := v.Score()
 		rating, _ := cvss40.Rating(score)
+		if rating == "NONE" {
+			rating = "INFO"
+		}
 		f.CvssScore = &score
 		f.CvssRating = rating
 		f.CvssNomenclature = v.Nomenclature()
@@ -247,16 +267,32 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	if f.ProofReview.Visual && !visualResult {
 		gaps = append(gaps, "visual")
 	}
-	v, err := cvss40.ParseVector(strings.TrimSpace(f.Cvss))
-	if err != nil {
-		gaps = append(gaps, "cvss")
-	} else {
-		rating, _ := cvss40.Rating(v.Score())
-		if rating == "NONE" {
-			rating = "INFO"
+	rawCvss := strings.TrimSpace(f.Cvss)
+	if strings.HasPrefix(strings.ToUpper(rawCvss), "CVSS:3.1") {
+		v, err := cvss31.ParseVector(rawCvss)
+		if err != nil {
+			gaps = append(gaps, "cvss")
+		} else {
+			rating, _ := cvss31.Rating(v.BaseScore())
+			if rating == "NONE" {
+				rating = "INFO"
+			}
+			if !strings.EqualFold(f.Severity, rating) {
+				gaps = append(gaps, "severity")
+			}
 		}
-		if !strings.EqualFold(f.Severity, rating) {
-			gaps = append(gaps, "severity")
+	} else {
+		v, err := cvss40.ParseVector(rawCvss)
+		if err != nil {
+			gaps = append(gaps, "cvss")
+		} else {
+			rating, _ := cvss40.Rating(v.Score())
+			if rating == "NONE" {
+				rating = "INFO"
+			}
+			if !strings.EqualFold(f.Severity, rating) {
+				gaps = append(gaps, "severity")
+			}
 		}
 	}
 	for i, t := range f.Targets {

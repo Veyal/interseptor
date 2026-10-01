@@ -682,3 +682,57 @@ func TestAttachFlowExistingFlowNotMissing(t *testing.T) {
 		t.Fatalf("flow block missing from body: %+v", got.Blocks)
 	}
 }
+
+func TestFindingCVSS31AndStatusAliases(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// Test status aliases "confirmed" -> "verified", "triage" -> "needs_verification"
+	f1, err := s.CreateFinding(&Finding{
+		Title:    "Auth Bypass",
+		Severity: "Critical",
+		Status:   "confirmed",
+		Cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+	})
+	if err != nil {
+		t.Fatalf("CreateFinding with CVSS 3.1: %v", err)
+	}
+
+	got1, err := s.GetFinding(f1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got1.Status != "verified" {
+		t.Fatalf("status confirmed want verified, got %s", got1.Status)
+	}
+	if got1.CvssScore == nil || *got1.CvssScore != 9.8 {
+		t.Fatalf("CVSS 3.1 score want 9.8, got %v", got1.CvssScore)
+	}
+	if got1.CvssRating != "CRITICAL" {
+		t.Fatalf("CVSS 3.1 rating want CRITICAL, got %s", got1.CvssRating)
+	}
+
+	f2, err := s.CreateFinding(&Finding{
+		Title:    "Open Redirect",
+		Severity: "Medium",
+		Status:   "triage",
+		Cvss:     "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+	})
+	if err != nil {
+		t.Fatalf("CreateFinding with triage status: %v", err)
+	}
+	got2, err := s.GetFinding(f2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.Status != "needs_verification" {
+		t.Fatalf("status triage want needs_verification, got %s", got2.Status)
+	}
+	if got2.CvssScore == nil || *got2.CvssScore != 6.1 {
+		t.Fatalf("CVSS 3.1 score want 6.1, got %v", got2.CvssScore)
+	}
+}
+
