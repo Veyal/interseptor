@@ -1,8 +1,10 @@
 package control
 
 import (
+	"errors"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 
 	"github.com/Veyal/interseptor/internal/checkscript"
@@ -61,11 +63,22 @@ func (h *scannerAPI) scannerRunWithLimit(w http.ResponseWriter, r *http.Request,
 		}
 		req, err := h.bodyBytesResult(f.ReqBodyHash)
 		if err != nil {
+			// A missing body blob (externally deleted file, partial project copy,
+			// disk issue) skips this flow: one broken blob must not discard a
+			// full scan's results. Other errors (I/O) stay fatal.
+			if errors.Is(err, os.ErrNotExist) {
+				log.Printf("scanner: skip flow %d: request body blob %q missing", f.ID, f.ReqBodyHash)
+				continue
+			}
 			httpFileNotFoundOrInternal(w, err, "request body not found")
 			return
 		}
 		res, err := h.bodyBytesResult(f.ResBodyHash)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				log.Printf("scanner: skip flow %d: response body blob %q missing", f.ID, f.ResBodyHash)
+				continue
+			}
 			httpFileNotFoundOrInternal(w, err, "response body not found")
 			return
 		}

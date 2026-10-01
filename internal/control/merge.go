@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,7 +228,7 @@ func (h *Hub) mergePush(w http.ResponseWriter, r *http.Request) {
 	}
 	arc.Close()
 
-	stats, err := uploadPeerArchive(base+"/api/merge/file?label="+label, in.Key, arcPath)
+	stats, err := uploadPeerArchive(base+"/api/merge/file?"+url.Values{"label": {label}}.Encode(), in.Key, arcPath)
 	if err != nil {
 		httpErr(w, http.StatusBadGateway, "push failed: "+err.Error())
 		return
