@@ -102,6 +102,10 @@ def check(flow):
         return [finding("high", "CORS wildcard with credentials enabled",
             evidence="Access-Control-Allow-Origin: * | Access-Control-Allow-Credentials: true",
             fix="Never use * with credentials; allow-list origins.")]
+    if (acao or "").lower() == "null":
+        return [finding("high", "CORS allows null origin with credentials enabled",
+            evidence="Access-Control-Allow-Origin: null | Access-Control-Allow-Credentials: true",
+            fix="Do not allow the 'null' origin with credentials; validate origins against an explicit allow-list.")]
     if origin and acao == origin:
         return [finding("high", "CORS reflects request Origin with credentials enabled",
             evidence="Access-Control-Allow-Origin: " + acao,
@@ -110,22 +114,24 @@ def check(flow):
 `,
 	checkInsecureCookie: `# Cookie missing Secure/HttpOnly (built-in override).
 def check(flow):
-    cookie = flow.res_header("Set-Cookie")
-    if not cookie:
-        return []
-    lc = cookie.lower()
-    if "secure" not in lc or "httponly" not in lc:
-        return [finding("low", "Cookie set without Secure and HttpOnly", evidence=cookie[:80],
-            fix="Set Secure; HttpOnly; SameSite on session cookies.")]
-    return []
+    findings = []
+    for cookie in flow.res_header_all("Set-Cookie"):
+        lc = cookie.lower()
+        if "secure" not in lc or "httponly" not in lc:
+            findings.append(finding("low", "Cookie set without Secure and HttpOnly", evidence=cookie[:80],
+                fix="Set Secure; HttpOnly; SameSite on session cookies."))
+            break
+    return findings
 `,
 	checkCookieSameSite: `# Cookie missing SameSite (built-in override).
 def check(flow):
-    cookie = flow.res_header("Set-Cookie")
-    if cookie and "samesite" not in cookie.lower():
-        return [finding("low", "Cookie missing SameSite attribute", evidence=cookie[:80],
-            fix="Add SameSite=Strict or Lax to cookies.")]
-    return []
+    findings = []
+    for cookie in flow.res_header_all("Set-Cookie"):
+        if "samesite" not in cookie.lower():
+            findings.append(finding("low", "Cookie missing SameSite attribute", evidence=cookie[:80],
+                fix="Add SameSite=Strict or Lax to cookies."))
+            break
+    return findings
 `,
 	checkCacheableAuth: `# Cacheable auth response (built-in override).
 def check(flow):
@@ -178,7 +184,7 @@ def check(flow):
 `,
 	checkSensitiveURL: `# Sensitive param in URL (built-in override).
 def check(flow):
-    m = re_search('(?i)[?&](access_?token|api_?key|token|session|password|secret|auth)=([^&\\s]{6,})', flow.path)
+    m = re_search('(?i)[?&](access_?token|refresh_?token|id_?token|auth_?token|api_?key|token|session|password|secret|passwd|client_?secret|auth)=([^&\\s]{6,})', flow.path)
     if m:
         return [finding("medium", "Sensitive token or credential in URL", evidence=m[:80],
             fix="Pass credentials in body or Authorization header, not the URL.")]
@@ -334,6 +340,14 @@ def check(flow):
             if body.startswith(v + "("):
                 return [finding("low", "JSONP endpoint reflects callback", evidence=v + "(…",
                     fix="Prefer CORS-guarded JSON; allow-list callback names.")]
+    return []
+`,
+	checkProtoPollution: `# Prototype pollution vector in request (built-in override).
+def check(flow):
+    m = re_search('(?i)(?:["\']?__proto__["\']?\\s*[:=]|constructor\\.(?:prototype|__proto__))', flow.req_body)
+    if m:
+        return [finding("medium", "Prototype pollution vector in request", evidence=m[:60],
+            fix="Reject objects containing __proto__ or constructor.prototype keys; freeze prototypes.")]
     return []
 `,
 }
