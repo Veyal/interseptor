@@ -16,9 +16,12 @@ let tagReloadPending=false;
 const tagColorLanes=new Map();
 
 // tagChipStyle returns the inline style for a chip in a tag's color ('' = default).
+// Stored colors are validated (server-side hex rule) before interpolation so a
+// value restored from an imported project DB can never break out of the attribute.
 export function tagChipStyle(tag) {
   const saved = state.tagColors[tag];
-  const c = TAG_COLORS.find(([, hex]) => hex === saved?.toLowerCase())?.[2] || saved;
+  const preset = TAG_COLORS.find(([, hex]) => hex === saved?.toLowerCase())?.[2];
+  const c = preset || (saved && /^#[0-9a-fA-F]{3,8}$/.test(saved) ? saved : '');
   return c ? `color:${c};border-color:${c}` : '';
 }
 

@@ -22,13 +22,13 @@ function renderHumanInput(prompts) {
   bar.hidden = false;
   bar.innerHTML = prompts.map(p => {
     const opts = (p.options || []).map(o =>
-      `<button class="btn xs hi-opt" data-id="${p.id}" data-ans="${escAttr(o)}">${esc(o)}</button>`).join('');
-    return `<div class="hi-prompt" data-id="${p.id}">
+      `<button class="btn xs hi-opt" data-id="${escAttr(p.id)}" data-ans="${escAttr(o)}">${esc(o)}</button>`).join('');
+    return `<div class="hi-prompt" data-id="${escAttr(p.id)}">
       <span class="hi-icon" title="The AI is waiting for your input"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-robot"/></svg></span>
       <span class="hi-msg">${esc(p.message)}</span>
       <span class="hi-actions">${opts}
-        <input class="hi-input" data-id="${p.id}" placeholder="type an answer…" aria-label="Answer AI prompt: ${escAttr(p.message)}">
-        <button class="btn xs accent hi-send" data-id="${p.id}">Send ▸</button>
+        <input class="hi-input" data-id="${escAttr(p.id)}" placeholder="type an answer…" aria-label="Answer AI prompt: ${escAttr(p.message)}">
+        <button class="btn xs accent hi-send" data-id="${escAttr(p.id)}">Send ▸</button>
       </span>
     </div>`;
   }).join('');
