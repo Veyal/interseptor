@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-01
+
 ### Added
 
 - **Intruder run cancellation & column sorting.** Added `Stop()` engine method and `POST /api/intruder/stop` endpoint allowing operators to immediately cancel in-flight Intruder attacks. Results table now supports interactive column sorting by Request #, Payload, Status Code, Response Length, and Response Time.
