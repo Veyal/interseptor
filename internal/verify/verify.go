@@ -1,7 +1,6 @@
 // Package verify holds the deterministic, LLM-free primitives of the autonomous
-// pentester's 4-gate verifier (see docs/AUTONOMOUS-PENTEST.md §5): Gate 1,
-// differential reproduction, and the mechanism behind Gate 3, out-of-band (OOB)
-// confirmation.
+// pentester's 4-gate verifier: Gate 1, differential reproduction, and the
+// mechanism behind Gate 3, out-of-band (OOB) confirmation.
 //
 // Both primitives turn a *candidate* vulnerability into machine-proven ground
 // truth without any LLM in the loop:
