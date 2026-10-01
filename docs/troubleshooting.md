@@ -3,13 +3,6 @@
 Start with the first symptom that matches. Keep a terminal open for application logs and use a generic
 test target before debugging a complex application.
 
-## Browser asks for a proxy username and password
-
-This is expected on a non-loopback proxy listener. The realm is `interseptor`. Enter any username and
-a full-scope API key as the password. A read key, expired key, or target-site password produces another
-prompt. Bind to `127.0.0.1` if the listener is local-only and authentication is unnecessary. See
-[Proxy authentication](proxy-and-tls.md#proxy-authentication).
-
 ## No traffic appears
 
 1. Confirm Interseptor reports the expected proxy address and the port is not used by another process.
@@ -42,9 +35,9 @@ exceptions → Add selected History host**. Installing a CA alone cannot fix a n
 
 ## Repeated 407 or upstream authentication errors
 
-A browser-visible `407` from Interseptor means listener credentials are missing or invalid. An
-Interseptor toast/log saying “upstream proxy authentication required” means the configured chained
-proxy rejected its credentials. These are different authentication layers.
+A browser-visible `407` now always means the configured chained upstream proxy rejected its
+credentials — Interseptor's own proxy listeners no longer require authentication. Check the
+upstream settings and the toast/log saying “upstream proxy authentication required”.
 
 For upstream setup, select a mode instead of typing a URL: **HTTP/HTTPS** for an HTTP CONNECT proxy,
 **SOCKS5** for local DNS, or **SOCKS5H** for proxy-side DNS. Verify host and port in the status summary.

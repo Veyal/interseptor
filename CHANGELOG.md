@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Proxy listener authentication.** Non-loopback proxy listeners no longer demand `Proxy-Authorization` with a full-scope API key (`407` Basic realm `interseptor`) — binding a proxy to a LAN/tailnet address is an explicit operator decision, and requiring a proxy password only broke clients reaching the proxy through a non-loopback address, including same-machine clients. Anyone who can reach a listener can now use it, so treat a non-loopback bind as an open proxy on that network; `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` still refuses non-loopback binds, and remote control-plane access (UI/REST/MCP) still requires an API key.
+
 ## [2.2.0] - 2026-10-01
 
 ### Added

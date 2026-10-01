@@ -14,8 +14,8 @@ source: docs/mobile-testing.md
   both devices on a reachable network, and configure the phone with the workstation's LAN address.
 - **iOS Simulator:** use the built-in Simulator setup on macOS with Xcode tools installed.
 
-Wi-Fi clients use a non-loopback listener and therefore need [proxy authentication]({{ "/proxy-and-tls/" | relative_url }}#proxy-authentication):
-any username plus a full-scope Interseptor API key as the password.
+Wi-Fi clients use a non-loopback listener, which needs no proxy credentials; see
+[Proxy listener exposure]({{ "/proxy-and-tls/" | relative_url }}#proxy-listener-exposure) for the network implications.
 
 ## Android
 

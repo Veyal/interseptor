@@ -68,9 +68,8 @@ tracks the latest release.)
 4. **Work the loop.** Watch flows land in **Proxy**, send one to **Repeater** or **Intruder**, run
    the **Scanner**, set **Scope**, or flip on **Intercept** to hold/edit requests and responses.
 
-For a LAN or mobile listener, read [Proxy authentication]({{ "/proxy-and-tls/" | relative_url }}#proxy-authentication)
-before rebinding: non-loopback listeners require a full-scope API key as the proxy password. The
-browser realm is `interseptor`; it is not asking for the target site's credentials.
+For a LAN or mobile listener, read [Proxy listener exposure]({{ "/proxy-and-tls/" | relative_url }}#proxy-listener-exposure)
+before rebinding: a non-loopback listener is an open proxy for everyone who can reach it.
 
 Runtime data lives under `~/.interseptor/` (`interseptor.db`, `bodies/`, `ca/`). Full-project archives
 intentionally use the compatibility filename `interceptor.db`. To start with an empty workspace,

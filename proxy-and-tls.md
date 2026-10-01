@@ -19,41 +19,20 @@ listener**, then use the workstation's LAN address as the device proxy.
 `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` disables all non-loopback listener changes. This is useful on a
 workstation that must never accept LAN traffic.
 
-## Proxy authentication
+## Proxy listener exposure
 
-A loopback proxy listener does not request credentials. Every non-loopback proxy listener requires
-proxy authentication, even when the client happens to connect from the same workstation. This
-protects captured traffic and prevents an accidentally exposed listener from becoming an open proxy.
+Proxy listeners never require authentication — not loopback, not non-loopback. Binding a proxy to a
+non-loopback interface is an explicit operator decision, and demanding a proxy password only broke
+clients reaching the proxy through a LAN or tailnet address, including clients on the same
+workstation. `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` remains the guard that refuses non-loopback binds
+in the first place.
 
-Create a **full-scope** API key in **Settings → API & MCP → API keys**. Configure the client with:
-
-- username: any non-empty label, such as `interseptor`;
-- password: the full-scope API key.
-
-A read-only key is rejected because proxying creates captured flows and can send traffic. Interseptor
-removes `Proxy-Authorization` before forwarding, so the listener credential is never sent to the
-target origin.
-
-## Browser prompt
-
-The dialog saying that `moz-proxy://…` requests a username and password is Firefox's normal response
-to HTTP `407 Proxy Authentication Required`. The realm text is **interseptor**. It is the proxy asking,
-not the destination website and not a compromised page.
-
-If you do not need LAN/device capture, bind the proxy to `127.0.0.1`; the prompt disappears. If you do
-need it, enter any username and a full-scope Interseptor API key as the password. Repeated prompts mean
-the key is absent, expired, revoked, or read-only. Do not enter the target application's credentials.
-
-Command-line clients can authenticate explicitly:
-
-```bash
-curl --proxy http://192.0.2.10:8080 \
-  --proxy-user 'interseptor:FULL_SCOPE_API_KEY' \
-  https://example.com/
-```
-
-Avoid putting a real key in shell history on an engagement; use your client's protected credential
-store or an environment-specific secret mechanism.
+Anyone who can reach the listener can use the proxy, so treat a non-loopback bind as opening a
+proxy on that network: bind only the interfaces needed for the engagement, prefer tailnet or
+LAN segments you control, and close the listener after capture. Interseptor removes
+`Proxy-Authorization` before forwarding, so any client-supplied proxy credentials are never sent
+to the target origin. API keys still protect the remote control plane (UI, REST, MCP) when
+Interseptor is reached over a tunnel.
 
 ## Browser background traffic suppression
 
@@ -180,8 +159,8 @@ prompt.
 
 ## Safe network checklist
 
-- Bind only the interfaces needed for the engagement.
-- Use a scoped, expiring full key for non-loopback proxy clients.
+- Bind only the interfaces needed for the engagement, and remember a non-loopback proxy listener is
+  an open proxy for everyone who can reach it.
 - Keep the control UI loopback-only unless remote access is intentional and key-protected.
 - Enable origin verification unless the target environment requires an explicit exception.
 - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out.

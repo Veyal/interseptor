@@ -18,8 +18,8 @@ clears the search. In a narrow window, the **Section** picker opens the same sec
 | Mobile devices | Android and iOS device connection and setup helpers. |
 
 Most desktop setups use the local proxy at `127.0.0.1:8080` and control UI at `127.0.0.1:9966`.
-Read the active listener summary before changing a port. A remote or mobile client also needs the
-correct network access and proxy authentication; changing the address alone is not sufficient.
+Read the active listener summary before changing a port. A remote or mobile client needs the correct
+network access; changing the address alone is not sufficient.
 
 See [Proxy, TLS, and networking]({{ "/proxy-and-tls/" | relative_url }}) or [Mobile testing]({{ "/mobile-testing/" | relative_url }}) for
 the connection-specific details.

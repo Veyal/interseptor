@@ -235,7 +235,7 @@ func run() error {
 	// manager (rebind), the manager needs the proxy handler. Create the manager
 	// first, then the hub, then the proxy handler, then attach it to the manager.
 	sc := scope.New() // one shared target-scope matcher: control owns CRUD, the proxy gate reads it
-	pm := &proxyManager{verifyAPIKeyScope: st.VerifyAPIKeyScope}
+	pm := &proxyManager{}
 	cm := &controlManager{}
 	hub := control.New(st, eng, ca, pm, sc)
 	defer hub.Close()
@@ -511,9 +511,8 @@ func (m *controlManager) Shutdown(ctx context.Context) {
 // new listeners before tearing down old ones, so a failed rebind leaves the running
 // proxy untouched. It implements control.Rebinder and control.MultiProxyRebinder.
 type proxyManager struct {
-	handler           http.Handler
-	verifyAPIKeyScope func(string) (bool, string, error)
-	listenFn          func(string) (net.Listener, error)
+	handler  http.Handler
+	listenFn func(string) (net.Listener, error)
 
 	mu    sync.Mutex
 	addrs []string
@@ -521,49 +520,13 @@ type proxyManager struct {
 }
 
 func (m *proxyManager) serve(ln net.Listener) *http.Server {
-	srv := &http.Server{Handler: proxyListenerHandler(ln.Addr(), m.handler, m.verifyAPIKeyScope)}
+	srv := &http.Server{Handler: m.handler}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("proxy serve: %v", err)
 		}
 	}()
 	return srv
-}
-
-func proxyListenerHandler(addr net.Addr, next http.Handler, verify func(string) (bool, string, error)) http.Handler {
-	if !proxyListenerRequiresAuth(addr) {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var token string
-		credentialsPresent := false
-		if value := r.Header.Get("Proxy-Authorization"); value != "" {
-			credentials := r.Header.Get("Authorization")
-			r.Header.Set("Authorization", value)
-			_, token, credentialsPresent = r.BasicAuth()
-			if credentials == "" {
-				r.Header.Del("Authorization")
-			} else {
-				r.Header.Set("Authorization", credentials)
-			}
-		}
-		ok, scope, err := false, "", error(nil)
-		if credentialsPresent && verify != nil {
-			ok, scope, err = verify(token)
-		}
-		if err != nil || !ok || scope != store.ScopeFull {
-			w.Header().Set("Proxy-Authenticate", `Basic realm="interseptor"`)
-			w.WriteHeader(http.StatusProxyAuthRequired)
-			return
-		}
-		r.Header.Del("Proxy-Authorization")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func proxyListenerRequiresAuth(addr net.Addr) bool {
-	tcpAddr, ok := addr.(*net.TCPAddr)
-	return !ok || tcpAddr.IP == nil || !tcpAddr.IP.IsLoopback()
 }
 
 func (m *proxyManager) listenAll(addrs []string) ([]net.Listener, error) {
