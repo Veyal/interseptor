@@ -76,3 +76,32 @@ func TestExpandNumbersCapsAtMaxRequests(t *testing.T) {
 		t.Fatalf("got %d want cap %d", len(got), maxRequests)
 	}
 }
+
+func TestExpandNumbersRandomUniqueSpansFullRange(t *testing.T) {
+	r := rand.New(rand.NewSource(42))
+	got, err := ExpandNumbersRand(NumbersSpec{Start: 0, End: 1_000_000, Mode: "random", Count: 100, Unique: true}, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 100 {
+		t.Fatalf("got %d want 100", len(got))
+	}
+	seen := make(map[string]bool)
+	var sawLarge bool
+	for _, s := range got {
+		if seen[s] {
+			t.Fatalf("duplicate random number %s", s)
+		}
+		seen[s] = true
+		n := 0
+		for _, c := range s {
+			n = n*10 + int(c-'0')
+		}
+		if n > 10_000 {
+			sawLarge = true
+		}
+	}
+	if !sawLarge {
+		t.Fatal("expected numbers to span beyond the first 10,000 items in a 1,000,000 range")
+	}
+}

@@ -181,6 +181,16 @@ func (e *Engine) Close() {
 	<-done
 }
 
+// Stop cancels an active attack run without closing the engine permanently.
+func (e *Engine) Stop() {
+	e.mu.Lock()
+	cancel := e.cancel
+	e.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 type job struct {
 	label    string
 	payloads []string // one per position

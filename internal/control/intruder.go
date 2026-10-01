@@ -60,3 +60,12 @@ func (h *toolsAPI) intruderStart(w http.ResponseWriter, r *http.Request) {
 func (h *toolsAPI) intruderState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.intr.State())
 }
+
+func (h *toolsAPI) intruderStop(w http.ResponseWriter, r *http.Request) {
+	if h.intr != nil {
+		h.intr.Stop()
+		writeJSON(w, http.StatusOK, h.intr.State())
+		return
+	}
+	httpErr(w, http.StatusServiceUnavailable, "intruder engine unavailable")
+}

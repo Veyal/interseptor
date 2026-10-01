@@ -150,6 +150,7 @@ func (h *Hub) registerToolsRoutes(tools *toolsAPI) {
 	h.mux.HandleFunc("POST /api/repeater/send", tools.repeaterSend)
 	h.mux.HandleFunc("GET /api/repeater/history", tools.repeaterHistory)
 	h.mux.HandleFunc("POST /api/intruder/start", tools.intruderStart)
+	h.mux.HandleFunc("POST /api/intruder/stop", tools.intruderStop)
 	h.mux.HandleFunc("GET /api/intruder/state", tools.intruderState)
 	h.mux.HandleFunc("POST /api/ws/send", tools.wsSend)
 	h.mux.HandleFunc("POST /api/decode", tools.decode)

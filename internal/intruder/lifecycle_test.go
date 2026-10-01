@@ -224,3 +224,61 @@ func TestConcurrentCloseIsIdempotent(t *testing.T) {
 		t.Fatalf("Start after concurrent Close = %v, want ErrClosed", err)
 	}
 }
+
+func TestStopCancelsRunAndAllowsSubsequentStart(t *testing.T) {
+	started := make(chan struct{})
+	unblock := make(chan struct{})
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		select {
+		case <-unblock:
+		case <-r.Context().Done():
+		}
+	}))
+	defer target.Close()
+	defer func() {
+		select {
+		case <-unblock:
+		default:
+			close(unblock)
+		}
+	}()
+
+	e := newEngine(t)
+	spec := Spec{
+		Target:     target.URL,
+		Template:   "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+		AttackType: "repeat",
+		Repeat:     50,
+		Threads:    1,
+	}
+
+	if err := e.Start(spec); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	<-started
+	e.Stop()
+	awaitEngine(t, e)
+
+	st := e.State()
+	if st.Running {
+		t.Fatalf("expected engine not running after Stop()")
+	}
+	if st.Done >= 50 {
+		t.Fatalf("expected run to stop early, got done=%d", st.Done)
+	}
+
+	// Verify that the engine can be started again (unlike Close()).
+	quickTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer quickTarget.Close()
+
+	if err := e.Start(lifecycleSpec(quickTarget.URL)); err != nil {
+		t.Fatalf("Start after Stop should succeed, got %v", err)
+	}
+	awaitEngine(t, e)
+}
