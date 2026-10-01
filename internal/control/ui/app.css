@@ -170,9 +170,14 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 #tabs[aria-busy="true"] .tab{opacity:.55;cursor:wait}
 .nav-rail-group{display:flex;flex-direction:column;gap:2px}
 .nav-rail-group+.nav-rail-group{margin-top:var(--sp-3)}
-.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.2px;text-transform:none;color:var(--fg3);padding:5px 12px 6px}
-.nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:var(--sp-2)}
-.tab{position:relative;font-family:var(--ui);font-size:var(--fs-md);font-weight:500;color:var(--fg2);padding:10px 12px;border-radius:var(--r-md);text-align:left;display:flex;align-items:center;gap:10px;width:100%;border-left:none;letter-spacing:.1px}
+/* Group labels are wayfinding, not content: same 11px floor as every other
+   micro-label, but quieter than the items they head — no bold, wide tracking,
+   and uppercase so they read as a rule rather than a clickable row. */
+.nav-rail-group-label{font-family:var(--ui);font-size:var(--fs-xs);font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3);opacity:.8;padding:6px 12px 4px}
+.nav-rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-1);padding:var(--sp-2) 0 0}
+/* Uniform 36px hit area for every rail item, so the rail scans as one column of
+   equal targets instead of rows that grow with their label. */
+.tab{position:relative;font-family:var(--ui);font-size:var(--fs-md);font-weight:500;color:var(--fg2);min-height:36px;padding:7px 12px;border-radius:var(--r-md);text-align:left;display:flex;align-items:center;gap:10px;width:100%;border-left:none;letter-spacing:.1px}
 .tab:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px;box-shadow:0 0 0 2px var(--bg)}
 .tab:hover{color:var(--fg);background:var(--bg3)}
 .tab.active{color:var(--fg);background:var(--sel);box-shadow:inset 2px 0 0 var(--accent)}
@@ -185,10 +190,10 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .ai-tag{font-size:var(--fs-xs);font-weight:700;background:var(--accentSolid);color:var(--onAccent);border-radius:var(--r-sm);padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 /* .nav-foot-proj — active-project pill in the nav-rail foot (#projBadge). Replaces
    its inline recipe; `display` stays inline (JS toggles it at runtime). */
-.nav-foot-proj{padding:5px 9px;font-size:var(--fs-xs);font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:var(--r-md);cursor:pointer}
+.nav-foot-proj{display:block;width:100%;padding:5px 12px;font-size:var(--fs-xs);font-weight:600;color:var(--accent);background:var(--accentDim);border-radius:var(--r-md);cursor:pointer}
 /* .nav-foot-ver — version-link badge in the nav-rail foot (#verBadge). Replaces its
    inline recipe (no display toggle — always visible once version resolves). */
-.nav-foot-ver{padding:2px 9px;font-size:var(--fs-xs);color:var(--fg3);text-decoration:none}
+.nav-foot-ver{padding:2px 12px;font-size:var(--fs-xs);color:var(--fg3);text-decoration:none}
 /* tag chips on a History row — click to filter by that tag */
 .flowtag{font-size:var(--fs-xs);font-weight:600;background:var(--bg3);color:var(--fg2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:0 5px;margin-left:5px;vertical-align:middle;cursor:pointer}
 .flowtag:hover{border-color:var(--accent);color:var(--fg)}
@@ -198,12 +203,23 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .panel.active{display:flex}
 
 /* toolbar — single desktop row; scroll horizontally if the window is tight */
-.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;min-height:46px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none;overflow-x:auto;scrollbar-width:thin;box-shadow:none}
+.toolbar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);min-height:44px;padding:7px var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none;overflow-x:auto;scrollbar-width:thin;box-shadow:none}
 /* .toolbar-secondary — second tier of a 2-tier toolbar (secondary/less-frequent
    actions demoted below the primary action row). Slightly dimmer + smaller
    padding so it reads as lower visual weight, per the "toolbar max 2 tiers" rule. */
-.toolbar-secondary{min-height:36px;padding-top:var(--sp-1);padding-bottom:var(--sp-1);background:var(--bg);border-bottom:1px solid var(--line)}
-.search{display:flex;align-items:center;flex:1 1 280px;min-width:200px;max-width:420px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);height:32px;overflow:hidden;transition:background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard)}
+/* The secondary tier wraps instead of scrolling: it carries the filter pills,
+   the active-filter chips and the tag row, which are a variable-length set and
+   must all stay reachable at 390px rather than disappearing off the right edge. */
+.toolbar-secondary{min-height:36px;flex-wrap:wrap;overflow-x:visible;row-gap:var(--sp-1);padding-top:var(--sp-1);padding-bottom:var(--sp-1);background:var(--bg);border-bottom:1px solid var(--line)}
+/* Proxy's filter tier: pills, the saved-search editor, chips and tags. */
+.proxy-filter-bar{align-items:flex-start;padding-top:6px;padding-bottom:6px}
+/* The saved-search editor rides at the end of the pill row when closed and
+   claims a full row of its own when open, so opening it costs one tier, not two. */
+.flow-search-disc{flex:none;min-width:0}
+.flow-search-disc[open]{flex:1 1 100%;padding-bottom:var(--sp-1)}
+.flow-search-disc>summary{min-height:30px;white-space:nowrap}
+.flow-search-disc #flowSearchScriptEditor{margin-top:var(--sp-1)}
+.search{display:flex;align-items:center;flex:1 1 280px;min-width:200px;max-width:420px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);height:30px;overflow:hidden;transition:background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard)}
 .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentDim)}
 .search select.ui-select-native{height:100%;background:none;border:none;padding:0}
 .search input{flex:1;background:transparent;font-size:var(--fs-sm);padding:0 10px}
@@ -278,12 +294,10 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 #rows{flex:1;overflow:auto;min-height:0;background:var(--bg1)}
 .trow{height:30px;border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:var(--fs-xs);padding:0 6px;cursor:pointer;user-select:none;-webkit-user-select:none;transition:background var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard)}
 .trow:hover{background:var(--bg3)}
-.trow.sel{background:var(--sel);border-left-color:var(--accent)}
 .trow.msel{background:var(--accentDim)}
 .trow.sel.msel{background:var(--sel)}
 .trow.pending{border-left-color:var(--amber)}
 .trow.has-note{background:var(--noteDim);border-left-color:var(--amber)}
-.trow.has-note.sel{background:var(--sel);border-left-color:var(--accent)}
 .trow.has-note.msel:not(.sel){background:var(--noteDim)}
 .trow.has-note.sel.msel{background:var(--sel)}
 .trow>div{padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -299,7 +313,7 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 /* .sel-bar — the multi-selection action bar (Proxy's #selBar, shown on demand
    above the history table when rows are selected). `display` stays inline
    (toggled at runtime); this class only carries the static box styling. */
-.sel-bar{align-items:center;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:var(--r-md)}
+.sel-bar{align-items:center;flex-wrap:wrap;gap:8px;padding:6px 10px;margin:2px 0;background:var(--accentDim);border:1px solid var(--line);border-radius:var(--r-md)}
 .sel-bar .sel-count{font-weight:700;flex:none}
 .sel-bar .sel-clear{margin-left:auto}
 /* Per-flow note editor and persistent save feedback below the inspector. */
@@ -319,19 +333,23 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .pane{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg1);border-right:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
 .pane:last-child{border-right:none}
 .pane-head{flex:none;height:38px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line);box-shadow:none}
-.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;letter-spacing:.2px;color:var(--fg3)}
+.pane-head .lbl,.rep-sub,.icpt-queue-head{font-family:var(--ui);font-size:var(--fs-xs);font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3)}
 /* .micro-label — standalone all-caps section header inside a modal (REQUEST LOG,
    CONFIRMED FINDINGS, QUICK TUNNEL, RESULTS, INTERACTIONS, etc.) and the
    "HOW TO TRUST IT" label in the TLS section. Replaces the recurring inline
    `font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;color:var(--fg3)`. */
-.micro-label{font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;color:var(--fg3)}
+.micro-label{font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3)}
 /* .micro-label-accent — same label, promoted to the accent colour (section
    headers that lead a card rather than a sub-block). */
 .micro-label-accent{color:var(--accent)}
-.seg{display:inline-flex;gap:2px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);padding:2px}
-.seg button{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:4px 8px;border-radius:var(--r-sm);cursor:pointer}
-.seg button.on{color:var(--accent);background:var(--accentDim);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
+.seg{display:inline-flex;align-items:center;gap:2px;min-height:30px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);padding:2px;flex-shrink:0}
+.seg button{min-height:24px;font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:4px 8px;border-radius:var(--r-sm);cursor:pointer}
+/* Same on/off encoding as .uisw — the selected segment is the only tinted one,
+   and aria-pressed/aria-selected in the shipped HTML paints it before the
+   scripts have added the .on class. */
+.seg button.on,.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{color:var(--accent);background:var(--accentDim);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
 .pane pre{flex:1;overflow:auto;margin:0;padding:11px 14px;font-size:var(--fs-xs);line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--fg)}
+pre.hex-dump{white-space:pre;word-break:normal;overflow-x:auto;font-family:var(--mono);line-height:1.45}
 .http-render-frame{display:block;box-sizing:border-box;width:100%;height:100%;min-height:360px;border:1px solid var(--line);border-radius:6px;background:var(--document-bg)}
 .sel-decode{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--noteDim);border-bottom:1px solid var(--line);font-size:var(--fs-xs);min-height:0;max-height:56px}
 .sel-decode[hidden]{display:none!important}
@@ -373,7 +391,6 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .toggle.on{color:var(--accent);background:var(--accentDim)}
 .held{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:6px;cursor:pointer;font-size:var(--fs-xs)}
 .held:hover{background:var(--bg3)}
-.held.sel{border-color:var(--accent);background:var(--accentDim)}
 .held .m{font-weight:700}
 .held .h{color:var(--fg2)}
 .held .p{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
@@ -395,8 +412,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .scroll{overflow:auto;min-height:0;flex:1}
 
 /* intercept workspace */
-.icpt-bar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line2);background:var(--bg2);overflow-x:auto;scrollbar-width:thin}
-.icpt-cond{display:flex;align-items:center;gap:8px;flex:1;min-width:300px}
+.icpt-bar{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);padding:7px var(--sp-4);border-bottom:1px solid var(--line2);background:var(--bg2);overflow-x:auto;scrollbar-width:thin}
+.icpt-cond{display:flex;align-items:center;gap:var(--sp-2);flex:1;min-width:300px}
 .icpt-cond .icpt-chk{display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap;color:var(--fg2);font-size:var(--fs-sm)}
 /* .chk-row — panel-agnostic checkbox-row label (Settings/AI/Session/Scanner).
    The common form of the recurring inline
@@ -411,7 +428,6 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .icpt-list{flex:1;overflow:auto;min-height:0}
 .icpt-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer;font-size:var(--fs-xs)}
 .icpt-item:hover{background:var(--bg3)}
-.icpt-item.sel{background:var(--sel);border-left-color:var(--accent)}
 .icpt-item .m{font-weight:700;flex:none}
 .icpt-item .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .icpt-tag{font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;border-radius:var(--r-sm);padding:1px 5px;flex:none;border:1px solid currentColor}
@@ -438,12 +454,18 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    Responses switches use this). Named "uisw" (not "sw") because tools.js
    already uses a bare .sw class for the Intruder payload-position legend
    dots — do not rename this back to .sw. */
-.uisw{font-family:var(--ui);display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm);font-weight:600;color:var(--fg2);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-lg);padding:7px 13px;cursor:pointer}
-.uisw:hover{color:var(--fg)}
+/* One on/off encoding for every toggle pill in the app: off is a neutral
+   outline on --bg2, on is an accent-tinted fill with accent text. aria-pressed
+   is styled alongside the .on class the scripts set, because the shipped HTML
+   already carries the truth (TestUISharedToggleAndSegmentContracts) and the
+   pills used to disagree with each other — "Hide TLS failures" rendered as a
+   green outline while "Manual" next to it rendered as a green fill. */
+.uisw{font-family:var(--ui);display:inline-flex;align-items:center;gap:var(--sp-2);min-height:30px;font-size:var(--fs-sm);font-weight:600;color:var(--fg2);background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-pill);padding:4px 12px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.uisw:hover{color:var(--fg);background:var(--bg3);border-color:var(--line2)}
 .uisw b{color:var(--fg3);font-weight:700}
 .uisw .uisw-led{width:9px;height:9px;border-radius:50%;background:var(--line2);flex:none;transition:background var(--motion-fast) var(--motion-standard)}
-.uisw.on{color:var(--fg);border-color:var(--state-on);background:var(--accentDim)}
-.uisw.on b{color:var(--state-on)}
+.uisw.on,.uisw[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accentDim)}
+.uisw.on b,.uisw[aria-pressed="true"] b{color:var(--state-on)}
 .uisw.on .uisw-led{background:var(--state-on);box-shadow:0 0 8px var(--state-on);animation:pulse var(--motion-live-slow) var(--motion-standard) infinite}
 
 /* .state-empty — shared empty-state component (icon + title + one-line hint
@@ -481,10 +503,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .modal-shell-body{flex:1;overflow:auto;padding:var(--sp-4)}
 .modal-shell-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-2);padding:12px 20px;border-top:1px solid var(--line);background:var(--bg1)}
 /* .modal-overlay — fixed full-viewport dim layer behind a .modal-shell dialog.
-   display is intentionally NOT set here: the initial inline style="display:none"
-   hides the layer and JS flips el.style.display='flex' at runtime (inline wins
-   over class), at which point the align/justify here center the dialog. */
-.modal-overlay{position:fixed;inset:0;background:var(--overlay);z-index:200;align-items:center;justify-content:center}
+   The closed state lives here rather than on 19 inline style="display:none"
+   attributes: openModal()/closeModal() in core.js write el.style.display='flex'
+   and 'none' explicitly, and an inline declaration always beats this class, so
+   the runtime contract is unchanged. */
+.modal-overlay{position:fixed;inset:0;display:none;background:var(--overlay);z-index:200;align-items:center;justify-content:center}
 /* .modal-overlay-high — stacking modifier for dialogs that must float above other
    open modals (confirm/prompt/setup). Applied in addition to .modal-overlay. */
 .modal-overlay-high{z-index:240}
@@ -578,8 +601,11 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .oob-row .oob-t{color:var(--fg3);text-align:right}
 
 /* active-filter chips */
-#chips{display:none;flex-wrap:wrap;gap:6px;padding:0 12px;background:var(--bg1)}
-#chips.has{display:flex;padding:8px 12px;border-bottom:1px solid var(--line)}
+/* Chips and the tag row now ride inside the Proxy filter tier, so they own no
+   padding, background or rule of their own — they wrap onto their own line when
+   they have content and collapse to nothing when they do not. */
+#chips{display:none;flex-wrap:wrap;gap:6px;flex:1 1 100%;min-width:0}
+#chips.has{display:flex}
 .chip{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-xs);background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-xl);padding:3px 5px 3px 11px;color:var(--fg)}
 .chip b{color:var(--accent);font-weight:600}
 .chip.not{border-color:var(--red)}
@@ -593,7 +619,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    this class only carries the static box styling. */
 .info-banner{padding:5px 12px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:var(--fs-xs);color:var(--fg3)}
 /* tag quick-bar: one-click filter chips for the project's tags (right-click to color) */
-.tagbar{flex-wrap:wrap;gap:6px;padding:7px 12px;background:var(--bg1);border-bottom:1px solid var(--line)}
+.tagbar{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%;min-width:0}
 .tagchip{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-xs);font-weight:600;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-lg);padding:2px 9px;color:var(--fg2);cursor:pointer}
 .tagchip:hover{color:var(--fg);border-color:var(--accent)}
 .tagchip.on{background:var(--sel);border-color:currentColor}
@@ -616,7 +642,6 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-hist{width:180px;flex:none;border-right:1px solid var(--line2);overflow:auto;background:var(--bg1)}
 .rep-hist .h{display:flex;flex-direction:column;gap:2px;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:var(--fs-xs)}
 .rep-hist .h:hover{background:var(--bg3)}
-.rep-hist .h.sel{background:var(--sel);color:var(--fg)}
 .rep-hist .h.sel>div:first-child{color:var(--accent);font-weight:700}
 .rep-hist .h .u{color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rep-hist-more{width:100%;padding:8px 10px;border:0;border-bottom:1px solid var(--line);background:var(--bg2);color:var(--accent);font:inherit;font-size:var(--fs-xs);text-align:left;cursor:pointer;transition:background var(--motion-fast) var(--motion-standard),color var(--motion-fast) var(--motion-standard)}
@@ -639,9 +664,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-tab-add:hover{color:var(--fg);background:var(--bg2)}
 .rep-tab-add[aria-disabled="true"]{cursor:not-allowed;color:var(--fg3);background:var(--bg3);opacity:.72}
 /* repeater request line + workspace */
-.rep-line{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
-.rep-method{height:30px;border-radius:var(--r-md);background:transparent;border:1px solid var(--line2);color:var(--fg);padding:0 10px;font-weight:700;cursor:pointer;flex:none}
-.rep-method:hover{border-color:var(--accent)}
+.rep-line{flex:none;display:flex;align-items:center;gap:var(--sp-2);padding:7px var(--sp-4);border-bottom:1px solid var(--line);background:var(--bg)}
 .rep-line .repurl{font-family:var(--mono)}
 #repSend{display:inline-flex;align-items:center;gap:6px;flex:none}
 #repSend .kbd{font-size:var(--fs-xs);font-weight:600;opacity:.75}
@@ -667,7 +690,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-field>textarea.rep-edit::placeholder{color:var(--fg3)}
 .rep-field>textarea.rep-edit::selection{background:var(--accentDim);color:transparent}
 /* intruder workspace */
-.intr-bar{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line2);background:var(--bg2)}
+.intr-bar{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);padding:7px var(--sp-4);border-bottom:1px solid var(--line2);background:var(--bg2)}
 .intr-sep{width:1px;align-self:stretch;background:var(--line2);margin:3px 2px;flex:none}
 .intr-num{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-xs);font-weight:600;color:var(--fg2);background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:4px 9px;white-space:nowrap}
 .intr-num span{color:var(--fg3)}
@@ -692,6 +715,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-pl-h{flex:none;display:flex;align-items:center;gap:6px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;color:var(--fg2);border-bottom:1px solid var(--line);background:var(--bg1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .intr-pl-h .sw{width:9px;height:9px;border-radius:var(--r-sm);flex:none}
 .intr-pl-h .btn{padding:1px 7px;font-size:var(--fs-xs);flex:none}
+.intr-pl-h .intr-preset-select{height:22px;font-size:var(--fs-xs);padding:0 6px;border:1px solid var(--line2);background:var(--bg2);color:var(--fg2);border-radius:var(--r-sm);cursor:pointer}
 .intr-pl-note:empty{display:none}
 .intr-pl-note:not(:empty){flex:none;padding:2px 9px 3px;font-size:var(--fs-xs);line-height:1.35}
 .intr-pl textarea{flex:1;border-top:none;padding-top:5px}
@@ -700,7 +724,6 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .intr-progbar{flex:none;height:3px;background:var(--bg3);overflow:hidden}
 .intr-progbar>div{height:100%;background:var(--accent);width:0;transition:width var(--motion-base) var(--motion-standard)}
 .settings-wrap{flex:1;display:flex;min-height:0}
-.settings-origin-tls-warning{flex:none;padding:10px 26px;border-bottom:1px solid var(--dangerLine);background:var(--redDim);color:var(--dangerFg);font-family:var(--ui);font-size:var(--fs-sm);line-height:1.45}
 .settings-nav{flex:none;width:218px;border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:3px;overflow:auto;background:var(--bg)}
 .settings-picker{display:none}
 .proxy-listener-row .ui-select-trigger{min-height:36px;background:var(--bg2)}
@@ -733,6 +756,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    the Port field. */
 .proxy-listener-row .ui-select,.proxy-listener-row .ui-select .ui-select-trigger{width:100%}
 .settings-body .section h3{font-family:var(--ui);font-size:var(--fs-lg);font-weight:600;letter-spacing:0;text-transform:none;color:var(--fg);margin-bottom:12px}
+/* A sub-block label inside a settings section is a micro-label, not a second
+   section heading. Two of them used to be SHOUTED plain text at heading size. */
+.settings-body .section h3.micro-label{font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--fg3)}
 .settings-body .field{max-width:460px;margin-bottom:20px}
 .settings-body .field:last-of-type{margin-bottom:14px}
 .settings-lead{line-height:1.6;margin-bottom:16px}
@@ -773,7 +799,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .ui-select-opt-title{font-weight:600;line-height:1.35;width:100%}
 .ui-select-opt-sub{font-size:var(--fs-xs);color:var(--fg3);line-height:1.4;width:100%}
 .ui-select-opt.sel .ui-select-opt-sub{color:var(--fg2)}
-.ui-select-btn .ui-select-trigger{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:6px 11px;border-radius:var(--r-md);background:var(--bg3);border:1px solid transparent;width:auto}
+.ui-select-btn .ui-select-trigger{font-size:var(--fs-xs);font-weight:600;color:var(--fg2);padding:0 11px;height:30px;min-height:30px;box-sizing:border-box;border-radius:var(--r-md);background:var(--bg3);border:1px solid transparent;width:auto}
 .ui-select-btn .ui-select-trigger:hover:not(:disabled){color:var(--fg);background:var(--line);border-color:transparent}
 .ui-select-search{display:flex;height:100%;align-self:stretch}
 .ui-select-search .ui-select-trigger{height:100%;border:none;border-right:1px solid var(--line);border-radius:0;background:var(--bg2);color:var(--fg2);font-size:var(--fs-xs);font-weight:600;padding:0 8px;width:auto;min-width:72px}
@@ -787,7 +813,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .android-proxy-seg{width:100%;display:flex;padding:3px;gap:3px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md)}
 .android-proxy-seg button{flex:1;padding:8px 10px;font-size:var(--fs-sm);font-weight:600;border-radius:var(--r-sm);color:var(--fg2)}
 .android-proxy-seg button.on{color:var(--accent);background:var(--accentDim)}
-.android-lan-hint{display:flex;flex-wrap:wrap;align-items:center;gap:8px;line-height:1.5}
+/* Tucks up under the device toolbar it explains. */
+.android-lan-hint{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 10px;line-height:1.5}
 .android-lan-hint .btn{padding:4px 10px;font-size:var(--fs-xs);flex:none}
 .android-toolbar>.btn{align-self:flex-end;margin-bottom:1px;flex:none}
 .settings-body .hint{font-size:var(--fs-sm)}
@@ -809,6 +836,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* intruder results */
 .intr-head,.intr-row{display:grid;grid-template-columns:42px 1fr 52px 66px 60px;align-items:center;padding:0 8px}
 .intr-head{flex:none;height:26px;background:var(--bg2);border-bottom:1px solid var(--line);font-size:var(--fs-xs);font-weight:700;letter-spacing:.6px;color:var(--fg2)}
+.intr-head>div{cursor:pointer;user-select:none}
+.intr-head>div:hover{color:var(--fg)}
+.intr-head>div.sorted{color:var(--accent)}
 .intr-row{height:25px;border-bottom:1px solid var(--line);font-size:var(--fs-xs);cursor:pointer}
 .intr-row:hover{background:var(--bg3)}
 .intr-src-seg{display:inline-flex;gap:2px;margin-left:6px}
@@ -831,7 +861,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* scanner */
 /* .find-toolbar-row/.find-view are shared by the Scanner + Findings toolbars/split
    views (same "row of controls" / "list+detail split" shape in both panels). */
-.find-toolbar-row{gap:6px;flex:1;flex-wrap:wrap}
+.find-toolbar-row{gap:var(--sp-2);flex:1;flex-wrap:wrap}
 .findings-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;min-height:60px;padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--line2)}
 .findings-toolbar-title{display:flex;align-items:baseline;gap:9px;min-width:150px;font-family:var(--ui)}
 .findings-toolbar-title strong{font-size:var(--fs-xl);letter-spacing:-.2px;color:var(--fg)}
@@ -849,7 +879,6 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .scan-list{width:330px;flex:none;border-right:1px solid var(--line2);overflow:auto;background:var(--bg1)}
 .scan-item{padding:9px 12px;border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer}
 .scan-item:hover{background:color-mix(in srgb,var(--bg3) 84%,transparent)}
-.scan-item.sel{background:var(--sel);border-left-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .scan-item .t{margin-top:5px;color:var(--fg);font-size:var(--fs-sm)}
 .scan-item .tg{font-size:var(--fs-xs);color:var(--accent);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scan-target{max-width:230px}
@@ -863,10 +892,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 /* findings */
 .find-row{display:grid;grid-template-columns:auto auto 1fr;gap:4px 10px;padding:12px 14px;border-bottom:1px solid var(--line);border-left:3px solid transparent;cursor:pointer;align-items:baseline;transition:background var(--motion-base) var(--motion-standard),border-color var(--motion-base) var(--motion-standard),box-shadow var(--motion-base) var(--motion-standard);margin-bottom:2px;border-radius:var(--r-md)}
 .find-row:hover{background:color-mix(in srgb,var(--bg3) 84%,transparent)}
-.find-row[aria-selected="true"]{background:var(--sel);border-left-color:var(--accent)}
 .btn.find-mobile-back{display:none}
 .find-block-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 5px;min-width:0;font-size:var(--fs-xs);color:var(--fg3)}.find-block-meta label{display:inline-flex;align-items:center;gap:4px;min-width:0}.find-block-meta .find-proof-label{flex:1 1 280px}.find-block-meta select{height:25px;padding:2px 5px;font-size:var(--fs-xs)}.find-block-proof{width:100%;min-width:0;padding:3px 6px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--fg);font:inherit}.find-block-proof:placeholder-shown{border-color:var(--amber)}.find-provenance{font-family:var(--mono);font-size:var(--fs-xs);color:var(--fg3)}.find-report-meta{display:flex;align-items:center;gap:7px;margin-bottom:4px}.find-role-badge{font:700 var(--fs-xs) var(--mono);text-transform:uppercase;letter-spacing:.4px;color:var(--accent)}.find-proof-read{margin-top:7px;padding:6px 8px;border-left:2px solid var(--accent);background:var(--accentDim);font-size:var(--fs-sm);line-height:1.45}.find-proof-needed{margin-top:7px;padding:5px 8px;border-left:2px solid var(--amber);color:var(--amber);font-size:var(--fs-xs);font-style:italic}
-.find-row.sel{background:var(--sel);border-left-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .find-row .find-id{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;color:var(--fg3)}
 .find-row .find-title{font-size:var(--fs-md);font-weight:600;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .find-row .sev{font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
@@ -992,7 +1019,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-flow-pick .m{font-weight:700;flex:none;width:44px}
 .find-flow-pick .p{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
 .find-flow-pick .sts{flex:none;font-size:var(--fs-xs)}
-.btn.xs{padding:1px 6px;font-size:var(--fs-xs)}
+.btn.xs{min-height:24px;padding:1px 6px;font-size:var(--fs-xs)}
 .scan-tgt[data-flow]:hover{border-color:var(--accent)!important}
 /* Map toolbar field widths (extracted from former per-instance inline styles). */
 .map-domain{max-width:240px}
@@ -1177,10 +1204,13 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #main{width:100%;min-width:0;overflow:hidden}
   .panel{min-width:0;overflow:hidden}
   #panel-proxy.active{overflow-y:auto}
+  #panel-proxy{overflow-x:hidden}
   #panel-proxy.active #rows{flex:1 0 100px}
   #panel-proxy.active #inspect{height:38%;flex-direction:column}
   #panel-proxy.active #inspect .pane{flex:1;min-height:110px}
+  #panel-proxy.active #inspect .pane-head{flex-wrap:wrap;height:auto;min-height:38px;padding:4px 12px;gap:6px}
   .icpt-bar{flex-wrap:wrap;overflow-x:visible}
+  .icpt-edhead{flex-wrap:wrap;gap:8px}
   .icpt-cond{flex:1 0 100%;min-width:0}
   .icpt-work{flex-direction:column}
   .icpt-queue{width:100%;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
@@ -1283,7 +1313,7 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
   .checks-work>.checks-sidebar{width:100%;min-width:0;max-height:220px;border-right:none;border-bottom:1px solid var(--line)}
 }
 .checks-editor{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
-.checks-editor-actions{flex-wrap:wrap}
+.checks-editor-actions{flex-wrap:wrap;padding:var(--sp-2) var(--sp-3);gap:var(--sp-2)}
 .checks-editor-id{width:210px;min-width:0}
 @media (max-width:720px){
   .checks-editor-actions{align-items:stretch}
@@ -1477,3 +1507,181 @@ details[open]>summary::before{content:'▾'}
 .history-welcome{min-height:100%;height:auto}
 
 .history-welcome-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+/* ─── Selected row ───────────────────────────────────────────────────────────
+   Every list in the app marks its selected row the same way: a 3px inset accent
+   bar plus the --sel wash. Each list used to invent its own — Proxy and Intercept
+   coloured a 2px left border, Scanner and Findings painted a 2px border AND a 3px
+   inset shadow (a 5px bar), Intercept's hold queue switched the whole border to
+   accent over --accentDim, and Repeater history had no bar at all. An inset
+   shadow is used rather than a border because it cannot move the row's content
+   under the cursor (TestUIHoverStatesDoNotShiftLayout). Declared after the
+   components so it wins over their hover/state backgrounds. */
+.trow.sel,.trow.has-note.sel,.icpt-item.sel,.scan-item.sel,.find-row.sel,.held.sel,.rep-hist .h.sel,.codecs-list .codecs-row.sel{background:var(--sel);border-color:var(--line);border-left-color:transparent;box-shadow:inset 3px 0 0 var(--accent)}
+.rep-hist .h.sel,.held.sel{color:var(--fg)}
+
+/* ─── Utility layer ──────────────────────────────────────────────────────────
+   index.html used to carry 388 style="…" attributes (72 margin-bottom, 76 gap,
+   52 width, 40 color, 39 padding, 33 flex-wrap …). An inline declaration cannot
+   follow the theme toggle, cannot be overridden at the 720/900/1100 breakpoints,
+   and is invisible to every other test in ui_design_system_test.go — which is how
+   untokenized spacing and theme-blind colour kept reappearing after each cleanup.
+   These composable classes replace them and read only from the spacing, type
+   and colour tokens. Declared last so a single-class utility beats the single-class
+   component rule it is narrowing (.field's margin-bottom, .evidence's margin).
+   TestUIIndexHasNoInlineDesignStyles enforces that markup uses them. */
+
+/* Only `display` may still be declared inline: a few elements are shown by JS
+   writing el.style.display directly, where an empty reset ('') has to fall back
+   to the element's natural display rather than to a stylesheet rule. */
+/* Doubled so it outranks component display rules such as .btn (0-1-3) while
+   still yielding to the inline value scripts write to reveal the element. */
+.u-hidden.u-hidden{display:none}
+
+/* Flow */
+.u-flex{display:flex}
+.u-col{display:flex;flex-direction:column}
+.u-wrap{flex-wrap:wrap}
+.u-ai-start{align-items:flex-start}
+.u-ai-end{align-items:flex-end}
+.u-flex-1{flex:1}
+.u-gap-1{gap:var(--sp-1)}
+.u-gap-2{gap:var(--sp-2)}
+.u-gap-3{gap:var(--sp-3)}
+.u-gap-4{gap:var(--sp-4)}
+
+/* Spacing — the 8px scale only; the stray 6px/10px/14px inline values were
+   rounded onto it, which is the point of having a scale. */
+.u-m-0{margin:0}
+.u-pad-2{padding:var(--sp-2)}
+.u-pad-4{padding:var(--sp-4)}
+.u-mb-1{margin-bottom:var(--sp-1)}
+.u-mb-2{margin-bottom:var(--sp-2)}
+.u-mb-3{margin-bottom:var(--sp-3)}
+.u-mb-4{margin-bottom:var(--sp-4)}
+.u-mt-1{margin-top:var(--sp-1)}
+.u-mt-2{margin-top:var(--sp-2)}
+.u-mt-3{margin-top:var(--sp-3)}
+.u-mt-4{margin-top:var(--sp-4)}
+.u-mt-5{margin-top:var(--sp-5)}
+.u-ml-2{margin-left:var(--sp-2)}
+
+/* Type and colour — every value is a token, so both themes stay contrast-checked
+   by TestUIThemeContrastMeetsWCAGAA. */
+.u-fs-xs{font-size:var(--fs-xs)}
+.u-fs-sm{font-size:var(--fs-sm)}
+.u-fs-md{font-size:var(--fs-md)}
+.u-bold{font-weight:700}
+.u-fg2{color:var(--fg2)}
+.u-fg3{color:var(--fg3)}
+.u-accent{color:var(--accent)}
+.u-warn{color:var(--amber)}
+.u-danger{color:var(--red)}
+.u-lh{line-height:var(--lh-normal)}
+.u-prewrap{white-space:pre-wrap}
+.u-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.u-no-underline{text-decoration:none}
+.u-w-full{width:100%}
+.u-cursor{cursor:pointer}
+/* A framed sub-card inside a dialog body (OOB quick-tunnel block, Authz scope
+   panel): the one recurring "box inside a box" recipe. */
+.panel-card{border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;background:var(--bg)}
+/* A .btn wrapping a hidden <input type=file>: it is a <label>, so it needs the
+   block/centre treatment the flex button rule gives real buttons. */
+.btn-file{display:block;text-align:center}
+
+/* Table column ladder. ~25 <th> elements carried inline widths of 30/34/60/64/
+   70/72/80/84/90/96/110/120/130/150/220/280px — a continuum, not a scale. These
+   six steps are what those values snap to. */
+.col-1{width:36px}
+.col-2{width:64px}
+.col-3{width:96px}
+.col-4{width:132px}
+.col-5{width:220px}
+.col-6{width:280px}
+
+/* Inline-row field sizing. These widths are per-field editorial decisions (a port
+   box is not a URL box), so they stay keyed to the field rather than pretending
+   to be a scale — but they belong in the stylesheet, where a breakpoint can
+   reach them. */
+#intrTarget{flex:1 1 240px;min-width:200px;max-width:420px}
+#intrGrep,#intrExtract,#intrProc{flex:1;min-width:140px}
+#peerUrl,#vaultUrl{flex:1;min-width:280px}
+#oobBase,#oobUrl{flex:1;min-width:240px}
+#oobModalTunnelCmd{flex:1;min-width:200px}
+#macroTarget,#macroExtract,#macroName,#loginMacroTarget,#pmNew,#projSelect{min-width:200px}
+#retPatternInput{min-width:200px;max-width:340px;border:1px solid var(--line)}
+#keyLabel,#allowCIDR,#vaultKey{max-width:220px}
+#peerKey{max-width:200px}
+#allowLabel,#vaultBackupId{max-width:160px}
+#vaultBackupLabel{max-width:140px}
+#keyScope,#keyExpiry,#peerLabel,#authzMax,#newScopePath{max-width:132px;width:132px}
+#retMaxAge,#retMaxFlows{width:110px}
+#loginMacroRefresh{width:72px}
+#setControlHost{width:100%;text-align:left}
+#setControlPort,#projNew,#codecNew{width:100%}
+#promptInput{width:100%;border:1px solid var(--line);font-size:var(--fs-md);padding:9px 11px}
+#projNewPath,#pmNewPath{width:100%;font-size:var(--fs-xs)}
+/* A .field sitting in a horizontal row rather than a stacked form: it drops the
+   column's bottom margin and takes one of five widths instead of the block
+   420px cap. The sizes are the SSH/host/port/user shapes those rows actually
+   hold. */
+.field-inline{margin-bottom:0;min-width:0}
+.field-inline-xs{min-width:72px;max-width:88px}
+.field-inline-sm{min-width:100px;max-width:120px}
+.field-inline-md{flex:1;min-width:140px}
+.field-inline-lg{flex:1;min-width:180px;max-width:none}
+.field-inline-xl{flex:1;min-width:220px}
+.field-inline-port{width:120px;flex:none}
+#setSessionUnscoped{margin-top:2px}
+#checksPackList{padding:6px 0}
+#retentionPolicyHint{margin:-6px 0 12px}
+
+/* The hidden <svg> that carries the icon sprite. Never painted; it exists only so
+   <use href="#i-…"> can resolve without a network request. */
+#iconSprite{position:absolute;width:0;height:0;overflow:hidden}
+#mapGraphSvg{width:100%;height:100%;background:var(--bg1);cursor:grab}
+#mapGraphWrap{flex:1;min-height:0;position:relative}
+#mapParams{padding:10px 14px}
+#notesPreview{flex:1;overflow:auto;padding:16px 22px}
+#repTabPanel,#intrTabPanel{flex:1;display:flex;flex-direction:column;min-height:0}
+#intrTemplate,#checkSrc,#codecSrc{border-top:none}
+#intrTemplate{flex:1}
+#checksList,#codecsList{flex:1;overflow:auto}
+#compareBody{padding:12px 16px;overflow:auto;min-height:0;flex:1}
+#setupBody{padding:18px 20px;overflow:auto;min-height:0;flex:1;font-size:var(--fs-md);line-height:var(--lh-normal)}
+#restLoadState,#scopeLoadState,#sessionLoadState,#projectLoadState,#scopeDupWarn{margin-bottom:var(--sp-2)}
+#tlsDiagPanel{margin-bottom:var(--sp-3);padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);line-height:var(--lh-normal)}
+#authzScopePanel{border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;background:var(--bg)}
+#authzIds,#pmList{display:flex;flex-direction:column;gap:var(--sp-2)}
+#sessionExpiry{font-size:var(--fs-xs);padding:2px 7px;border-radius:var(--r-sm);background:var(--bg3)}
+#mapDscFerox,#mapDscFfuf{flex:1;margin:0;font-size:var(--fs-xs);white-space:pre-wrap}
+
+/* Textareas that fill their field. Replaces the repeated inline
+   `font-family:var(--mono);width:100%;resize:vertical`. */
+.textarea-full{width:100%;resize:vertical;font-family:var(--mono)}
+/* Passthrough / verification host lists: the same framed monospace editor twice. */
+.host-list-edit{width:100%;min-height:96px;padding:var(--sp-2) var(--sp-3);background:var(--bg3);color:var(--fg);border:1px solid var(--line);border-radius:var(--r-md);font-family:var(--mono);font-size:var(--fs-xs);line-height:var(--lh-normal);resize:vertical}
+#originTLSVerifyBypassList{min-height:72px}
+#flowSearchScriptEditor{width:100%;min-height:96px;resize:vertical;font-family:var(--mono)}
+#decIn{height:120px;border:1px solid var(--line);border-radius:var(--r-md)}
+#decOut{height:170px;background:var(--bg1);border:1px solid var(--line);border-radius:var(--r-md)}
+/* Bulleted reference lists inside a .ca-how disclosure. */
+.ca-how ul{margin:var(--sp-2) 0 var(--sp-1);padding-left:20px;color:var(--fg2);line-height:var(--lh-loose)}
+/* Checks/codecs editor chrome — was duplicated inline on both dialogs. */
+.checks-editor-actions,.checks-mode-bar{flex:none;border-bottom:1px solid var(--line)}
+.checks-mode-bar{padding:6px var(--sp-3);gap:var(--sp-3)}
+.checks-sidebar-foot{padding:var(--sp-2);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+/* Small confirm/prompt dialogs. */
+.modal-sm{width:420px;max-width:92%}
+.modal-md{width:min(580px,94%);max-height:88vh}
+.modal-lg{width:94%;max-width:760px;max-height:86vh}
+.modal-lg-tall{width:94%;max-width:760px;max-height:88vh}
+.modal-xl{width:94%;max-width:900px;max-height:88vh}
+.modal-sm-tall{width:94%;max-width:560px;max-height:86vh}
+.modal-plain-head{padding:14px 16px 0}
+.modal-plain-body{padding:12px 16px}
+/* Panes inside the Settings › API & MCP sub-tabs. apipanel.js flips
+   el.style.display between 'block' and 'none'; only the initial state lives here,
+   so the first pane (#apiKeys) needs no rule. */
+#apiAllowlist,#apiShare,#apiRest,#apiMcp{display:none}

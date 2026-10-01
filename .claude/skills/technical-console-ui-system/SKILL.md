@@ -21,6 +21,15 @@ scan under pressure.
   for methods, URLs, status codes, raw HTTP, paths, and operational metadata.
 - Prefer thin rails, inset rules, corner/frame cues, and a very subtle grid to
   large decorative backgrounds or rounded dashboard cards.
+- Never add an inline `style=` for colour, background, spacing, typography,
+  width, or flex layout to `index.html`; use a component class or the `.u-*`
+  utilities in `app.css` (`TestUIIndexHasNoInlineDesignStyles` enforces this).
+  An inline `display:none` is acceptable only when a script shows the element
+  with `el.style.display=''` and therefore needs the inline value to fall back
+  to; otherwise use the `hidden` attribute or `.u-hidden`.
+- A JS-rendered list with one current row is a listbox: wire it with
+  `js/listbox.js` (`wireListbox`, `setListboxSelection`) rather than giving
+  every row its own Tab stop.
 - Follow the [UI motion specification](../../../docs/ui-motion-spec.md) for
   allowed motion, shared tokens, performance limits, and reduced-motion behavior.
   Never use video on the login gate. A static visual must be low contrast,

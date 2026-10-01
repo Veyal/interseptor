@@ -29,7 +29,7 @@ export function bindTargetCleanup(root, collect, apply) {
         } catch(error) { if(panel.isConnected)toast(error.message,'error'); }
         finally { if(applyButton.isConnected)applyButton.disabled=false; }
       };
-    } catch (error) { if (panel.isConnected && owner === epoch) panel.textContent = error.message + ' Preview again to retry.'; }
+    } catch (error) { if (panel.isConnected && owner === epoch) panel.innerHTML = `<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><span class="state-error-msg" role="alert">${esc(error.message)} Preview again to retry.</span></div>`; }
     finally { if (button.isConnected && owner === epoch) button.disabled = false; }
   };
 }

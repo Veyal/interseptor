@@ -257,12 +257,41 @@ func TestUISelectableRowsExposeTheirCurrentState(t *testing.T) {
 		"aria-current=\"${f.id===state.selId?'true':'false'}\"",
 		"aria-pressed=\"${state.selected.has(f.id)?'true':'false'}\"",
 	)
+	// Findings rows are real links, so "current" there stays aria-current.
+	requireUIContracts(t, "js/findings.js", "aria-current=\"${f.id === selFinding ? 'true' : 'false'}\"")
+	// Single-select JS-rendered lists are listboxes: role=option + aria-selected,
+	// not role=button + aria-current. They share js/listbox.js so every one of
+	// them keeps a single Tab stop and the same Arrow/Home/End contract.
 	requireUIContracts(t, "js/intercept.js",
-		"aria-current=\"${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}\"",
-		"el.setAttribute('aria-current',selected?'true':'false')",
+		"aria-selected=\"${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}\"",
+		"wireListbox(list,list.querySelectorAll('.icpt-item')",
+		"selectionFollowsFocus:true",
+		"setListboxSelection($$('#heldList .icpt-item')",
 	)
-	requireUIContracts(t, "js/findings.js", "aria-current=\"${f.id === selFinding ? 'page' : 'false'}\"")
-	requireUIContracts(t, "js/tools.js", "aria-current=\"${f.id===t.resId?'true':'false'}\"")
+	requireUIContracts(t, "js/tools.js",
+		"aria-selected=\"${f.id===t.resId?'true':'false'}\"",
+		"aria-selected=\"${h===intrDisplayedHistory?'true':'false'}\"",
+		"wireListbox(box.querySelector('[data-rep-history-rows]'),box.querySelectorAll('.h')",
+		"wireListbox(box,box.querySelectorAll('.h')",
+	)
+	for _, asset := range []string{"js/intercept.js", "js/tools.js"} {
+		if strings.Contains(readUIAsset(t, asset), "aria-current=") {
+			t.Errorf("%s: a single-select list must expose aria-selected, not aria-current", asset)
+		}
+	}
+	listbox := requireUIContracts(t, "js/listbox.js",
+		"container.setAttribute('role', 'listbox')",
+		"el.setAttribute('role', 'option')",
+		"const NAV_KEYS = ['ArrowDown', 'ArrowUp', 'Home', 'End']",
+		"el.tabIndex = i === stop ? 0 : -1",
+		"if (selectionFollowsFocus && to !== from && activate) activate(els[to], e)",
+		"export function setListboxSelection(rows, isSelected)",
+	)
+	// One Tab stop: every option but the current one must be removed from the
+	// tab order, and Enter/Space activation stays owned by core.js wireRowKey.
+	if !strings.Contains(listbox, "wireRowKey(el,") {
+		t.Fatal("listbox options must reuse core.js wireRowKey for Enter/Space activation")
+	}
 }
 
 func TestUIActivityOnlyMakesActionableRowsKeyboardStops(t *testing.T) {

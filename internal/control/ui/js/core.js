@@ -577,7 +577,7 @@ export function enhanceSelect(sel){
   const wrap=document.createElement('div');
   wrap.className='ui-select';
   if(sel.classList.contains('btn'))wrap.classList.add('ui-select-btn');
-  if(sel.classList.contains('rep-method'))wrap.classList.add('ui-select-rep');
+  if(sel.classList.contains('rep-method')||sel.classList.contains('repurl'))wrap.classList.add('ui-select-rep');
   if(sel.closest('.search'))wrap.classList.add('ui-select-search');
   if(sel.closest('.rules-tbl')||sel.closest('td'))wrap.classList.add('ui-select-inline');
   if(sel.closest('.settings-body .field'))wrap.classList.add('ui-select-field');
@@ -894,6 +894,105 @@ export function dropFlowsFrom(store,index){
   const dropped=store.order.splice(index);
   dropped.forEach(d=>store.byId.delete(d.id));
   return dropped;
+}
+
+/* ---- diffVisibleRows: keyed reconciliation plan for a windowed list.
+   Pure function, no DOM: given the ids currently mounted (`prevIds`, in DOM
+   order) and the ids the next render should mount (`nextIds`, in render order),
+   it returns the minimal remove/insert plan that turns one into the other —
+   so a caller can patch the two rows that actually changed instead of
+   re-serializing and re-wiring the whole visible window.
+   `reusable:false` means the two lists can't be reconciled by insert/remove
+   alone (the kept ids appear in a different relative order, or an id repeats);
+   the caller must fall back to a full re-render. Every `insert` carries the id
+   of the surviving row it must be placed before (`before:null` = at the end),
+   which is exactly what `anchor.before(el)` wants. ---- */
+export function diffVisibleRows(prevIds,nextIds){
+  const prev=prevIds||[],next=nextIds||[];
+  const prevSet=new Set(prev),nextSet=new Set(next);
+  const bail={reusable:false,remove:[],insert:[],keep:[]};
+  if(prevSet.size!==prev.length||nextSet.size!==next.length)return bail; // duplicate ids aren't keyed rows
+  const keptPrev=prev.filter(id=>nextSet.has(id));
+  const keptNext=next.filter(id=>prevSet.has(id));
+  if(keptPrev.length!==keptNext.length)return bail;
+  for(let i=0;i<keptPrev.length;i++)if(keptPrev[i]!==keptNext[i])return bail; // survivors reordered
+  const remove=prev.filter(id=>!nextSet.has(id));
+  const insert=[];
+  for(let i=0;i<next.length;i++){
+    const id=next[i];
+    if(prevSet.has(id))continue;
+    let before=null;
+    for(let j=i+1;j<next.length;j++){if(prevSet.has(next[j])){before=next[j];break;}}
+    insert.push({id,before});
+  }
+  return {reusable:true,remove,insert,keep:keptNext};
+}
+
+/* ---- client-side scope evaluation ----
+   A faithful JS mirror of internal/scope's Engine.InScope for the subset of
+   rules that can be reproduced exactly: exact hosts, `*.base` wildcards, literal
+   path prefixes, scheme and port. Regex host/path rules are deliberately NOT
+   mirrored — Go's regexp is RE2 and JS's is not, so a regex rule marks the whole
+   ruleset `evaluable:false` and the caller must keep asking the server.
+   Used by proxy.js so a live flow arriving while "in scope" is on can be placed
+   incrementally instead of forcing a full /api/flows reload per event. ---- */
+const SCOPE_REGEX_LITERALS=['.*','^','$','(',')','[',']','|','+','?','\\d','\\w','\\s'];
+// scopeLooksLikeRegex mirrors internal/scope's looksLikeRegex exactly.
+export function scopeLooksLikeRegex(s){
+  const v=String(s||'');
+  if(v.length>=2&&v[0]==='/'&&v[v.length-1]==='/')return true;
+  return SCOPE_REGEX_LITERALS.some(lit=>v.includes(lit));
+}
+// compileScopeRules mirrors Engine.SetRules: disabled rules are dropped, hosts
+// compile to exact/wildcard, paths to a literal prefix. `evaluable` is false as
+// soon as one enabled rule needs a regex (host or path) — the caller then treats
+// scope as server-only, exactly as it did before this existed.
+export function compileScopeRules(rules){
+  const out=[];let hasInclude=false,evaluable=true;
+  for(const r of rules||[]){
+    if(!r||!r.enabled)continue;
+    const include=r.action!=='exclude';
+    if(include)hasInclude=true;
+    const host=String(r.host||'').toLowerCase();
+    let hostExact='',hostWild='';
+    if(host){
+      if(host.startsWith('*.'))hostWild=host.slice(2);
+      else if(scopeLooksLikeRegex(host))evaluable=false;
+      else hostExact=host;
+    }
+    const path=String(r.path||'');
+    let pathExact='';
+    if(path){
+      if(scopeLooksLikeRegex(path))evaluable=false;
+      else pathExact=path;
+    }
+    out.push({include,hostExact,hostWild,pathExact,scheme:String(r.scheme||''),port:Number(r.port)||0});
+  }
+  return {evaluable,hasInclude,rules:out};
+}
+function scopeHostMatches(r,host){
+  if(!r.hostExact&&!r.hostWild)return true;
+  const h=String(host||'').toLowerCase();
+  if(r.hostWild)return h===r.hostWild||h.endsWith('.'+r.hostWild);
+  return h===r.hostExact;
+}
+function scopeRuleMatches(r,f){
+  return scopeHostMatches(r,f.host)&&
+    (!r.pathExact||String(f.path||'').startsWith(r.pathExact))&&
+    (!r.scheme||r.scheme.toLowerCase()===String(f.scheme||'').toLowerCase())&&
+    (!r.port||r.port===Number(f.port||0));
+}
+// flowInScope mirrors Engine.InScope: an exclude match always wins; with no
+// include rules everything is in scope; otherwise at least one include must match.
+export function flowInScope(f,compiled){
+  if(!compiled||!compiled.evaluable)return false;
+  let included=false;
+  for(const r of compiled.rules){
+    if(!scopeRuleMatches(r,f))continue;
+    if(r.include)included=true;
+    else return false;
+  }
+  return compiled.hasInclude?included:true;
 }
 
 /* ---- createVirtualList: windowed-rendering helper for long rows-in-a-scroll-
@@ -1261,6 +1360,42 @@ export function openCtxMenu(x,y,sections,trigger=null){
   ctx.dataset.motionSide=placement.side;
 }
 
+// formatHexDump returns a canonical hexdump (offset, 16 hex bytes, ASCII text).
+export function formatHexDump(strOrBytes, maxBytes=32768){
+  if(!strOrBytes) return '';
+  let bytes;
+  if(typeof strOrBytes === 'string'){
+    const encoder = new TextEncoder();
+    bytes = encoder.encode(strOrBytes);
+  } else {
+    bytes = new Uint8Array(strOrBytes);
+  }
+  const total = bytes.length;
+  const len = Math.min(total, maxBytes);
+  const lines = [];
+  for(let i = 0; i < len; i += 16){
+    const offset = i.toString(16).padStart(8, '0');
+    const chunk = bytes.subarray(i, Math.min(i + 16, len));
+    const h1 = [], h2 = [];
+    let ascii = '';
+    for(let j = 0; j < 16; j++){
+      if(j < chunk.length){
+        const b = chunk[j];
+        const hex = b.toString(16).padStart(2, '0');
+        if(j < 8) h1.push(hex); else h2.push(hex);
+        ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+      } else {
+        if(j < 8) h1.push('  '); else h2.push('  ');
+      }
+    }
+    lines.push(`${offset}  ${h1.join(' ')}  ${h2.join(' ')}  |${ascii}|`);
+  }
+  if(total > maxBytes){
+    lines.push(`... [truncated, ${fmtSize(total)} total]`);
+  }
+  return lines.join('\n');
+}
+
 export const DEC_OPS=[['base64decode','Base64 ↓'],['base64encode','Base64 ↑'],['urldecode','URL ↓'],['urlencode','URL ↑'],['hexdecode','Hex ↓'],['hexencode','Hex ↑'],['htmldecode','HTML ↓'],['htmlencode','HTML ↑'],['jwtdecode','JWT'],['smart','Smart']];
 
 // selectionFromRaw maps a DOM selection to the underlying source text when the
@@ -1311,10 +1446,19 @@ export function encodeKindLabel(s){
   return 'Decoded';
 }
 
+// The 4 call sites (Proxy req/res, flow-modal req/res) each own an empty
+// `<div class="sel-decode" id="…" hidden></div>` placeholder; this renders its
+// shared inner markup once here instead of hand-duplicating it at every call site.
+const SEL_DECODE_INNER_HTML=`<span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
+  <code class="sel-decode-out"></code>
+  <button type="button" class="btn sel-decode-copy" title="Copy decoded">⧉</button>
+  <button type="button" class="btn sel-decode-open" title="Open in Decoder">Decoder</button>
+  <button type="button" class="btn sel-decode-close" title="Dismiss">✕</button>`;
 // wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
 // (built-in smart) or matches a project message codec (when getContext provides flowId).
 export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
   if(!viewEl||!barEl)return;
+  barEl.innerHTML=SEL_DECODE_INNER_HTML;
   let timer=null,lastSel='',req=0;
   const hide=()=>{barEl.hidden=true;lastSel='';};
   const run=async()=>{
@@ -1703,7 +1847,8 @@ export function renderMD(src){
   s=s.replace(/\b(flow\s*#?\s*)(\d+)\b/gi,(m,label,id)=>pushFlow(id,label+id,false));
   s=s.replace(/^---+\s*$/gm,'<hr class="md-hr">');
   s=s.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>').replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>').replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>');
-  s=s.replace(/<(think|thought|reasoning)>\r?\n?([\s\S]*?)<\/\1>/gi,(m,tag,inner)=>{
+  // esc() ran first, so the tags arrive as &lt;think&gt; — match that escaped form.
+  s=s.replace(/&lt;(think|thought|reasoning)&gt;\r?\n?([\s\S]*?)&lt;\/\1&gt;/gi,(m,tag,inner)=>{
     const title = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
     return '<details class="md-think"><summary>'+title+'</summary><div class="md-think-body">'+inner.trim()+'</div></details>';
   });

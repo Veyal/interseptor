@@ -218,19 +218,13 @@ func TestUIBrowserBackgroundSuppressionExplainsScope(t *testing.T) {
 	}
 }
 
-func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
+func TestUIJourneyOriginTLSVerificationToggle(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	settings := executableJS(readUIAsset(t, "js/settings.js"))
 	requireUIContains(t, index,
-		`id="originTLSVerifyWarning"`,
-		`settings-origin-tls-warning`,
-		`role="alert"`,
 		`id="originTLSVerifyMode"`,
 		`Compatibility — accept test certificates`,
 		`Strict — verify origin certificates`,
-		`Origin certificates are not verified`,
-		`Interception/capture can accept impersonated servers`,
-		`HTTPS upstream-proxy verification remains strict`,
 		`id="originTLSVerifyBypassHost"`,
 		`id="originTLSVerifyBypassAdd"`,
 		`id="originTLSVerifyBypassSelected"`,
@@ -244,7 +238,6 @@ func TestUIJourneyOriginTLSVerificationWarningAndToggle(t *testing.T) {
 		"selectedOriginHost(",
 		"loadSettings();",
 		"document.activeElement!==ol",
-		"catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true)",
 	)
 }
 

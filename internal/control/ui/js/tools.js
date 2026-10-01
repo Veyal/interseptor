@@ -1,6 +1,7 @@
 import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
-import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName } from './core.js';
+import { wireListbox, focusOption } from './listbox.js';
+import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
 // net.OpError text, etc.) into a short, actionable lead sentence for a user who
@@ -105,9 +106,9 @@ function repHistoryLegacyTabKeys(t){return projectStorageLegacyKeys('rep.history
 function repHistoryTabKeys(t){return [...new Set([repHistoryTabKey(t),...repHistoryLegacyTabKeys(t)])];}
 function repHistoryCleanupStorageKey(){return projectStorageKey('rep.history.cleanup');}
 function repHistoryCleanupKeys(){
-  const raw=localStorage.getItem(repHistoryCleanupStorageKey());
-  if(!raw)return[];
   try{
+    const raw=localStorage.getItem(repHistoryCleanupStorageKey());
+    if(!raw)return[];
     const prefixes=[projectStorageKey('rep.history'),...projectStorageLegacyKeys('rep.history')].map(prefix=>prefix+'|');
     return [...new Set(JSON.parse(raw).filter(key=>typeof key==='string'&&prefixes.some(prefix=>key.startsWith(prefix))&&key.length<=512))];
   }catch(e){return[];}
@@ -751,6 +752,12 @@ export async function renderRepResponse(){
       $('#repResView').innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,'application/json')+'</pre>';
       return;
     }
+    if(resView==='hex'){
+      const raw=await api('/api/flows/'+resId+'/raw?side=res');
+      if(!current())return;
+      $('#repResView').innerHTML='<pre class="hex-dump">'+esc(formatHexDump(raw))+'</pre>';
+      return;
+    }
     const raw=await api('/api/flows/'+resId+'/raw?side=res');
     // A tab switch during the fetch would otherwise paint this response into the
     // now-active tab's shared #repResView pane.
@@ -801,9 +808,11 @@ export async function loadRepHistory(){
     const visibleCount=Math.min(flows.length,Math.max(REP_HISTORY_RENDER_BATCH,Number(t.historyVisibleCount)||0));
     const visible=flows.slice(0,visibleCount);
     const remaining=flows.length-visibleCount;
-    box.innerHTML=migrationError+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-current="${f.id===t.resId?'true':'false'}">
+    // The rows live in their own listbox wrapper so the retry banner and the
+    // "show older" button stay outside it — a listbox may only own options.
+    box.innerHTML=migrationError+`<div data-rep-history-rows>`+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-selected="${f.id===t.resId?'true':'false'}">
     <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
-    <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
+    <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+`</div>`+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
     box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
       t.historyVisibleCount=Math.min(flows.length,visibleCount+REP_HISTORY_RENDER_BATCH);
       loadRepHistory();
@@ -811,8 +820,17 @@ export async function loadRepHistory(){
   }
   box.querySelector('[data-rep-history-storage-retry]')?.addEventListener('click',async()=>{t.historyHydrationPromise=null;await repHydrateTabHistory(t);if(repCur()===t){repPersist();loadRepHistory();}});
   box.querySelector('[data-rep-history-retry]')?.addEventListener('click',loadRepHistory);
-  box.querySelectorAll('.h').forEach(el=>{el.onclick=()=>repLoadSend(Number(el.dataset.id));wireRowKey(el,()=>repLoadSend(Number(el.dataset.id)));});
-  if(restoreHistoryFocus)box.querySelector(`.h[data-id="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
+  // Arrows only move the Tab stop here: committing a history entry reloads the
+  // whole editor and refetches the flow, so it stays an explicit Enter/Space.
+  wireListbox(box.querySelector('[data-rep-history-rows]'),box.querySelectorAll('.h'),{
+    label:'Send history',
+    activate:el=>repLoadSend(Number(el.dataset.id)),
+  });
+  if(restoreHistoryFocus){
+    const optionEls=[...box.querySelectorAll('.h')];
+    const focusTarget=box.querySelector(`.h[data-id="${CSS.escape(focusedHistoryID)}"]`);
+    if(focusTarget)focusOption(optionEls,optionEls.indexOf(focusTarget));
+  }
 }
 // Toggle the per-tab history rail (hidden by default to give the editor full width).
 $('#repHistToggle')&&($('#repHistToggle').onclick=()=>{
@@ -1265,6 +1283,7 @@ export async function intrInit(){
   ['#intrThreads','#intrDelay','#intrRepeat'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',()=>{if(intrState.type==='repeat')renderPayloadInputs();else updateIntrCount();intrTouch();});});
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
+  wireIntrSortHeaders();
   resolveIntruderReady(hydration);
   return hydration;
 }
@@ -1296,13 +1315,20 @@ function renderIntrHistory(){
   if(!box)return;
   const focusedLive=!!document.activeElement?.closest?.('#intrHistory [data-intr-live]');
   const focusedHistoryID=document.activeElement?.closest?.('#intrHistory .h[data-hid]')?.dataset.hid||'';
-  if(!visibleHistory.length){box.innerHTML='<div class="hint" style="padding:10px">No attacks for this tab yet this session.</div>';return;}
+  if(!visibleHistory.length){box.removeAttribute('role');box.removeAttribute('aria-label');box.innerHTML='<div class="hint" style="padding:10px">No attacks for this tab yet this session.</div>';return;}
   const liveRow=intrDisplayOwner==='history'?`<div class="h intr-live" data-intr-live title="Return to the current run"><div><span style="font-weight:700;color:var(--accent)">Live / current run</span></div><div class="u">${esc((intrRunCfg&&intrRunCfg.target)||intrDisplayedTarget||'')}</div></div>`:'';
-  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-current="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
-  const live=box.querySelector('[data-intr-live]');if(live){live.onclick=showIntrLiveResults;wireRowKey(live,showIntrLiveResults);}
-  box.querySelectorAll('.h[data-hid]').forEach(el=>{const open=()=>intrLoadHistory(Number(el.dataset.hid));el.onclick=open;wireRowKey(el,open);});
-  if(focusedLive)live?.focus({preventScroll:true});
-  else if(focusedHistoryID)box.querySelector(`.h[data-hid="${CSS.escape(focusedHistoryID)}"]`)?.focus({preventScroll:true});
+  box.innerHTML=liveRow+visibleHistory.map(h=>`<div class="h${h===intrDisplayedHistory?' sel':''}" data-hid="${h.id}" aria-selected="${h===intrDisplayedHistory?'true':'false'}" title="re-open this run + its config"><div><span style="font-weight:700;text-transform:capitalize">${esc(intrTypeLabel(h.type))}</span> <span style="color:var(--fg3)">${h.total} req${h.flagged?' · <span style="color:var(--accent)">'+h.flagged+'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg></span>':''}</span></div><div class="u">${esc(h.target||'')}</div></div>`).join('');
+  // Live row + past runs are one single-select list (exactly one of them owns
+  // the results pane), so they share one listbox and one Tab stop. Arrows move
+  // focus only: committing swaps the whole results pane and its config.
+  const live=box.querySelector('[data-intr-live]');
+  wireListbox(box,box.querySelectorAll('.h'),{
+    label:'Attack history',
+    activate:el=>{if(el.hasAttribute('data-intr-live'))showIntrLiveResults();else intrLoadHistory(Number(el.dataset.hid));},
+  });
+  const optionEls=[...box.querySelectorAll('.h')];
+  const focusTarget=focusedLive?live:focusedHistoryID?box.querySelector(`.h[data-hid="${CSS.escape(focusedHistoryID)}"]`):null;
+  if(focusTarget)focusOption(optionEls,optionEls.indexOf(focusTarget));
 }
 function intrLoadHistory(id){
   const h=intrHistory.find(item=>item.id===id);if(!h||h.tid!==(intrTabs.cur()?.tid??null))return;
@@ -1339,7 +1365,97 @@ function intrModeText(){
     return 'Pitchfork — one payload list per § marker (colour-matched below). Lists advance together, so mark N injection points → fill N lists; fires min(list lengths) requests. Load each list from a file with the Load / Append buttons.';
   return 'Sniper — a single payload list, tried at each § marker one position at a time (the others keep their original value). Load payloads from a file with the Load / Append buttons.';
 }
-const INTR_FILE_BTNS=`<div class="spacer"></div><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file">＋</button>`;
+const INTR_PRESETS={
+  sqli_auth:[
+    "' OR '1'='1",
+    "' OR '1'='1' --",
+    "' OR 1=1 --",
+    "admin' --",
+    "admin' #",
+    "' OR '1'='1' /*",
+    "\" OR \"1\"=\"1",
+    "\" OR 1=1 --",
+    "' OR ''='",
+    "admin' OR '1'='1"
+  ],
+  sqli_probe:[
+    "'",
+    "''",
+    "`",
+    "\"",
+    "\\",
+    "')",
+    "'))",
+    "' UNION SELECT NULL--",
+    "' UNION SELECT NULL,NULL--",
+    "' UNION SELECT NULL,NULL,NULL--",
+    "' AND SLEEP(5)--",
+    "1' ORDER BY 1--",
+    "1' ORDER BY 10--"
+  ],
+  xss:[
+    "<script>alert(1)</script>",
+    "\"><script>alert(1)</script>",
+    "'><script>alert(1)</script>",
+    "\"><img src=x onerror=alert(1)>",
+    "'><img src=x onerror=alert(1)>",
+    "<svg/onload=alert(1)>",
+    "\"><svg/onload=alert(1)>",
+    "javascript:alert(1)",
+    "\"><iframe src=\"javascript:alert(1)\">",
+    "{{7*7}}",
+    "${7*7}"
+  ],
+  traversal:[
+    "../../../../etc/passwd",
+    "../../../../windows/win.ini",
+    "..%2f..%2f..%2f..%2fetc%2fpasswd",
+    "/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+    "....//....//....//....//etc/passwd",
+    "..\\..\\..\\..\\windows\\win.ini",
+    "/etc/passwd",
+    "C:\\windows\\win.ini"
+  ],
+  ssrf:[
+    "http://127.0.0.1/",
+    "http://localhost/",
+    "http://[::1]/",
+    "http://127.0.0.1:8080/",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://metadata.google.internal/",
+    "http://0.0.0.0/",
+    "http://127.1/",
+    "http://2130706433/"
+  ],
+  cmdi:[
+    ";id",
+    "|id",
+    "`id`",
+    "$(id)",
+    "& id",
+    "; whoami",
+    "| whoami",
+    "`whoami`",
+    "$(whoami)",
+    "& whoami"
+  ],
+  auth_bypass:[
+    "admin",
+    "administrator",
+    "root",
+    "guest",
+    "user",
+    "test",
+    "true",
+    "false",
+    "null",
+    "undefined",
+    "0",
+    "1",
+    "-1"
+  ]
+};
+const INTR_FILE_BTNS=`<div class="spacer"></div><select class="btn btn-field intr-preset-select" title="Insert built-in attack payloads" aria-label="Insert built-in attack payloads"><option value="" disabled selected>Presets ▾</option><option value="sqli_auth">SQLi Auth Bypass</option><option value="sqli_probe">SQLi Error/Probe</option><option value="xss">Cross-Site Scripting</option><option value="traversal">Path Traversal / LFI</option><option value="ssrf">SSRF Localhost</option><option value="cmdi">Command Injection</option><option value="auth_bypass">Auth / Role Tokens</option></select><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file" aria-label="Append payloads from file">＋</button>`;
 async function intrLoadPayloadFile(ta, append){
   const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
   try{
@@ -1365,6 +1481,27 @@ function wireIntrPayloadFileButtons(wrap){
     e.stopPropagation();
     const ta=btn.closest('.intr-pl')?.querySelector('textarea');
     if(ta) intrLoadPayloadFile(ta, btn.dataset.mode==='append');
+  });
+  wrap.querySelectorAll('.intr-preset-select').forEach(sel=>{
+    sel.onchange=e=>{
+      e.stopPropagation();
+      const val=sel.value;
+      if(!val||!INTR_PRESETS[val]) return;
+      const ta=sel.closest('.intr-pl')?.querySelector('textarea');
+      if(ta){
+        const list=INTR_PRESETS[val];
+        const p=ta.dataset.pos;
+        intrSetPayloadLines(p, list, val);
+        ta.value=p==='s'?intrState.sniper:(intrState.pos[Number(p)]||'');
+        ta.readOnly=intrPayloadTruncated(p);
+        const note=ta.closest('.intr-pl')?.querySelector('.intr-pl-note');
+        if(note) note.textContent=intrPayloadNote(p);
+        updateIntrCount();
+        intrTouch();
+        toast('loaded '+list.length+' '+sel.options[sel.selectedIndex].text+' payloads');
+      }
+      sel.value='';
+    };
   });
 }
 function intrSourceToggleHTML(slot){
@@ -1445,7 +1582,7 @@ function renderPayloadInputs(){
   }
   if(intrState.type!=='pitchfork'&&intrState.type!=='cluster'){
     const src=intrSourceFor('s');
-    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${intrSourceToggleHTML('s')}${src==='list'?INTR_FILE_BTNS:''}</div><div class="intr-pl-note hint"></div>${src==='numbers'?intrNumbersHTML('s'):'<textarea class="rep-edit" data-pos="s" spellcheck="false" placeholder="one payload per line"></textarea>'}</div>`;
+    wrap.innerHTML=`<div class="intr-pl"><div class="intr-pl-h"><span class="sw" style="background:var(--accent)"></span>ALL § POSITIONS${intrSourceToggleHTML('s')}${src==='list'?INTR_FILE_BTNS:''}</div><div class="intr-pl-note hint"></div>${src==='numbers'?intrNumbersHTML('s'):'<textarea class="rep-edit" data-pos="s" spellcheck="false" aria-label="Payload list for all § positions" placeholder="one payload per line"></textarea>'}</div>`;
   }else{
     const mk=intrMarkers();
     if(!mk.length){wrap.innerHTML='<div class="hint">Mark injection points with <b>§…§</b> in the template (select text → <b>§ Mark</b>). Each marker gets its own colour-matched payload list here.</div>';updateIntrCount();return;}
@@ -1453,7 +1590,7 @@ function renderPayloadInputs(){
       return `<div class="intr-pl">
         <div class="intr-pl-h" title="payloads for the ${ordinal(i+1)} § marker${content?' (currently '+escAttr(content)+')':''}"><span class="sw" style="background:${c}"></span>§${i+1}${content?' · '+esc(content):''}${intrSourceToggleHTML(i)}${src==='list'?INTR_FILE_BTNS:''}</div>
         <div class="intr-pl-note hint"></div>
-        ${src==='numbers'?intrNumbersHTML(i):`<textarea class="rep-edit" data-pos="${i}" spellcheck="false" placeholder="payloads for §${i+1}"></textarea>`}</div>`;}).join('');
+        ${src==='numbers'?intrNumbersHTML(i):`<textarea class="rep-edit" data-pos="${i}" spellcheck="false" aria-label="Payload list for marker §${i+1}" placeholder="payloads for §${i+1}"></textarea>`}</div>`;}).join('');
   }
   wrap.querySelectorAll('textarea').forEach(ta=>{
     const p=ta.dataset.pos;
@@ -1549,7 +1686,7 @@ function updateIntrMode(){
   }
   const h=$('#intrHint');if(h)h.textContent=intrModeText();
   const rw=$('#intrRepeatWrap');if(rw)rw.style.display=repeat?'inline-flex':'none'; // "× N sends" only in Race
-  const mk=$('#intrWrap');if(mk)mk.style.opacity=repeat?'.4':''; // § markers irrelevant in Race
+  const mk=$('#intrWrap');if(mk){mk.style.opacity=repeat?'.4':'';mk.disabled=repeat;} // § markers irrelevant in Race
   renderPayloadInputs();
 }
 $('#intrType').querySelectorAll('button').forEach(b=>b.onclick=()=>{
@@ -1596,6 +1733,8 @@ function setIntrStartState(stateName,label){
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
   button.disabled=stateName==='pending';
   button.textContent=label;
+  const stopBtn=$('#intrStop');
+  if(stopBtn)stopBtn.classList.toggle('u-hidden',stateName!=='pending');
 }
 function resetIntrStart(delay,epoch){setTimeout(()=>{if(epoch===intrStartEpoch&&!intrLastRunning)setIntrStartState('idle','Start ▸');},delay);}
 let intrStartEpoch=0;
@@ -1661,6 +1800,20 @@ export async function intrStart(){
   }
 }
 $('#intrStart').onclick=intrStart;
+export async function intrStop(){
+  const stopBtn=$('#intrStop');
+  if(stopBtn)stopBtn.disabled=true;
+  try{
+    const st=await api('/api/intruder/stop',{method:'POST'});
+    renderIntr(st);
+  }catch(e){
+    toast('stop failed: '+e.message,'error');
+  }finally{
+    if(stopBtn)stopBtn.disabled=false;
+  }
+}
+const stopBtn=$('#intrStop');
+if(stopBtn)stopBtn.onclick=intrStop;
 function intrPresetsKey(){return projectStorageKey('intruder.presets');}
 function normalizeIntruderPreset(p){
   if(!p||typeof p!=='object'||Array.isArray(p))return null;
@@ -1768,10 +1921,55 @@ function invalidateIntrPoll(){
   return ++intrPollEpoch;
 }
 function intrIsInteresting(r){return !!(r&& (r.flagged||r.matched||r.anomaly));}
+let intrSort={col:'id',dir:'asc'};
+function updateIntrSortHeaders(){
+  const head=$('.intr-head');if(!head)return;
+  head.querySelectorAll('[data-sort]').forEach(el=>{
+    const col=el.dataset.sort;
+    const base=col==='id'?'#':col==='payload'?'Payload':col==='status'?'St':col==='length'?'Len':'Time';
+    if(intrSort.col===col){
+      el.textContent=base+(intrSort.dir==='asc'?' ▲':' ▼');
+      el.classList.add('sorted');
+    }else{
+      el.textContent=base;
+      el.classList.remove('sorted');
+    }
+  });
+}
+function wireIntrSortHeaders(){
+  const head=$('.intr-head');if(!head)return;
+  head.querySelectorAll('[data-sort]').forEach(el=>{
+    el.onclick=()=>{
+      const col=el.dataset.sort;
+      if(intrSort.col===col){
+        intrSort.dir=intrSort.dir==='asc'?'desc':'asc';
+      }else{
+        intrSort.col=col;
+        intrSort.dir=(col==='length'||col==='timeMs')?'desc':'asc';
+      }
+      updateIntrSortHeaders();
+      renderIntr({running:intrLastRunning,total:intrLastTotal,done:intrLastDone,results:intrDisplayedResults},{authoritative:false});
+    };
+  });
+  updateIntrSortHeaders();
+}
+function intrApplySort(rows){
+  if(!intrSort.col||(intrSort.col==='id'&&intrSort.dir==='asc'))return rows;
+  const col=intrSort.col, dir=intrSort.dir==='desc'?-1:1;
+  return rows.slice().sort((a,b)=>{
+    let va=a[col], vb=b[col];
+    if(col==='payload'){
+      va=String(va||'');vb=String(vb||'');
+      return va.localeCompare(vb)*dir;
+    }
+    return ((va||0)-(vb||0))*dir;
+  });
+}
 function intrApplyFilter(res){
-  if(intrFilter==='interesting') return res.filter(intrIsInteresting);
-  if(intrFilter==='error') return res.filter(r=>r.error);
-  return res;
+  let out=res;
+  if(intrFilter==='interesting') out=out.filter(intrIsInteresting);
+  else if(intrFilter==='error') out=out.filter(r=>r.error);
+  return intrApplySort(out);
 }
 export function scheduleIntr(){
   clearTimeout(intrTimer);
@@ -1854,7 +2052,7 @@ export function renderIntr(st,{authoritative=true}={}){
   }
   const view=intrApplyFilter(displayRes);
   if(!view.length){
-    box.innerHTML='<div class="hint" style="padding:12px">No results match this filter.</div>';
+    box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No results match this filter.</p></div>';
     return;
   }
   if(view.length>=INTR_VIRT_MIN) renderIntrVirtual(box,view);

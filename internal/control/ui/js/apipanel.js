@@ -3,7 +3,7 @@ import { $, esc, escAttr, api, toast, methodColor, copyText, uiConfirm, uiPrompt
 // Keep previously fetched read-only reference data useful during a transient
 // refresh failure, but never let it look like a current server contract.
 let restReferenceLoaded=false;
-let restReferenceLoadEpoch=0;
+let restReferenceLoadEpoch=0,mcpLoadEpoch=0,sessionKeyRevealEpoch=0;
 let allowlistLoadEpoch=0;
 let allowlistLoaded=false;
 let apiKeysLoadEpoch=0;
@@ -142,7 +142,7 @@ export async function loadApiKeys(){
       <td>${esc(k.label)}</td>
       <td><span class="sev ${k.scope==='read'?'Info':'Low'}">${esc(k.scope||'full')}</span></td>
       <td style="color:var(--fg3)">${k.created?esc(new Date(k.created).toLocaleString()):'—'}${k.expires?'<br><span style="color:var(--amber)">exp '+esc(new Date(k.expires).toLocaleDateString())+'</span>':''}</td>
-      <td><button class="btn danger" data-revoke="${k.id}" data-kp="${escAttr(k.prefix||'')}" data-kl="${escAttr(k.label||'')}">Revoke</button></td></tr>`).join('')
+      <td><button class="btn danger" data-revoke="${k.id}" data-kp="${escAttr(k.prefix||'')}" data-kl="${escAttr(k.label||'')}" aria-label="Revoke API key ${escAttr(k.label||k.prefix||('#'+k.id))}">Revoke</button></td></tr>`).join('')
       :'<tr><td colspan="5" class="hint" style="padding:10px">No keys yet.</td></tr>';
     $('#keyList').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>revokeKey(Number(b.dataset.revoke),b.dataset.kp,b.dataset.kl));
   }catch(e){
@@ -175,15 +175,25 @@ export async function createApiKey(){
 /** Reveal the API token for the current cookie session (remote Tailscale login). */
 export async function revealSessionKey(){
   const box=$('#keySession'); if(!box)return;
+  // Two clicks used to leave two reads in flight, both writing the box and
+  // rebinding Copy to their own token — a late failure could even erase a
+  // revealed key. Latest request wins, and the trigger stays busy meanwhile.
+  const epoch=++sessionKeyRevealEpoch;
+  const button=$('#keyRevealSession');
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
   try{
     const d=await api('/api/session/access-key');
+    if(epoch!==sessionKeyRevealEpoch)return;
     box.style.display='block';
     box.innerHTML='Session access key ('+esc(d.scope||'full')+(d.prefix?' · '+esc(d.prefix)+'…':'')+') — <button class="btn" id="keySessionCopy" style="padding:2px 10px;vertical-align:middle">Copy</button><br><b style="color:var(--accent);user-select:all;word-break:break-all">'+esc(d.token)+'</b>';
     const cp=$('#keySessionCopy'); if(cp)cp.onclick=()=>copyText(d.token,'Access key copied');
   }catch(e){
+    if(epoch!==sessionKeyRevealEpoch)return;
     box.style.display='block';
-    box.innerHTML='<span style="color:var(--amber)">'+esc(e.message||'No session key')+'</span><div class="hint" style="margin-top:6px">This only works when signed in via /login (cookie session). Loopback use has no session key.</div>';
+    renderLoadError(box,'Session access key',e,revealSessionKey,false);
+    box.insertAdjacentHTML('beforeend','<div class="hint" style="margin-top:6px">This only works when signed in via /login (cookie session). Loopback use has no session key.</div>');
   }
+  finally{if(epoch===sessionKeyRevealEpoch&&button){button.disabled=false;button.setAttribute('aria-busy','false');}}
 }
 {const rb=$('#keyRevealSession'); if(rb)rb.onclick=revealSessionKey;}
 
@@ -301,7 +311,7 @@ async function peerMerge(dir){
   finally{setPeerMergePending(false);}
 }
 // Live tunnel URL arrival (SSE) refreshes the panel if it's open.
-window.addEventListener('interceptor:tunnel',()=>{const p=$('#apiShare');if(p&&p.style.display!=='none')loadShare();});
+window.addEventListener('interceptor:tunnel',()=>{const p=$('#apiShare');if(p&&p.style.display==='block')loadShare();});
 const ss=$('#shareStart');if(ss)ss.onclick=startShare;
 const sp=$('#shareStop');if(sp)sp.onclick=stopShare;
 const pp=$('#peerPull');if(pp)pp.onclick=()=>peerMerge('pull');
@@ -370,8 +380,8 @@ async function refreshVaultList(){
         <td style="font-family:var(--mono)">${id}${label?' <span class="hint">'+label+'</span>':''}</td>
         <td>${esc(String(rev))}${when?('<div class="hint">'+when+'</div>'):''}</td>
         <td class="hint">${esc(String(size))}</td>
-        <td><button class="btn" data-vimp="${escAttr(p.id||'')}" style="padding:2px 8px">Import</button>
-            <button class="btn" data-vmerge="${escAttr(p.id||'')}" style="padding:2px 8px">Merge</button></td></tr>`;
+        <td><button class="btn" data-vimp="${escAttr(p.id||'')}" style="padding:2px 8px" aria-label="Import vault project ${escAttr(p.id||'')}">Import</button>
+            <button class="btn" data-vmerge="${escAttr(p.id||'')}" style="padding:2px 8px" aria-label="Merge vault project ${escAttr(p.id||'')}">Merge</button></td></tr>`;
     }).join(''):'<tr><td colspan="4" class="hint" style="padding:10px">No projects in vault yet.</td></tr>';
     tb.querySelectorAll('[data-vimp]').forEach(b=>b.onclick=()=>vaultImport(b.dataset.vimp));
     tb.querySelectorAll('[data-vmerge]').forEach(b=>b.onclick=()=>vaultMerge(b.dataset.vmerge));
@@ -475,7 +485,12 @@ export async function loadReference(){
   }
 }
 export async function loadMCP(){
+  // Re-entering the API & MCP section, the Retry action and a project switch can
+  // all start this read; only the newest one may paint and rebind the Copy
+  // buttons (matching loadReference() above).
+  const epoch=++mcpLoadEpoch;
   try{const m=await api('/api/mcp');
+    if(epoch!==mcpLoadEpoch)return;
     const httpCfg=JSON.stringify(m.clientConfig||{},null,2);
     const stdioCfg=JSON.stringify(m.stdioClientConfig||{},null,2);
     const cmd=`${(m.transport&&m.transport.command)||'interseptor'} ${((m.transport&&m.transport.args)||[]).join(' ')}`.trim();
@@ -499,5 +514,5 @@ export async function loadMCP(){
       <table class="rules-tbl"><thead><tr><th style="width:160px">Tool</th><th>Description</th></tr></thead><tbody>${tools}</tbody></table></details>`;
     const cpH=document.getElementById('mcpCopyHttp'); if(cpH) cpH.onclick=()=>copyText(httpCfg,'Cursor MCP config copied');
     const cpS=document.getElementById('mcpCopyStdio'); if(cpS) cpS.onclick=()=>copyText(stdioCfg,'stdio MCP config copied');
-  }catch(e){renderLoadError($('#mcpBody'),'MCP reference',e,loadMCP,false);}
+  }catch(e){if(epoch!==mcpLoadEpoch)return;renderLoadError($('#mcpBody'),'MCP reference',e,loadMCP,false);}
 }

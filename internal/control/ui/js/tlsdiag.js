@@ -1,5 +1,5 @@
 // tlsdiag.js — surfaces SSL pinning / missing-traffic diagnosis in the UI.
-import { $, esc, state, api, toast } from './core.js';
+import { $, esc, state, api, toast, renderLoadError } from './core.js';
 
 const VERDICT = {
   ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '✓' },
@@ -91,7 +91,7 @@ export function renderTrafficDiagnosis(rep) {
   const body = `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
     <span style="font-weight:700;color:${v.color};white-space:nowrap">${v.icon} ${esc(v.label)}</span>
     <span style="flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:1.55">${esc(rep.detail || '')}</span>
-    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" data-tls-action="filter-pin" style="flex:none">Show PIN rows</button>` : ''}
+    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" data-tls-action="filter-pin" style="flex:none">Show TLS-failed rows</button>` : ''}
     ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent" data-tls-action="passthrough" style="flex:none" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
     ${rep.verdict !== 'ok' ? `<button type="button" class="btn" data-tls-action="open-settings" style="flex:none">Settings → TLS</button>` : ''}
     <button type="button" class="btn" data-tls-action="dismiss" title="Dismiss until verdict changes" style="flex:none;padding:3px 8px" aria-label="Dismiss TLS diagnosis banner">✕</button>
@@ -171,8 +171,7 @@ export async function loadTrafficDiagnosis(host) {
     return rep;
   } catch (e) {
     if(epoch!==trafficDiagnosisEpoch)return null;
-    const panel = $('#tlsDiagPanel');
-    if (panel) panel.textContent = 'Could not load traffic diagnosis: ' + e.message;
+    renderLoadError($('#tlsDiagPanel'),'Traffic diagnosis',e,()=>loadTrafficDiagnosis(host),false);
     return null;
   }
 }

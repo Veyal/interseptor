@@ -38,7 +38,7 @@ export async function loadOob(baseOwner=null){
 function renderOobList(list){
   const c=$('#oobCount');if(c)c.textContent=list.length?list.length+' interaction'+(list.length===1?'':'s'):'';
   const box=$('#oobList');if(!box)return;
-  if(!list.length){box.innerHTML='<div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div>';return;}
+  if(!list.length){box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-globe"/></svg></div><div class="state-empty-title">No interactions yet</div><p class="state-empty-hint">Callbacks to a generated URL appear here live.</p></div>';return;}
   box.innerHTML=list.map(it=>`<div class="oob-row">
     <span class="oob-m">${esc(it.method)}</span>
     <span class="oob-p" title="${escAttr(it.path+(it.query?'?'+it.query:''))}">${esc(it.path)}${it.query?'<span style="color:var(--fg3)">?'+esc(it.query)+'</span>':''}</span>
@@ -92,7 +92,7 @@ function oobTunnelCmd(){return 'cloudflared tunnel --url http://'+(state.control
 $('#oobModalTunnelCopy')&&($('#oobModalTunnelCopy').onclick=()=>copyText(oobTunnelCmd(),'Tunnel command copied'));
 
 /* ---- custom checks editor ---- */
-let checkMode='code',checkDocsLoaded=false;
+let checkMode='code',checkDocsLoaded=false,checkDocsLoadEpoch=0;
 let checkSelId=null;
 let checkBuiltin=false,checkOverridden=false;
 const checkEndpoint='/api/checks';
@@ -218,11 +218,17 @@ function wireCheckModeKeys(seg){
 async function loadCheckDocs(){
   if(checkDocsLoaded)return;
   const box=$('#checkDocs');if(!box)return;
+  // `checkDocsLoaded` only settles after the await, so Retry (or reopening the
+  // Checks modal) can start a second read. Latest-request-wins, like the twin
+  // loadCodecDocs() in codecs.js.
+  const epoch=++checkDocsLoadEpoch;
   try{
     const d=await api('/api/checks/reference');
+    if(epoch!==checkDocsLoadEpoch)return;
     box.innerHTML=renderMD(d.markdown||'');
     checkDocsLoaded=true;
   }catch(e){
+    if(epoch!==checkDocsLoadEpoch)return;
     box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><p class="state-error-msg" role="alert">'+esc(e.message)+'</p><button type="button" class="btn" data-check-docs-retry>Retry</button></div>';
     const retry=box.querySelector('[data-check-docs-retry]');if(retry)retry.onclick=loadCheckDocs;
   }
@@ -340,10 +346,6 @@ function checksApplyFilter(){
     else{group.classList.remove('checks-group-empty');group.open=group.dataset.defaultOpen==='1';}
   });
 }
-function refreshCheckEditorMode(){
-  const kh=$('#checkKindHint');
-  if(kh){kh.style.display='none';kh.textContent='';}
-}
 // The single Delete/Revert button is dual-purpose: for a built-in check it
 // reverts a saved Starlark override (disabled when there's no override to
 // revert); for anything else it deletes the custom check outright. The label
@@ -366,7 +368,7 @@ export async function loadBuiltinCheck(id,{preserveAction=false,restoreFocus=fal
   checkEditorReady=false;checkEditorLoading=true;
   checkRestoreFocus=!!restoreFocus;
   if(!preserveAction)cancelCheckAction();
-  checkBuiltin=true;checkSelId=id;refreshCheckEditorMode();
+  checkBuiltin=true;checkSelId=id;
   $('#checkId').value=id;checkSetEditorReadonly(true);
   $('#checkSrc').value='';
   setCheckEditorLoadState('loading',id);
@@ -389,7 +391,7 @@ export async function loadCheck(id,{restoreFocus=false}={}){
   checkEditorReady=false;checkEditorLoading=true;
   checkRestoreFocus=!!restoreFocus;
   cancelCheckAction();
-  checkBuiltin=false;checkOverridden=false;checkSelId=id;refreshCheckEditorMode();
+  checkBuiltin=false;checkOverridden=false;checkSelId=id;
   $('#checkId').value=id;checkSetEditorReadonly(false);
   $('#checkSrc').value='';
   setCheckEditorLoadState('loading',id);
@@ -408,7 +410,7 @@ export function checkNew(){
   cancelCheckAction();
   checkEditorLoading=false;checkEditorReady=true;
   checkRestoreFocus=false;
-  checkBuiltin=false;checkOverridden=false;checkSelId=null;refreshCheckEditorMode();
+  checkBuiltin=false;checkOverridden=false;checkSelId=null;
   checkSetEditorReadonly(false);
   $('#checkId').value='';
   $('#checkSrc').value = "def check(flow):\n    # inspect flow, return a list of finding(...)\n    return []\n";
@@ -515,7 +517,7 @@ async function loadPacksPanel(){
       html+=catalog.map(p=>{
         const on=!!p.installed;
         return `<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version)} · ${p.checks} checks</span><div class="hint">${esc(p.description||'')}</div></div>
-          <button type="button" class="btn ${on?'':'btn-primary'}" data-pack="${escAttr(p.name)}" ${on?'disabled':''}>${on?'Installed':'Install'}</button></div>`;
+          <button type="button" class="btn ${on?'':'btn-primary'}" data-pack="${escAttr(p.name)}" ${on?'disabled':''} aria-label="${on?'Pack ':'Install pack '}${escAttr(p.name)}${on?' is installed':''}">${on?'Installed':'Install'}</button></div>`;
       }).join('');
     }
     if(installed.length){
@@ -523,7 +525,7 @@ async function loadPacksPanel(){
       html+=installed.map(p=>{
         const sig=p.signed==='builtin'?'builtin ✓':(p.signed?('signed ✓ '+p.signed):'unsigned');
         return `<div class="checks-pack-row"><div><b>${esc(p.name)}</b> <span class="hint">v${esc(p.version||'')} · ${esc(sig)}</span></div>
-        <button type="button" class="btn" data-remove="${escAttr(p.name)}" title="Uninstall pack">Remove</button></div>`;
+        <button type="button" class="btn" data-remove="${escAttr(p.name)}" title="Uninstall pack" aria-label="Uninstall pack ${escAttr(p.name)}">Remove</button></div>`;
       }).join('');
     }
     if(!html) html='<span class="hint">No packs yet — install an official pack or upload a signed .tar.gz.</span>';

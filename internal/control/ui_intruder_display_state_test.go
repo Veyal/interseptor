@@ -34,10 +34,13 @@ func TestUIIntruderHistoryProvidesDirectReturnToLiveResults(t *testing.T) {
 	if strings.Count(tools, "showIntrLiveResults()") < 2 {
 		t.Error("Intruder must expose live-result restoration and use it when a new attack starts")
 	}
-	if !strings.Contains(tools, "live.onclick=showIntrLiveResults") {
+	// The live row and the past runs are one listbox (exactly one of them owns the
+	// results pane), so a single wiring pass dispatches on the row's identity
+	// instead of a second pass that would overwrite the live-results action.
+	if !strings.Contains(tools, "if(el.hasAttribute('data-intr-live'))showIntrLiveResults();else intrLoadHistory(Number(el.dataset.hid))") {
 		t.Error("Intruder history must provide a direct keyboard-wired return to current live results")
 	}
-	if !strings.Contains(tools, "box.querySelectorAll('.h[data-hid]')") {
+	if !strings.Contains(tools, "wireListbox(box,box.querySelectorAll('.h')") {
 		t.Error("Intruder history row wiring must not overwrite the live-results action")
 	}
 	start := strings.Index(tools, "function showIntrLiveResults()")

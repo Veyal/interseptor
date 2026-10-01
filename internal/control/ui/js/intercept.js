@@ -1,4 +1,5 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, wireRowKey, prettify } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, prettify, renderLoadError } from './core.js';
+import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 
 /* ---- intercept ---- */
@@ -231,12 +232,18 @@ export function renderIntercept(){
   const badge=$('#heldBadge');if(badge){badge.style.display=total?'inline-block':'none';badge.textContent=total;}
   const ht=$('#heldTotal');if(ht){ht.style.display=total?'inline-block':'none';ht.textContent=total;}
   const list=$('#heldList');
-  if(!total){list.innerHTML='';state.heldSel=null;showEditor(null);return;}
-  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}" data-id="${h.id}" data-side="${h.side}" aria-current="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
+  if(!total){list.innerHTML='';list.removeAttribute('role');list.removeAttribute('aria-label');state.heldSel=null;showEditor(null);return;}
+  list.innerHTML=items.map(h=>`<div class="icpt-item${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?' sel':''}" data-id="${h.id}" data-side="${h.side}" aria-selected="${(state.heldSel&&state.heldSel.id===h.id&&state.heldSel.side===h.side)?'true':'false'}">
     <span class="icpt-tag ${h.side}">${h.side==='req'?'REQ':'RESP'}</span>
     ${h.side==='req'?`<span class="m" style="color:${methodColor(h.method)}">${esc(h.method)}</span>`:''}
     <span class="u">${esc(h.host)}${esc(h.path)}</span></div>`).join('');
-  $$('#heldList .icpt-item').forEach(el=>{el.onclick=()=>selectHeld(Number(el.dataset.id),el.dataset.side);wireRowKey(el,()=>selectHeld(Number(el.dataset.id),el.dataset.side));});
+  // The hold queue is a single-select list: one listbox, one Tab stop, arrows
+  // move the selection because selecting *is* what shows the item in the editor.
+  wireListbox(list,list.querySelectorAll('.icpt-item'),{
+    label:'Held requests and responses',
+    selectionFollowsFocus:true,
+    activate:el=>selectHeld(Number(el.dataset.id),el.dataset.side),
+  });
   arrivals.forEach(h=>{
     const el=list.querySelector(`.icpt-item[data-id="${h.id}"][data-side="${h.side}"]`);
     animateOnce(el,[
@@ -289,7 +296,8 @@ export async function selectHeld(id,side,opts={}){
   if(previousKey!==nextKey){
     if(!heldActionInFlight)restoreHeldActionControls();
   }
-  $$('#heldList .icpt-item').forEach(el=>{const selected=Number(el.dataset.id)===id&&el.dataset.side===side;el.classList.toggle('sel',selected);el.setAttribute('aria-current',selected?'true':'false');});
+  $$('#heldList .icpt-item').forEach(el=>{el.classList.toggle('sel',Number(el.dataset.id)===id&&el.dataset.side===side);});
+  setListboxSelection($$('#heldList .icpt-item'),el=>Number(el.dataset.id)===id&&el.dataset.side===side);
    const h=heldItem(id,side);if(!h)return;
    const cacheKey=side+':'+id;
    let raw=heldRawCache.has(cacheKey)?heldRawCache.get(cacheKey):h.raw;
@@ -518,7 +526,23 @@ export function renderRules(){
   body.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteRule(Number(b.dataset.del)));
   if(focus.id&&focus.key)requestAnimationFrame(()=>{const el=body.querySelector(`tr[data-id="${focus.id}"] [data-k="${focus.key}"]`);if(!el)return;el.focus({preventScroll:true});if(typeof focus.start==='number'&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);});
 }
-export async function loadRules(){const epoch=++rulesLoadEpoch,mutationSnapshot=ruleMutationEpoch;try{const d=await api('/api/rules');if(epoch!==rulesLoadEpoch||mutationSnapshot!==ruleMutationEpoch||ruleMutationLanes.size)return;state.rules=d.rules||[];renderRules();}catch(e){if(epoch===rulesLoadEpoch&&!ruleMutationLanes.size)toast(e.message);}}
+export async function loadRules(){const epoch=++rulesLoadEpoch,mutationSnapshot=ruleMutationEpoch;try{const d=await api('/api/rules');if(epoch!==rulesLoadEpoch||mutationSnapshot!==ruleMutationEpoch||ruleMutationLanes.size)return;state.rules=d.rules||[];renderRules();}catch(e){if(epoch!==rulesLoadEpoch||ruleMutationLanes.size)return;
+  // A bare toast left the table showing stale rows with no way back. Surface the
+  // failure in the table itself, with a Retry, and keep the toast for the nudge.
+  const body=$('#rulesBody');
+  if(body){
+    const cell=document.createElement('td');
+    cell.colSpan=5;
+    // renderLoadError sets display:block on its target, which would pull a <td>
+    // out of table layout and void the colspan — give it an inner slot instead.
+    const slot=document.createElement('div');
+    cell.appendChild(slot);
+    const row=document.createElement('tr');
+    row.appendChild(cell);
+    body.replaceChildren(row);
+    renderLoadError(slot,'Interception rules',e,loadRules,state.rules.length>0);
+  }
+  toast(e.message);}}
 function ruleMutation(id,work){
   ruleMutationEpoch++;const rev=(ruleMutationRevision.get(id)||0)+1;ruleMutationRevision.set(id,rev);
   const prior=ruleMutationLanes.get(id)||Promise.resolve();const next=prior.catch(()=>{}).then(work);ruleMutationLanes.set(id,next);
@@ -527,7 +551,7 @@ function ruleMutation(id,work){
 function rememberRuleDraft(id,tr){
   const r=state.rules.find(x=>x.id===id);if(!r)return null;
   const get=k=>tr.querySelector(`[data-k="${k}"]`);
-  const draft={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value};
+  const draft={id,ord:r.ord,enabled:get('enabled').checked,type:get('type').value,match:get('match').value,replace:get('replace').value,bigBody:!!r.bigBody};
   ruleDrafts.set(id,draft);return draft;
 }
 export async function updateRule(id,tr){

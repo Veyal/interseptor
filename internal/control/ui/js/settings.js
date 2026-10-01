@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
@@ -655,10 +655,6 @@ function settingsLoadState(){
   const body=document.querySelector('#panel-settings .settings-body');if(body)body.prepend(el);
   return el;
 }
-function renderOriginTLSVerifyWarning(on){
-  const warning=$('#originTLSVerifyWarning');
-  if(warning)warning.hidden=!!on;
-}
 export function setOriginTLSVerify(on){
   const mode=$('#originTLSVerifyMode');
   if(mode)mode.value=on?'strict':'compatible';
@@ -666,7 +662,6 @@ export function setOriginTLSVerify(on){
   if(summary)summary.textContent=on
     ?'Strict mode rejects expired, untrusted, and hostname-mismatched origin certificates. Add only known test hosts as exceptions below.'
     :'Compatibility mode accepts self-signed, expired, and hostname-mismatched origin certificates so authorized test environments remain reachable.';
-  renderOriginTLSVerifyWarning(!!on);
 }
 $('#originTLSVerifyMode')&&($('#originTLSVerifyMode').onchange=async()=>{
   const mode=$('#originTLSVerifyMode');
@@ -730,7 +725,7 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   restoreDirtySettings(dirty);
   restoreDirtySettingsDerived(dirty);
   if(loadState)loadState.style.display='none';}
-  catch(e){if(epoch!==settingsLoadEpoch)return;renderOriginTLSVerifyWarning(true);renderLoadError(loadState,'Settings',e,loadSettings,true);}
+  catch(e){if(epoch!==settingsLoadEpoch)return;renderLoadError(loadState,'Settings',e,loadSettings,true);}
   finally{if(epoch===settingsLoadEpoch&&loadState&&loadState.textContent==='Loading Settings…')loadState.style.display='none';}}
 
 export function applyOobDisabledUI(){
@@ -1200,7 +1195,7 @@ export function renderRetention(d){
     <td style="font-family:var(--mono);color:var(--fg)">${esc(h.host)}</td>
     <td style="text-align:right;color:var(--fg2)">${esc(String(h.flows))}</td>
     <td style="text-align:right;color:var(--fg2)">${fmtBytes(h.bytes)}</td>
-    <td style="text-align:right"><button class="btn danger ret-del-one" data-host="${escAttr(h.host)}" data-flows="${escAttr(String(h.flows))}" style="color:var(--red);padding:3px 8px" title="Delete all flows from ${escAttr(h.host)}">Delete</button></td>
+    <td style="text-align:right"><button class="btn danger ret-del-one" data-host="${escAttr(h.host)}" data-flows="${escAttr(String(h.flows))}" style="color:var(--red);padding:3px 8px" title="Delete all flows from ${escAttr(h.host)}" aria-label="Delete all flows from ${escAttr(h.host)}">Delete</button></td>
   </tr>`).join('');
   // per-row delete buttons
   body.querySelectorAll('.ret-del-one').forEach(b=>b.onclick=()=>retDeleteOne(b.dataset.host,Number(b.dataset.flows)));
@@ -1799,6 +1794,11 @@ function toggleAndroidDeviceMenu(){
   const menu=$('#androidDeviceMenu'),trigger=$('#androidDeviceTrigger');
   if(!menu||!trigger||trigger.disabled)return;
   if(!menu.hidden){closeAndroidDeviceMenu();return;}
+  // One popover at a time: each trigger stops propagation, so the document
+  // click that normally dismisses the other menu (and the shared ui-select
+  // dropdowns) never fires. Close them explicitly instead.
+  closeIOSDeviceMenu();
+  closeAllUiSelects();
   menu.hidden=false;
   trigger.setAttribute('aria-expanded','true');
   menu.querySelector('.ui-select-opt.sel')?.scrollIntoView({block:'nearest'});
@@ -2065,6 +2065,9 @@ function toggleIOSDeviceMenu(){
   const menu=$('#iosDeviceMenu'),trigger=$('#iosDeviceTrigger');
   if(!menu||!trigger||trigger.disabled)return;
   if(!menu.hidden){closeIOSDeviceMenu();return;}
+  // See toggleAndroidDeviceMenu(): only one popover may stay open.
+  closeAndroidDeviceMenu();
+  closeAllUiSelects();
   menu.hidden=false;
   trigger.setAttribute('aria-expanded','true');
 }
@@ -2186,6 +2189,11 @@ $('#iosProxyMode')&&$('#iosProxyMode').addEventListener('click',e=>{
   loadIOS();
 });}
 document.addEventListener('click',()=>closeIOSDeviceMenu());
+// Escape must also dismiss while focus is still on the trigger (the menu's own
+// handler only fires once focus has moved inside it) — same as Android.
+{const wrap=$('#iosDeviceSelectWrap');if(wrap)wrap.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeIOSDeviceMenu(true);
+});}
 {const lh=$('#iosLanHint');if(lh)lh.addEventListener('click',e=>{if(e.target.closest('#iosOpenProxyBtn'))openSettingsProxy();});}
 wireDeviceMenuKeyboard($('#iosDeviceMenu'),$('#iosDeviceTrigger'),toggleIOSDeviceMenu,closeIOSDeviceMenu);
 $('#iosRefreshBtn')&&($('#iosRefreshBtn').onclick=()=>iosAction(async()=>{}));

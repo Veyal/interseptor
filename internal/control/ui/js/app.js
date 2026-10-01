@@ -4,7 +4,7 @@
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
-import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -194,7 +194,8 @@ function renderIcptStat(){
   if(parts.length){ el.style.display='inline'; el.textContent='· '+parts.join(' · '); }
   else el.style.display='none';
 }
-setInterval(renderCapStat,1000);
+// Cheap status ticker: skip work entirely while the tab is hidden.
+setInterval(()=>{ if(!document.hidden) renderCapStat(); },1000);
 
 let mapRefreshT=null, mapLoadedSig='';
 function scheduleMapRefresh(){
@@ -225,6 +226,22 @@ function scheduleMapRefresh(){
 const STALE_GAP_MS=8000;
 let lastSSEMsgAt=0;   // wall-clock time of the last message/connection event seen
 let sseConnectedOnce=false; // false until the very first `hello` (initial connect)
+// shouldResyncOnReconnect is the whole stale-reconnect decision, pulled out of
+// the `hello` handler so it can be reasoned about (and tested) on its own.
+//   reason 'boot'      — the first connection of the session. The boot sequence
+//                        already loaded every panel, so there is nothing to catch
+//                        up on and we never resync.
+//   reason 'reconnect' — any later connection. Short blips (gap within
+//                        STALE_GAP_MS) stay on the cheap per-event path exactly
+//                        as before; a longer gap means broadcasts may have been
+//                        dropped while this tab had no stream, so the per-event
+//                        catch-up is abandoned in favour of one full resync.
+// An unknown last-event timestamp (0) can't prove freshness, so it resyncs.
+function shouldResyncOnReconnect(lastEventAt,now,reason){
+  if(reason!=='reconnect')return false;
+  if(!lastEventAt)return true;
+  return (now-lastEventAt)>STALE_GAP_MS;
+}
 function resyncAfterStaleReconnect(){
   // Full-refresh path per panel/global state a long gap could have gone stale
   // for. Mirrors scheduleReload()'s "just refetch everything" philosophy but
@@ -327,9 +344,9 @@ function connectEvents(){
   es.addEventListener('hello',()=>{
     setSseStatus('ok');
     const now=Date.now();
-    const gap=lastSSEMsgAt?now-lastSSEMsgAt:Infinity;
+    const reason=sseConnectedOnce?'reconnect':'boot';
     if(sseConnectedOnce)refreshVisibleAllowlist();
-    if(sseConnectedOnce&&gap>STALE_GAP_MS)resyncAfterStaleReconnect();
+    if(shouldResyncOnReconnect(lastSSEMsgAt,now,reason))resyncAfterStaleReconnect();
     sseConnectedOnce=true;
     lastSSEMsgAt=now;
   });
@@ -452,7 +469,7 @@ function cmdkRender(){
 }
 function cmdkPaint(){
   cmdk.list.innerHTML=cmdk.items.map((it,i)=>
-    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accent);color:var(--onAccent)':'')+'">'
+    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accentSolid);color:var(--onAccent)':'')+'">'
     +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'
     +'<span style="opacity:.55;font-size:var(--fs-xs);flex:none">'+esc(it.sub||it.kind)+'</span></div>'
   ).join('')||'<div style="padding:14px;color:var(--fg3)">No matches</div>';
@@ -522,6 +539,15 @@ document.addEventListener('keydown',e=>{
   }
   if(flowSendShortcutAllowed()&&(isModShortcut(e,'i')||isPlainShortcut(e,'i'))){
     if(sendSelectedFlow('intruder'))e.preventDefault();
+    return;
+  }
+  if(flowSendShortcutAllowed()&&isPlainShortcut(e,'c')){
+    const f=selectedFlow();
+    if(f){e.preventDefault();copyCurl(f);return;}
+  }
+  if(flowSendShortcutAllowed()&&isPlainShortcut(e,'x')){
+    e.preventDefault();
+    toggleSelectCurrentFlow();
     return;
   }
   if(activePanel()==='proxy'&&isPlainShortcut(e,'/')){const s=$('#fSearch');if(s){e.preventDefault();s.focus();}return;} // /: focus search

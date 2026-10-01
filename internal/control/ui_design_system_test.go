@@ -794,3 +794,59 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 		t.Errorf("radius scale has %d steps; collapse it to at most 5", radii)
 	}
 }
+
+// TestUIIndexHasNoInlineDesignStyles keeps the design system in the stylesheet.
+// index.html carried 388 style="…" attributes — 32 margin-bottom, 33 flex-wrap,
+// 20 color, 19 gap, 16 font-size — and every one of them was invisible to the
+// theme blocks, to the 720/900/1100 breakpoints, and to every other test in this
+// file. Colour declared inline cannot follow the theme toggle; spacing declared
+// inline cannot be collapsed at a narrow width; a size declared inline silently
+// contradicts the --sp-*/--fs-* scales.
+//
+// Only `display` may be declared inline, because a handful of elements are shown
+// and hidden by JavaScript writing el.style.display directly (see the survey in
+// the utility-layer comment in app.css). There is no allowlist beyond that: a new
+// inline colour or width is a stylesheet change that has not been made yet.
+func TestUIIndexHasNoInlineDesignStyles(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	attr := regexp.MustCompile(`\sstyle="([^"]*)"`)
+	inline, offenders := 0, 0
+	for _, m := range attr.FindAllStringSubmatch(index, -1) {
+		inline++
+		for _, decl := range strings.Split(m[1], ";") {
+			decl = strings.TrimSpace(decl)
+			if decl == "" {
+				continue
+			}
+			prop, _, ok := strings.Cut(decl, ":")
+			if !ok {
+				t.Errorf("malformed inline declaration %q in style=%q", decl, m[1])
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(prop)) != "display" {
+				offenders++
+				t.Errorf("inline style declares %q — move it to a component class or the utility layer in app.css: style=%q", decl, m[1])
+			}
+		}
+	}
+	// A cap on the survivors too: an inline display:none is a JS contract, and
+	// there are only a couple of dozen of those. Well past that and the markup is
+	// drifting back toward styling itself.
+	if inline > 40 {
+		t.Errorf("index.html has %d inline style attributes (%d carrying non-display declarations); the budget is 40 display-only ones", inline, offenders)
+	}
+}
+
+// TestUIHiddenUtilityOutranksComponentDisplayRules pins the specificity trick
+// that keeps `.u-hidden` effective on buttons: `.btn` sets display with a
+// 0-1-3 selector, so a single-class utility would lose and a hidden control
+// (Stop sharing, for one) would render on load.
+func TestUIHiddenUtilityOutranksComponentDisplayRules(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	if !strings.Contains(css, ".u-hidden.u-hidden{display:none}") {
+		t.Fatal("app.css must declare .u-hidden with doubled specificity so it beats .btn's display rule")
+	}
+	if strings.Contains(css, "\n.u-hidden{") {
+		t.Fatal("a single-class .u-hidden rule loses to .btn; keep only the doubled selector")
+	}
+}

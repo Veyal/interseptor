@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave } from './core.js';
+import { $, registerProjectSwitchGuard, api, toast, renderMD, accordionize, createAutosave, renderLoadError } from './core.js';
 registerProjectSwitchGuard(()=>notesAutosave.isDirty()?'Save or retry Notes before switching projects.':'');
 
 /* ---- project notes (auto-saved markdown notebook) ---- */
@@ -23,10 +23,9 @@ function notesLoadState() {
 function showNotesLoadError(err) {
   const el=notesLoadState();
   if(!el)return;
-  el.innerHTML='<span class="state-error-msg">Couldn\'t load notes: '+
-    String(err?.message||'request failed').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+
-    '</span> <button type="button" class="btn xs" data-notes-retry>Retry</button>';
-  el.querySelector('[data-notes-retry]')?.addEventListener('click',loadNotes);
+  // Shared load-failure component (alert message + Retry) rather than a local
+  // re-implementation with its own HTML escaper.
+  renderLoadError(el,'Notes',err,loadNotes,false);
 }
 
 let notesSaveError='';

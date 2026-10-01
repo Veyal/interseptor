@@ -389,7 +389,7 @@ function renderFindings() {
     if (!selFinding) renderFindingDetail(); return;
   }
   if (!selFinding || (!findings.some(f => f.id === selFinding) && parseFindingRoute(location.hash)?.id !== selFinding)) selFinding = list[0].id;
-  box.innerHTML = list.map((f,i) => `<a href="${findingHref(f.id,'overview')}" class="find-row${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}" tabindex="${f.id === selFinding || (!list.some(x=>x.id===selFinding)&&i===0) ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'page' : 'false'}">
+  box.innerHTML = list.map((f,i) => `<a href="${findingHref(f.id,'overview')}" class="find-row${f.id === selFinding ? ' sel' : ''}${f.status === 'needs_verification' ? ' find-row-needs-verif' : ''}" data-id="${f.id}" tabindex="${f.id === selFinding || (!list.some(x=>x.id===selFinding)&&i===0) ? '0' : '-1'}" aria-current="${f.id === selFinding ? 'true' : 'false'}">
     <span class="find-id">#${f.id}</span>
     <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span>
     <span class="find-title">${esc(f.title)}</span>
@@ -554,8 +554,8 @@ function renderBlockEl(b, i, total) {
        ${blockMetaEditor(b, i)}
        <blockquote class="find-poc-callout">${reqLine ? `<div class="find-poc-req">${reqLine}</div>` : ''}</blockquote>
        <div class="find-evidence-actions">
-        <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}">Inspect request</button>
-        <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}">Generate report image</button>
+        <button type="button" class="btn xs find-open-flow" data-flow="${b.flowId}" aria-label="Inspect request for attached flow #${esc(String(b.flowId))}">Inspect request</button>
+        <button type="button" class="btn xs find-flow-preview" data-flow="${b.flowId}" aria-label="Generate report image for attached flow #${esc(String(b.flowId))}">Generate report image</button>
          <button type="button" class="btn xs find-send-repeater" data-flow="${b.flowId}" aria-label="Send attached flow #${esc(String(b.flowId))} to Repeater">Send to Repeater →</button>
        </div>
      </div>
@@ -1566,7 +1566,7 @@ let flowPickEpoch=0;
 let flowPickSearchEpoch=0;
 
 function flowPickModalOpen() {
-  return $('#findFlowPickModal')?.style.display!=='none';
+  return $('#findFlowPickModal')?.style.display==='flex';
 }
 
 function flowPickSearchCurrent(q) {
@@ -1630,7 +1630,7 @@ function renderFlowPickList(filter = '') {
   if (!list) return;
   const rows = flowPickFilter(filter);
   if (!rows.length) {
-    list.innerHTML = '<div class="hint" style="padding:12px">No flows match — capture traffic through the proxy first.</div>';
+    list.innerHTML = '<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg></div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">Capture traffic through the proxy first.</p></div>';
   } else {
     list.innerHTML = rows.map(f => {
       const on = flowPickSel.has(f.id);
@@ -1813,7 +1813,7 @@ async function exportFindingsReport() {
       const errors=$('#findExportChecks');
       if(result.quality && errors){
         errors.hidden=false;
-        errors.innerHTML=`<p>${esc(result.error || result.quality.message || 'Review findings before final export.')}</p>${result.quality.findings.filter(f=>!f.ready).map(f=>`<button type="button" class="btn" data-review-finding="${f.id}">${esc(f.title)} · ${f.checks.length} checks</button>`).join('')}`;
+        errors.innerHTML=`<p>${esc(result.error || result.quality.message || 'Review findings before final export.')}</p>${(result.quality.findings||[]).filter(f=>!f.ready).map(f=>`<button type="button" class="btn" data-review-finding="${f.id}">${esc(f.title)} · ${(f.checks||[]).length} checks</button>`).join('')}`;
         errors.querySelectorAll('[data-review-finding]').forEach(link=>link.onclick=()=>{closeModal($('#findExportModal'));openFinding(Number(link.dataset.reviewFinding));findSection='review';});
       }
       throw new Error(result.error || 'Export failed ('+res.status+')');

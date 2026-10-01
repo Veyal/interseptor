@@ -1,5 +1,6 @@
 import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode } from './core.js';
 import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
+import { sendToRepeater } from './tools.js';
 /* ---- flow inspect popup (Map graph/table, Scanner findings, …) ---- */
 let fmOpenEpoch=0;
 const fmSideEpoch={req:0,res:0};
@@ -105,6 +106,12 @@ $('#fmCopyLink') && ($('#fmCopyLink').onclick = () => {
   const id = state.fm && state.fm.id;
   if(!id) return;
   copyText(location.origin + '/#flow-' + id, 'Flow link copied');
+});
+$('#fmRepeater') && ($('#fmRepeater').onclick = () => {
+  const id = state.fm && state.fm.id;
+  if(!id) return;
+  closeModal($('#flowModal'));
+  sendToRepeater({ id });
 });
 $('#fmProxy') && ($('#fmProxy').onclick = () => {
   const d = state.fm && state.fm.detail, id = state.fm && state.fm.id;

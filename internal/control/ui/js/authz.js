@@ -14,6 +14,12 @@ let authzActionBusy = false;
 let authzActionFocus=null;
 let authzScopeEpoch=0,authzHintEpoch=0,authzRunEpoch=0,authzIdentityLoadEpoch=0,authzIdentityEditEpoch=0;
 let authzIdentityMutationTail=Promise.resolve();
+
+// The results pane speaks the shared state vocabulary from app.css instead of
+// hand-rolled `<div class="hint">` placeholders: an empty state is an icon +
+// title + one-line hint, a failure is a .state-error with an alert message.
+const authzEmptyState=(iconName,title,hint)=>`<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-${iconName}"/></svg></div><div class="state-empty-title">${title}</div><p class="state-empty-hint">${hint}</p></div>`;
+const authzErrorState=message=>`<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><span class="state-error-msg" role="alert">${esc(message)}</span></div>`;
 function setAuthzActionBusy(busy) {
   const modal=$('#authzModal');
   if(busy&&!authzActionBusy){
@@ -151,7 +157,7 @@ export function openAuthz(flowId){
   setAuthzActionBusy(false);
   openModal($('#authzModal'),{onEscape:closeAuthz,onDismiss:closeAuthz});
   syncAuthzLabel();
-  $('#authzResults').innerHTML='<div class="hint">Define identities, then <b>Run</b>. Use <b>Check sessions</b> first if cookies may be stale.</div>';
+  $('#authzResults').innerHTML=authzEmptyState('gate','No replay yet','Define identities, then Run. Use Check sessions first if cookies may be stale.');
   setAuthzStatus('');
   setAuthzMode('flow');
   loadAuthzIdentities();
@@ -262,7 +268,7 @@ async function checkSessions(){
         <span>${!c.hasAuth?'<span class="hint">anonymous</span>':c.sessionInvalid?'<span style="color:var(--red);font-weight:700">expired?</span>':'<span class="hint">ok</span>'}</span>
         <span></span></div>`).join('');
     setAuthzStatus('Session check complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,probe))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Check failed: '+esc(e.message)+'</div>';setAuthzStatus('Session check failed: '+e.message,'error');}
+  }catch(e){if(!authzActionCurrent(epoch,mode,probe))return;$('#authzResults').innerHTML=authzErrorState('Check failed: '+e.message);setAuthzStatus('Session check failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 }
 
@@ -339,7 +345,7 @@ function renderAuthzMatrix(runs){
 function renderAuthzResults(d){
   const runs=d.runs||[];
   const box=$('#authzResults');
-  if(!runs.length){box.innerHTML='<div class="hint">no results</div>';return;}
+  if(!runs.length){box.innerHTML=authzEmptyState('clipboard','No results','This run produced no comparable responses.');return;}
   const bulk=runs.length>1||authzMode==='scope';
   if(!bulk){
     const res=runs[0].results||[];
@@ -372,14 +378,14 @@ async function crossHostReplay(){
     const d=await api('/api/authz/cross-host-replay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({flowId:fid})});
     if(!authzActionCurrent(epoch,mode,fid))return;renderCrossHostResults(d);
     setAuthzStatus('Cross-host replay complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,fid))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Cross-host replay failed: '+e.message,'error');}
+  }catch(e){if(!authzActionCurrent(epoch,mode,fid))return;$('#authzResults').innerHTML=authzErrorState('Run failed: '+e.message);setAuthzStatus('Cross-host replay failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 }
 
 function renderCrossHostResults(d){
   const box=$('#authzResults');
   const results=d.results||[];
-  if(!results.length){box.innerHTML='<div class="hint">no in-scope hosts found — browse the target through the proxy first</div>';return;}
+  if(!results.length){box.innerHTML=authzEmptyState('globe','No in-scope hosts','Browse the target through the proxy first.');return;}
   const accepted=results.filter(r=>r.accepted).length;
   let html=`<div class="hint" style="margin-bottom:8px">Cross-host JWT replay · <span style="font-family:var(--mono)">${esc(d.method||'')} ${esc(d.path||'/')}</span> · ${accepted} of ${results.length} host${results.length===1?'':'s'} accepted</div>`;
   html+='<div class="authz-row authz-head"><span>host</span><span>status</span><span>length</span><span>verdict</span></div>';
@@ -427,7 +433,7 @@ $('#authzRun')&&($('#authzRun').onclick=async()=>{
     const d=await api('/api/authz/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;renderAuthzResults(d);
     setAuthzStatus('Authorization replay complete');
-  }catch(e){if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;$('#authzResults').innerHTML='<div class="hint" style="color:var(--red)">Run failed: '+esc(e.message)+'</div>';setAuthzStatus('Authorization replay failed: '+e.message,'error');}
+  }catch(e){if(!authzActionCurrent(epoch,mode,target,mode!=='scope'))return;$('#authzResults').innerHTML=authzErrorState('Run failed: '+e.message);setAuthzStatus('Authorization replay failed: '+e.message,'error');}
   finally{if(epoch===authzRunEpoch)setAuthzActionBusy(false);}
 });
 

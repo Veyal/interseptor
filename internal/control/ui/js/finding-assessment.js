@@ -45,7 +45,7 @@ function renderEvidenceMapping(f) {
 export function renderProofReview(f, edit) {
   const r = f.proofReview || {};
   const score = f.cvssScore == null ? 'CVSS v4.0 vector needed' : `${f.cvssScore.toFixed(1)} · ${f.cvssRating} · ${f.cvssNomenclature}`;
-  return `<section class="find-sec find-proof-review" id="find-sec-proof-review"><h3>Impact verification</h3>${edit ? `<div class="find-properties"><label for="findExecution">Observed impact</label><select id="findExecution">${Object.entries(executionLabels).map(([v, label]) => `<option value="${v}"${(r.execution || '') === v ? ' selected' : ''}>${label}</option>`).join('')}</select><label for="findVisualProof">Visual claim</label><button type="button" id="findVisualProof" class="btn" aria-pressed="${!!r.visual}">${r.visual ? 'Browser screenshot required' : 'No visual claim'}</button></div><label class="find-target-field" for="findExecutionReason">Verification limit / reason<textarea class="find-field-text" id="findExecutionReason" rows="2" placeholder="Required when impact has not been demonstrated">${esc(r.reason || '')}</textarea></label>` : `<p>${esc(executionLabels[r.execution || ''] || r.execution)}</p>${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${r.visual ? '<p class="hint">Requires a real browser capture of the observed result.</p>' : ''}`}
+  return `<section class="find-sec find-proof-review" id="find-sec-proof-review"><h3>Impact verification</h3>${edit ? `<div class="find-properties"><label for="findExecution">Observed impact</label><select id="findExecution">${Object.entries(executionLabels).map(([v, label]) => `<option value="${v}"${(r.execution || '') === v ? ' selected' : ''}>${label}</option>`).join('')}</select><label for="findVisualProof">Visual claim</label><button type="button" id="findVisualProof" class="btn" aria-pressed="${!!r.visual}">${r.visual ? 'Browser screenshot required' : 'No visual claim'}</button></div><label class="find-target-field" for="findExecutionReason">Verification limit / reason<textarea class="find-field-text" id="findExecutionReason" rows="2" placeholder="Required when impact has not been demonstrated" aria-describedby="findExecutionReasonError">${esc(r.reason || '')}</textarea></label><p class="find-proof-needed" id="findExecutionReasonError" hidden>A reason is required when impact has not been demonstrated.</p>` : `<p>${esc(executionLabels[r.execution || ''] || r.execution)}</p>${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${r.visual ? '<p class="hint">Requires a real browser capture of the observed result.</p>' : ''}`}
   ${edit ? renderEvidenceMapping(f) : ''}${renderCapabilityClaims(f,edit)}<p class="find-cvss-score" id="findCvssScore">${esc(score)}</p></section>`;
 }
 
@@ -127,6 +127,8 @@ export function bindFindingAssessment(root, f, { stage, save, refresh, openFlow 
     const fields = reviewFields(); stage(fields);
     const needsReason = ['prerequisite_only', 'not_executed'].includes(review.execution) && !review.reason.trim();
     reason.setAttribute('aria-invalid', String(needsReason));
+    const reasonError = root.querySelector('#findExecutionReasonError');
+    if (reasonError) reasonError.hidden = !needsReason;
     if (needsReason) { reason.focus(); return; }
     void persist(fields);
   };

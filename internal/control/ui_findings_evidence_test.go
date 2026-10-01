@@ -90,7 +90,7 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if strings.Contains(textBranch[:imageStart], "Proof annotation needed") {
 		t.Error("text reproduction steps must not demand proof annotations")
 	}
-	for _, want := range []string{".find-evidence-rail", ".find-mobile-back", ".find-readiness", ".find-row[aria-selected=\"true\"]"} {
+	for _, want := range []string{".find-evidence-rail", ".find-mobile-back", ".find-readiness", ".find-row.sel"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("findings CSS missing %q", want)
 		}

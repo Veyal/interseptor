@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, icon, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
@@ -96,7 +96,7 @@ function syncHideTlsFilter(){
   if(!btn)return;
   btn.classList.toggle('on',state.hideTlsFailed);
   btn.setAttribute('aria-pressed',state.hideTlsFailed?'true':'false');
-  btn.title=state.hideTlsFailed?'TLS handshake failures hidden — click to show PIN rows':'Showing TLS handshake failures — click to hide PIN rows';
+  btn.title=state.hideTlsFailed?'TLS handshake failures hidden — click to show them':'Showing TLS handshake failures — click to hide them';
 }
 export function setShowTlsFailed(show){
   state.hideTlsFailed=!show;
@@ -298,17 +298,34 @@ function toggleColPicker(){
 }
 
 function flowExcluded(f){return (f.flags&EXCLUDE_NORM)!==0&&(f.flags&FLAG_AI)===0;}
+// activeScopeMatcher compiles state.scope once per rule-set identity (loadScope
+// reassigns state.scope on every /api/scope read, so a fresh array is the signal
+// that the rules changed) — compiling per live flow event would defeat the point.
+// scopeLoaded distinguishes "no rules" from "rules unknown": until /api/scope has
+// answered once, an empty state.scope must not be read as everything-in-scope.
+let scopeMatcherSource=null,scopeMatcherCache=null,scopeLoaded=false;
+function activeScopeMatcher(){
+  const rules=state.scope||[];
+  if(scopeMatcherSource!==rules){scopeMatcherSource=rules;scopeMatcherCache=compileScopeRules(rules);}
+  return scopeMatcherCache;
+}
+// scopeDecidableHere reports whether "in scope" mode can be evaluated against the
+// flow objects this client already holds, i.e. whether the rule set avoids regex
+// host/path patterns (Go's regexp is RE2, JS's isn't — see compileScopeRules).
+function scopeDecidableHere(){return !state.inScopeOnly||(scopeLoaded&&activeScopeMatcher().evaluable);}
 // canIncremental used to unconditionally bail to a full /api/flows reload
 // whenever scope-mode/search/exclude-filters were active — degrading every new
 // flow event to a full reload for the common pentester workflow (scope mode on).
 // It's now a narrow "is every active filter one flowMatchesFilters() can decide
 // purely from the flow object the client already has" gate. Two things are NOT
 // safely decidable client-side, so they still force a full reload:
-//   - inScopeOnly: scope rules support wildcard-subdomain and regex host/path
-//     patterns with include/exclude precedence (internal/scope/scope.go) —
-//     reimplementing that in JS would risk drifting from the server's semantics
-//     (this app's "zero change to what data ends up displayed" rule takes
-//     priority over incrementalism here).
+//   - inScopeOnly *with a regex host/path rule*: those compile to Go RE2 on the
+//     server (internal/scope/scope.go), which JS's RegExp is not — so a regex
+//     rule anywhere in the set puts scope mode back on the server-only path.
+//     Everything else scope supports (exact host, *.wildcard host, literal path
+//     prefix, scheme, port, include/exclude precedence) is a plain field
+//     comparison this client reproduces exactly — see core.js's flowInScope,
+//     which is cross-checked against scope.Engine.InScope in Go tests.
 //   - an active text search: the default (path) scope is SQLite FTS5
 //     (unicode61 tokenizer, per-token prefix match, OR-joined —
 //     internal/store/flows_fts.go) and the body scope requires reading a
@@ -319,7 +336,7 @@ function flowExcluded(f){return (f.flags&EXCLUDE_NORM)!==0&&(f.flags&FLAG_AI)===
 // hasNote/exclude-rules) is a simple, already-duplicated field comparison — see
 // flowMatchesFilters() below — so those stay incremental.
 function canIncremental(){
-  return !state.inScopeOnly&&!(state.filters.search&&state.filters.search.trim());
+  return scopeDecidableHere()&&!(state.filters.search&&state.filters.search.trim());
 }
 function flowMatchesFilters(f){
   const fl=state.filters;
@@ -328,6 +345,12 @@ function flowMatchesFilters(f){
   if(!state.showAI&&isAI)return false;
   if(flowExcluded(f))return false;
   if(state.hideTlsFailed&&(f.flags&FLAG_TLS)&&state.filters.tag!=='tls-failed')return false;
+  // Scope mode is part of the server-side query (buildFlowParams sets inScope=1),
+  // so the client-side predicate has to apply it too or an incrementally inserted
+  // row could show traffic the same filter set would have excluded on a reload.
+  // With a regex rule in play flowInScope() reports false, which keeps the row
+  // out until the full reload canIncremental() is already forcing places it.
+  if(state.inScopeOnly&&(!scopeLoaded||!flowInScope(f,activeScopeMatcher())))return false;
 
   if(state.notesOnly&&!(f.note&&String(f.note).trim()))return false;
   if(fl.scheme&&f.scheme!==fl.scheme)return false;
@@ -433,28 +456,25 @@ function updateTruncBanner(){
   // No hard cap anymore — older flows stream in as you scroll. Show a compact
   // status and a retry affordance when a page request fails; the failure must
   // remain visible until the operator retries or another page succeeds.
+  // `message` is the dedicated text node when the banner has one, and the banner
+  // itself as a fallback — writing through it keeps a sibling retry button alive
+  // instead of being wiped by a textContent assignment on the whole banner.
   const message=$('#flowCapMessage')||b.querySelector('[data-flow-cap-message]')||b.querySelector('span')||b;
   const retry=$('#flowCapRetry');
+  const show=text=>{message.textContent=text;b.style.display='flex';};
   if(flowLoadError){
     const stale=state.flows.length>0;
-    if(message!==b)message.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
-    else b.textContent=(stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError);
-    b.style.display='flex';
+    show((stale?'History is stale — ':'Could not load History: ')+(flowLoadError.message||flowLoadError));
     if(retry){retry.hidden=false;retry.disabled=flowRefreshing;retry.onclick=()=>loadFlows();}
   }else if(flowPageError){
-    if(message!==b)message.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
-    else b.textContent='Could not load older flows: '+(flowPageError.message||flowPageError);
-    b.style.display='flex';
+    show('Could not load older flows: '+(flowPageError.message||flowPageError));
     if(retry){retry.hidden=false;retry.disabled=loadingMore;retry.onclick=()=>loadMoreFlows();}
   }else if(flowRefreshing){
-    if(message!==b)message.textContent='Refreshing flows…';else b.textContent='Refreshing flows…';
-    b.style.display='flex';if(retry)retry.hidden=true;
+    show('Refreshing flows…');if(retry)retry.hidden=true;
   }else if(loadingMore){
-    if(message!==b)message.textContent='Loading older flows…';else b.textContent='Loading older flows…';
-    b.style.display='flex';if(retry)retry.hidden=true;
+    show('Loading older flows…');if(retry)retry.hidden=true;
   }else if(flowHasMore){
-    if(message!==b)message.textContent='Scroll down to load older flows.';else b.textContent='Scroll down to load older flows.';
-    b.style.display='flex';if(retry)retry.hidden=true;
+    show('Scroll down to load older flows.');if(retry)retry.hidden=true;
   }else{b.style.display='none';if(retry)retry.hidden=true;}
 }
 // Infinite scroll: load the next older page as the History list nears its bottom.
@@ -474,14 +494,25 @@ function syncFlowHorizontalScroll(){
   if(box.scrollTop+box.clientHeight>=box.scrollHeight-400)loadMoreFlows();
   },{passive:true});
 }
+// buildFlowRowEl materializes one wired row element and stamps the exact markup
+// it was built from onto the node. The stamp is what lets reconcileVirtualRows
+// tell "this mounted row already renders the current state" from "this row is
+// stale" without diffing attributes by hand — and therefore what makes keyed
+// reconciliation produce byte-identical DOM to a full re-render.
+function buildFlowRowEl(f){
+  const html=flowRowHTML(f);
+  const tmp=document.createElement('div');
+  tmp.innerHTML=html;
+  const el=tmp.firstElementChild;
+  el._flowHTML=html;
+  wireFlowRow(el);
+  return el;
+}
 export function patchFlowRow(f){
   const row=document.querySelector('#rows .trow[data-id="'+f.id+'"]');
   if(row){
     const hadFocus=row===document.activeElement||row.contains(document.activeElement);
-    const tmp=document.createElement('div');
-    tmp.innerHTML=flowRowHTML(f);
-    const nr=tmp.firstElementChild;
-    wireFlowRow(nr);
+    const nr=buildFlowRowEl(f);
     row.replaceWith(nr);
     // SSE response updates replace the row's DOM node. Keep keyboard users on
     // the same flow instead of dropping focus to the document body.
@@ -491,10 +522,7 @@ export function patchFlowRow(f){
   if(!flowMatchesFilters(f))return;
   const box=$('#rows');
   if(!box||box.querySelector('.state-empty')||box.querySelector('#gsMcp')){renderRows();return;}
-  const tmp=document.createElement('div');
-  tmp.innerHTML=flowRowHTML(f);
-  const nr=tmp.firstElementChild;
-  wireFlowRow(nr);
+  const nr=buildFlowRowEl(f);
   const sorted=state.flows;
   const idx=sorted.findIndex(x=>x.id===f.id);
   const next=sorted[idx+1];
@@ -526,13 +554,15 @@ export function upsertFlow(f){
 }
 let liveRenderQueued=false;
 function queueFullWindowRebuild(){
-  // Virtualized mode, insert path: a new row at the front shifts every other
-  // row's window index, which a single DOM patch can't express — the window
-  // itself has to be recomputed. Coalesce via rAF so a burst of inserts in the
-  // same frame collapses to one rebuild (same behavior as before this change).
+  // Virtualized mode, insert/removal path: a new row at the front shifts every
+  // other row's window index, so the window itself has to be recomputed. That
+  // recomputation is now a keyed reconcile (reconcileVirtualRows) that patches
+  // only the rows the new window actually adds or drops, with renderRows() kept
+  // as the fallback for windows it can't patch. Coalesce via rAF so a burst of
+  // inserts in the same frame collapses to one pass (same as before).
   if(liveRenderQueued)return;
   liveRenderQueued=true;
-  const fire=()=>{liveRenderQueued=false;renderRows();};
+  const fire=()=>{liveRenderQueued=false;if(!reconcileVirtualRows())renderRows();};
   // rAF is suspended outright (not just throttled) for a backgrounded/hidden
   // tab in every major browser — Interceptor's control UI is routinely left
   // in a background tab while the operator works in the app under test, so
@@ -713,6 +743,62 @@ function restoreFlowListFocus(box,focus){
   const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
   target?.focus({preventScroll:true});
 }
+// reconcileVirtualRows is the keyed-reconciliation counterpart to renderRows for
+// the virtualized window. Instead of re-serializing and re-wiring the entire
+// visible slice on every live insert/removal, it diffs the mounted row ids
+// against the ids the next window should hold and touches only the difference:
+// surviving rows keep their identity, so their listeners, any focus inside them,
+// and the container's scroll position all survive untouched. A row whose
+// rendering drifted is replaced individually (the stamp from buildFlowRowEl
+// makes that comparison exact), so the resulting DOM is identical to what
+// renderRows() would have produced for the same state.
+// Returns false when the current DOM is not a window it may patch (empty state,
+// non-virtualized list, reordered survivors) so the caller can fall back.
+function reconcileVirtualRows(){
+  const box=$('#rows');
+  const flows=state.flows;
+  if(!box||!flows.length)return false;
+  const top=box.firstElementChild,bottom=box.lastElementChild;
+  if(!top||!bottom||top===bottom)return false;
+  if(top.dataset.vpad!=='top'||bottom.dataset.vpad!=='bottom')return false;
+  // Inspector visibility changes #rows' height, so settle it before sizing the window.
+  syncInspectorVisibility();
+  applyFlowGrid();
+  const win=flowVirt.computeWindow(flows.length);
+  if(!win)return false;
+  const slice=flows.slice(win.start,win.end);
+  const mounted=Array.from(box.querySelectorAll('.trow'));
+  const plan=diffVisibleRows(mounted.map(r=>Number(r.dataset.id)),slice.map(f=>f.id));
+  if(!plan.reusable)return false;
+  const byId=new Map(mounted.map(r=>[Number(r.dataset.id),r]));
+  for(const id of plan.remove){
+    const row=byId.get(id);
+    if(row)row.remove();
+    byId.delete(id);
+  }
+  const nextById=new Map(slice.map(f=>[f.id,f]));
+  for(const ins of plan.insert){
+    const el=buildFlowRowEl(nextById.get(ins.id));
+    const anchor=ins.before==null?bottom:byId.get(ins.before);
+    (anchor||bottom).before(el);
+    byId.set(ins.id,el);
+  }
+  for(const f of slice){
+    const row=byId.get(f.id);
+    if(!row||row._flowHTML===flowRowHTML(f))continue;
+    const hadFocus=row===document.activeElement||row.contains(document.activeElement);
+    const focus=hadFocus?captureFlowListFocus(box):null;
+    const nr=buildFlowRowEl(f);
+    row.replaceWith(nr);
+    byId.set(f.id,nr);
+    if(focus)restoreFlowListFocus(box,focus);
+    else if(hadFocus)nr.focus({preventScroll:true});
+  }
+  top.style.height=win.topPad+'px';
+  bottom.style.height=win.bottomPad+'px';
+  consumeFlowSignals();
+  return true;
+}
 export function renderRows(){
   syncInspectorVisibility();
   const box=$('#rows');
@@ -734,16 +820,26 @@ export function renderRows(){
     return;}
   const win=flowVirt.computeWindow(flows.length);
   if(win){
-    box.innerHTML=`<div style="height:${win.topPad}px" aria-hidden="true"></div>`+flows.slice(win.start,win.end).map(f=>flowRowHTML(f)).join('')+`<div style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
-    $$('#rows .trow').forEach(wireFlowRow);
+    // The pads carry data-vpad so reconcileVirtualRows can recognize a window it
+    // is allowed to patch (and resize) instead of re-serializing it.
+    const html=flows.slice(win.start,win.end).map(f=>flowRowHTML(f));
+    box.innerHTML=`<div data-vpad="top" style="height:${win.topPad}px" aria-hidden="true"></div>`+html.join('')+`<div data-vpad="bottom" style="height:${win.bottomPad}px" aria-hidden="true"></div>`;
+    stampFlowRows(box,html);
     consumeFlowSignals();
     restoreFlowListFocus(box,focus);
     return;
   }
-  box.innerHTML=flows.map(f=>flowRowHTML(f)).join('');
-  $$('#rows .trow').forEach(wireFlowRow);
+  const html=flows.map(f=>flowRowHTML(f));
+  box.innerHTML=html.join('');
+  stampFlowRows(box,html);
   consumeFlowSignals();
   restoreFlowListFocus(box,focus);
+}
+// stampFlowRows wires every freshly-serialized row and records the markup it came
+// from, so the next keyed reconcile can skip rows whose rendering hasn't changed.
+function stampFlowRows(box,html){
+  const rows=box.querySelectorAll('.trow');
+  rows.forEach((r,i)=>{r._flowHTML=html[i];wireFlowRow(r);});
 }
 export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
@@ -795,6 +891,22 @@ export function toggleSelectAllShown(){
   const all=list.length>0&&list.every(f=>state.selected.has(f.id));
   if(all)state.selected.clear();else list.forEach(f=>state.selected.add(f.id));
   updateSelBar();renderRows();
+}
+export function toggleSelectCurrentFlow(){
+  if(state.selId==null)return;
+  const id=state.selId;
+  if(state.selected.has(id)){
+    state.selected.delete(id);
+  }else{
+    state.selected.add(id);
+  }
+  const row=document.querySelector(`.trow[data-id="${id}"]`);
+  if(row){
+    const has=state.selected.has(id);
+    row.classList.toggle('msel',has);
+    row.setAttribute('aria-pressed',has?'true':'false');
+  }
+  updateSelBar();
 }
 // buildFlowParams encodes the active filters into a query (without limit/cursor),
 // shared by the initial load and the scroll-triggered page loads.
@@ -1242,6 +1354,14 @@ export async function renderSide(side){
         el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,mime||'application/json')+'</pre>';
         return;
       }
+      if(view==='hex'){
+        const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
+        if(!current())return;
+        el._rawText=raw;
+        el._pretty=false;
+        el.innerHTML='<pre class="hex-dump">'+esc(formatHexDump(raw))+'</pre>';
+        return;
+      }
       const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
       if(!current())return;
       el._rawText=raw;
@@ -1261,13 +1381,26 @@ export async function renderSide(side){
     }catch(e){if(current())el.textContent='(error: '+e.message+')';}
   };
   if(isBinaryMime(mime)){
+    if(view==='hex'){
+      await draw();
+      return;
+    }
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
       `<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
         <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
-        <button class="btn" data-bin="1" style="margin-top:8px;margin-left:6px">Show raw anyway</button></div>`;
+        <button class="btn" data-bin="1" style="margin-top:8px;margin-left:6px">Show raw anyway</button>
+        <button class="btn" data-bin-hex="1" style="margin-top:8px;margin-left:6px">Hex dump</button></div>`;
     const b=el.querySelector('[data-bin]');
     if(b)b.onclick=()=>{el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';setTimeout(draw,10);};
+    const bHex=el.querySelector('[data-bin-hex]');
+    if(bHex)bHex.onclick=()=>{
+      state.view[side]='hex';
+      const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
+      if(seg)seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.view==='hex';x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
+      el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';
+      setTimeout(draw,10);
+    };
     return;
   }
   if(len>RENDER_CAP){
@@ -1523,7 +1656,12 @@ export async function loadScope(){
     const d=await api('/api/scope');
     if(epoch!==scopeLoadEpoch||mutationSnapshot!==scopeMutationEpoch||scopeMutationLanes.size)return;
     if(loadState)loadState.style.display='none';
+    const changed=JSON.stringify(state.scope)!==JSON.stringify(d.rules||[]);
     state.scope=d.rules||[];
+    scopeLoaded=true;
+    // Events replayed after an in-flight loadFlows() are judged against the rules
+    // held at that moment; a changed rule set needs one more window fetch.
+    if(changed&&state.inScopeOnly)scheduleReload();
     renderScope();
   }catch(e){
     if(epoch===scopeLoadEpoch&&!scopeMutationLanes.size)renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
@@ -1674,7 +1812,7 @@ export function renderChips(){
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
   add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
-  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>PIN</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">✕</button></span>`);
+  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">✕</button></span>`);
   (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">✕</button></span>`);});
   const hasFilters=items.length>0;
   if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
@@ -1854,13 +1992,11 @@ export function showCtx(x,y,f,field){
   openMenu(x,y,sections);
 }
 
-// showInspectorCtx builds the request/response pane menu: a SELECTION section
-// (only when text is highlighted) for copy/decode/search/scope, plus the global
-// flow actions.
 export function showInspectorCtx(x,y,side){
   const f=flowStore.byId.get(state.selId)||state.detail;
   if(!f)return;
-  const sel=selectionWithin($(side==='req'?'#reqView':'#resView'));
+  const curSide=side==='resp'?'res':side;
+  const sel=selectionWithin($(curSide==='req'?'#reqView':'#resView'));
   const sections=[];
   if(sel){
     const short=sel.length>40?sel.slice(0,40)+'…':sel;
@@ -1873,7 +2009,12 @@ export function showInspectorCtx(x,y,side){
     items.push({label:'Search in Map (body)',val:short,act:()=>focusMapSearch(sel,'body')});
     sections.push({head:'SELECTION', items});
   }
-  sections.push(flowGlobalSection(f, side==='req'?'REQUEST':'RESPONSE', side));
+  const copyItems=[
+    {label:curSide==='req'?'Copy entire request':'Copy entire response',act:()=>copyFlowRaw(f,curSide)},
+    {label:curSide==='req'?'Copy request body':'Copy response body',act:()=>copyFlowBody(f,curSide)},
+  ];
+  sections.push({head:'COPY', items:copyItems});
+  sections.push(flowGlobalSection(f, curSide==='req'?'REQUEST':'RESPONSE', curSide));
   if(!sel)sections.push({items:[{label:'Open Decoder',act:()=>openDecoder('')}]});
   const sendAsIds2=_authzIdsCache.filter(id=>!id.broken&&(id.name||id.headers));
   if(sendAsIds2.length)sections.push({head:'SEND AS',items:sendAsIds2.map(id=>({label:id.name||'(unnamed)',act:()=>sendAsIdentity(f,id)}))});
@@ -1912,13 +2053,33 @@ window.addEventListener('blur',hideCtx);
 // menu never double-shows over a selection.
 ['reqView','resView'].forEach(id=>{
   const el=$('#'+id);
-  if(el)el.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showInspectorCtx(e.clientX,e.clientY,id==='reqView'?'req':'resp');});
+  if(el)el.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();showInspectorCtx(e.clientX,e.clientY,id==='reqView'?'req':'res');});
 });
 wireSelectionDecode($('#reqView'),$('#reqDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'req'}:null});
 wireSelectionDecode($('#resView'),$('#resDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'res'}:null});
 export function flowURL(f){const def=(f.scheme==='https'&&f.port===443)||(f.scheme==='http'&&f.port===80);return `${f.scheme}://${f.host}${def?'':':'+f.port}${f.path}`;}
 export function copyURL(f){copyText(flowURL(f),'URL copied');}
 function shq(s){return "'"+String(s).replace(/'/g,"'\\''")+"'";}
+export async function copyFlowRaw(f,side='req'){
+  try{
+    const raw=await api('/api/flows/'+f.id+'/raw?side='+side);
+    copyText(raw,(side==='req'?'Request':'Response')+' copied');
+  }catch(e){toast('copy: '+e.message);}
+}
+export async function copyFlowBody(f,side='req'){
+  try{
+    const raw=await api('/api/flows/'+f.id+'/raw?side='+side);
+    let i=raw.indexOf('\r\n\r\n');
+    let body='';
+    if(i>=0){
+      body=raw.slice(i+4);
+    }else{
+      i=raw.indexOf('\n\n');
+      body=i>=0?raw.slice(i+2):'';
+    }
+    copyText(body,(side==='req'?'Request':'Response')+' body copied');
+  }catch(e){toast('copy body: '+e.message);}
+}
 export async function copyCurl(f){
   try{
     const d=await api('/api/flows/'+f.id);

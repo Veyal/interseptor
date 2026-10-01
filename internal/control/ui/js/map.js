@@ -13,6 +13,23 @@ function keyClick(el, fn, preserveRole=false){
   el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});
   el.onclick=fn;
 }
+// wireRovingGroup turns a set of keyClick-wired sibling rows into a single shared
+// Tab stop, with Arrow/Home/End moving focus among them (roving tabindex) —
+// dense hosts would otherwise turn every row into its own Tab stop. Call after
+// keyClick, which unconditionally sets tabIndex=0 on each row.
+function wireRovingGroup(elsLike){
+  const els=[...elsLike];
+  els.forEach((el,i)=>{
+    el.tabIndex=i===0?0:-1;
+    el.addEventListener('keydown',e=>{
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
+      e.preventDefault();
+      const idx=els.indexOf(el);
+      const next=e.key==='ArrowDown'?(idx+1)%els.length:e.key==='ArrowUp'?(idx-1+els.length)%els.length:e.key==='Home'?0:els.length-1;
+      el.tabIndex=-1;els[next].tabIndex=0;els[next].focus();
+    });
+  });
+}
 import { flowPopup } from './flowmodal.js';
 
 function labelMapControls() {
@@ -404,7 +421,9 @@ function mapExpandClustersForSearch(eps){
 }
 
 function wireMapEpRows(root){
-  root.querySelectorAll('.map-ep[data-flow]').forEach(el => keyClick(el, () => flowPopup(Number(el.dataset.flow))));
+  const rows=root.querySelectorAll('.map-ep[data-flow]');
+  rows.forEach(el => keyClick(el, () => flowPopup(Number(el.dataset.flow))));
+  wireRovingGroup(rows);
   root.querySelectorAll('.map-cluster-badge').forEach(btn => {
     btn.onclick = ev => {
       ev.stopPropagation();
@@ -545,11 +564,15 @@ function renderMapParams(d){
       <td style="font-family:var(--mono);color:var(--fg)">${esc(p.name)}</td>
       <td style="color:var(--fg3)">${esc(p.source)}</td>
       <td>${p.hits}</td>
-      <td><button type="button" class="btn xs map-param-inspect">#${p.lastFlowId}</button></td>
+      <td><button type="button" class="btn xs map-param-inspect" aria-label="Inspect flow #${p.lastFlowId} for parameter ${escAttr(p.name)}">#${p.lastFlowId}</button></td>
     </tr>`).join('')}
     </tbody></table></div>`).join('');
   box.querySelectorAll('.map-param-inspect').forEach(b=>{b.onclick=ev=>{ev.stopPropagation();const tr=b.closest('[data-flow]');if(tr)flowPopup(Number(tr.dataset.flow));};});
-  box.querySelectorAll('.map-param-row[data-flow]').forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
+  box.querySelectorAll('tbody').forEach(tbody=>{
+    const rows=tbody.querySelectorAll('.map-param-row[data-flow]');
+    rows.forEach(tr=>keyClick(tr,()=>flowPopup(Number(tr.dataset.flow)),true));
+    wireRovingGroup(rows);
+  });
 }
 
 function renderMapCrumb(eps){
@@ -715,6 +738,7 @@ function mapTableRow(e, showHost){
 }
 
 function wireMapTableRows(box){
+  const wired=[];
   box.querySelectorAll('tr[data-flow]').forEach(tr => {
     const id = Number(tr.dataset.flow);
     if(!id) return;
@@ -722,7 +746,9 @@ function wireMapTableRows(box){
       if(ev.target.closest('[data-rep]')) return;
       flowPopup(id);
     }, true);
+    wired.push(tr);
   });
+  wireRovingGroup(wired);
   box.querySelectorAll('[data-rep]').forEach(b => b.onclick = ev => {
     ev.stopPropagation();
     sendToRepeater({ id: Number(b.dataset.rep) });

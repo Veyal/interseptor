@@ -2,7 +2,7 @@
 // (point at the proxy → trust the CA → set target scope → done) instead of making
 // them hunt across the Settings sections. Shown once on boot unless skipped, and
 // reopenable from Settings → Project & data.
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, projectStorageKey } from './core.js';
+import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, projectStorageKey, renderLoadError } from './core.js';
 import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
@@ -96,8 +96,7 @@ async function setupReadiness(){
     return report;
   }catch(e){
     if(!ownsReadiness())return null;
-    box.innerHTML=`<span style="color:var(--red)">Readiness check failed: ${esc(e.message)}</span> <button class="btn xs" id="setupRetryReadiness">Retry</button>`;
-    $('#setupRetryReadiness').onclick=setupReadiness;
+    renderLoadError(box,'Readiness check',e,setupReadiness,false);
     return null;
   }
 }

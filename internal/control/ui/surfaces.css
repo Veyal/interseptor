@@ -1,6 +1,25 @@
 /* Shared floating surfaces and compact-layout affordances.
    Loaded after app.css so feature styles retain ownership of their content. */
 
+/* One frame for everything that floats above the workspace: context menu,
+   column picker, select popover, graph tooltip and the modal shells. They had
+   drifted to three different borders (--line2 vs a hand-rolled shadow), two fill
+   colours and three elevations, which made a dropdown and a dialog opened side
+   by side look like they came from different applications. --surface-frame is
+   the token that exists for exactly this edge, and it is defined per theme. */
+#ctxmenu,
+.col-picker,
+.ui-select-menu,
+.map-graph-tip,
+.modal-shell {
+  background: var(--bg2);
+  border: 1px solid var(--surface-frame);
+  box-shadow: var(--elev-2);
+}
+/* A dialog is the one surface that earns the deepest elevation — it dims the
+   whole workspace behind it. */
+.modal-shell { box-shadow: var(--elev-3); }
+
 #ctxmenu {
   min-width: min(210px, calc(100vw - 16px));
   max-width: min(420px, calc(100vw - 16px));
@@ -36,17 +55,17 @@
 .set-sec .settings-section-heading { animation: none; }
 .uisw.on .uisw-led { animation: none; }
 .col-picker{min-width:0;max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain}
-.field textarea{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;font-size:var(--fs-sm);line-height:1.6;min-width:0}
+.field textarea{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;font-size:var(--fs-sm);line-height:var(--lh-normal);min-width:0}
 
 .ui-select-menu-fixed {
   max-width: min(420px, calc(100vw - 16px));
   overscroll-behavior: contain;
 }
-.ui-select-menu{padding:4px;border-radius:10px;box-shadow:var(--elev-3)}
-.ui-select-opt{flex-direction:row;align-items:center;gap:10px;min-height:36px;padding:9px 10px;border-radius:6px;font-weight:500}
+.ui-select-menu{padding:4px;border-radius:var(--r-lg)}
+.ui-select-opt{flex-direction:row;align-items:center;gap:10px;min-height:36px;padding:9px 10px;border-radius:var(--r-md);font-weight:500}
 .ui-select-opt-title{font-weight:500}
 .ui-select-opt.active{outline:1px solid var(--accent);outline-offset:-1px}
-.ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:12px}
+.ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:var(--fs-sm)}
 .ui-select-trigger[aria-expanded=true]{border-color:var(--accent);background:var(--bg2)}
 details[class]>summary{min-height:32px;align-content:center}
 details[class]>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
@@ -82,7 +101,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   border-radius: var(--r-md);
   background: var(--bg1);
   color: var(--fg2);
-  line-height: 1.45;
+  line-height: var(--lh-tight);
   overflow-wrap: anywhere;
 }
 .act-detail[hidden] { display: none; }
@@ -116,7 +135,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .flow-inspector-panes{flex:1;display:flex;min-height:0;min-width:0}
 .flow-inspector-panes>.pane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .flow-inspector-request{border-right:1px solid var(--line)}
-.flow-inspector-panes pre{padding:16px;font-size:12px;line-height:1.7}
+.flow-inspector-panes pre{padding:16px;font-size:var(--fs-sm);line-height:var(--lh-loose)}
 .flow-inspector-sides{display:none}
 .act-expandable .act-tool::after{content:' +';color:var(--fg3)}
 .act-expandable.expanded .act-tool::after{content:' −'}
@@ -136,7 +155,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   .flow-inspector-toolbar #fmTitle{order:0;flex:1 1 calc(100% - 48px)!important}
   .flow-inspector-toolbar #fmClose{order:1}
   .flow-inspector-toolbar #fmSeg{order:2;margin-right:auto}
-  .flow-inspector-toolbar #fmCopyUrl,.flow-inspector-toolbar #fmCopyLink,.flow-inspector-toolbar #fmProxy{order:3;padding:6px;font-size:10px}
+  .flow-inspector-toolbar #fmCopyUrl,.flow-inspector-toolbar #fmCopyLink,.flow-inspector-toolbar #fmRepeater,.flow-inspector-toolbar #fmProxy{order:3;padding:6px;font-size:var(--fs-xs)}
   .flow-inspector-sides{display:flex;flex:none;padding:10px 12px;border-bottom:1px solid var(--line);gap:4px;border-radius:0}
   .flow-inspector-sides button{flex:1;min-height:36px}
   .flow-inspector[data-mobile-side=res] .flow-inspector-request,.flow-inspector[data-mobile-side=req] .flow-inspector-response{display:none}
