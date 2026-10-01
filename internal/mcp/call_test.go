@@ -106,3 +106,72 @@ func TestCallReportsActivity(t *testing.T) {
 		t.Fatalf("errored Call should report exactly one OK=false activity: %+v", got2)
 	}
 }
+
+func TestAuditEndpointAndRecordFindingFromFlow(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/flows/42/analyze":
+			io.WriteString(w, `{
+				"id": 42,
+				"url": "https://example.com/api/user?id=100&redirect=https://example.com",
+				"method": "GET",
+				"status": 200,
+				"inScope": true,
+				"securityHeaders": {"x-frame-options": "DENY"},
+				"queryParams": ["id", "redirect"],
+				"passiveFindings": ["Missing HSTS header"]
+			}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/flows/42":
+			io.WriteString(w, `{
+				"id": 42,
+				"scheme": "https",
+				"host": "example.com",
+				"port": 443,
+				"path": "/api/user?id=100&redirect=https://example.com",
+				"method": "GET",
+				"status": 200,
+				"reqHeaders": {"Authorization": ["Bearer eyJhbGciOi..."]},
+				"resHeaders": {"Content-Type": ["application/json"]}
+			}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings":
+			io.WriteString(w, `{"id": 101, "title": "IDOR on user profile", "severity": "High", "target": "example.com/api/user"}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/findings/101/flows":
+			io.WriteString(w, `{"ok": true}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+
+	s := New(mock.URL)
+	s.report = func(Activity) {}
+
+	// 1. Test audit_endpoint
+	auditRes, err := s.Call("audit_endpoint", map[string]any{"id": 42})
+	if err != nil {
+		t.Fatalf("audit_endpoint: %v", err)
+	}
+	if !strings.Contains(auditRes, "IDOR / Broken Object Level Authorization") {
+		t.Fatalf("audit_endpoint should identify IDOR risk: %s", auditRes)
+	}
+	if !strings.Contains(auditRes, "Open Redirect") {
+		t.Fatalf("audit_endpoint should identify Redirect risk: %s", auditRes)
+	}
+
+	// 2. Test record_finding_from_flow
+	recRes, err := s.Call("record_finding_from_flow", map[string]any{
+		"flowId":   42,
+		"title":    "IDOR on user profile",
+		"severity": "High",
+		"why":      "Missing access control check on id parameter",
+		"impact":   "Attacker can read other users' profiles",
+		"fix":      "Enforce tenant authorization check on session user",
+	})
+	if err != nil {
+		t.Fatalf("record_finding_from_flow: %v", err)
+	}
+	if !strings.Contains(recRes, "Created finding #101") || !strings.Contains(recRes, "flow #42") {
+		t.Fatalf("record_finding_from_flow result missing expected content: %s", recRes)
+	}
+}
+

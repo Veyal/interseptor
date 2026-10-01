@@ -676,6 +676,7 @@ func rulePayload(a map[string]any, enabledDefault bool) map[string]any {
 	return map[string]any{
 		"ord": argInt(a, "ord", 0), "enabled": argBool(a, "enabled", enabledDefault),
 		"type": typ, "match": argStr(a, "match"), "replace": argStr(a, "replace"),
+		"bigBody": argBool(a, "bigBody", false),
 	}
 }
 
@@ -1011,6 +1012,126 @@ func (s *Server) registerTools() {
 				return "", err
 			}
 			return s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
+		})
+
+	s.add("audit_endpoint",
+		"Consolidated endpoint triage: takes a flow id, analyzes its structure, parameters, auth context, and passive findings to return an actionable security assessment with identified attack surfaces and recommended attack vectors.",
+		obj(map[string]any{"id": pt("integer")}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqFlowID(a)
+			if err != nil {
+				return "", err
+			}
+			analysisRaw, err := s.apiGet(fmt.Sprintf("/api/flows/%d/analyze", id))
+			if err != nil {
+				return "", fmt.Errorf("analyze flow %d: %w", id, err)
+			}
+			var analysis struct {
+				ID              int64             `json:"id"`
+				URL             string            `json:"url"`
+				Method          string            `json:"method"`
+				Status          int               `json:"status"`
+				InScope         bool              `json:"inScope"`
+				SecurityHeaders map[string]string `json:"securityHeaders"`
+				QueryParams     []string          `json:"queryParams"`
+				PassiveFindings []string          `json:"passiveFindings"`
+			}
+			_ = json.Unmarshal([]byte(analysisRaw), &analysis)
+
+			flowRaw, _ := s.apiGet(fmt.Sprintf("/api/flows/%d", id))
+			var flowData struct {
+				ReqHeaders map[string][]string `json:"reqHeaders"`
+				ResHeaders map[string][]string `json:"resHeaders"`
+				ReqLen     int64               `json:"reqLen"`
+				ResLen     int64               `json:"resLen"`
+				Mime       string              `json:"mime"`
+			}
+			_ = json.Unmarshal([]byte(flowRaw), &flowData)
+
+			type attackSurface struct {
+				Param string `json:"param"`
+				Type  string `json:"type"`
+				Risk  string `json:"risk"`
+				Notes string `json:"notes"`
+			}
+			var surfaces []attackSurface
+			for _, qp := range analysis.QueryParams {
+				lqp := strings.ToLower(qp)
+				switch {
+				case strings.Contains(lqp, "id") || strings.Contains(lqp, "user") || strings.Contains(lqp, "account") || strings.Contains(lqp, "num") || strings.Contains(lqp, "page"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "numeric/identifier", Risk: "IDOR / Broken Object Level Authorization",
+						Notes: "Test with alternate user IDs or sequential integers to probe access control.",
+					})
+				case strings.Contains(lqp, "redirect") || strings.Contains(lqp, "url") || strings.Contains(lqp, "next") || strings.Contains(lqp, "return") || strings.Contains(lqp, "dest") || strings.Contains(lqp, "goto"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "redirect/destination", Risk: "Open Redirect / SSRF",
+						Notes: "Test with external URLs (//evil.com, https://attacker.com) and loopback addresses.",
+					})
+				case strings.Contains(lqp, "search") || strings.Contains(lqp, "query") || strings.Contains(lqp, "q") || strings.Contains(lqp, "filter") || strings.Contains(lqp, "sort"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "search/query", Risk: "SQLi / Reflected XSS",
+						Notes: "Probe with single quote, SQL keywords, and special characters.",
+					})
+				case strings.Contains(lqp, "callback") || strings.Contains(lqp, "cb") || strings.Contains(lqp, "jsonp"):
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "callback", Risk: "JSONP Injection / Reflected XSS",
+						Notes: "Check if parameter is echoed into JavaScript responses without validation.",
+					})
+				default:
+					surfaces = append(surfaces, attackSurface{
+						Param: qp, Type: "general query parameter", Risk: "Parameter Tampering",
+						Notes: "Fuzz parameter values with intruder or custom payloads.",
+					})
+				}
+			}
+
+			authType := "none"
+			var authNotes []string
+			for k, v := range flowData.ReqHeaders {
+				if strings.EqualFold(k, "Authorization") && len(v) > 0 {
+					if strings.HasPrefix(strings.ToLower(v[0]), "bearer ") {
+						authType = "bearer_token"
+					} else if strings.HasPrefix(strings.ToLower(v[0]), "basic ") {
+						authType = "basic_auth"
+					} else {
+						authType = "custom_auth_header"
+					}
+					authNotes = append(authNotes, "Authorization header present: "+k)
+				}
+				if strings.EqualFold(k, "Cookie") && len(v) > 0 {
+					authNotes = append(authNotes, "Cookie header present")
+				}
+			}
+
+			var recs []string
+			if len(surfaces) > 0 {
+				recs = append(recs, fmt.Sprintf("Fuzz %d query parameter(s) using start_intruder with sniper or cluster attack.", len(surfaces)))
+			}
+			if len(analysis.PassiveFindings) > 0 {
+				recs = append(recs, fmt.Sprintf("Investigate %d passive scanner finding(s) on this endpoint.", len(analysis.PassiveFindings)))
+			}
+			if authType != "none" {
+				recs = append(recs, "Test authorization boundary: re-issue request without auth header or with another identity's token to check for BOLA/IDOR.")
+			}
+			if len(recs) == 0 {
+				recs = append(recs, "Check response body for sensitive data leakage or replay request with modified input.")
+			}
+
+			outMap := map[string]any{
+				"flowId":             id,
+				"url":                analysis.URL,
+				"method":             analysis.Method,
+				"status":             analysis.Status,
+				"inScope":            analysis.InScope,
+				"attackSurfaces":     surfaces,
+				"authType":           authType,
+				"authNotes":          authNotes,
+				"passiveFindings":    analysis.PassiveFindings,
+				"recommendedActions": recs,
+			}
+			b, _ := json.MarshalIndent(outMap, "", "  ")
+			return string(b) + fmt.Sprintf("\n\nUI: %s/#flow-%d", s.base, id), nil
 		})
 
 	s.add("flow_as_curl",
@@ -1478,6 +1599,134 @@ func (s *Server) registerTools() {
 				reqBody["position"] = pos
 			}
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", fid), reqBody)
+		})
+
+	s.add("record_finding_from_flow",
+		"Composite tool: creates a finding and attaches the originating captured flow as first-class reproduction proof in a single atomic call. Auto-populates target, summary, and proof from the flow metadata if omitted. Returns the finding with its UI link.",
+		obj(map[string]any{
+			"flowId":   pt("integer"),
+			"title":    pt("string"),
+			"severity": p("string", "Critical|High|Medium|Low|Info (default Medium)"),
+			"summary":  p("string", "concise statement of the vulnerable behavior (auto-generated from flow if omitted)"),
+			"why":      p("string", "why this is a vulnerability — which security property breaks"),
+			"impact":   p("string", "what an attacker gains / CIA consequence"),
+			"fix":      p("string", "remediation at the failed trust boundary"),
+			"proof":    p("string", "what this request/response establishes (auto-generated if omitted)"),
+			"role":     p("string", "context|setup|baseline|action|result|control|retest|observation (default result)"),
+			"status":   p("string", "open|needs_verification|verified|false_positive|wont_fix|fixed (default open)"),
+			"tags":     p("string", "optional tags"),
+			"intent":   p("string", "optional: short 'why' shown in Activity"),
+		}, "flowId", "title"),
+		func(a map[string]any) (string, error) {
+			flowID, err := reqInt(a, "flowId")
+			if err != nil || flowID <= 0 {
+				return "", fmt.Errorf("valid flowId is required")
+			}
+			title, err := reqStr(a, "title")
+			if err != nil || title == "" {
+				return "", fmt.Errorf("title is required")
+			}
+
+			flowRaw, err := s.apiGet(fmt.Sprintf("/api/flows/%d", flowID))
+			if err != nil {
+				return "", fmt.Errorf("fetch flow %d: %w", flowID, err)
+			}
+			var flow struct {
+				ID     int64  `json:"id"`
+				Scheme string `json:"scheme"`
+				Host   string `json:"host"`
+				Port   int    `json:"port"`
+				Path   string `json:"path"`
+				Method string `json:"method"`
+				Status int    `json:"status"`
+			}
+			if err := json.Unmarshal([]byte(flowRaw), &flow); err != nil {
+				return "", fmt.Errorf("decode flow %d: %w", flowID, err)
+			}
+
+			target := flow.Host + flow.Path
+			if flow.Scheme != "" && flow.Host != "" {
+				target = fmt.Sprintf("%s://%s%s", flow.Scheme, flow.Host, flow.Path)
+			}
+
+			summary := argStr(a, "summary")
+			if summary == "" {
+				summary = fmt.Sprintf("%s %s (HTTP %d) demonstrates %s", flow.Method, flow.Path, flow.Status, title)
+			}
+
+			proof := argStr(a, "proof")
+			if proof == "" {
+				proof = fmt.Sprintf("HTTP %s to %s returned %d verifying %s", flow.Method, flow.Path, flow.Status, title)
+			}
+
+			role := argStr(a, "role")
+			if role == "" {
+				role = "result"
+			}
+
+			severity := argStr(a, "severity")
+			if severity == "" {
+				severity = "Medium"
+			}
+
+			status := argStr(a, "status")
+			if status == "" {
+				status = "open"
+			}
+
+			why := argStr(a, "why")
+			if why == "" {
+				why = title
+			}
+
+			impact := argStr(a, "impact")
+			if impact == "" {
+				impact = fmt.Sprintf("Potential security impact on %s", target)
+			}
+
+			fix := argStr(a, "fix")
+			if fix == "" {
+				fix = "Enforce appropriate authorization checks and input validation at the trust boundary."
+			}
+
+			reqBody := map[string]any{
+				"title":    title,
+				"severity": severity,
+				"status":   status,
+				"target":   target,
+				"summary":  summary,
+				"why":      why,
+				"impact":   impact,
+				"fix":      fix,
+				"source":   "ai",
+			}
+			if tags := argTags(a, "tags"); tags != nil {
+				reqBody["tags"] = tags
+			}
+
+			findingRes, err := s.api(http.MethodPost, "/api/findings", reqBody)
+			if err != nil {
+				return findingRes, fmt.Errorf("create finding: %w", err)
+			}
+
+			var f struct {
+				ID int64 `json:"id"`
+			}
+			if err := json.Unmarshal([]byte(findingRes), &f); err != nil || f.ID <= 0 {
+				return findingRes, fmt.Errorf("parse finding ID: %s", findingRes)
+			}
+
+			pocBody := map[string]any{
+				"flowId":       flowID,
+				"role":         role,
+				"proof":        proof,
+				"source":       "captured_flow",
+				"sourceFlowId": flowID,
+			}
+			_, _ = s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/flows", f.ID), pocBody)
+
+			return fmt.Sprintf("Created finding #%d %q with flow #%d attached as %s proof.\n\nUI: %s/#finding-%d",
+				f.ID, title, flowID, role, s.base, f.ID), nil
 		})
 
 	s.add("add_finding_image",
@@ -2056,11 +2305,13 @@ func (s *Server) registerTools() {
 		"replace": pt("string"),
 		"enabled": p("boolean", "default true"),
 		"ord":     p("integer", "rule order"),
+		"bigBody": p("boolean", "opt a body rule into the 64 MB scan cap; default false scans at most 2 MB"),
 	}
 	s.add("add_rule", "Add a request- or response-side match-&-replace rule (regex).",
 		obj(map[string]any{
 			"side": ruleProps["side"], "type": ruleProps["type"], "match": ruleProps["match"],
 			"replace": ruleProps["replace"], "enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
+			"bigBody": ruleProps["bigBody"],
 		}, "type", "match"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPost, "/api/rules", rulePayload(a, true))
@@ -2072,6 +2323,7 @@ func (s *Server) registerTools() {
 			"id": pt("integer"), "side": ruleProps["side"], "type": ruleProps["type"],
 			"match": ruleProps["match"], "replace": ruleProps["replace"],
 			"enabled": ruleProps["enabled"], "ord": ruleProps["ord"],
+			"bigBody": ruleProps["bigBody"],
 		}, "id", "type", "match"),
 		func(a map[string]any) (string, error) {
 			out, err := s.api(http.MethodPut, fmt.Sprintf("/api/rules/%d", argInt(a, "id", 0)), rulePayload(a, true))
