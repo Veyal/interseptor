@@ -4,7 +4,6 @@ title: Architecture
 classification: current
 source: docs/architecture.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Architecture
 
 ## Security model
@@ -95,6 +94,12 @@ Findings uses `finding-workspace.js` for section routes and filtering, with
 searchable list, section reader and inline evidence. `surfaces.css` supplies
 shared popup and disclosure styling; `surface-position.js` bounds floating
 menus to the visual viewport. These assets are embedded alongside `app.css`.
+`listbox.js` gives JS-rendered single-select lists their listbox/option
+semantics and one roving Tab stop. `index.html` carries no inline colour,
+spacing, typography, or width styles (`TestUIIndexHasNoInlineDesignStyles`);
+layout comes from the `app.css` tokens and its small `.u-*` utility layer, and
+the few remaining inline `display:none` values exist only because a script
+resets them with an empty value.
 
 Workspace startup has two independent safety boundaries. A small classic-script guard runs before
 the ES-module graph and replaces the static loading state with a Reload action if those modules

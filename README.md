@@ -82,10 +82,12 @@ several projects at once are all in **[Getting started](docs/getting-started.md)
 | | |
 |---|---|
 | **[Getting started](docs/getting-started.md)** | Install, quick start, HTTPS setup, configuration, multi-project |
-| **[Full feature list](docs/FEATURES.md)** | Every capability, in detail |
+| **[Workspace guide](docs/workspace.md)** | Menus, captured response views, session inspection, Notes, Activity, Decoder |
+| **[Settings](docs/settings.md)** | Section map, search, saved changes, and project-switch recovery |
+| **[Full feature list](docs/FEATURES.md)** | Feature overview and guide links |
 | **[Proxy, TLS & networking](docs/proxy-and-tls.md)** | Listener auth, the `interseptor` browser prompt, CA trust, pinning, upstream proxies |
 | **[Mobile testing](docs/mobile-testing.md)** | Android/iOS USB, Wi-Fi, CA trust, and cleanup |
-| **[Findings & reporting](docs/findings-and-reporting.md)** | Pentester writing standard, evidence workflow, status, export |
+| **[Findings & reporting](docs/findings-and-reporting.md)** | Reading and editing, evidence, revisions, readiness, report export |
 | **[Projects & data](docs/projects-and-data.md)** | Storage, project boundaries, export formats, retention |
 | **[API & MCP](docs/api-and-mcp.md)** | Drive Interseptor from an AI agent or a script |
 | **[CLI reference](docs/cli-reference.md)** | Commands, flags, environment variables, checks, rules, vault |

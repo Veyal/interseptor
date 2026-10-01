@@ -1,6 +1,6 @@
 # Features
 
-The full rundown. For the short version, see the [README](../README.md#what-it-does).
+User-facing capabilities in the current release. For a tour of the menus, see the [workspace guide](workspace.md).
 
 - **Intercepting proxy** for HTTP **and** HTTPS, with on-the-fly TLS interception via a local CA
   (per-host leaf certs minted on demand).
@@ -10,12 +10,12 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
   Starlark predicates for custom Anywhere searches. See [history search](history-search.md).
 - **Intercept workflow** — hold / forward (with edits) / drop **requests *and* responses**, plus
   ordered **match-&-replace** rules.
-- **Repeater** — multi-tab; re-send any request, edit it freely, inspect the response, and keep every send with its owning tab across request edits, tab switches, and reloads until that tab closes (long histories expose older sends in bounded rendering batches).
+- **Repeater** — sandboxed HTML Render and raw/pretty response views; multi-tab; re-send any request, edit it freely, inspect the response, and keep every send with its owning tab across request edits, tab switches, and reloads until that tab closes (long histories expose older sends in bounded rendering batches).
 - **Intruder** — Sniper / Pitchfork (one payload list per `§` marker) / **Race** (no-payload concurrent
   resends for race conditions), with thread + delay controls, payload processing (url/base64/…),
   **grep-match/extract**, anomaly flagging, attack tabs and run history.
 - **Authorization testing** — replay a request as each saved identity (role) and diff for broken
-  access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner when you have a tunnel or public URL).
+  access control (IDOR). **OOB interaction catcher** for blind SSRF/XXE/SQLi/RCE (off by default — remote targets cannot reach `localhost`; enable in Settings → Scanner & OOB when you have a tunnel or public URL).
 - **External agent orchestration** — MCP exposes deterministic capture, replay, mutation, scope,
   passive scanning, evidence, and finding tools. External AI or automation owns reasoning and sequencing;
   Interseptor records every request and result in History, Activity, and findings.
@@ -59,8 +59,22 @@ The full rundown. For the short version, see the [README](../README.md#what-it-d
 - **Model-free core** — no provider keys, built-in chat, or autonomous pentest loop. Use any
   external model or agent that supports MCP, with deterministic Interseptor tools enforcing scope
   and recording evidence.
-- **Finding tags** — report-scope labels on curated findings (same slug model as History tags), with
-  list filters and export grouping (`cms` / `website` / `app` / `api` / `out-of-scope` convention).
+- **Findings and reporting** — searchable Overview, Evidence, Remediation, and Review sections;
+  multiple affected targets; screenshot provenance; CVSS v4 evaluation; explicit readiness checks;
+  revision comparison and restore; and Final or Draft report export. Tags support filtering and
+  report grouping. See [Findings and reporting](findings-and-reporting.md).
 - **API & MCP** — a REST control API + SSE event stream and a full **Model Context Protocol** server
   (stdio **and** Streamable-HTTP) so an agent or script drives the same core as the UI. See
   [API & MCP](api-and-mcp.md).
+- **Notes** — project-scoped Markdown with Edit/Preview, image paste, autosave, and save recovery.
+  See [Workspace guide](workspace.md#notes).
+- **Activity** — inspect recorded agent actions, intent, results, and links to captured flows.
+  See [Workspace guide](workspace.md#activity).
+- **Decoder** — inspect common text encodings with copyable output, separate from stored Message codecs.
+  See [Workspace guide](workspace.md#decoder).
+- **Map** — tree and graph views of observed hosts and endpoints, with filters and collapsible groups.
+  See [Workspace guide](workspace.md#scanner-and-map).
+- **Settings** — searchable Network, Testing, and System sections with save state and recovery.
+  See [Settings](settings.md).
+- **Session inspector** — a passive timeline and role comparison of selected History captures,
+  with redacted observations and explicitly limited conclusions. See [Workspace guide](workspace.md#session-inspector).

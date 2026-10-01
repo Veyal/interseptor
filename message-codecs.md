@@ -4,7 +4,6 @@ title: Message codecs
 classification: current
 source: docs/message-codecs.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Message codecs
 
 Project-scoped **Starlark** transforms that decrypt/encrypt (or otherwise decode/encode)

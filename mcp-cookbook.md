@@ -4,7 +4,6 @@ title: MCP cookbook
 classification: current
 source: docs/product/mcp-cookbook.md
 ---
-<p class="eyebrow">CURRENT</p>
 # MCP Cookbook, recipes for external agents
 
 *Connect any MCP-capable external agent with `interseptor mcp` or

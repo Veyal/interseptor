@@ -4,35 +4,34 @@ title: Findings and reporting
 classification: current
 source: docs/findings-and-reporting.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Findings and reporting
 
-Findings are durable vulnerability records, not scanner alerts or prose notes. One canonical record is
-used by the Findings UI, REST API, MCP tools, JSON export, and human-readable reports. A draft may be
-incomplete; a report-ready finding must connect every material claim to reproducible evidence.
+Findings keep a reviewed claim, affected targets, evidence, remediation, and review state in one
+project record. The same record appears in the app, API, and exported reports. A draft can remain
+incomplete; a Final report requires the relevant readiness checks to pass.
 
-## Why the format changed
+## Read and edit a finding
 
-`Before → Action → After` is useful for differential authorization, privilege, and state-change
-findings. It is not a universal reporting structure. It makes passive misconfiguration, exposure,
-SSRF/OOB, and browser-execution findings harder to describe and encourages agents to manufacture
-irrelevant “before” steps.
+Open **Report → Findings**, search or filter the list, and select a record. Its sections stay linked
+within the workspace:
 
-Interseptor therefore uses a universal evidence-first envelope and optional reproduction presets:
+- **Overview** — the claim, risk, affected targets, environment, and classification.
+- **Evidence** — ordered steps, captured HTTP, and attached images with proof annotations.
+- **Remediation** — the proposed fix and retest guidance.
+- **Review** — verification state, readiness gaps, CVSS, and revision history.
 
-1. **Claim** — title and concise summary.
-2. **Risk** — attacker impact and the failed security boundary or root cause.
-3. **Affected target** — exact component, environment, CWE, CVSS, and scope tags.
-4. **Reproduction** — ordered steps with explicit semantic roles.
-5. **Evidence** — captured flows and images, each tied to the claim it proves.
-6. **Fix and retest** — remediation, expected secure behavior, and a negative test.
-7. **Review** — status, confidence, source, and verification state.
+Use the edit action for the section you want to change. Attached HTTP evidence opens inline so you
+can read the request and response without leaving the finding. **Done** returns to reading mode.
+A failed save keeps the draft with **Retry**; resolve it before exporting, restoring a revision,
+or switching projects.
 
-This follows OWASP guidance that a finding must be understandable, reproducible, actionable, and
-supported by images or other artifacts. OWASP's emerging autonomous-testing guidance additionally
-calls for raw evidence, provenance, and a clear separation between machine interpretation and the
-underlying proof. See the [OWASP WSTG reporting structure](https://owasp.org/www-project-web-security-testing-guide/latest/5-Reporting/01-Reporting_Structure)
-and [OWASP APTS evidence guidance](https://owasp.org/APTS/standard/8_Reporting/Implementation_Guide.html).
+For a report, open **Export** and choose **Final** or **Draft**. Final checks apply to the findings
+included in the export. Draft remains available for incomplete work. Readiness checks assess
+record completeness and declared review state; they do not independently prove a vulnerability.
+
+Continue with [readiness](#capability-based-report-readiness),
+[multiple targets](#multiple-affected-targets), [screenshot provenance](#screenshot-provenance),
+or [revision recovery](#revision-history-and-recovery).
 
 ## Canonical finding envelope
 

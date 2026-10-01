@@ -4,7 +4,6 @@ title: Engagement close-out
 classification: current
 source: docs/engagement-closeout.md
 ---
-<p class="eyebrow">CURRENT</p>
 # End an engagement — close-out checklist
 
 Use this when you are wrapping a pentest / bug-bounty session in Interseptor.

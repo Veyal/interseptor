@@ -1,5 +1,19 @@
 # Projects and data
 
+## Choose a project
+
+Open the project badge, the mobile **Project** action, or **Settings → Project & data** to choose
+an existing project or create one. Named projects and explicitly opened folders are separate
+workspaces, each with its own captured traffic and findings.
+
+The current saved-project list is flat; it does not provide nested client folders or inherited
+client-level settings. For related workspaces, use clear names such as `example-web-staging` and
+`example-mobile-testing`. A naming convention groups related work for people; it does not merge
+scope, session state, or evidence.
+
+A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved
+work first, and confirm the new project badge before continuing.
+
 ## Storage layout
 
 The default project lives in `~/.interseptor/`. Named projects normally live in
@@ -53,6 +67,7 @@ session-header reuse, and report contamination.
 | Portable project JSON | Sharing selected operational state with another Interseptor instance | Imports additively into the current project; duplicate data is skipped. |
 | HAR | Interchange with browser and proxy tooling | Imports flows into History; some Interseptor-only metadata is not represented. |
 | Burp saved-items XML | Migrating Proxy history or Target traffic from Burp Suite | Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. |
+| Postman collection JSON | Preparing editable requests in Repeater | Imports Collection v2.0/v2.1 with optional environment resolution; unsupported values are reported and no requests are sent by import. |
 | Full project ZIP | Lossless migration or backup | Contains the database and captured bodies; import creates a new project. |
 | Findings report | Client/editorial output | May include reconstructed PoC request/response bodies; treat as sensitive. |
 
@@ -62,7 +77,7 @@ only when authorized and necessary.
 ### Migrate traffic from Burp Suite
 
 In Burp, select the HTTP items to migrate in Proxy history or the Target tool, use **Save items**, and
-save the XML export. In Interseptor, open **Settings → Project & Data → Import Burp XML**. The import
+save the XML export. In Interseptor, open **Settings → Project & data → Import Burp XML**. The import
 merges valid HTTP/HTTPS items into the current project's History and keeps existing flows.
 
 Native `.burp` project files are not accepted. PortSwigger documents project-file management but does

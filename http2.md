@@ -4,7 +4,6 @@ title: HTTP/2
 classification: current
 source: docs/http2.md
 ---
-<p class="eyebrow">CURRENT</p>
 # HTTP/2 and MITM
 
 ## Current behavior

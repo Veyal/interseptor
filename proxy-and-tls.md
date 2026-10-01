@@ -4,7 +4,6 @@ title: Proxy, TLS, and networking
 classification: current
 source: docs/proxy-and-tls.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Proxy, TLS, and networking
 
 This guide explains the listener, the browser authentication prompt, HTTPS interception, origin

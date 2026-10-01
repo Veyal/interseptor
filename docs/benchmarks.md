@@ -1,50 +1,40 @@
 # Benchmarks
 
-The product thesis is "lightweight and instant." This page records how we measure that and the
-current numbers. Methodology is reproducible; comparative numbers vs Burp/ZAP are a follow-up that
-needs those tools installed (the order-of-magnitude gap is the point — see below).
+These are historical measurements recorded on **2026-06-22**, before the current release.
+They are retained as a baseline, not as performance claims for v2.1.0. Current measurements
+need a fresh run against the release being evaluated.
 
-*Measured 2026-06-22 on an Apple-silicon Mac, Go 1.25, `CGO_ENABLED=0` static binary.*
+## Historical baseline
 
-## Headline numbers
+The original run used an Apple-silicon Mac, Go 1.25, and a `CGO_ENABLED=0` build.
 
-| Metric | Interseptor | Reference (widely reported) |
-|---|---|---|
-| **Idle RSS** | **~20 MB** | Burp: ~3,500 MB idle; enterprise installs "16–17 GB RAM" |
-| **Cold start → serving UI** | **~1 s** (first run also generates the CA) | JVM tools: several seconds + JVM warmup |
-| **Binary size** | **~16.7 MB**, one static file, no runtime | Burp/ZAP: JVM + install; HTTP Toolkit: Electron |
-| **Capture throughput** | **~444 MB/s**, 1.5 KB + 18 allocs/op | — (we stream; we don't buffer bodies) |
+| Metric | Recorded result |
+|---|---|
+| Idle resident memory | Approximately 20 MB |
+| Cold start to serving the UI | Approximately 1 second; first run also generates the CA |
+| Binary size | Approximately 16.7 MB |
+| Capture microbenchmark throughput | 444.26 MB/s |
+| Capture microbenchmark allocations | 1,519 B/op and 18 allocations/op |
 
-The idle-RSS figure is the differentiator: Interseptor uses roughly **1/100th** of Burp's idle
-memory because it's a compiled native binary that streams bodies to disk instead of holding full
-HTTP history (with bodies) in a JVM heap.
+The capture result measures one component. It does not measure complete proxy throughput, TLS,
+database writes, browser responsiveness, or memory growth over a long session. No controlled
+same-machine comparison with other proxy products is included here.
 
-## How to reproduce
+## Capture microbenchmark
 
-**Capture hot path** (proves bodies stream, not buffer — note the tiny B/op):
+Run the existing benchmark from the source tree:
 
 ```bash
 go test ./internal/capture/ -bench BenchmarkTeeBody -benchmem -run '^$'
-# BenchmarkTeeBody-10   4740   248933 ns/op   444.26 MB/s   1519 B/op   18 allocs/op
 ```
 
-**Cold start + idle RSS:**
+Record the Git tag or commit, Go version, operating system, hardware, command, and full output
+with any new measurements. Compare results under the same conditions.
 
-```bash
-CGO_ENABLED=0 go build -o ib ./cmd/interseptor
-INTERCEPTOR_NO_BROWSER=1 ./ib &           # time until http://127.0.0.1:9966/ answers
-ps -o rss= -p $!                          # idle resident memory (KB)
-```
+## Measuring the full application
 
-## What this validates
+Use a separate project with synthetic local traffic. Record startup time, idle and loaded resident
+memory, request throughput, error rate, and UI responsiveness with a stated history size. Keep the
+traffic fixture, body sizes, concurrency, and TLS conditions alongside the results.
 
-- **Streaming capture:** `BenchmarkTeeBody` allocates ~1.5 KB regardless of body size — RAM does
-  not grow with traffic, which is exactly the property Burp lacks.
-- **Native start:** sub-second to a usable UI, no JVM warmup.
-
-## Follow-up (tracked in the v2 roadmap)
-
-- Comparative runs **with Burp Suite Pro and ZAP installed** (same machine, same traffic): idle RSS,
-  cold start, and large-history (10k+ flow) scroll responsiveness, published as a reproducible script.
-- A sustained-throughput proxy benchmark (replay N-thousand requests; assert a RAM ceiling and a
-  throughput floor) wired into CI as a regression guard.
+A fast microbenchmark alone does not establish that the full application meets those goals.

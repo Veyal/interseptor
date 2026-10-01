@@ -12,7 +12,7 @@ Requires **Go 1.25+**:
 # latest release:
 go install github.com/Veyal/interseptor/cmd/interseptor@latest
 # …or pin a specific release:
-go install github.com/Veyal/interseptor/cmd/interseptor@v0.1.0
+go install github.com/Veyal/interseptor/cmd/interseptor@v2.1.0
 
 interseptor        # if $(go env GOPATH)/bin is on your PATH
 ```
@@ -22,7 +22,7 @@ interseptor        # if $(go env GOPATH)/bin is on your PATH
 ```bash
 interseptor update              # latest release
 interseptor update --check      # is a newer version out?
-interseptor update --version 0.6.0
+interseptor update --version 2.1.0
 ```
 
 `interseptor update` downloads a prebuilt binary from [GitHub Releases](https://github.com/Veyal/interseptor/releases) when one is attached for your OS/arch (and verifies `checksums.txt` when present). If the release has no binary yet, it falls back to `go install` automatically.
@@ -40,7 +40,7 @@ make build
 ```
 
 `make build` and `make run` stamp local CLI builds with `<version>-local`
-(for example, `2.0.10-local`). The version comes from the latest reachable Git
+(for example, `2.1.0-local`). The version comes from the latest reachable Git
 tag, or the declared fallback version in a source archive. Published release
 binaries keep their normal version. Plain `go build` does not apply this stamp.
 
@@ -67,7 +67,11 @@ before rebinding: non-loopback listeners require a full-scope API key as the pro
 browser realm is `interseptor`; it is not asking for the target site's credentials.
 
 Runtime data lives under `~/.interseptor/` (`interseptor.db`, `bodies/`, `ca/`). Full-project archives
-intentionally use the compatibility filename `interceptor.db`. Delete the runtime directory to reset.
+intentionally use the compatibility filename `interceptor.db`. To start with an empty workspace,
+create a new project; keep an archive before deleting existing project data. See [Projects and data](projects-and-data.md).
+
+Continue with the [workspace guide](workspace.md) for the main menus and response views, or
+[Settings](settings.md) to find a specific configuration section.
 
 ## Intercepting HTTPS
 

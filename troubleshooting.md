@@ -4,7 +4,6 @@ title: Troubleshooting
 classification: reference
 source: docs/troubleshooting.md
 ---
-<p class="eyebrow">REFERENCE</p>
 # Troubleshooting
 
 Start with the first symptom that matches. Keep a terminal open for application logs and use a generic

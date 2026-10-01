@@ -1,0 +1,58 @@
+- title: Start here
+  links:
+    - title: Overview
+      url: /
+    - title: Getting started
+      url: /getting-started/
+    - title: Workspace guide
+      url: /workspace/
+    - title: All features
+      url: /features/
+- title: Use Interseptor
+  links:
+    - title: Proxy, TLS & networking
+      url: /proxy-and-tls/
+    - title: History & search
+      url: /history-search/
+    - title: Findings & reports
+      url: /findings-and-reporting/
+    - title: Projects & data
+      url: /projects-and-data/
+    - title: Settings
+      url: /settings/
+    - title: Mobile devices
+      url: /mobile-testing/
+    - title: Content discovery
+      url: /content-discovery/
+    - title: Project vault
+      url: /vault/
+    - title: Engagement close-out
+      url: /engagement-closeout/
+- title: Extend
+  links:
+    - title: API & MCP
+      url: /api-and-mcp/
+    - title: Custom checks
+      url: /custom-checks/
+    - title: Rule packs
+      url: /rule-packs/
+    - title: Message codecs
+      url: /message-codecs/
+    - title: Extensions
+      url: /extensions/
+- title: Reference
+  links:
+    - title: CLI reference
+      url: /cli-reference/
+    - title: Architecture & security
+      url: /architecture/
+    - title: HTTP/2
+      url: /http2/
+    - title: Troubleshooting
+      url: /troubleshooting/
+    - title: Benchmarks
+      url: /benchmarks/
+    - title: MCP cookbook
+      url: /mcp-cookbook/
+    - title: Project reference
+      url: /reference/

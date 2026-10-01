@@ -2,6 +2,7 @@
   id: intercepting-proxy
   title: Intercepting proxy
   text: HTTP and HTTPS interception with on-demand local-CA leaf certificates, plus request and response hold, edit, forward, drop, and match-and-replace.
+  link: /proxy-and-tls/
 - number: "02"
   id: live-history
   title: Live history
@@ -11,18 +12,22 @@
   id: intercept-workflow
   title: Intercept workflow
   text: Hold, edit, forward, or drop requests and responses with ordered match-and-replace rules.
+  link: /workspace/#intercept
 - number: "04"
   id: repeater
   title: Repeater
-  text: Multi-tab request replay with free editing, response inspection, and per-tab history.
+  text: Editable request tabs with Raw, Pretty, optional Decoded, and sandboxed HTML Render response views, plus persistent per-tab send history.
+  link: /workspace/#repeater-response-views
 - number: "05"
   id: intruder
   title: Intruder
   text: Sniper, Pitchfork, and Race modes with thread and delay controls, payload processing, grep matching, extraction, anomalies, attack tabs, and run history.
+  link: /workspace/#other-workspace-tools
 - number: "06"
   id: authorization
   title: Authorization testing
   text: Replay requests as saved identities and diff responses for broken access control. OOB catcher supports blind callbacks when explicitly enabled.
+  link: /workspace/#other-workspace-tools
 - number: "07"
   id: agent-orchestration
   title: External agent orchestration
@@ -32,14 +37,17 @@
   id: mobile
   title: Mobile device support
   text: Android adb-based CA and proxy setup plus iOS profile and jailbroken-device SSH automation.
+  link: /mobile-testing/
 - number: "09"
   id: collaboration
   title: Collaboration and remote access
   text: Scoped and expiring API keys, key-authorized remote access, browser login, one-click Cloudflare tunnel, and project pull/push merge.
+  link: /projects-and-data/#backup-and-collaboration
 - number: "10"
   id: launcher
   title: Multi-project launcher
   text: The launcher dashboard starts, stops, and discovers multiple project instances.
+  link: /getting-started/#running-multiple-projects
 - number: "11"
   id: external-ai
   title: External AI integration
@@ -49,6 +57,7 @@
   id: scanner
   title: Scanner
   text: Built-in passive checks cover security headers, CORS, reflected parameters, secrets, cookies, authentication, and version disclosure.
+  link: /workspace/#scanner-and-map
 - number: "13"
   id: checks
   title: Custom checks and rule packs
@@ -63,6 +72,7 @@
   id: signed-packs
   title: Signed rule packs
   text: Ed25519 publisher signatures and manifest SHA-256 protect rule-pack provenance during install.
+  link: /rule-packs/
 - number: "16"
   id: discovery
   title: Guided content discovery
@@ -77,19 +87,22 @@
   id: scope
   title: Target scope
   text: Include and exclude rules focus History, intercept gates, and scanner activity.
+  link: /settings/#testing
 - number: "19"
   id: websockets
   title: WebSocket
   text: Capture ws and wss traffic per frame and replay it in a WebSocket Repeater.
+  link: /workspace/#websocket-frames
 - number: "20"
   id: session-auth
   title: Session and auth injection
   text: Apply Authorization or Cookie headers, refresh tokens with a token macro, and re-authenticate with a recorded login macro.
+  link: /settings/#testing
 - number: "21"
   id: import-export
   title: Import and export
-  text: See the canonical import and export details in the API and MCP guide.
-  link: /api-and-mcp/
+  text: HAR, Burp saved-items XML, Postman collections, portable project JSON, and full project archives for different sharing and backup needs.
+  link: /projects-and-data/#export-formats
 - number: "22"
   id: vault
   title: Project vault
@@ -99,12 +112,44 @@
   id: model-free
   title: Model-free core
   text: No provider keys, built-in chat, or autonomous pentest loop. External models use deterministic tools with scope enforcement and evidence recording.
+  link: /architecture/#security-model
 - number: "24"
   id: findings
-  title: Finding tags
-  text: Curated findings use report-scope tags and export grouping for cms, website, app, api, and out-of-scope work.
+  title: Findings and reporting
+  text: Searchable evidence review, multiple targets, CVSS v4, report readiness, immutable revisions and restore, and Final or Draft exports.
+  link: /findings-and-reporting/
 - number: "25"
   id: api-mcp
   title: API and MCP
   text: REST control API, SSE event stream, and full MCP server expose the same deterministic engine to scripts and agents.
   link: /api-and-mcp/
+- number: "26"
+  id: notes
+  title: Notes
+  text: Project Markdown notes with image paste, Edit and Preview, autosave, and recovery after a rejected save.
+  link: /workspace/#notes
+- number: "27"
+  id: activity
+  title: Activity
+  text: Recorded agent actions with intent filters, result details, and links to related captured flows.
+  link: /workspace/#activity
+- number: "28"
+  id: decoder
+  title: Decoder
+  text: Inspect Base64, URL, Hex, HTML, and JWT text with a separate input and copyable output.
+  link: /workspace/#decoder
+- number: "29"
+  id: map
+  title: Map
+  text: Tree and graph views of captured hosts and endpoints, with search, filters, and collapsible groups.
+  link: /workspace/#scanner-and-map
+- number: "30"
+  id: settings
+  title: Settings
+  text: Searchable Network, Testing, and System sections with clear save state and failure recovery.
+  link: /settings/
+- number: "31"
+  id: session-inspector
+  title: Session inspector
+  text: Passive timelines and role comparisons for selected History captures, with redacted observations and no new requests.
+  link: /workspace/#session-inspector

@@ -4,7 +4,6 @@ title: Custom checks
 classification: current
 source: docs/custom-checks.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Writing custom scanner checks
 
 > The control UI embeds [`internal/control/checks_reference.md`](https://github.com/Veyal/interseptor/blob/main/internal/control/checks_reference.md)

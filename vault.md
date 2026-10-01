@@ -4,7 +4,6 @@ title: Project vault
 classification: current
 source: docs/vault.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Project vault
 
 Always-on archive store for Interseptor projects. Run `interseptor vault` on a durable host

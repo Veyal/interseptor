@@ -4,7 +4,6 @@ title: CLI reference
 classification: reference
 source: docs/cli-reference.md
 ---
-<p class="eyebrow">REFERENCE</p>
 # CLI reference
 
 ## Main server

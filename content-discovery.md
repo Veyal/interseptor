@@ -4,7 +4,6 @@ title: Content discovery
 classification: current
 source: docs/content-discovery.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Content discovery (guided)
 
 Interseptor intentionally has **no built-in forced-browse engine**. The old Discover

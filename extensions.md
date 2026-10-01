@@ -4,7 +4,6 @@ title: Extensions
 classification: current
 source: docs/extensions.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Writing Interseptor extensions
 
 Interseptor has a small, stable **in-process hook API** for extending the tool

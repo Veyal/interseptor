@@ -46,33 +46,28 @@
   },
   {
     "title": "Web UI",
-    "text": "The web UI lives in internal/control/ui/ (embedded via //go:embed): an index.html shell, app.css, and native ES modules under js/. core.js owns shared UI primitives, motion.js owns state-driven motion, and project.js owns active-project readiness plus the one lazy Map loader shared by main navigation and Proxy's Search in Map action. Feature behavior stays in its feature module; app.js owns global navigation, shortcuts, SSE dispatch, and boot. No build step or bundler; the binary stays single and static. Findings uses finding-workspace.js for section routes and filtering, with findings.js retaining data and editor ownership. findings.css styles its searchable list, section reader and inline evidence. surfaces.css supplies shared popup and disclosure styling; surface-position.js bounds floating menus to the visual viewport. These assets are embedded alongside app.css. Workspace startup has two independent safety boundaries. A small classic-script guard runs before the ES-module graph and replaces the static loading state with a Reload action if those modules cannot load or evaluate. Once app.js is running, project identity and Repeater/Intruder state hydration race their requests ag",
+    "text": "The web UI lives in internal/control/ui/ (embedded via //go:embed): an index.html shell, app.css, and native ES modules under js/. core.js owns shared UI primitives, motion.js owns state-driven motion, and project.js owns active-project readiness plus the one lazy Map loader shared by main navigation and Proxy's Search in Map action. Feature behavior stays in its feature module; app.js owns global navigation, shortcuts, SSE dispatch, and boot. No build step or bundler; the binary stays single and static. Findings uses finding-workspace.js for section routes and filtering, with findings.js retaining data and editor ownership. findings.css styles its searchable list, section reader and inline evidence. surfaces.css supplies shared popup and disclosure styling; surface-position.js bounds floating menus to the visual viewport. These assets are embedded alongside app.css. listbox.js gives JS-rendered single-select lists their listbox/option semantics and one roving Tab stop. index.html carries no inline colour, spacing, typography, or width styles (TestUIIndexHasNoInlineDesignStyles); layout comes from the app.css tokens and its small .u- utility layer, and the few remaining inline disp",
     "url": "architecture/#web-ui"
   },
   {
     "title": "Benchmarks",
-    "text": "Benchmarks The product thesis is \"lightweight and instant.\" This page records how we measure that and the current numbers. Methodology is reproducible; comparative numbers vs Burp/ZAP are a follow-up that needs those tools installed (the order-of-magnitude gap is the point — see below). Measured 2026-06-22 on an Apple-silicon Mac, Go 1.25, CGO ENABLED=0 static binary.",
+    "text": "Benchmarks These are historical measurements recorded on 2026-06-22, before the current release. They are retained as a baseline, not as performance claims for v2.1.0. Current measurements need a fresh run against the release being evaluated.",
     "url": "benchmarks/"
   },
   {
-    "title": "Follow-up (tracked in the v2 roadmap)",
-    "text": "- Comparative runs with Burp Suite Pro and ZAP installed (same machine, same traffic): idle RSS, cold start, and large-history (10k+ flow) scroll responsiveness, published as a reproducible script. - A sustained-throughput proxy benchmark (replay N-thousand requests; assert a RAM ceiling and a throughput floor) wired into CI as a regression guard.",
-    "url": "benchmarks/#follow-up-tracked-in-the-v2-roadmap"
+    "title": "Capture microbenchmark",
+    "text": "Run the existing benchmark from the source tree: Record the Git tag or commit, Go version, operating system, hardware, command, and full output with any new measurements. Compare results under the same conditions.",
+    "url": "benchmarks/#capture-microbenchmark"
   },
   {
-    "title": "Headline numbers",
-    "text": "Metric Interseptor Reference (widely reported) --- --- --- Idle RSS ~20 MB Burp: ~3,500 MB idle; enterprise installs \"16–17 GB RAM\" Cold start → serving UI ~1 s (first run also generates the CA) JVM tools: several seconds + JVM warmup Binary size ~16.7 MB, one static file, no runtime Burp/ZAP: JVM + install; HTTP Toolkit: Electron Capture throughput ~444 MB/s, 1.5 KB + 18 allocs/op — (we stream; we don't buffer bodies) The idle-RSS figure is the differentiator: Interseptor uses roughly 1/100th of Burp's idle memory because it's a compiled native binary that streams bodies to disk instead of holding full HTTP history (with bodies) in a JVM heap.",
-    "url": "benchmarks/#headline-numbers"
+    "title": "Historical baseline",
+    "text": "The original run used an Apple-silicon Mac, Go 1.25, and a CGO ENABLED=0 build. Metric Recorded result --- --- Idle resident memory Approximately 20 MB Cold start to serving the UI Approximately 1 second; first run also generates the CA Binary size Approximately 16.7 MB Capture microbenchmark throughput 444.26 MB/s Capture microbenchmark allocations 1,519 B/op and 18 allocations/op The capture result measures one component. It does not measure complete proxy throughput, TLS, database writes, browser responsiveness, or memory growth over a long session. No controlled same-machine comparison with other proxy products is included here.",
+    "url": "benchmarks/#historical-baseline"
   },
   {
-    "title": "How to reproduce",
-    "text": "Capture hot path (proves bodies stream, not buffer — note the tiny B/op): Cold start + idle RSS:",
-    "url": "benchmarks/#how-to-reproduce"
-  },
-  {
-    "title": "What this validates",
-    "text": "- Streaming capture: BenchmarkTeeBody allocates ~1.5 KB regardless of body size — RAM does not grow with traffic, which is exactly the property Burp lacks. - Native start: sub-second to a usable UI, no JVM warmup.",
-    "url": "benchmarks/#what-this-validates"
+    "title": "Measuring the full application",
+    "text": "Use a separate project with synthetic local traffic. Record startup time, idle and loaded resident memory, request throughput, error rate, and UI responsiveness with a stated history size. Keep the traffic fixture, body sizes, concurrency, and TLS conditions alongside the results. A fast microbenchmark alone does not establish that the full application meets those goals.",
+    "url": "benchmarks/#measuring-the-full-application"
   },
   {
     "title": "CLI reference",
@@ -255,6 +250,11 @@
     "url": "extensions/#writing-your-own"
   },
   {
+    "title": "Activity",
+    "text": "Recorded agent actions with intent filters, result details, and links to related captured flows.",
+    "url": "features/#activity"
+  },
+  {
     "title": "External agent orchestration",
     "text": "MCP exposes deterministic capture, replay, mutation, scope, scanning, evidence, and finding tools. Actions remain recorded in History, Activity, and findings.",
     "url": "features/#agent-orchestration"
@@ -285,6 +285,11 @@
     "url": "features/#collaboration"
   },
   {
+    "title": "Decoder",
+    "text": "Inspect Base64, URL, Hex, HTML, and JWT text with a separate input and copyable output.",
+    "url": "features/#decoder"
+  },
+  {
     "title": "Guided content discovery",
     "text": "Run feroxbuster, ffuf, or similar tools through the proxy from Map and cluster soft-404 responses.",
     "url": "features/#discovery"
@@ -295,8 +300,8 @@
     "url": "features/#external-ai"
   },
   {
-    "title": "Finding tags",
-    "text": "Curated findings use report-scope tags and export grouping for cms, website, app, api, and out-of-scope work.",
+    "title": "Findings and reporting",
+    "text": "Searchable evidence review, multiple targets, CVSS v4, report readiness, immutable revisions and restore, and Final or Draft exports.",
     "url": "features/#findings"
   },
   {
@@ -306,7 +311,7 @@
   },
   {
     "title": "Import and export",
-    "text": "See the canonical import and export details in the API and MCP guide.",
+    "text": "HAR, Burp saved-items XML, Postman collections, portable project JSON, and full project archives for different sharing and backup needs.",
     "url": "features/#import-export"
   },
   {
@@ -335,6 +340,11 @@
     "url": "features/#live-history"
   },
   {
+    "title": "Map",
+    "text": "Tree and graph views of captured hosts and endpoints, with search, filters, and collapsible groups.",
+    "url": "features/#map"
+  },
+  {
     "title": "Mobile device support",
     "text": "Android adb-based CA and proxy setup plus iOS profile and jailbroken-device SSH automation.",
     "url": "features/#mobile"
@@ -345,8 +355,13 @@
     "url": "features/#model-free"
   },
   {
+    "title": "Notes",
+    "text": "Project Markdown notes with image paste, Edit and Preview, autosave, and recovery after a rejected save.",
+    "url": "features/#notes"
+  },
+  {
     "title": "Repeater",
-    "text": "Multi-tab request replay with free editing, response inspection, and per-tab history.",
+    "text": "Editable request tabs with Raw, Pretty, optional Decoded, and sandboxed HTML Render response views, plus persistent per-tab send history.",
     "url": "features/#repeater"
   },
   {
@@ -365,6 +380,16 @@
     "url": "features/#session-auth"
   },
   {
+    "title": "Session inspector",
+    "text": "Passive timelines and role comparisons for selected History captures, with redacted observations and no new requests.",
+    "url": "features/#session-inspector"
+  },
+  {
+    "title": "Settings",
+    "text": "Searchable Network, Testing, and System sections with clear save state and failure recovery.",
+    "url": "features/#settings"
+  },
+  {
     "title": "Signed rule packs",
     "text": "Ed25519 publisher signatures and manifest SHA-256 protect rule-pack provenance during install.",
     "url": "features/#signed-packs"
@@ -381,7 +406,7 @@
   },
   {
     "title": "Findings and reporting",
-    "text": "Findings and reporting Findings are durable vulnerability records, not scanner alerts or prose notes. One canonical record is used by the Findings UI, REST API, MCP tools, JSON export, and human-readable reports. A draft may be incomplete; a report-ready finding must connect every material claim to reproducible evidence.",
+    "text": "Findings and reporting Findings keep a reviewed claim, affected targets, evidence, remediation, and review state in one project record. The same record appears in the app, API, and exported reports. A draft can remain incomplete; a Final report requires the relevant readiness checks to pass.",
     "url": "findings-and-reporting/"
   },
   {
@@ -435,6 +460,11 @@
     "url": "findings-and-reporting/#presets"
   },
   {
+    "title": "Read and edit a finding",
+    "text": "Open Report → Findings, search or filter the list, and select a record. Its sections stay linked within the workspace: - Overview — the claim, risk, affected targets, environment, and classification. - Evidence — ordered steps, captured HTTP, and attached images with proof annotations. - Remediation — the proposed fix and retest guidance. - Review — verification state, readiness gaps, CVSS, and revision history. Use the edit action for the section you want to change. Attached HTTP evidence opens inline so you can read the request and response without leaving the finding. Done returns to reading mode. A failed save keeps the draft with Retry; resolve it before exporting, restoring a revision, or switching projects. For a report, open Export and choose Final or Draft. Final checks apply to the findings included in the export. Draft remains available for incomplete work. Readiness checks assess record completeness and declared review state; they do not independently prove a vulnerability. Continue with readiness, multiple targets, screenshot provenance, or revision recovery.",
+    "url": "findings-and-reporting/#read-and-edit-a-finding"
+  },
+  {
     "title": "Readiness and review",
     "text": "Readiness describes document completeness, not vulnerability truth: Stage Meaning --- --- draft The claim/risk envelope is incomplete or no evidence is attached. evidence attached Evidence exists, but impact verification, artifact roles, target links, or proof annotations remain incomplete. reproducible Required proof is recorded; remediation, retest, CVSS/severity, or confidence still needs review. report ready Claim, risk, all targets, action/result/control evidence, applicable visual proof, demonstrated impact review, CVSS/severity, remediation, retest, and confidence are complete. The legacy ready and missing fields remain available to existing clients. New clients should use the structured readiness object and show its gaps. visualProofRecommended is a recommendation, not a false claim that every server-side issue can be proven with a screenshot. Confidence is independent of severity: Confidence Use --- --- tentative Credible lead or indirect evidence; human confirmation is still required. firm Reproduced with direct evidence, but an independent control or retest may remain. certain Direct proof and expected controls establish the claim without a material alternative explanati",
     "url": "findings-and-reporting/#readiness-and-review"
@@ -460,11 +490,6 @@
     "url": "findings-and-reporting/#screenshot-provenance"
   },
   {
-    "title": "Why the format changed",
-    "text": "Before → Action → After is useful for differential authorization, privilege, and state-change findings. It is not a universal reporting structure. It makes passive misconfiguration, exposure, SSRF/OOB, and browser-execution findings harder to describe and encourages agents to manufacture irrelevant “before” steps. Interseptor therefore uses a universal evidence-first envelope and optional reproduction presets: 1. Claim — title and concise summary. 2. Risk — attacker impact and the failed security boundary or root cause. 3. Affected target — exact component, environment, CWE, CVSS, and scope tags. 4. Reproduction — ordered steps with explicit semantic roles. 5. Evidence — captured flows and images, each tied to the claim it proves. 6. Fix and retest — remediation, expected secure behavior, and a negative test. 7. Review — status, confidence, source, and verification state. This follows OWASP guidance that a finding must be understandable, reproducible, actionable, and supported by images or other artifacts. OWASP's emerging autonomous-testing guidance additionally calls for raw evidence, provenance, and a clear separation between machine interpretation and the ",
-    "url": "findings-and-reporting/#why-the-format-changed"
-  },
-  {
     "title": "Getting started",
     "text": "Getting started",
     "url": "getting-started/"
@@ -476,7 +501,7 @@
   },
   {
     "title": "From source",
-    "text": "make build and make run stamp local CLI builds with -local (for example, 2.0.10-local). The version comes from the latest reachable Git tag, or the declared fallback version in a source archive. Published release binaries keep their normal version. Plain go build does not apply this stamp.",
+    "text": "make build and make run stamp local CLI builds with -local (for example, 2.1.0-local). The version comes from the latest reachable Git tag, or the declared fallback version in a source archive. Published release binaries keep their normal version. Plain go build does not apply this stamp.",
     "url": "getting-started/#from-source"
   },
   {
@@ -496,7 +521,7 @@
   },
   {
     "title": "Quick start",
-    "text": "1. Run it. interseptor starts the proxy on 127.0.0.1:8080 and the UI on 127.0.0.1:9966. Open that URL in your browser — or start with --open to launch it automatically. 2. Send traffic through it. Point your browser/HTTP client (or the OS proxy via Settings → System proxy on macOS) at 127.0.0.1:8080. 3. For HTTPS, trust the CA (see below) — then HTTPS flows are decrypted and editable. 4. Work the loop. Watch flows land in Proxy, send one to Repeater or Intruder, run the Scanner, set Scope, or flip on Intercept to hold/edit requests and responses. For a LAN or mobile listener, read Proxy authentication before rebinding: non-loopback listeners require a full-scope API key as the proxy password. The browser realm is interseptor; it is not asking for the target site's credentials. Runtime data lives under ~/.interseptor/ (interseptor.db, bodies/, ca/). Full-project archives intentionally use the compatibility filename interceptor.db. Delete the runtime directory to reset.",
+    "text": "1. Run it. interseptor starts the proxy on 127.0.0.1:8080 and the UI on 127.0.0.1:9966. Open that URL in your browser — or start with --open to launch it automatically. 2. Send traffic through it. Point your browser/HTTP client (or the OS proxy via Settings → System proxy on macOS) at 127.0.0.1:8080. 3. For HTTPS, trust the CA (see below) — then HTTPS flows are decrypted and editable. 4. Work the loop. Watch flows land in Proxy, send one to Repeater or Intruder, run the Scanner, set Scope, or flip on Intercept to hold/edit requests and responses. For a LAN or mobile listener, read Proxy authentication before rebinding: non-loopback listeners require a full-scope API key as the proxy password. The browser realm is interseptor; it is not asking for the target site's credentials. Runtime data lives under ~/.interseptor/ (interseptor.db, bodies/, ca/). Full-project archives intentionally use the compatibility filename interceptor.db. To start with an empty workspace, create a new project; keep an archive before deleting existing project data. See Projects and data. Continue with the workspace guide for the main menus and response views, or Settings to find a specific configuratio",
     "url": "getting-started/#quick-start"
   },
   {
@@ -680,18 +705,23 @@
     "url": "projects-and-data/#backup-and-collaboration"
   },
   {
+    "title": "Choose a project",
+    "text": "Open the project badge, the mobile Project action, or Settings → Project \u0026 data to choose an existing project or create one. Named projects and explicitly opened folders are separate workspaces, each with its own captured traffic and findings. The current saved-project list is flat; it does not provide nested client folders or inherited client-level settings. For related workspaces, use clear names such as example-web-staging and example-mobile-testing. A naming convention groups related work for people; it does not merge scope, session state, or evidence. A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved work first, and confirm the new project badge before continuing.",
+    "url": "projects-and-data/#choose-a-project"
+  },
+  {
     "title": "Close-out",
     "text": "Export the required report and archive, verify each artifact opens, revoke API keys and tunnels, remove client CA trust and proxy settings, then delete local evidence according to the engagement's retention agreement. See Engagement close-out.",
     "url": "projects-and-data/#close-out"
   },
   {
     "title": "Export formats",
-    "text": "Format Purpose Behavior --- --- --- Portable project JSON Sharing selected operational state with another Interseptor instance Imports additively into the current project; duplicate data is skipped. HAR Interchange with browser and proxy tooling Imports flows into History; some Interseptor-only metadata is not represented. Burp saved-items XML Migrating Proxy history or Target traffic from Burp Suite Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. Full project ZIP Lossless migration or backup Contains the database and captured bodies; import creates a new project. Findings report Client/editorial output May include reconstructed PoC request/response bodies; treat as sensitive. The full archive intentionally excludes the global CA and custom checks. Transfer those separately only when authorized and necessary.",
+    "text": "Format Purpose Behavior --- --- --- Portable project JSON Sharing selected operational state with another Interseptor instance Imports additively into the current project; duplicate data is skipped. HAR Interchange with browser and proxy tooling Imports flows into History; some Interseptor-only metadata is not represented. Burp saved-items XML Migrating Proxy history or Target traffic from Burp Suite Imports request/response pairs, binary bodies, headers, timestamps, and Burp comments into History. Postman collection JSON Preparing editable requests in Repeater Imports Collection v2.0/v2.1 with optional environment resolution; unsupported values are reported and no requests are sent by import. Full project ZIP Lossless migration or backup Contains the database and captured bodies; import creates a new project. Findings report Client/editorial output May include reconstructed PoC request/response bodies; treat as sensitive. The full archive intentionally excludes the global CA and custom checks. Transfer those separately only when authorized and necessary.",
     "url": "projects-and-data/#export-formats"
   },
   {
     "title": "Migrate traffic from Burp Suite",
-    "text": "In Burp, select the HTTP items to migrate in Proxy history or the Target tool, use Save items, and save the XML export. In Interseptor, open Settings → Project \u0026 Data → Import Burp XML. The import merges valid HTTP/HTTPS items into the current project's History and keeps existing flows. Native .burp project files are not accepted. PortSwigger documents project-file management but does not publish the native persistence format as an interchange format; exporting selected items as XML is the supported migration boundary. Keep exports protected as engagement evidence, and review the reported imported/skipped counts before deleting the Burp project.",
+    "text": "In Burp, select the HTTP items to migrate in Proxy history or the Target tool, use Save items, and save the XML export. In Interseptor, open Settings → Project \u0026 data → Import Burp XML. The import merges valid HTTP/HTTPS items into the current project's History and keeps existing flows. Native .burp project files are not accepted. PortSwigger documents project-file management but does not publish the native persistence format as an interchange format; exporting selected items as XML is the supported migration boundary. Keep exports protected as engagement evidence, and review the reported imported/skipped counts before deleting the Burp project.",
     "url": "projects-and-data/#migrate-traffic-from-burp-suite"
   },
   {
@@ -785,6 +815,11 @@
     "url": "rule-packs/#cli"
   },
   {
+    "title": "Match-and-replace body size",
+    "text": "Match-and-replace rules (req-body / res-body on POST/PUT /api/rules) are not the Starlark checks inside a pack. An enabled body rule reads at most 2 MB. A larger body is forwarded unchanged and that rule is skipped (logged once per rule). Set \"bigBody\": true on the rule JSON to opt that rule into the 64 MB transform cap. The interactive intercept hold still buffers up to 64 MB either way. The rules table keeps a stored bigBody value when you edit the rule in the UI.",
+    "url": "rule-packs/#match-and-replace-body-size"
+  },
+  {
     "title": "Pack format",
     "text": "A pack is a .tar.gz containing: Every check file's sha256 is recorded in the manifest at build time and verified on install, so a corrupted or tampered pack is rejected before any check reaches disk. An optional ed25519 publisher signature (signature.json) covers the manifest digest (name, version, per-file hashes) so install can verify who published the pack — see PRD-0003.",
     "url": "rule-packs/#pack-format"
@@ -798,6 +833,36 @@
     "title": "Trust model",
     "text": "Source Policy -------- -------- Official catalog (bundled) Trusted as builtin (same trust as app code) Signed install Verified against interseptor-1 + ~/.interseptor/trusted-pack-keys/ .pub Unsigned Refused unless --allow-unsigned / UI checkbox / ?allowUnsigned=1",
     "url": "rule-packs/#trust-model"
+  },
+  {
+    "title": "Settings",
+    "text": "Settings Open Configure → Settings. Search matches both section names and their contents; Escape clears the search. In a narrow window, the Section picker opens the same sections.",
+    "url": "settings/"
+  },
+  {
+    "title": "Appearance and shortcuts",
+    "text": "The theme control lives in the top bar. Jump to… and Ctrl/⌘+K provide quick panel navigation. Theme and presentation preferences are browser-wide; changing them does not change the project's captured data.",
+    "url": "settings/#appearance-and-shortcuts"
+  },
+  {
+    "title": "Network",
+    "text": "Section Use it for --- --- Proxy \u0026 network Listener addresses, system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. TLS / CA Local CA trust, origin certificate verification, passthrough, and host-specific TLS handling. Mobile devices Android and iOS device connection and setup helpers. Most desktop setups use the local proxy at 127.0.0.1:8080 and control UI at 127.0.0.1:9966. Read the active listener summary before changing a port. A remote or mobile client also needs the correct network access and proxy authentication; changing the address alone is not sufficient. See Proxy, TLS, and networking or Mobile testing for the connection-specific details.",
+    "url": "settings/#network"
+  },
+  {
+    "title": "Save state and recovery",
+    "text": "Settings show pending changes and save failures in place. Keep failed edits available, correct invalid values, and use the displayed retry action. A background refresh should not be treated as confirmation that an unsaved value reached the server. Switching projects restarts the application and waits for the new project's identity. Pending Notes, Findings, History notes, Settings changes, or revision restore can block the switch. Use the project badge, the mobile Project action, or Project \u0026 data to enter the same switching flow. See Project boundaries.",
+    "url": "settings/#save-state-and-recovery"
+  },
+  {
+    "title": "System",
+    "text": "Section Use it for --- --- Project \u0026 data Active project, saved projects, imports, exports, retention, and storage. API \u0026 MCP Client connections, API keys, network allowlist, and MCP contract information. For backups and migrations, choose the export format for the data you need to preserve. A report, HAR, portable JSON, and a full project archive serve different purposes. See Projects and data. The API \u0026 MCP panel exposes connection status and contract version/hash information for clients. After an app update, reconnect clients that report stale capabilities. See API \u0026 MCP.",
+    "url": "settings/#system"
+  },
+  {
+    "title": "Testing",
+    "text": "Section Use it for --- --- Target scope Include/exclude rules used by relevant History, intercept, and scanner controls. Scanner \u0026 OOB Enablement and configuration for the optional callback service. Session / auth Saved session headers and existing macro configuration. Passive scan controls live in Recon → Scanner. Upstream proxy CA trust is under Proxy \u0026 network → Upstream proxy → Advanced trust settings, separate from origin verification. Scope and session settings belong to the project. Review them after importing or switching projects. The passive Session inspector in History is separate from Session / auth; the inspector reads existing captures and does not refresh a session.",
+    "url": "settings/#testing"
   },
   {
     "title": "Troubleshooting",
@@ -903,5 +968,70 @@
     "title": "Vault HTTP API",
     "text": "Method Path Scope Notes -------- ------ ------- -------- GET /api/vault/status read dir, keep, counts GET /api/vault/projects read list projects + latest rev GET /api/vault/projects/{id} read revision list PUT /api/vault/projects/{id}?label= full body = full-project zip GET /api/vault/projects/{id}/latest read download zip GET /api/vault/projects/{id}/revs/{n} read download zip DELETE /api/vault/projects/{id}/revs/{n} full drop one rev DELETE /api/vault/projects/{id} full drop project Archive format matches Export full project: interceptor.db + bodies/.",
     "url": "vault/#vault-http-api"
+  },
+  {
+    "title": "Workspace guide",
+    "text": "Workspace guide The sidebar follows the same groups as the app: Capture, Test, Recon, Report, and Configure. On a narrow window, use the tool picker to reach the same panels. The project badge identifies the active workspace; check it before changing stored data.",
+    "url": "workspace/"
+  },
+  {
+    "title": "Activity",
+    "text": "Open Report → Activity to review recorded external-agent actions. Filter by intent, open flow-linked entries in History, or expand an entry to read its summary, result, and intent. This is the recorded activity available to the project, not a complete audit of every action outside Interseptor. Clear permanently removes the project's activity after confirmation. Preserve required records before clearing them.",
+    "url": "workspace/#activity"
+  },
+  {
+    "title": "Decoder",
+    "text": "Use Decoder from a request or response text selection in Proxy/History. Paste or load text, choose a transformation, and inspect the separate output. Supported options include Base64, URL, Hex, HTML, JWT, and Smart. You can copy the result or move it back into the input. Decoder is a one-shot text utility. It does not modify captured evidence, verify JWT signatures, or configure persistent Message codecs.",
+    "url": "workspace/#decoder"
+  },
+  {
+    "title": "Find the right menu",
+    "text": "Group Menu What belongs here --- --- --- Capture Proxy Captured HTTP history, filters, notes, request/response inspection, and WebSocket frames. Capture Intercept Requests and responses currently held by the proxy. Test Repeater Editable request tabs and their response history. Test Intruder Configured request variations and run results. Recon Scanner Passive observations that need review before becoming findings. Recon Map Hosts, paths, and relationships derived from captured traffic. Report Findings Evidence records, review state, revisions, and report export. Report Notes The project's Markdown notebook. Report Activity Recorded agent actions and their results. Configure Settings Connections, scope, integrations, session settings, and project data. Use Jump to… in the top bar, or Ctrl/⌘+K, to find a panel. Context actions belong to the selected item; global settings stay in Settings.",
+    "url": "workspace/#find-the-right-menu"
+  },
+  {
+    "title": "Findings",
+    "text": "Open Report → Findings to search records and move between Overview, Evidence, Remediation, and Review. You can inspect attached HTTP evidence inline, compare revisions, and recover a deleted finding. The export dialog distinguishes Final reports from Drafts with remaining gaps. See the Findings guide.",
+    "url": "workspace/#findings"
+  },
+  {
+    "title": "Inspect captured traffic",
+    "text": "Open Proxy and select a History row. The inspector shows the request and response for that capture. Search and filters narrow the list without editing stored traffic. Notes and tags help you find an observation later; see History search. Response views show different representations of the same captured body. Raw preserves the text representation, Pretty formats supported content, and Render previews HTML. Available views depend on the response. Message codecs can add a Decoded view; see Message codecs. Render is a sandboxed preview with scripts disabled. It does not reproduce a full interactive browser session, authenticate to the origin, or prove that page scripts executed. Use original browser or device captures when a finding depends on visible application behavior.",
+    "url": "workspace/#inspect-captured-traffic"
+  },
+  {
+    "title": "Intercept",
+    "text": "Intercept shows traffic held by the proxy, separate from completed History captures. Its enabled state affects whether matching traffic waits for a decision. If a browser appears to stall, check the held-item count and current intercept state before changing network settings.",
+    "url": "workspace/#intercept"
+  },
+  {
+    "title": "Notes",
+    "text": "Open Report → Notes for the project notebook. Edit accepts Markdown and pasted images; Preview shows the formatted document. Watch the save status before leaving the project. If autosave fails, the draft stays available with Retry save. Switching projects is blocked while unresolved notes or other guarded drafts remain. Notes support investigation context; use Findings for structured records that belong in a report.",
+    "url": "workspace/#notes"
+  },
+  {
+    "title": "Other workspace tools",
+    "text": "Intruder manages request variations and results. Authorization tools compare configured identity contexts. These tools can send new traffic, unlike History, Decoder, and passive session inspection. Their results still require human review before being represented as confirmed findings. Checks and rule packs extend passive analysis; Message codecs add project-specific body views. The feature index links to the available guides. For connection problems or stale drafts, start with Troubleshooting.",
+    "url": "workspace/#other-workspace-tools"
+  },
+  {
+    "title": "Repeater response views",
+    "text": "Each Repeater tab owns its request editor and send history. Selecting a previous response changes what you inspect; switching tabs keeps responses associated with the correct request. The response pane includes Render when the selected response is HTML, with the same sandbox limitations as History. Tab drafts are project-backed. The per-tab send list is browser-local: it survives reloads until the tab closes, while the underlying flows remain in the project store. Exporting the project does not preserve that browser-local grouping. See Project boundaries.",
+    "url": "workspace/#repeater-response-views"
+  },
+  {
+    "title": "Scanner and Map",
+    "text": "Scanner groups passive observations from captured responses. An alert is a review lead; it is not a report-ready finding. Findings keep the reviewed claim and supporting evidence separately. Map organizes observed hosts and endpoints in tree and graph views. Search, filters, and collapsed groups affect what is visible; a sparse map does not establish that an application has no other endpoints. Its content comes from the traffic available to the project.",
+    "url": "workspace/#scanner-and-map"
+  },
+  {
+    "title": "Session inspector",
+    "text": "Select one or more History rows, open the context menu, and choose Inspect session timeline. The inspector organizes existing captures chronologically. You can assign Anonymous, User, Admin, or Unassigned labels to compare observations. Cookie observations are redacted. Status codes, response fingerprints, redirects, and candidate transitions describe the selected captures only. The view sends no requests and cannot establish authentication success, MFA completion, browser cookie decisions, or hidden side effects. See Passive session inspection.",
+    "url": "workspace/#session-inspector"
+  },
+  {
+    "title": "WebSocket frames",
+    "text": "Captured WebSocket connections expose sent and received frames in the Proxy inspector. Read the frame direction and timestamp before comparing payloads. The WebSocket replay editor opens inline in that inspector; captured frames and replay results retain their own context.",
+    "url": "workspace/#websocket-frames"
   }
 ]

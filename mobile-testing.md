@@ -4,7 +4,6 @@ title: Mobile testing
 classification: current
 source: docs/mobile-testing.md
 ---
-<p class="eyebrow">CURRENT</p>
 # Mobile testing
 
 ## Choose a connection mode

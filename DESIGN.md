@@ -1,50 +1,50 @@
-# Interseptor Documentation Design System
+# Interseptor documentation design
 
-## 1. Atmosphere & Identity
-Editorial field manual for a security tool: warm paper, ink-black structure, orange signal accents, and monospaced operational labels. Signature: the orange `I` marker and dense reference cards that make technical prose feel navigable, not decorative.
+The documentation uses the application's neutral surfaces, green accent, traffic mark, and system
+font stacks. It is a reading and navigation surface: concise introductions, visible page location,
+and direct links to the next useful guide.
 
-## 2. Color
-| Role | Token | Value | Usage |
-|---|---|---|---|
-| Paper | `--paper` | `#f5f4ef` | Page surface |
-| Ink | `--ink` | `#10151d` | Text, terminal, primary action |
-| Muted | `--muted` | `#68717c` | Supporting copy |
-| Line | `--line` | `#d9d9d1` | Dividers and cards |
-| Signal | `--accent` | `#d95835` | Focus, labels, brand marker |
-| Link | `--blue` | `#2156a5` | Navigational links |
+## Color and type
 
-## 3. Typography
-- Display/headings: Georgia, serif; fluid `clamp()` scale.
-- Body/navigation: ui-sans-serif system stack.
-- Operational labels/code: ui-monospace system stack.
-- Body minimum: 16px; labels may use 11–12px.
+`website/assets/site.css` owns the documentation tokens. Light and dark themes each define their
+own foreground, muted text, surfaces, borders, and accent. Green identifies links and selected
+navigation. Body text uses Inter when installed, then the system sans-serif stack; code and release
+metadata use the local monospace stack. No third-party fonts or images are requested.
 
-## 4. Spacing & Layout
-- Base unit: 4px. Content uses `--space` fluid page padding.
-- Desktop shell: 230px documentation rail plus max 900px reading column.
-- Mobile breakpoint: 800px, sidebar becomes horizontal scroll navigation.
-- Content remains intrinsic and readable at 200% zoom.
+Article headings are compact sans-serif. Prose stays near 75 characters per line. Code blocks and
+wide tables scroll within the reading column rather than widening the document.
 
-## 5. Components
-### Documentation shell
-- Structure: skip link, sticky header, primary nav, sidebar nav, main, footer.
-- States: default, hover, keyboard focus, reduced-motion.
-- Accessibility: native links, labelled landmarks, visible focus, skip target.
+## Layout
 
-### Search
-- Structure: labelled native search input and generated result links.
-- States: empty, query results, no results, keyboard focus.
-- Accessibility: no false combobox role; results are ordinary links and remain usable without JavaScript.
+The desktop shell has one documentation sidebar, one reading column, and an optional page outline.
+The header contains search, release information, source access, and the theme control. The current
+page is marked visually and with `aria-current`.
 
-### Source card
-- Structure: labelled canonical-source panel and action link.
-- States: default, hover, focus.
+Below 960px, a custom menu button reveals navigation in the document flow. Below 1200px, the page
+outline becomes an explicit disclosure above the article. Without JavaScript, navigation remains
+visible and all documentation links still work.
 
-## 6. Motion & Interaction
-Only short color/background transitions on interactive controls. Reduced motion removes smooth scrolling. No decorative animation.
+The homepage provides three common starting points, current release context, and a short guide
+directory. Avoid repeated slogans, decorative terminals, testimonial cards, gradients, and invented
+product screenshots.
 
-## 7. Depth & Surface
-Mixed: one-pixel lines for structure, tonal paper panels for grouping, dark terminal block for contrast. No shadows.
+## Interaction
 
-## 8. Accessibility Constraints & Accepted Debt
-Use semantic HTML, keyboard navigation, 3:1+ focus indicators, readable contrast, 44px interactive targets, no horizontal overflow at mobile widths, and no content hidden for scoring. Accepted debt: visual QA uses local static rendering because browser automation was explicitly unavailable for this task; CI validates generated output and links instead.
+Search loads its generated index on demand, ranks title matches first, and reports loading,
+no-result, and retry states. Results are ordinary links with real keyboard focus. Slash or
+Ctrl/Command+K focuses search; arrows move through results and Escape dismisses them.
+
+Buttons, links, menu reveals, and search results use short transitions. Reduced motion disables
+animation and smooth scrolling. There are no continuous decorative animations, native select menus,
+or browser alert/confirmation dialogs.
+
+## Content and validation
+
+Canonical guides live in `docs/`; `go run ./tools/docscheck generate` produces their public Markdown
+pages, the search index, and release metadata. `_data/navigation.yml` owns the sidebar and
+`_data/features.yml` maps each canonical feature to a published guide. The release badge comes from
+the first published entry in `CHANGELOG.md`, never the Unreleased heading.
+
+Validate the real Jekyll output for links, canonical URLs, small-screen layout, both themes, keyboard
+navigation, search recovery, and reduced motion. The Pages build source URL is the origin
+`https://veyal.github.io`; `/interseptor` belongs only in `baseurl`.

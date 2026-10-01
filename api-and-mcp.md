@@ -4,7 +4,6 @@ title: API and MCP
 classification: current
 source: docs/api-and-mcp.md
 ---
-<p class="eyebrow">CURRENT</p>
 # API & MCP
 
 Interseptor exposes deterministic security operations over two machine-facing surfaces, so a human

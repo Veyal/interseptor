@@ -2,4 +2,7 @@
 layout: default
 title: Feature index
 ---
-<p class="eyebrow">SHIPPED CAPABILITIES</p><h1>Feature index</h1><p class="lede">Every item below comes from <a href="https://github.com/Veyal/interseptor/blob/main/docs/FEATURES.md"><code>docs/FEATURES.md</code></a>, current repository source. This page adds navigation without copying its canonical prose.</p><div class="feature-list">{% for feature in site.data.features %}<article id="{{ feature.id }}"><span class="feature-kicker">{{ feature.number }}</span><h2>{{ feature.title }}</h2><p>{{ feature.text }}</p>{% if feature.link %}<a href="{{ feature.link | relative_url }}">Read operational guide →</a>{% endif %}</article>{% endfor %}</div>
+<p class="eyebrow">Workspace reference</p>
+<h1>All features</h1>
+<p class="lede">Find the part of Interseptor you need. Each capability below links to its guide; the <a href="{{ '/workspace/' | relative_url }}">workspace tour</a> follows the app's menus.</p>
+<div class="feature-list">{% for feature in site.data.features %}<article id="{{ feature.id }}"><span class="feature-kicker">{{ feature.number }}</span><h2 id="{{ feature.id }}-heading">{{ feature.title }}</h2><p>{{ feature.text }}</p><a href="{{ feature.link | relative_url }}">Read guide <span aria-hidden="true">→</span></a></article>{% endfor %}</div>

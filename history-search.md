@@ -4,7 +4,6 @@ title: History search
 classification: current
 source: docs/history-search.md
 ---
-<p class="eyebrow">CURRENT</p>
 # History search
 
 Interseptor History supports ordinary filters and deterministic Starlark predicates. Saved searches run inside the project that contains them. They don't call an AI model, send traffic, or inspect anything outside captured flow data.
