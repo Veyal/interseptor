@@ -686,9 +686,9 @@ func normalizeFindingSeverity(s string) string {
 
 func normalizeFindingStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "verified":
+	case "verified", "confirmed":
 		return "verified"
-	case "needs_verification", "needs-verification", "needsverification":
+	case "needs_verification", "needs-verification", "needsverification", "triage", "triaged":
 		return "needs_verification"
 	case "false_positive", "false-positive", "fp":
 		return "false_positive"
@@ -1451,6 +1451,7 @@ func (s *Store) AttachFlowWithMetadata(findingID, flowID int64, note string, pos
 	if err := validateFindingEvidenceMetadata(role, source, sourceFlowID); err != nil {
 		return err
 	}
+	s.waitFlow(flowID)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err

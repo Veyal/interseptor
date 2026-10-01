@@ -38,6 +38,7 @@ func retentionHostMatches(pattern, host string) bool {
 // Pattern matching is case-insensitive and supports leading-wildcard patterns
 // (e.g. "*.example.com" matches "example.com" and all subdomains).
 func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) {
+	s.syncFlows()
 	if len(hosts) == 0 {
 		if keepOnly {
 			return 0, errors.New("store.DeleteFlowsByHost: keepOnly requires at least one host pattern")
@@ -97,53 +98,67 @@ func (s *Store) DeleteFlowsByHost(hosts []string, keepOnly bool) (int64, error) 
 		return 0, nil
 	}
 
-	// DELETE FROM flows WHERE lower(host) IN (?, ?, …)
-	args := make([]any, len(toDelete))
-	for i, h := range toDelete {
-		args[i] = h
-	}
-	ph := strings.TrimRight(strings.Repeat("?,", len(toDelete)), ",")
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsByHost: begin: %w", err)
 	}
 	defer tx.Rollback()
-	// FTS rows are keyed by rowid (= flow id); delete them for the matching hosts
-	// in one statement (the indexed content columns aren't needed to delete), then
-	// delete the flows — both in one transaction so search can't see orphans.
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
-		return 0, fmt.Errorf("store.DeleteFlowsByHost: unindex: %w", err)
-	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
-		return 0, fmt.Errorf("store.DeleteFlowsByHost: untag: %w", err)
-	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
-	if err != nil {
-		return 0, fmt.Errorf("store.DeleteFlowsByHost: delete: %w", err)
+
+	// DELETE FROM flows WHERE lower(host) IN (?, ?, …) — chunked to stay below
+	// SQLite's 32766 host-parameter limit (a subdomain-heavy capture can hold
+	// more distinct hosts than that). All chunks share one transaction.
+	const hostChunk = 400
+	var deleted int64
+	for start := 0; start < len(toDelete); start += hostChunk {
+		end := start + hostChunk
+		if end > len(toDelete) {
+			end = len(toDelete)
+		}
+		args := make([]any, end-start)
+		for i, h := range toDelete[start:end] {
+			args[i] = h
+		}
+		ph := strings.TrimRight(strings.Repeat("?,", end-start), ",")
+		// FTS rows are keyed by rowid (= flow id); delete them for the matching
+		// hosts (the indexed content columns aren't needed to delete), then the
+		// flows — all in one transaction so search can't see orphans.
+		if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
+			return 0, fmt.Errorf("store.DeleteFlowsByHost: unindex: %w", err)
+		}
+		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE lower(host) IN (`+ph+`))`, args...); err != nil {
+			return 0, fmt.Errorf("store.DeleteFlowsByHost: untag: %w", err)
+		}
+		res, err := tx.Exec(`DELETE FROM flows WHERE lower(host) IN (`+ph+`)`, args...)
+		if err != nil {
+			return 0, fmt.Errorf("store.DeleteFlowsByHost: delete: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			deleted += n
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsByHost: commit: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	return deleted, nil
 }
 
 // DeleteFlowsOlderThan removes every flow whose timestamp (unix milliseconds,
 // the unit the flows.ts column stores) is before cutoffMillis, with its FTS
-// index and tags. Returns the count deleted.
+// index and tags, preserving flows attached to findings. Returns the count deleted.
 func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
+	s.syncFlows()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: begin: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE ts < ?)`, cutoffMillis); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows))`, cutoffMillis); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: unindex: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ?)`, cutoffMillis); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows))`, cutoffMillis); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: untag: %w", err)
 	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ?`, cutoffMillis)
+	res, err := tx.Exec(`DELETE FROM flows WHERE ts < ? AND id NOT IN (SELECT flow_id FROM finding_flows)`, cutoffMillis)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsOlderThan: delete: %w", err)
 	}
@@ -155,24 +170,25 @@ func (s *Store) DeleteFlowsOlderThan(cutoffMillis int64) (int64, error) {
 }
 
 // DeleteFlowsKeepNewest keeps only the most-recent n flows (by id, descending)
-// and deletes the rest. n<=0 deletes nothing.
+// and deletes the rest, preserving flows attached to findings. n<=0 deletes nothing.
 func (s *Store) DeleteFlowsKeepNewest(n int64) (int64, error) {
 	if n <= 0 {
 		return 0, nil
 	}
+	s.syncFlows()
 	const keepSub = `SELECT id FROM flows ORDER BY id DESC LIMIT ?`
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: begin: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows))`, n); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: unindex: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`))`, n); err != nil {
+	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (SELECT id FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows))`, n); err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: untag: %w", err)
 	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`)`, n)
+	res, err := tx.Exec(`DELETE FROM flows WHERE id NOT IN (`+keepSub+`) AND id NOT IN (SELECT flow_id FROM finding_flows)`, n)
 	if err != nil {
 		return 0, fmt.Errorf("store.DeleteFlowsKeepNewest: delete: %w", err)
 	}

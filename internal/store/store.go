@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -34,6 +35,45 @@ type Store struct {
 	bodyMu        sync.Mutex
 	pendingBodies map[string]int
 	mergeBodies   map[string]int
+
+	// WebSocket frame capture is batched off the relay goroutine. wsMu guards
+	// the pending buffer and the closed/paused flags; the flusher is the only
+	// writer of wsInserted/wsDirty.
+	wsMu       sync.Mutex
+	wsCmdMu    sync.Mutex
+	wsStopOnce sync.Once
+	wsPending  []*WSFrame
+	wsDropped  atomic.Uint64
+	wsInserted int64
+	wsDirty    map[int64]struct{}
+	wsPaused   bool
+	wsClosed   bool
+	wsNotify   func([]int64)
+	wsWake     chan struct{}
+	wsOp       chan wsFlushOp
+	wsDone     chan struct{}
+
+	// Proxy flow writes are queued off the forward path. flowMu guards the
+	// buffer and pending-id counts; the flusher is the only goroutine that
+	// applies that buffer to SQLite. Direct InsertFlow / UpdateFlow callers
+	// keep the synchronous path and wait when they touch a queued id.
+	flowMu         sync.Mutex
+	flowCmdMu      sync.Mutex
+	flowStopOnce   sync.Once
+	flowCancelOnce sync.Once
+	flowPending    []flowOp
+	flowPendingN   map[int64]int
+	flowVoid       map[int64]struct{}
+	flowDropped    atomic.Uint64
+	flowInFlight   bool
+	flowPaused     bool
+	flowClosed     bool
+	flowGiveUp     atomic.Bool
+	nextFlowID     atomic.Int64
+	flowWake       chan struct{}
+	flowOpCh       chan flowCmd
+	flowStop       chan struct{}
+	flowDone       chan struct{}
 }
 
 // Flow is one captured request/response exchange. Bodies are referenced by
@@ -110,6 +150,14 @@ CREATE INDEX IF NOT EXISTS idx_flows_host ON flows(host);
 CREATE INDEX IF NOT EXISTS idx_flows_status ON flows(status);
 CREATE INDEX IF NOT EXISTS idx_flows_method ON flows(method);
 CREATE INDEX IF NOT EXISTS idx_flows_ts ON flows(ts);
+-- Expression indexes back the History sorts: ORDER BY lower(host) / lower(path) /
+-- COALESCE(res_len,0) / lower(COALESCE(mime,'')) walks the index (the implicit
+-- trailing rowid serves the ", id" tiebreak) instead of building a temp B-tree
+-- per page of a large capture.
+CREATE INDEX IF NOT EXISTS idx_flows_host_lower ON flows(lower(host));
+CREATE INDEX IF NOT EXISTS idx_flows_path_lower ON flows(lower(path));
+CREATE INDEX IF NOT EXISTS idx_flows_res_len ON flows(COALESCE(res_len, 0));
+CREATE INDEX IF NOT EXISTS idx_flows_mime_lower ON flows(lower(COALESCE(mime, '')));
 -- Composite index backs the Map's GROUP BY host, method, path aggregation and the
 -- host=? filter, so a large flows table is walked via the index instead of a full scan.
 CREATE INDEX IF NOT EXISTS idx_flows_endpoint ON flows(host, method, path);
@@ -122,7 +170,8 @@ CREATE TABLE IF NOT EXISTS rules (
   enabled INTEGER NOT NULL DEFAULT 1,
   type TEXT NOT NULL,
   match TEXT NOT NULL,
-  replace TEXT NOT NULL
+  replace TEXT NOT NULL,
+  big_body INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS scan_issues (
@@ -296,12 +345,17 @@ func Open(dir string) (*Store, error) {
 		"?_pragma=busy_timeout(10000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
-		"&_pragma=foreign_keys(1)"
+		"&_pragma=foreign_keys(1)" +
+		"&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
+	// Keep all four pool connections alive between bursts: the default idle
+	// pool (2) would tear down and reopen two connections on every scanner /
+	// intruder burst, and slow body-search reads would starve flow writers.
+	db.SetMaxIdleConns(4)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
@@ -332,6 +386,7 @@ func Open(dir string) (*Store, error) {
 		// Collaboration: scoped/expiring API keys (existing keys → full, never-expire).
 		`ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
 		`ALTER TABLE api_keys ADD COLUMN expires INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE rules ADD COLUMN big_body INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -347,12 +402,27 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	var maxID int64
+	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM flows`).Scan(&maxID); err != nil {
+		db.Close()
+		return nil, err
+	}
+	s.nextFlowID.Store(maxID)
+	s.startFlowFlusher()
+	s.startWSFlusher()
 	return s, nil
 }
 
-// Close closes the underlying database.
+// Close drains queued flow writes (bounded) and pending WebSocket frames, then
+// closes the underlying database.
 func (s *Store) Close() error {
 	var first error
+	if err := s.shutdownFlows(); err != nil && first == nil {
+		first = err
+	}
+	if err := s.shutdownWS(); err != nil && first == nil {
+		first = err
+	}
 	if s.keys != nil && s.keys != s.db {
 		if err := s.keys.Close(); err != nil && first == nil {
 			first = err
@@ -362,6 +432,7 @@ func (s *Store) Close() error {
 	if err := s.db.Close(); err != nil && first == nil {
 		first = err
 	}
+	s.waitFlowExit()
 	return first
 }
 
@@ -374,6 +445,12 @@ func (s *Store) InsertFlow(f *Flow) (int64, error) {
 // use this so mandatory provenance cannot be lost after the row is published.
 func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
+	id := f.ID
+	if id == 0 {
+		id = s.allocFlowID()
+	} else {
+		s.noteFlowID(id)
+	}
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
 	orh, _ := json.Marshal(f.OriginalReqHeaders)
@@ -385,21 +462,17 @@ func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(
+	_, err = tx.Exec(
 		`INSERT INTO flows
-			 (ts, method, scheme, host, port, path, http_version, status,
+			 (id, ts, method, scheme, host, port, path, http_version, status,
 			  req_headers, res_headers, original_req_headers, original_res_headers,
 			  req_body_hash, res_body_hash, original_req_body_hash, original_res_body_hash,
 			  req_len, res_len, mime, duration_ms, client_addr, error, flags, note)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, f.TS.UnixMilli(), f.Method, f.Scheme, f.Host, f.Port, f.Path, f.HTTPVersion, f.Status,
 		string(rh), string(sh), string(orh), string(osh),
 		f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash,
 		f.ReqLen, f.ResLen, f.Mime, f.DurationMs, f.ClientAddr, f.Error, f.Flags, f.Note)
-	if err != nil {
-		return 0, err
-	}
-	id, err := res.LastInsertId()
 	if err != nil {
 		return 0, err
 	}
@@ -423,7 +496,16 @@ func (s *Store) insertFlow(f *Flow, tags []string) (int64, error) {
 // UpdateFlow fills in the response-side (and post-send request) fields of a flow
 // that was first inserted at request time, keyed by f.ID. The immutable request
 // identity (ts, scheme, host, port, version, client) is left untouched.
+// A flow still sitting in the write-behind queue is drained first so this
+// update cannot land before its insert.
 func (s *Store) UpdateFlow(f *Flow) error {
+	if f != nil {
+		s.waitFlow(f.ID)
+	}
+	return s.writeFlowUpdate(f)
+}
+
+func (s *Store) writeFlowUpdate(f *Flow) error {
 	defer s.publishBodies(f.ReqBodyHash, f.ResBodyHash, f.OriginalReqBodyHash, f.OriginalResBodyHash)
 	rh, _ := json.Marshal(f.ReqHeaders)
 	sh, _ := json.Marshal(f.ResHeaders)
@@ -469,6 +551,7 @@ func (s *Store) UpdateFlow(f *Flow) error {
 
 // SetFlowNote sets (or clears, with "") the free-text note attached to a flow.
 func (s *Store) SetFlowNote(id int64, note string) error {
+	s.waitFlow(id)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -495,43 +578,58 @@ func (s *Store) SetFlowNote(id int64, note string) error {
 // DeleteFlows removes the given flows and returns how many rows were deleted.
 // An empty id list is a no-op. Content-addressed body files are left in place
 // (they are shared/deduplicated across flows); the metadata rows are what go.
+// Ids are chunked to stay below SQLite's 32766 host-parameter limit — a bulk
+// delete of a long capture session would otherwise fail as one giant IN (…).
 func (s *Store) DeleteFlows(ids []int64) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	ph := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	s.syncFlows()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	// FTS rows are keyed by rowid (= flow id), so unindex in one batch by id (the
-	// content columns aren't needed to delete). Both deletes share one transaction
+	// FTS rows are keyed by rowid (= flow id), so unindex in batches by id (the
+	// content columns aren't needed to delete). All deletes share one transaction
 	// so a partial failure can't leave the full-text index out of sync with flows
 	// (a stale FTS row would make a deleted flow appear in search until reused).
-	if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+ph+`)`, args...); err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`)`, args...); err != nil {
-		return 0, err
-	}
-	res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
-	if err != nil {
-		return 0, err
+	const chunk = 400
+	var deleted int64
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		args := make([]any, end-start)
+		for i, id := range ids[start:end] {
+			args[i] = id
+		}
+		ph := strings.TrimRight(strings.Repeat("?,", end-start), ",")
+		if _, err := tx.Exec(`DELETE FROM flows_fts WHERE rowid IN (`+ph+`)`, args...); err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(`DELETE FROM flow_tags WHERE flow_id IN (`+ph+`)`, args...); err != nil {
+			return 0, err
+		}
+		res, err := tx.Exec(`DELETE FROM flows WHERE id IN (`+ph+`)`, args...)
+		if err != nil {
+			return 0, err
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			deleted += n
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	return deleted, nil
 }
 
-// GetFlow loads a single flow by id.
+// GetFlow loads a single flow by id. A queued write for this id is drained
+// first so a read right after capture sees the row.
 func (s *Store) GetFlow(id int64) (*Flow, error) {
+	s.waitFlow(id)
 	row := s.db.QueryRow(`SELECT `+flowColumns+` FROM flows WHERE id = ?`, id)
 	return scanFlow(row)
 }
@@ -565,6 +663,7 @@ func scanFlow(row scanner) (*Flow, error) {
 
 // QueryFlows returns up to limit flows, newest first.
 func (s *Store) QueryFlows(limit int) ([]*Flow, error) {
+	s.syncFlows()
 	rows, err := s.db.Query(
 		`SELECT `+flowColumns+` FROM flows ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {

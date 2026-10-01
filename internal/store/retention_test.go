@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -679,3 +680,129 @@ func TestHostStats_SingleHost(t *testing.T) {
 		t.Fatalf("unexpected stat: %+v", stats[0])
 	}
 }
+
+func TestRetentionPreservesFlowsAttachedToFindings(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	// 1. Insert an old flow and a newer flow
+	oldID, err := s.InsertFlow(&Flow{
+		TS:     time.UnixMilli(100),
+		Method: "GET",
+		Host:   "vuln.example.com",
+		Path:   "/sqli",
+		Status: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unattachedOldID, err := s.InsertFlow(&Flow{
+		TS:     time.UnixMilli(200),
+		Method: "GET",
+		Host:   "temp.example.com",
+		Path:   "/temp",
+		Status: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Attach old flow to a finding
+	fid, err := s.CreateFinding(&Finding{
+		Title:    "SQL Injection",
+		Severity: "High",
+		Target:   "vuln.example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AttachFlow(fid, oldID, "Proof of exploit", -1); err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Delete flows older than 500ms
+	deleted, err := s.DeleteFlowsOlderThan(500)
+	if err != nil {
+		t.Fatalf("DeleteFlowsOlderThan: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("expected 1 unattached flow deleted, got %d", deleted)
+	}
+
+	// 4. Verify attached old flow survives, unattached is gone
+	if f, err := s.GetFlow(oldID); err != nil || f == nil {
+		t.Fatalf("attached flow %d was deleted by retention: %v", oldID, err)
+	}
+	if f, err := s.GetFlow(unattachedOldID); err == nil && f != nil {
+		t.Fatalf("unattached flow %d should have been deleted by retention", unattachedOldID)
+	}
+
+	// 5. Test DeleteFlowsKeepNewest preserving attached flow
+	for i := 0; i < 5; i++ {
+		if _, err := s.InsertFlow(&Flow{
+			TS:     time.UnixMilli(int64(1000 + i)),
+			Method: "GET",
+			Host:   "bulk.example.com",
+			Path:   "/test",
+			Status: 200,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Keep only the newest 2 flows; the attached old flow must still survive
+	deletedKeep, err := s.DeleteFlowsKeepNewest(2)
+	if err != nil {
+		t.Fatalf("DeleteFlowsKeepNewest: %v", err)
+	}
+	if deletedKeep != 3 {
+		t.Fatalf("expected 3 bulk flows deleted, got %d", deletedKeep)
+	}
+	if f, err := s.GetFlow(oldID); err != nil || f == nil {
+		t.Fatalf("attached flow %d was deleted by DeleteFlowsKeepNewest: %v", oldID, err)
+	}
+}
+
+// DeleteFlowsByHost must chunk its host statements: purging a subdomain-heavy
+// capture (>32766 distinct stored hosts) would otherwise build one giant
+// IN (?,?,…) with more host parameters than SQLite's 32766 limit and fail the
+// whole purge. Flows are seeded in one transaction to keep the test fast.
+func TestDeleteFlowsByHostOverSQLiteVariableLimit(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	const n = 32767 // one past SQLITE_MAX_VARIABLE_NUMBER
+	hosts := make([]string, n)
+	tx, err := s.db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	stmt, err := tx.Prepare(`INSERT INTO flows (ts, method, host, path) VALUES (?, 'GET', ?, '/')`)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for i := range hosts {
+		hosts[i] = fmt.Sprintf("h%d.example", i)
+		if _, err := stmt.Exec(time.UnixMilli(1), hosts[i]); err != nil {
+			t.Fatalf("seed flow: %v", err)
+		}
+	}
+	stmt.Close()
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	deleted, err := s.DeleteFlowsByHost(hosts, false)
+	if err != nil {
+		t.Fatalf("DeleteFlowsByHost over the SQLite variable limit: %v", err)
+	}
+	if deleted != n {
+		t.Fatalf("deleted %d, want %d", deleted, n)
+	}
+}
+

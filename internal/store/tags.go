@@ -64,6 +64,7 @@ func NormalizeTags(tags []string) []string {
 
 // SetFlowTags replaces a flow's tag set with the normalized `tags` (empty clears).
 func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
+	s.waitFlow(flowID)
 	norm := NormalizeTags(tags)
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -88,7 +89,14 @@ func (s *Store) SetFlowTags(flowID int64, tags []string) ([]string, error) {
 }
 
 // AddFlowTags adds tags to a flow (union) and returns the flow's full tag set.
+// Queued capture writes for this flow are drained first so the tag cannot
+// land before the row.
 func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
+	s.waitFlow(flowID)
+	return s.writeFlowTags(flowID, tags)
+}
+
+func (s *Store) writeFlowTags(flowID int64, tags []string) ([]string, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
@@ -131,6 +139,9 @@ func (s *Store) AddFlowTags(flowID int64, tags []string) ([]string, error) {
 // MutateFlowTags applies one add/remove command to every selected flow in one
 // transaction. Remove wins when the same normalized tag appears in both sets.
 func (s *Store) MutateFlowTags(flowIDs []int64, add, remove []string) error {
+	for _, id := range flowIDs {
+		s.waitFlow(id)
+	}
 	add = NormalizeTags(add)
 	remove = NormalizeTags(remove)
 	tx, err := s.db.Begin()
@@ -163,12 +174,14 @@ func requireFlowForTags(tx *sql.Tx, flowID int64) error {
 
 // RemoveFlowTag detaches a single tag from a flow.
 func (s *Store) RemoveFlowTag(flowID int64, tag string) error {
+	s.waitFlow(flowID)
 	_, err := s.db.Exec(`DELETE FROM flow_tags WHERE flow_id=? AND tag=?`, flowID, normalizeTag(tag))
 	return err
 }
 
 // FlowTags returns one flow's tags, sorted.
 func (s *Store) FlowTags(flowID int64) ([]string, error) {
+	s.waitFlow(flowID)
 	rows, err := s.db.Query(`SELECT tag FROM flow_tags WHERE flow_id=? ORDER BY tag`, flowID)
 	if err != nil {
 		return nil, err
@@ -188,6 +201,7 @@ func (s *Store) FlowTags(flowID int64) ([]string, error) {
 // TagsForFlows batch-loads tags for many flows in one query (no N+1), returning a
 // map from flow id to its sorted tag list. Ids with no tags are absent from the map.
 func (s *Store) TagsForFlows(ids []int64) (map[int64][]string, error) {
+	s.syncFlows()
 	out := map[int64][]string{}
 	if len(ids) == 0 {
 		return out, nil
