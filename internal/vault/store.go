@@ -74,7 +74,7 @@ func Open(dir string, keep int) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(abs, "projects"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(abs, "projects"), 0o700); err != nil {
 		return nil, err
 	}
 	st := &Store{Dir: abs, Keep: keep}
@@ -104,13 +104,13 @@ func (s *Store) Put(id, label, source string, r io.Reader) (RevInfo, error) {
 	if err != nil {
 		return RevInfo{}, err
 	}
-	if err := os.MkdirAll(pdir, 0o755); err != nil {
+	if err := os.MkdirAll(pdir, 0o700); err != nil {
 		return RevInfo{}, err
 	}
 
 	next := s.nextRevLocked(pdir)
 	tmp := filepath.Join(pdir, fmt.Sprintf(".tmp-rev-%06d.zip", next))
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return RevInfo{}, err
 	}
