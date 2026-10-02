@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-02
+
 ### Added
 
 - **Project folders and dates.** The project picker groups saved projects into collapsible folders (up to 3 levels), shows when each project was created and last opened, and scrolls the list inside the dialog. Folders are labels only; they do not share a project's history or scope.
