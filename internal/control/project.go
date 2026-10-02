@@ -318,6 +318,7 @@ func (h *projectAPI) importProject(w http.ResponseWriter, r *http.Request) {
 
 // apiProject reports the active project and the projects available to switch to.
 func (h *projectAPI) apiProject(w http.ResponseWriter, r *http.Request) {
+	h.rememberCurrentProjectOpen()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"current":   h.ProjectName,
 		"dir":       h.ProjectDir,
@@ -330,20 +331,117 @@ func (h *projectAPI) apiProject(w http.ResponseWriter, r *http.Request) {
 // switch via {target: Name}) or a remembered external-folder project (Path
 // set, switch via {path: Path}).
 type projectEntry struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Category  string `json:"category,omitempty"`
+	CreatedAt int64  `json:"createdAt,omitempty"`
+	OpenedAt  int64  `json:"openedAt,omitempty"`
 }
 
 func (h *projectAPI) projectEntries() []projectEntry {
-	names := h.availableProjects()
-	out := make([]projectEntry, 0, len(names))
-	for _, n := range names {
-		out = append(out, projectEntry{Name: n})
+	type spec struct {
+		name, path, key, dir string
+	}
+	var specs []spec
+	for _, n := range h.availableProjects() {
+		specs = append(specs, spec{name: n, key: projectMetaKey(n, ""), dir: h.namedProjectDir(n)})
 	}
 	for _, e := range readExternalProjects(h.GlobalDir) {
-		out = append(out, projectEntry{Name: e.Name, Path: e.Path})
+		specs = append(specs, spec{name: e.Name, path: e.Path, key: projectMetaKey("", e.Path), dir: e.Path})
+	}
+	dirs := make(map[string]string, len(specs))
+	for _, s := range specs {
+		dirs[s.key] = s.dir
+	}
+	index := ensureProjectCreated(h.GlobalDir, dirs)
+	out := make([]projectEntry, 0, len(specs))
+	for _, s := range specs {
+		meta := index[s.key]
+		out = append(out, projectEntry{
+			Name: s.name, Path: s.path, Category: meta.Category,
+			CreatedAt: meta.CreatedAt, OpenedAt: meta.OpenedAt,
+		})
 	}
 	return out
+}
+
+func (h *projectAPI) namedProjectDir(name string) string {
+	if h.GlobalDir == "" {
+		return ""
+	}
+	if name == "" || strings.EqualFold(name, "default") {
+		return h.GlobalDir
+	}
+	return filepath.Join(h.GlobalDir, "projects", name)
+}
+
+func (h *Hub) rememberCurrentProjectOpen() {
+	if h.GlobalDir == "" || !h.projectOpenNoted.CompareAndSwap(false, true) {
+		return
+	}
+	name := h.ProjectName
+	if name == "" {
+		name = "default"
+	}
+	dir := h.ProjectDir
+	key := projectMetaKey(name, "")
+	if dir != "" {
+		named := filepath.Join(h.GlobalDir, "projects", name)
+		clean := filepath.Clean(dir)
+		if !strings.EqualFold(name, "default") && clean != filepath.Clean(named) && clean != filepath.Clean(h.GlobalDir) {
+			key = projectMetaKey("", clean)
+		}
+	} else if strings.EqualFold(name, "default") {
+		dir = h.GlobalDir
+	} else {
+		dir = filepath.Join(h.GlobalDir, "projects", name)
+	}
+	_ = touchProjectMeta(h.GlobalDir, key, dir, true)
+}
+
+func (h *projectAPI) setProjectFolder(w http.ResponseWriter, r *http.Request) {
+	if h.GlobalDir == "" {
+		httpErr(w, http.StatusBadRequest, "project storage location is not configured")
+		return
+	}
+	var in struct {
+		Target   string `json:"target"`
+		Path     string `json:"path"`
+		Category string `json:"category"`
+	}
+	if !decodeOptionalLimitedJSON(w, r, maxProjectSwitchRequestBytes, &in) {
+		return
+	}
+	category, err := normalizeProjectCategory(in.Category)
+	if err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var key string
+	if path := strings.TrimSpace(in.Path); path != "" {
+		if strings.TrimSpace(in.Target) != "" {
+			httpErr(w, http.StatusBadRequest, "set a project name or a folder path, not both")
+			return
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil || !isSafeExternalPath(abs) {
+			httpErr(w, http.StatusBadRequest, "invalid path: use an absolute folder, not a drive/filesystem root")
+			return
+		}
+		key = projectMetaKey("", abs)
+	} else {
+		target := strings.TrimSpace(in.Target)
+		if !safeProjectTarget(target) {
+			httpErr(w, http.StatusBadRequest, "invalid project: use a plain name, not a path")
+			return
+		}
+		key = projectMetaKey(target, "")
+	}
+	if err := setProjectCategory(h.GlobalDir, key, category); err != nil {
+		httpInternalErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"category": category})
 }
 
 // availableProjects lists "default" plus every named project directory under

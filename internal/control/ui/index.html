@@ -581,6 +581,19 @@ Content-Type: application/json
             <p class="hint u-mt-2">Use the starred address for Wi-Fi devices.</p>
             <input type="hidden" id="setAddr">
           </div>
+          <div class="section" id="proxyAuthSection">
+            <h3>Proxy authentication</h3>
+            <p class="hint u-mb-2">Off by default. Optional username and password for the proxy listener. API keys still protect History and the control API; they are not the proxy password.</p>
+            <div class="row u-gap-3"><button type="button" class="uisw" id="proxyAuthToggle" aria-pressed="false">Proxy authentication is off</button></div>
+            <input type="hidden" id="proxyAuthEnabled" value="0">
+            <div id="proxyAuthFields" hidden>
+              <div class="settings-form-grid">
+                <div class="field"><label for="proxyAuthUser">Username</label><input id="proxyAuthUser" autocomplete="off" spellcheck="false"></div>
+                <div class="field"><label for="proxyAuthPassword">Password</label><input id="proxyAuthPassword" type="password" autocomplete="new-password"></div>
+              </div>
+            </div>
+            <div class="row u-gap-2 u-mt-2"><button class="btn btn-primary" type="button" id="saveProxyAuthBtn">Save proxy authentication</button></div>
+          </div>
           <div class="section">
             <h3>Device proxy</h3>
             <p class="hint u-mb-2">Wi-Fi proxy address. USB uses <b>127.0.0.1</b>.</p>
@@ -1319,9 +1332,11 @@ Content-Type: application/json
     </div>
     <div class="modal-shell-body u-col u-gap-4">
       <div class="field u-m-0"><label>Active project</label><div class="u-fs-md"><b class="u-accent" id="pmCurrent">default</b> · <span class="u-fg3 font-mono u-fs-xs" id="pmDir"></span></div></div>
-      <div>
-        <div class="micro-label u-mb-1">SWITCH TO A SAVED PROJECT</div>
-        <div id="pmList"></div>
+      <div class="pm-picker">
+        <div class="micro-label u-mb-1">SAVED PROJECTS</div>
+        <input id="pmFilter" class="btn btn-field" placeholder="Filter by name or folder" spellcheck="false" aria-label="Filter projects" autocomplete="off">
+        <div id="pmList" class="pm-list"></div>
+        <p class="hint u-m-0">Folders only organize this list. Each project keeps its own history.</p>
       </div>
       <div>
         <div class="micro-label u-mb-1">CREATE / OPEN A NEW PROJECT</div>
@@ -1329,6 +1344,7 @@ Content-Type: application/json
           <input id="pmNew" class="btn btn-field field-grow" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
           <button class="btn btn-primary" id="pmNewBtn">＋ Create &amp; open</button>
         </div>
+        <input id="pmNewFolder" class="btn btn-field" placeholder="Folder, optional — Clients/Acme" spellcheck="false" aria-label="Folder for the new project" autocomplete="off">
         <input id="pmNewPath" aria-describedby="pmSwitchNote" class="btn btn-field font-mono" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
         <p class="hint u-hidden u-accent" id="pmSwitchNote" role="status" aria-live="polite"></p>
       </div>

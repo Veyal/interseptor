@@ -6,10 +6,11 @@ Open the project badge, the mobile **Project** action, or **Settings → Project
 an existing project or create one. Named projects and explicitly opened folders are separate
 workspaces, each with its own captured traffic and findings.
 
-The current saved-project list is flat; it does not provide nested client folders or inherited
-client-level settings. For related workspaces, use clear names such as `example-web-staging` and
-`example-mobile-testing`. A naming convention groups related work for people; it does not merge
-scope, session state, or evidence.
+The project picker groups saved projects into collapsible folders such as `Clients/Acme`. A folder
+is only a label: it does not move the project directory and it does not share history, scope, or
+findings with the other projects in that folder. Each row shows when the project was created and
+when it was last opened. Filter the list when there are many projects; the list scrolls inside the
+dialog so the create form stays on screen.
 
 A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved
 work first, and confirm the new project badge before continuing.

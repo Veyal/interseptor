@@ -7,7 +7,7 @@ clears the search. In a narrow window, the **Section** picker opens the same sec
 
 | Section | Use it for |
 |---|---|
-| Proxy & network | Listener addresses, system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. |
+| Proxy & network | Listener addresses, optional proxy username/password (off by default), system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. |
 | TLS / CA | Local CA trust, origin certificate verification, passthrough, and host-specific TLS handling. |
 | Mobile devices | Android and iOS device connection and setup helpers. |
 

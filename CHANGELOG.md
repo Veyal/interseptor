@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Project folders and dates.** The project picker groups saved projects into collapsible folders (up to 3 levels), shows when each project was created and last opened, and scrolls the list inside the dialog. Folders are labels only; they do not share a project's history or scope.
+
+- **Optional proxy basic auth.** Settings → Proxy & network → Proxy authentication can require a username and password on the proxy listener. It is off by default, and the password is one you choose — not an API key. API keys still protect History and the control API.
+
 ### Removed
 
-- **Proxy listener authentication.** Non-loopback proxy listeners no longer demand `Proxy-Authorization` with a full-scope API key (`407` Basic realm `interseptor`) — binding a proxy to a LAN/tailnet address is an explicit operator decision, and requiring a proxy password only broke clients reaching the proxy through a non-loopback address, including same-machine clients. Anyone who can reach a listener can now use it, so treat a non-loopback bind as an open proxy on that network; `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` still refuses non-loopback binds, and remote control-plane access (UI/REST/MCP) still requires an API key.
+- **API-key proxy authentication.** Proxy listeners no longer demand a full-scope API key as the proxy password. Use the optional proxy username and password above when a listener should challenge clients.
 
 ## [2.2.0] - 2026-10-01
 

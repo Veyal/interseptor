@@ -35,9 +35,10 @@ exceptions → Add selected History host**. Installing a CA alone cannot fix a n
 
 ## Repeated 407 or upstream authentication errors
 
-A browser-visible `407` now always means the configured chained upstream proxy rejected its
-credentials — Interseptor's own proxy listeners no longer require authentication. Check the
-upstream settings and the toast/log saying “upstream proxy authentication required”.
+A browser-visible `407` whose realm is `interseptor` means **Settings → Proxy & network → Proxy
+authentication** is on and the client did not send that username and password. A toast or log saying
+“upstream proxy authentication required” is the chained proxy instead. These are different
+credentials; neither one is an API key.
 
 For upstream setup, select a mode instead of typing a URL: **HTTP/HTTPS** for an HTTP CONNECT proxy,
 **SOCKS5** for local DNS, or **SOCKS5H** for proxy-side DNS. Verify host and port in the status summary.

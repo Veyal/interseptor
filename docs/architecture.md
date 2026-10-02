@@ -12,12 +12,13 @@ The control plane has **two trust modes** (`internal/control/guard.go`):
   DNS-rebinding. Rebinding the **proxy** or **control UI** to a non-loopback address (e.g. `0.0.0.0`
   for LAN device capture) is allowed from Settings; set `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` to refuse
   non-loopback binds.
-- **Proxy listener exposure (changed in v2.2.0).** Proxy listeners never require authentication:
-  binding to a non-loopback interface is an explicit operator decision (guarded by
-  `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0`), so a non-loopback listener is effectively an open proxy for
-  anyone who can reach it — bind only what the engagement needs. Any client-supplied
-  `Proxy-Authorization` is stripped before forwarding. The control plane still requires API keys for
-  remote (non-loopback) access. See [Proxy listener exposure](proxy-and-tls.md#proxy-listener-exposure).
+- **Proxy listener exposure.** Proxy listeners accept traffic with no credentials by default.
+  Optional basic auth is a username and password configured in Settings; it is not an API key.
+  Binding to a non-loopback interface is still an explicit operator decision (guarded by
+  `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0`). With authentication off, that listener is an open proxy for
+  anyone who can reach it. `Proxy-Authorization` is stripped before forwarding. History and the
+  control API still require API keys for remote (non-loopback) access. See
+  [Proxy listener exposure](proxy-and-tls.md#proxy-listener-exposure).
 - **Key-authorized remote access (opt-in, added in v0.29.0).** A request carrying a valid API key is
   authorized regardless of Host/Origin/connection — this is what lets an AI agent on a VPS or a
   collaborator's browser reach Interseptor over a tunnel. Keys are **scoped**: a **read**-only key may

@@ -1679,6 +1679,23 @@ details[open]>summary::before{content:'▾'}
 .modal-lg-tall{width:94%;max-width:760px;max-height:88vh}
 .modal-xl{width:94%;max-width:900px;max-height:88vh}
 .modal-sm-tall{width:94%;max-width:560px;max-height:86vh}
+#projModal .modal-shell{width:min(680px,96vw);height:min(86vh,760px);max-height:86vh}
+#projModal .modal-shell-body{overflow:hidden;min-height:0}
+#projModal .pm-picker{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+#projModal .pm-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.pm-folder{border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1)}
+.pm-folder>summary{cursor:pointer;padding:6px 8px;font-weight:650;list-style-position:inside}
+.pm-folder>summary::-webkit-details-marker{color:var(--fg3)}
+.pm-folder .pm-count{margin-left:6px;color:var(--fg3);font-weight:500;font-size:var(--fs-xs)}
+.pm-folder-body{display:flex;flex-direction:column;gap:6px;padding:0 6px 6px}
+.pm-item{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pm-item>.row{align-items:stretch;min-width:0}
+.pm-row{display:block;flex:1;min-width:0;text-align:left;background:var(--bg3);overflow-wrap:anywhere}
+.pm-folder-btn{flex:none;align-self:center}
+.pm-row .pm-name{font-weight:650}
+.pm-meta{display:block;color:var(--fg3);font-size:var(--fs-xs);line-height:1.35}
+.pm-folder-edit{display:flex;gap:6px;align-items:center}
+.pm-folder-edit .btn-field{flex:1;min-width:0}
 .modal-plain-head{padding:14px 16px 0}
 .modal-plain-body{padding:12px 16px}
 /* Panes inside the Settings › API & MCP sub-tabs. apipanel.js flips

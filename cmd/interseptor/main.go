@@ -334,7 +334,13 @@ func run() error {
 	if v, ok, _ := st.GetSetting("proxy.autoBypassOnPinFailure"); ok && v == "1" {
 		prx.SetAutoBypassOnPinFailure(true)
 	}
-	pm.handler = prx
+	proxyAuth := &proxy.BasicAuth{}
+	hub.SetProxyBasicAuth = proxyAuth.Set
+	proxyAuthOn, _, _ := st.GetSetting("proxy.authEnabled")
+	proxyAuthUser, _, _ := st.GetSetting("proxy.authUser")
+	proxyAuthPassword, _, _ := st.GetSetting("proxy.authPassword")
+	proxyAuth.Set(proxyAuthOn == "1", strings.TrimSpace(proxyAuthUser), proxyAuthPassword)
+	pm.handler = proxyAuth.Handler(prx)
 	cm.handler = hub.Handler()
 	hub.SyncSelfPorts = func() {
 		addrs := pm.Addrs()

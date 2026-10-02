@@ -91,7 +91,10 @@ type Hub struct {
 	// SetSuppressAndroidTelemetry toggles suppression of Android/GMS/Crashlytics telemetry. Set by cmd.
 	SetSuppressAndroidTelemetry func(bool)
 	// SetInvisibleProxy toggles transparent/invisible proxy mode. Set by cmd.
-	SetInvisibleProxy             func(bool)
+	SetInvisibleProxy func(bool)
+	// SetProxyBasicAuth replaces the optional proxy-listener username and
+	// password. enabled false is the default and accepts every client. Set by cmd.
+	SetProxyBasicAuth             func(enabled bool, user, password string)
 	SetTLSBypassHosts             func([]string)
 	SetOriginTLSVerify            func(bool)
 	SetOriginTLSVerifyBypassHosts func([]string)
@@ -116,10 +119,11 @@ type Hub struct {
 	GlobalDir     string
 	SwitchProject func(target string) error
 
-	switchMu     sync.Mutex  // guards the delayed project-switch lifecycle
-	switchTimer  *time.Timer // pending delayed project switch; reset per request so only the latest fires
-	switchClosed bool
-	switchWG     sync.WaitGroup
+	switchMu         sync.Mutex  // guards the delayed project-switch lifecycle
+	switchTimer      *time.Timer // pending delayed project switch; reset per request so only the latest fires
+	projectOpenNoted atomic.Bool // first project listing in this process records last opened
+	switchClosed     bool
+	switchWG         sync.WaitGroup
 
 	mcpMu           sync.Mutex
 	mcpSrv          *mcp.Server // lazily built streamable-HTTP MCP front end (POST /mcp)
@@ -332,6 +336,9 @@ type settingsJSON struct {
 	TLSBypassHosts             []string `json:"tlsBypassHosts"`
 	OriginTLSVerifyBypassHosts []string `json:"originTLSVerifyBypassHosts"`
 	AutoBypassOnPinFailure     bool     `json:"autoBypassOnPinFailure"`
+	ProxyAuthEnabled           bool     `json:"proxyAuthEnabled"`
+	ProxyAuthUser              string   `json:"proxyAuthUser"`
+	ProxyAuthPassword          string   `json:"proxyAuthPassword"`
 	DeviceProxy                string   `json:"deviceProxy,omitempty"`
 	DeviceProxyMode            string   `json:"deviceProxyMode,omitempty"`
 }
@@ -342,6 +349,12 @@ const tlsBypassSettingKey = "proxy.tlsBypassHosts"
 const originTLSVerifySettingKey = "proxy.originTLSVerify"
 
 const originTLSVerifyBypassSettingKey = "proxy.originTLSVerifyBypassHosts"
+
+const (
+	proxyAuthEnabledKey  = "proxy.authEnabled"
+	proxyAuthUserKey     = "proxy.authUser"
+	proxyAuthPasswordKey = "proxy.authPassword"
+)
 
 // parseHostList splits a stored/edited host-list blob (newline- or comma-
 // separated) into trimmed, non-empty, lower-cased, de-duplicated patterns.
@@ -1427,6 +1440,9 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 	tlsBypassRaw, _, _ := h.st.GetSetting(tlsBypassSettingKey)
 	originTLSVerifyBypassRaw, _, _ := h.st.GetSetting(originTLSVerifyBypassSettingKey)
 	autoBypass, _, _ := h.st.GetSetting("proxy.autoBypassOnPinFailure")
+	proxyAuthEnabled, _, _ := h.st.GetSetting(proxyAuthEnabledKey)
+	proxyAuthUser, _, _ := h.st.GetSetting(proxyAuthUserKey)
+	proxyAuthPassword, _, _ := h.st.GetSetting(proxyAuthPasswordKey)
 	proxyAddrs := h.currentProxyAddrs()
 	deviceEP := h.resolveDeviceEndpoint()
 	writeJSON(w, http.StatusOK, settingsJSON{
@@ -1438,6 +1454,7 @@ func (h *settingsAPI) getSettings(w http.ResponseWriter, r *http.Request) {
 		SuppressAndroidTelemetry: suppressAndroidOn, InvisibleProxy: invisibleProxy == "1",
 		OriginTLSVerify: originTLSVerify == "1", TLSBypassHosts: parseHostList(tlsBypassRaw),
 		OriginTLSVerifyBypassHosts: parseHostList(originTLSVerifyBypassRaw), AutoBypassOnPinFailure: autoBypass == "1",
+		ProxyAuthEnabled: proxyAuthEnabled == "1", ProxyAuthUser: proxyAuthUser, ProxyAuthPassword: proxyAuthPassword,
 	})
 }
 
@@ -1496,6 +1513,67 @@ func (h *Hub) ConfigureSenderUpstreamProxyCA(value []byte) error {
 	return h.snd.SetUpstreamProxyCA(value)
 }
 
+func (h *settingsAPI) applyProxyBasicAuth(w http.ResponseWriter, enabled *bool, user, password *string) bool {
+	currentEnabled, _, err := h.st.GetSetting(proxyAuthEnabledKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	currentUser, _, err := h.st.GetSetting(proxyAuthUserKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	currentPassword, _, err := h.st.GetSetting(proxyAuthPasswordKey)
+	if err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	on := currentEnabled == "1"
+	if enabled != nil {
+		on = *enabled
+	}
+	if user != nil {
+		currentUser = strings.TrimSpace(*user)
+	}
+	if password != nil {
+		currentPassword = *password
+	}
+	if err := validateProxyBasicAuth(on, currentUser, currentPassword); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+	stored := "0"
+	if on {
+		stored = "1"
+	}
+	if err := h.st.SetSettings(map[string]string{
+		proxyAuthEnabledKey:  stored,
+		proxyAuthUserKey:     currentUser,
+		proxyAuthPasswordKey: currentPassword,
+	}); err != nil {
+		httpInternalErr(w, err)
+		return false
+	}
+	if h.SetProxyBasicAuth != nil {
+		h.SetProxyBasicAuth(on, currentUser, currentPassword)
+	}
+	return true
+}
+
+func validateProxyBasicAuth(enabled bool, user, password string) error {
+	if strings.ContainsAny(user, "\r\n\x00:") || strings.ContainsAny(password, "\r\n\x00") {
+		return errors.New("proxy authentication rejects newlines and a colon in the username")
+	}
+	if len(user) > 128 || len(password) > 256 {
+		return errors.New("proxy authentication username or password is too long")
+	}
+	if enabled && (user == "" || password == "") {
+		return errors.New("proxy authentication requires a username and password")
+	}
+	return nil
+}
+
 func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProxyAddr                  string    `json:"proxyAddr"`
@@ -1512,6 +1590,9 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		TLSBypassHosts             *[]string `json:"tlsBypassHosts"`
 		OriginTLSVerifyBypassHosts *[]string `json:"originTLSVerifyBypassHosts"`
 		AutoBypassOnPinFailure     *bool     `json:"autoBypassOnPinFailure"`
+		ProxyAuthEnabled           *bool     `json:"proxyAuthEnabled"`
+		ProxyAuthUser              *string   `json:"proxyAuthUser"`
+		ProxyAuthPassword          *string   `json:"proxyAuthPassword"`
 	}
 	if !decodeLimitedJSON(w, r, maxRequestBody, &in) {
 		return
@@ -1676,6 +1757,12 @@ func (h *settingsAPI) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.SyncSelfPorts != nil {
 			h.SyncSelfPorts()
+		}
+		h.broadcast(map[string]any{"type": "settings.update"})
+	}
+	if in.ProxyAuthEnabled != nil || in.ProxyAuthUser != nil || in.ProxyAuthPassword != nil {
+		if !h.applyProxyBasicAuth(w, in.ProxyAuthEnabled, in.ProxyAuthUser, in.ProxyAuthPassword) {
+			return
 		}
 		h.broadcast(map[string]any{"type": "settings.update"})
 	}

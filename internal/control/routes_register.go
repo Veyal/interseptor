@@ -213,6 +213,7 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("POST /api/views", proj.createView)
 	h.mux.HandleFunc("DELETE /api/views/{id}", proj.deleteView)
 	h.mux.HandleFunc("GET /api/project", proj.apiProject)
+	h.mux.HandleFunc("POST /api/project/folder", proj.setProjectFolder)
 	h.mux.HandleFunc("POST /api/project/switch", proj.switchProject)
 }
 

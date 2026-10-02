@@ -41,7 +41,7 @@
   },
   {
     "title": "Security model",
-    "text": "The control plane has two trust modes (internal/control/guard.go): - Loopback trust (default, unchanged). Both listeners bind loopback by default. A request that arrives on a loopback connection with a loopback Host and no API key is allowed — this is how the embedded UI, curl, and the in-process MCP tool bus reach it. The control plane additionally rejects any request with a non-loopback Host header or a non-loopback Origin, so a web page you happen to visit can't quietly drive the API (CSRF) or read your captured traffic via DNS-rebinding. Rebinding the proxy or control UI to a non-loopback address (e.g. 0.0.0.0 for LAN device capture) is allowed from Settings; set INTERSEPTOR ALLOW EXTERNAL BIND=0 to refuse non-loopback binds. - Proxy listener exposure (changed in v2.2.0). Proxy listeners never require authentication: binding to a non-loopback interface is an explicit operator decision (guarded by INTERSEPTOR ALLOW EXTERNAL BIND=0), so a non-loopback listener is effectively an open proxy for anyone who can reach it — bind only what the engagement needs. Any client-supplied Proxy-Authorization is stripped before forwarding. The control plane still requires API keys for remote",
+    "text": "The control plane has two trust modes (internal/control/guard.go): - Loopback trust (default, unchanged). Both listeners bind loopback by default. A request that arrives on a loopback connection with a loopback Host and no API key is allowed — this is how the embedded UI, curl, and the in-process MCP tool bus reach it. The control plane additionally rejects any request with a non-loopback Host header or a non-loopback Origin, so a web page you happen to visit can't quietly drive the API (CSRF) or read your captured traffic via DNS-rebinding. Rebinding the proxy or control UI to a non-loopback address (e.g. 0.0.0.0 for LAN device capture) is allowed from Settings; set INTERSEPTOR ALLOW EXTERNAL BIND=0 to refuse non-loopback binds. - Proxy listener exposure. Proxy listeners accept traffic with no credentials by default. Optional basic auth is a username and password configured in Settings; it is not an API key. Binding to a non-loopback interface is still an explicit operator decision (guarded by INTERSEPTOR ALLOW EXTERNAL BIND=0). With authentication off, that listener is an open proxy for anyone who can reach it. Proxy-Authorization is stripped before forwarding. History and the ",
     "url": "architecture/#security-model"
   },
   {
@@ -521,7 +521,7 @@
   },
   {
     "title": "Quick start",
-    "text": "1. Run it. interseptor starts the proxy on 127.0.0.1:8080 and the UI on 127.0.0.1:9966. Open that URL in your browser — or start with --open to launch it automatically. 2. Send traffic through it. Point your browser/HTTP client (or the OS proxy via Settings → System proxy on macOS) at 127.0.0.1:8080. 3. For HTTPS, trust the CA (see below) — then HTTPS flows are decrypted and editable. 4. Work the loop. Watch flows land in Proxy, send one to Repeater or Intruder, run the Scanner, set Scope, or flip on Intercept to hold/edit requests and responses. For a LAN or mobile listener, read Proxy listener exposure before rebinding: a non-loopback listener is an open proxy for everyone who can reach it. Runtime data lives under ~/.interseptor/ (interseptor.db, bodies/, ca/). Full-project archives intentionally use the compatibility filename interceptor.db. To start with an empty workspace, create a new project; keep an archive before deleting existing project data. See Projects and data. Continue with the workspace guide for the main menus and response views, or Settings to find a specific configuration section.",
+    "text": "1. Run it. interseptor starts the proxy on 127.0.0.1:8080 and the UI on 127.0.0.1:9966. Open that URL in your browser — or start with --open to launch it automatically. 2. Send traffic through it. Point your browser/HTTP client (or the OS proxy via Settings → System proxy on macOS) at 127.0.0.1:8080. 3. For HTTPS, trust the CA (see below) — then HTTPS flows are decrypted and editable. 4. Work the loop. Watch flows land in Proxy, send one to Repeater or Intruder, run the Scanner, set Scope, or flip on Intercept to hold/edit requests and responses. For a LAN or mobile listener, read Proxy listener exposure before rebinding. Authentication is off by default, so a non-loopback listener is an open proxy until you set a username and password under Settings → Proxy \u0026 network → Proxy authentication. Runtime data lives under ~/.interseptor/ (interseptor.db, bodies/, ca/). Full-project archives intentionally use the compatibility filename interceptor.db. To start with an empty workspace, create a new project; keep an archive before deleting existing project data. See Projects and data. Continue with the workspace guide for the main menus and response views, or Settings to find a sp",
     "url": "getting-started/#quick-start"
   },
   {
@@ -676,7 +676,7 @@
   },
   {
     "title": "Choose a connection mode",
-    "text": "- Android over USB: Interseptor uses adb reverse; the device proxy points to loopback and no LAN listener is required. - Android or iOS over Wi-Fi: bind the proxy to 0.0.0.0:8080 (or a specific LAN interface), put both devices on a reachable network, and configure the phone with the workstation's LAN address. - iOS Simulator: use the built-in Simulator setup on macOS with Xcode tools installed. Wi-Fi clients use a non-loopback listener, which needs no proxy credentials; see Proxy listener exposure for the network implications.",
+    "text": "- Android over USB: Interseptor uses adb reverse; the device proxy points to loopback and no LAN listener is required. - Android or iOS over Wi-Fi: bind the proxy to 0.0.0.0:8080 (or a specific LAN interface), put both devices on a reachable network, and configure the phone with the workstation's LAN address. - iOS Simulator: use the built-in Simulator setup on macOS with Xcode tools installed. Wi-Fi clients use a non-loopback listener. Proxy authentication is off unless you set a username and password in Settings; see Proxy listener exposure.",
     "url": "mobile-testing/#choose-a-connection-mode"
   },
   {
@@ -706,7 +706,7 @@
   },
   {
     "title": "Choose a project",
-    "text": "Open the project badge, the mobile Project action, or Settings → Project \u0026 data to choose an existing project or create one. Named projects and explicitly opened folders are separate workspaces, each with its own captured traffic and findings. The current saved-project list is flat; it does not provide nested client folders or inherited client-level settings. For related workspaces, use clear names such as example-web-staging and example-mobile-testing. A naming convention groups related work for people; it does not merge scope, session state, or evidence. A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved work first, and confirm the new project badge before continuing.",
+    "text": "Open the project badge, the mobile Project action, or Settings → Project \u0026 data to choose an existing project or create one. Named projects and explicitly opened folders are separate workspaces, each with its own captured traffic and findings. The project picker groups saved projects into collapsible folders such as Clients/Acme. A folder is only a label: it does not move the project directory and it does not share history, scope, or findings with the other projects in that folder. Each row shows when the project was created and when it was last opened. Filter the list when there are many projects; the list scrolls inside the dialog so the create form stays on screen. A project switch restarts Interseptor and waits for the new project to reconnect. Resolve unsaved work first, and confirm the new project badge before continuing.",
     "url": "projects-and-data/#choose-a-project"
   },
   {
@@ -741,7 +741,7 @@
   },
   {
     "title": "Proxy, TLS, and networking",
-    "text": "Proxy, TLS, and networking This guide explains the listener, the browser authentication prompt, HTTPS interception, origin certificate verification, TLS passthrough, and chained upstream proxies.",
+    "text": "Proxy, TLS, and networking This guide explains the listener, optional proxy authentication, HTTPS interception, origin certificate verification, TLS passthrough, and chained upstream proxies.",
     "url": "proxy-and-tls/"
   },
   {
@@ -771,12 +771,12 @@
   },
   {
     "title": "Proxy listener exposure",
-    "text": "Proxy listeners never require authentication — not loopback, not non-loopback. Binding a proxy to a non-loopback interface is an explicit operator decision, and demanding a proxy password only broke clients reaching the proxy through a LAN or tailnet address, including clients on the same workstation. INTERSEPTOR ALLOW EXTERNAL BIND=0 remains the guard that refuses non-loopback binds in the first place. Anyone who can reach the listener can use the proxy, so treat a non-loopback bind as opening a proxy on that network: bind only the interfaces needed for the engagement, prefer tailnet or LAN segments you control, and close the listener after capture. Interseptor removes Proxy-Authorization before forwarding, so any client-supplied proxy credentials are never sent to the target origin. API keys still protect the remote control plane (UI, REST, MCP) when Interseptor is reached over a tunnel.",
+    "text": "Proxy listeners do not require authentication by default — not on loopback, and not on a LAN or tailnet address. API keys protect History and the control API; they are not a proxy password. Optional listener basic auth lives in Settings → Proxy \u0026 network → Proxy authentication. Turn it on and set a username and password of your own, then point the client at the proxy with those credentials (Proxy-Authorization: Basic). Leave it off, the default, and any client that can reach the listener can use it. INTERSEPTOR ALLOW EXTERNAL BIND=0 still refuses non-loopback binds. A non-loopback listener with authentication off is an open proxy for everyone who can reach it: bind only the interfaces the engagement needs, prefer a tailnet or LAN you control, and close the listener after capture. Interseptor removes Proxy-Authorization before forwarding, so the listener password is never sent to the target origin.",
     "url": "proxy-and-tls/#proxy-listener-exposure"
   },
   {
     "title": "Safe network checklist",
-    "text": "- Bind only the interfaces needed for the engagement, and remember a non-loopback proxy listener is an open proxy for everyone who can reach it. - Keep the control UI loopback-only unless remote access is intentional and key-protected. - Enable origin verification unless the target environment requires an explicit exception. - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out. See Mobile testing, Troubleshooting, and the security model.",
+    "text": "- Bind only the interfaces needed for the engagement. With proxy authentication off, a non-loopback listener is an open proxy for everyone who can reach it. - Keep the control UI loopback-only unless remote access is intentional and key-protected. - Enable origin verification unless the target environment requires an explicit exception. - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out. See Mobile testing, Troubleshooting, and the security model.",
     "url": "proxy-and-tls/#safe-network-checklist"
   },
   {
@@ -841,7 +841,7 @@
   },
   {
     "title": "Network",
-    "text": "Section Use it for --- --- Proxy \u0026 network Listener addresses, system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. TLS / CA Local CA trust, origin certificate verification, passthrough, and host-specific TLS handling. Mobile devices Android and iOS device connection and setup helpers. Most desktop setups use the local proxy at 127.0.0.1:8080 and control UI at 127.0.0.1:9966. Read the active listener summary before changing a port. A remote or mobile client needs the correct network access; changing the address alone is not sufficient. See Proxy, TLS, and networking or Mobile testing for the connection-specific details.",
+    "text": "Section Use it for --- --- Proxy \u0026 network Listener addresses, optional proxy username/password (off by default), system proxy, upstream connections and CA trust, capture policy, background/telemetry suppression, and Invisible proxy. TLS / CA Local CA trust, origin certificate verification, passthrough, and host-specific TLS handling. Mobile devices Android and iOS device connection and setup helpers. Most desktop setups use the local proxy at 127.0.0.1:8080 and control UI at 127.0.0.1:9966. Read the active listener summary before changing a port. A remote or mobile client needs the correct network access; changing the address alone is not sufficient. See Proxy, TLS, and networking or Mobile testing for the connection-specific details.",
     "url": "settings/#network"
   },
   {
@@ -901,7 +901,7 @@
   },
   {
     "title": "Repeated 407 or upstream authentication errors",
-    "text": "A browser-visible 407 now always means the configured chained upstream proxy rejected its credentials — Interseptor's own proxy listeners no longer require authentication. Check the upstream settings and the toast/log saying “upstream proxy authentication required”. For upstream setup, select a mode instead of typing a URL: HTTP/HTTPS for an HTTP CONNECT proxy, SOCKS5 for local DNS, or SOCKS5H for proxy-side DNS. Verify host and port in the status summary. Private CA PEM applies only to HTTPS upstream proxies. If captured traffic works through the upstream but Repeater returns 502, confirm the saved summary, then reopen Settings and save once. Current releases apply one shared upstream route to capture, Repeater, Intruder, login macros, and custom-check sends. The Repeater flow's error field contains the upstream dial, DNS, TLS, or authentication failure.",
+    "text": "A browser-visible 407 whose realm is interseptor means Settings → Proxy \u0026 network → Proxy authentication is on and the client did not send that username and password. A toast or log saying “upstream proxy authentication required” is the chained proxy instead. These are different credentials; neither one is an API key. For upstream setup, select a mode instead of typing a URL: HTTP/HTTPS for an HTTP CONNECT proxy, SOCKS5 for local DNS, or SOCKS5H for proxy-side DNS. Verify host and port in the status summary. Private CA PEM applies only to HTTPS upstream proxies. If captured traffic works through the upstream but Repeater returns 502, confirm the saved summary, then reopen Settings and save once. Current releases apply one shared upstream route to capture, Repeater, Intruder, login macros, and custom-check sends. The Repeater flow's error field contains the upstream dial, DNS, TLS, or authentication failure.",
     "url": "troubleshooting/#repeated-407-or-upstream-authentication-errors"
   },
   {

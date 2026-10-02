@@ -279,6 +279,7 @@ function restoreDirtySettingsDerived(snapshot) {
   if(dirty('originTLSVerifyMode'))setOriginTLSVerify($('#originTLSVerifyMode').value==='strict');
   if(dirty('tlsBypassList'))updateBypassCount();
   if(dirty('originTLSVerifyBypassList'))updateOriginTLSVerifyBypassCount();
+  if(dirty('proxyAuthEnabled'))setProxyAuth($('#proxyAuthEnabled')?.value==='1');
 }
 
 function runSettingsAction(button, action) {
@@ -712,6 +713,9 @@ export async function loadSettings(){const epoch=++settingsLoadEpoch;const setti
   if($('#suppressTelemetryToggle'))setSuppressTelemetry(settingsMutationValue('suppressBrowserTelemetry',s.suppressBrowserTelemetry!==false,settingsRevision));
   if($('#suppressAndroidTelemetryToggle'))setSuppressAndroidTelemetry(settingsMutationValue('suppressAndroidTelemetry',s.suppressAndroidTelemetry!==false,settingsRevision));
   if($('#invisibleProxyToggle'))setInvisibleProxy(settingsMutationValue('invisibleProxy',!!s.invisibleProxy,settingsRevision));
+  if($('#proxyAuthToggle')?.dataset.settingsDirty!=='1')setProxyAuth(!!s.proxyAuthEnabled);
+  if($('#proxyAuthUser')&&document.activeElement!==$('#proxyAuthUser')&&$('#proxyAuthUser').dataset.settingsDirty!=='1')$('#proxyAuthUser').value=s.proxyAuthUser||'';
+  if($('#proxyAuthPassword')&&document.activeElement!==$('#proxyAuthPassword')&&$('#proxyAuthPassword').dataset.settingsDirty!=='1')$('#proxyAuthPassword').value=s.proxyAuthPassword||'';
   if($('#autoBypassToggle'))setAutoBypass(settingsMutationValue('autoBypassOnPinFailure',!!s.autoBypassOnPinFailure,settingsRevision));
   // Don't clobber the list while the operator is mid-edit (a live settings.update
   // — e.g. an auto-bypass addition — must not overwrite unsaved typing).
@@ -780,6 +784,33 @@ $('#suppressAndroidTelemetryToggle')&&($('#suppressAndroidTelemetryToggle').oncl
   });
 });
 export function setInvisibleProxy(on){const b=$('#invisibleProxyToggle');if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Invisible proxy is on':'Invisible proxy is off';}
+export function setProxyAuth(on){
+  const b=$('#proxyAuthToggle');
+  if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');b.textContent=on?'Proxy authentication is on':'Proxy authentication is off';}
+  const hidden=$('#proxyAuthEnabled');
+  if(hidden)hidden.value=on?'1':'0';
+  const fields=$('#proxyAuthFields');
+  if(fields)fields.hidden=!on;
+}
+$('#proxyAuthToggle')&&($('#proxyAuthToggle').onclick=()=>{
+  setProxyAuth($('#proxyAuthToggle').getAttribute('aria-pressed')!=='true');
+  markSettingsDirty($('#proxyAuthEnabled'));
+});
+$('#saveProxyAuthBtn')&&($('#saveProxyAuthBtn').onclick=()=>runSettingsAction($('#saveProxyAuthBtn'),async()=>{
+  const enabled=$('#proxyAuthEnabled')?.value==='1';
+  const user=($('#proxyAuthUser')?.value||'').trim();
+  const password=$('#proxyAuthPassword')?.value||'';
+  if(enabled&&(!user||!password)){toast('Proxy authentication needs a username and password');return;}
+  const userEl=$('#proxyAuthUser'),passEl=$('#proxyAuthPassword'),enabledEl=$('#proxyAuthEnabled');
+  const generation=settingsEditGeneration(enabledEl);
+  try{
+    await saveSettingsPatch({proxyAuthEnabled:enabled,proxyAuthUser:user,proxyAuthPassword:password});
+    if(settingsEditOwned(enabledEl,generation)&&userEl?.value.trim()===user&&passEl?.value===password){
+      clearSettingsDirty(['proxyAuthEnabled','proxyAuthUser','proxyAuthPassword']);
+    }
+    toast(enabled?'Proxy authentication enabled':'Proxy authentication disabled');
+  }catch(e){toast('proxy authentication: '+e.message);}
+}));
 $('#invisibleProxyToggle')&&($('#invisibleProxyToggle').onclick=async()=>{
   const control=$('#invisibleProxyToggle');
   const on=!control.classList.contains('on');
@@ -1019,7 +1050,7 @@ const SESSION_DIRTY_FIELDS=['setSessionOn','setSessionUnscoped','setSessionHeade
 function hasUnsavedSettingsFields(){
   return [...SESSION_DIRTY_FIELDS,...upstreamProxyFieldIds,'proxyListenersList','deviceProxyModeSeg','deviceProxyManualHost',
     'setControlHost','setControlPort','setControlAddr','tlsBypassList','originTLSVerifyBypassList','originTLSVerifyMode',
-    'setOobEnabled','hostHdrList','retMaxAge','retMaxFlows'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');
+    'setOobEnabled','hostHdrList','retMaxAge','retMaxFlows','proxyAuthEnabled','proxyAuthUser','proxyAuthPassword'].some(id=>$('#'+id)?.dataset.settingsDirty==='1');
 }
 function sessionFormPayload(){
   const macro={enabled:$('#macroOn').checked,target:$('#macroTarget').value.trim(),request:$('#macroReq').value,extract:$('#macroExtract').value.trim(),injectMode:$('#macroMode').value,injectName:$('#macroName').value.trim()};
@@ -1395,9 +1426,11 @@ export async function loadProject(){
     if(sel){
       const list=(d.projects&&d.projects.length)?d.projects:[{name:'default',path:''}];
       sel.innerHTML=list.map(p=>{
-        const isCur=p.name===d.current;
-        const label=p.path?`${esc(p.name)} — ${esc(p.path)}`:esc(p.name);
-        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${label}${isCur?' (current)':''}</option>`;
+        const isCur=isCurrentProject(p,d.current,d.dir,list);
+        const folder=p.category?`${p.category} / `:'';
+        const opened=formatProjectStamp(p.openedAt);
+        const label=`${folder}${p.name}${p.path?` — ${p.path}`:''}${opened?` · ${opened}`:''}${isCur?' (current)':''}`;
+        return `<option value="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}"${isCur?' disabled':''}>${esc(label)}</option>`;
       }).join('');
     }
     projectDataLoaded=true;markProjectDataStale(false);
@@ -1522,16 +1555,127 @@ $('#projSwitchBtn').onclick=()=>{
   if(!opt){toast('no other project to open');return;}
   doSwitchProject(opt.value,opt.dataset.path||'');
 };
-$('#projNewBtn').onclick=()=>{
-  const v=(($('#projNew')||{}).value||'').trim();
-  const path=(($('#projNewPath')||{}).value||'').trim();
-  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
-  doSwitchProject(v,path);
-};
+$('#projNewBtn').onclick=()=>createProjectFrom('#projNew','#projNewPath','');
 
 // ---- top-bar Projects picker modal (click the project badge) ----
 // Same data + switch endpoint as the Settings panel, surfaced as a prominent,
 // first-class action so choosing a project never means opening Settings.
+function formatProjectStamp(sec, nowMs){
+  const n=Number(sec)||0;
+  if(!n)return '';
+  const now=nowMs||Date.now();
+  const delta=Math.max(0, now-n*1000);
+  const min=Math.floor(delta/60000);
+  if(min<1)return 'just now';
+  if(min<60)return min+'m ago';
+  const hr=Math.floor(min/60);
+  if(hr<36)return hr+'h ago';
+  const day=Math.floor(hr/24);
+  if(day<14)return day+'d ago';
+  const d=new Date(n*1000);
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const year=d.getFullYear()===new Date(now).getFullYear()?'':' '+d.getFullYear();
+  return d.getDate()+' '+months[d.getMonth()]+year;
+}
+function groupProjectTree(projects){
+  const root={folders:[], items:[]};
+  const find=(list,name)=>{
+    let folder=list.find(item=>item.name===name);
+    if(!folder){folder={name, folders:[], items:[]}; list.push(folder);}
+    return folder;
+  };
+  for(const project of projects||[]){
+    const parts=String(project.category||'').split(/[\\/]/).map(part=>part.trim()).filter(Boolean);
+    let node=root;
+    for(const part of parts) node=find(node.folders, part);
+    node.items.push(project);
+  }
+  const sortNode=node=>{
+    node.folders.sort((a,b)=>a.name.localeCompare(b.name));
+    node.items.sort((a,b)=>(Number(b.openedAt)||0)-(Number(a.openedAt)||0)||String(a.name).localeCompare(String(b.name)));
+    node.folders.forEach(sortNode);
+    node.count=node.items.length+node.folders.reduce((sum,folder)=>sum+(folder.count||0),0);
+  };
+  sortNode(root);
+  return root;
+}
+function projectMatchesQuery(project, query){
+  if(!query)return true;
+  return `${project.name||''} ${project.path||''} ${project.category||''}`.toLowerCase().includes(query);
+}
+function isCurrentProject(project, current, dir, projects){
+  const dirKey=projectPathKey(dir);
+  const external=(projects||[]).some(item=>item.path&&projectPathKey(item.path)===dirKey);
+  if(project.path)return projectPathKey(project.path)===dirKey;
+  return !external&&project.name===current;
+}
+function projectTimeLabel(project, nowMs){
+  const opened=formatProjectStamp(project.openedAt, nowMs);
+  const created=formatProjectStamp(project.createdAt, nowMs);
+  return `${opened?`Opened ${opened}`:'Not opened yet'}${created?` · Created ${created}`:''}`;
+}
+function projectRowHTML(project, cache){
+  const current=isCurrentProject(project, cache.current, cache.dir, cache.projects);
+  const path=project.path?`<span class="pm-meta">${esc(project.path)}</span>`:'';
+  return `<div class="pm-item"><div class="row u-gap-2"><button type="button" class="btn pm-row" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}"${current?' disabled':''}><span class="pm-name">${esc(project.name)}${current?' (current)':''}</span><span class="pm-meta">${esc(projectTimeLabel(project))}</span>${path}</button><button type="button" class="btn pm-folder-btn" data-proj="${escAttr(project.name)}" data-path="${escAttr(project.path||'')}" aria-label="Set folder for ${escAttr(project.name)}">Folder</button></div><div class="pm-folder-edit" hidden><input class="btn btn-field pm-folder-input" value="${escAttr(project.category||'')}" aria-label="Folder for ${escAttr(project.name)}" spellcheck="false" placeholder="Clients/Acme"><button type="button" class="btn pm-folder-save">Save</button></div></div>`;
+}
+function projectTreeHTML(node, cache, openAll){
+  const folders=node.folders.map(folder=>{
+    const open=openAll||folderContainsCurrent(folder, cache)?' open':'';
+    return `<details class="pm-folder"${open}><summary>${esc(folder.name)}<span class="pm-count">${folder.count}</span></summary><div class="pm-folder-body">${projectTreeHTML(folder, cache, openAll)}</div></details>`;
+  }).join('');
+  return node.items.map(project=>projectRowHTML(project, cache)).join('')+folders;
+}
+function folderContainsCurrent(node, cache){
+  if(node.items.some(project=>isCurrentProject(project, cache.current, cache.dir, cache.projects)))return true;
+  return node.folders.some(folder=>folderContainsCurrent(folder, cache));
+}
+let projectModalCache=null;
+function paintProjectModal(){
+  const list=$('#pmList');
+  const cache=projectModalCache;
+  if(!list||!cache)return;
+  if(!cache.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';return;}
+  const query=($('#pmFilter')?.value||'').trim().toLowerCase();
+  const projects=(cache.projects||[]).filter(project=>projectMatchesQuery(project, query));
+  if(!projects.length){
+    list.innerHTML=query?'<div class="hint">No projects match that filter.</div>':'<div class="hint">No saved projects yet — create one below.</div>';
+    return;
+  }
+  const openAll=!!query||(cache.projects||[]).length<=8;
+  list.innerHTML=projectTreeHTML(groupProjectTree(projects), cache, openAll);
+  list.querySelectorAll('.pm-row').forEach(button=>{
+    if(button.disabled)return;
+    button.onclick=()=>doSwitchProject(button.dataset.proj, button.dataset.path||'');
+  });
+  list.querySelectorAll('.pm-folder-btn').forEach(button=>button.onclick=()=>{
+    const edit=button.closest('.pm-item')?.querySelector('.pm-folder-edit');
+    if(edit)edit.hidden=!edit.hidden;
+  });
+  list.querySelectorAll('.pm-folder-save').forEach(button=>button.onclick=async()=>{
+    const item=button.closest('.pm-item');
+    const row=item?.querySelector('.pm-row');
+    const input=item?.querySelector('.pm-folder-input');
+    if(!row||!input)return;
+    button.disabled=true;
+    try{
+      const path=row.dataset.path||'';
+      await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:input.value}:{target:row.dataset.proj,category:input.value})});
+      await renderProjModal();
+    }catch(e){toast(e.message,'error');button.disabled=false;}
+  });
+}
+async function createProjectFrom(nameSel, pathSel, folderSel){
+  const v=($(nameSel)?.value||'').trim();
+  const path=($(pathSel)?.value||'').trim();
+  const folder=folderSel?($(folderSel)?.value||'').trim():'';
+  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
+  if(folder){
+    try{await api('/api/project/folder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(path?{path,category:folder}:{target:v,category:folder})});}
+    catch(e){toast(e.message,'error');return;}
+  }
+  doSwitchProject(v,path);
+}
 async function renderProjModal(){
   const epoch=++projectModalLoadEpoch;
   const list=$('#pmList');
@@ -1546,16 +1690,9 @@ async function renderProjModal(){
     const cur=$('#pmCurrent');if(cur)cur.textContent=d.current||'default';
     const dir=$('#pmDir');if(dir)dir.textContent=d.dir||'';
     if(!list)return false;
-    if(!d.canSwitch){list.innerHTML='<div class="hint">Project switching is unavailable in this build.</div>';list.removeAttribute('aria-busy');setProjectModalActionsDisabled(true);projectModalDataLoaded=true;return true;}
-    const others=(d.projects||[]).filter(p=>p.name!==d.current);
-    list.innerHTML=others.length
-      ?others.map(p=>{
-        const sub=p.path?`<div class="hint" style="font-family:var(--mono);font-size:var(--fs-xs);margin-top:1px">${esc(p.path)}</div>`:'';
-        return `<button class="btn pm-row" data-proj="${escAttr(p.name)}" data-path="${escAttr(p.path||'')}" style="text-align:left;background:var(--bg3);display:block">◧ ${esc(p.name)}${sub}</button>`;
-      }).join('')
-      :'<div class="hint">No other saved projects yet — create one below.</div>';
-    list.querySelectorAll('.pm-row').forEach(b=>b.onclick=()=>doSwitchProject(b.dataset.proj,b.dataset.path||''));
-    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(false);return true;
+    projectModalCache={projects:d.projects||[], current:d.current||'default', dir:d.dir||'', canSwitch:!!d.canSwitch};
+    paintProjectModal();
+    list.removeAttribute('aria-busy');projectModalDataLoaded=true;setProjectModalActionsDisabled(!d.canSwitch);return true;
   }catch(e){
     if(epoch!==projectModalLoadEpoch)return false;
     setProjectModalActionsDisabled(true);
@@ -1571,17 +1708,14 @@ export async function openProjectModal(){
   clearProjectPathFeedback();
   const inp=$('#pmNew');if(inp)inp.value='';
   const pinp=$('#pmNewPath');if(pinp)pinp.value='';
+  const folder=$('#pmNewFolder');if(folder)folder.value='';
   openModal(m);
   const rendered=await renderProjModal();
   if(rendered&&inp&&m.style.display==='flex'&&!inp.disabled)inp.focus();
 }
 {const c=$('#pmClose');if(c)c.onclick=()=>{if(!projectSwitchPending)closeModal($('#projModal'));};}
-{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>{
-  const v=(($('#pmNew')||{}).value||'').trim();
-  const path=(($('#pmNewPath')||{}).value||'').trim();
-  if(!v&&!path){toast('enter a project name, or a custom save folder');return;}
-  doSwitchProject(v,path);
-};}
+{const nb=$('#pmNewBtn');if(nb)nb.onclick=()=>createProjectFrom('#pmNew','#pmNewPath','#pmNewFolder');}
+$('#pmFilter')?.addEventListener('input',paintProjectModal);
 {const ni=$('#pmNew');if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 {const pi=$('#pmNewPath');if(pi)pi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pmNewBtn').click();}});}
 ['projNewPath','pmNewPath'].forEach(id=>$('#'+id)?.addEventListener('input',clearProjectPathFeedback));

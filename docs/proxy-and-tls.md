@@ -1,6 +1,6 @@
 # Proxy, TLS, and networking
 
-This guide explains the listener, the browser authentication prompt, HTTPS interception, origin
+This guide explains the listener, optional proxy authentication, HTTPS interception, origin
 certificate verification, TLS passthrough, and chained upstream proxies.
 
 ## Listener model
@@ -15,18 +15,18 @@ workstation that must never accept LAN traffic.
 
 ## Proxy listener exposure
 
-Proxy listeners never require authentication — not loopback, not non-loopback. Binding a proxy to a
-non-loopback interface is an explicit operator decision, and demanding a proxy password only broke
-clients reaching the proxy through a LAN or tailnet address, including clients on the same
-workstation. `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` remains the guard that refuses non-loopback binds
-in the first place.
+Proxy listeners do not require authentication by default — not on loopback, and not on a LAN or
+tailnet address. API keys protect History and the control API; they are not a proxy password.
 
-Anyone who can reach the listener can use the proxy, so treat a non-loopback bind as opening a
-proxy on that network: bind only the interfaces needed for the engagement, prefer tailnet or
-LAN segments you control, and close the listener after capture. Interseptor removes
-`Proxy-Authorization` before forwarding, so any client-supplied proxy credentials are never sent
-to the target origin. API keys still protect the remote control plane (UI, REST, MCP) when
-Interseptor is reached over a tunnel.
+Optional listener basic auth lives in **Settings → Proxy & network → Proxy authentication**. Turn
+it on and set a username and password of your own, then point the client at the proxy with those
+credentials (`Proxy-Authorization: Basic`). Leave it off, the default, and any client that can
+reach the listener can use it. `INTERSEPTOR_ALLOW_EXTERNAL_BIND=0` still refuses non-loopback binds.
+
+A non-loopback listener with authentication off is an open proxy for everyone who can reach it:
+bind only the interfaces the engagement needs, prefer a tailnet or LAN you control, and close the
+listener after capture. Interseptor removes `Proxy-Authorization` before forwarding, so the
+listener password is never sent to the target origin.
 
 ## Browser background traffic suppression
 
@@ -153,8 +153,8 @@ prompt.
 
 ## Safe network checklist
 
-- Bind only the interfaces needed for the engagement, and remember a non-loopback proxy listener is
-  an open proxy for everyone who can reach it.
+- Bind only the interfaces needed for the engagement. With proxy authentication off, a non-loopback
+  listener is an open proxy for everyone who can reach it.
 - Keep the control UI loopback-only unless remote access is intentional and key-protected.
 - Enable origin verification unless the target environment requires an explicit exception.
 - Remove CA trust, listener exposure, saved credentials, and tunnels during close-out.
