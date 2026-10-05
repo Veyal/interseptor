@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -134,10 +133,8 @@ func fileCreatedUnix(path string) int64 {
 	if err != nil {
 		return time.Now().Unix()
 	}
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		if sec := birthUnix(stat); sec > 0 {
-			return sec
-		}
+	if sec := createdUnix(info); sec > 0 {
+		return sec
 	}
 	if !info.ModTime().IsZero() {
 		return info.ModTime().Unix()

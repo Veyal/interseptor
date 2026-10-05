@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **API-key proxy authentication.** Proxy listeners no longer demand a full-scope API key as the proxy password. Use the optional proxy username and password above when a listener should challenge clients.
 
+### Fixed
+
+- **Windows release builds.** Project creation time no longer references `syscall.Stat_t` outside Darwin. That type does not exist on Windows, so the v2.3.0 GoReleaser build failed before it could publish.
+
 ## [2.2.0] - 2026-10-01
 
 ### Added

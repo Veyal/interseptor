@@ -2,6 +2,6 @@
 
 package control
 
-import "syscall"
+import "os"
 
-func birthUnix(stat *syscall.Stat_t) int64 { return 0 }
+func createdUnix(os.FileInfo) int64 { return 0 }
