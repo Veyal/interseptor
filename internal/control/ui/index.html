@@ -566,6 +566,8 @@ Content-Type: application/json
       <button type="button" class="uisw on" id="mapHideNoise" aria-pressed="true" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hide 403/404-only</button>
       <button type="button" class="uisw on" id="mapCollapseIdentical" aria-pressed="true" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapse identical</button>
       <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy" aria-controls="mapDiscoveryPanel" aria-expanded="false">Discovery ▸</button>
+      <span id="mapCoverage" class="count map-coverage" role="status" aria-live="polite" hidden></span>
+      <button type="button" class="uisw" id="mapUnlinked" aria-pressed="false" title="Show only endpoints with no flow attached to a finding" hidden>Without evidence</button>
       <div class="spacer"></div>
       <button class="btn" id="mapExpand">Expand all</button>
       <button class="btn" id="mapFit" title="Fit graph to view (pinch or Ctrl+scroll to zoom; scroll to pan)" data-init-hidden aria-label="Fit graph to view">⤢ Fit</button>
@@ -601,6 +603,7 @@ Content-Type: application/json
       <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
       <button type="button" class="btn" id="notesSaveRetry" hidden>Retry save</button>
+      <button type="button" class="btn" id="notesPromote" title="Create a draft finding from the selected text, or the current line">Promote to finding</button>
 
       <div class="spacer"></div>
     </div>
@@ -616,8 +619,12 @@ Content-Type: application/json
       <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount" role="status" aria-live="polite" aria-atomic="true"></span>
+      <button type="button" class="btn" id="actAppendix" title="Copy the filtered log as a Markdown appendix for the report">Copy as report appendix</button>
       <button class="btn act-clear" id="actClear">Clear</button>
     </div>
+    <div class="act-chips" id="actChips" role="group" aria-label="Filter activity by category"></div>
+    <div class="act-attention" id="actAttention" hidden></div>
+    <button type="button" class="btn act-new-pill" id="actNewPill" hidden></button>
     <div id="actFeed" class="scroll"></div>
   </div>
 
