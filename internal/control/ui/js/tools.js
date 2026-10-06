@@ -2077,6 +2077,14 @@ function intrApplyFilter(res){
   else if(intrFilter==='error') out=out.filter(r=>r.error);
   return intrApplySort(out);
 }
+const INTR_POLL_MS=400;
+// A running attack that has made no progress since the last poll needs neither
+// a re-render nor a results copy; just keep polling.
+function intrPollUnchanged(st){
+  if(!st||!st.running||st.error||intrPollError||!intrLastRunning)return false;
+  const res=Array.isArray(st.results)?st.results:[];
+  return (st.done||0)===intrLastDone&&(st.total||0)===intrLastTotal&&res.length===intrLastResults.length;
+}
 export function scheduleIntr(){
   clearTimeout(intrTimer);
   if(intrPollInFlight){intrPollQueued=true;return;}
@@ -2086,7 +2094,8 @@ export function scheduleIntr(){
     try{
       const st=await api('/api/intruder/state');
       if(epoch!==intrPollEpoch)return;
-      renderIntr(st);
+      if(intrPollUnchanged(st))scheduleIntr();
+      else renderIntr(st);
     }catch(e){
       if(epoch!==intrPollEpoch)return;
       // Keep the last result set visible while the state endpoint is unavailable.
@@ -2098,7 +2107,7 @@ export function scheduleIntr(){
       intrPollInFlight=false;
       if(intrPollQueued){intrPollQueued=false;scheduleIntr();}
     }
-  },120);
+  },INTR_POLL_MS);
 }
 export function renderIntr(st,{authoritative=true}={}){
   const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
@@ -2144,11 +2153,13 @@ export function renderIntr(st,{authoritative=true}={}){
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(displayState.running||displayState.total)?'block':'none';fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0';}
   // results summary (flagged count)
+  // Filter and sort once per render; the stats line and the rows share the view.
+  const view=intrApplyFilter(displayRes);
   const stats=$('#intrStats');
   if(stats){
-    const fl=displayRes.filter(r=>r.flagged).length, int=displayRes.filter(intrIsInteresting).length;
-    const shown=intrApplyFilter(displayRes).length;
-    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
+    let fl=0,int=0;
+    for(const r of displayRes){if(r.flagged)fl++;if(intrIsInteresting(r))int++;}
+    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
   }
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
@@ -2156,7 +2167,6 @@ export function renderIntr(st,{authoritative=true}={}){
     box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
-  const view=intrApplyFilter(displayRes);
   if(!view.length){
     box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No results match this filter.</p></div>';
     return;
@@ -2215,7 +2225,7 @@ async function intrToFinding(){
 }
 if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;
 // Virtualized Intruder results: rendering thousands of result rows on every poll
-// (every 120ms while running) rebuilds the whole DOM and janks the tab. Render only
+// (every poll while running) rebuilds the whole DOM and janks the tab. Render only
 // the visible window, repaint on scroll — same pattern as the Map table / Proxy rows.
 const INTR_ROW_H=25, INTR_VIRT_MIN=200;
 function intrRowHTML(r){

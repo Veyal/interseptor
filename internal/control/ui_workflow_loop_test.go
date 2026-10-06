@@ -97,3 +97,21 @@ func TestUIIntruderToFindingSharesThePickerAndExplainsSelection(t *testing.T) {
 		t.Error("Intruder must use the shared Add-to-finding picker and the → Finding label")
 	}
 }
+
+func TestUIIntruderPollingBacksOffAndSkipsUnchangedRenders(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"const INTR_POLL_MS=400",
+		"function intrPollUnchanged(st)",
+		"if(intrPollUnchanged(st))scheduleIntr();",
+		"  },INTR_POLL_MS);",
+		"const view=intrApplyFilter(displayRes);",
+	)
+	if strings.Contains(tools, "  },120);") {
+		t.Error("Intruder must not poll every 120ms")
+	}
+	body := tools[strings.Index(tools, "export function renderIntr("):]
+	if strings.Count(body[:strings.Index(body, "wireIntrResultRows(box);}")], "intrApplyFilter(displayRes)") != 1 {
+		t.Error("renderIntr must filter and sort results exactly once per render")
+	}
+}
