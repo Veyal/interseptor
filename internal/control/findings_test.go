@@ -1114,6 +1114,44 @@ func TestAttachFindingFlowRejectsInvalidMetadataAtomically(t *testing.T) {
 	}
 }
 
+func TestClassifyFindingImageEndpoint(t *testing.T) {
+	h, s, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	id, _ := s.CreateFinding(&store.Finding{Title: "img"})
+	const pngB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	base := ts.URL + "/api/findings/" + strconv.FormatInt(id, 10)
+	resp, err := http.Post(base+"/images", "application/json", strings.NewReader(`{"data":"`+pngB64+`","role":"result","proof":"alert visible"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out store.Finding
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	hash := out.Blocks[0].Hash
+	if out.Readiness.ScreenshotCount != 0 {
+		t.Fatalf("upload counted before classification")
+	}
+	bad, _ := http.Post(base+"/images/"+hash+"/classify", "application/json", strings.NewReader(`{"source":"flow_preview"}`))
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("generated source status=%d", bad.StatusCode)
+	}
+	resp, err = http.Post(base+"/images/"+hash+"/classify", "application/json", strings.NewReader(`{"source":"browser_screenshot"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	out = store.Finding{}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.Readiness.ScreenshotCount != 1 || out.Blocks[0].Provenance.Ingestion != "upload" || out.Blocks[0].Provenance.ClassifiedBy == "" {
+		t.Fatalf("classified: %+v %+v", out.Readiness, out.Blocks[0].Provenance)
+	}
+}
+
 // TestAttachFindingImageRoundTrip uploads a tiny PNG and serves it back by hash.
 func TestAttachFindingImageRoundTrip(t *testing.T) {
 	h, _, _ := newHub(t)

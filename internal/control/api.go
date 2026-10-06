@@ -94,7 +94,8 @@ type apiRoute struct {
 }
 
 var apiRoutes = []apiRoute{
-	{"GET", "/api/findings/readiness", "Report completeness checks; filters statuses and tag"},
+	{"GET", "/api/findings/readiness", "Project-wide report readiness: board rows (id, title, severity, status, ready, blocking gaps) sorted by severity, per-finding checks and final-gate issues {rule, field, capability, message}; filters statuses and tag"},
+	{"GET", "/api/finding-quality/{id}", "Final report-quality gate for one finding; same issues as the project-wide readiness entry"},
 	{"GET", "/api/findings/deleted", "List recoverable deleted findings"},
 	{"GET", "/api/finding-revisions/{id}", "List immutable revision metadata; ?before= for pagination"},
 	{"GET", "/api/finding-revisions/{id}/{revisionId}", "Historical snapshot and field-level diff"},
@@ -172,6 +173,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/findings/{id}/flows", "Attach a captured flow as evidence. Body: {flowId, role?, note?, proof?, position?}; role identifies reproduction purpose and proof states exactly what the flow establishes"},
 	{"DELETE", "/api/findings/{id}/flows/{flowId}", "Detach a PoC flow from a finding"},
 	{"POST", "/api/findings/{id}/images", "Validate, store, and atomically attach screenshot evidence. Body: {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}; max 5 MiB"},
+	{"POST", "/api/findings/{id}/images/{hash}/classify", "Reviewer relabel of an attached image without re-upload. Body: {source: browser_screenshot|device_screenshot|operator_upload|tool_output|other, reason?}; ingestion metadata is kept, the classifier is recorded, generated previews cannot be relabelled"},
 	{"POST", "/api/findings/{id}/flow-preview", "Render and atomically attach a labeled HTTP PNG with source=flow_preview and sourceFlowId. Body: {flowId, side?, pretty?, layout?, theme?, caption?, role?, proof?, position?}"},
 	{"GET", "/api/findings/images/{hash}", "Serve a content-addressed finding image by sha256 hash"},
 	{"GET", "/api/views", "List saved history views"},
@@ -357,6 +359,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "update_finding", "desc": "Update canonical finding fields or structured blocks"},
 		{"name": "add_finding_poc", "desc": "Attach a captured flow with role and proof statement"},
 		{"name": "add_finding_image", "desc": "Attach a real screenshot with role, proof, and provenance"},
+		{"name": "classify_finding_image", "desc": "Reviewer relabel of an attached image as a browser/device capture without re-upload"},
 		{"name": "render_flow_preview", "desc": "Render a flow as a provenance-labeled HTTP PNG and optionally attach it"},
 		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
 		{"name": "delete_finding", "desc": "Permanently delete a finding (cannot be undone)"},

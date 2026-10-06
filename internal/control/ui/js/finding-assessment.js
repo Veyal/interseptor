@@ -5,6 +5,16 @@ import { esc, escAttr, initUiSelects, uiPrompt, toast } from './core.js';
 const executionLabels = { '': 'Not reviewed', demonstrated: 'Impact demonstrated', prerequisite_only: 'Prerequisites only', not_executed: 'Not executed' };
 export const evidenceSourceLabel = source => ({ device_screenshot: 'Device capture · reviewer declared', browser_screenshot: 'Browser capture · reviewer declared', operator_upload: 'Uploaded image · origin unconfirmed', flow_preview: 'Generated HTTP preview', generated_image: 'Generated image · not browser proof', tool_output: 'Tool output', captured_flow: 'Captured traffic' })[source] || source || 'Origin unconfirmed';
 
+// Action/result/control/visual proof are reported separately, with uploaded
+// and generated images counted apart so a preview never reads as a capture.
+export function renderEvidenceCapabilities(readiness) {
+  const c = readiness?.capabilities;
+  if (!c) return '';
+  const chip = (ok, label) => `<span class="find-cap ${ok ? 'find-cap-ok' : 'find-cap-miss'}">${esc(label)}: ${ok ? 'present' : 'missing'}</span>`;
+  const exec = c.execution ? `<span class="find-cap">${esc(executionLabels[c.execution] || c.execution)}</span>` : '';
+  return `<div class="find-caps" role="group" aria-label="Evidence capabilities">${chip(c.action, 'Action')}${chip(c.result, 'Result')}${chip(c.control, 'Control')}${chip(c.visual, 'Visual capture')}${exec}<span class="hint">${Number(readiness.screenshotCount) || 0} verified capture(s) · ${Number(readiness.uploadedImageCount) || 0} uploaded · ${Number(readiness.generatedImageCount) || 0} generated preview(s)</span></div>`;
+}
+
 function field(index, key, label, value, extra = '') {
   return `<label class="find-target-field">${label}<input class="find-field-text" id="${index === 0 && key === 'url' ? 'findTarget' : `findTarget-${index}-${key}`}" data-target-field="${key}" value="${escAttr(value || '')}" ${extra}></label>`;
 }

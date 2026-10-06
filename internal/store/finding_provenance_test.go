@@ -68,6 +68,49 @@ func TestGeneratedImageCannotBecomeCaptureAcrossFindings(t *testing.T) {
 	}
 }
 
+func TestClassifyFindingImageRelabelsWithoutReupload(t *testing.T) {
+	s, _ := Open(t.TempDir())
+	defer s.Close()
+	id, _ := s.CreateFinding(&Finding{Title: "Capture"})
+	hash, _, err := s.PutAndAttachImage(id, "image/png", tinyPNG, "Recorded state", -1, "result", "Visible result", "operator_upload", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetFinding(id); got.Readiness.ScreenshotCount != 0 {
+		t.Fatalf("unclassified upload counted: %+v", got.Readiness)
+	}
+	if err = s.ClassifyFindingImage(id, hash, "browser_screenshot", FindingChange{Actor: "reviewer", Source: "http"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetFinding(id)
+	p := got.Blocks[0].Provenance
+	if got.Blocks[0].Source != "browser_screenshot" || got.Readiness.ScreenshotCount != 1 || p.Ingestion != "upload" || p.OriginalSource != "operator_upload" || p.ClassifiedBy != "reviewer" {
+		t.Fatalf("classify: %+v %+v %+v", got.Blocks[0], p, got.Readiness)
+	}
+}
+
+func TestClassifyFindingImageRejectsGeneratedAndUnknown(t *testing.T) {
+	s, _ := Open(t.TempDir())
+	defer s.Close()
+	id, _ := s.CreateFinding(&Finding{Title: "Preview"})
+	hash, _, err := s.PutAndAttachImage(id, "image/png", tinyPNG, "Preview", -1, "result", "Preview only", "flow_preview", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ClassifyFindingImage(id, hash, "browser_screenshot", FindingChange{Actor: "reviewer"}); err == nil {
+		t.Fatal("generated preview was relabelled as a capture")
+	}
+	if err = s.ClassifyFindingImage(id, strings.Repeat("b", 64), "browser_screenshot", FindingChange{}); err == nil {
+		t.Fatal("unknown image accepted")
+	}
+	if err = s.ClassifyFindingImage(id, hash, "flow_preview", FindingChange{}); err == nil {
+		t.Fatal("generated target source accepted")
+	}
+	if got, _ := s.GetFinding(id); got.Readiness.ScreenshotCount != 0 {
+		t.Fatalf("flow preview counted as screenshot: %+v", got.Readiness)
+	}
+}
+
 func TestMissingImageMappingsAndRawMessagesAgreeWithReadiness(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	defer s.Close()

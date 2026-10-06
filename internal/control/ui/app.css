@@ -1702,3 +1702,6 @@ details[open]>summary::before{content:'▾'}
    el.style.display between 'block' and 'none'; only the initial state lives here,
    so the first pane (#apiKeys) needs no rule. */
 #apiAllowlist,#apiShare,#apiRest,#apiMcp{display:none}
+
+.find-caps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:var(--fs-xs)}.find-cap{padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--fg2)}.find-cap-miss{border-style:dashed;color:var(--fg3)}
+.find-readiness-board{margin-top:8px}.find-board-scroll{overflow-x:auto}.find-board{width:100%;border-collapse:collapse;font-size:var(--fs-xs)}.find-board th,.find-board td{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}

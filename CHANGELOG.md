@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Reviewer-approved target normalization.** `POST /api/findings/{id}/normalize-targets` and the MCP `normalize_finding_targets` tool apply approved path templates (for example `/users/edit/123` to `/users/edit/{id}`) to a finding's affected targets. They default to a dry run, never merge targets that differ in method, scheme, role, relation or variant, and keep flow and image references on the merged target.
 
 - **Environment validation regression tests.** `development` round-trips through the control API and unknown environments are rejected through both the control API and the MCP `update_finding` path instead of being mapped to `local`.
+### Added
+
+- **Reviewer image classification (#69).** `POST /api/findings/{id}/images/{hash}/classify` and the MCP `classify_finding_image` tool relabel an already-attached image (for example an `operator_upload` that is a real browser capture) as `browser_screenshot`/`device_screenshot` without re-uploading it. Upload ingestion metadata is preserved, the classifier is recorded, verified captures count toward `screenshotCount`, and generated flow previews can never be relabelled as captures.
+
+- **Claim-vs-evidence capability checks (#70).** Readiness checks now carry `rule` and `capability` (for example `browser_execution`, `authenticated_without_required_factor`, `account_control`, `state_change`) so a warning names exactly the missing proof. Authenticated-session and account-control claims need a server-observed result flow; a screenshot alone no longer satisfies them. The analyst's claim text is never rewritten.
+
+- **Capability checklist in the writing guide and readiness (#65).** The finding writing guide now lists the action/result/control/visual checklist and the explicit `not_executed` + `needs_verification` path. `readiness.capabilities` reports action, result, control and visual proof separately, and `uploadedImageCount`/`generatedImageCount` keep operator uploads apart from generated previews; the finding workspace shows both next to the readiness gaps.
+
+- **Final report-quality gate (#76).** `GET /api/findings/readiness` entries and the new `GET /api/finding-quality/{id}` return `issues` of `{rule, field, capability, message}` for every failed rule, including a `cvss_version` rule that requires a CVSS v4.0 vector (evaluated through `cvss.Evaluate`). MCP `finding_readiness` returns the same payload, and accepts `id` for one finding. The gate only reads findings; evidence is never modified.
+
+- **Project-wide readiness board (#88).** `GET /api/findings/readiness` and MCP `finding_readiness` now return a `board` of `{id, title, severity, status, ready, gaps}` rows sorted by severity (then id) with a ready/blocked `summary`. The Export dialog gains a "Check readiness" panel that renders the board and opens a blocked finding for review.
 
 ### Changed
 

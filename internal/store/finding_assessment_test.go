@@ -70,6 +70,34 @@ func TestFindingCapabilityReadiness(t *testing.T) {
 	}
 }
 
+func TestReadinessReportsCapabilitiesSeparately(t *testing.T) {
+	f := completeAssessment()
+	f.Blocks[2].Role = "context" // drop the control case
+	f.ProofReview.Visual = true
+	f.Blocks = append(f.Blocks,
+		FindingBlock{Type: "image", Hash: "c1", Source: "flow_preview", Role: "result", Proof: "Rendered"},
+		FindingBlock{Type: "image", Hash: "c2", Source: "operator_upload", Role: "result", Proof: "Uploaded"})
+	f.EnrichCompleteness()
+	c := f.Readiness.Capabilities
+	if !c.Action || !c.Result || c.Control || c.Visual {
+		t.Fatalf("capabilities %+v", c)
+	}
+	if f.Readiness.GeneratedImageCount != 1 || f.Readiness.UploadedImageCount != 1 || f.Readiness.ScreenshotCount != 0 {
+		t.Fatalf("image labelling %+v", f.Readiness)
+	}
+	f.Blocks[4].Source = "browser_screenshot"
+	f.ProofReview.Execution = "not_executed"
+	f.ProofReview.Reason = "End-to-end step not run: no safe test account"
+	f.Status = "needs_verification"
+	f.EnrichCompleteness()
+	if !f.Readiness.Capabilities.Visual || f.Readiness.Capabilities.Execution != "not_executed" || f.Ready || !slices.Contains(f.Missing, "verification") {
+		t.Fatalf("not_executed path %+v", f.Readiness)
+	}
+	if slices.Contains(f.Missing, "execution_reason") {
+		t.Fatal("reason given but still flagged")
+	}
+}
+
 func TestFindingTargetsAndExecutionPersist(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

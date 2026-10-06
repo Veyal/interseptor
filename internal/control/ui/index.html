@@ -1438,6 +1438,7 @@ Content-Type: application/json
       <label for="findExportFmt">Format</label><select id="findExportFmt" aria-label="Report format"><option value="md">Markdown</option><option value="html">HTML with images</option><option value="json">JSON</option></select>
       <label for="findExportStatuses">Include</label><select id="findExportStatuses" aria-label="Report statuses"><option value="open,verified,fixed">Open, verified and fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option><option value="needs_verification">Needs verification</option></select>
       <label class="find-groupby"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label><div id="findExportChecks" class="find-export-checks" role="status" aria-live="polite" hidden></div>
+      <button type="button" class="btn" id="findReadinessCheck">Check readiness</button><div id="findReadinessBoard" class="find-readiness-board" role="status" aria-live="polite" hidden></div>
     </div>
     <div class="modal-shell-foot"><span class="hint">Includes attached evidence.</span><div class="spacer"></div><button type="button" class="btn btn-primary" id="findExport">Download report</button></div>
   </div>
