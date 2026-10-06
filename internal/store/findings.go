@@ -230,6 +230,7 @@ type Finding struct {
 	CvssScore        *float64           `json:"cvssScore,omitempty"`
 	CvssRating       string             `json:"cvssRating,omitempty"`
 	CvssNomenclature string             `json:"cvssNomenclature,omitempty"`
+	CvssWarning      string             `json:"cvssWarning,omitempty"` // computed: legacy CVSS 3.1 vector, never persisted
 	Confidence       string             `json:"confidence,omitempty"`
 	Detail           string             `json:"detail"`                // legacy / MCP compat: first text block synced here
 	Evidence         string             `json:"evidence"`              // legacy only
@@ -983,6 +984,9 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 		return 0, err
 	}
 	f.Confidence = normalizeFindingConfidence(f.Confidence)
+	if err := validateCVSSWrite(f.Cvss); err != nil {
+		return 0, err
+	}
 	if err := normalizeFindingAssessment(f); err != nil {
 		return 0, err
 	}
@@ -1216,6 +1220,11 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 		resulting.Body = stamped
 	}
 	preserveAssessmentMissing(current, &resulting)
+	if resulting.Cvss != current.Cvss {
+		if err := validateCVSSWrite(resulting.Cvss); err != nil {
+			return err
+		}
+	}
 	if err := normalizeFindingAssessment(&resulting); err != nil {
 		return err
 	}

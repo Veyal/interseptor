@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **CVSS 4.0 is enforced when a finding is written.** Creating a finding, or changing its `cvss`, now rejects anything that is not a valid `CVSS:4.0/` vector, and the error names the field and the expected format. Existing findings that carry a 3.1 vector are never rewritten; they stay editable and expose a computed `cvssWarning` so a reviewer can re-score them.
+
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
 
 ## [2.3.0] - 2026-10-02

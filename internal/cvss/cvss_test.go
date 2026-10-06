@@ -1,6 +1,34 @@
 package cvss
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestValidateForWrite(t *testing.T) {
+	v4 := "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+	if err := ValidateForWrite(""); err != nil {
+		t.Fatalf("empty vector must be allowed (clearing): %v", err)
+	}
+	if err := ValidateForWrite(v4); err != nil {
+		t.Fatalf("valid 4.0 vector rejected: %v", err)
+	}
+	for _, bad := range []string{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "9.8", "AV:N/AC:L", "CVSS:4.0/AV:N"} {
+		err := ValidateForWrite(bad)
+		if err == nil {
+			t.Fatalf("ValidateForWrite(%q) accepted", bad)
+		}
+		if !strings.Contains(err.Error(), "cvss") || !strings.Contains(err.Error(), "CVSS:4.0/") {
+			t.Fatalf("error must name the field and expected format: %v", err)
+		}
+	}
+}
+
+func TestIsLegacy(t *testing.T) {
+	if !IsLegacy("cvss:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H") || IsLegacy("CVSS:4.0/AV:N") || IsLegacy("") {
+		t.Fatal("IsLegacy only flags 3.1 vectors")
+	}
+}
 
 func TestEvaluateRatingBoundaries(t *testing.T) {
 	tests := []struct {

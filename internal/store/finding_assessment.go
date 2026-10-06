@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	cvsspkg "github.com/Veyal/interseptor/internal/cvss"
 	cvss31 "github.com/pandatix/go-cvss/31"
 	cvss40 "github.com/pandatix/go-cvss/40"
 )
@@ -176,6 +177,14 @@ func normalizeFindingAssessment(f *Finding) error {
 	return nil
 }
 
+// validateCVSSWrite enforces the CVSS:4.0 contract for a vector being written.
+func validateCVSSWrite(vector string) error {
+	if err := cvsspkg.ValidateForWrite(vector); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidFinding, err)
+	}
+	return nil
+}
+
 func (s *Store) UpdateFindingMetadata(id int64, patch FindingMetadataPatch) error {
 	return s.updateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, patch)
 }
@@ -184,7 +193,11 @@ func (f *Finding) enrichAssessment() {
 	f.CvssScore = nil
 	f.CvssRating = ""
 	f.CvssNomenclature = ""
+	f.CvssWarning = ""
 	raw := strings.TrimSpace(f.Cvss)
+	if cvsspkg.IsLegacy(raw) {
+		f.CvssWarning = "legacy CVSS 3.1 vector kept as-is; the finding contract requires CVSS:4.0 — re-score it with evaluate_finding_cvss"
+	}
 	if strings.HasPrefix(strings.ToUpper(raw), "CVSS:3.1") {
 		if v, err := cvss31.ParseVector(raw); err == nil {
 			score := v.BaseScore()

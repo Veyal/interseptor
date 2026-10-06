@@ -103,7 +103,7 @@ func findingRevisionFields(before, after *Finding) []FindingRevisionDiff {
 			b, _ := json.Marshal(f)
 			_ = json.Unmarshal(b, &out)
 		}
-		for _, k := range []string{"id", "ts", "updatedTs", "ready", "missing", "readiness", "cvssScore", "cvssRating", "cvssNomenclature"} {
+		for _, k := range []string{"id", "ts", "updatedTs", "ready", "missing", "readiness", "cvssScore", "cvssRating", "cvssNomenclature", "cvssWarning"} {
 			delete(out, k)
 		}
 		return out
