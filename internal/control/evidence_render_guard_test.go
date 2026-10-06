@@ -129,3 +129,21 @@ func TestRenderJSONVariantEmbedsSmallPNGOnRequest(t *testing.T) {
 		t.Fatalf("embedded png invalid (%d bytes, %v)", len(raw), err)
 	}
 }
+
+func TestUploadingARenderAsAScreenshotIsRefused(t *testing.T) {
+	h, s, _ := newHub(t)
+	seedRun(t, s, syntheticRun(testRunID))
+	fid := newFindingID(t, s)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	resp, png := getBytes(t, ts.URL+"/api/intruder/attacks/latest/render.png?kind=timeline")
+	requirePNG(t, resp, png)
+	payload, _ := json.Marshal(map[string]any{
+		"data": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), "mime": "image/png",
+		"caption": "re-upload", "source": "browser_screenshot", "role": "result",
+	})
+	r, body := evPost(t, ts.URL+"/api/findings/"+strconv.FormatInt(fid, 10)+"/images", string(payload))
+	if r.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "generated Interseptor render") {
+		t.Fatalf("relabelling a render as a screenshot must be a 400, got %d %s", r.StatusCode, body)
+	}
+}

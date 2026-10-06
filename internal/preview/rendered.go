@@ -37,6 +37,10 @@ type Opts struct {
 	// Deadline aborts a render with ErrRenderTimeout once passed (checked
 	// between draw attempts); the zero value means no deadline.
 	Deadline time.Time
+	// SourceRef names the recorded data the render was drawn from (for
+	// example "intruder:<runId>"); it is shown in the footer and stamped into
+	// the PNG so the image stays attributable wherever it travels.
+	SourceRef string
 }
 
 // ErrRenderTimeout is returned when Opts.Deadline passes before a render ends.

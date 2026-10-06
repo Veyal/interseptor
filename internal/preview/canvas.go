@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Veyal/interseptor/internal/rendermark"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gomono"
@@ -563,6 +564,9 @@ func renderFrame(o Opts, f frame) ([]byte, int, int, error) {
 		c.drawTitleBar(f.Title)
 		c.rect(0, h-footerH, w, footerH, c.pal.paper)
 		prov := f.Provenance
+		if o.SourceRef != "" {
+			prov = strings.TrimSpace(prov + "  |  ref " + o.SourceRef)
+		}
 		if c.escaped {
 			prov = strings.TrimSpace(prov + "  " + escapedFooterNote)
 		}
@@ -577,6 +581,9 @@ func renderFrame(o Opts, f frame) ([]byte, int, int, error) {
 		})
 		if err == errShrink {
 			continue
+		}
+		if err == nil {
+			data = rendermark.Embed(data, "generated evidence render; not a browser screenshot; title="+f.Title+"; ref="+o.SourceRef)
 		}
 		return data, w, h, err
 	}

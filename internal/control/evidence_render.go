@@ -451,6 +451,7 @@ func (e *evidenceAPI) renderIntruder(q evidenceRequest, o preview.Opts) (evidenc
 	if err != nil {
 		return evidenceResult{}, err
 	}
+	o.SourceRef = "intruder:" + id
 	var rd preview.Rendered
 	switch q.Kind {
 	case preview.KindIntruderTimeline:
@@ -489,6 +490,7 @@ func (e *evidenceAPI) renderAuthz(q evidenceRequest, o preview.Opts) (evidenceRe
 	if !ok {
 		return evidenceResult{}, evErr(http.StatusNotFound, "authz run not found (runs are kept in memory; re-run the authz test)")
 	}
+	o.SourceRef = "authz:" + id
 	rd, err := preview.RenderAuthzMatrix(authzMatrixInput(id, runs), o)
 	if err != nil {
 		return evidenceResult{}, err
@@ -516,6 +518,7 @@ func (e *evidenceAPI) renderDiff(q evidenceRequest, o preview.Opts) (evidenceRes
 	if err != nil {
 		return evidenceResult{}, evErr(http.StatusNotFound, "response body not found")
 	}
+	o.SourceRef = fmt.Sprintf("flow-diff:%d-%d", q.A, q.B)
 	rd, err := preview.RenderFlowDiff(flowDiffInput(fa, fb, d, q.IncludeBody), o)
 	if err != nil {
 		return evidenceResult{}, err
@@ -538,6 +541,7 @@ func (e *evidenceAPI) renderWaterfall(q evidenceRequest, o preview.Opts) (eviden
 		}
 		flows = append(flows, f)
 	}
+	o.SourceRef = waterfallSourceRef(q.FlowIDs)
 	rd, err := preview.RenderFlowWaterfall(flowWaterfallInput(flows), o)
 	if err != nil {
 		return evidenceResult{}, err
@@ -557,6 +561,7 @@ func (e *evidenceAPI) renderChain(q evidenceRequest, o preview.Opts) (evidenceRe
 	if err != nil {
 		return evidenceResult{}, err
 	}
+	o.SourceRef = fmt.Sprintf("finding:%d", q.FindingID)
 	rd, err := preview.RenderFindingChain(in, o)
 	if err != nil {
 		return evidenceResult{}, err

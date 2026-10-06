@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Veyal/interseptor/internal/rendermark"
 )
 
 func TestScreenshotClassificationPreservesUploadOrigin(t *testing.T) {
@@ -212,5 +214,22 @@ func TestSourceRefValidationAndLegacyBodies(t *testing.T) {
 	}
 	if !generatedFindingImage("evidence_render") || capturedFindingImage("evidence_render") {
 		t.Fatal("evidence_render must be generated, not captured")
+	}
+}
+
+func TestGeneratedRenderMarkerCannotBeRelabelledAsCapture(t *testing.T) {
+	s := newTestStore(t)
+	id, _ := s.CreateFinding(&Finding{Title: "Marker"})
+	marked := rendermark.Embed(tinyPNG, "generated evidence render; ref=intruder:run-01")
+	for _, src := range []string{"browser_screenshot", "device_screenshot", "operator_upload", ""} {
+		if _, _, err := s.PutAndAttachImageRef(id, "image/png", marked, "x", -1, "result", "", src, 0, ""); err == nil {
+			t.Fatalf("source %q accepted a generated render as a capture", src)
+		}
+	}
+	if _, _, err := s.PutAndAttachImageRef(id, "image/png", marked, "x", -1, "result", "", "evidence_render", 0, "intruder:run-01"); err != nil {
+		t.Fatalf("honest evidence_render attach must work: %v", err)
+	}
+	if _, _, err := s.PutAndAttachImageRef(id, "image/png", tinyPNG, "real", -1, "result", "", "browser_screenshot", 0, ""); err != nil {
+		t.Fatalf("an unmarked screenshot must still attach: %v", err)
 	}
 }

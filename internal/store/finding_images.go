@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Veyal/interseptor/internal/rendermark"
 )
 
 // PutImageBytes stores screenshot/evidence bytes in the content-addressed bodies
@@ -37,6 +39,12 @@ func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, cap
 func (s *Store) PutAndAttachImageRef(findingID int64, mime string, data []byte, caption string, pos int, role, proof, source string, sourceFlowID int64, sourceRef string, changes ...FindingChange) (string, int64, error) {
 	if err := validateSourceRef(sourceRef); err != nil {
 		return "", 0, err
+	}
+	// A generated Interseptor render carries a PNG marker; it can be attached
+	// as a generated image but never relabelled as a capture or an operator
+	// upload, which would let a drawn picture pass as browser proof.
+	if _, marked := rendermark.Find(data); marked && !generatedFindingImage(source) {
+		return "", 0, fmt.Errorf("%w: this image is a generated Interseptor render; attach it with source=evidence_render, not %q", ErrInvalidFinding, source)
 	}
 	s.bodyMu.Lock()
 	defer s.bodyMu.Unlock()
