@@ -3,8 +3,6 @@ package preview
 import (
 	"bytes"
 	"crypto/sha256"
-	"image"
-	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -71,55 +69,7 @@ func TestTimelineDeterministicAndGolden(t *testing.T) {
 	if sha256.Sum256(a.PNG) != sha256.Sum256(b.PNG) || a.Alt != b.Alt {
 		t.Fatal("renders differ")
 	}
-	golden := tlGoldenThumb(t, a.PNG)
-	if len(golden) > 20*1024 {
-		t.Fatalf("golden too large: %d", len(golden))
-	}
-	path := filepath.Join("testdata", "intruder_timeline_small.png")
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		_ = os.MkdirAll("testdata", 0o755)
-		if err := os.WriteFile(path, golden, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("golden missing (UPDATE_GOLDEN=1 to create): %v", err)
-	}
-	if !bytes.Equal(want, golden) {
-		t.Fatal("PNG differs from golden")
-	}
-}
-
-// tlGoldenThumb reduces the render to a 2x box-filtered grayscale PNG. The full
-// colour render does not fit the 20KB golden budget (anti-aliased text), so the
-// golden pins layout and colour luminance; exact full-size bytes are covered by
-// the two-render hash check.
-func tlGoldenThumb(t *testing.T, data []byte) []byte {
-	t.Helper()
-	img, err := png.Decode(bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b := img.Bounds()
-	th := image.NewGray(image.Rect(0, 0, b.Dx()/2, b.Dy()/2))
-	for y := 0; y < th.Rect.Dy(); y++ {
-		for x := 0; x < th.Rect.Dx(); x++ {
-			sum := uint32(0)
-			for dy := 0; dy < 2; dy++ {
-				for dx := 0; dx < 2; dx++ {
-					r, g, bl, _ := img.At(2*x+dx, 2*y+dy).RGBA()
-					sum += (299*r + 587*g + 114*bl) / 1000 >> 8
-				}
-			}
-			th.SetGray(x, y, color.Gray{uint8(sum / 4)})
-		}
-	}
-	var buf bytes.Buffer
-	if err := (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(&buf, th); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	compareGolden(t, "intruder_timeline", a.PNG)
 }
 
 func TestTimelineNoTimingFallback(t *testing.T) {

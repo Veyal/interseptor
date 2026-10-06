@@ -693,7 +693,7 @@ func drawLatencyChart(c *canvas, y0 int, r image.Rectangle, rows []DistRow) {
 	var items []legendItem
 	for cls, u := range used {
 		if u {
-			items = append(items, legendItem{classNames[cls] + " " + statusGlyph(classRepStatus[cls]), p.statusColor(classRepStatus[cls])})
+			items = append(items, legendItem{classNames[cls], p.statusColor(classRepStatus[cls])})
 		}
 	}
 	plotR := image.Rect(r.Min.X, r.Min.Y+4, r.Max.X, r.Max.Y-14)

@@ -757,13 +757,13 @@ func drawTimelineLegend(c *canvas, top int, g tlGeom, st tlStats) {
 	p := c.pal
 	items := []legendItem{
 		{"2xx ok", p.success}, {"3xx", p.redirect}, {"4xx", p.client},
-		{"429/403/423 X (blocked)", p.blocked}, {"5xx", p.server}, {"error E", p.errc},
+		{"throttle 429/403/423 X", p.blocked}, {"5xx", p.server}, {"error E", p.errc},
 	}
 	y := top + g.LegendY
 	h := c.legend(frameGut, y, g.W-frameGut, items)
 	extra := "outlined bar = flagged by grep"
 	if !g.Strip {
-		extra = "red rule = first blocked response; dashed amber = burst boundary; " + extra
+		extra = "red rule = first throttle status; dashed amber = burst boundary; " + extra
 	}
 	c.text(frameGut, y+h, extra, fontSans, 12, p.muted)
 }

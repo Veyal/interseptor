@@ -337,7 +337,7 @@ func raceLegendNote(st raceStats) string {
 }
 
 func raceLayout(w, n, budget, groups int, timed bool) raceDims {
-	d := raceDims{bannerH: 70, launchH: 110, narrow: raceNarrow(w)}
+	d := raceDims{bannerH: 84, launchH: 110, narrow: raceNarrow(w)}
 	d.laneH = 16
 	if n > 30 {
 		d.laneH = 8
@@ -349,7 +349,7 @@ func raceLayout(w, n, budget, groups int, timed bool) raceDims {
 	if budget < d.lanes {
 		d.lanes = budget
 	}
-	const cardH = 150
+	const cardH = 170
 	d.tableH = 40 + (min(groups, raceMaxGroups)+1)*24 + 20
 	if d.narrow {
 		d.tableH += 20 + cardH
@@ -400,8 +400,11 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 	c.rect(x0, y, x1-x0, d.bannerH-14, p.panel)
 	c.strokeRect(x0, y, x1-x0, d.bannerH-14, p.grid)
 	c.rect(x0, y, 4, d.bannerH-14, p.accent)
-	c.text(x0+14, y+8, c.truncate(fontBold, 15, st.Banner, x1-x0-28), fontBold, 15, p.ink)
-	c.text(x0+14, y+32, c.truncate(fontSans, 12, strings.Join(raceNotes(in, st), "  |  "), x1-x0-28), fontSans, 12, p.muted)
+	bl := c.wrap(fontBold, 15, st.Banner, x1-x0-28, 2)
+	for i, l := range bl {
+		c.text(x0+14, y+8+i*20, l, fontBold, 15, p.ink)
+	}
+	c.text(x0+14, y+12+len(bl)*20, c.truncate(fontSans, 12, strings.Join(raceNotes(in, st), "  |  "), x1-x0-28), fontSans, 12, p.muted)
 	y += d.bannerH
 
 	labelW := 0
