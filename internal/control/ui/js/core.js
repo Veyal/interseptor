@@ -42,20 +42,56 @@ export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,que
   filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
-export function toast(m, sev){
+// Errors and warnings are role=alert (announced assertively), live longer, pause
+// while hovered or focused, and are never evicted by newer info toasts.
+function evictToasts(c) {
+  const keep = (sel, max) => {
+    const items = c.querySelectorAll(sel);
+    for (let i = 0; i < items.length - max; i++) items[i].remove();
+  };
+  // Older notices are less useful than the latest result, so cap each class.
+  keep('.toast-item:not(.error)', 3);
+  keep('.toast-item.error', 5);
+}
+function armToastTimer(t, ms) {
+  let left = ms, started = 0, timer = null;
+  const dismiss = () => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); };
+  const run = () => { started = Date.now(); clearTimeout(timer); timer = setTimeout(dismiss, left); };
+  const pause = () => {
+    if (timer === null) return;
+    clearTimeout(timer); timer = null;
+    left = Math.max(2000, left - (Date.now() - started));
+  };
+  const resume = () => {
+    if (t.matches(':hover') || t.contains(document.activeElement)) return;
+    run();
+  };
+  t.addEventListener('mouseenter', pause);
+  t.addEventListener('focusin', pause);
+  t.addEventListener('mouseleave', resume);
+  t.addEventListener('focusout', resume);
+  run();
+}
+export function toast(m, sev) {
   const c = $('#toast');
   if (!c) return;
-  // Keep transient feedback from obscuring the compact workspace. Older notices
-  // are less useful than the latest result, so evict them before appending.
-  const visible = c.querySelectorAll('.toast-item');
-  for (let i = 0; i < visible.length - 3; i++) visible[i].remove();
+  const loud = sev === 'error' || sev === 'warn';
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
+  if (loud) { t.setAttribute('role', 'alert'); t.tabIndex = 0; }
   c.appendChild(t);
+  evictToasts(c);
   requestAnimationFrame(() => t.classList.add('show'));
-  const ms = sev === 'error' ? 4500 : 2600;
-  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); }, ms);
+  armToastTimer(t, sev === 'error' ? 8000 : sev === 'warn' ? 5000 : 2600);
+}
+// toastError(prefix, e) reports a failed action. e may be an Error, a string or
+// anything with a message; the prefix names the action ("Save failed"). A single
+// non-string argument is treated as the error itself.
+export function toastError(prefix, e) {
+  if (e === undefined && typeof prefix !== 'string') { e = prefix; prefix = ''; }
+  const detail = (e && e.message) || (e ? String(e) : '') || 'request failed';
+  toast(prefix ? prefix + ': ' + detail : detail, 'error');
 }
 
 // wireRowKey makes a clickable <div> row keyboard-operable: it becomes a focusable
@@ -777,27 +813,60 @@ new MutationObserver(muts=>{
   }
 }).observe(document.documentElement,{childList:true,subtree:true});
 
+// apiErrorMessage turns a failed response into one short, human sentence: the
+// JSON `error` field, a short plain-text body, the status text, or "HTTP <n>"
+// (HTTP/2 has no status text). HTML bodies are never surfaced.
+async function apiErrorMessage(r) {
+  const fallback = r.statusText || 'HTTP ' + r.status;
+  let raw = '';
+  try { raw = String(await r.text()).trim(); } catch (e) { return fallback; }
+  if (!raw) return fallback;
+  try {
+    const j = JSON.parse(raw);
+    return (j && typeof j.error === 'string' && j.error) || fallback;
+  } catch (e) { /* not JSON */ }
+  if (raw[0] === '<' || raw.length > 200) return fallback;
+  return raw;
+}
+// apiFetchError wraps a rejected fetch: a caller-driven abort passes through;
+// timeouts and unreachable servers get a message the operator can act on.
+function apiFetchError(e, opts) {
+  if (opts.signal && opts.signal.aborted && !opts.defaultTimeout) return e;
+  const timedOut = e && e.name === 'TimeoutError';
+  const err = new Error(timedOut
+    ? 'The Interseptor control server did not respond in time. Retry in a moment.'
+    : 'Cannot reach the Interseptor control server. Check that it is still running, then retry.');
+  err.code = timedOut ? 'timeout' : 'network';
+  return err;
+}
 export async function api(path,opts){
-  opts=opts||{};
+  opts=Object.assign({},opts);
   // Remote (cookie-authed) sessions must carry an anti-CSRF header on mutations;
   // it is harmless on the loopback path. Safe methods (GET/HEAD) skip it.
   const method=(opts.method||'GET').toUpperCase();
   if(method!=='GET'&&method!=='HEAD'){
     opts.headers=Object.assign({'X-Interseptor-CSRF':'1'},opts.headers||{});
   }
-  const r=await fetch(path,opts);
+  // Reads should fail loudly instead of hanging a panel on "loading" forever.
+  if(method==='GET'&&!opts.signal&&typeof AbortSignal!=='undefined'&&AbortSignal.timeout){
+    opts.signal=AbortSignal.timeout(30000);opts.defaultTimeout=true;
+  }
+  const {defaultTimeout,...init}=opts;
+  let r;
+  try{r=await fetch(path,init);}
+  catch(e){throw apiFetchError(e,opts);}
   if(r.status===401){ // remote session expired / not signed in → go to login
     if(location.pathname!=='/login'){ location.href='/login'; }
     throw new Error('unauthorized');
   }
-  if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}
+  if(!r.ok){const err=new Error(await apiErrorMessage(r));err.status=r.status;throw err;}
   const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
 }
 
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
 export async function apiTry(path, opts, {toastOnError=true, label=''}={}){
   try{return await api(path, opts);}
-  catch(e){if(toastOnError)toast((label?label+': ':'')+e.message);return null;}
+  catch(e){if(toastOnError)toastError(label, e);return null;}
 }
 
 export const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');

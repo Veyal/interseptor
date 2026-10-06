@@ -82,6 +82,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   overscroll-behavior: contain;
   align-items: stretch;
 }
+#toast .toast-item{pointer-events:auto}
 #toast .toast-item {
   max-width: none;
   overflow-wrap: anywhere;
