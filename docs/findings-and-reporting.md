@@ -302,6 +302,13 @@ blocking gaps; sorted by severity) and, per finding, `issues` as `{rule, field, 
 finding. The final gate requires a CVSS v4.0 vector; it never modifies or redacts evidence. The Export
 dialog's **Check readiness** button shows the board in the UI.
 
+`GET /api/project/readiness` is the compact aggregate behind the engagement strip (counts only, no
+bodies or titles): `scope` `{enabled, in, out}` (enabled = at least one enabled include rule), `brief`
+`{target, ok}`, `evidence` `{flows, shots, ws}`, `findings` `{total, ready, items, truncated}` (at most
+200 `{id, stage, gaps}` items) and `blockers`. Blockers are the project-level codes `brief_target` and
+`scope` (same id as the readiness checklist) followed by the distinct server-computed finding gap codes.
+It sits behind the same guard as every other `/api` route.
+
 The export dialog defaults to **Final**, which requires every included finding to pass the same
 checks returned by `GET /api/findings/readiness` and MCP `finding_readiness`. Select **Draft** to
 export incomplete work. API and MCP callers opt into the gate using `mode=final`; legacy callers
