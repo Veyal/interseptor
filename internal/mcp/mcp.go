@@ -946,6 +946,7 @@ func (s *Server) ToolMeta(name string) (desc string, schema map[string]any, ok b
 // registerTools wires every tool to a control-API endpoint.
 func (s *Server) registerTools() {
 	s.registerFindingReviewTools()
+	s.registerEvidenceRenderTools()
 	s.add("list_flows",
 		"Search captured flows → compact rows (id, method, host, path, status). Filters optional. Defaults to includeTools=true so Repeater/Intruder and other tool-generated traffic is visible (History UI hides attack-tool traffic by default). Pass includeTools:false for History-shaped results only.",
 		obj(map[string]any{
@@ -2184,7 +2185,7 @@ func (s *Server) registerTools() {
 		})
 
 	s.add("start_intruder",
-		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §); repeat=Race / repeat the unchanged request. payloads=list of lists.",
+		"Fuzz a request. Mark fuzz points with §…§ in template. attackType: sniper=one position at a time; battering=same payload in every § at once; pitchfork=parallel lists; cluster=cartesian product (one list per §); repeat=Race / repeat the unchanged request. payloads=list of lists. Returns the run identity (runId) that render_intruder_preview takes as attackId; the last 20 finished runs are kept. barrier=true (repeat with threads>1) makes the first requests launch together after all workers are parked: separate connections launched together, not single-packet sync.",
 		obj(map[string]any{
 			"target":       p("string", "scheme://host[:port]"),
 			"template":     p("string", "raw request with §…§"),
@@ -2194,6 +2195,7 @@ func (s *Server) registerTools() {
 			"count":        p("integer", "alias for repeat"),
 			"threads":      p("integer", "concurrent in-flight requests, 1-64 (default 1)"),
 			"delayMs":      p("integer", "delay between requests in milliseconds"),
+			"barrier":      p("boolean", "repeat/race only, threads>1: launch the first requests together (separate connections, not single-packet sync); recorded in state.barrier"),
 			"grepMatch":    p("string", "regex that flags matching responses"),
 			"grepExtract":  p("string", "regex whose captures are included in results"),
 			"processRules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "payload processing steps"},
@@ -2207,13 +2209,13 @@ func (s *Server) registerTools() {
 				"target": argStr(a, "target"), "template": argStr(a, "template"),
 				"attackType": argStr(a, "attackType"), "payloads": a["payloads"],
 				"repeat": repeat, "threads": argInt(a, "threads", 1),
-				"delayMs": argInt(a, "delayMs", 0), "grepMatch": argStr(a, "grepMatch"),
+				"delayMs": argInt(a, "delayMs", 0), "barrier": argBool(a, "barrier", false), "grepMatch": argStr(a, "grepMatch"),
 				"grepExtract": argStr(a, "grepExtract"), "processRules": a["processRules"],
 			})
 		})
 
 	s.add("intruder_state",
-		"Intruder progress + results (status/length/time per payload; anomalies flagged).",
+		"Intruder progress + results (status/length/time per payload; anomalies flagged). Includes runId, attack, threads, delayMs, barrier and per-result seq/worker/startUs/endUs/bodyHash/rlHeaders; pass runId to render_intruder_preview as attackId.",
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) {
 			out, err := s.apiGet("/api/intruder/state")
