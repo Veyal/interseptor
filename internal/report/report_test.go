@@ -504,3 +504,14 @@ func TestProjectHTMLRendersHTTPFences(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectLabelsEvidenceRenderAsGenerated(t *testing.T) {
+	out := Project([]store.Finding{{ID: 1, Severity: "Medium", Status: "open", Title: "Rate limit", Summary: "s", Retest: "r", Blocks: []store.FindingBlock{{Type: "image", Hash: "abc", Role: "result", Proof: "timeline of recorded run", Source: "evidence_render", SourceRef: "intruder:run-1"}}}}, nil)
+	const label = "evidence_render (generated evidence render from recorded data; not browser proof)"
+	if !strings.Contains(out, label) {
+		t.Fatalf("evidence_render label missing: %s", out)
+	}
+	if !strings.Contains(out, "source ref intruder:run-1") {
+		t.Fatalf("sourceRef missing: %s", out)
+	}
+}

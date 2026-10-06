@@ -55,6 +55,7 @@ independently tested.
 | `internal/intercept` | Hold queue (forward/edit/drop) for requests **and** responses + match-&-replace |
 | `internal/proxy` | Forward proxy, `CONNECT` + TLS MITM, WebSocket frame relay, flow capture, upstream proxy |
 | `internal/scope` | Target-scope include/exclude matcher (host wildcards + path prefixes) |
+| `internal/preview` | Pure-Go PNG renderers: flow viewer plus the evidence render family (Intruder timeline/distribution/race/strip, authz matrix, flow diff, flow waterfall, finding chain); input structs are plain data, no imports of intruder/control/store |
 | `internal/sender` | One-off direct request sender (+ session headers, CSRF/re-auth token macro, authz replays) — backs Repeater & Intruder |
 | `internal/intruder` | Sniper / Pitchfork / Race attack engine (threads, delay, grep-match/extract, payload processing) |
 | `internal/scanner` | Passive security checks over captured flows |

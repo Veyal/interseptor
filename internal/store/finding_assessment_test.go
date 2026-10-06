@@ -42,6 +42,11 @@ func TestFindingCapabilityReadiness(t *testing.T) {
 	if !slices.Contains(f.Missing, "visual") {
 		t.Fatal("generated preview qualified as real visual proof")
 	}
+	f.Blocks[3].Source = "evidence_render"
+	f.EnrichCompleteness()
+	if !slices.Contains(f.Missing, "visual") {
+		t.Fatal("evidence_render qualified as real visual proof")
+	}
 	f.Blocks[3].Source = "operator_upload"
 	f.EnrichCompleteness()
 	if !slices.Contains(f.Missing, "visual") {
