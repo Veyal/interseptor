@@ -520,6 +520,15 @@ func TestUIFoundationNoUnicodeGlyphIconsInStaticMarkup(t *testing.T) {
 			}
 		}
 	}
+	// Disclosure triangles are drawn with borders (surfaces.css), never as text.
+	for _, name := range []string{"app.css", "findings.css", "flow.css", "mobile.css", "panel-misc.css", "panel-proxy.css", "panel-scan.css", "panel-tools.css", "primitives.css", "report.css", "settings.css", "shell.css", "surfaces.css", "workbench.css"} {
+		body := readUIAsset(t, name)
+		for _, glyph := range []string{"▾", "▸", "⧉", "◎", "▦", "＋", "◧", "✕"} {
+			if strings.Contains(body, glyph) {
+				t.Errorf("%s still draws the Unicode glyph %s; use the sprite or a border-drawn chevron", name, glyph)
+			}
+		}
+	}
 	index := readUIAsset(t, "index.html")
 	for _, id := range foundationIcons {
 		if !strings.Contains(index, `<symbol id="i-`+id+`"`) {

@@ -57,7 +57,7 @@ func TestUIPaletteTriggerAndComboboxState(t *testing.T) {
 func TestUIStripLabelsStartWithVisibleText(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/ctxbar.js"))
 	requireUIContains(t, src,
-		"'Target ' + s.brief.target", "'Target Set target.", "'Evidence ' + t + '. Open Findings.'", "'Next ' + s.nextAction.label")
+		"'Scope ' + m.text + '. ' + m.label", "'Target ' + s.brief.target", "'Target Set target.", "'Evidence ' + t + '. Open Findings.'", "'Next ' + s.nextAction.label")
 	index := readUIAsset(t, "index.html")
 	requireUIContains(t, index, `<span class="ctx-key">Evidence</span>`)
 	if strings.Contains(index, `<span class="ctx-key">Evid</span>`) {

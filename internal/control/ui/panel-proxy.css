@@ -56,3 +56,4 @@
   #panel-proxy #rows .trow .tr-t{grid-area:t;text-align:right;color:var(--fg3)}
   #panel-proxy #rows .trow .tr-more{grid-area:more;display:inline-flex;align-items:center;justify-content:center;min-height:var(--hit-min);min-width:var(--hit-min);background:none;border:0;color:var(--fg2);cursor:pointer}
 }
+.coach-tip{display:inline-flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-1) var(--sp-2);border:1px dashed var(--line2);border-radius:var(--r-md);font-size:var(--fs-xs)}

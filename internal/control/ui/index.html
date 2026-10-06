@@ -201,6 +201,7 @@
       <select id="fMethod" class="btn" aria-label="HTTP method filter"><option value="">All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
       <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> In scope only</button>
+      <button type="button" class="btn xs" id="scopeEdit" title="Open Settings, Scope, to add or change include and exclude rules">Edit scope</button>
       <button type="button" class="btn" id="filtersBtn" title="Source, notes, tag and saved-search filters" aria-haspopup="true" aria-expanded="false" aria-controls="proxyFilters"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Filters <span id="filtersCount" class="filters-count" hidden></span></button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <div class="spacer"></div>
@@ -575,7 +576,7 @@ Content-Type: application/json
         <div class="state-empty find-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
           <div class="state-empty-title">No findings yet</div>
-          <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
+          <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from Proxy.</p>
           <div class="find-empty-actions">
             <button type="button" class="btn btn-primary" id="findEmptyNew"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> New finding</button>
 
@@ -687,7 +688,7 @@ Content-Type: application/json
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav" aria-label="Settings sections">
-        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Target scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="appearance">System · Appearance</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
+        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="appearance">System · Appearance</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
         <div id="setNavEmpty" class="settings-nav-empty" role="status" aria-live="polite" hidden>No matching settings.</div>
         <div class="settings-nav-group" data-nav-group="network">
@@ -698,7 +699,7 @@ Content-Type: application/json
         </div>
         <div class="settings-nav-group" data-nav-group="testing">
           <div class="settings-nav-group-label">Testing</div>
-          <button data-sec="scope">Target scope</button>
+          <button data-sec="scope">Scope</button>
           <button type="button" data-sec="scanner">Scanner &amp; OOB</button>
           <button data-sec="session">Session / auth</button>
         </div>
@@ -1037,9 +1038,9 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
-          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><h2>Target scope</h2></header>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><h2>Scope</h2></header>
           <div class="section">
-            <h3>Target scope</h3>
+            <h3>Scope</h3>
             <p class="hint u-mb-2"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.example.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
             <div id="scopeLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
             <p id="scopeDupWarn" class="hint u-hidden"></p>
@@ -1722,7 +1723,7 @@ Content-Type: application/json
     <div class="modal-shell-foot find-flow-pick-foot">
       <span class="hint" id="ffpCount">0 selected</span>
       <div class="spacer"></div>
-      <button class="btn btn-primary" id="ffpAttach" disabled>Attach as PoC</button>
+      <button class="btn btn-primary" id="ffpAttach" disabled>Attach as evidence</button>
     </div>
   </div>
 </div>

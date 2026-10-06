@@ -21,6 +21,7 @@ import { copyAs, COPY_AS_KINDS } from './copyas.js';
 import { createKeyRegistry } from './keys.js';
 import { openFlowDiff } from './flow-diff.js';
 import { createFinder } from './finder.js';
+import { getShellApi } from './shell-hooks.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -1643,6 +1644,24 @@ function syncScopeToggle(on){
   st.setAttribute('aria-pressed',state.inScopeOnly?'true':'false');
   st.innerHTML=icon('scope')+' In scope only';
 }
+{const edit=$('#scopeEdit');if(edit)edit.onclick=()=>{const open=getShellApi().openSettings;if(open)open('scope');};}
+// One-time tip: the project-wide scope switch lives in the Engagement strip now.
+// Seen-state is a per-viewer convenience, so every storage touch is guarded.
+{
+  const KEY='interseptor.coach.scopeSwitch';
+  let seen=false;try{seen=localStorage.getItem(KEY)==='1';}catch(e){}
+  const anchor=$('#scopeEdit');
+  if(!seen&&anchor&&anchor.parentNode){
+    const tip=document.createElement('span');
+    tip.id='scopeCoach';tip.className='coach-tip hint';tip.setAttribute('role','note');
+    tip.appendChild(document.createTextNode('The scope switch moved to the Scope chip in the strip above. '));
+    const ok=document.createElement('button');
+    ok.type='button';ok.className='btn xs';ok.textContent='Got it';
+    ok.onclick=()=>{try{localStorage.setItem(KEY,'1');}catch(e){}tip.remove();$('#scopeToggle')?.focus();};
+    tip.appendChild(ok);
+    anchor.parentNode.insertBefore(tip,anchor.nextSibling);
+  }
+}
 $('#scopeToggle').onclick=()=>{
   syncScopeToggle(!state.inScopeOnly);
   renderChips();
@@ -1773,7 +1792,7 @@ export async function loadScope(){
     if(changed&&state.inScopeOnly)scheduleReload();
     renderScope();
   }catch(e){
-    if(epoch===scopeLoadEpoch&&!scopeMutationLanes.size)renderLoadError(loadState,'Target scope',e,loadScope,state.scope.length>0);
+    if(epoch===scopeLoadEpoch&&!scopeMutationLanes.size)renderLoadError(loadState,'Scope',e,loadScope,state.scope.length>0);
   }
 }
 export async function addHostToScope(host){

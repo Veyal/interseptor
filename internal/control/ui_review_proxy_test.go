@@ -60,3 +60,31 @@ func TestUIInspectorAndDrawerUseSharedFinder(t *testing.T) {
 		"e.key === '/'",
 	)
 }
+
+func TestUIProxyEditScopeAndCoachTip(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `id="scopeEdit"`)
+	proxy := readUIAsset(t, "js/proxy.js")
+	requireUIContains(t, proxy,
+		"getShellApi().openSettings",
+		"open('scope')",
+		"interseptor.coach.scopeSwitch",
+		"tip.id='scopeCoach'",
+		"The scope switch moved to the Scope chip in the strip above.",
+	)
+	// storage can throw: the tip must render and dismiss without it
+	if n := strings.Count(proxy[strings.Index(proxy, "interseptor.coach.scopeSwitch"):], "try{"); n < 2 {
+		t.Errorf("coach tip storage access must be guarded, found %d try blocks", n)
+	}
+}
+
+func TestUITerminologyIsConsistent(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, gone := range []string{"Target scope</", "Attach as PoC", "attach captured flows from History", `<span class="ctx-key">Evid</span>`} {
+		if strings.Contains(index, gone) {
+			t.Errorf("index.html still uses the old term %q", gone)
+		}
+	}
+	requireUIContains(t, index, `<button data-sec="scope">Scope</button>`, "attach captured flows from Proxy.", `id="ffpAttach" disabled>Attach as evidence</button>`)
+	requireUIContains(t, readUIAsset(t, "js/project-state.js"), "'Attach evidence to F-'")
+}

@@ -31,9 +31,16 @@ const text = (s) => (typeof s === 'string' ? s : '');
 const posInt = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Math.floor(Number(n)) : 0);
 const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
 
+// Gaps that are closed by reproducing the issue: the pipeline has no Verify tab,
+// so the blocker row says where verification happens.
+export const VERIFY_RULES = new Set(['verification', 'reproduction', 'retest', 'proof']);
+export const VERIFY_HINT = 'Reproduce it in Repeater, then attach the response as evidence.';
+
 function issueRow(id, rule, message) {
   const section = findingSectionForGap(rule);
-  return { rule, label: blockerLabel(rule), message, section, href: findingHref(id, section) };
+  const row = { rule, label: blockerLabel(rule), message, section, href: findingHref(id, section) };
+  if (VERIFY_RULES.has(rule)) row.hint = VERIFY_HINT;
+  return row;
 }
 
 // groupBlockers returns one group per blocked finding, in the server's board

@@ -497,7 +497,7 @@ function cmdkCommands(){
     {t:'Settings: Proxy & network',kw:'listener bind port upstream system proxy capture browser background telemetry firefox chromium suggestions sponsored remote settings android gms crashlytics invisible',run:goSet('proxy')},
     {t:'Settings: TLS / CA — download CA certificate',kw:'https certificate cert trust install ca download mitm ssl pinning diagnosis passthrough bypass',run:goSet('tls')},
     {t:'Settings: Mobile devices — Android / iOS',kw:'android ios adb simulator device jailbreak ssh proxy install ca mobile phone',run:goSet('devices')},
-    {t:'Settings: Target scope',kw:'include exclude host path in scope',run:goSet('scope')},
+    {t:'Settings: Scope',kw:'include exclude host path in scope',run:goSet('scope')},
 
     {t:'Settings: Scanner & OOB',kw:'scanner oob passive checks enable',run:goSet('scanner')},
     {t:'Settings: Session / auth headers',kw:'cookie token authorization bearer login macro',run:goSet('session')},

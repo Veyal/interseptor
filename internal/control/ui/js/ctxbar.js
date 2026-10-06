@@ -51,7 +51,7 @@ function renderScope(s) {
   const m = scopeChipModel(s, { filterOn: deps.scopeFilterOn ? deps.scopeFilterOn() : false });
   setText('ctxScopeText', s.loaded ? m.text : '…');
   chip.setAttribute('aria-checked', m.checked ? 'true' : 'false');
-  chip.setAttribute('aria-label', s.loaded ? m.label : 'Scope: loading');
+  chip.setAttribute('aria-label', s.loaded ? 'Scope ' + m.text + '. ' + m.label : 'Scope loading');
   chip.setAttribute('aria-disabled', m.disabled ? 'true' : 'false');
   chip.title = m.title;
   chip.dataset.stale = m.stale ? 'true' : 'false';

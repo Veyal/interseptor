@@ -198,7 +198,7 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 func TestUIScopeLoadFailureIsPersistentAndRetryable(t *testing.T) {
 	requireUIContracts(t, "index.html", `id="scopeLoadState"`)
 	requireUIContracts(t, "js/proxy.js",
-		"renderLoadError(loadState,'Target scope',e,loadScope",
+		"renderLoadError(loadState,'Scope',e,loadScope",
 		"loadState.style.display='none'",
 	)
 }

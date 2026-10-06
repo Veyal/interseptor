@@ -12,7 +12,7 @@ const cmds = [
   { t: 'Go to Repeater', kw: 'resend craft' },
   { t: 'New finding', kw: 'create record' },
   { t: 'Export findings', kw: 'report download' },
-  { t: 'Settings: Target scope', kw: 'include exclude host' },
+  { t: 'Settings: Scope', kw: 'include exclude host' },
   { t: 'Shortcuts', kw: 'help keys' },
 ];
 const flows = [

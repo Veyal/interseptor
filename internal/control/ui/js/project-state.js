@@ -177,7 +177,7 @@ export function scopeChipModel(s, { filterOn = false } = {}) {
   const stale = !!(s && s.stale && s.stale.scope);
   const counts = scope.inCount + ' in / ' + scope.outCount + ' out';
   if (!scope.enabled) {
-    return { checked: false, disabled: true, stale, text: 'No scope', label: 'Scope: no include rule set. Open Target scope settings.', title: stale ? 'Could not refresh scope' : 'Add an include rule to define scope' };
+    return { checked: false, disabled: true, stale, text: 'No scope', label: 'Scope: no include rule set. Open Scope settings.', title: stale ? 'Could not refresh scope' : 'Add an include rule to define scope' };
   }
   return {
     checked: !!filterOn, disabled: false, stale,

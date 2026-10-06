@@ -106,16 +106,16 @@ async function renderAuthzScopePanel(){
   const excludes=enabled.filter(r=>r.action==='exclude');
   let html='';
   if(!rules.length){
-    html=`<p class="hint u-warn u-m-0 u-lh"><b>No scope rules.</b> Bulk authz requires include rules in <b>Settings → Target scope</b>.</p>`;
+    html=`<p class="hint u-warn u-m-0 u-lh"><b>No scope rules.</b> Bulk authz requires include rules in <b>Settings → Scope</b>.</p>`;
   }else if(!includes.length){
     html=`<p class="hint u-warn u-m-0 u-mb-2"><b>No include rules.</b> Add at least one before bulk run.</p>`;
     if(excludes.length)html+=excludes.map(authzScopeRuleLine).join('');
   }else{
-    html=`<div class="micro-label u-m-0 u-mb-2">IN-SCOPE (from Settings → Target scope)</div>`;
+    html=`<div class="micro-label u-m-0 u-mb-2">IN-SCOPE (from Settings → Scope)</div>`;
     html+=includes.map(authzScopeRuleLine).join('');
     if(excludes.length)html+=`<div class="micro-label u-m-0 u-mt-3 u-mb-1">EXCLUDE (always wins)</div>`+excludes.map(authzScopeRuleLine).join('');
   }
-  html+=`<div class="row u-gap-2 u-mt-3 u-wrap"><button class="btn" type="button" id="authzScopeEdit">Settings → Target scope</button><span class="hint" id="authzScopeHosts">checking captured traffic…</span></div>`;
+  html+=`<div class="row u-gap-2 u-mt-3 u-wrap"><button class="btn" type="button" id="authzScopeEdit">Settings → Scope</button><span class="hint" id="authzScopeHosts">checking captured traffic…</span></div>`;
   panel.innerHTML=html;
   setAuthzActionBusy(authzActionBusy);
   $('#authzScopeEdit')?.addEventListener('click',openSettingsScope);

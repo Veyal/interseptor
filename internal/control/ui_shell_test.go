@@ -208,7 +208,7 @@ func TestUIShellPaletteExtractionKeepsEveryCommand(t *testing.T) {
 	}
 	// The base list moved with no entry lost.
 	for _, title := range []string{"Go to Proxy", "Go to Intercept", "Go to Repeater", "Go to Intruder", "Go to Scanner", "Go to Findings", "Go to Map", "Go to Notes", "Go to Activity",
-		"New finding", "Export findings", "Switch or create project", "Run setup wizard", "Toggle theme (dark / light)", "Shortcuts", "Settings: Target scope"} {
+		"New finding", "Export findings", "Switch or create project", "Run setup wizard", "Toggle theme (dark / light)", "Shortcuts", "Settings: Scope"} {
 		if !strings.Contains(app, "t:'"+title+"'") {
 			t.Errorf("palette command %q is missing", title)
 		}

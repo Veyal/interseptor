@@ -67,12 +67,12 @@
 .ui-select-opt.active{outline:1px solid var(--accent);outline-offset:-1px}
 .ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:var(--fs-sm)}
 .ui-select-trigger[aria-expanded=true]{border-color:var(--accent);background:var(--bg2)}
-details[class]>summary{min-height:32px;align-content:center}
-details[class]>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
-details[class][open]>summary::before{content:'';transform:rotate(45deg);margin-bottom:3px}
-details[class]>summary:hover{color:var(--fg)}
-details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) var(--motion-enter)}
-@media(prefers-reduced-motion:reduce){details[class]>summary::before{transition:none}details[class][open]>:not(summary){animation:none}}
+details>summary{min-height:32px;align-content:center}
+details>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
+details[open]>summary::before{content:'';transform:rotate(45deg);margin-bottom:3px}
+details>summary:hover{color:var(--fg)}
+details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--motion-enter)}
+@media(prefers-reduced-motion:reduce){details>summary::before{transition:none}details[open]>:not(summary){animation:none}}
 
 #toast {
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));

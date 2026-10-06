@@ -118,3 +118,12 @@ test('previewRows lists the server board in order and flags blocked rows with te
   assert.equal(rows[2].status, 'Ready');
   assert.deepEqual(previewRows(null), []);
 });
+
+test('blocker rows closed by reproduction say where to verify', async () => {
+  const { groupBlockers, VERIFY_HINT } = await import('../js/report-preflight-model.js');
+  const g = groupBlockers({ board: [{ id: 4, title: 'IDOR', ready: false, gaps: ['verification', 'cvss'] }], findings: [] });
+  const byRule = Object.fromEntries(g[0].issues.map((i) => [i.rule, i]));
+  assert.equal(byRule.verification.hint, VERIFY_HINT);
+  assert.match(VERIFY_HINT, /Repeater/);
+  assert.equal(byRule.cvss.hint, undefined, 'other gaps carry no verify hint');
+});

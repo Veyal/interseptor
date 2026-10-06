@@ -38,8 +38,8 @@ func uiScriptNames(t *testing.T) []string {
 
 // TestUIA11yNoGlyphIconsInScriptsOrMarkup extends the static-markup glyph ban
 // to every script: controls draw the sprite (icon() or <use href="#i-...">) so
-// they follow the theme and forced-colors. Disclosure triangles drawn by CSS
-// `content:` are decorative pseudo-elements, not controls, and stay.
+// they follow the theme and forced-colors. Stylesheets are covered by
+// TestUIFoundationNoUnicodeGlyphIconsInStaticMarkup.
 func TestUIA11yNoGlyphIconsInScriptsOrMarkup(t *testing.T) {
 	glyphs := []string{"⧉", "◎", "▦", "＋", "◧", "▾", "✕"}
 	assets := append([]string{"index.html", "login.html"}, uiScriptNames(t)...)

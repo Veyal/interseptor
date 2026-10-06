@@ -42,7 +42,7 @@ function blockersHTML() {
     const s = summarize(S.quality);
     return `<p class="rp-none">${icon('i-check-circle')}<span>${s.total ? 'No blockers. Every finding in this report is ready.' : 'No findings match the selected statuses.'}</span></p>`;
   }
-  return '<ol class="rp-groups">' + groups.map((g) => `<li class="rp-group"><div class="rp-group-h"><span class="rp-id">#${g.id}</span><span class="rp-title">${esc(g.title)}</span>${g.severity ? `<span class="rp-sev">${esc(g.severity)}</span>` : ''}</div><ul class="rp-issues">${g.issues.map((i) => `<li class="rp-issue">${icon('i-alert-tri')}<span class="rp-issue-text"><strong>${esc(i.label)}</strong>${i.message ? `<small>${esc(i.message)}</small>` : ''}</span><a class="btn xs" href="${escAttr(i.href)}" data-fix="${escAttr(i.href)}" aria-label="Fix ${escAttr(i.label)} in finding ${g.id}">Fix</a></li>`).join('')}</ul></li>`).join('') + '</ol>';
+  return '<ol class="rp-groups">' + groups.map((g) => `<li class="rp-group"><div class="rp-group-h"><span class="rp-id">#${g.id}</span><span class="rp-title">${esc(g.title)}</span>${g.severity ? `<span class="rp-sev">${esc(g.severity)}</span>` : ''}</div><ul class="rp-issues">${g.issues.map((i) => `<li class="rp-issue">${icon('i-alert-tri')}<span class="rp-issue-text"><strong>${esc(i.label)}</strong>${i.message ? `<small>${esc(i.message)}</small>` : ''}${i.hint ? `<small class="rp-hint">${esc(i.hint)}</small>` : ''}</span><a class="btn xs" href="${escAttr(i.href)}" data-fix="${escAttr(i.href)}" aria-label="Fix ${escAttr(i.label)} in finding ${g.id}">Fix</a></li>`).join('')}</ul></li>`).join('') + '</ol>';
 }
 
 function optionsHTML() {

@@ -4,7 +4,7 @@ import { projectState, scopeChipModel } from './project-state.js';
 import { getShellApi } from './shell-hooks.js';
 import { validateTargetLines, saveStatusText } from './settings-model.js';
 
-/* ---- engagement brief (Settings > Target scope, and the Engagement sheet) ---- */
+/* ---- engagement brief (Settings > Scope, and the Engagement sheet) ---- */
 // The project's authorisation/conduct statement. Agents read it over MCP and
 // reports cite its version; the version bumps only when content changes.
 //

@@ -178,7 +178,7 @@ function renderStep() {
     if (cmd) $('#setupCopyCmd').onclick = () => copyText(cmd, 'trust command copied');
   } else if (step === 2) {
     b.innerHTML = `<p class="u-m-0 u-mb-2">Add the host you're testing so history, the intercept gate, and the scanner focus on it.</p>
-      <p class="hint u-m-0 u-mb-3">e.g. <code>*.example.com</code>, <code>api.example.com</code>, or regex <code>.*example\\.com</code>. You can skip this and add it later from Settings → Target scope.</p>
+      <p class="hint u-m-0 u-mb-3">e.g. <code>*.example.com</code>, <code>api.example.com</code>, or regex <code>.*example\\.com</code>. You can skip this and add it later from Settings → Scope.</p>
       <div class="row u-gap-2">
         <input id="setupScopeHost" class="btn u-bg3 u-mono u-flex-1" aria-label="Scope host" placeholder="*.example.com" spellcheck="false">
         <button class="btn" id="setupScopeAdd">+ Add to scope</button>
