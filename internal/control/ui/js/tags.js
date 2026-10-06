@@ -2,7 +2,7 @@
 // (with counts + colors) from /api/tags, renders a clickable filter strip above the
 // flow list, and lets you color a tag via its right-click menu. Tag colors are also
 // applied to the per-row tag chips (rendered in proxy.js via state.tagColors).
-import { $, esc, escAttr, api, state, toast, openCtxMenu, renderLoadError } from './core.js';
+import { $, esc, escAttr, api, state, toast, toastError, openCtxMenu, renderLoadError } from './core.js';
 import { filterByTag, refreshVisibleRows } from './proxy.js';
 
 // Persist stable hex values; render presets with theme colors for contrast.
@@ -107,7 +107,7 @@ async function setTagColor(tag, color) {
         await api('/api/tags/' + encodeURIComponent(tag) + '/color', {
           method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ color:mutation.color }),
         });
-      }catch(e){if(mutation.revision===lane.revision)toast(e.message);}
+      }catch(e){if(mutation.revision===lane.revision)toastError('Tag colour not saved',e);}
     }
     tagColorLanes.delete(tag);
     tagReloadPending=false;
@@ -137,7 +137,7 @@ export async function mutateFlowTags(flowIds, { add, remove }) {
     const n = flowIds.length;
     if (remove?.length) toast('removed from ' + n + ' flow' + (n === 1 ? '' : 's'));
     else if (add?.length) toast('tagged ' + n + ' flow' + (n === 1 ? '' : 's'));
-  } catch (e) { toast(e.message); }
+  } catch (e) { toastError('Tagging failed',e); }
 }
 
 // openTagChipMenu — right-click a per-row tag chip to filter or remove that tag.

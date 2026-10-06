@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Tag and scope failures name the action.** History tag-colour and tagging failures and scope rule save/delete failures now report through `toastError` with an action prefix instead of a bare error message.
+
 - **History sort resets scroll.** `inspectorFilterSignature` now includes the sort key and direction, so a column-header sort returns the virtual list to the top instead of leaving stale scroll.
 
 - **Setup readiness test matches accessible markup.** The static test now expects the `u-mt-3` utility class on `#setupReadiness` (which replaced an inline style) while keeping `role="status"`, `aria-live="polite"` and `aria-atomic`; `internal/store/findings_test.go` is gofmt-clean.

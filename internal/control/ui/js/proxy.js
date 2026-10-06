@@ -1796,7 +1796,7 @@ function rememberScopeDraft(id,tr){
 async function updateScope(id,tr){
   const upd=rememberScopeDraft(id,tr),pending=scopeMutation(id,()=>api('/api/scope/'+id,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(upd)})),revision=scopeMutationRevision.get(id);
   try{await pending;if(revision===scopeMutationRevision.get(id)&&scopeDrafts.get(id)===upd){scopeDrafts.delete(id);toast('scope saved');}}
-  catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toast(e.message,'error');}}
+  catch(e){if(revision===scopeMutationRevision.get(id)){if(scopeDrafts.get(id)===upd){scopeDrafts.delete(id);renderScope();}toastError('Scope rule not saved',e);}}
 }
 async function deleteScope(id){
   const hadDraft=scopeDrafts.has(id),draftAtDelete=scopeDrafts.get(id);
@@ -1804,7 +1804,7 @@ async function deleteScope(id){
   try{await pending;if(revision===scopeMutationRevision.get(id))scopeDrafts.delete(id);}
   catch(e){
     if(revision===scopeMutationRevision.get(id)&&hadDraft&&scopeDrafts.get(id)===draftAtDelete){scopeDrafts.delete(id);renderScope();}
-    if(revision===scopeMutationRevision.get(id))toast(e.message,'error');
+    if(revision===scopeMutationRevision.get(id))toastError('Scope rule not deleted',e);
   }
 }
 let scopeAddInFlight=false,scopeAddEpoch=0;

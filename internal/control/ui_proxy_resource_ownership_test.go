@@ -32,7 +32,7 @@ func TestUIRejectedScopeAndRuleDraftsRestoreAuthoritativeState(t *testing.T) {
 		asset, start, end, owner string
 		contracts                []string
 	}{
-		{"js/proxy.js", "async function updateScope(id,tr)", "async function deleteScope(id)", "scopeDrafts.get(id)===upd", []string{"scopeDrafts.delete(id)", "renderScope()", "toast(e.message,'error')"}},
+		{"js/proxy.js", "async function updateScope(id,tr)", "async function deleteScope(id)", "scopeDrafts.get(id)===upd", []string{"scopeDrafts.delete(id)", "renderScope()", "toastError('Scope rule not saved',e)"}},
 		{"js/intercept.js", "export async function updateRule(id,tr)", "export async function deleteRule(id)", "ruleDrafts.get(id)===upd", []string{"ruleDrafts.delete(id)", "renderRules()", "toast(e.message,'error')"}},
 	} {
 		src := readUIAsset(t, tc.asset)
@@ -90,10 +90,10 @@ func TestUIRejectedScopeAndRuleDeletesReconcileOnlyTheirOwnedDraft(t *testing.T)
 
 func TestUIRejectedScopeAndRuleDeletesRestoreFocusAndAnnounceFailure(t *testing.T) {
 	for _, tc := range []struct {
-		asset, renderStart, renderEnd, deleteStart, deleteEnd string
+		asset, renderStart, renderEnd, deleteStart, deleteEnd, failToast string
 	}{
-		{"js/proxy.js", "export function renderScope()", "function scopeMutation", "async function deleteScope(id)", "let scopeAddInFlight"},
-		{"js/intercept.js", "export function renderRules()", "export async function loadRules", "export async function deleteRule(id)", "let ruleAddInFlight"},
+		{"js/proxy.js", "export function renderScope()", "function scopeMutation", "async function deleteScope(id)", "let scopeAddInFlight", "toastError('Scope rule not deleted',e)"},
+		{"js/intercept.js", "export function renderRules()", "export async function loadRules", "export async function deleteRule(id)", "let ruleAddInFlight", "toast(e.message,'error')"},
 	} {
 		src := readUIAsset(t, tc.asset)
 		renderStart := strings.Index(src, tc.renderStart)
@@ -108,7 +108,7 @@ func TestUIRejectedScopeAndRuleDeletesRestoreFocusAndAnnounceFailure(t *testing.
 			`data-k="delete"`,
 			"input[data-k],select[data-k]",
 		)
-		requireUIContains(t, src[deleteStart:deleteEnd], "toast(e.message,'error')")
+		requireUIContains(t, src[deleteStart:deleteEnd], tc.failToast)
 	}
 }
 
