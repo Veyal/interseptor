@@ -314,6 +314,31 @@ func (c *canvas) truncate(kind fontKind, size int, s string, maxW int) string {
 	return ""
 }
 
+// truncateMiddle shortens s to maxW pixels by eliding its middle ("iden...min"),
+// keeping both the distinguishing start and end of identifiers.
+func (c *canvas) truncateMiddle(kind fontKind, size int, s string, maxW int) string {
+	if maxW <= 0 {
+		return ""
+	}
+	s, clipped := clipRunes(s, maxRunesFor(maxW))
+	if !clipped && c.measure(kind, size, s) <= maxW {
+		return s
+	}
+	const ell = "..."
+	r := []rune(s)
+	mid := func(k int) string {
+		if k > len(r)/2 {
+			k = len(r) / 2
+		}
+		return string(r[:k]) + ell + string(r[len(r)-k:])
+	}
+	k := sort.Search(len(r)/2, func(i int) bool { return c.measure(kind, size, mid(i+1)) > maxW })
+	if k == 0 {
+		return c.truncate(kind, size, s, maxW)
+	}
+	return mid(k)
+}
+
 // wrap breaks s into lines of at most maxW pixels, hard-splitting long words.
 // At most maxLines lines are returned (<=0 means unlimited); the last is
 // ellipsised when text remains. Input is clipped to what could be shown.

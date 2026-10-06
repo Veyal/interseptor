@@ -33,7 +33,7 @@ func TestAuthzMatrixBrokenCells(t *testing.T) {
 	if r.Kind != KindAuthzMatrix {
 		t.Fatalf("kind %q", r.Kind)
 	}
-	if !strings.Contains(r.Summary, "2 broken of 12") {
+	if !strings.Contains(r.Summary, "2 broken, 0 unclassified of 12") {
 		t.Fatalf("summary %q", r.Summary)
 	}
 	for _, w := range []string{"GET /api/users/1", "user-a", "DELETE /api/orders/7", "anonymous"} {
@@ -77,7 +77,7 @@ func TestAuthzMatrixOverflowNote(t *testing.T) {
 	if !strings.Contains(r.Alt, "+3 more identities") || !strings.Contains(r.Alt, "+5 more rows") {
 		t.Fatalf("alt lacks overflow note: %s", r.Alt)
 	}
-	if !strings.Contains(r.Summary, "11 broken of 495") {
+	if !strings.Contains(r.Summary, "11 broken, 484 unclassified of 495") {
 		t.Fatalf("summary counts all cells: %s", r.Summary)
 	}
 	if r.Height > maxRenderHeight {
@@ -87,7 +87,7 @@ func TestAuthzMatrixOverflowNote(t *testing.T) {
 
 func TestAuthzMatrixEmpty(t *testing.T) {
 	r, err := RenderAuthzMatrix(AuthzMatrixInput{}, Opts{})
-	if err != nil || len(r.PNG) == 0 || !strings.Contains(r.Summary, "0 broken of 0") {
+	if err != nil || len(r.PNG) == 0 || !strings.Contains(r.Summary, "0 broken, 0 unclassified of 0") {
 		t.Fatalf("empty: %v %q", err, r.Summary)
 	}
 }
