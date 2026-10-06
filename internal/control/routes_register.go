@@ -137,6 +137,7 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("GET /api/findings/images/{hash}", fd.getFindingImage)
 	h.mux.HandleFunc("POST /api/findings", fd.createFinding)
 	h.mux.HandleFunc("POST /api/finding-targets/preview", fd.previewFindingTargets)
+	h.mux.HandleFunc("POST /api/findings/{id}/normalize-targets", fd.normalizeFindingTargets)
 	h.mux.HandleFunc("GET /api/findings/{id}", fd.getFinding)
 	h.mux.HandleFunc("PATCH /api/findings/{id}", fd.updateFinding)
 	h.mux.HandleFunc("DELETE /api/findings/{id}", fd.deleteFinding)

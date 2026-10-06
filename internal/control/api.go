@@ -100,6 +100,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/finding-revisions/{id}/{revisionId}", "Historical snapshot and field-level diff"},
 	{"POST", "/api/finding-revisions/{id}/{revisionId}/restore", "Restore a version as a new revision; body {reason?}"},
 	{"POST", "/api/finding-targets/preview", "Preview deduplication and optional templates; body {targets?,legacy?}; no persistence"},
+	{"POST", "/api/findings/{id}/normalize-targets", "Apply reviewer-approved path templates to a finding's targets; body {approve:[suggestion indexes], dryRun?} (dryRun defaults to true; false persists)"},
 	{"GET", "/api/flows", "List compact captured proxy flows as {flows:[{id,method,host,path,...}],truncated}; filters: method, host, search, searchScope=anywhere|body|id, savedSearch, hasNote=1, scheme, status, before, limit, inScope=1, includeTools=1. By default excludes Repeater/Intruder (History-shaped); includeTools=1 returns all sources"},
 	{"GET", "/api/flows/session-inspect", "Passive session timeline for selected captured flow ids (ids=1,2&roles=anonymous,user); cookie values are redacted, fingerprints are short, and browser decisions/MFA completion/side effects remain unknown"},
 	{"GET", "/api/flow-searches", "List project-scoped saved flow searches without source"},
