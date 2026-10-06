@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - store: persist the last 20 finished Intruder runs as opaque JSON in a new additive `intruder_runs` table (`PutIntruderRun`, `GetIntruderRun`, `ListIntruderRuns`); no existing table changes.
 - store: new generated image source `evidence_render` and additive `sourceRef` (for example `intruder:<runId>`) on finding image blocks and provenance, stamped via `PutAndAttachImageRef` and immutable like `sourceFlowId`. Evidence renders never count as real visual proof.
 - preview: `RenderIntruderTimeline` draws the Intruder request timeline (waterfall lanes by worker or request, first 429/403/423 rule, burst boundary, recorded rate-limit headers, 20-bucket outcome sparkline) from recorded data only; runs without recorded timing fall back to a ranked completion strip with a visible "timing not recorded" note.
+- **Intruder response distribution render (`preview.RenderIntruderDistribution`).** Deterministic light-canvas PNG from recorded rows: (status, length-bucket) cluster table with integer medians, status-count bars, latency histogram stacked by status class (fixed edges 0..5000+ ms) and an outlier panel (flagged/anomaly rows plus clusters of 2 or fewer rows in runs of 20+; max 10 shown with a "+N more" line). Returns `ErrNoRows` for empty input.
 
 ## [2.4.2] - 2026-10-06
 
