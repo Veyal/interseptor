@@ -384,7 +384,7 @@ func (h *findingsAPI) flowRawForReport(id int64) (req, res string) {
 	if err != nil || f == nil {
 		return "", ""
 	}
-	return h.flowRawSideForReport(f, true), h.flowRawSideForReport(f, false)
+	return h.flowRawSideForReport(f, true), h.flowRawSideForReport(f, false) + h.wsFramesForReport(f)
 }
 
 const reportBodyTruncationMarker = "\n\n… [body truncated at 64 KiB]"

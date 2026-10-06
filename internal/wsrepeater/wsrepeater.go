@@ -58,6 +58,11 @@ type Frame struct {
 type Result struct {
 	Status int     `json:"status"` // handshake HTTP status (101 on success)
 	Frames []Frame `json:"frames"`
+
+	// ReqHeaders / ResHeaders are the handshake as sent and as answered, kept
+	// so the exchange can be recorded as a flow. Not part of the JSON reply.
+	ReqHeaders map[string][]string `json:"-"`
+	ResHeaders map[string][]string `json:"-"`
 }
 
 // Send performs the handshake, sends the message, and returns the exchange.
@@ -100,11 +105,12 @@ func Send(req Request) (*Result, error) {
 	}
 
 	br := bufio.NewReader(conn)
-	status, accept, err := readHandshake(br)
+	status, resHeaders, err := readHandshake(br)
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{Status: status}
+	res := &Result{Status: status, ReqHeaders: headerMap(handshakeHeaders(u, key, req.Headers)), ResHeaders: resHeaders}
+	accept := resHeaders.Get("Sec-WebSocket-Accept")
 	if status != 101 {
 		return res, fmt.Errorf("handshake failed: HTTP %d", status)
 	}
@@ -154,18 +160,18 @@ func Send(req Request) (*Result, error) {
 	return res, nil
 }
 
-func writeHandshake(conn net.Conn, u *url.URL, key string, extra map[string]string) error {
-	path := u.RequestURI()
-	if path == "" {
-		path = "/"
+type headerLine struct{ key, value string }
+
+// handshakeHeaders lists the request headers of the client handshake. The
+// mandatory upgrade headers always win over caller-supplied duplicates.
+func handshakeHeaders(u *url.URL, key string, extra map[string]string) []headerLine {
+	lines := []headerLine{
+		{"Host", u.Host},
+		{"Upgrade", "websocket"},
+		{"Connection", "Upgrade"},
+		{"Sec-WebSocket-Key", key},
+		{"Sec-WebSocket-Version", "13"},
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "GET %s HTTP/1.1\r\n", path)
-	fmt.Fprintf(&b, "Host: %s\r\n", u.Host)
-	b.WriteString("Upgrade: websocket\r\n")
-	b.WriteString("Connection: Upgrade\r\n")
-	fmt.Fprintf(&b, "Sec-WebSocket-Key: %s\r\n", key)
-	b.WriteString("Sec-WebSocket-Version: 13\r\n")
 	for k, v := range extra {
 		if k == "" {
 			continue
@@ -177,31 +183,52 @@ func writeHandshake(conn net.Conn, u *url.URL, key string, extra map[string]stri
 			strings.EqualFold(k, "Sec-WebSocket-Version") {
 			continue
 		}
-		fmt.Fprintf(&b, "%s: %s\r\n", k, v)
+		lines = append(lines, headerLine{k, v})
+	}
+	return lines
+}
+
+func headerMap(lines []headerLine) map[string][]string {
+	m := make(map[string][]string, len(lines))
+	for _, l := range lines {
+		m[l.key] = append(m[l.key], l.value)
+	}
+	return m
+}
+
+func writeHandshake(conn net.Conn, u *url.URL, key string, extra map[string]string) error {
+	path := u.RequestURI()
+	if path == "" {
+		path = "/"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "GET %s HTTP/1.1\r\n", path)
+	for _, l := range handshakeHeaders(u, key, extra) {
+		fmt.Fprintf(&b, "%s: %s\r\n", l.key, l.value)
 	}
 	b.WriteString("\r\n")
 	_, err := conn.Write([]byte(b.String()))
 	return err
 }
 
-// readHandshake reads the upgrade response and returns its status code and the
-// Sec-WebSocket-Accept header. Subsequent frames remain buffered in br.
-func readHandshake(br *bufio.Reader) (status int, accept string, err error) {
+// readHandshake reads the upgrade response and returns its status code and
+// headers. Subsequent frames remain buffered in br.
+func readHandshake(br *bufio.Reader) (status int, hdr textproto.MIMEHeader, err error) {
 	tp := textproto.NewReader(br)
 	line, err := tp.ReadLine() // "HTTP/1.1 101 Switching Protocols"
 	if err != nil {
-		return 0, "", fmt.Errorf("read handshake: %w", err)
+		return 0, nil, fmt.Errorf("read handshake: %w", err)
 	}
 	parts := strings.SplitN(line, " ", 3)
 	if len(parts) < 2 {
-		return 0, "", fmt.Errorf("malformed status line %q", line)
+		return 0, nil, fmt.Errorf("malformed status line %q", line)
 	}
 	status, _ = strconv.Atoi(parts[1])
-	hdr, err := tp.ReadMIMEHeader()
+	hdr, err = tp.ReadMIMEHeader()
 	if err != nil {
-		return status, "", fmt.Errorf("read handshake headers: %w", err)
+		return status, nil, fmt.Errorf("read handshake headers: %w", err)
 	}
-	return status, hdr.Get("Sec-WebSocket-Accept"), nil
+	return status, hdr, nil
 }
 
 func newKey() string {

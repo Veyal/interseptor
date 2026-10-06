@@ -51,6 +51,7 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows/{id}/preview.png", f.getFlowPreviewPNG)
 	h.mux.HandleFunc("GET /api/flows/{id}/body", f.getFlowBody)
 	h.mux.HandleFunc("GET /api/flows/{id}/ws", f.flowWS)
+	h.mux.HandleFunc("PUT /api/flows/{id}/ws/{frameId}/note", f.putWSFrameNote)
 	h.mux.HandleFunc("GET /api/flows/{id}/analyze", f.analyzeFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", f.flowCurl)
 	h.mux.HandleFunc("GET /api/flows/diff", f.diffFlows)

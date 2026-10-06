@@ -25,6 +25,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - Set proofReview.visual=true for browser/visual claims; attach a real browser screenshot of the observed result
    - If the request exists in Interseptor, attach its flow so raw evidence remains inspectable
    - Use render_flow_preview for a generated HTTP image; it is labeled as a flow preview, not a browser screenshot
+   - WebSocket evidence: ws_send records the handshake and every frame as a flow and returns its flowId — cite it as an ordinary flow block (including a rejected-handshake or invalid-token control); annotate frames with set_ws_frame_note
 6. Fix and retest — remediation plus the expected secure behavior / negative test in retest
 7. Review — confidence=tentative|firm|certain; proofReview.execution=demonstrated only for impact actually observed
    - A permissive response or reachable prerequisite alone does not establish the claimed impact

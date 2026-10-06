@@ -1,7 +1,9 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 )
@@ -17,6 +19,30 @@ type WSFrame struct {
 	Opcode  int       `json:"opcode"`
 	Length  int64     `json:"length"`
 	Preview string    `json:"preview"`
+	// Note is an operator/agent annotation on the frame; empty by default.
+	Note string `json:"note,omitempty"`
+}
+
+// MaxWSFrameNoteBytes bounds one frame annotation.
+const MaxWSFrameNoteBytes = 4 << 10
+
+// SetWSFrameNote annotates one frame of a flow ("" clears). The frame must
+// belong to flowID, otherwise sql.ErrNoRows is returned. Frames still queued
+// for batched persistence are flushed first so a just-captured frame can be
+// annotated.
+func (s *Store) SetWSFrameNote(flowID, frameID int64, note string) error {
+	if len(note) > MaxWSFrameNoteBytes {
+		return fmt.Errorf("frame note exceeds %d bytes", MaxWSFrameNoteBytes)
+	}
+	_ = s.FlushWSFrames() // best-effort; a closed store fails the update below
+	res, err := s.db.Exec(`UPDATE ws_frames SET note=? WHERE id=? AND flow_id=?`, note, frameID, flowID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // wsFramesPerFlow bounds how many frames are retained per flow so a long-lived
@@ -293,7 +319,7 @@ func (s *Store) QueryWSFrames(flowID int64, limit int) ([]*WSFrame, error) {
 		limit = 1000
 	}
 	rows, err := s.db.Query(
-		`SELECT id, flow_id, ts, dir, opcode, length, preview
+		`SELECT id, flow_id, ts, dir, opcode, length, preview, note
 		 FROM ws_frames WHERE flow_id = ? ORDER BY id LIMIT ?`, flowID, limit)
 	if err != nil {
 		return nil, err
@@ -303,7 +329,7 @@ func (s *Store) QueryWSFrames(flowID int64, limit int) ([]*WSFrame, error) {
 	for rows.Next() {
 		var f WSFrame
 		var ms int64
-		if err := rows.Scan(&f.ID, &f.FlowID, &ms, &f.Dir, &f.Opcode, &f.Length, &f.Preview); err != nil {
+		if err := rows.Scan(&f.ID, &f.FlowID, &ms, &f.Dir, &f.Opcode, &f.Length, &f.Preview, &f.Note); err != nil {
 			return nil, err
 		}
 		f.TS = time.UnixMilli(ms).UTC()

@@ -387,6 +387,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
 		`ALTER TABLE api_keys ADD COLUMN expires INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE rules ADD COLUMN big_body INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE ws_frames ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()

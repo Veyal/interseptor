@@ -2423,8 +2423,26 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
+	s.add("set_ws_frame_note",
+		"Annotate one WebSocket frame of a flow (see list_ws_frames for frame ids) with what it proves. Empty note clears it.",
+		obj(map[string]any{"id": p("integer", "flow id"), "frameId": pt("integer"), "note": pt("string")}, "id", "frameId"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			frameID, err := reqInt(a, "frameId")
+			if err != nil {
+				return "", err
+			}
+			if _, err := s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/ws/%d/note", id, frameID), map[string]any{"note": argStr(a, "note")}); err != nil {
+				return "", err
+			}
+			return "frame note saved", nil
+		})
+
 	s.add("ws_send",
-		"Open a fresh WebSocket, send one message, return the server's reply frames.",
+		"Open a fresh WebSocket, send one message, return the server's reply frames. The handshake and every sent/received frame are recorded as a flow; the reply's flowId can be attached to a finding (add_finding_poc) and its frames read with list_ws_frames. A rejected handshake is recorded too, so a negative control is citable.",
 		obj(map[string]any{
 			"url":     p("string", "ws:// or wss://"),
 			"message": pt("string"),
