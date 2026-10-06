@@ -3,6 +3,7 @@ import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openMod
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel, renderEvidenceCapabilities } from './finding-assessment.js';
+import { renderReadinessBoard } from './finding-readiness-board.js';
 import { flowPopup, closeFlowPopup } from './flowmodal.js';
 import { sendToRepeater } from './tools.js';
 import { renderCvssEditor, bindCvssEditor } from './cvss.js';
@@ -1826,6 +1827,17 @@ async function exportFindingsReport() {
   finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Download report'; } }
 }
 $('#findExport') && ($('#findExport').onclick = exportFindingsReport);
+$('#findReadinessCheck')?.addEventListener('click', async () => {
+  const panel = $('#findReadinessBoard');
+  if (!panel) return;
+  panel.hidden = false;
+  panel.textContent = 'Checking readiness…';
+  try {
+    const statuses = $('#findExportStatuses')?.value || 'open,verified,fixed';
+    panel.innerHTML = renderReadinessBoard(await api('/api/findings/readiness?statuses=' + encodeURIComponent(statuses)));
+    panel.querySelectorAll('[data-review-finding]').forEach(link => link.onclick = () => { closeModal($('#findExportModal')); openFinding(Number(link.dataset.reviewFinding)); findSection = 'review'; });
+  } catch (err) { panel.textContent = err.message || 'Readiness check failed'; }
+});
 $('#findExportOpen')?.addEventListener('click',()=>openModal($('#findExportModal')));
 $('#findExportClose')?.addEventListener('click',()=>closeModal($('#findExportModal')));
 
