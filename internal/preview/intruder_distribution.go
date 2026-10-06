@@ -433,13 +433,6 @@ func RenderIntruderDistribution(in DistributionInput, o Opts) (Rendered, error) 
 		Summary: distSummary(rows, clusters, outliers, overall), Kind: KindIntruderDistribution, Width: W, Height: H}, nil
 }
 
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}
-
 func distSummary(rows []DistRow, cl []distCluster, out []distOutlier, med int) string {
 	return fmt.Sprintf("%d responses in %d clusters, median %d ms, %d outliers", len(rows), len(cl), med, len(out))
 }

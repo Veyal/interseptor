@@ -161,7 +161,7 @@ func (st tlStats) alt(in TimelineInput, byWorker bool) string {
 	if st.firstBlock != nil {
 		fb := st.firstBlock
 		if st.timed {
-			parts = append(parts, fmt.Sprintf("First block: request #%d returned %d at +%s", fb.Seq, fb.Status, fmtMs(fb.EndUs)))
+			parts = append(parts, fmt.Sprintf("First block: request #%d returned %d at +%s", fb.Seq, fb.Status, fmtUsAsMs(fb.EndUs)))
 		} else {
 			parts = append(parts, fmt.Sprintf("First block in completion order: request #%d returned %d", fb.Seq, fb.Status))
 		}
@@ -182,15 +182,8 @@ func (st tlStats) alt(in TimelineInput, byWorker bool) string {
 	return AltFromParts(parts...)
 }
 
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}
-
-// fmtMs renders a microsecond offset as milliseconds with up to one decimal.
-func fmtMs(us int64) string {
+// fmtUsAsMs renders a microsecond offset as milliseconds with up to one decimal.
+func fmtUsAsMs(us int64) string {
 	if us%1000 == 0 {
 		return fmt.Sprintf("%d ms", us/1000)
 	}
@@ -333,7 +326,7 @@ func tlGapMs(bySeq []tlRow) string {
 		return ""
 	}
 	sort.Slice(gaps, func(i, j int) bool { return gaps[i] < gaps[j] })
-	return "recorded dispatch gap (median between consecutive requests): " + fmtMs(gaps[len(gaps)/2])
+	return "recorded dispatch gap (median between consecutive requests): " + fmtUsAsMs(gaps[len(gaps)/2])
 }
 
 func timelineGeometry(in TimelineInput, bySeq []tlRow, st tlStats, o Opts, rowBudget int) tlGeom {
@@ -561,7 +554,7 @@ func drawTimelineLanes(c *canvas, top int, g tlGeom, in TimelineInput, bySeq []t
 		fb := st.firstBlock
 		x := g.XOf(fb.EndUs)
 		c.rect(x, pt-tlZone+6, 2, g.PlotH+tlZone-6, p.blocked)
-		txt := fmt.Sprintf("first %d at request #%d, +%s", fb.Status, fb.Seq, fmtMs(fb.EndUs))
+		txt := fmt.Sprintf("first %d at request #%d, +%s", fb.Status, fb.Seq, fmtUsAsMs(fb.EndUs))
 		tlRuleLabel(c, g, x, pt-tlZone+4, txt, p.blocked)
 	}
 	if st.burstAfterSeq > 0 {

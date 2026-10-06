@@ -358,7 +358,7 @@ func (g chainGraph) noteLines() []string {
 				out = append(out, fmt.Sprintf("+%d more cycle edges dropped", len(g.dropped)-chainMaxNotes))
 				break
 			}
-			out = append(out, fmt.Sprintf("Cycle: relation %s (%s) dropped to keep a left-to-right order", dropNote(e), orDash(e.Kind)))
+			out = append(out, fmt.Sprintf("Cycle: relation %s (%s) dropped to keep a left-to-right order", dropNote(e), chainKindLabel(e.Kind)))
 		}
 	}
 	if g.hidden > 0 {
@@ -367,7 +367,7 @@ func (g chainGraph) noteLines() []string {
 	return out
 }
 
-func orDash(s string) string {
+func chainKindLabel(s string) string {
 	if strings.TrimSpace(s) == "" {
 		return "unlabelled"
 	}
