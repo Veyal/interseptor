@@ -1,8 +1,14 @@
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects, projectStorageKey } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
 import { prefersReducedMotion } from './motion.js';
+import { createSplitPane } from './split.js';
+import { matchSections, searchSummary, highlightRanges } from './settings-model.js';
+import { confirmTyped } from './settings-confirm.js';
+import { mountChecklist } from './checklist.js';
+import './settings-appearance.js';
+import './settings-health.js';
 
 /* ---- JWT expiry countdown ---- */
 let sessExpTimer = null;
@@ -563,6 +569,14 @@ function syncSettingsNavA11y(active) {
   });
 }
 
+// On phones the section list and the section page are two views of one split;
+// choosing a section pushes its page (one guarded history entry, Back returns).
+let settingsSplit=null,settingsNavSilent=false;
+try{
+  const wrap=document.querySelector('.settings-wrap');
+  if(wrap)settingsSplit=createSplitPane({root:wrap,list:$('#setNav'),detail:document.querySelector('.settings-body'),key:'settingsSplit',scopeKey:projectStorageKey,min:[200,360],default:22,stackBelow:720,label:'Resize settings navigation',backLabel:'Sections'});
+}catch(e){settingsSplit=null;}
+
 $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
   $$('#setNav button[data-sec]').forEach(x=>x.classList.toggle('on',x===b));
   $$('.set-sec').forEach(s=>{s.hidden=s.dataset.sec!==b.dataset.sec;});
@@ -574,6 +588,7 @@ $$('#setNav button[data-sec]').forEach(b=>b.onclick=()=>{
   if(b.dataset.sec==='tls'){import('./tlsdiag.js').then(m=>m.loadTrafficDiagnosis());}
   if(b.dataset.sec==='devices'){loadAndroid();loadIOS();loadIOSSsh();}
   if(b.dataset.sec==='api'&&!apiLoaded){apiLoaded=true;import('./apipanel.js').then(m=>{m.loadApiKeys();m.loadReference();m.loadMCP();});}
+  if(settingsSplit&&!settingsNavSilent&&settingsSplit.mode()==='stack')settingsSplit.showDetail(b);
 });
 syncSettingsNavA11y(document.querySelector('#setNav button.on[data-sec]')||document.querySelector('#setNav button[data-sec]'));
 syncSettingsPicker();
@@ -588,32 +603,52 @@ $('#settingsSectionSelect').onchange=event=>{
 (function wireSettingsSearch(){
   const box=$('#setSearch'); if(!box) return;
   const empty=$('#setNavEmpty');
-  // Cache each nav button's searchable haystack (label + its section's text).
+  // Cache each nav button's label and its section's text; matching and the
+  // highlight ranges come from the pure model so they are covered by node tests.
   const entries=$$('#setNav button[data-sec]').map(b=>{
     const sec=document.querySelector('.set-sec[data-sec="'+b.dataset.sec+'"]');
-    return {btn:b,text:((b.textContent||'')+' '+(sec?sec.textContent||'':'')).toLowerCase()};
+    return {btn:b,label:b.textContent||'',id:b.dataset.sec,text:sec?sec.textContent||'':''};
   });
   const groups=$$('#setNav .settings-nav-group');
+  // Highlight matches in a nav label with <mark> nodes (textContent only).
+  function paintLabel(btn,label,query){
+    const ranges=highlightRanges(label,query);
+    btn.textContent='';
+    if(!ranges.length){btn.textContent=label;return;}
+    let at=0;
+    ranges.forEach(([a,z])=>{
+      if(a>at)btn.appendChild(document.createTextNode(label.slice(at,a)));
+      const m=document.createElement('mark');m.textContent=label.slice(a,z);btn.appendChild(m);at=z;
+    });
+    if(at<label.length)btn.appendChild(document.createTextNode(label.slice(at)));
+  }
   box.oninput=()=>{
-    const q=box.value.trim().toLowerCase();
-    let firstVisible=null,anyHidden=false,visibleCount=0;
-    entries.forEach(e=>{
-      const hit=!q||e.text.includes(q);
-      e.btn.hidden=!hit;
-      if(hit){visibleCount++; if(!firstVisible)firstVisible=e.btn;} else anyHidden=true;
+    const q=box.value.trim();
+    const rows=matchSections(entries.map(e=>({id:e.id,label:e.label,text:e.text})),q);
+    let firstVisible=null,anyHidden=false;
+    rows.forEach((r,i)=>{
+      const e=entries[i];
+      e.btn.hidden=!r.hit;
+      paintLabel(e.btn,e.label,r.hit?q:'');
+      if(r.hit&&!firstVisible)firstVisible=e.btn; else if(!r.hit)anyHidden=true;
     });
     // Hide a group's eyebrow label too when every button in that group is
     // filtered out — otherwise an orphaned "NETWORK"-style label with no
     // buttons under it would linger during a search.
     groups.forEach(g=>{g.hidden=!g.querySelector('button[data-sec]:not([hidden])');});
-    if(empty)empty.hidden=visibleCount>0;
-    // If the query hid the active section, jump to the first remaining match.
-    if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden))firstVisible.click();
+    const summary=searchSummary(rows);
+    if(empty){empty.textContent=summary;empty.hidden=!summary;}
+    // If the query hid the active section, jump to the first remaining match
+    // (without pushing a phone page while the operator is still typing).
+    if(q&&anyHidden&&firstVisible&&!$$('#setNav button.on').some(b=>!b.hidden)){settingsNavSilent=true;try{firstVisible.click();}finally{settingsNavSilent=false;}}
     syncSettingsPicker();
   };
   // Escape clears the filter.
   box.onkeydown=e=>{if(e.key==='Escape'){box.value='';box.oninput();box.blur();}};
 })();
+
+/* ---- first-run checklist (Project & data) ---- */
+{const checklistHost=$('#settingsChecklistMount');if(checklistHost)mountChecklist(checklistHost);}
 
 /* ---- settings ---- */
 let apiLoaded=false;
@@ -1251,7 +1286,7 @@ export function retChecked(){return [].slice.call(document.querySelectorAll('.re
 
 export async function retDeleteOne(host,flows){
   const msg='Delete all '+flows+' flow'+(flows===1?'':'s')+' from '+esc(host)+'? This is permanent.';
-  const confirmed=await uiConfirm('Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Delete flows from '+esc(host),msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})}));
@@ -1267,7 +1302,7 @@ $('#retDeleteSelected').onclick=async()=>{
   const stats=retentionStats&&retentionStats.hosts||[];
   const totalFlows=hosts.reduce((s,h)=>{const e=stats.find(x=>x.host===h);return s+(e?e.flows:0);},0);
   const msg='Delete all flows from '+hosts.length+' host'+(hosts.length===1?'':'s')+' ('+totalFlows+' flow'+(totalFlows===1?'':'s')+')? This is permanent.';
-  const confirmed=await uiConfirm('Delete selected hosts',msg,'Delete','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Delete selected hosts',msg,'Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})}));
@@ -1284,7 +1319,7 @@ $('#retKeepOnly').onclick=async()=>{
   const total=retentionStats?retentionStats.totalFlows:0;
   const delFlows=total-keepFlows;
   const msg='Keep only '+hosts.length+' host'+(hosts.length===1?'':'s')+' and delete the rest (~'+delFlows+' flow'+(delFlows===1?'':'s')+')? This is permanent.';
-  const confirmed=await uiConfirm('Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
+  const confirmed=await confirmTyped(uiConfirm,'Keep only selected',msg,'Delete the rest','btn danger','var(--red)');
   if(!confirmed)return;
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})}));
@@ -1296,7 +1331,7 @@ $('#retKeepOnly').onclick=async()=>{
 $('#retPurgePattern').onclick=async()=>{
   const pat=($('#retPatternInput')||{}).value&&$('#retPatternInput').value.trim();
   if(!pat){toast('enter a host pattern first');return;}
-  const confirmed=await uiConfirm('Purge by pattern',
+  const confirmed=await confirmTyped(uiConfirm,'Purge by pattern',
     'Delete all flows matching <b style="color:var(--accent)">'+esc(pat)+'</b>? This is permanent.','Delete','btn danger','var(--red)');
   if(!confirmed)return;
   try{
