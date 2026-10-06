@@ -425,17 +425,19 @@
     </details>
     <div class="intr-work">
       <aside id="intrHistory" class="rep-hist" data-init-hidden></aside>
-      <section class="pane intr-config">
+      <section class="pane intr-config" data-step-pane="positions">
         <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">use <b>§…§</b> for injection points</span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap selection in § … §">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg> Load</button></div>
         <textarea id="intrTemplate" class="rep-edit" aria-label="Intruder request template" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
 
 {"user":"§admin§","pass":"§password§"}</textarea>
+      </section>
+      <section class="pane intr-payload-pane" data-step-pane="payloads">
         <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span><div class="spacer"></div></div>
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
-      <section class="pane intr-results">
+      <section class="pane intr-results" data-step-pane="results">
         <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><span id="intrPollStatus" class="statusline" role="status" aria-live="polite"></span><div class="spacer"></div>
           <span class="seg intr-res-filter" id="intrResFilter" role="group" aria-label="Filter results">
             <button type="button" class="on" data-f="all" aria-pressed="true">All</button>
