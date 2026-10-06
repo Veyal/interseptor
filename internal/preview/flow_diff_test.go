@@ -156,7 +156,7 @@ func TestFlowDiffIdenticalIsNoDifferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Summary, "no differences") || !strings.Contains(r.Alt, "No differences") {
+	if !strings.Contains(r.Summary, "no response differences") || !strings.Contains(r.Alt, "No response differences") {
 		t.Fatalf("%q / %q", r.Summary, r.Alt)
 	}
 	d, _ := RenderFlowDiff(sampleFlowDiff(), Opts{})
@@ -176,5 +176,28 @@ func TestFlowDiffDegenerate(t *testing.T) {
 	r, err := RenderFlowDiff(in, Opts{Width: 100})
 	if err != nil || r.Width != 640 || r.Height > maxRenderHeight {
 		t.Fatalf("%v %d %d", err, r.Width, r.Height)
+	}
+}
+
+func TestFlowDiffIdenticalResponsesButDifferentRequests(t *testing.T) {
+	a := FlowSide{FlowID: 1, Method: "GET", URL: "https://example.com/page3", Status: 200, Length: 10, TimeMs: 41}
+	b := FlowSide{FlowID: 2, Method: "GET", URL: "https://example.com/page2", Status: 200, Length: 10, TimeMs: 42}
+	r, err := RenderFlowDiff(FlowDiffInput{A: a, B: b}, Opts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Summary, "no response differences") || !strings.Contains(r.Summary, "request URL differs (not compared)") {
+		t.Fatalf("summary: %q", r.Summary)
+	}
+	if !strings.Contains(r.Alt, "No response differences") || !strings.Contains(r.Alt, "Request URL differs (not compared)") {
+		t.Fatalf("alt: %q", r.Alt)
+	}
+	b.URL, b.Method = a.URL, "POST"
+	if got := flowRequestDiffNote(FlowDiffInput{A: a, B: b}); !strings.Contains(got, "method") {
+		t.Fatalf("note %q", got)
+	}
+	b.Method = a.Method
+	if got := flowRequestDiffNote(FlowDiffInput{A: a, B: b}); got != "" {
+		t.Fatalf("same request must not note, got %q", got)
 	}
 }

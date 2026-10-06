@@ -175,10 +175,44 @@ func countBodyChanges(in []FlowBodyDelta) (add, del int) {
 	return
 }
 
+// flowRequestDiffNote says when the two flows were different requests: only
+// responses are compared, so identical responses must not read as identical
+// requests.
+func flowRequestDiffNote(in FlowDiffInput) string {
+	var what []string
+	if !strings.EqualFold(in.A.Method, in.B.Method) {
+		what = append(what, "method")
+	}
+	if in.A.URL != in.B.URL {
+		what = append(what, "URL")
+	}
+	if len(what) == 0 {
+		return ""
+	}
+	return "Request " + strings.Join(what, " and ") + " differs (not compared)"
+}
+
+// flowNote is the muted line under the banner: the caller's summary plus the
+// request-difference note.
+func flowNote(in FlowDiffInput) string {
+	n := strings.TrimSpace(in.Summary)
+	if r := flowRequestDiffNote(in); r != "" {
+		if n != "" {
+			n += "  |  "
+		}
+		n += r
+	}
+	return n
+}
+
 func flowDiffSummary(in FlowDiffInput) string {
 	head := fmt.Sprintf("Flow #%d vs #%d", in.A.FlowID, in.B.FlowID)
 	if flowDiffIdentical(in) {
-		return head + ": no differences"
+		s := head + ": no response differences"
+		if r := flowRequestDiffNote(in); r != "" {
+			s += "; " + strings.ToLower(r[:1]) + r[1:]
+		}
+		return s
 	}
 	add, del := countBodyChanges(in.BodyDeltas)
 	return fmt.Sprintf("%s: status %d -> %d, length %d -> %d, %d header deltas, +%d/-%d body lines",
@@ -191,7 +225,10 @@ func flowDiffAlt(in FlowDiffInput) string {
 			in.A.Method, in.A.URL, in.A.FlowID, in.B.Method, in.B.URL, in.B.FlowID),
 	}
 	if flowDiffIdentical(in) {
-		parts = append(parts, fmt.Sprintf("No differences: both returned status %d with length %d", in.A.Status, in.A.Length))
+		parts = append(parts, fmt.Sprintf("No response differences: both returned status %d with length %d", in.A.Status, in.A.Length))
+		if r := flowRequestDiffNote(in); r != "" {
+			parts = append(parts, r)
+		}
 		return AltFromParts(parts...)
 	}
 	parts = append(parts, fmt.Sprintf("Status %d versus %d, length %d versus %d bytes, time %d versus %d ms",
@@ -235,11 +272,11 @@ func RenderFlowDiff(in FlowDiffInput, o Opts) (Rendered, error) {
 		Title:      "Flow-vs-flow diff",
 		Provenance: prov,
 		BodyHeight: func(rows int) int {
-			gotLines, gotMore := planDiffLines(in.BodyDeltas, rows, len(hdrs), hdrMore, identical, in.Summary != "")
-			return flowDiffBodyHeight(len(hdrs), hdrMore, len(gotLines), gotMore, identical, in.Summary != "")
+			gotLines, gotMore := planDiffLines(in.BodyDeltas, rows, len(hdrs), hdrMore, identical, flowNote(in) != "")
+			return flowDiffBodyHeight(len(hdrs), hdrMore, len(gotLines), gotMore, identical, flowNote(in) != "")
 		},
 		Draw: func(c *canvas, body image.Rectangle, rows int) {
-			gotLines, gotMore := planDiffLines(in.BodyDeltas, rows, len(hdrs), hdrMore, identical, in.Summary != "")
+			gotLines, gotMore := planDiffLines(in.BodyDeltas, rows, len(hdrs), hdrMore, identical, flowNote(in) != "")
 			drawFlowDiff(c, body, in, hdrs, hdrMore, gotLines, gotMore, identical)
 		},
 	}
@@ -329,15 +366,15 @@ func drawFlowDiff(c *canvas, body image.Rectangle, in FlowDiffInput, hdrs []Flow
 	if identical {
 		c.rect(x0, y, x1-x0, fdBannerH-6, blend(c.pal.success, c.pal.paper, 28))
 		c.strokeRect(x0, y, x1-x0, fdBannerH-6, c.pal.success)
-		c.text(x0+10, y+5, "= No differences: same status, length, headers and body", fontBold, 14, c.pal.ink)
+		c.text(x0+10, y+5, "= No response differences: same status, length, headers and body", fontBold, 14, c.pal.ink)
 	} else {
 		c.rect(x0, y, x1-x0, fdBannerH-6, c.pal.panel)
 		c.strokeRect(x0, y, x1-x0, fdBannerH-6, c.pal.grid)
 		c.text(x0+10, y+5, c.truncate(fontBold, 13, flowDeltaLine(in), x1-x0-20), fontBold, 13, c.pal.ink)
 	}
 	y += fdBannerH
-	if in.Summary != "" {
-		c.text(x0, y-2, c.truncate(fontSans, 12, in.Summary, x1-x0), fontSans, 12, c.pal.muted)
+	if note := flowNote(in); note != "" {
+		c.text(x0, y-2, c.truncate(fontSans, 12, note, x1-x0), fontSans, 12, c.pal.muted)
 		y += 22
 	}
 	if identical {
