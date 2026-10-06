@@ -1069,6 +1069,54 @@ export function flowInScope(f,compiled){
   return compiled.hasInclude?included:true;
 }
 
+/* ---- density: --row-h and friends follow :root[data-density] (and the coarse
+   pointer tier). Anything that measures rows listens for `densitychange`. ---- */
+export const DENSITIES=['compact','default','comfortable'];
+export function readRowHeightToken(fallback=30){
+  const h=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));
+  return h>0?h:fallback;
+}
+export function getDensity(){
+  const d=document.documentElement.getAttribute('data-density');
+  return DENSITIES.includes(d)?d:'default';
+}
+function announceDensity(){window.dispatchEvent(new CustomEvent('densitychange',{detail:{density:getDensity(),rowHeight:readRowHeightToken()}}));}
+// setDensity applies and persists the density tier, then announces it.
+export function setDensity(value){
+  const d=DENSITIES.includes(value)?value:'default';
+  document.documentElement.setAttribute('data-density',d);
+  try{localStorage.setItem('density',d);}catch(e){}
+  announceDensity();
+  return d;
+}
+try{window.matchMedia('(pointer:coarse)').addEventListener('change',announceDensity);}catch(e){}
+let rowTokenCache=0;
+const densityListeners=new Set();
+// rowHeightToken is the cached --row-h value; it is re-read after `densitychange`.
+export function rowHeightToken(){return rowTokenCache||(rowTokenCache=readRowHeightToken());}
+export function onDensityChange(fn){densityListeners.add(fn);return()=>{densityListeners.delete(fn);};}
+window.addEventListener('densitychange',()=>{
+  rowTokenCache=0;
+  densityListeners.forEach(fn=>{try{fn();}catch(e){}});
+});
+
+/* ---- extension registry: later modules register implementations that other
+   panels call through core, so panels never import each other. `openFlow` is
+   backed by the Flow Drawer; `renderFlowBody` by the shared flow body renderer. ---- */
+const hooks=new Map();
+export function registerHook(name,fn){
+  if(typeof fn!=='function')throw new Error('registerHook: '+name+' needs a function');
+  hooks.set(name,fn);
+  return ()=>{if(hooks.get(name)===fn)hooks.delete(name);};
+}
+export function getHook(name){return hooks.get(name)||null;}
+// openFlow(id, {source, tab}) opens a flow wherever the drawer is mounted; it
+// returns false when no implementation is registered yet.
+export function openFlow(id,opts){const h=hooks.get('openFlow');return h?h(id,opts||{}):false;}
+// renderFlowBody(flow, tab) returns the shared body markup, or null before the
+// renderer registers.
+export function renderFlowBody(flow,tab){const h=hooks.get('renderFlowBody');return h?h(flow,tab):null;}
+
 /* ---- createVirtualList: windowed-rendering helper for long rows-in-a-scroll-
    -div lists (Proxy history today; Map's table and Intruder's results are
    candidates for a later migration, not touched by this pass).
@@ -1105,6 +1153,16 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
     return {start,end,topPad:start*h,bottomPad:(total-end)*h};
   }
   return {computeWindow,isActive:()=>active};
+}
+
+// createDensityVirtualList is createVirtualList whose rows are measured from the
+// --row-h density token instead of a constant. When the density tier (or the
+// coarse-pointer tier) changes, core dispatches `densitychange`: the cached token
+// is dropped and an active (virtualized) list re-renders its window.
+export function createDensityVirtualList(opts){
+  const vl=createVirtualList({...opts,itemHeight:rowHeightToken});
+  onDensityChange(()=>{if(vl.isActive()&&opts.container&&opts.container.isConnected)opts.onScroll();});
+  return vl;
 }
 
 /* ---- createAutosave: shared debounced-save-with-status pattern.
@@ -1574,7 +1632,10 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findExportModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findExportModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
+  // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
+  // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
+  'flowDrawer','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];

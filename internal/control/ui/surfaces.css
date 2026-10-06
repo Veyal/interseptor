@@ -222,3 +222,38 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .matrix-th{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line)}
 .matrix-td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line2)}
 .matrix-flag{background:color-mix(in srgb,var(--red) 7%,transparent)}
+
+/* ---- BottomSheet (sheet.js): peek / half / full on phones, right drawer from
+   721px. Movement is transform only; reduced motion is the global block. ---- */
+.sheet-root{position:fixed;inset:0;display:none;z-index:var(--z-sheet)}
+.sheet-root[data-modal="true"]{background:var(--scrim)}
+.sheet-root[data-modal="false"]{pointer-events:none}
+.sheet{--sheet-drag:0px;pointer-events:auto;position:absolute;left:0;right:0;bottom:0;box-sizing:border-box;display:flex;flex-direction:column;height:calc(100dvh - var(--safe-t) - var(--sp-4));padding-bottom:var(--safe-b);background:var(--bg1);border:1px solid var(--surface-frame);border-bottom:0;border-radius:var(--sheet-radius);box-shadow:var(--elev-3);transform:translateY(calc(var(--sheet-offset,100%) + var(--sheet-drag,0px)));transition:transform var(--motion-sheet);will-change:transform}
+.sheet[data-detent="peek"]{--sheet-offset:calc(100% - var(--sheet-peek))}
+.sheet[data-detent="half"]{--sheet-offset:calc(100% - var(--sheet-half))}
+.sheet[data-detent="full"]{--sheet-offset:0px}
+.sheet[data-detent="closed"]{--sheet-offset:100%}
+.sheet.is-dragging{transition:none}
+.sheet-handle{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:calc(100% - 56px);min-height:24px;padding:0;cursor:grab;touch-action:none;background:transparent}
+.sheet-handle:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+.sheet-grip{display:block;width:36px;height:4px;border-radius:var(--r-pill);background:var(--line2)}
+.sheet-head{display:flex;align-items:center;flex:none;min-height:28px;padding:0 var(--sp-4)}
+.sheet-title{margin:0;overflow:hidden;font-size:var(--fs-lg);font-weight:650;text-overflow:ellipsis;white-space:nowrap}
+.sheet-close{position:absolute;top:0;right:var(--sp-2);z-index:1}
+.sheet-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 var(--sp-4) var(--sp-4)}
+.sheet[data-detent="half"] .sheet-body{flex:none;max-height:calc(var(--sheet-half) - 64px - var(--safe-b))}
+.sheet[data-detent="peek"] .sheet-body{flex:none;max-height:0;padding:0;overflow:hidden}
+@media (pointer:coarse){
+  .sheet-handle{min-height:44px}
+  .sheet-close{min-width:44px;min-height:44px}
+}
+@media (min-width:721px){
+  .sheet-root[data-modal="false"]{pointer-events:auto}
+  .sheet{left:auto;top:0;width:min(var(--drawer-w),100vw);height:100dvh;padding-top:var(--safe-t);border-radius:0;border-bottom:1px solid var(--surface-frame);transform:none;transition:transform var(--motion-drawer)}
+  .sheet[data-detent="closed"]{transform:translateX(100%)}
+  .sheet-handle{display:none}
+  .sheet-head{padding-top:var(--sp-3)}
+  .sheet[data-detent] .sheet-body{flex:1;max-height:none;padding:0 var(--sp-4) var(--sp-4);overflow:auto}
+}
+/* The bottom navigation gets out of the way of the soft keyboard. */
+:root[data-soft-keyboard="true"] #dock{display:none}
