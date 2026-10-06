@@ -342,6 +342,16 @@ function renderAuthzMatrix(runs){
   return html;
 }
 
+// authzImageButton is the "Render image" action for a captured run: the server
+// keeps the last runs in memory and returns a runId for them.
+function authzImageButton(d){
+  return d&&d.runId?'<button class="btn xs" id="authzRenderImage" title="Render this run as a matrix image you can download or attach to a finding">Render image</button>':'';
+}
+function wireAuthzImageButton(d){
+  const b=$('#authzRenderImage');
+  if(!b||!d.runId)return;
+  b.onclick=()=>import('./evidence-render.js').then(m=>{const p=m.authzPreview(d.runId);return m.open(p.kind,p.params,{opener:b});}).catch(e=>toastError('Render failed',e));
+}
 function renderAuthzResults(d){
   const runs=d.runs||[];
   const box=$('#authzResults');
@@ -349,9 +359,10 @@ function renderAuthzResults(d){
   const bulk=runs.length>1||authzMode==='scope';
   if(!bulk){
     const res=runs[0].results||[];
-    box.innerHTML='<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
+    box.innerHTML=(d.runId?'<div class="row u-gap-2 u-mb-2"><div class="spacer"></div>'+authzImageButton(d)+'</div>':'')+'<div class="authz-row authz-head"><span>identity</span><span>status</span><span>length</span><span>verdict</span></div>'
       +res.map((r,i)=>renderAuthzRow(r,i)).join('');
     wireAuthzFlowRows(box);
+    wireAuthzImageButton(d);
     return;
   }
   const sum=d.summary||{};
@@ -360,11 +371,13 @@ function renderAuthzResults(d){
     <div class="spacer"></div>
     <button class="btn${authzViewMode==='list'?' on':''} xs" id="authzViewList">☰ List</button>
     <button class="btn${authzViewMode==='matrix'?' on':''} xs" id="authzViewMatrix">⊞ Matrix</button>
+    ${authzImageButton(d)}
   </div>`;
   box.innerHTML=toggleHtml+(authzViewMode==='matrix'?renderAuthzMatrix(runs):renderAuthzListBulk(runs));
   $('#authzViewList')?.addEventListener('click',()=>{authzViewMode='list';renderAuthzResults(d);});
   $('#authzViewMatrix')?.addEventListener('click',()=>{authzViewMode='matrix';renderAuthzResults(d);});
   wireAuthzFlowRows(box);
+  wireAuthzImageButton(d);
 }
 
 async function crossHostReplay(){

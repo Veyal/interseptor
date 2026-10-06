@@ -245,7 +245,8 @@
       <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
       <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
-      <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
+      <button class="btn" id="selRender" aria-haspopup="menu" title="Render a waterfall or diff image of the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg> Render image <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+            <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
       <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
       <button class="btn sel-clear" id="selClear">Clear</button>
@@ -1772,13 +1773,19 @@ Content-Type: application/json
     <div class="evr-tabs" id="evRenderTabs" role="tablist" aria-label="Render kind" hidden></div>
     <div class="modal-shell-body evr-body">
       <p class="evr-hint" id="evRenderHint"></p>
-      <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false">
-        <p class="evr-state" id="evRenderLoading" hidden>Rendering from recorded data…</p>
-        <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
-        <img class="evr-img" id="evRenderImg" alt="" hidden>
+      <div class="evr-options" id="evRenderOptions" hidden>
+        <label class="evr-option" id="evRenderMaskRow" hidden><input type="checkbox" id="evRenderMask" checked> Mask payloads and extracted values</label>
+        <label class="evr-option" id="evRenderBodyRow" hidden><input type="checkbox" id="evRenderBody"> Include response body lines (redacted, may still show personal data)</label>
       </div>
-      <p class="evr-caption" id="evRenderCaption"></p>
-      <p class="evr-summary" id="evRenderSummary"></p>
+      <figure class="evr-figure">
+        <div class="evr-stage" id="evRenderStage" role="tabpanel" aria-busy="false" tabindex="0">
+          <p class="evr-state" id="evRenderLoading" hidden>Rendering from recorded data…</p>
+          <p class="evr-state is-error" id="evRenderError" role="alert" hidden></p>
+          <img class="evr-img" id="evRenderImg" alt="" hidden>
+        </div>
+        <figcaption class="evr-caption" id="evRenderCaption"></figcaption>
+      </figure>
+      <p class="evr-summary" id="evRenderSummary" aria-hidden="true"></p>
       <p class="evr-note" id="evRenderNote"></p>
     </div>
     <div class="row modal-shell-foot evr-foot">

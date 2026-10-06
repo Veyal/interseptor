@@ -57,6 +57,8 @@ test('bulkVerbs enables verbs by selection size', () => {
   assert.equal(two.delete, true);
   const three = Object.fromEntries(bulkVerbs(3).map((v) => [v.id, v.enabled]));
   assert.equal(three.diff, false);
+  assert.equal(one.render, true, 'Render image works from one flow');
+  assert.equal(none.render, false);
   assert.ok(bulkVerbs(2).every((v) => typeof v.reason === 'string'));
 });
 

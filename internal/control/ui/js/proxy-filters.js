@@ -63,6 +63,7 @@ export function bulkVerbs(n) {
     { id: 'finding', label: 'Add to finding', enabled: any, reason: 'Select at least one flow' },
     { id: 'copyas', label: 'Copy as', enabled: any, reason: 'Select at least one flow' },
     { id: 'diff', label: 'Diff', enabled: n === 2, reason: 'Select exactly two flows to diff' },
+    { id: 'render', label: 'Render image', enabled: any, reason: 'Select at least one flow' },
     { id: 'delete', label: 'Delete', enabled: any, reason: 'Select at least one flow' },
   ];
 }

@@ -23,6 +23,12 @@
 .evr-summary{margin:0;font-size:var(--fs-xs);color:var(--fg2);overflow-wrap:anywhere}
 .evr-note{margin:0;font-size:var(--fs-xs);color:var(--fg2)}
 .evr-note:empty,.evr-summary:empty,.evr-caption:empty{display:none}
+.evr-figure{margin:0;display:flex;flex-direction:column;gap:var(--sp-2)}
+.evr-stage:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.evr-options{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4)}
+.evr-options[hidden],.evr-option[hidden]{display:none}
+.evr-option{display:inline-flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);font-size:var(--fs-sm);color:var(--fg)}
+.evr-option input{width:16px;height:16px;margin:0}
 .evr-foot{flex-wrap:wrap}
 .evr-foot .btn{min-height:var(--hit-min)}
 .evr-pick{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
@@ -51,9 +57,9 @@
 .intr-barrier input{width:16px;height:16px;margin:0}
 
 @media (pointer:coarse){
-  .evr-tab,.evr-menuitem,.evr-foot .btn,.evr-split .btn,.evr-pick select,.intr-barrier{min-height:44px}
+  .evr-tab,.evr-menuitem,.evr-foot .btn,.evr-split .btn,.evr-pick select,.intr-barrier,.evr-option{min-height:44px}
   .evr-split .btn{min-width:44px}
-  .intr-barrier input{width:22px;height:22px}
+  .intr-barrier input,.evr-option input{width:22px;height:22px}
 }
 @media (max-width:600px){
   .evr-shell{width:100vw;max-height:100dvh;border-radius:0}

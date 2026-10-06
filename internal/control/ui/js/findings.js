@@ -1144,6 +1144,7 @@ function renderFindingDetail() {
              <span class="sev find-status-badge" style="color:${statusBadgeColor(f.status)}">${esc(statusLabel(f.status))}</span>`}
         <div class="spacer"></div>
         <span id="findSaveState" class="find-save-state" role="status" aria-live="polite">${edit ? 'Saved' : ''}</span>
+        <button type="button" class="btn" id="findPreviewChain" title="${(f.relatedFindings || []).length ? 'Preview an attack-path image of this finding and its related findings' : 'Link related findings first to preview a chain'}"${(f.relatedFindings || []).length ? '' : ' disabled'}>Preview chain</button>
         <button type="button" class="btn" id="findCopyLink" title="Copy link to this section">Copy link</button>
         <button class="btn ${edit ? '' : 'btn-primary'}" id="findToggleEdit">${edit ? 'Done' : 'Edit'}</button>
       </div>
@@ -1232,6 +1233,7 @@ function renderFindingDetail() {
     focusTarget?.focus({preventScroll:true});
   }));
   $('#findCopyLink').onclick = () => copyText(location.origin + location.pathname + findingHref(f.id), 'Finding link copied');
+  $('#findPreviewChain').onclick = () => import('./evidence-render.js').then(m => { const p = m.chainPreview(f.id); return m.open(p.kind, p.params, { opener: $('#findPreviewChain') }); }).catch(e => toastError('Preview failed', e));
   activateFindingSection(findSection, {navigate:false});
   for (const id of expanded) { const el = box.querySelector('#' + id); if(el?.tagName==='DETAILS')el.open=true; }
   box.querySelector('.find-workspace-content').scrollTop = scrollTop;

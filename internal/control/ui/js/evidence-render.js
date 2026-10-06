@@ -48,18 +48,58 @@ export function familyKinds(kind) {
 
 const safeId = (v) => String(v == null ? '' : v).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
 
+// Render options. Payloads and extracted values are masked unless the reader
+// explicitly unmasks them (they are often credentials); flow-diff body lines
+// are left out unless asked for (bodies can carry personal data).
+export const DEFAULT_OPTS = Object.freeze({ mask: true, includeBody: false });
+
+// optionControls says which option checkboxes apply to a kind.
+export function optionControls(kind) {
+  return { mask: kind === 'intruder-strip' || kind === 'intruder-race', body: kind === 'flow-diff' };
+}
+
+const withQuery = (url, extra) => url + (url.includes('?') ? '&' : '?') + extra;
+
 // renderRequest builds the GET for a kind. Intruder kinds need params.runId;
 // every other family brings its own params.url.
-export function renderRequest(kind, params = {}) {
+export function renderRequest(kind, params = {}, opts = DEFAULT_OPTS) {
   const m = meta(kind);
+  const on = optionControls(kind);
   if (m.family === 'intruder') {
     const runId = String(params.runId || '');
     if (!runId) throw new Error('an Intruder render needs a run id');
-    return { url: '/api/intruder/attacks/' + encodeURIComponent(runId) + '/render.png?kind=' + m.short };
+    let url = '/api/intruder/attacks/' + encodeURIComponent(runId) + '/render.png?kind=' + m.short;
+    if (on.mask && opts.mask === false) url += '&unmask=1';
+    return { url };
   }
   if (!params.url) throw new Error('this render needs a url');
-  return { url: String(params.url) };
+  let url = String(params.url);
+  if (on.body && opts.includeBody) url = withQuery(url, 'includeBody=1');
+  return { url };
 }
+
+// Entry points outside the Intruder toolbar pass these params to open().
+export const chainPreview = (findingId) => {
+  const id = Number(findingId);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('a finding id is required');
+  return { kind: 'finding-chain', params: { id, url: '/api/evidence-render?kind=finding_chain&findingId=' + id, attach: { findingId: id } } };
+};
+export const authzPreview = (runId) => {
+  const id = String(runId || '');
+  if (!id) throw new Error('this authz run has no id to render');
+  return { kind: 'authz-matrix', params: { id, runId: id, url: '/api/render/authz/' + encodeURIComponent(id) + '.png' } };
+};
+export const WATERFALL_MAX = 50;
+export const waterfallPreview = (flowIds) => {
+  const ids = [...new Set((flowIds || []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, WATERFALL_MAX);
+  if (!ids.length) throw new Error('select at least one flow');
+  return { kind: 'flow-waterfall', params: { id: ids[0], url: '/api/evidence-render?kind=flow_waterfall&flowIds=' + ids.join(','), attach: { flowIds: ids } } };
+};
+export const diffPreview = (a, b) => {
+  const x = Number(a), y = Number(b);
+  if (![x, y].every((n) => Number.isSafeInteger(n) && n > 0) || x === y) throw new Error('choose two different flows');
+  return { kind: 'flow-diff', params: { id: x + '-' + y, url: '/api/render/flow-diff.png?a=' + x + '&b=' + y, attach: { flowIdA: x, flowIdB: y } } };
+};
 
 export function downloadName(kind, params = {}) {
   const m = meta(kind);
@@ -68,14 +108,17 @@ export function downloadName(kind, params = {}) {
   return 'interseptor-' + kind + (id ? '-' + id : '') + '.png';
 }
 
-export function attachRequest(findingId, kind, params = {}, caption = '') {
+export function attachRequest(findingId, kind, params = {}, caption = '', opts = DEFAULT_OPTS) {
   const id = Number(findingId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('choose a finding first');
   meta(kind);
+  const on = optionControls(kind);
   const body = Object.assign({}, params.attach || {}, { kind });
   if (params.runId) body.runId = String(params.runId);
   body.caption = String(caption || '');
   body.role = 'result';
+  if (on.mask && opts.mask === false) body.unmask = true;
+  if (on.body && opts.includeBody) body.includeBody = true;
   return { path: '/api/findings/' + id + '/evidence-render', method: 'POST', body };
 }
 
@@ -104,7 +147,7 @@ const loadCore = () => corePromise || (corePromise = import('./core.js'));
 const $id = (id) => document.getElementById(id);
 
 const FINDING_CAP = 200;
-let session = null; // the open preview: {kind, params, epoch, ctrl, blobUrl, blob, alt, opener}
+let session = null; // the open preview: {kind, params, opts, ctrl, blobUrl, blob, alt, opener}
 let epoch = 0;
 
 function setStatus(text) {
@@ -165,6 +208,19 @@ function renderTabs(kind) {
   $id('evRenderStage').setAttribute('aria-labelledby', 'evRenderTab-' + kind);
 }
 
+// syncOptions shows only the option checkboxes that apply to the kind and
+// mirrors the session choice into them.
+function syncOptions(kind) {
+  const on = optionControls(kind);
+  const box = $id('evRenderOptions');
+  if (!box) return;
+  $id('evRenderMaskRow').hidden = !on.mask;
+  $id('evRenderBodyRow').hidden = !on.body;
+  box.hidden = !(on.mask || on.body);
+  $id('evRenderMask').checked = session.opts.mask !== false;
+  $id('evRenderBody').checked = !!session.opts.includeBody;
+}
+
 function renderNote(kind, params) {
   const notes = [];
   if (kind === 'intruder-race') notes.push('Separate connections launched together, not single-packet synchronisation.');
@@ -183,6 +239,7 @@ async function load(kind) {
   $id('evRenderHint').textContent = m.hint;
   renderTabs(kind);
   renderNote(kind, session.params);
+  syncOptions(kind);
   hidePicker(false);
   const err = $id('evRenderError');
   err.hidden = true;
@@ -195,7 +252,7 @@ async function load(kind) {
   setBusy(true);
   setStatus('Rendering ' + m.label + ' preview');
   let req;
-  try { req = renderRequest(kind, session.params); } catch (e) { setBusy(false); showError(e.message); return; }
+  try { req = renderRequest(kind, session.params, session.opts); } catch (e) { setBusy(false); showError(e.message); return; }
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   session.ctrl = ctrl;
   try {
@@ -215,7 +272,9 @@ async function load(kind) {
     session.blob = blob;
     session.blobUrl = URL.createObjectURL(blob);
     session.alt = alt;
-    img.alt = alt;
+    // The image's own alt is the short summary; the full description is the
+    // visible figcaption, so a screen reader does not hear the same text twice.
+    img.alt = summary || alt;
     img.src = session.blobUrl;
     img.hidden = false;
     $id('evRenderCaption').textContent = alt;
@@ -270,11 +329,15 @@ async function togglePicker() {
   const pick = $id('evRenderPick');
   if (!session || !session.blob) return;
   if (!pick.hidden) { hidePicker(true); return; }
-  const core = await loadCore();
-  pick.hidden = false;
-  $id('evRenderAttach').setAttribute('aria-expanded', 'true');
-  await fillFindings(core);
-  (findingsLoaded && $id('evRenderFinding').options.length ? $id('evRenderFinding') : $id('evRenderPickCancel')).focus();
+  try {
+    const core = await loadCore();
+    pick.hidden = false;
+    $id('evRenderAttach').setAttribute('aria-expanded', 'true');
+    await fillFindings(core);
+    (findingsLoaded && $id('evRenderFinding').options.length ? $id('evRenderFinding') : $id('evRenderPickCancel')).focus();
+  } catch (e) {
+    setStatus('Could not open the finding picker: ' + ((e && e.message) || 'request failed'));
+  }
 }
 
 async function attach() {
@@ -283,7 +346,7 @@ async function attach() {
   const go = $id('evRenderPickGo');
   const sel = $id('evRenderFinding');
   let req;
-  try { req = attachRequest(sel.value, session.kind, session.params, session.alt); } catch (e) { setStatus(e.message); core.toast(e.message, 'warn'); return; }
+  try { req = attachRequest(sel.value, session.kind, session.params, session.alt, session.opts); } catch (e) { setStatus(e.message); core.toast(e.message, 'warn'); return; }
   go.disabled = true;
   go.setAttribute('aria-busy', 'true');
   try {
@@ -305,10 +368,17 @@ async function attach() {
 
 async function download() {
   if (!session || !session.blob) return;
-  const core = await loadCore();
   const name = downloadName(session.kind, session.params);
-  await core.saveFile(session.blob, name, 'image/png');
-  setStatus('Downloaded ' + name);
+  try {
+    const core = await loadCore();
+    await core.saveFile(session.blob, name, 'image/png');
+    setStatus('Downloaded ' + name);
+  } catch (e) {
+    if (e && e.name === 'AbortError') { setStatus('Download cancelled'); return; } // the user dismissed the save picker
+    const msg = (e && e.message) || 'save failed';
+    setStatus('Download failed: ' + msg);
+    try { (await loadCore()).toastError('Download failed', e); } catch (e2) { /* the live region already says it */ }
+  }
 }
 
 /* ---- modal wiring ---- */
@@ -338,6 +408,8 @@ function wire(core) {
   $id('evRenderPickGo').addEventListener('click', attach);
   $id('evRenderPickCancel').addEventListener('click', () => hidePicker(true));
   $id('evRenderDownload').addEventListener('click', download);
+  $id('evRenderMask').addEventListener('change', (e) => { if (session) { session.opts = { ...session.opts, mask: e.target.checked }; load(session.kind); } });
+  $id('evRenderBody').addEventListener('change', (e) => { if (session) { session.opts = { ...session.opts, includeBody: e.target.checked }; load(session.kind); } });
   // Esc inside the picker only closes the picker; core's handler closes the modal otherwise.
   modal.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$id('evRenderPick').hidden) { e.preventDefault(); e.stopImmediatePropagation(); hidePicker(true); }
@@ -351,7 +423,7 @@ export async function open(kind, params = {}, opts = {}) {
   if (!modal) { core.toast('Evidence render preview is unavailable in this build', 'error'); return; }
   wire(core);
   if (session) { if (session.ctrl) session.ctrl.abort(); revoke(); }
-  session = { kind, params: params || {}, ctrl: null, blobUrl: '', blob: null, alt: '', opener: opts.opener || document.activeElement };
+  session = { kind, params: params || {}, opts: { ...DEFAULT_OPTS }, ctrl: null, blobUrl: '', blob: null, alt: '', opener: opts.opener || document.activeElement };
   findingsLoaded = false;
   core.openModal(modal, { onEscape: close, onDismiss: close, initialFocus: '#evRenderClose' });
   await load(kind);
