@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, toastError, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
+import { $, esc, escAttr, toast, toastError, copyText, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 import { wireListbox, focusOption } from './listbox.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
@@ -625,6 +625,7 @@ export function repLoadEditor(){
   else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
   refreshRepHistory(t);
+  syncRepActions();
 }
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
@@ -680,7 +681,7 @@ export async function repSend(){
   t.sendEpoch=(t.sendEpoch||0)+1;
   const sendEpoch=t.sendEpoch;
   const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
-  t.sendPending=true;
+  t.sendPending=true;syncRepActions();
   repResponseEpoch++;repSyncResView(t);
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
@@ -697,7 +698,7 @@ export async function repSend(){
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
     if(repCur()!==t||!current())return;
-    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
+    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;syncRepActions();
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
     if(repCur()!==t||!current())return;
@@ -898,6 +899,78 @@ export async function sendToRepeater(f){
     return true;
   }catch(e){toast(e.message);return false;}
 }
+// ---- Repeater response-pane actions: Intruder / + Finding / Copy cURL ----
+function shellQuote(v){return "'"+String(v).replace(/'/g,"'\\''")+"'";}
+function repExportBody(t){
+  if((t.reqView||'raw')==='decoded')return t.rawBody||t.body||'';
+  return compactBody(t.body||'');
+}
+// repBuildRaw turns the active tab into the pieces other tools need: the
+// target origin plus a raw HTTP/1.1 request. Returns null for an unusable URL.
+function repBuildRaw(t){
+  let u;
+  try{u=new URL((t.url||'').trim());}catch(e){return null;}
+  if(u.protocol!=='http:'&&u.protocol!=='https:')return null;
+  const headers=(t.headers||'').split(/\r?\n/).filter(line=>line.trim());
+  if(!headers.some(line=>/^host:/i.test(line)))headers.unshift('Host: '+u.host);
+  const method=t.method||'GET';
+  const raw=`${method} ${u.pathname}${u.search} HTTP/1.1\n${headers.join('\n')}\n\n${repExportBody(t)}`;
+  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(line=>!/^host:/i.test(line)),body:repExportBody(t)};
+}
+function repCurlCommand(built){
+  const parts=['curl -i -X '+built.method];
+  built.headers.forEach(line=>parts.push('-H '+shellQuote(line)));
+  if(built.body)parts.push('--data-raw '+shellQuote(built.body));
+  parts.push(shellQuote(built.url));
+  return parts.join(' \\\n  ');
+}
+function repActionRequest(){
+  repSaveEditor();
+  const t=repCur();if(!t)return null;
+  const built=repBuildRaw(t);
+  if(!built){toast('Enter a valid http(s) URL first','warn');return null;}
+  return {t,built};
+}
+async function repToIntruder(){
+  const req=repActionRequest();if(!req)return;
+  if(!await waitForWorkstationReady())return;
+  if((intrStartPending||intrLastRunning)&&!intrTabPristine(intrTabs.cur())){toast('An attack is running — stop it before loading another request into Intruder','warn');return;}
+  document.querySelector('.tab[data-tab="intruder"]').click();
+  const tab=intrTabForLoad();if(!tab)return;
+  $('#intrTarget').value=req.built.target;
+  $('#intrTemplate').value=req.built.raw;
+  updateIntrMode();intrTouch();
+  toast('loaded Repeater request into Intruder · add § markers');
+}
+function repCopyCurl(){
+  const req=repActionRequest();if(!req)return;
+  copyText(repCurlCommand(req.built),'cURL copied');
+}
+function repAddToFinding(){
+  const t=repCur();
+  if(!t||!t.resId){toast('Send the request first — a finding attaches the captured flow','warn');return;}
+  import('./findings.js').then(m=>m.addFlowToFinding(t.resId)).catch(e=>toastError('Add to finding failed',e));
+}
+function syncRepActions(){
+  const btn=$('#repAddFinding');if(!btn)return;
+  const t=repCur();
+  btn.disabled=!t||!t.resId||!!t.sendPending;
+  btn.title=btn.disabled?'Send the request first to attach its flow to a finding':'Add this response flow to a finding';
+}
+function wireRepeaterActions(){
+  const head=document.querySelector('#panel-repeater .rep-res .pane-head');
+  if(!head||$('#repActions'))return;
+  const group=document.createElement('div');
+  group.id='repActions';group.className='rep-actions';group.setAttribute('role','group');group.setAttribute('aria-label','Request actions');
+  group.innerHTML='<button type="button" class="btn xs" id="repToIntruder" title="Load this request into Intruder">Intruder</button>'
+    +'<button type="button" class="btn xs" id="repAddFinding" title="Add this response flow to a finding">+ Finding</button>'
+    +'<button type="button" class="btn xs" id="repCopyCurl" title="Copy this request as a cURL command">Copy cURL</button>';
+  head.insertBefore(group,$('#repResSeg'));
+  $('#repToIntruder').onclick=repToIntruder;
+  $('#repAddFinding').onclick=repAddToFinding;
+  $('#repCopyCurl').onclick=repCopyCurl;
+  syncRepActions();
+}
 export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   let hydration=await hydrateUIState('repeater','rep.tabs',isSafePersistedTabState);
@@ -928,6 +1001,7 @@ export async function repInit(){
   repRefreshHL();
   repWireEncodeCtx();
   wirePostmanImport();
+  wireRepeaterActions();
   resolveRepeaterReady(hydration);
   return hydration;
 }

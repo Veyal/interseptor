@@ -1023,6 +1023,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-flow-pick .p{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
 .find-flow-pick .sts{flex:none;font-size:var(--fs-xs)}
 .btn.xs{min-height:24px;padding:1px 6px;font-size:var(--fs-xs)}
+.rep-actions{display:flex;gap:4px;flex-wrap:wrap}
+.rep-res .pane-head{height:auto;min-height:38px;flex-wrap:wrap;padding-block:4px}
 .scan-tgt[data-flow]:hover{border-color:var(--accent)!important}
 /* Map toolbar field widths (extracted from former per-instance inline styles). */
 .map-domain{max-width:240px}
