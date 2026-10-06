@@ -165,6 +165,24 @@ evidence mappings.
 
 Presets are authoring shortcuts. They do not change the stored schema or the exported format.
 
+### Capability checklist before report-ready
+
+Readiness reports these separately (`readiness.capabilities`):
+
+- **Action** — the exact triggering request or flow.
+- **Result** — the observed outcome.
+- **Control** — a negative or normal-behavior request that distinguishes vulnerable behavior.
+- **Visual** — a real browser/device screenshot of the executed result for browser findings. An
+  operator-uploaded image counts only after a reviewer classifies it
+  (`POST /api/findings/{id}/images/{hash}/classify` or MCP `classify_finding_image`); generated flow
+  previews never qualify. Readiness counts `uploadedImageCount` and `generatedImageCount` apart from
+  `screenshotCount`.
+
+Test the claimed impact end to end when it is safe and in scope. When a step was not executed, set
+`proofReview.execution` to `not_executed` with a `proofReview.reason`, keep the status
+`needs_verification`, or narrow the impact. Keep secrets out of evidence: a length, stable hash, or
+redacted prefix is enough to show access.
+
 ## Evidence rules
 
 Every report-ready finding needs at least one non-missing evidence artifact. Screenshot evidence is

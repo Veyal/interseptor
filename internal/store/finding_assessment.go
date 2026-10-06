@@ -221,6 +221,23 @@ func (f *Finding) enrichAssessment() {
 	}
 }
 
+// capabilityStatus derives the separate action/result/control/visual flags
+// from the assessment gaps and the captured result screenshots.
+func (f *Finding) capabilityStatus(gaps []string) FindingCapabilityStatus {
+	st := FindingCapabilityStatus{
+		Action:    !slices.Contains(gaps, "action"),
+		Result:    !slices.Contains(gaps, "result"),
+		Control:   !slices.Contains(gaps, "control"),
+		Execution: f.ProofReview.Execution,
+	}
+	for _, b := range f.Blocks {
+		if b.Type == "image" && !b.Missing && b.Hash != "" && b.Role == "result" && capturedFindingImage(b.Source) && strings.TrimSpace(b.Proof) != "" {
+			st.Visual = true
+		}
+	}
+	return st
+}
+
 func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	var gaps []string
 	roles := map[string]bool{}

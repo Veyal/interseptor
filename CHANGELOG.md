@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Claim-vs-evidence capability checks (#70).** Readiness checks now carry `rule` and `capability` (for example `browser_execution`, `authenticated_without_required_factor`, `account_control`, `state_change`) so a warning names exactly the missing proof. Authenticated-session and account-control claims need a server-observed result flow; a screenshot alone no longer satisfies them. The analyst's claim text is never rewritten.
 
+- **Capability checklist in the writing guide and readiness (#65).** The finding writing guide now lists the action/result/control/visual checklist and the explicit `not_executed` + `needs_verification` path. `readiness.capabilities` reports action, result, control and visual proof separately, and `uploadedImageCount`/`generatedImageCount` keep operator uploads apart from generated previews; the finding workspace shows both next to the readiness gaps.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.

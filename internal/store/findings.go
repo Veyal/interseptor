@@ -269,6 +269,22 @@ type FindingReadiness struct {
 	ScreenshotCount        int                   `json:"screenshotCount"`
 	ImageCount             int                   `json:"imageCount"`
 	VisualProofRecommended bool                  `json:"visualProofRecommended"`
+	// UploadedImageCount are operator-ingested images (classified or not);
+	// GeneratedImageCount are server-rendered previews that never qualify as
+	// browser/device captures.
+	UploadedImageCount  int                     `json:"uploadedImageCount"`
+	GeneratedImageCount int                     `json:"generatedImageCount"`
+	Capabilities        FindingCapabilityStatus `json:"capabilities"`
+}
+
+// FindingCapabilityStatus reports action/result/control/visual proof
+// separately so a reviewer sees exactly which kind of evidence is absent.
+type FindingCapabilityStatus struct {
+	Action    bool   `json:"action"`
+	Result    bool   `json:"result"`
+	Control   bool   `json:"control"`
+	Visual    bool   `json:"visual"`
+	Execution string `json:"execution,omitempty"` // demonstrated|prerequisite_only|not_executed
 }
 
 // FindingBlock is one element in a finding's narrative body.
@@ -888,6 +904,11 @@ func (f *Finding) ReadinessSummary() FindingReadiness {
 			if capturedFindingImage(b.Source) {
 				r.ScreenshotCount++
 			}
+			if generatedFindingImage(b.Source) {
+				r.GeneratedImageCount++
+			} else {
+				r.UploadedImageCount++
+			}
 			r.ImageCount++
 			if strings.TrimSpace(b.Proof) != "" {
 				r.AnnotatedEvidenceCount++
@@ -908,6 +929,7 @@ func (f *Finding) ReadinessSummary() FindingReadiness {
 		gaps = append(gaps, "proof")
 	}
 	capabilityGaps := f.assessmentGaps(&r)
+	r.Capabilities = f.capabilityStatus(capabilityGaps)
 	if !slices.Contains(capabilityGaps, "action") && !slices.Contains(capabilityGaps, "result") && !slices.Contains(capabilityGaps, "control") {
 		typed = true
 	}
