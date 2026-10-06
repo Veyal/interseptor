@@ -1,0 +1,65 @@
+/* evidence-render.css — shared evidence render preview modal and the Intruder
+   "Preview image" split button (evidence-render.js). Evidence renders are drawn
+   on a fixed light canvas (Paper White #ffffff, text Ink Navy #1a2332, grid Mist
+   Grey #e3e6ea) so the preview matches what a report reader sees, whatever the
+   UI theme. Only transform and opacity ever animate; the global reduced-motion
+   block in app.css zeroes them. */
+
+/* ---- modal ---- */
+.evr-shell{width:min(1000px,calc(100vw - var(--sp-4)));max-height:calc(100dvh - var(--sp-4));box-sizing:border-box}
+.evr-tabs{flex:none;display:flex;gap:var(--sp-1);flex-wrap:wrap;padding:var(--sp-2) var(--sp-4) 0;border-bottom:1px solid var(--line)}
+.evr-tabs[hidden]{display:none}
+.evr-tab{min-height:var(--hit-min);padding:0 var(--sp-3);background:transparent;border:1px solid transparent;border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0;color:var(--fg2);font:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer}
+.evr-tab:hover{background:var(--bg3);color:var(--fg)}
+.evr-tab[aria-selected="true"]{color:var(--accent);background:var(--accentDim);border-color:var(--line2);box-shadow:inset 0 -2px 0 var(--accent)}
+.evr-tab:focus-visible,.evr-menuitem:focus-visible,.evr-split .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+.evr-body{display:flex;flex-direction:column;gap:var(--sp-2);min-height:0}
+.evr-hint{margin:0;color:var(--fg2);font-size:var(--fs-sm)}
+.evr-stage{min-height:160px;max-height:min(62dvh,820px);overflow:auto;overscroll-behavior:contain;background:#ffffff;border:1px solid var(--line2);border-radius:var(--r-md);color:#1a2332}
+.evr-img{display:block;max-width:100%;height:auto;margin:0 auto}
+.evr-state{margin:0;padding:var(--sp-4);font-size:var(--fs-sm);color:#1a2332}
+.evr-state.is-error{color:#b3261e;font-weight:600}
+.evr-caption{margin:0;font-size:var(--fs-sm);color:var(--fg);line-height:1.5;overflow-wrap:anywhere}
+.evr-summary{margin:0;font-size:var(--fs-xs);color:var(--fg2);overflow-wrap:anywhere}
+.evr-note{margin:0;font-size:var(--fs-xs);color:var(--fg2)}
+.evr-note:empty,.evr-summary:empty,.evr-caption:empty{display:none}
+.evr-foot{flex-wrap:wrap}
+.evr-foot .btn{min-height:var(--hit-min)}
+.evr-pick{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.evr-pick[hidden]{display:none}
+.evr-pick label{font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.evr-pick select{flex:1 1 220px;min-width:0;max-width:100%;min-height:var(--hit-min)}
+.evr-pick-status{flex:1 1 100%;margin:0;font-size:var(--fs-xs);color:var(--fg2)}
+.evr-close{margin-left:auto}
+.evr-foot .btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* ---- Intruder split button ---- */
+.evr-split{position:relative;display:inline-flex;align-items:stretch}
+.evr-split .btn{min-height:var(--hit-min)}
+.evr-split .evr-main{border-top-right-radius:0;border-bottom-right-radius:0}
+.evr-split .evr-caret{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px;padding-left:var(--sp-2);padding-right:var(--sp-2)}
+.evr-split .btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+.evr-menu{position:absolute;z-index:var(--z-popover);top:calc(100% + 4px);right:0;display:flex;flex-direction:column;gap:2px;width:min(320px,calc(100vw - var(--sp-4)));box-sizing:border-box;padding:var(--sp-1);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
+.evr-menu[hidden]{display:none}
+.evr-menuitem{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:var(--hit-min);padding:var(--sp-2);background:transparent;border:0;border-radius:var(--r-md);color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.evr-menuitem:hover,.evr-menuitem:focus-visible{background:var(--bg3)}
+.evr-menuitem-title{font-size:var(--fs-sm);font-weight:600}
+.evr-menuitem-hint{font-size:var(--fs-xs);color:var(--fg2);white-space:normal}
+
+/* ---- Barrier option ---- */
+.intr-barrier{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:var(--hit-min)}
+.intr-barrier input{width:16px;height:16px;margin:0}
+
+@media (pointer:coarse){
+  .evr-tab,.evr-menuitem,.evr-foot .btn,.evr-split .btn,.evr-pick select,.intr-barrier{min-height:44px}
+  .evr-split .btn{min-width:44px}
+  .intr-barrier input{width:22px;height:22px}
+}
+@media (max-width:600px){
+  .evr-shell{width:100vw;max-height:100dvh;border-radius:0}
+  .evr-tabs{padding:var(--sp-2) var(--sp-3) 0}
+  .evr-stage{max-height:55dvh}
+  .evr-menu{position:fixed;left:var(--sp-2);right:var(--sp-2);width:auto;top:auto;bottom:max(var(--sp-2),env(safe-area-inset-bottom,0px))}
+  .evr-foot{padding-bottom:max(12px,env(safe-area-inset-bottom,0px))}
+  .evr-foot .btn{flex:1 1 auto}
+}

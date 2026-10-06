@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Evidence render preview UI.** Shared `EvidenceRender.open(kind, params)` modal (`js/evidence-render.js`, `css/evidence-render.css`): kind tabs, light-canvas PNG with the server alt text as `img alt` and visible caption, Download PNG (`interseptor-intruder-<runId>-<kind>.png`) and + Finding picker. Intruder results gain a "Preview image" split button (Timeline, Distribution, Race, Strip; disabled with a reason until a finished run has a run ID; legacy runs say timing was not recorded) and Race / repeat gains a Barrier checkbox bound to `spec.barrier`.
 - `preview.RenderFindingChain`: deterministic finding chain / attack-path PNG (longest-path layering, cycle edges dropped and noted, severity chips, edge labels, max 12 nodes) with alt text and summary.
 
 - **Authz differential matrix render (`preview.RenderAuthzMatrix`).** Deterministic report-width PNG of identities by requests with verdict glyphs (= same, D denied, ! broken, S session invalid), "N broken of M" summary, alt text listing broken cells by row and identity, and a "+N more" note past 8 identities or 40 rows.
