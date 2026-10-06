@@ -43,7 +43,14 @@ func findingRevisionArg(a map[string]any, key string, optional bool) (int64, err
 }
 
 func (s *Server) registerFindingReviewTools() {
-	s.add("finding_readiness", "Check selected finding statuses for final report readiness. Returns the same actionable field/capability checks shown by the UI; these assess completeness, not independent exploit verification.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string")}), func(a map[string]any) (string, error) {
+	s.add("finding_readiness", "Project-wide report readiness board: one row per finding (id, title, severity, status, ready, blocking gaps) sorted by severity, plus per-finding final-gate issues {rule, field, capability, message}. Pass id for one finding's gate result. Same results as the UI and API; these assess completeness, not independent exploit verification. Statuses default to open,verified,fixed; use statuses=all for every finding.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string"), "id": pt("integer")}), func(a map[string]any) (string, error) {
+		if a["id"] != nil && a["id"] != "" {
+			id, err := findingRevisionArg(a, "id", false)
+			if err != nil {
+				return "", err
+			}
+			return s.apiGet(fmt.Sprintf("/api/finding-quality/%d", id))
+		}
 		q := url.Values{}
 		q.Set("statuses", argStr(a, "statuses"))
 		q.Set("tag", argStr(a, "tag"))

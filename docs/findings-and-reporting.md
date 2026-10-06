@@ -296,6 +296,12 @@ and secure them as sensitive engagement artifacts. Follow the
 
 ## Review, final export, and capability claims
 
+`GET /api/findings/readiness` also returns a project-wide `board` (id, title, severity, status, ready,
+blocking gaps; sorted by severity) and, per finding, `issues` as `{rule, field, capability, message}`.
+`GET /api/finding-quality/{id}` and MCP `finding_readiness` (with `id`) return the same issues for one
+finding. The final gate requires a CVSS v4.0 vector; it never modifies or redacts evidence. The Export
+dialog's **Check readiness** button shows the board in the UI.
+
 The export dialog defaults to **Final**, which requires every included finding to pass the same
 checks returned by `GET /api/findings/readiness` and MCP `finding_readiness`. Select **Draft** to
 export incomplete work. API and MCP callers opt into the gate using `mode=final`; legacy callers

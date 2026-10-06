@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Capability checklist in the writing guide and readiness (#65).** The finding writing guide now lists the action/result/control/visual checklist and the explicit `not_executed` + `needs_verification` path. `readiness.capabilities` reports action, result, control and visual proof separately, and `uploadedImageCount`/`generatedImageCount` keep operator uploads apart from generated previews; the finding workspace shows both next to the readiness gaps.
 
+- **Final report-quality gate (#76).** `GET /api/findings/readiness` entries and the new `GET /api/finding-quality/{id}` return `issues` of `{rule, field, capability, message}` for every failed rule, including a `cvss_version` rule that requires a CVSS v4.0 vector (evaluated through `cvss.Evaluate`). MCP `finding_readiness` returns the same payload, and accepts `id` for one finding. The gate only reads findings; evidence is never modified.
+
+- **Project-wide readiness board (#88).** `GET /api/findings/readiness` and MCP `finding_readiness` now return a `board` of `{id, title, severity, status, ready, gaps}` rows sorted by severity (then id) with a ready/blocked `summary`. The Export dialog gains a "Check readiness" panel that renders the board and opens a blocked finding for review.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
