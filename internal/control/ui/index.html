@@ -115,16 +115,40 @@
   <div id="bar">
   <div id="logo" aria-hidden="true"><svg class="icon" focusable="false"><use href="#i-traffic"/></svg></div>
   <span class="brand">Interseptor</span>
-  <span id="crumb"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
+  <span id="crumb" class="sr-only"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
+  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel, flow or finding" aria-label="Command palette"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Search flows, findings, actions</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
   <div class="spacer"></div>
-  <div class="row u-gap-2" title="Proxy listener"><div class="dot" id="capDot" role="img" aria-label="Capture idle"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button><span class="kv kv-dim" id="capStat"></span><span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span></div>
-  <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
-   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 5H4s2-1 2-5a6 6 0 0 1 6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg>
-
-  <span class="sse-status" id="sseStatus" role="status" aria-live="polite" title="Live updates: connected"><span class="sse-dot" id="sseDot" aria-hidden="true"></span><span id="sseLabel" class="kv kv-dim">live</span><button type="button" class="btn xs" id="sseRetry" hidden>Reconnect</button></span>
-  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Jump to…</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 5H4s2-1 2-5a6 6 0 0 1 6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg>
+  <button type="button" id="connChip" class="conn-chip" data-state="connected" aria-haspopup="dialog" aria-expanded="false" aria-controls="connPop" aria-label="Connection: live. Open connection details."><span id="connDot" class="sse-dot ok" aria-hidden="true"></span><span id="connText">Live</span></button>
+  <div id="connPop" class="conn-pop" role="dialog" aria-modal="false" aria-label="Connection details" hidden>
+    <div class="conn-row"><span class="sse-status" id="sseStatus" role="status" aria-live="polite" title="Live updates: connected"><span class="sse-dot" id="sseDot" aria-hidden="true"></span><span id="sseLabel" class="kv kv-dim">live</span><button type="button" class="btn xs" id="sseRetry" hidden>Reconnect</button></span></div>
+    <div class="conn-row"><span class="conn-key">Proxy listener</span><b class="conn-val" id="proxyAddr">…</b><button type="button" class="btn xs" data-conn-copy="proxyAddr" aria-label="Copy proxy listener address"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div>
+    <div class="conn-row"><span class="conn-key">Device proxy</span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button></div>
+    <div class="conn-row"><span class="conn-key">Control UI</span><b class="conn-val" id="controlAddr">…</b><button type="button" class="btn xs" data-conn-copy="controlAddr" aria-label="Copy control UI address"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div>
+    <div class="conn-row"><span class="conn-key">Capture</span><div class="dot" id="capDot" role="img" aria-label="Capture idle"></div><span class="kv kv-dim" id="capStat"></span></div>
+  </div>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg></button>
 </div>
+
+<div id="ctxbar" role="region" aria-label="Engagement" aria-busy="true">
+  <button type="button" id="ctxProject" class="ctx-chip ctx-project" aria-haspopup="dialog" title="Active project: switch or create"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><span id="ctxProjectText" class="ctx-text">Project</span></button>
+  <button type="button" id="ctxScope" class="ctx-chip ctx-scope" role="switch" aria-checked="false" aria-label="Scope: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg><span class="ctx-key">Scope</span><span id="ctxScopeText" class="ctx-text">…</span></button>
+  <button type="button" id="ctxTarget" class="ctx-chip ctx-target" aria-label="Target: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><span class="ctx-key">Target</span><span id="ctxTargetText" class="ctx-text">…</span></button>
+  <div id="ctxIdentityWrap" class="ctx-identity" hidden><span id="ctxAvatar" class="ctx-avatar" data-hue="1" aria-hidden="true">?</span><label for="ctxIdentity" class="ctx-key">As</label><select id="ctxIdentity" class="btn" aria-label="Active identity"></select></div>
+  <button type="button" id="ctxEvidence" class="ctx-chip ctx-evidence" aria-label="Evidence: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-evidence"/></svg><span class="ctx-key">Evid</span><span id="ctxEvidenceText" class="ctx-text">…</span></button>
+  <div id="ctxReady" class="ctx-ready"><svg class="icon" id="ctxReadyIcon" aria-hidden="true" focusable="false"><use href="#i-ring"/></svg><span class="ctx-key">Ready</span><span id="ctxMeter" class="ctx-meter" role="meter" aria-label="Report readiness" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" aria-valuetext="No findings yet"><span id="ctxSegs" class="ctx-segs" aria-hidden="true"></span></span><span id="ctxReadyText" class="ctx-text">…</span></div>
+  <button type="button" id="ctxBlockers" class="ctx-chip ctx-blockers" aria-haspopup="dialog" aria-expanded="false" aria-controls="ctxBlockerPop" aria-label="Blockers: loading"><svg class="icon" id="ctxBlockersIcon" aria-hidden="true" focusable="false"><use href="#i-alert-tri"/></svg><span id="ctxBlockersText" class="ctx-text">…</span><svg class="icon ctx-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+  <button type="button" id="ctxNext" class="ctx-chip ctx-next" aria-label="Next action: loading"><span class="ctx-key">Next</span><span id="ctxNextText" class="ctx-text">…</span></button>
+  <span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span>
+  <button type="button" id="ctxMore" class="ctx-chip ctx-more" aria-haspopup="dialog" aria-label="Engagement details"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><span class="ctx-key">Details</span></button>
+  <span id="ctxLive" class="u-sr" role="status" aria-live="polite"></span>
+  <div id="ctxBlockerPop" class="ctx-pop" role="dialog" aria-modal="false" aria-labelledby="ctxBlockerTitle" hidden>
+    <div class="ctx-pop-head"><h2 id="ctxBlockerTitle" class="ctx-pop-title">Report blockers</h2><button type="button" class="btn xs" id="ctxBlockerClose" aria-label="Close blockers"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
+    <ul id="ctxBlockerList" class="ctx-pop-list"></ul>
+    <a id="ctxBlockerOpen" class="btn xs" href="#findings">Open Findings</a>
+  </div>
+</div>
+<div id="offlineBanner" class="offline-banner" role="status" hidden>Reconnecting&hellip; live updates paused</div>
 
 <div id="humanInputBar" role="region" aria-label="AI is asking for your input" aria-live="polite" hidden></div>
 

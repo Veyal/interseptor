@@ -3,7 +3,7 @@
 // switching, the command palette, global keyboard shortcuts, the live SSE event
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
-import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon } from './core.js';
+import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon, copyText, hasOpenModal, projectStorageKey, refreshUiSelect, getHook } from './core.js';
 import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
@@ -24,6 +24,13 @@ import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from '
 import { transitionView } from './motion.js';
 import { projectStorageReady, loadMapModule } from './project.js';
 import { initUiHints } from './hints.js';
+import { projectState } from './project-state.js';
+import { initCtxbar, renderCtxbar, setCtxProject } from './ctxbar.js';
+import { initConnection, setConnectionStatus } from './connection.js';
+import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
+import { registerCommand, registerSseHandler, runSseHooks, setShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
+import { openSheet } from './sheet.js';
+export { registerCommand, registerSseHandler };
 initUiHints();
 // map.js is NOT imported here: every other feature module is already reachable
 // from the boot sequence below (loadIssues/loadFindings/loadSettings/etc. all run
@@ -56,7 +63,12 @@ function updateCrumb(t){
   const crumb=$('#crumb'); if(!crumb)return;
   const g=crumb.querySelector('.crumb-group'), p=crumb.querySelector('.crumb-panel');
   if(g)g.textContent=t.dataset.group||'';
-  if(p)p.textContent=(t.textContent||'').replace(NAV_DOT_NOTE,'').trim().replace(/\d+$/,'').trim();
+  if(p){
+    // Read the label without the count badges and screen-reader notes inside the tab.
+    const label=t.cloneNode(true);
+    label.querySelectorAll('.badge,.nav-dot,.nav-dot-note').forEach(n=>n.remove());
+    p.textContent=(label.textContent||'').replace(NAV_DOT_NOTE,'').trim();
+  }
 }
 
 /* ---- tabs ---- */
@@ -77,6 +89,7 @@ function activateTab(t){
     $$('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t.dataset.tab));
     try{localStorage.setItem('tab',t.dataset.tab);}catch(e){} // remember the open tab across refresh
     updateCrumb(t);
+    emitTabChange(t.dataset.tab,prev?prev.dataset.panel:'');
     if(t.dataset.tab==='proxy')renderRows();
     if(t.dataset.tab==='activity'){clearActSeen();loadActivity();}
     if(t.dataset.tab==='intruder'){clearNavDot('intrBadge');scheduleIntr();}
@@ -174,7 +187,7 @@ document.addEventListener('keydown',e=>{
   const t=e.target;
   if(isTypingTarget(t))return;
   if(MODAL_IDS.some(id=>{const m=$('#'+id);return m&&m.style.display==='flex';}))return;
-  if(typeof cmdk!=='undefined'&&cmdk.open)return;
+  if(isCommandPaletteOpen())return;
   const down=e.key==='ArrowDown'||e.key==='j';
   e.preventDefault();
   const id=walkFlowNav(down,e);
@@ -275,6 +288,7 @@ function resyncAfterStaleReconnect(){
   loadSession();
   loadSettings();
   loadProject();
+  refreshProjectState('resync');
   if(document.querySelector('.tab[data-tab="intruder"]')?.classList.contains('active'))scheduleIntr();
   if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
   if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
@@ -382,6 +396,21 @@ function connectEvents(){
     sseHadError=false;
   });
   es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    dispatchSseMessage(m);
+    runSseHooks(m);
+  };
+  es.onerror=()=>{if(sseSource!==es)return;
+    sseHadError=true;
+    // CONNECTING: the browser is already retrying on its own. CLOSED: it gave up
+    // (HTTP error, restarted server) and will never retry — rebuild it ourselves.
+    if(es.readyState===EventSource.CLOSED){es.close();sseSource=null;scheduleSseReconnect();}
+    else setSseStatus('reconnecting');
+  };
+}
+// dispatchSseMessage is the original event chain, unchanged. New features hook
+// in through registerSseHandler() (shell-hooks.js), which runs after it.
+function dispatchSseMessage(m){
+  {
     const handler=SSE_HANDLERS[m.type];
     if(handler){handler.run(m);return;}
     if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
@@ -398,14 +427,7 @@ function connectEvents(){
     else if(m.type==='settings.update'){loadSettings();loadVersion(false);loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();applyOobDisabledUI();}
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
-  };
-  es.onerror=()=>{if(sseSource!==es)return;
-    sseHadError=true;
-    // CONNECTING: the browser is already retrying on its own. CLOSED: it gave up
-    // (HTTP error, restarted server) and will never retry — rebuild it ourselves.
-    if(es.readyState===EventSource.CLOSED){es.close();sseSource=null;scheduleSseReconnect();}
-    else setSseStatus('reconnecting');
-  };
+  }
 }
 // scheduleSseReconnect retries a closed stream with a capped backoff. Each try
 // probes /api/version first so an expired session (401) reaches the /login
@@ -424,44 +446,14 @@ function scheduleSseReconnect(immediate){
   },delay);
 }
 
+// The Connection chip (connection.js) owns the status markup; this keeps the
+// original entry point so the SSE chain below is unchanged.
 function setSseStatus(s){
-  const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus'), retry=$('#sseRetry');
-  if(!dot) return;
-  dot.className='sse-dot '+s;
-  const offline=s==='offline', reconnecting=s!=='ok';
-  const text=offline?'offline':reconnecting?'reconnecting':'live';
-  if(label)label.textContent=text;
-  if(retry)retry.hidden=!offline;
-  if(wrap){
-    wrap.classList.toggle('reconnecting',reconnecting);
-    const state=offline?'offline':reconnecting?'reconnecting':'connected';
-    wrap.setAttribute('aria-label','Live updates: '+state);
-    wrap.title='Live updates: '+state+(offline?' — use Reconnect to retry':reconnecting?'…':'');
-  }
+  setConnectionStatus(s);
 }
 {const retry=$('#sseRetry');if(retry)retry.onclick=()=>scheduleSseReconnect(true);}
 
-/* ---- command palette (Ctrl/Cmd+K) ---- */
-const cmdk={el:null,input:null,list:null,items:[],sel:0,open:false};
-function cmdkBuild(){
-  const o=document.createElement('div');o.id='cmdk';o.className='modal-overlay cmdk-overlay';
-  o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell cmdk-shell">'
-    +'<div class="modal-shell-head"><span id="cmdkTitle" class="modal-shell-title">Command palette</span></div>'
-    +'<input id="cmdkInput" class="cmdk-input" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false">'
-    +'<div id="cmdkList" class="cmdk-list" role="listbox" aria-label="Command results"></div>'
-    +'<div class="cmdk-foot"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
-  document.body.appendChild(o);
-  cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');
-  cmdk.input.oninput=cmdkRender;
-  cmdk.input.onkeydown=e=>{
-    if(e.key==='ArrowDown'){e.preventDefault();cmdk.sel=Math.min(cmdk.items.length-1,cmdk.sel+1);cmdkPaint();}
-    else if(e.key==='ArrowUp'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.sel-1);cmdkPaint();}
-    else if(e.key==='Home'){e.preventDefault();cmdk.sel=0;cmdkPaint();}
-    else if(e.key==='End'){e.preventDefault();cmdk.sel=Math.max(0,cmdk.items.length-1);cmdkPaint();}
-    else if(e.key==='Enter'){e.preventDefault();cmdkRun(cmdk.sel);}
-    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();cmdkClose();}
-  };
-}
+/* ---- command palette (Ctrl/Cmd+K): UI lives in cmdk.js; the base command list stays here ---- */
 // The palette NAVIGATES — it jumps to a tab, a Settings subsection, or a tool
 // screen — plus a few non-destructive conveniences (toggle theme, copy the
 // selected flow as cURL) and workflow entries that only OPEN a dialog (New
@@ -511,40 +503,12 @@ function cmdkCommands(){
     {t:'Shortcuts',kw:'help cheatsheet keys hotkeys',run:()=>openModal($('#shortcutsModal'))},
   ];
 }
-function cmdkRender(){
-  const q=cmdk.input.value.trim().toLowerCase();
-  const items=[];
-  cmdkCommands().forEach(c=>{if(!q||(c.t+' '+(c.kw||'')).toLowerCase().includes(q))items.push({label:c.t,kind:'command',run:c.run});});
-  if(q){
-    const idQ=q.replace(/^#/,'').replace(/^id:/,'');
-    const idWant=/^\d+$/.test(idQ)?Number(idQ):0;
-    state.flows.filter(f=>{
-      if(idWant&&f.id===idWant)return true;
-      return (f.method+' '+f.host+f.path+' #'+f.id).toLowerCase().includes(q);
-    }).slice(0,8).forEach(f=>{
-      items.push({label:f.method+'  '+f.host+f.path,kind:'flow',sub:String(f.status||'—'),
-        run:()=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(f.id);}});
-    });
-  }
-  cmdk.items=items;cmdk.sel=0;cmdkPaint();
-}
-function cmdkPaint(){
-  cmdk.list.innerHTML=cmdk.items.map((it,i)=>
-    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'">'
-    +'<span class="cmdk-text">'+esc(it.label)+'</span>'
-    +'<span class="cmdk-sub">'+esc(it.sub||it.kind)+'</span></div>'
-  ).join('')||'<div class="cmdk-empty">No matches</div>';
-  if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
-  else cmdk.input.removeAttribute('aria-activedescendant');
-  cmdk.list.querySelectorAll('.cmdk-row').forEach(r=>{
-    r.onclick=()=>cmdkRun(Number(r.dataset.i));
-    r.onmousemove=()=>{const n=Number(r.dataset.i);if(n!==cmdk.sel){cmdk.sel=n;cmdkPaint();}};
-  });
-  const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
-}
-function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toastError('Command failed',e);}}
-function cmdkOpen(){if(workflowShortcutBlocked())return;if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
-function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
+configureCommandPalette({
+  commands:cmdkCommands,
+  ready:()=>projectScopedUIReady,
+  blocked:()=>workflowShortcutBlocked(),
+  openFlow:f=>{document.querySelector('.tab[data-tab="proxy"]').click();selectFlow(f.id);},
+});
 
 /* ---- global keyboard shortcuts ---- */
 function selectedFlow(){return state.selId?state.flows.find(x=>x.id===state.selId):null;}
@@ -572,8 +536,8 @@ function resetGoto(){gotoPending=false;clearTimeout(gotoTimer);}
 document.addEventListener('keydown',e=>{
   const typing=isTypingTarget(e.target);
   if(gotoPending&&(typing||hasAnyModifier(e)))resetGoto();
-  if(isModShortcut(e,'k')){e.preventDefault();cmdk.open?cmdkClose():cmdkOpen();return;}
-  if(cmdk.open)return; // the palette handles its own keys
+  if(isModShortcut(e,'k')){e.preventDefault();isCommandPaletteOpen()?cmdkClose():cmdkOpen();return;}
+  if(isCommandPaletteOpen())return; // the palette handles its own keys
   if(e.key==='Escape'){resetGoto();return;}
   if(workflowShortcutBlocked())return;
   // Repeater Send works while the request editor is focused (caret in textarea).
@@ -644,6 +608,7 @@ async function loadVersion(retry){
   try{
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
+    if(d.project)setCtxProject(d.project);
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent='◧ '+d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
@@ -658,13 +623,15 @@ async function loadVersion(retry){
 }
 
 /* ---- theme ---- */
-function currentTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark';}
+// data-theme is light | hc; dark is the unmarked base. Boot re-applies whatever the
+// pre-paint script chose, so high contrast must survive it.
+function currentTheme(){const t=document.documentElement.getAttribute('data-theme');return t==='light'||t==='hc'?t:'dark';}
 function applyTheme(t){
-  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+  if(t==='light'||t==='hc')document.documentElement.setAttribute('data-theme',t);
   else document.documentElement.removeAttribute('data-theme');
   const b=$('#themeToggle');if(b)b.innerHTML=t==='light'?icon('sun'):icon('moon');
 }
-function toggleTheme(){const t=currentTheme()==='light'?'dark':'light';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
+function toggleTheme(){const t=currentTheme()==='dark'?'light':'dark';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
 $('#themeToggle').onclick=toggleTheme;
 applyTheme(currentTheme()); // sync the button icon with the theme applied pre-paint
 
@@ -714,6 +681,7 @@ async function bootProjectScopedUIWithDeadline(work){
 function settleWorkspaceBootWatchdog(){globalThis.__interseptorWorkspaceBoot?.settle?.();}
 function completeProjectScopedUIHydration(statuses){
   projectScopedUIReady=true;
+  refreshProjectState('hydrated');
   const storageWarning=workspaceStorageWarningMessage();
   const failed=statuses.includes('error')||Boolean(storageWarning);
   const pending=statuses.includes('pending');
@@ -771,6 +739,7 @@ async function bootFirstRunUI(){
     restoreTab();
     handleAppHash();
     releaseWorkstationReady();
+    loadOptionalModules(path=>import(path));
     await loadFlows();
     maybeShowSetup();
   }catch(e){
@@ -789,6 +758,44 @@ async function bootFirstRunUI(){
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
+/* ---- engagement strip, connection chip and project state ---- */
+projectState.attach({fetchJson:path=>api(path)});
+function goSettingsSection(sec){
+  const tab=document.querySelector('.tab[data-tab="settings"]');
+  if(!tab||tab.disabled)return;
+  tab.click();
+  const b=document.querySelector('#setNav button[data-sec="'+sec+'"]');if(b)b.click();
+}
+function activateTabByName(name){
+  const tab=document.querySelector('.tab[data-tab="'+name+'"]');
+  if(tab&&!tab.disabled)activateTab(tab);
+}
+// The strip only fetches once the project workspace is hydrated.
+function refreshProjectState(reason){if(projectScopedUIReady)projectState.refresh({reason});}
+setShellApi({activateTab:activateTabByName,openSettings:goSettingsSection,openProject:()=>{if(projectScopedUIReady)openProjectModal();}});
+initConnection({copyText,hasOpenModal});
+function readSavedIdentity(){try{return localStorage.getItem(projectStorageKey('activeIdentity'))||'';}catch(e){return '';}}
+function saveActiveIdentity(name){try{if(name)localStorage.setItem(projectStorageKey('activeIdentity'),name);else localStorage.removeItem(projectStorageKey('activeIdentity'));}catch(e){}}
+initCtxbar({
+  openSettings:goSettingsSection,
+  openProject:()=>{if(projectScopedUIReady)openProjectModal();},
+  activateTab:activateTabByName,
+  // The History "In scope only" chip stays the owner of the filter; the strip mirrors it.
+  toggleScopeFilter:()=>$('#scopeToggle')?.click(),
+  scopeFilterOn:()=>!!state.inScopeOnly,
+  openEngagement:()=>{const open=getHook('openEngagementSheet');if(!open)return false;open();return true;},
+  openSheet,
+  refreshSelect:refreshUiSelect,
+  hasOpenModal,
+  loadIdentity:readSavedIdentity,
+  saveIdentity:saveActiveIdentity,
+  toast,
+});
+projectState.subscribe(s=>{state.activeIdentity=s.activeIdentity;});
+{const st=$('#scopeToggle');if(st)new MutationObserver(()=>renderCtxbar()).observe(st,{attributes:true,attributeFilter:['aria-pressed']});}
+['scope.update','settings.update','session.update','activity','findings.update','engagement.update'].forEach(type=>registerSseHandler(type,()=>refreshProjectState(type)));
+registerSseHandler('flow.new',()=>{if(projectScopedUIReady)projectState.noteFlowNew();});
+
 renderChips();loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
