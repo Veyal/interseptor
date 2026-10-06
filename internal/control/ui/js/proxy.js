@@ -1,6 +1,6 @@
 import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
-import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
+import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn, loadFindings, pickFindingForSelection } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
 import { sendToRepeater, sendToIntruder, repNewTab, renderRepTabs, repLoadEditor, repPersist, repTitle, headersToText, waitForWorkstationReady } from './tools.js';
 import { retentionStats, loadRetention } from './settings.js';
@@ -12,7 +12,13 @@ import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
 import { placeFloatingSurface } from './surface-position.js';
-import { renderHTMLResponse } from './core.js';
+import { renderHTMLResponse, getHook, openFlow as openFlowDrawer } from './core.js';
+import { applyRowClick, toggleAllIds, chunkIds, bulkProgressText, createLongPress, BULK_CHUNK } from './proxy-selection.js';
+import { activeFilterCount, popoverFilterCount, emptyStateModel, attachedLabel, bulkVerbs, parseDockPref, resolveDock, middleEllipsis } from './proxy-filters.js';
+import { wsOpcodeName, flowUrl } from './flowbody.js';
+import { renderState } from './statepanel.js';
+import { copyAs, COPY_AS_KINDS } from './copyas.js';
+import { createKeyRegistry } from './keys.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -66,7 +72,9 @@ const FLOW_PAGE=250;            // primary page size shown in History
 const FLOW_BUFFER=50;           // extra rows prefetched ahead of scroll (reduces load-more lag)
 const FLOW_FETCH=FLOW_PAGE+FLOW_BUFFER;
 const ROW_H_FALLBACK=30;
+const PHONE_ROW_H=56;           // phone rows are two-line cards (panel-proxy.css)
 function readRowHeight(){
+  if(typeof matchMedia==='function'&&matchMedia('(max-width:720px)').matches)return PHONE_ROW_H;
   try{const v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));if(v>0)return v;}catch(e){}
   return ROW_H_FALLBACK;
 }
@@ -86,6 +94,7 @@ let flowLoadEvents=new Map();
 let flowLoadOverflow=false;
 const EXCLUDE_NORM=64|128; // repeater, intruder
 const FLOW_COLS_KEY='proxy.cols';
+const FLOW_COLS_ATTACHED_KEY='proxy.cols.attachedAdded'; // one-time: show the evidence column for saved column sets
 const FLOW_COLW_KEY='proxy.colW';   // per-column pixel-width overrides (drag-to-resize)
 const FLOW_COL_MIN=40;              // floor width for a resized column
 const HIDE_TLS_KEY='proxy.hideTlsFailed';
@@ -112,6 +121,7 @@ export function setShowTlsFailed(show){
 }
 const FLOW_COLUMNS=[
   {key:'id',label:'#',sort:'id',w:'44px'},
+  {key:'attached',label:'Ev',sort:'',w:'32px',align:'center'},
   {key:'method',label:'Method',sort:'method',w:'64px'},
   {key:'host',label:'Host',sort:'host',w:'minmax(110px,1.2fr)'},
   {key:'path',label:'Path',sort:'path',w:'minmax(150px,2.4fr)'},
@@ -127,7 +137,9 @@ function normalizeFlowCols(cols){
 }
 // On phones the History table keeps only the columns needed to triage a flow and
 // uses compact tracks, so it fits a 375px pane instead of scrolling sideways.
-const PHONE_FLOW_COLS={id:'40px',method:'56px',host:'minmax(64px,1fr)',path:'minmax(64px,1.6fr)',status:'44px'};
+// The phone layout renders each row as a two-line card (panel-proxy.css), so the
+// tracks below only decide which cells exist; the card grid ignores their widths.
+const PHONE_FLOW_COLS={id:'40px',attached:'28px',method:'56px',host:'minmax(64px,1fr)',path:'minmax(64px,1.6fr)',status:'44px',size:'52px',time:'52px'};
 const flowPhoneQuery=typeof matchMedia==='function'?matchMedia('(max-width:720px)'):null;
 function visibleFlowCols(){
   if(!flowPhoneQuery||!flowPhoneQuery.matches)return state.flowCols;
@@ -154,7 +166,9 @@ function loadFlowCols(){
   try{
     const raw=JSON.parse(localStorage.getItem(FLOW_COLS_KEY)||'null');
     if(Array.isArray(raw)&&raw.length){
-      const valid=normalizeFlowCols(raw.filter(k=>FLOW_COLUMNS.some(c=>c.key===k)));
+      const withNew=raw.slice();
+      try{if(!localStorage.getItem(FLOW_COLS_ATTACHED_KEY)){localStorage.setItem(FLOW_COLS_ATTACHED_KEY,'1');if(!withNew.includes('attached'))withNew.push('attached');}}catch(e){}
+      const valid=normalizeFlowCols(withNew.filter(k=>FLOW_COLUMNS.some(c=>c.key===k)));
       state.flowCols=valid.length?valid:defaultFlowCols();
     }else state.flowCols=defaultFlowCols();
   }catch(e){state.flowCols=defaultFlowCols();}
@@ -256,12 +270,12 @@ export function renderFlowHead(){
   head.innerHTML=visibleFlowCols().map(k=>{
     const c=FLOW_COLUMNS.find(x=>x.key===k);
     const alignCls=c.align?' u-ta-'+c.align:'';
-    const accessible=c.label==='St'?'Status':c.label;
+    const accessible=c.label==='St'?'Status':c.label==='Ev'?'Evidence':c.label;
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
-    return `<div class="${(sorted.trim()+alignCls).trim()}" data-sort="${c.sort}" aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
@@ -393,14 +407,17 @@ function flowRowHTML(f){
   const intercepted=(f.flags&1)!==0;
   const pending=!f.status&&!f.error;
   const hasNote=!!(f.note&&String(f.note).trim());
-  const stHTML=f.status?String(f.status):(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink" style="color:var(--fg3)" title="waiting for response">•••</span>');
+  const stHTML=f.status?String(f.status):(f.error?(f.flags&FLAG_TLS?'<span title="TLS MITM failed — likely SSL pinning or untrusted CA">PIN</span>':'ERR'):'<span class="blink tr-wait" title="waiting for response" aria-label="waiting for response">…</span>');
+  const linked=attachedLabel(flowFindings(f.id));
+  const phoneCard=!!(flowPhoneQuery&&flowPhoneQuery.matches);
   const rowTitle=[pending?'[pending]':'',hasNote?String(f.note).trim():''].filter(Boolean).join(' · ');
   const title=rowTitle?` title="${escAttr(rowTitle)}"`:'';
   const cells={
     id:`<div class="tr-id" data-field="id">${f.id}</div>`,
+    attached:`<div class="tr-att" data-field="attached">${linked?`<span title="${escAttr(linked)}">${icon('paperclip')}<span class="u-sr">${esc(linked)}</span></span>`:''}</div>`,
     method:`<div class="tr-m" data-field="method" style="color:${methodColor(f.method)}">${esc(f.method)}</div>`,
     host:`<div class="tr-host" data-field="host">${f.scheme==='https'?icon('lock','HTTPS')+' ':''}${esc(f.host)}</div>`,
-    path:`<div class="tr-path" data-field="path">${esc(f.path)}${intercepted?' <span style="color:var(--accent)" title="intercepted">●</span>':''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
+    path:`<div class="tr-path" data-field="path"${phoneCard?` title="${escAttr(f.path)}"`:''}>${esc(phoneCard?middleEllipsis(f.path,44):f.path)}${intercepted?` <span class="tr-held" title="intercepted" role="img" aria-label="intercepted">${icon('flag')}</span>`:''}${http2Chip(f)}${(f.flags&FLAG_TLS)?'<span class="ai-tag" style="background:var(--redDim);color:var(--red)" title="TLS handshake failed — SSL pinning or untrusted CA">PIN</span>':''}${(f.flags&FLAG_AI)?'<span class="ai-tag" title="sent by the AI assistant">AI</span>':''}${(f.flags&FLAG_DISCOVERY)?'<span class="ai-tag" style="background:var(--violetDim);color:var(--violet)" title="legacy content-discovery engine (removed) — old project data">DSC</span>':''}${(f.tags||[]).map(t=>`<span class="flowtag" data-tagchip="${escAttr(t)}" style="${tagChipStyle(t)}" title="filter by tag ${escAttr(t)}">${esc(t)}</span>`).join('')}</div>`,
     status:`<div class="tr-st" data-field="status" style="color:${statusColor(f.status)}">${stHTML}</div>`,
     mime:`<div class="tr-mime" data-field="mime">${esc(mimeLabel(f.mime))}</div>`,
     size:`<div class="tr-len" data-field="size">${f.status?fmtSize(f.resLen):''}</div>`,
@@ -408,6 +425,7 @@ function flowRowHTML(f){
   };
   return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
       ${visibleFlowCols().map(k=>cells[k]).join('')}
+      <button type="button" class="tr-more rowOverflow" data-rowmenu="${f.id}" aria-haspopup="menu" aria-label="Actions for flow #${f.id}" tabindex="-1">${icon('chevron')}</button>
     </div>`;
 }
 function wireFlowRow(r){
@@ -734,6 +752,7 @@ export function closeInspector(){
   if(state.selId==null)return false;
   state.selId=null;state.detail=null;
   onAuthzSelectionChanged();
+  if($('#panel-proxy')?.classList.contains('dock-drawer'))getHook('closeFlow')?.();
   renderRows();
   return true;
 }
@@ -828,6 +847,35 @@ function reconcileVirtualRows(){
   consumeFlowSignals();
   return true;
 }
+let checklistHandle=null;
+// renderEmptyHistory paints the guided empty state: a first-run card (proxy
+// address, device setup, FirstRunChecklist) or a filtered-empty card that names
+// how many filters hide everything, with one Clear filters action.
+function renderEmptyHistory(box){
+  if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
+  const model=emptyStateModel(state,{proxyAddr:state.proxyAddr});
+  if(model.kind==='empty-filtered'){
+    renderState(box,'empty-filtered',{title:model.title,hint:model.hint,filterCount:model.count,onClear:()=>{syncScopeToggle(false);clearAllFilters();}});
+    return;
+  }
+  renderState(box,'empty-first',{title:model.title,hint:model.hint,icon:'traffic'});
+  const wrap=box.querySelector('.state-panel');
+  const actions=document.createElement('div');
+  actions.className='history-welcome-actions';
+  const settings=document.createElement('button');
+  settings.type='button';settings.className='btn btn-primary';settings.id='gsSettings';settings.textContent='Connection settings';
+  settings.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="proxy"]')?.click();};
+  const tls=document.createElement('button');
+  tls.type='button';tls.className='btn';tls.id='gsTLS';tls.textContent='HTTPS setup';
+  tls.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="tls"]')?.click();};
+  actions.append(settings,tls);
+  const mount=document.createElement('div');
+  mount.id='proxyChecklistMount';
+  (wrap||box).append(actions,mount);
+  // The checklist module is optional: a missing or failed module must not blank History.
+  const mountChecklist=getHook('mountChecklist');
+  if(mountChecklist){try{checklistHandle=mountChecklist(mount);}catch(e){checklistHandle=null;}}
+}
 export function renderRows(){
   syncInspectorVisibility();
   const box=$('#rows');
@@ -835,18 +883,9 @@ export function renderRows(){
   applyFlowGrid();
   const flows=state.flows;
   if(!flows.length){
-    if(anyFilter()||state.inScopeOnly){
-      box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No flows match</div><p class="state-empty-hint">No flows match the current filters.</p><button class="btn" id="emptyClear">Clear filters</button></div>';
-      const c=document.getElementById('emptyClear');if(c)c.onclick=()=>{
-        if(state.inScopeOnly){state.inScopeOnly=false;const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
-        clearAllFilters();
-      };
-    }else{
-      box.innerHTML=getStartedCard();
-      const b=document.getElementById('gsSettings');if(b)b.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="proxy"]')?.click();};
-      const tls=document.getElementById('gsTLS');if(tls)tls.onclick=()=>{document.querySelector('.tab[data-tab="settings"]')?.click();document.querySelector('#setNav button[data-sec="tls"]')?.click();};
-    }
+    renderEmptyHistory(box);
     return;}
+  if(checklistHandle){checklistHandle.destroy();checklistHandle=null;}
   const win=flowVirt.computeWindow(flows.length);
   if(win){
     // The pads carry data-vpad so reconcileVirtualRows can recognize a window it
@@ -874,26 +913,18 @@ export function flowRowClick(id,e){
   // A click on a tag chip filters History by that tag instead of inspecting the row.
   const chip=e&&e.target&&e.target.closest&&e.target.closest('.flowtag');
   if(chip){filterByTag(chip.dataset.tagchip);return;}
-  const list=state.flows,idx=list.findIndex(f=>f.id===id);
-  if(idx<0)return;
-  const mod=e.ctrlKey||e.metaKey;
-  if(mod){
-    // Ctrl/Cmd-click toggles this single row in/out of the multi-selection
-    // (non-contiguous pick), without disturbing the rest. Seed the set with the
-    // currently-inspected row first, so Ctrl-clicking a second row keeps the first
-    // (plain-clicked) one selected too — not just the Ctrl-clicked one.
-    if(state.selected.size===0&&state.selId!=null&&state.selId!==id)state.selected.add(state.selId);
-    state.selected.has(id)?state.selected.delete(id):state.selected.add(id);
-    state.lastSelIdx=idx;selectFlow(id);updateSelBar();return;
-  }
-  if(e.shiftKey){
-    const anchor=state.lastSelIdx>=0?state.lastSelIdx:idx;
-    const a=Math.min(anchor,idx),b=Math.max(anchor,idx);
-    state.selected.clear();
-    for(let i=a;i<=b;i++)state.selected.add(list[i].id);
-    state.lastSelIdx=idx;selectFlow(id);updateSelBar();return;
-  }
-  state.selected.clear();state.lastSelIdx=idx;selectFlow(id);updateSelBar();
+  const ids=state.flows.map(f=>f.id);
+  if(!ids.includes(id))return;
+  stepSelection(ids,id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
+  selectFlow(id);updateSelBar();
+}
+// stepSelection applies one click or keyboard step through the id-keyed model:
+// ranges resolve against the current (filtered) id list, never the rendered
+// window, and the anchor is an id so it survives reloads and virtualization.
+function stepSelection(ids,id,mods){
+  const r=applyRowClick(state.selected,ids,{id,anchorId:state.selAnchorId,currentId:state.selId,...mods});
+  state.selAnchorId=r.anchorId;
+  state.lastSelIdx=ids.indexOf(id);
 }
 export function walkFlowNav(down,e){
   const list=state.flows;
@@ -901,24 +932,15 @@ export function walkFlowNav(down,e){
   const i=list.findIndex(f=>f.id===state.selId);
   const ni=i<0?0:(down?Math.min(i+1,list.length-1):Math.max(i-1,0));
   if(ni===i)return null;
-  const id=list[ni].id,mod=e.ctrlKey||e.metaKey;
-  if(mod){
-    state.selected.has(id)?state.selected.delete(id):state.selected.add(id);
-    state.lastSelIdx=ni;selectFlow(id);updateSelBar();return id;
-  }
-  if(e.shiftKey){
-    const anchor=state.lastSelIdx>=0?state.lastSelIdx:(i>=0?i:ni);
-    const a=Math.min(anchor,ni),b=Math.max(anchor,ni);
-    state.selected.clear();
-    for(let j=a;j<=b;j++)state.selected.add(list[j].id);
-    state.lastSelIdx=ni;selectFlow(id);updateSelBar();return id;
-  }
-  state.selected.clear();state.lastSelIdx=ni;selectFlow(id);updateSelBar();return id;
+  const id=list[ni].id;
+  if(state.selAnchorId==null&&i>=0)state.selAnchorId=list[i].id;
+  stepSelection(list.map(f=>f.id),id,{mod:e.ctrlKey||e.metaKey,shift:e.shiftKey});
+  selectFlow(id);updateSelBar();return id;
 }
+// Ctrl+Shift+A: select every flow matching the current filters (the loaded,
+// filtered id list), not just the rendered window; again to clear.
 export function toggleSelectAllShown(){
-  const list=state.flows;
-  const all=list.length>0&&list.every(f=>state.selected.has(f.id));
-  if(all)state.selected.clear();else list.forEach(f=>state.selected.add(f.id));
+  toggleAllIds(state.selected,state.flows.map(f=>f.id));
   updateSelBar();renderRows();
 }
 export function toggleSelectCurrentFlow(){
@@ -1256,6 +1278,7 @@ export async function selectFlow(id){
   state.selId=id;
   if(switching)onAuthzSelectionChanged();
   if(!syncSelectedRow(prevSelId))renderRows();
+  openDockedDrawer(id);
   if(needsLoadingState)showInspectorLoading(id);
   try{
     const pendingNoteSave=noteSaveTails.get(id);
@@ -1301,13 +1324,12 @@ function fetchRawMessage(flowId,side,detail){
   const cache=rawCache;
   return api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{cache.map.set(key,raw);return raw;});
 }
-function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
   const arrow=dir==='send'?'<span class="ws-dir-send">▲ send</span>':'<span class="u-accent">▼ recv</span>';
   const replayable=opcode===1; // text frames only — binary has no editable text to load
   return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" title="Click to load this frame into the replay box"`:''}>
     <span class="ws-col ws-col-dir">${arrow}</span>
-    <span class="ws-col ws-col-op">${wsOpcode(opcode)}</span>
+    <span class="ws-col ws-col-op">${wsOpcodeName(opcode)}</span>
     <span class="ws-col ws-col-len">${length} B</span>
     <span class="ws-col-text">${esc(text)}</span>${replayable?'<span class="hint ws-load-hint">↩ load</span>':''}</div>`;
 }
@@ -1541,7 +1563,7 @@ document.addEventListener('keydown',e=>{
 loadFlowCols();
 loadFlowColW();
 renderFlowHead();
-if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{renderFlowHead();renderRows();});
+if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{refreshRowHeight();renderFlowHead();renderRows();syncDock();});
 {const b=$('#colPickerBtn');if(b)b.onclick=e=>{e.stopPropagation();toggleColPicker();};}
 {const m=$('#colPicker');if(m)m.onclick=e=>e.stopPropagation();}
 document.addEventListener('click',()=>closeColPicker());
@@ -1615,7 +1637,7 @@ $('#flowSearchScriptTest')&&($('#flowSearchScriptTest').onclick=testFlowSearch);
 $('#flowSearchScriptSave')&&($('#flowSearchScriptSave').onclick=saveFlowSearch);
 $('#flowSearchScriptDelete')&&($('#flowSearchScriptDelete').onclick=deleteFlowSearch);
 loadFlowSearches();
-if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;const nf=$('#notesFilter');nf.classList.toggle('on',state.notesOnly);nf.setAttribute('aria-pressed',state.notesOnly?'true':'false');loadFlows();};
+if($('#notesFilter'))$('#notesFilter').onclick=()=>{state.notesOnly=!state.notesOnly;const nf=$('#notesFilter');nf.classList.toggle('on',state.notesOnly);nf.setAttribute('aria-pressed',state.notesOnly?'true':'false');renderChips();loadFlows();};
 if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   const next=!state.hideTlsFailed;
   if(next&&state.filters.tag==='tls-failed')state.filters.tag='';
@@ -1624,12 +1646,18 @@ if($('#hideTlsFilter'))$('#hideTlsFilter').onclick=()=>{
   syncHideTlsFilter();renderChips();renderTagBar();loadFlows();
 };
 syncHideTlsFilter();
-$('#scopeToggle').onclick=()=>{
-  state.inScopeOnly=!state.inScopeOnly;
-  const st=$('#scopeToggle');
+// syncScopeToggle keeps the In scope only chip's state, icon and label together
+// (the old code overwrote the whole button text with a Unicode glyph).
+function syncScopeToggle(on){
+  state.inScopeOnly=!!on;
+  const st=$('#scopeToggle');if(!st)return;
   st.classList.toggle('on',state.inScopeOnly);
-  st.textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
   st.setAttribute('aria-pressed',state.inScopeOnly?'true':'false');
+  st.innerHTML=icon('scope')+' In scope only';
+}
+$('#scopeToggle').onclick=()=>{
+  syncScopeToggle(!state.inScopeOnly);
+  renderChips();
   loadFlows();
 };
 function syncSourceFilters(){
@@ -1639,8 +1667,8 @@ function syncSourceFilters(){
   if(af){af.classList.toggle('on',state.showAI);af.setAttribute('aria-pressed',state.showAI?'true':'false');}
 }
 export { syncSourceFilters };
-$('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();loadFlows();});
-$('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();loadFlows();});
+$('#manualFilter')&&($('#manualFilter').onclick=()=>{state.showManual=!state.showManual;syncSourceFilters();renderChips();loadFlows();});
+$('#aiFilter')&&($('#aiFilter').onclick=()=>{state.showAI=!state.showAI;syncSourceFilters();renderChips();loadFlows();});
  syncSourceFilters();
 export function saveNote(){
   const flowId=state.selId,detail=state.detail;
@@ -1703,7 +1731,7 @@ function applyView(v){
   state.hideTlsFailed=f.hideTlsFailed!==false;
   const notes=$('#notesFilter');if(notes){notes.classList.toggle('on',state.notesOnly);notes.setAttribute('aria-pressed',state.notesOnly?'true':'false');}
   syncSourceFilters();syncHideTlsFilter();
-  syncControls();$('#scopeToggle').classList.toggle('on',state.inScopeOnly);$('#scopeToggle').setAttribute('aria-pressed',state.inScopeOnly?'true':'false');$('#scopeToggle').textContent=(state.inScopeOnly?'◉':'◎')+' in scope';
+  syncControls();syncScopeToggle(state.inScopeOnly);
   renderChips();renderTagBar();loadFlows();
   toast('applied view: '+v.name);
 }
@@ -1762,7 +1790,7 @@ export async function loadScope(){
 }
 export async function addHostToScope(host){
   try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})}));
-    toast('added '+host+' to scope — toggle ◎ in scope to focus');}
+    toast('added '+host+' to scope — turn on In scope only to focus');}
   catch(e){toastError('Add to scope failed',e);}
 }
 export function renderScope(){
@@ -1853,7 +1881,7 @@ export function clearAllFilters(){
   try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}
   syncSourceFilters();syncHideTlsFilter();
   {const nf=$('#notesFilter');if(nf){nf.classList.remove('on');nf.setAttribute('aria-pressed','false');}}
-  {const st=$('#scopeToggle');if(st){st.classList.remove('on');st.setAttribute('aria-pressed','false');st.textContent='◎ in scope';}}
+  syncScopeToggle(false);
   syncControls();renderChips();renderTagBar();loadFlows();
 }
 export function anyFilter(){const f=state.filters;return !!(f.scheme||f.method||f.status||f.host||f.search||f.tag||(f.exclude&&f.exclude.length)||state.notesOnly||state.inScopeOnly||!state.showManual||!state.showAI);}
@@ -1898,19 +1926,27 @@ export function addExclude(field,value){
 export function removeExclude(i){state.filters.exclude.splice(i,1);renderChips();loadFlows();}
 export function renderChips(){
   const f=state.filters,box=$('#chips'),items=[];
-  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><button type="button" class="x" data-clear="${k}" title="Remove filter" aria-label="Remove ${escAttr(k)} filter">✕</button></span>`);};
+  const add=(k,label,val)=>{if(val)items.push(`<span class="chip"><span>${label} <b>${esc(val)}</b></span><button type="button" class="x" data-clear="${k}" title="Remove filter" aria-label="Remove ${escAttr(k)} filter">${icon('close')}</button></span>`);};
   add('scheme','scheme',f.scheme);
   add('method','method',f.method);
   add('status','status',f.status?f.status+'xx':'');
   add('host','host',f.host);
   add('tag','<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg>',f.tag);
   add('search',f.searchScope==='body'?'body':f.searchScope==='id'?'id':'path',f.search);
-  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">✕</button></span>`);
-  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">✕</button></span>`);});
+  if(state.hideTlsFailed)items.push(`<span class="chip"><span>hiding <b>TLS</b> failures</span><button type="button" class="x" id="chipHideTlsClear" title="Show TLS failures" aria-label="Show TLS failures">${icon('close')}</button></span>`);
+  (f.exclude||[]).forEach((e,i)=>{items.push(`<span class="chip not"><span>${esc(e.field)} ≠ <b>${esc(e.value)}</b></span><button type="button" class="x" data-ex="${i}" title="Remove exclusion" aria-label="Remove ${escAttr(e.field)} exclusion">${icon('close')}</button></span>`);});
+  // Source, notes and scope toggles live elsewhere (toolbar chip, Filters popover),
+  // so an active one also shows here as a removable chip: removal clicks the toggle.
+  [[state.inScopeOnly,'#scopeToggle','in scope only'],[state.notesOnly,'#notesFilter','with notes'],[!state.showManual,'#manualFilter','hiding manual'],[!state.showAI,'#aiFilter','hiding external agent']].forEach(([on,sel,label])=>{
+    if(on)items.push(`<span class="chip"><span><b>${esc(label)}</b></span><button type="button" class="x" data-toggle="${sel}" title="Remove filter" aria-label="Remove ${escAttr(label)} filter">${icon('close')}</button></span>`);
+  });
   const hasFilters=items.length>0;
-  if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ✕</button>`);
+  if(hasFilters)items.push(`<button class="chip-clear" id="chipsClear" title="Remove all filters">Clear all ${icon('close')}</button>`);
   box.innerHTML=items.join('');
   box.classList.toggle('has',hasFilters);
+  const bar=$('#activeFilterBar');if(bar)bar.hidden=!hasFilters;
+  syncFiltersButton();
+  box.querySelectorAll('[data-toggle]').forEach(x=>x.onclick=()=>{$(x.dataset.toggle)?.click();});
   box.querySelectorAll('[data-clear]').forEach(x=>x.onclick=()=>clearFilter(x.dataset.clear));
   box.querySelectorAll('[data-ex]').forEach(x=>x.onclick=()=>removeExclude(Number(x.dataset.ex)));
   const htc=$('#chipHideTlsClear');if(htc)htc.onclick=()=>{state.hideTlsFailed=false;try{localStorage.setItem(HIDE_TLS_KEY,'0');}catch(e){}syncHideTlsFilter();renderChips();loadFlows();};
@@ -2153,7 +2189,7 @@ window.addEventListener('blur',hideCtx);
 });
 wireSelectionDecode($('#reqView'),$('#reqDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'req'}:null});
 wireSelectionDecode($('#resView'),$('#resDecode'),{onDecoder:openDecoder,getContext:()=>state.selId?{flowId:state.selId,side:'res'}:null});
-export function flowURL(f){const def=(f.scheme==='https'&&f.port===443)||(f.scheme==='http'&&f.port===80);return `${f.scheme}://${f.host}${def?'':':'+f.port}${f.path}`;}
+export function flowURL(f){return flowUrl(f);}
 export function copyURL(f){copyText(flowURL(f),'URL copied');}
 function shq(s){return "'"+String(s).replace(/'/g,"'\\''")+"'";}
 export async function copyFlowRaw(f,side='req'){
@@ -2194,7 +2230,21 @@ export function updateSelBar(){
   const n=state.selected.size;
   $('#selBar').style.display=n?'flex':'none';
   $('#selCount').textContent=n+' selected';
-  const cmp=$('#selCompare');if(cmp)cmp.style.display=n===2?'':'none';
+  // Verbs stay visible and are disabled with a reason, so "Diff" is discoverable
+  // before the second flow is selected.
+  const buttonFor={repeater:'selSendTo',intruder:'selSendTo',scanner:'selSendTo',tag:'selTag',finding:'selAddFinding',copyas:'selCopyAs',diff:'selCompare',delete:'selDelete'};
+  const enabled={};
+  bulkVerbs(n).forEach(v=>{
+    const id=buttonFor[v.id];
+    enabled[id]=enabled[id]||v.enabled;
+    const btn=$('#'+id);
+    if(btn&&id!=='selSendTo'){
+      if(btn.dataset.title===undefined)btn.dataset.title=btn.dataset.tooltip||btn.getAttribute('title')||'';
+      btn.disabled=!v.enabled||btn.dataset.busy==='1';
+      btn.title=v.enabled?btn.dataset.title:v.reason;
+    }
+  });
+  const send=$('#selSendTo');if(send)send.disabled=!enabled.selSendTo;
   updateFindPocBtn();
 }
 function compareWordDiff(a,b){
@@ -2271,7 +2321,7 @@ export async function openCompare(restoreModeFocus=''){
 }
 if($('#selCompare'))$('#selCompare').onclick=()=>openCompare();
 if($('#compareClose'))$('#compareClose').onclick=closeCompare;
-$('#selClear').onclick=()=>{state.selected.clear();state.lastSelIdx=-1;renderRows();updateSelBar();};
+$('#selClear').onclick=()=>{state.selected.clear();state.selAnchorId=null;state.lastSelIdx=-1;renderRows();updateSelBar();};
 
 $('#selScope').onclick=async()=>{
   const hosts=[...new Set([...state.selected].map(id=>{const f=flowStore.byId.get(id);return f&&f.host;}).filter(Boolean))];
@@ -2289,24 +2339,40 @@ $('#selScope').onclick=async()=>{
     button.disabled=false;button.removeAttribute('aria-busy');
   }
 };
-export let _delArm=false,_delTimer;
-function restoreSelDelete(btn){btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=icon('trash')+' Delete';}
+function restoreSelDelete(btn){delete btn.dataset.busy;btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=icon('trash')+' Delete';}
+// bulkRun runs `work(chunk)` over BULK_CHUNK-sized id batches and announces
+// "Verb N of M" through the polite #selProgress region between batches.
+async function bulkRun(verb,ids,work){
+  const out=$('#selProgress');
+  let done=0;
+  for(const chunk of chunkIds(ids,BULK_CHUNK)){
+    const r=await work(chunk);
+    done+=chunk.length;
+    if(out)out.textContent=bulkProgressText(verb,done,ids.length);
+    if(r===false)break;
+  }
+  return done;
+}
 $('#selDelete').onclick=async()=>{
   const btn=$('#selDelete');
   if(btn.disabled)return;
   const ids=[...state.selected];if(!ids.length)return;
-  if(!_delArm){_delArm=true;$('#selDelete').innerHTML=icon('trash')+' Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';},2500);return;}
-  clearTimeout(_delTimer);_delArm=false;
-  btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Deleting…';
-  let r;
-  try{r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});}
-  catch(e){restoreSelDelete(btn);toastError('Delete failed',e);return;}
+  const ok=await uiConfirm('Delete '+ids.length+' flow'+(ids.length===1?'':'s')+'?','This permanently removes the selected flows and their stored bodies. It cannot be undone.','Delete','btn btn-danger');
+  if(!ok)return;
+  btn.disabled=true;btn.dataset.busy='1';btn.setAttribute('aria-busy','true');btn.textContent='Deleting…';
+  let deleted=0;
+  try{
+    await bulkRun('Deleting',ids,async chunk=>{
+      const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:chunk})});
+      deleted+=r.deleted!=null?r.deleted:chunk.length;
+    });
+  }catch(e){restoreSelDelete(btn);toastError('Delete failed',e);if(deleted)loadFlows();return;}
   // Restore the label first so updateSelBar and later selection changes own the final state.
   restoreSelDelete(btn);
   if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
-  state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
-  const n=r.deleted!=null?r.deleted:ids.length;
-  toast('deleted '+n+' flow'+(n===1?'':'s'));
+  state.selected.clear();state.selAnchorId=null;state.lastSelIdx=-1;updateSelBar();loadFlows();
+  const out=$('#selProgress');if(out)out.textContent='';
+  toast('deleted '+deleted+' flow'+(deleted===1?'':'s'));
 };
 /* ---- inspector splitter ---- */
 (function(){
@@ -2370,3 +2436,175 @@ $('#selDelete').onclick=async()=>{
     applyHeight(inspect.offsetHeight+delta);
   });
 })();
+
+/* ---- Proxy panel workbench: Filters popover, inspector dock, bulk verbs, Copy as, gestures ---- */
+function syncFiltersButton(){
+  const btn=$('#filtersBtn');if(!btn)return;
+  const n=popoverFilterCount(state);
+  const badge=$('#filtersCount');
+  if(badge){badge.hidden=n===0;badge.textContent=String(n);}
+  btn.setAttribute('aria-label',n?`Filters, ${n} active`:'Filters');
+}
+function setFiltersOpen(open,{restoreFocus=false}={}){
+  const pop=$('#proxyFilters'),btn=$('#filtersBtn');
+  if(!pop||!btn)return;
+  pop.hidden=!open;
+  btn.setAttribute('aria-expanded',open?'true':'false');
+  if(open)pop.querySelector('button,input,select,summary')?.focus();
+  else if(restoreFocus)btn.focus();
+}
+{
+  const btn=$('#filtersBtn');
+  if(btn)btn.onclick=e=>{e.stopPropagation();const pop=$('#proxyFilters');setFiltersOpen(!!pop&&pop.hidden);};
+  // Esc closes the popover first (capture), and focus returns to its button.
+  document.addEventListener('keydown',e=>{
+    const pop=$('#proxyFilters');
+    if(e.key!=='Escape'||!pop||pop.hidden)return;
+    e.preventDefault();e.stopImmediatePropagation();setFiltersOpen(false,{restoreFocus:true});
+  },true);
+  document.addEventListener('pointerdown',e=>{
+    const pop=$('#proxyFilters');
+    if(pop&&!pop.hidden&&!e.target.closest('#proxyFilters,#filtersBtn'))setFiltersOpen(false);
+  });
+  syncFiltersButton();
+}
+
+// Inspector dock: at >=1100px selecting a flow opens the Flow Drawer and the
+// bottom inspector hides; "dock bottom" (or a narrower viewport) keeps the
+// classic bottom inspector. The preference persists in localStorage.
+const DOCK_KEY='proxy.dock';
+let dockPref=(()=>{try{return parseDockPref(localStorage.getItem(DOCK_KEY));}catch(e){return 'drawer';}})();
+function syncDock(){
+  const panel=$('#panel-proxy'),btn=$('#inspectDock');
+  const wide=resolveDock(dockPref,window.innerWidth)==='drawer';
+  const drawer=wide&&!!getHook('openFlow');
+  if(panel)panel.classList.toggle('dock-drawer',drawer);
+  if(btn){
+    btn.hidden=resolveDock('drawer',window.innerWidth)!=='drawer'||!getHook('openFlow');
+    btn.setAttribute('aria-pressed',drawer?'true':'false');
+    btn.innerHTML=icon('panel')+(drawer?' Side drawer':' Bottom inspector');
+  }
+  return drawer;
+}
+function openDockedDrawer(id){
+  if(!syncDock())return;
+  const current=getHook('flowDrawerCurrent');
+  if(current&&current()===id)return;
+  const opened=openFlowDrawer(id,{source:'proxy',focusTitle:false,siblings:state.flows.map(f=>f.id)});
+  if(!opened)$('#panel-proxy')?.classList.remove('dock-drawer');
+}
+{
+  const btn=$('#inspectDock');
+  if(btn)btn.onclick=()=>{
+    dockPref=dockPref==='drawer'?'bottom':'drawer';
+    try{localStorage.setItem(DOCK_KEY,dockPref);}catch(e){}
+    const drawer=syncDock();
+    if(drawer&&state.selId!=null)openDockedDrawer(state.selId);
+    else if(!drawer)getHook('closeFlow')?.();
+  };
+  window.addEventListener('resize',()=>{const was=$('#panel-proxy')?.classList.contains('dock-drawer');if(!syncDock()&&was)getHook('closeFlow')?.();});
+  syncDock();
+}
+// The shared row-height token changes with density; re-measure the virtual list.
+window.addEventListener('densitychange',refreshRowHeight);
+// Evidence markers come from the loaded findings, so repaint rows when the panel
+// becomes visible again instead of keeping stale paperclips.
+// The Flow Drawer module loads after this one, so the dock state is re-synced here too.
+document.addEventListener('interseptor:tabchange',e=>{if(e&&e.detail&&e.detail.tab==='proxy'){syncDock();refreshVisibleRows();}});
+
+// attachFlows routes "attach as evidence" through the shared attachEvidence
+// popover (one entry point for button, key, long press), falling back to the
+// legacy picker when the module is unavailable or the batch is large.
+const ATTACH_MAX=32;
+async function attachFlows(ids,anchor){
+  if(!ids.length)return;
+  const attach=getHook('attachEvidence');
+  if(!attach||ids.length>ATTACH_MAX){if(ids.length===1)addFlowToFinding(ids[0]);else pickFindingForSelection();return;}
+  const result=await attach({kind:'flow',refs:ids},{anchor});
+  if(result&&result.attached){await loadFindings();refreshVisibleRows();}
+}
+{
+  const attach=$('#inspectAddFinding');
+  if(attach)attach.onclick=()=>{const f=selectedInspectorFlow();if(f)attachFlows([f.id],attach).catch(e=>toastError('Attach failed',e));};
+  const bulkAttach=$('#selAddFinding');
+  if(bulkAttach)bulkAttach.onclick=()=>attachFlows([...state.selected],bulkAttach).catch(e=>toastError('Attach failed',e));
+}
+
+// Bulk verbs.
+function selectedFlowRecords(){return [...state.selected].map(id=>flowStore.byId.get(id)||{id});}
+{
+  const send=$('#selSendTo');
+  if(send)send.onclick=()=>{
+    const ids=[...state.selected];if(!ids.length)return;
+    const items=[{label:ids.length>1?'Repeater ('+ids.length+' tabs)':'Repeater',icon:'plus',act:async()=>{
+      if(ids.length>20){toast('sending the first 20 flows to Repeater','warn');}
+      for(const f of selectedFlowRecords().slice(0,20))await sendToRepeater(f);
+    }}];
+    if(ids.length===1){
+      items.push({label:'Intruder',act:()=>{const f=selectedFlowRecords()[0];if(f)sendToIntruder(f);}});
+      items.push({label:'Scanner',icon:'search',act:()=>{const f=selectedFlowRecords()[0];if(f)prefillScanner(f.host,(f.path||'').split('?')[0]);}});
+    }
+    openMenu(0,0,[{head:'SEND '+ids.length+' TO',items}],send);
+  };
+  const tag=$('#selTag');
+  if(tag)tag.onclick=()=>{tagSelectionPrompt();};
+}
+
+// Copy as: one menu for the inspector flow, the bulk selection and the `y` chord.
+function copyAsSections(getFlows){
+  return [{head:'COPY AS',items:COPY_AS_KINDS.map(k=>({label:k.label,val:k.key,act:()=>{copyAs(k.kind,getFlows(),{redact:k.redact}).catch(e=>toastError('Copy failed',e));}}))}];
+}
+{
+  const one=$('#inspectCopyAs');
+  if(one)one.onclick=()=>{const f=selectedInspectorFlow();if(!f)return;openMenu(0,0,copyAsSections(()=>[f]),one);};
+  const many=$('#selCopyAs');
+  if(many)many.onclick=()=>{if(!state.selected.size)return;openMenu(0,0,copyAsSections(selectedFlowRecords),many);};
+}
+
+// Single-key shortcuts for the focused History row (gated by keys.js: not in
+// inputs, not while a modal is open, and switchable in Settings). `d` diffs two
+// selected flows, `y` then a letter copies as, `/` jumps to the filter box. The
+// evidence key `e` is registered by evidence-attach.js.
+{
+  const registry=createKeyRegistry({isModalOpen:()=>hasOpenModal()});
+  registry.register({id:'proxy.diff',keys:'d',scope:'proxy-list',label:'Diff two selected flows',group:'History',run:()=>{
+    if(state.selected.size!==2){toast('select exactly two flows to diff');return;}
+    openCompare();
+  }});
+  registry.register({id:'proxy.filter',keys:'/',scope:'proxy-list',label:'Focus the history search',group:'History',run:()=>{$('#fSearch')?.focus();}});
+  COPY_AS_KINDS.forEach(k=>registry.register({id:'proxy.copyas.'+k.kind,keys:'y '+k.key,scope:'proxy-list',label:'Copy as '+k.label,group:'History',run:()=>{
+    const f=selectedInspectorFlow();if(f)copyAs(k.kind,state.selected.size>1?selectedFlowRecords():[f],{redact:k.redact}).catch(e=>toastError('Copy failed',e));
+  }}));
+  document.addEventListener('keydown',e=>{
+    if(e.defaultPrevented||!e.target||!e.target.closest||!e.target.closest('#rows .trow[data-id]'))return;
+    registry.handle(e,{scopes:['proxy-list']});
+  });
+}
+
+// Phone rows: a 56px two-line card has no room for inline buttons, so the row
+// overflow button (always available) and a 500ms long press (8px slop) both open
+// the evidence popover. Everything stays reachable without the gesture.
+{
+  const box=$('#rows');
+  let pressId=0,suppressClick=false;
+  const press=createLongPress({onLong:()=>{
+    suppressClick=true;
+    const row=box.querySelector(`.trow[data-id="${pressId}"]`);
+    attachFlows([pressId],row||box).catch(e=>toastError('Attach failed',e));
+  }});
+  box.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch')return;
+    const row=e.target.closest('.trow[data-id]');if(!row)return;
+    pressId=Number(row.dataset.id);suppressClick=false;press.start(e.clientX,e.clientY);
+  });
+  box.addEventListener('pointermove',e=>{if(e.pointerType==='touch')press.move(e.clientX,e.clientY);});
+  ['pointerup','pointercancel','pointerleave'].forEach(t=>box.addEventListener(t,()=>press.end()));
+  box.addEventListener('click',e=>{
+    if(suppressClick){suppressClick=false;e.stopImmediatePropagation();e.preventDefault();return;}
+    const more=e.target.closest('.rowOverflow[data-rowmenu]');
+    if(!more)return;
+    e.stopImmediatePropagation();
+    const f=flowStore.byId.get(Number(more.dataset.rowmenu));
+    if(f){const r=more.getBoundingClientRect();showCtx(r.left,r.bottom+2,f,'');}
+  },true);
+}
