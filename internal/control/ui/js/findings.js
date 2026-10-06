@@ -11,6 +11,11 @@ import { evidenceTrayHTML, wireEvidenceTray, showUndoToast } from './evidence-tr
 import { createSplitPane } from './split.js';
 import { projectState } from './project-state.js';
 
+// Generated (never real visual proof) image sources, including evidence_render.
+const GENERATED_SOURCES = ['flow_preview', 'generated_image', 'evidence_render'];
+const isGeneratedSource = source => GENERATED_SOURCES.includes(source);
+const sourceLabel = source => source === 'evidence_render' ? 'Generated evidence render · not browser proof' : evidenceSourceLabel(source);
+
 // Findings tab: the human reviews/curates the project's vulnerability findings.
 // Each finding has a narrative body — an ordered sequence of text blocks (markdown)
 // and flow-reference blocks (PoC request/response) interleaved freely, like a report.
@@ -100,7 +105,7 @@ const FINDING_ROLES = ['context','setup','baseline','action','result','control',
 function findingRoleOptions(selected) { return `<option value=""${selected ? '' : ' selected'}>Choose role…</option>` + FINDING_ROLES.map(r => `<option value="${r}"${r === selected ? ' selected' : ''}>${r}</option>`).join(''); }
 function blockMetaEditor(b, i) {
   const evidence = b.type === 'flow' || b.type === 'image';
-  return `<div class="find-block-meta"><label>Role <select class="find-block-role btn btn-field" data-i="${i}" aria-label="${evidence ? 'Evidence' : 'Reproduction step'} role">${findingRoleOptions(b.role)}</select></label>${evidence ? `<label class="find-proof-label">What this proves <input class="find-block-proof" data-i="${i}" aria-label="What this evidence proves" value="${escAttr(b.proof || '')}" placeholder="State the exact claim this evidence supports"></label>` : ''}${b.type === 'image' && !['flow_preview','generated_image'].includes(b.source) ? `<label>Image origin <select class="find-block-source" data-i="${i}" aria-label="Image origin">${['operator_upload','browser_screenshot','device_screenshot','tool_output','generated_image','other'].map(source=>`<option value="${source}"${source === (b.source || 'operator_upload') ? ' selected' : ''}>${esc(evidenceSourceLabel(source))}</option>`).join('')}</select></label>${b.provenance ? `<span class="find-provenance" title="${escAttr(`Original source: ${b.provenance.originalSource}. ${b.provenance.classifiedBy ? `Classified by ${b.provenance.classifiedBy} at ${new Date(b.provenance.classifiedTs).toLocaleString()}.` : ''}`)}">Ingested: ${esc(b.provenance.ingestion)}</span>` : ''}` : ''}${b.source && (b.type !== 'image' || ['flow_preview','generated_image'].includes(b.source)) ? `<span class="find-provenance">${esc(evidenceSourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
+  return `<div class="find-block-meta"><label>Role <select class="find-block-role btn btn-field" data-i="${i}" aria-label="${evidence ? 'Evidence' : 'Reproduction step'} role">${findingRoleOptions(b.role)}</select></label>${evidence ? `<label class="find-proof-label">What this proves <input class="find-block-proof" data-i="${i}" aria-label="What this evidence proves" value="${escAttr(b.proof || '')}" placeholder="State the exact claim this evidence supports"></label>` : ''}${b.type === 'image' && !isGeneratedSource(b.source) ? `<label>Image origin <select class="find-block-source" data-i="${i}" aria-label="Image origin">${['operator_upload','browser_screenshot','device_screenshot','tool_output','generated_image','other'].map(source=>`<option value="${source}"${source === (b.source || 'operator_upload') ? ' selected' : ''}>${esc(evidenceSourceLabel(source))}</option>`).join('')}</select></label>${b.provenance ? `<span class="find-provenance" title="${escAttr(`Original source: ${b.provenance.originalSource}. ${b.provenance.classifiedBy ? `Classified by ${b.provenance.classifiedBy} at ${new Date(b.provenance.classifiedTs).toLocaleString()}.` : ''}`)}">Ingested: ${esc(b.provenance.ingestion)}</span>` : ''}` : ''}${b.source && (b.type !== 'image' || isGeneratedSource(b.source)) ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
 }
 
 const FINDING_OUTLINES = {
@@ -1432,11 +1437,11 @@ function renderFindReportBody(fid) {
       const md = (b.md || '').trim();
       if (!md) return '';
       step++;
-      return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody"><div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(evidenceSourceLabel(b.source))}</span>` : ''}</div>${renderMD(md)}${b.proof ? `<div class="find-proof-read"><b>Supports:</b> ${esc(b.proof)}</div>` : ''}</div></div>`;
+      return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody"><div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}</span>` : ''}</div>${renderMD(md)}${b.proof ? `<div class="find-proof-read"><b>Supports:</b> ${esc(b.proof)}</div>` : ''}</div></div>`;
     }
     if (b.type === 'image') {
       step++;
-      const imageMeta = `<div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(evidenceSourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
+      const imageMeta = `<div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>`;
       if (b.missing) {
         return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div><div class="find-report-stepbody">${imageMeta}<div class="find-poc-missing"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> Screenshot missing</div></div></div>`;
       }
@@ -1457,7 +1462,7 @@ function renderFindReportBody(fid) {
        return `<div class="find-report-step" id="find-evidence-${index}" tabindex="-1"><div class="find-report-stepn">${step}</div>
          <div class="find-report-stepbody">
            <div class="find-report-flow">
-             <div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(evidenceSourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
+             <div class="find-report-meta"><span class="find-role-badge">${esc(b.role || 'observation')}</span>${b.source ? `<span class="find-provenance">${esc(sourceLabel(b.source))}${b.sourceFlowId ? ' · flow #' + esc(String(b.sourceFlowId)) : ''}</span>` : ''}</div>${b.note ? `<div class="find-report-note">${esc(b.note)}</div>` : ''}
              <div class="find-poc-req">${reqLine}</div>
              ${b.proof ? `<div class="find-proof-read"><b>Proves:</b> ${esc(b.proof)}</div>` : '<div class="find-proof-needed">Proof annotation needed.</div>'}
            </div>
