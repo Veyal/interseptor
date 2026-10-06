@@ -93,3 +93,6 @@ a.flow-chip:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px
 /* Drop zones for dragged flows: additive only, the keyboard path is the `e` key
    and the Attach button. */
 [data-evidence-drop].is-drag-over{outline:var(--drag-over);outline-offset:-2px;background:var(--accentDim)}
+.flow-diff-shell{display:flex;flex-direction:column;height:min(80dvh,720px);max-height:calc(100dvh - var(--sp-4) * 2);overflow:hidden}
+.flow-diff-shell .rep-diff{flex:1}
+.flow-drawer-panel .finder{flex:none;margin:0 var(--sp-3) var(--sp-1)}

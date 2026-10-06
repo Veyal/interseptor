@@ -247,7 +247,7 @@ export const LEGACY_MODALS = [
   { id: 'findDeletedModal', title: 'Deleted findings dialog (legacy)', kw: 'deleted findings restore trash', how: { click: '#findDeletedOpen', tab: 'findings' } },
   { id: 'sessionInspectModal', title: 'Inspect session timeline of selected flows', kw: 'session inspection timeline roles', how: { open: 'session' } },
   { id: 'authTimelineModal', title: 'Auth timeline from selected flow', kw: 'authentication timeline login token', how: { open: 'auth-timeline' } },
-  { id: 'compareModal', title: 'Compare selected flows (diff)', kw: 'compare diff two flows', how: { cmd: 'Compare selected flows (diff)' } },
+  { id: 'compareModal', title: 'Compare selected flows (legacy word diff)', kw: 'compare diff two flows', how: { cmd: 'Compare selected flows (legacy word diff)' } },
   { id: 'decModal', title: 'Open Decoder (base64 / url / jwt / hex…)', kw: 'encode decode smart', how: { cmd: 'Open Decoder (base64 / url / jwt / hex…)' } },
   { id: 'confirmModal', how: { transient: 'confirmation prompt raised by another action' } },
   { id: 'promptModal', how: { transient: 'text prompt raised by another action' } },

@@ -28,8 +28,8 @@ export function findMatches(text, query, { regex = false, caseSensitive = false,
 }
 
 // createFinder(container, {root, getText, regex, caseSensitive, doc, label})
-// container hosts the docked bar; root (default container) is the searched
-// subtree; getText optionally supplies the searched string and must equal the
+// container hosts the docked bar (placed before insertBefore() when given, else
+// first); root (default container) is the searched subtree; getText optionally supplies the searched string and must equal the
 // concatenated text of root's text nodes.
 export function createFinder(container, opts = {}) {
   const d = opts.doc || container.ownerDocument;
@@ -93,7 +93,8 @@ export function createFinder(container, opts = {}) {
     rx.addEventListener('click', () => toggle('regex'));
     cs.addEventListener('click', () => toggle('caseSensitive'));
     close.addEventListener('click', close_);
-    container.insertBefore(bar, container.firstChild);
+    const ref = opts.insertBefore ? opts.insertBefore() : null;
+    container.insertBefore(bar, ref && ref.parentNode === container ? ref : container.firstChild);
     state.bar = { el: bar, input, count, rx, cs };
   }
   function toggle(which) {
@@ -187,7 +188,7 @@ export function createFinder(container, opts = {}) {
     if (opts.onClose) opts.onClose();
   }
   return {
-    open, close: close_, next: () => step(1), prev: () => step(-1),
+    container, open, close: close_, next: () => step(1), prev: () => step(-1),
     refresh: run, isOpen: () => !!state.bar && !state.bar.el.hidden,
     setQuery(q) { state.query = q; if (state.bar) state.bar.input.value = q; run(); },
     destroy() { clearMarks(); clearTimeout(state.timer); if (state.bar) state.bar.el.remove(); state.bar = null; },

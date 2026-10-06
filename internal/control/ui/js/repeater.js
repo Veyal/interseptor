@@ -85,7 +85,7 @@ function button(doc, { id, label, text, icon, cls = 'btn xs' }) {
 // buildDiffPanel mounts a response diff panel into `host`. open(aId, bId) loads
 // both flows' responses lazily (bounded to 1 MB each), shows removed (-) lines
 // from a and added (+) lines from b, and hides the `hide` elements meanwhile.
-export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast, returnFocus }) {
+export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast, returnFocus, onClose }) {
   const mk = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const btn = (suffix, text) => button(doc, { id: prefix + suffix, text });
   const panel = mk('section', 'rep-diff');
@@ -140,6 +140,7 @@ export function buildDiffPanel(doc, { prefix, title, host, hide = [], api, toast
     panel.hidden = true;
     hide.forEach((el) => { el.hidden = false; });
     if (focus && returnFocus) { const f = returnFocus(); if (f && f.focus) f.focus(); }
+    if (onClose) onClose();
   }
   close.addEventListener('click', () => closePanel());
   ignore.addEventListener('change', () => { if (ids) open(ids[0], ids[1]); });

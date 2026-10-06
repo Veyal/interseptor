@@ -98,7 +98,7 @@ export function selectionActions() {
     { t: 'Send to Repeater', kw: 'resend craft edit', run: need((f) => import('./tools.js').then((m) => m.sendToRepeater(f[0]))) },
     { t: 'Send to Intruder', kw: 'fuzz payloads', run: need((f) => import('./tools.js').then((m) => m.sendToIntruder(f[0]))) },
     { t: 'Attach to a finding', kw: 'evidence proof add finding', run: need(() => import('./findings.js').then((m) => m.pickFindingForSelection())) },
-    { t: 'Compare two flows (diff)', kw: 'diff compare', run: () => { if ((state.selected ? state.selected.size : 0) !== 2) { toast('select exactly two flows to compare'); return; } import('./proxy.js').then((m) => m.openCompare()); } },
+    { t: 'Compare two flows (diff)', kw: 'diff compare', run: () => { if ((state.selected ? state.selected.size : 0) !== 2) { toast('select exactly two flows to compare'); return; } import('./flow-diff.js').then((m) => m.openFlowDiff()); } },
     { t: 'Inspect session timeline', kw: 'session roles timeline', run: need(() => legacyOpen('session')) },
     { t: 'Auth timeline from the flow', kw: 'authentication login token', run: need(() => legacyOpen('auth-timeline')) },
   ];

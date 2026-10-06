@@ -24,6 +24,7 @@ import { loadTrafficDiagnosis, syncTlsBannerSetting, setTlsBannerHidden } from '
 import { transitionView } from './motion.js';
 import { projectStorageReady, loadMapModule } from './project.js';
 import { initUiHints } from './hints.js';
+import { openFlowDiff } from './flow-diff.js';
 import { projectState } from './project-state.js';
 import { initCtxbar, renderCtxbar, setCtxProject } from './ctxbar.js';
 import { initConnection, setConnectionStatus } from './connection.js';
@@ -484,7 +485,8 @@ function cmdkCommands(){
     {t:'Export findings',kw:'export report markdown html json download findings',run:()=>{go('findings')();const o=getShellApi().openReport;if(!o||!o())toast('Open the relevant view first');}},
     {t:'Add selected flow to finding',kw:'add evidence poc finding attach history',run:()=>{if(state.selected?.size)pickFindingForSelection();else{const f=selectedFlow();if(f)addFlowToFinding(f.id);else toast('select a flow in History first');}}},
     {t:'Find inside selected message (Ctrl+F)',kw:'search find text request response body inspector',run:()=>{go('proxy')();openInspectFind();}},
-    {t:'Compare selected flows (diff)',kw:'compare diff two flows responses side by side',run:()=>openCompare()},
+    {t:'Diff selected flows',kw:'compare diff two flows responses hunks side by side',run:()=>openFlowDiff()},
+    {t:'Compare selected flows (legacy word diff)',kw:'compare diff two flows words lines headers modal',run:()=>openCompare()},
     {t:'Copy selected flow as cURL',kw:'curl copy clipboard request reproduce',run:()=>{const f=selectedFlow();if(f)copyCurl(f);else toast('select a flow in History first');}},
      {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
 
@@ -581,7 +583,7 @@ document.addEventListener('keydown',e=>{
     toggleSelectCurrentFlow();
     return;
   }
-  if(activePanel()==='proxy'&&isPlainShortcut(e,'/')){const s=$('#fSearch');if(s){e.preventDefault();s.focus();}return;} // /: focus search
+  if(activePanel()==='proxy'&&!e.defaultPrevented&&isPlainShortcut(e,'/')){const s=$('#fSearch');if(s){e.preventDefault();s.focus();}return;} // /: focus search
 });
 $('#scClose').onclick=()=>closeModal($('#shortcutsModal'));
 // The skip link moves focus without touching location.hash (findings.js routes on it).

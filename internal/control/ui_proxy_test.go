@@ -54,7 +54,7 @@ func TestUIProxyKeepsEveryLegacyID(t *testing.T) {
 		"chips", "tagBar", "tlsDiagBanner", "selBar", "selCount", "selCompare", "selScope", "selAddFinding", "selDelete", "selClear",
 		"flowHead", "rows", "flowCapBanner", "flowCapMessage", "flowCapRetry", "inspectSplitter", "inspect",
 		"inspectSendRepeater", "inspectAddFinding", "inspectSendIntruder", "inspectMoreActions",
-		"reqDecode", "reqView", "resStatus", "inspectFind", "inspectFindIn", "inspectFindStat", "inspectFindClose",
+		"reqDecode", "reqView", "resStatus",
 		"resDecode", "resView", "noteBar", "noteInput", "noteSaved", "noteRetry",
 	} {
 		if !strings.Contains(region, `id="`+id+`"`) {
@@ -148,7 +148,7 @@ func TestUIProxyKeepsLegacyHandlers(t *testing.T) {
 	// Raw source: executableJS would strip from the "codecs/*.star" hint to the next block comment.
 	src := readUIAsset(t, "js/proxy.js")
 	requireUIContains(t, src,
-		"(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'", "e.key==='Escape'", "export function openInspectFind(",
+		"(e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='f'", "e.key==='Escape'", "export function openInspectFind(",
 		"e.key==='ContextMenu'", "(e.shiftKey&&e.key==='F10')", "function selectFlow(", "function loadFlows(",
 		"export function handleFlowNew(", "export function handleFlowUpdate(", "export function renderRows(",
 	)

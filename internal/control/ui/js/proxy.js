@@ -19,6 +19,8 @@ import { wsOpcodeName, flowUrl } from './flowbody.js';
 import { renderState } from './statepanel.js';
 import { copyAs, COPY_AS_KINDS } from './copyas.js';
 import { createKeyRegistry } from './keys.js';
+import { openFlowDiff } from './flow-diff.js';
+import { createFinder } from './finder.js';
 const flowSearchContract="'/api/flow-searches' flowSearchScriptEditor flowSearchScriptSave flowSearchScriptError";
 
 // map.js is dynamically imported (not statically, like the modules above) because
@@ -1402,20 +1404,6 @@ async function wsReplay(url){
   }catch(e){if(current())out.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';
   }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='▲ Send';}}
 }
-// markFindInHtml wraps occurrences of the find query in <mark>, but only inside
-// *text runs* of an already-escaped/highlighted HTML string — never inside a tag
-// or attribute. Without this, searching for a common substring like "span" or
-// "class" would insert <mark> inside the highlighter's <span class="hl-…"> tags
-// and corrupt the markup. The query is escaped the same way the text was, so a
-// search for "<html>" matches the visible "&lt;html&gt;".
-function markFindInHtml(html,fq){
-  const q=esc(fq).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  if(!q)return {html,count:0};
-  const re=new RegExp(q,'gi');
-  let count=0;
-  const out=html.replace(/(<[^>]*>)|([^<]+)/g,(m,tag,txt)=>tag!==undefined?m:txt.replace(re,s=>{count++;return '<mark class="find-hit">'+s+'</mark>';}));
-  return {html:out,count};
-}
 export async function renderSide(side){
   const el=side==='req'?$('#reqView'):$('#resView');
   const dec=side==='req'?$('#reqDecode'):$('#resDecode');
@@ -1444,7 +1432,8 @@ export async function renderSide(side){
   }
   const view=state.view[side];
   const current=()=>selectFlowEpoch===selectEpoch&&renderSideEpoch[side]===epoch&&state.selId===flowId&&state.detail===detail&&flowFilterEpoch===filterEpoch&&state.view[side]===view;
-  const draw=async()=>{
+  const draw=async()=>{await drawBody();refreshInspectFinder(side);};
+  const drawBody=async()=>{
     try{
       if(view==='decoded'){
         const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
@@ -1484,12 +1473,6 @@ export async function renderSide(side){
         return;
       }
       let html=highlightHTTP(view==='pretty'?prettify(raw):raw,view==='pretty',mime);
-      const fq=($('#inspectFindIn')||{}).value;
-      const stat=$('#inspectFindStat');
-      if(side==='res'&&fq&&fq.length>1){
-        const r=markFindInHtml(html,fq);html=r.html;
-        if(stat)stat.textContent=r.count?r.count+' match'+(r.count===1?'':'es'):'no matches';
-      }else if(stat){stat.textContent='';}
       el.innerHTML=html;
     }catch(e){if(current())el.textContent='(error: '+e.message+')';}
   };
@@ -1532,33 +1515,38 @@ export async function renderSide(side){
 // $$('.seg') here would clobber them since this module loads after them.
 $$('.seg[data-side]').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});renderSide(side);});});
-const inspectFindBar=$('#inspectFind'),inspectFindIn=$('#inspectFindIn');
-export function openInspectFind(){toggleInspectFind(true);}
-function toggleInspectFind(show){
-  if(!inspectFindBar)return;
-  inspectFindBar.style.display=show?'flex':'none';
-  if(show&&inspectFindIn){inspectFindIn.focus();inspectFindIn.select();}
-  else if(!show&&inspectFindIn){inspectFindIn.value='';renderSide('res');}
-}
-if(inspectFindIn){
-  let inspectFindTimer=null;
-  inspectFindIn.oninput=()=>{
-    clearTimeout(inspectFindTimer);
-    inspectFindTimer=setTimeout(()=>renderSide('res'),150);
-  };
-}
-if($('#inspectFindClose'))$('#inspectFindClose').onclick=()=>toggleInspectFind(false);
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&inspectFindBar.style.display==='flex'){
-    e.preventDefault();e.stopImmediatePropagation();toggleInspectFind(false);return;
-  }
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){
+// Request and response panes each host the shared Finder (finder.js): Ctrl+F opens
+// the pane that holds focus (the response pane by default) and `/` opens it while
+// focus is inside the inspector. Matches are <mark> ranges over the rendered text,
+// so syntax highlighting survives; renderSide re-runs the search after a redraw.
+const inspectFinders={};
+['req','res'].forEach(side=>{
+  const view=$(side==='req'?'#reqView':'#resView');
+  if(view&&view.parentElement)inspectFinders[side]=createFinder(view.parentElement,{root:view,label:side==='req'?'Find in request':'Find in response'});
+});
+function refreshInspectFinder(side){const f=inspectFinders[side];if(f&&f.isOpen())f.refresh();}
+export function openInspectFind(side='res'){const f=inspectFinders[side]||inspectFinders.res;if(f)f.open();}
+{
+  const reqPane=$('#reqView')&&$('#reqView').parentElement;
+  const sideOf=t=>reqPane&&t&&t.closest&&t.closest('.pane')===reqPane?'req':'res';
+  const registry=createKeyRegistry({isModalOpen:()=>hasOpenModal()});
+  registry.register({id:'proxy.inspector.find',keys:'/',scope:'proxy-inspector',label:'Find in the inspected message',group:'History',run:()=>openInspectFind(lastInspectSide)});
+  let lastInspectSide='res';
+  const inspect=$('#inspect');
+  if(inspect)inspect.addEventListener('keydown',e=>{
+    if(e.defaultPrevented)return;
+    lastInspectSide=sideOf(e.target);
+    registry.handle(e,{scopes:['proxy-inspector']});
+  });
+  document.addEventListener('keydown',e=>{
+    if(!((e.ctrlKey||e.metaKey)&&!e.altKey&&e.key.toLowerCase()==='f'))return;
     const p=document.querySelector('.panel[data-panel="proxy"]');
     if(!p||!p.classList.contains('active'))return;
-    const t=e.target;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
-    e.preventDefault();toggleInspectFind(true);
-  }
-});
+    const t=e.target;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)&&!(t.closest&&t.closest('#inspect')&&!t.closest('.finder')))return;
+    if(t&&t.closest&&t.closest('.finder'))return;
+    e.preventDefault();openInspectFind(sideOf(t));
+  });
+}
 
 loadFlowCols();
 loadFlowColW();
@@ -2319,7 +2307,7 @@ export async function openCompare(restoreModeFocus=''){
     if(restoreModeFocus)requestAnimationFrame(()=>{if(current())$('#compareMode')?.querySelector(`[data-m="${restoreModeFocus}"]`)?.focus({preventScroll:true});});
   }catch(e){if(current())box.innerHTML='<div class="hint" style="color:var(--red)">'+esc(e.message)+'</div>';}
 }
-if($('#selCompare'))$('#selCompare').onclick=()=>openCompare();
+if($('#selCompare'))$('#selCompare').onclick=()=>openFlowDiff();
 if($('#compareClose'))$('#compareClose').onclick=closeCompare;
 $('#selClear').onclick=()=>{state.selected.clear();state.selAnchorId=null;state.lastSelIdx=-1;renderRows();updateSelBar();};
 
@@ -2568,8 +2556,7 @@ function copyAsSections(getFlows){
 {
   const registry=createKeyRegistry({isModalOpen:()=>hasOpenModal()});
   registry.register({id:'proxy.diff',keys:'d',scope:'proxy-list',label:'Diff two selected flows',group:'History',run:()=>{
-    if(state.selected.size!==2){toast('select exactly two flows to diff');return;}
-    openCompare();
+    openFlowDiff();
   }});
   registry.register({id:'proxy.filter',keys:'/',scope:'proxy-list',label:'Focus the history search',group:'History',run:()=>{$('#fSearch')?.focus();}});
   COPY_AS_KINDS.forEach(k=>registry.register({id:'proxy.copyas.'+k.kind,keys:'y '+k.key,scope:'proxy-list',label:'Copy as '+k.label,group:'History',run:()=>{

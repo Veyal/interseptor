@@ -275,10 +275,12 @@ func TestUIContextMenuMovesAndRestoresFocus(t *testing.T) {
 }
 
 func TestUIInspectorEscapeDismissesFindBeforeInspector(t *testing.T) {
-	requireUIContracts(t, "js/proxy.js",
-		"if(e.key==='Escape'&&inspectFindBar.style.display==='flex')",
-		"e.stopImmediatePropagation()",
+	// The inspector uses the shared Finder, whose input closes only the bar on
+	// Escape and stops the event before it reaches any underlying dialog.
+	requireUIContracts(t, "js/finder.js",
+		"e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close_(); }",
 	)
+	requireUIContracts(t, "js/proxy.js", "createFinder(view.parentElement", "proxy.inspector.find")
 }
 
 func TestUIToolEditorsKeepAllActionsReachableOnPhones(t *testing.T) {

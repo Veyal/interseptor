@@ -11,7 +11,8 @@
 
 import { $, api, state, toastError, openModal, closeModal, registerHook, projectStorageKey, highlightHTTP, prettify, isBinaryMime, bodyMime, headerBlockText, flowBodyDownloadHref, copyText } from './core.js';
 import { renderState } from './statepanel.js';
-import { readSingleKeyPref } from './keys.js';
+import { readSingleKeyPref, isTypingTarget } from './keys.js';
+import { createFinder } from './finder.js';
 import { tabsForFlow, nextTab, renderFlowBody, flowUrl, clampDrawerWidth, stepSibling, linkedFindings, rawState, DRAWER_WIDTH } from './flowbody.js';
 
 const root = document.getElementById('flowDrawer');
@@ -36,6 +37,10 @@ function applyWidth(w, persist) {
 
 const isOverlay = () => window.matchMedia(OVERLAY_QUERY).matches;
 
+// The shared Finder sits between the tabs and the body and searches the body's
+// rendered text; Ctrl+F or `/` inside the drawer opens it.
+const finder = createFinder($('#fdPanel'), { root: $('#fdBody'), insertBefore: () => $('#fdBody'), label: 'Find in flow' });
+
 /* ---- body rendering ---- */
 const bodyDeps = {
   highlight: (raw, side) => highlightHTTP(prettify(raw), true, bodyMime(cur.detail, side)),
@@ -53,6 +58,7 @@ function paintBody() {
   body.dataset.state = 'ready';
   body.innerHTML = renderFlowBody(flowView(), cur.tab, bodyDeps);
   body.scrollTop = 0;
+  if (finder.isOpen()) finder.refresh(); // marks died with the old markup
 }
 
 function showError(err, retry, title) {
@@ -294,6 +300,7 @@ export function closeFlowDrawer({ updateRoute = true } = {}) {
   cur.epoch++;
   cur.tabEpoch++;
   cur.open = false;
+  finder.close();
   const wasOverlay = cur.overlay;
   if (wasOverlay) closeModal(root);
   root.style.removeProperty('display');
@@ -348,6 +355,13 @@ export function openFlow(id, opts = {}) {
 
 $('#fdClose').addEventListener('click', () => closeFlowDrawer());
 $('#fdPanel').addEventListener('keydown', (e) => {
+  const inFinder = e.target && e.target.closest && e.target.closest('.finder');
+  if (!inFinder && !e.defaultPrevented && (((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F'))
+    || (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && readSingleKeyPref() && !isTypingTarget(e.target)))) {
+    e.preventDefault();
+    finder.open();
+    return;
+  }
   if (e.key === 'Escape' && !cur.overlay && !e.defaultPrevented) { e.preventDefault(); closeFlowDrawer(); }
 });
 
