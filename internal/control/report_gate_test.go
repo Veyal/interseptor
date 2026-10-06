@@ -1,14 +1,17 @@
 package control
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Veyal/interseptor/internal/intercept"
 	"github.com/Veyal/interseptor/internal/mcp"
 	"github.com/Veyal/interseptor/internal/store"
 )
@@ -17,7 +20,7 @@ const gateCVSS4 = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA
 
 // gateFixture seeds one report-ready Critical finding, one empty High draft,
 // and one otherwise ready Low finding that still carries a CVSS 3.1 vector.
-func gateFixture(t *testing.T, st *store.Store) (ready, draft, legacy int64) {
+func gateFixture(t *testing.T, st *store.Store, dir string) (ready, draft, legacy int64) {
 	t.Helper()
 	flows := []int64{}
 	for range 6 {
@@ -38,8 +41,16 @@ func gateFixture(t *testing.T, st *store.Store) (ready, draft, legacy int64) {
 		return id
 	}
 	ready = mk("Ready finding", "Critical", gateCVSS4, body(flows[0], flows[1], flows[2]))
-	legacy = mk("Legacy score finding", "Critical", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", body(flows[3], flows[4], flows[5]))
-	var err error
+	legacy = mk("Legacy score finding", "Critical", gateCVSS4, body(flows[3], flows[4], flows[5]))
+	// Writes now reject CVSS 3.1, so downgrade the stored vector the way an old archive would carry it.
+	raw, err := sql.Open("sqlite", filepath.Join(dir, "interseptor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`UPDATE findings SET cvss=? WHERE id=?`, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", legacy); err != nil {
+		t.Fatal(err)
+	}
 	draft, err = st.CreateFinding(&store.Finding{Title: "Empty draft", Severity: "High"})
 	if err != nil {
 		t.Fatal(err)
@@ -47,9 +58,23 @@ func gateFixture(t *testing.T, st *store.Store) (ready, draft, legacy int64) {
 	return ready, draft, legacy
 }
 
+// newGateHub is newHub with a known project directory for legacy-data seeding.
+func newGateHub(t *testing.T) (*Hub, *store.Store, string) {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	h := New(s, intercept.New(), nil, nil, nil)
+	t.Cleanup(h.Close)
+	return h, s, dir
+}
+
 func TestReadinessReturnsProjectWideBoardSortedBySeverity(t *testing.T) {
-	h, st, _ := newHub(t)
-	ready, draft, _ := gateFixture(t, st)
+	h, st, dir := newGateHub(t)
+	ready, draft, _ := gateFixture(t, st, dir)
 	if _, err := st.CreateFinding(&store.Finding{Title: "Low note", Severity: "Low"}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,8 +126,8 @@ func TestReadinessReturnsProjectWideBoardSortedBySeverity(t *testing.T) {
 }
 
 func TestReportGateIssuesNameRuleAndFieldAndRequireCVSS4(t *testing.T) {
-	h, st, _ := newHub(t)
-	_, _, legacy := gateFixture(t, st)
+	h, st, dir := newGateHub(t)
+	_, _, legacy := gateFixture(t, st, dir)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/api/finding-quality/" + strconv.FormatInt(legacy, 10))
@@ -131,8 +156,8 @@ func TestReportGateIssuesNameRuleAndFieldAndRequireCVSS4(t *testing.T) {
 
 // API, MCP and the per-finding endpoint must agree on the gate result.
 func TestReportGateParityAcrossAPIAndMCP(t *testing.T) {
-	h, st, _ := newHub(t)
-	_, draft, legacy := gateFixture(t, st)
+	h, st, dir := newGateHub(t)
+	_, draft, legacy := gateFixture(t, st, dir)
 	ts := httptest.NewServer(h.Handler())
 	defer ts.Close()
 	get := func(path string) string {
