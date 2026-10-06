@@ -151,10 +151,8 @@ func normalizeFindingAssessment(f *Finding) error {
 	if len(f.Targets) > 0 {
 		f.Target = f.Targets[0].URL
 	}
-	for role, ref := range f.ProofReview.Evidence {
-		if !slices.Contains([]string{"action", "result", "control"}, role) || (ref.FlowID <= 0 && !isContentHash(ref.Hash)) || (ref.FlowID > 0 && ref.Hash != "") {
-			return fmt.Errorf("%w: evidence mapping requires action/result/control and one flowId or image hash", ErrInvalidFinding)
-		}
+	if err := validateEvidenceMapping(f.ProofReview.Evidence); err != nil {
+		return err
 	}
 	r := &f.ProofReview
 	r.Execution = strings.TrimSpace(r.Execution)
@@ -179,6 +177,38 @@ func normalizeFindingAssessment(f *Finding) error {
 		}
 	}
 	return nil
+}
+
+// validateEvidenceMapping checks proofReview.evidence and names the exact role
+// and the part (role, flowId or hash) that is wrong.
+func validateEvidenceMapping(evidence map[string]FindingEvidenceReference) error {
+	roles := make([]string, 0, len(evidence))
+	for role := range evidence {
+		roles = append(roles, role)
+	}
+	slices.Sort(roles)
+	for _, role := range roles {
+		ref := evidence[role]
+		field := "proofReview.evidence." + role
+		switch {
+		case !slices.Contains([]string{"action", "result", "control"}, role):
+			return fmt.Errorf("%w: %s: role must be one of action, result, control", ErrInvalidFinding, field)
+		case ref.FlowID > 0 && ref.Hash != "":
+			return fmt.Errorf("%w: %s: give either flowId or hash, not both", ErrInvalidFinding, field)
+		case ref.FlowID <= 0 && ref.Hash == "":
+			return fmt.Errorf("%w: %s: both flowId and hash are empty; give flowId (a positive captured flow id) or hash (64 hex characters of an uploaded image)", ErrInvalidFinding, field)
+		case ref.FlowID <= 0 && !isContentHash(ref.Hash):
+			return fmt.Errorf("%w: %s.hash: expected 64 hex characters of an uploaded image hash, got %q", ErrInvalidFinding, field, truncateForError(ref.Hash))
+		}
+	}
+	return nil
+}
+
+func truncateForError(s string) string {
+	if len(s) > 24 {
+		return s[:24] + "..."
+	}
+	return s
 }
 
 // validateCVSSWrite enforces the CVSS:4.0 contract for a vector being written.

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Finding guards say what to fix.** Every MCP rejection now starts with `error:` and names the field and expected shape; advisory messages are listed as `warning:` under "FORMAT WARNINGS (non-blocking)". The wall-of-text rule publishes its limit (180 characters per field), reports the character count, and is applied separately to `detail` and to `blocks`/`body`; `detail` is marked DEPRECATED in the schema. A bad `proofReview.evidence` entry now names the role and whether the flowId/hash is empty, malformed, or given twice.
 - **Severity must match the calculated CVSS rating.** Creating a finding, or changing its severity or vector, is rejected when the severity disagrees with the rating of a valid CVSS 4.0 vector, unless `proofReview.severityOverride` documents why. An omitted severity on create follows the vector. A 0.0 score is shown and stored as Info while `rawRating` keeps the specification's `NONE`. `/api/finding-cvss` also returns `severity`, an `explanation` of the influential metrics and a `legacy` flag; the editor shows them live and has a severity-override field.
 - **CVSS 4.0 is enforced when a finding is written.** Creating a finding, or changing its `cvss`, now rejects anything that is not a valid `CVSS:4.0/` vector, and the error names the field and the expected format. Existing findings that carry a 3.1 vector are never rewritten; they stay editable and expose a computed `cvssWarning` so a reviewer can re-score them.
 
