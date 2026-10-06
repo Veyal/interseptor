@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **Evidence render primitives (`internal/preview`).** Shared `Rendered`/`Opts` contract, semantic report palette with status glyphs (Amber darkened to #a86300 for 4.5:1 text contrast), and a pure-Go canvas (text measure/truncate/wrap, nice ticks, tiles, legend, table grid, chips, title bar, mandatory provenance footer, deterministic size-capped PNG encoding) for the upcoming intruder/authz/diff/waterfall/chain renders.
+- **Intruder run recording.** `intruder.Result` now carries `seq`, `worker` (slot 1..Threads), `startUs`/`endUs` (monotonic microsecond offsets from run start), `bodyHash` and `rlHeaders` (whitelisted `Retry-After`, `X-RateLimit-*`, `RateLimit-*`, `X-Retry-After`; lowercased names, values capped at 128 bytes). `State` gains `runId`, `startedTs`, `attack`, `threads`, `delayMs`, `repeat`, `targetHost` (host only) and `barrier`. All fields are additive and omitted when empty. `Engine.SetRunSink` receives one `RunRecord` per finished or stopped run. New optional `Spec.Barrier` makes the first `Threads` workers of a repeat run launch together after all are parked (2s cap, recorded honestly in `State.Barrier`; separate connections, not single-packet sync).
 
 ## [2.4.2] - 2026-10-06
 
