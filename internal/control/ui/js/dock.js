@@ -9,7 +9,7 @@
 import { getShellApi, TAB_CHANGE_EVENT } from './shell-hooks.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { openModal, projectStorageKey, setDensity, getDensity } from './core.js';
-import { shouldHideDock } from './layout-math.js';
+import { watchSoftKeyboard } from './soft-keyboard.js';
 import {
   DOCK_DESTINATIONS, PANEL_LABELS, destinationForPanel, resolvePanel, rememberPanel, parseStoredLast,
   badgeCount, badgeText, badgeAnnouncement, dockKeyTarget,
@@ -185,16 +185,6 @@ function onDockKey(e) {
   if (to < 0) return;
   e.preventDefault();
   list[to].focus();
-}
-
-// The soft keyboard shrinks the visual viewport; CSS hides the dock while the
-// document is marked, so inputs are never covered.
-function watchSoftKeyboard() {
-  const vv = window.visualViewport;
-  if (!vv) return;
-  const sync = () => { document.documentElement.dataset.softKeyboard = shouldHideDock(vv.height, window.innerHeight) ? 'true' : 'false'; };
-  vv.addEventListener('resize', sync);
-  sync();
 }
 
 function init() {

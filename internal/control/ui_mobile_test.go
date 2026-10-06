@@ -114,7 +114,7 @@ func TestUIMobileDockModuleUsesActivateTab(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/dock.js"))
 	requireUIRegex(t, src, `import\s*\{[^}]*getShellApi[^}]*\}\s*from\s*'\./shell-hooks\.js'`)
 	requireUIRegex(t, src, `getShellApi\(\)\.activateTab\(`)
-	requireUIContains(t, src, "TAB_CHANGE_EVENT", "aria-current", "moreSheet", "shouldHideDock", "dockLast", "projectStorageKey")
+	requireUIContains(t, src, "TAB_CHANGE_EVENT", "aria-current", "moreSheet", "watchSoftKeyboard", "dockLast", "projectStorageKey")
 	// every storage touch is guarded
 	if n, g := strings.Count(src, "localStorage."), len(regexp.MustCompile(`try\s*\{`).FindAllString(src, -1)); g < 2 || n < 2 {
 		t.Errorf("localStorage use (%d) must sit in try/catch (%d try blocks)", n, g)

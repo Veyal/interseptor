@@ -99,7 +99,7 @@ func TestUIBottomSheetContract(t *testing.T) {
 		"export function openSheet(", "export function closeSheet(",
 		"'role', 'dialog'", "aria-modal", "'aria-label', 'Resize panel'",
 		"openModal(", "closeModal(", "ArrowUp", "ArrowDown", "nextDetent(", "resolveSheetDrag(",
-		"setPointerCapture", "visualViewport", "shouldHideDock(", "--sheet-drag", "transitionend",
+		"setPointerCapture", "watchSoftKeyboard(", "--sheet-drag", "transitionend",
 	)
 	requireUIRegex(t, src, `(?s)handle\.type = 'button'`)
 	css := readUIAsset(t, "surfaces.css")

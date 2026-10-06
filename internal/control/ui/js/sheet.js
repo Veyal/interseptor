@@ -8,26 +8,14 @@
 // Sheet ids must be listed in MODAL_IDS (core.js) so shortcut gating sees them.
 
 import { openModal, closeModal } from './core.js';
-import { DETENTS, nextDetent, sheetOffsets, resolveSheetDrag, shouldHideDock } from './layout-math.js';
+import { DETENTS, nextDetent, sheetOffsets, resolveSheetDrag } from './layout-math.js';
+import { watchSoftKeyboard } from './soft-keyboard.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const sheets = new Map();
-let keyboardWatched = false;
 
 const isDrawer = () => { try { return window.matchMedia('(min-width: 721px)').matches; } catch (e) { return false; } };
 const reduced = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
-
-// Mark the document while a soft keyboard is up so the bottom nav can hide.
-function watchSoftKeyboard() {
-  if (keyboardWatched || !window.visualViewport) return;
-  keyboardWatched = true;
-  const sync = () => {
-    const hidden = shouldHideDock(window.visualViewport.height, window.innerHeight);
-    document.documentElement.dataset.softKeyboard = hidden ? 'true' : 'false';
-  };
-  window.visualViewport.addEventListener('resize', sync);
-  sync();
-}
 
 function iconNode(name) {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -92,6 +80,9 @@ export function openSheet({ id, title = '', detents = DETENTS, detent, content, 
   if (!id) throw new Error('openSheet: id required');
   watchSoftKeyboard();
   let entry = sheets.get(id);
+  // A close() still animating out must finish before the same id reopens, or its
+  // timer later hides the fresh sheet, steals focus and fires the new onClose.
+  if (entry && !entry.open && entry.pendingFinish) entry.pendingFinish();
   if (entry && entry.open) { entry.titleEl.textContent = title; fill(entry.body, content); entry.onClose = onClose; return entry.api; }
   if (!entry || !entry.rootEl.isConnected) {
     entry = build(id, title);
@@ -133,6 +124,7 @@ export function openSheet({ id, title = '', detents = DETENTS, detent, content, 
     entry.open = false;
     entry.sheet.dataset.detent = 'closed';
     const finish = () => {
+      if (entry.open) return; // reopened meanwhile: never hide the live sheet
       closeModal(entry.rootEl);
       entry.rootEl.style.display = 'none';
       if (entry.opener && entry.opener.isConnected && entry.opener.focus) entry.opener.focus({ preventScroll: true });
@@ -143,9 +135,18 @@ export function openSheet({ id, title = '', detents = DETENTS, detent, content, 
     if (reduced()) finish();
     else {
       let done = false;
-      const once = () => { if (done) return; done = true; finish(); };
+      let timer = 0;
+      const once = () => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        entry.sheet.removeEventListener('transitionend', once);
+        if (entry.pendingFinish === once) entry.pendingFinish = null;
+        finish();
+      };
+      entry.pendingFinish = once;
       entry.sheet.addEventListener('transitionend', once, { once: true });
-      window.setTimeout(once, 320);
+      timer = window.setTimeout(once, 320);
     }
   }
 

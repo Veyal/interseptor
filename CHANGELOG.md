@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Sheet reopen race and shared soft-keyboard watcher.** Reopening a sheet id while its close animation was still pending (phone Details sheet then Do next action opening the Engagement sheet) let the stale close timer hide the fresh sheet, steal focus and fire the new `onClose`; `openSheet` now finishes a pending close first and the finish is a no-op once reopened. `sheet.js` and `dock.js` share one `watchSoftKeyboard` (`soft-keyboard.js`).
 - Tests: the UI node logic tests now fail instead of skipping when `node` is missing (shared `requireNode` helper), and CI installs Node 22 so they always run.
 - **High-contrast theme survives boot.** `app.js` re-applied the theme as light or dark only, so the pre-paint `data-theme="hc"` was dropped on load; it now keeps `hc`, and the theme toggle leaves it for dark.
 - **Finding Open toast action and picker freshness.** `toast()` returns its element; the Open action is attached to that handle (and to the attach-result toast) instead of "the last `.toast-item`". The "Add to finding" picker renders the cache immediately and refetches `/api/findings` on every open, ignoring the result if the picker was closed or reopened. The shortcuts sheet documents `Alt+M` (wrap Intruder selection in § markers).
