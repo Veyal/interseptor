@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Evidence renders: REST, MCP, UI and docs.** Intruder run recording and the optional `barrier` launch, `intruder_runs` persistence (`GET /api/intruder/attacks/{id}` survives the next start and restarts), the `evidence_render` image source with additive `sourceRef`, eight preview renders (Intruder timeline, distribution, race, strip; authz matrix; flow diff; flow waterfall; finding chain), their REST routes, the MCP tool `render_evidence` and Intruder/Authz UI entry points are documented in `docs/api-and-mcp.md`, `docs/mcp-cookbook.md` (rate limit, lockout and race recipes), `docs/findings-and-reporting.md` and `docs/engagement-closeout.md`, including the honesty rules (no single-packet sync, millisecond precision for flows, nothing drawn that was not recorded).
+- report: `evidence_render` images are labelled "generated evidence render from recorded data; not browser proof" and show their `sourceRef`; they stay excluded from real-visual-proof checks.
 - `preview.RenderFindingChain`: deterministic finding chain / attack-path PNG (longest-path layering, cycle edges dropped and noted, severity chips, edge labels, max 12 nodes) with alt text and summary.
 
 - **Authz differential matrix render (`preview.RenderAuthzMatrix`).** Deterministic report-width PNG of identities by requests with verdict glyphs (= same, D denied, ! broken, S session invalid), "N broken of M" summary, alt text listing broken cells by row and identity, and a "+N more" note past 8 identities or 40 rows.
