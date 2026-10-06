@@ -44,6 +44,7 @@ type Spec struct {
 	GrepExtract  string     // extract group 1 of this regex from each response into the result
 	ProcessRules []string   // payload transforms applied in order: "urlencode" | "base64" | "prefix:X" | "suffix:X" | "upper" | "lower"
 	ExtraFlags   int64      // OR'd onto every recorded send (e.g. store.FlagAI for AI-driven runs)
+	Barrier      bool       `json:"barrier,omitempty"` // repeat mode, Threads>1: launch the first Threads requests together
 }
 
 // Result is one attack request's outcome.
@@ -60,6 +61,14 @@ type Result struct {
 	Matched   bool   `json:"matched"`   // grep-match hit in the response
 	Extracted string `json:"extracted"` // grep-extract capture from the response
 	Binary    bool   `json:"binary"`    // true when the body is binary/undecodable and grep did not apply
+
+	// Recording fields (additive; zero values are omitted for old consumers).
+	Seq       int               `json:"seq,omitempty"`       // dispatch order, 1-based
+	Worker    int               `json:"worker,omitempty"`    // worker slot 1..Threads
+	StartUs   int64             `json:"startUs,omitempty"`   // send start, microseconds from run start (monotonic)
+	EndUs     int64             `json:"endUs,omitempty"`     // send end, microseconds from run start (monotonic)
+	BodyHash  string            `json:"bodyHash,omitempty"`  // response body hash
+	RLHeaders map[string]string `json:"rlHeaders,omitempty"` // whitelisted rate-limit response headers
 }
 
 // State is a snapshot of the current/last attack.
@@ -70,6 +79,15 @@ type State struct {
 	Results []Result `json:"results"`
 	Error   string   `json:"error"`
 	Capped  bool     `json:"capped"`
+
+	RunID      string `json:"runId,omitempty"`
+	StartedTs  int64  `json:"startedTs,omitempty"` // unix ms, wall clock, display only
+	Attack     string `json:"attack,omitempty"`
+	Threads    int    `json:"threads,omitempty"`
+	DelayMs    int    `json:"delayMs,omitempty"`
+	Repeat     int    `json:"repeat,omitempty"`
+	TargetHost string `json:"targetHost,omitempty"`
+	Barrier    bool   `json:"barrier,omitempty"` // true only if workers really launched from a released barrier
 }
 
 // Engine runs one attack at a time.
@@ -88,6 +106,13 @@ type Engine struct {
 	doneCh  chan struct{}
 	cancel  context.CancelFunc
 	closed  bool
+
+	runID, attack, targetHost string
+	startedTs                 int64
+	threads, delayMs, repeat  int
+	barrier                   bool
+	spec                      SpecSummary
+	sink                      func(RunRecord)
 }
 
 // headerVal returns the first value for a case-insensitive header key.
@@ -162,7 +187,9 @@ func (e *Engine) fireNotify() {
 func (e *Engine) State() State {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	out := State{Running: e.running, Total: e.total, Done: e.done, Error: e.errMsg, Capped: e.capped}
+	out := State{Running: e.running, Total: e.total, Done: e.done, Error: e.errMsg, Capped: e.capped,
+		RunID: e.runID, StartedTs: e.startedTs, Attack: e.attack, Threads: e.threads,
+		DelayMs: e.delayMs, Repeat: e.repeat, TargetHost: e.targetHost, Barrier: e.barrier}
 	out.Results = append(out.Results, e.results...)
 	return out
 }
@@ -284,6 +311,20 @@ func (e *Engine) Start(spec Spec) error {
 	e.done = 0
 	e.errMsg = ""
 	e.capped = capped
+	e.runID = newRunID()
+	e.startedTs = time.Now().UnixMilli()
+	e.attack = spec.AttackType
+	e.threads = clampThreads(spec.Threads)
+	e.delayMs = spec.DelayMs
+	e.repeat = 0
+	if spec.AttackType == "repeat" {
+		e.repeat = spec.Repeat
+	}
+	e.targetHost = hostOnly(spec.Target)
+	e.barrier = spec.Barrier && spec.AttackType == "repeat" && e.threads > 1 && len(jobs) > 1
+	e.spec = SpecSummary{Attack: e.attack, Target: e.targetHost, Threads: e.threads, DelayMs: spec.DelayMs,
+		Repeat: e.repeat, Barrier: e.barrier, GrepMatch: spec.GrepMatch, GrepExtract: spec.GrepExtract,
+		ProcessRules: append([]string(nil), spec.ProcessRules...)}
 	e.doneCh = make(chan struct{})
 	e.cancel = cancel
 	e.mu.Unlock()
@@ -414,12 +455,19 @@ func buildJobs(spec Spec, nPositions int, baselines []string) (jobs []job, cappe
 
 func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 	base := strings.TrimRight(spec.Target, "/")
-	threads := spec.Threads
-	if threads < 1 {
-		threads = 1
-	}
-	if threads > 64 { // bound concurrency so a race test can't exhaust sockets/goroutines
-		threads = 64
+	threads := clampThreads(spec.Threads) // bounded so a race test can't exhaust sockets/goroutines
+	runStart := time.Now()                // monotonic origin for StartUs/EndUs
+	e.mu.Lock()
+	useBarrier := e.barrier
+	e.mu.Unlock()
+	var bar *barrier
+	barrierN := 0
+	if useBarrier {
+		barrierN = threads
+		if len(jobs) < barrierN {
+			barrierN = len(jobs)
+		}
+		bar = newBarrier(barrierN)
 	}
 
 	// Compile grep patterns once (literal Contains fallback if not a valid regex).
@@ -481,7 +529,10 @@ func (e *Engine) run(ctx context.Context, spec Spec, jobs []job) {
 		}
 	}
 
-	sem := make(chan struct{}, threads)
+	slots := make(chan int, threads) // free worker slots 1..threads
+	for i := 1; i <= threads; i++ {
+		slots <- i
+	}
 	var wg sync.WaitGroup
 dispatch:
 	for i, j := range jobs {
@@ -497,25 +548,30 @@ dispatch:
 		if ctx.Err() != nil {
 			break
 		}
+		var slot int
 		select {
-		case sem <- struct{}{}:
+		case slot = <-slots:
 		case <-ctx.Done():
 			break dispatch
 		}
 		wg.Add(1)
-		go func(idx int, j job) {
+		go func(idx, slot int, j job) {
 			defer wg.Done()
-			defer func() { <-sem }()
+			defer func() { slots <- slot }()
+			if bar != nil && idx < barrierN {
+				bar.wait(ctx.Done())
+			}
 			// Substitute payloads into the whole request, then parse — so fuzz points
 			// in the request line / path / headers / body all take effect.
 			method, path, headers, body, perr := httplines.ParseRawRequest(substitute(spec.Template, j.payloads))
-			res := Result{ID: idx + 1, Payload: j.label}
+			res := Result{ID: idx + 1, Seq: idx + 1, Worker: slot, Payload: j.label}
 			if perr != nil {
 				res.Error = "parse: " + perr.Error()
 				e.appendResult(res)
 				return
 			}
-			start := time.Now()
+			sendStart := time.Now()
+			res.StartUs = sendStart.Sub(runStart).Microseconds()
 			flow, sendErr := e.snd.Send(sender.Request{
 				Method:  method,
 				URL:     base + path,
@@ -524,7 +580,12 @@ dispatch:
 				Flags:   store.FlagIntruder | spec.ExtraFlags,
 				Context: ctx,
 			})
-			res.TimeMs = time.Since(start).Milliseconds()
+			sendEnd := time.Now()
+			res.TimeMs = sendEnd.Sub(sendStart).Milliseconds()
+			res.EndUs = sendEnd.Sub(runStart).Microseconds()
+			if res.EndUs < 1 {
+				res.EndUs = 1 // 0 is reserved for "timing not recorded"
+			}
 			if sendErr != nil {
 				res.Error = "send failed"
 			}
@@ -538,17 +599,23 @@ dispatch:
 					res.Error = "response capture incomplete"
 				}
 				res.FlowID = flow.ID
+				res.BodyHash = flow.ResBodyHash
+				res.RLHeaders = rlHeaders(flow.ResHeaders)
 				if res.Error == "" {
 					doGrep(&res, flow.ResBodyHash, flow.ResHeaders)
 				}
 			}
 			e.appendResult(res)
-		}(i, j)
+		}(i, slot, j)
 	}
 	wg.Wait()
 
 	e.flagAnomalies()
 	e.mu.Lock()
+	if bar != nil && bar.failed() {
+		e.barrier = false // honest: the barrier did not release with every worker parked
+		e.spec.Barrier = false
+	}
 	e.running = false
 	cancel := e.cancel
 	e.cancel = nil
@@ -557,6 +624,7 @@ dispatch:
 	e.mu.Unlock()
 	cancel()
 	e.fireNotify()
+	e.emitRunRecord()
 }
 
 // flagAnomalies marks results whose status differs from the most common status,
