@@ -131,3 +131,16 @@ func TestUIFlowPopupCarriesIntruderAndFindingActions(t *testing.T) {
 		t.Error("popup actions must close the popup before navigating")
 	}
 }
+
+func TestUIIntruderMarkerShortcutFollowsTheWrapButton(t *testing.T) {
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"function intrWrapSelection()",
+		"$('#intrWrap').onclick=intrWrapSelection;",
+		"$('#intrTemplate').addEventListener('keydown',e=>{",
+		"e.code!=='KeyM'",
+		"if($('#intrWrap').disabled)return;",
+	)
+	// Ctrl/Cmd+Enter already starts the attack from the global dispatch.
+	requireUIContains(t, readUIAsset(t, "js/app.js"), "activePanel()==='intruder'&&isModShortcut(e,'Enter')")
+}

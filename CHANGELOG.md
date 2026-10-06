@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Flow popup carries Intruder and + Finding actions.** The inspect popup (Intruder results, Map, Scanner) now has `Intruder ↗` and `+ Finding` beside `Repeater ↗`, each closing the popup before navigating.
 
+- **Intruder marker shortcut.** `Alt+M` inside the request template wraps the selection in `§` markers (same as the Wrap button, inert in Race mode). `Ctrl/Cmd+Enter` to start an attack was already handled by the global dispatch.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.

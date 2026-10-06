@@ -1824,7 +1824,17 @@ function wireButtonGroupKeys(group){
 wireButtonGroupKeys($('#intrType'));
 const _intrListMode=document.getElementById('intrListMode');
 if(_intrListMode)_intrListMode.onchange=()=>{intrState.type=_intrListMode.value;updateIntrMode();intrTouch();};
-$('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();};
+function intrWrapSelection(){const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();}
+$('#intrWrap').onclick=intrWrapSelection;
+// Alt+M wraps the selection in § markers from the keyboard (Race mode has no
+// markers, so the shortcut follows the disabled button). e.code is used because
+// Alt+M types a different character on macOS layouts.
+$('#intrTemplate').addEventListener('keydown',e=>{
+  if(!e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||e.code!=='KeyM')return;
+  e.preventDefault();
+  if($('#intrWrap').disabled)return;
+  intrWrapSelection();
+});
 // Re-derive the per-marker inputs whenever the template's § markers change. (Input
 // listeners for the editor fields are wired in intrInit so they also save to the tab.)
 function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
