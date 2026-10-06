@@ -788,6 +788,34 @@ func (h *findingsAPI) attachFindingImage(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
 }
 
+// classifyFindingImage lets a reviewer relabel an attached image (for example
+// an operator upload that is a real browser capture) without re-uploading it.
+// Body: {source, reason?}. Ingestion provenance is preserved.
+func (h *findingsAPI) classifyFindingImage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if !h.requireFinding(w, id) {
+		return
+	}
+	var in struct {
+		Source string `json:"source"`
+		Reason string `json:"reason"`
+	}
+	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
+		return
+	}
+	if err := h.st.ClassifyFindingImage(id, r.PathValue("hash"), in.Source, findingAPIChange(in.Reason)); err != nil {
+		httpErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.broadcast(map[string]any{"type": "findings.update"})
+	out, err := h.st.GetFinding(id)
+	if err != nil {
+		httpNotFoundOrInternal(w, err, "finding not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, findingAPIResponse(out, nil))
+}
+
 // getFindingImage serves a content-addressed finding screenshot by hash.
 func (h *findingsAPI) getFindingImage(w http.ResponseWriter, r *http.Request) {
 	hash := r.PathValue("hash")

@@ -143,6 +143,7 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("POST /api/findings/{id}/flows", fd.attachFindingFlow)
 	h.mux.HandleFunc("DELETE /api/findings/{id}/flows/{flowId}", fd.detachFindingFlow)
 	h.mux.HandleFunc("POST /api/findings/{id}/images", fd.attachFindingImage)
+	h.mux.HandleFunc("POST /api/findings/{id}/images/{hash}/classify", fd.classifyFindingImage)
 	h.mux.HandleFunc("POST /api/findings/{id}/flow-preview", fd.attachFindingFlowPreview)
 }
 

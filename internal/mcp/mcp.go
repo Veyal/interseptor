@@ -1775,6 +1775,26 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images", fid), reqBody)
 		})
 
+	s.add("classify_finding_image",
+		"Reviewer relabel of an already-attached finding image (for example an operator_upload that is a real browser capture) without re-uploading it. Ingestion metadata is preserved and the classifier is recorded. Generated flow previews cannot be relabelled as captures. Only classify when the capture provenance is known.",
+		obj(map[string]any{
+			"findingId": pt("integer"),
+			"hash":      p("string", "image content hash from the finding's image block"),
+			"source":    p("string", "browser_screenshot|device_screenshot|operator_upload|tool_output|other"),
+			"reason":    pt("string"),
+		}, "findingId", "hash", "source"),
+		func(a map[string]any) (string, error) {
+			fid, err := reqInt(a, "findingId")
+			if err != nil {
+				return "", err
+			}
+			hash := argStr(a, "hash")
+			if fid == 0 || hash == "" {
+				return "", fmt.Errorf("findingId and hash are required")
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images/%s/classify", fid, url.PathEscape(hash)), map[string]any{"source": argStr(a, "source"), "reason": argStr(a, "reason")})
+		})
+
 	s.add("render_flow_preview",
 		"Render a captured flow as an Interseptor-styled HTTP request/response PNG. With findingId, it is attached as source=flow_preview with sourceFlowId retained; this is generated report evidence, not a real browser screenshot. Add a proof statement identifying the security-relevant line or state. Without findingId, returns a data URL.",
 		obj(map[string]any{

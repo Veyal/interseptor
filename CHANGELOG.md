@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Reviewer image classification (#69).** `POST /api/findings/{id}/images/{hash}/classify` and the MCP `classify_finding_image` tool relabel an already-attached image (for example an `operator_upload` that is a real browser capture) as `browser_screenshot`/`device_screenshot` without re-uploading it. Upload ingestion metadata is preserved, the classifier is recorded, verified captures count toward `screenshotCount`, and generated flow previews can never be relabelled as captures.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.

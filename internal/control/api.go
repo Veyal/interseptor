@@ -171,6 +171,7 @@ var apiRoutes = []apiRoute{
 	{"POST", "/api/findings/{id}/flows", "Attach a captured flow as evidence. Body: {flowId, role?, note?, proof?, position?}; role identifies reproduction purpose and proof states exactly what the flow establishes"},
 	{"DELETE", "/api/findings/{id}/flows/{flowId}", "Detach a PoC flow from a finding"},
 	{"POST", "/api/findings/{id}/images", "Validate, store, and atomically attach screenshot evidence. Body: {data, mime?, caption?, role?, proof?, source?, sourceFlowId?, position?}; max 5 MiB"},
+	{"POST", "/api/findings/{id}/images/{hash}/classify", "Reviewer relabel of an attached image without re-upload. Body: {source: browser_screenshot|device_screenshot|operator_upload|tool_output|other, reason?}; ingestion metadata is kept, the classifier is recorded, generated previews cannot be relabelled"},
 	{"POST", "/api/findings/{id}/flow-preview", "Render and atomically attach a labeled HTTP PNG with source=flow_preview and sourceFlowId. Body: {flowId, side?, pretty?, layout?, theme?, caption?, role?, proof?, position?}"},
 	{"GET", "/api/findings/images/{hash}", "Serve a content-addressed finding image by sha256 hash"},
 	{"GET", "/api/views", "List saved history views"},
