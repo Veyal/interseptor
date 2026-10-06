@@ -28,6 +28,16 @@ func (s *Store) PutImageBytes(mime string, data []byte) (hash string, n int64, e
 // body GC. Callers handling screenshots or rendered flow previews should use
 // this operation when they already know the destination finding.
 func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, caption string, pos int, role, proof, source string, sourceFlowID int64, changes ...FindingChange) (string, int64, error) {
+	return s.PutAndAttachImageRef(findingID, mime, data, caption, pos, role, proof, source, sourceFlowID, "", changes...)
+}
+
+// PutAndAttachImageRef is PutAndAttachImage plus a server-stamped sourceRef
+// (for example "intruder:<runId>") naming the recorded data the image was
+// rendered from. The ref is immutable once stored on a generated image.
+func (s *Store) PutAndAttachImageRef(findingID int64, mime string, data []byte, caption string, pos int, role, proof, source string, sourceFlowID int64, sourceRef string, changes ...FindingChange) (string, int64, error) {
+	if err := validateSourceRef(sourceRef); err != nil {
+		return "", 0, err
+	}
 	s.bodyMu.Lock()
 	defer s.bodyMu.Unlock()
 	// If the upload is rejected by the destination finding (for example because
@@ -42,7 +52,7 @@ func (s *Store) PutAndAttachImage(findingID int64, mime string, data []byte, cap
 	}
 	change := firstFindingChange(changes)
 	change.ImageIngestion = "upload"
-	if err := s.AttachImageWithMetadata(findingID, hash, resolvedMIME, caption, pos, role, proof, source, sourceFlowID, change); err != nil {
+	if err := s.attachImage(findingID, hash, resolvedMIME, caption, pos, role, proof, source, sourceFlowID, sourceRef, change); err != nil {
 		// A finalized upload is already present at this point. It is safe to
 		// remove it only when this call created the file; the body lock prevents
 		// concurrent image uploads in this store from racing this check.
@@ -342,6 +352,14 @@ func (s *Store) AttachImage(findingID int64, hash, mime, caption string, pos int
 
 // AttachImageWithMetadata preserves semantic evidence role and provenance.
 func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64, changes ...FindingChange) error {
+	return s.attachImage(findingID, hash, mime, caption, pos, role, proof, source, sourceFlowID, "", firstFindingChange(changes))
+}
+
+func (s *Store) attachImage(findingID int64, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64, sourceRef string, change FindingChange) error {
+	changes := []FindingChange{change}
+	if err := validateSourceRef(sourceRef); err != nil {
+		return err
+	}
 	if err := validateFindingEvidenceMetadata(role, source, sourceFlowID); err != nil {
 		return err
 	}
@@ -367,7 +385,7 @@ func (s *Store) AttachImageWithMetadata(findingID int64, hash, mime, caption str
 	if err != nil {
 		return err
 	}
-	newBody := insertImageIntoBodyWithMetadata(narrative.Body, hash, mime, caption, pos, role, proof, source, sourceFlowID)
+	newBody := insertImageIntoBodyRef(narrative.Body, hash, mime, caption, pos, role, proof, source, sourceFlowID, sourceRef)
 	newBody, err = stampFindingImageProvenance(tx, narrative.Body, newBody, firstFindingChange(changes))
 	if err != nil {
 		return err
@@ -401,6 +419,10 @@ func insertImageIntoBody(bodyJSON, hash, mime, caption string, pos int) string {
 }
 
 func insertImageIntoBodyWithMetadata(bodyJSON, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64) string {
+	return insertImageIntoBodyRef(bodyJSON, hash, mime, caption, pos, role, proof, source, sourceFlowID, "")
+}
+
+func insertImageIntoBodyRef(bodyJSON, hash, mime, caption string, pos int, role, proof, source string, sourceFlowID int64, sourceRef string) string {
 	var recs []blockRecord
 	if bodyJSON != "" {
 		_ = json.Unmarshal([]byte(bodyJSON), &recs)
@@ -415,17 +437,20 @@ func insertImageIntoBodyWithMetadata(bodyJSON, hash, mime, caption string, pos i
 			if strings.TrimSpace(proof) != "" {
 				recs[i].Proof = strings.TrimSpace(proof)
 			}
-			if strings.TrimSpace(source) != "" && r.Source != "flow_preview" && r.Source != "generated_image" {
+			if strings.TrimSpace(source) != "" && !generatedFindingImage(r.Source) {
 				recs[i].Source = normalizeFindingBlockSource(source)
 			}
-			if sourceFlowID != 0 && r.Source != "flow_preview" && r.Source != "generated_image" {
+			if sourceFlowID != 0 && !generatedFindingImage(r.Source) {
 				recs[i].SourceFlowID = sourceFlowID
+			}
+			if sourceRef != "" && !generatedFindingImage(r.Source) {
+				recs[i].SourceRef = sourceRef
 			}
 			j, _ := json.Marshal(recs)
 			return string(j)
 		}
 	}
-	newBlock := blockRecord{Type: "image", Hash: hash, Mime: mime, Caption: caption, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID}
+	newBlock := blockRecord{Type: "image", Hash: hash, Mime: mime, Caption: caption, Role: normalizeFindingBlockRole(role), Proof: strings.TrimSpace(proof), Source: normalizeFindingBlockSource(source), SourceFlowID: sourceFlowID, SourceRef: sourceRef}
 	if pos < 0 || pos >= len(recs) {
 		recs = append(recs, newBlock)
 	} else {

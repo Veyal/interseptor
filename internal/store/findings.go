@@ -101,6 +101,9 @@ func NormalizeFindingBody(body string) (string, error) {
 		if strings.TrimSpace(recs[i].Source) != "" && normalizeFindingBlockSource(recs[i].Source) == "" {
 			return "", fmt.Errorf("body block[%d]: invalid source %q", i, recs[i].Source)
 		}
+		if err := validateSourceRef(recs[i].SourceRef); err != nil {
+			return "", fmt.Errorf("body block[%d]: %w", i, err)
+		}
 		recs[i].Proof = strings.TrimSpace(recs[i].Proof)
 		recs[i].Source = normalizeFindingBlockSource(recs[i].Source)
 		switch strings.ToLower(strings.TrimSpace(recs[i].Type)) {
@@ -163,6 +166,8 @@ func normalizeFindingBlockSource(source string) string {
 		return "tool_output"
 	case "generated_image":
 		return "generated_image"
+	case "evidence_render":
+		return "evidence_render"
 	case "other":
 		return "other"
 	default:
@@ -186,6 +191,9 @@ func validateFindingEvidenceMetadata(role, source string, sourceFlowID int64) er
 // MarshalFindingBlocks validates and serializes structured evidence blocks for REST/MCP callers.
 func MarshalFindingBlocks(blocks []FindingBlock) (string, error) {
 	for i, block := range blocks {
+		if err := validateSourceRef(block.SourceRef); err != nil {
+			return "", fmt.Errorf("body block[%d]: %w", i, err)
+		}
 		if err := validateFindingEvidenceMetadata(block.Role, block.Source, block.SourceFlowID); err != nil {
 			return "", fmt.Errorf("body block[%d]: %w", i, err)
 		}
@@ -208,7 +216,7 @@ func NormalizeFindingBlocks(blocks []FindingBlock) ([]FindingBlock, error) {
 	}
 	out := make([]FindingBlock, len(recs))
 	for i, r := range recs {
-		out[i] = FindingBlock{Type: r.Type, MD: r.MD, FlowID: r.FlowID, Note: r.Note, Hash: r.Hash, Mime: r.Mime, Caption: r.Caption, Role: r.Role, Proof: r.Proof, Provenance: r.Provenance, Source: r.Source, SourceFlowID: r.SourceFlowID}
+		out[i] = FindingBlock{Type: r.Type, MD: r.MD, FlowID: r.FlowID, Note: r.Note, Hash: r.Hash, Mime: r.Mime, Caption: r.Caption, Role: r.Role, Proof: r.Proof, Provenance: r.Provenance, Source: r.Source, SourceFlowID: r.SourceFlowID, SourceRef: r.SourceRef}
 	}
 	return out, nil
 }
@@ -311,6 +319,7 @@ type FindingBlock struct {
 	Proof        string                  `json:"proof,omitempty"`   // exact claim this evidence establishes
 	Source       string                  `json:"source,omitempty"`  // captured_flow/flow_preview/browser_screenshot/device_screenshot/operator_upload/tool_output/other
 	SourceFlowID int64                   `json:"sourceFlowId,omitempty"`
+	SourceRef    string                  `json:"sourceRef,omitempty"` // e.g. intruder:<runId>; server-stamped, immutable on generated images
 	Provenance   *FindingImageProvenance `json:"provenance,omitempty"`
 
 	// Enriched at read time from the flows JOIN — never stored in the body JSON.
@@ -368,6 +377,7 @@ type blockRecord struct {
 	Proof        string                  `json:"proof,omitempty"`
 	Source       string                  `json:"source,omitempty"`
 	SourceFlowID int64                   `json:"sourceFlowId,omitempty"`
+	SourceRef    string                  `json:"sourceRef,omitempty"`
 	Provenance   *FindingImageProvenance `json:"provenance,omitempty"`
 	Missing      bool                    `json:"missing,omitempty"`
 }
@@ -382,7 +392,7 @@ func marshalBody(blocks []FindingBlock) string {
 		recs[i] = blockRecord{
 			Type: b.Type, MD: b.MD, FlowID: b.FlowID, Note: b.Note,
 			Hash: b.Hash, Mime: b.Mime, Caption: b.Caption, Role: normalizeFindingBlockRole(b.Role), Proof: b.Proof,
-			Provenance: b.Provenance, Source: normalizeFindingBlockSource(b.Source), SourceFlowID: b.SourceFlowID, Missing: b.Type == "flow" && b.Missing,
+			Provenance: b.Provenance, Source: normalizeFindingBlockSource(b.Source), SourceFlowID: b.SourceFlowID, SourceRef: b.SourceRef, Missing: b.Type == "flow" && b.Missing,
 		}
 	}
 	j, _ := json.Marshal(recs)
@@ -406,7 +416,7 @@ func buildBlocks(body, detail, evidence string, flows []FindingFlow) []FindingBl
 				blocks[i] = FindingBlock{
 					Type: r.Type, MD: r.MD, FlowID: r.FlowID, Note: r.Note,
 					Hash: r.Hash, Mime: r.Mime, Caption: r.Caption, Role: r.Role, Proof: r.Proof,
-					Provenance: r.Provenance, Source: r.Source, SourceFlowID: r.SourceFlowID, Missing: r.Missing,
+					Provenance: r.Provenance, Source: r.Source, SourceFlowID: r.SourceFlowID, SourceRef: r.SourceRef, Missing: r.Missing,
 				}
 				if blocks[i].Role == "" && r.Type == "flow" {
 					// Older AttachFlow callers only had a free-form note. Preserve
@@ -628,7 +638,7 @@ func preserveMissingFlowMarkers(existingBody, nextBody string) string {
 	generated := make(map[string]blockRecord)
 	missing := make(map[int64]bool)
 	for _, rec := range existing {
-		if rec.Type == "image" && (rec.Source == "flow_preview" || rec.Source == "generated_image") {
+		if rec.Type == "image" && generatedFindingImage(rec.Source) {
 			generated[rec.Hash] = rec
 		}
 		if rec.Type == "flow" && rec.FlowID > 0 && rec.Missing {
@@ -639,6 +649,7 @@ func preserveMissingFlowMarkers(existingBody, nextBody string) string {
 		if old, ok := generated[next[i].Hash]; ok && next[i].Type == "image" {
 			next[i].Source = old.Source
 			next[i].SourceFlowID = old.SourceFlowID
+			next[i].SourceRef = old.SourceRef
 		}
 		next[i].Missing = next[i].Type == "flow" && missing[next[i].FlowID]
 	}
