@@ -258,7 +258,7 @@ details.find-target-card[open]>summary::after{transform:rotate(180deg)}
 .rm-seg.is-pass{border-color:var(--rd-pass);background:var(--rd-pass-dim);color:var(--rd-pass)}
 .rm-seg.is-todo{border-style:dashed;background:var(--rd-na-dim)}
 a.rm-seg:hover{text-decoration:underline}
-a.rm-seg:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+a.rm-seg:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .rm[data-unknown="true"] .rm-seg{border-style:dotted}
 /* compact: icons only; the label stays available to assistive tech through .u-sr and aria-valuetext */
 .rm-compact .rm-text{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -274,7 +274,7 @@ a.rm-seg:focus-visible{outline:var(--focus-ring);outline-offset:2px}
 .et-help{margin-left:auto;font-size:var(--fs-xs)}
 .et-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:var(--sp-2);list-style:none;margin:0;padding:0}
 .et-tile{display:flex;align-items:center;gap:var(--sp-2);min-width:0;padding:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2)}
-.et-tile:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.et-tile:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .et-tile.is-missing{border-style:dashed;border-color:var(--rd-gap);color:var(--fg2)}
 .et-thumb{width:40px;height:40px;flex:none;object-fit:cover;border-radius:var(--r-sm);background:var(--bg3)}
 .et-kind{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;border-radius:var(--r-sm);background:var(--bg3);color:var(--fg2)}
@@ -298,7 +298,7 @@ a.rm-seg:focus-visible{outline:var(--focus-ring);outline-offset:2px}
 .find-inline-foot .statusline[data-kind="error"]{color:var(--rd-block)}
 .find-guide-aside{margin:0 var(--sp-3) var(--sp-3);border-bottom:1px solid var(--line);font-size:var(--fs-xs);color:var(--fg3)}
 .find-guide-aside>summary{min-height:24px;padding:var(--sp-2) 0;cursor:pointer}
-.find-guide-aside>summary:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.find-guide-aside>summary:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .find-guide-list{margin:0 0 var(--sp-2);padding-left:var(--sp-5);display:grid;gap:var(--sp-1);color:var(--fg2)}
 .find-guide-aside .btn{margin-bottom:var(--sp-2)}
 .find-report-mount{flex:none;min-height:0}

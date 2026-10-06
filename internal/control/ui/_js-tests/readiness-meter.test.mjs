@@ -65,6 +65,9 @@ test('html: meter role, values and escaped labels; segments link only when asked
   assert.match(linked, /href="#finding-7\/evidence"/);
   assert.match(linked, /href="#finding-7\/review"/);
   assert.match(linked, /id="x"/);
+  assert.match(plain, /aria-label="Report readiness"/, 'the meter is named');
+  assert.ok(!/role="meter"/.test(linked), 'links never nest inside role=meter');
+  assert.match(linked, /role="group" aria-label="Report readiness"/);
   const unknown = readinessMeterHTML({ stage: 'zzz' }, { hrefFor: () => '#x' });
   assert.ok(!unknown.includes('<a '), 'unknown stage renders no links');
   assert.match(unknown, /data-unknown="true"/);

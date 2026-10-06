@@ -76,7 +76,7 @@ func TestUIFoundationLayoutTokens(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	vars := parseThemeBlock(t, css, ":root{")
 	want := map[string]string{
-		"--ctxbar-h":         "40px",
+		"--ctxbar-h":         "48px",
 		"--topbar-h":         "48px",
 		"--drawer-w":         "420px",
 		"--drawer-min":       "320px",
@@ -100,7 +100,7 @@ func TestUIFoundationLayoutTokens(t *testing.T) {
 		"--z-sheet":          "60",
 		"--z-modal":          "70",
 		"--z-cmdk":           "75",
-		"--z-toast":          "80",
+		"--z-toast":          "100000",
 		"--motion-press":     "90ms",
 		"--motion-pop":       "150ms",
 	}

@@ -9,7 +9,7 @@
 .proxy-filters-pop{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
 .proxy-filters-row{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
 .proxy-filters-pop .flow-search-disc textarea{width:100%;max-width:100%}
-.proxy-filters-pop :focus-visible,.proxy-toolbar :focus-visible,.sel-bar :focus-visible,.tr-more:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.proxy-filters-pop :focus-visible,.proxy-toolbar :focus-visible,.sel-bar :focus-visible,.tr-more:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 /* ---- bulk bar ---- */
 .sel-bar .btn[disabled]{opacity:.55;cursor:not-allowed}
@@ -21,7 +21,7 @@
 .tr-att .icon{color:var(--accent)}
 .tr-held .icon{color:var(--accent)}
 .tr-wait{color:var(--fg3)}
-.trow:focus-visible{outline:var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
+.trow:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
 .tr-more{display:none}
 
 /* ---- inspector docking: the side drawer replaces the bottom inspector ---- */
@@ -37,7 +37,8 @@
 
 /* ---- phones: Filters become a bottom sheet, rows become two-line cards ---- */
 @media (max-width:720px){
-  .proxy-filters-pop{position:fixed;left:0;right:0;bottom:calc(var(--bottomnav-h) + var(--safe-b));z-index:var(--z-popover);max-height:70dvh;overflow:auto;padding:var(--sp-4);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--elev-3)}
+  html[data-soft-keyboard="true"] .proxy-filters-pop{bottom:0}
+  .proxy-filters-pop{position:fixed;left:var(--safe-l);right:var(--safe-r);bottom:calc(var(--bottomnav-h) + var(--safe-b));z-index:var(--z-popover);max-height:70dvh;overflow:auto;padding:var(--sp-4);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--elev-3)}
   .proxy-toolbar .search{flex:1 1 100%}
   #panel-proxy #flowHead{display:none}
   #panel-proxy #rows .trow{

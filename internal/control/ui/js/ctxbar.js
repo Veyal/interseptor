@@ -64,7 +64,7 @@ function renderTarget(s) {
   setText('ctxTargetText', s.loaded ? (has ? s.brief.target.split('\n')[0] : 'Set target') : '…');
   chip.dataset.empty = s.loaded && !has ? 'true' : 'false';
   chip.dataset.stale = s.stale.brief ? 'true' : 'false';
-  chip.setAttribute('aria-label', s.loaded ? (has ? 'Target: ' + s.brief.target + '. Open engagement details.' : 'No target set. Set target.') : 'Target: loading');
+  chip.setAttribute('aria-label', s.loaded ? (has ? 'Target ' + s.brief.target + '. Open engagement details.' : 'Target Set target. No target is set; open engagement details.') : 'Target: loading');
   chip.title = s.stale.brief ? 'Could not refresh the engagement brief' : (has ? s.brief.target : 'Set the authorised target');
 }
 
@@ -95,7 +95,7 @@ function renderEvidence(s) {
   if (!e) return;
   const t = evidenceSummary(s.evidence);
   setText('ctxEvidenceText', s.loaded ? t : '…');
-  e.setAttribute('aria-label', s.loaded ? 'Evidence: ' + t + '. Open Findings.' : 'Evidence: loading');
+  e.setAttribute('aria-label', s.loaded ? 'Evidence ' + t + '. Open Findings.' : 'Evidence loading');
   e.dataset.stale = s.stale.evidence ? 'true' : 'false';
   e.title = s.stale.evidence ? 'Flow and websocket counts could not be refreshed' : 'Evidence held for this project';
 }
@@ -141,7 +141,7 @@ function renderNext(s) {
   if (!chip) return;
   setText('ctxNextText', s.loaded ? s.nextAction.label : '…');
   chip.dataset.kind = s.nextAction.kind;
-  chip.setAttribute('aria-label', s.loaded ? 'Next action: ' + s.nextAction.label : 'Next action: loading');
+  chip.setAttribute('aria-label', s.loaded ? 'Next ' + s.nextAction.label + '. Do the next action.' : 'Next loading');
 }
 
 function renderRailBadge(s) {

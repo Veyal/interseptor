@@ -156,7 +156,7 @@ func TestUITouchRowHeightAndTargetsAreRobust(t *testing.T) {
 
 func TestUIToastReturnsHandleAndFindingPickerRefetches(t *testing.T) {
 	core := executableJS(readUIAsset(t, "js/core.js"))
-	requireUIContains(t, core, "armToastTimer(t, sev === 'error' ? 8000 : sev === 'warn' ? 5000 : 2600);\n  return t;")
+	requireUIContains(t, core, "if (sev !== 'error') armToastTimer(t, sev === 'warn' ? 5000 : 2600);\n  return t;")
 	f := executableJS(readUIAsset(t, "js/findings.js"))
 	requireUIContains(t, f,
 		"addOpenFindingAction(findingId, toast(message, sev))",

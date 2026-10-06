@@ -65,7 +65,7 @@
   --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
   --row-h:30px; --toolbar-h:44px; --hit-min:32px; --cell-pad-x:6px;
   --nav-rail-w:204px; --side-panel-w:280px; --rail-w-collapsed:56px;
-  --topbar-h:48px; --ctxbar-h:40px;
+  --topbar-h:48px; --ctxbar-h:48px;
   --drawer-w:420px; --drawer-min:320px; --drawer-max:640px;
   --bottomnav-h:56px; --sheet-peek:72px; --sheet-half:50dvh;
   --split-gutter:8px;
@@ -76,7 +76,7 @@
   --sticky-top:calc(var(--topbar-h) + var(--ctxbar-h));
   /* Z-index scale for new code; older magic numbers migrate opportunistically. */
   --z-sticky:10; --z-sash:15; --z-dock:20; --z-strip:25; --z-drawer:30;
-  --z-popover:40; --z-sheet:60; --z-modal:70; --z-cmdk:75; --z-toast:80;
+  --z-popover:40; --z-sheet:60; --z-modal:70; --z-cmdk:75; --z-toast:100000;
   /* Motion added for the workbench. transform and opacity only; the
      prefers-reduced-motion block zeroes all four. */
   --motion-press:90ms; --motion-pop:150ms;
@@ -1237,7 +1237,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
 #inspectSplitter::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:32px;height:2px;border-radius:1px;background:var(--line2);pointer-events:none}
 #inspectSplitter:hover::after,#inspectSplitter:focus::after{background:var(--onAccent)}
 
-#toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:100}
+#toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:var(--z-toast)}
 .toast-item{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-4);font-size:var(--fs-sm);color:var(--fg);box-shadow:var(--elev-2);opacity:0;transform:translateY(6px);transition:opacity var(--motion-base) var(--motion-standard),transform var(--motion-base) var(--motion-standard);max-width:100%}
 .toast-item.show{opacity:1;transform:none}
 .toast-item.error{border-color:var(--dangerLine);color:var(--dangerFg)}
@@ -1862,7 +1862,7 @@ details[open]>summary::before{content:'▾'}
   .search{height:auto}
   #themeToggle{min-width:44px}
   .seg{min-height:44px}
-  .seg button{min-height:36px;padding:var(--sp-2) var(--sp-3)}
+  .seg button{min-height:44px;padding:var(--sp-2) var(--sp-3)}
   .chip .x{width:28px;height:28px}
   .rep-tab .rt-close{min-width:32px;min-height:32px}
   input[type=checkbox],input[type=radio]{width:24px;height:24px;min-width:24px}

@@ -629,7 +629,7 @@ function currentTheme(){const t=document.documentElement.getAttribute('data-them
 function applyTheme(t){
   if(t==='light'||t==='hc')document.documentElement.setAttribute('data-theme',t);
   else document.documentElement.removeAttribute('data-theme');
-  const b=$('#themeToggle');if(b)b.innerHTML=t==='light'?icon('sun'):icon('moon');
+  const b=$('#themeToggle');if(b){b.innerHTML=t==='light'?icon('sun'):icon('moon');const nx=t==='dark'?'light':'dark';const l='Theme: '+(t==='hc'?'high contrast':t)+'. Switch to '+nx+'.';b.setAttribute('aria-label',l);b.title=l;}
 }
 function toggleTheme(){const t=currentTheme()==='dark'?'light':'dark';try{localStorage.setItem('theme',t);}catch(e){}applyTheme(t);}
 $('#themeToggle').onclick=toggleTheme;

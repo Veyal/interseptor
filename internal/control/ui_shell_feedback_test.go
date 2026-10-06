@@ -11,7 +11,9 @@ import (
 func shellFeedbackHarness(t *testing.T, body string) {
 	t.Helper()
 	core := readUIAsset(t, "js/core.js")
-	script := repeaterRenderJS(t, core, "function evictToasts(c)") +
+	script := "const icon=(n)=>'<svg>'+n+'</svg>';\n" +
+		repeaterRenderJS(t, core, "function evictToasts(c)") +
+		repeaterRenderJS(t, core, "function dismissToast(t)") +
 		repeaterRenderJS(t, core, "function armToastTimer(t, ms)") +
 		repeaterRenderJS(t, core, "export function toast(m, sev)") +
 		repeaterRenderJS(t, core, "export function toastError(prefix, e)") +
@@ -69,18 +71,32 @@ eq(err.classes.has('error'),true,'errors carry the error class');
 eq(err.tabIndex,0,'errors are focusable so keyboard users can pause them');
 toastError(new Error('bare'));
 eq(container.children[2].textContent,'bare','toastError(e) works without a prefix');
+eq(err.children.length,1,'errors carry a dismiss button');
+eq(err.children[0].getAttribute('aria-label'),'Dismiss','the dismiss button is named');
 // errors outlive the info lifetime and are never evicted by newer info toasts
 for(let i=0;i<6;i++)toast('info '+i);
 eq(container.children.includes(err),true,'info toasts must not evict an error');
 advance(2700);
 eq(container.children.includes(err),true,'an error outlives the 2.6s info lifetime');
-// hover pauses the removal timer; leaving restarts it
-err.hover=true;err.fire('mouseenter');
+// errors never auto-dismiss (WCAG 2.2.1)
+advance(600000);
+eq(container.children.includes(err),true,'an error persists until dismissed');
+// the dismiss button removes it
+err.children[0].fire('click');advance(300);
+eq(container.children.includes(err),false,'the Dismiss button removes the error');
+// Escape on a focused error dismisses it
+const err2=container.children.find(c=>c.classes.has('error'));
+(err2.listeners.keydown||[]).forEach(f=>f({key:'Escape'}));advance(300);
+eq(container.children.includes(err2),false,'Escape dismisses a focused error');
+// warnings still time out and pause on hover
+toast('careful','warn');
+const warn=container.children[container.children.length-1];
+warn.hover=true;warn.fire('mouseenter');
 advance(60000);
-eq(container.children.includes(err),true,'a hovered error stays put');
-err.hover=false;err.fire('mouseleave');
+eq(container.children.includes(warn),true,'a hovered warning stays put');
+warn.hover=false;warn.fire('mouseleave');
 advance(20000);advance(300);
-eq(container.children.includes(err),false,'an error is removed after the pointer leaves');
+eq(container.children.includes(warn),false,'a warning is removed after the pointer leaves');
 `)
 }
 

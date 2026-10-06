@@ -62,7 +62,7 @@ func TestUICmdkNeverAssignsUnescapedHTMLInKeyboardModule(t *testing.T) {
 func TestUICmdkComboboxAccessibilityContract(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/cmdk.js"))
 	requireUIContains(t, src,
-		`role="combobox"`, `aria-controls="cmdkList"`, `aria-expanded="true"`, `aria-autocomplete="list"`,
+		`role="combobox"`, `aria-controls="cmdkList"`, `aria-expanded="false"`, "setAttribute('aria-expanded',cmdk.items.length", `aria-autocomplete="list"`,
 		`aria-describedby="cmdkHint"`, `aria-activedescendant`, `role="listbox"`, `role="option"`,
 		`role="group" aria-labelledby=`,
 		`id="cmdkLive" class="u-sr" role="status" aria-live="polite"`,

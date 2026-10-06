@@ -249,7 +249,7 @@ func TestUIShellStylesheetHasPhoneAndNarrowRules(t *testing.T) {
 		}
 	}
 	// Side gutters of at least 16px, and nothing wider than a 375px phone.
-	requireUIContains(t, body, "padding:0 max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l))")
+	requireUIContains(t, body, "padding:var(--sp-2) max(var(--sp-4),var(--safe-r)) var(--sp-2) max(var(--sp-4),var(--safe-l))")
 	for _, m := range regexp.MustCompile(`min-width\s*:\s*(\d+)px`).FindAllStringSubmatch(body, -1) {
 		if m[1] != "44" && m[1] != "0" {
 			t.Errorf("shell.css sets min-width:%spx; nothing may be wider than the 375px target", m[1])

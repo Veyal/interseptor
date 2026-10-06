@@ -20,7 +20,7 @@
 .conn-chip:hover{background:var(--bg3)}
 .conn-chip[data-state="offline"]{border-color:var(--rd-block);color:var(--rd-block)}
 .conn-chip[data-state="reconnecting"]{border-color:var(--rd-gap);color:var(--rd-gap)}
-.conn-pop{position:fixed;top:calc(var(--topbar-h) + var(--safe-t));right:var(--sp-2);z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(320px,calc(100vw - 16px));padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
+.conn-pop{position:fixed;top:calc(var(--topbar-h) + var(--safe-t));right:max(var(--sp-2),var(--safe-r));z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(320px,calc(100vw - 16px));padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
 .conn-pop[hidden]{display:none}
 .conn-row{display:flex;align-items:center;gap:var(--sp-2);min-width:0;font-size:var(--fs-sm)}
 .conn-key{flex:0 0 96px;color:var(--fg3)}
@@ -33,7 +33,7 @@
 .offline-banner[hidden]{display:none}
 
 /* ---- Engagement Strip ---- */
-#ctxbar{position:relative;z-index:var(--z-popover);flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--ctxbar-h);padding:0 max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l));background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-sm);white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+#ctxbar{position:relative;z-index:var(--z-popover);flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--ctxbar-h);padding:var(--sp-2) max(var(--sp-4),var(--safe-r)) var(--sp-2) max(var(--sp-4),var(--safe-l));background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-sm);white-space:nowrap;overflow-x:auto;scrollbar-width:none}
 #ctxbar::-webkit-scrollbar{display:none}
 .ctx-chip{display:inline-flex;align-items:center;gap:var(--sp-1);flex:0 1 auto;min-width:0;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg2);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
 .ctx-chip:hover{background:var(--bg3);color:var(--fg)}
@@ -118,7 +118,7 @@
   #cmdkBtn kbd{display:none}
   .conn-chip{min-height:44px}
   .ctx-chip,.ctx-ready{min-height:var(--hit-min)}
-  .ctx-pop{left:var(--sp-2);right:var(--sp-2);width:auto}
+  .ctx-pop{left:max(var(--sp-2),var(--safe-l));right:max(var(--sp-2),var(--safe-r));width:auto}
   .ctx-scope .ctx-text{max-width:14ch}
   .ctx-seg{width:4px}
 }

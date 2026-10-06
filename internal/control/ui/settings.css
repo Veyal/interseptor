@@ -12,7 +12,7 @@
 .settings-wrap.split>.settings-nav{width:auto;min-width:0;border-right:0}
 .settings-wrap.split>.settings-body{min-width:0}
 .settings-nav button mark{padding:0 2px;border-radius:2px;background:var(--find-bg);color:var(--find-fg)}
-.settings-nav button:focus-visible,.settings-search:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.settings-nav button:focus-visible,.settings-search:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .settings-nav-empty{color:var(--fg2)}
 
 /* ---- section health chips: icon plus text, never colour alone ---- */
@@ -62,7 +62,7 @@
 .checklist-step[data-done="true"] .checklist-label{color:var(--fg2)}
 .checklist-state{color:var(--fg3);font:600 var(--fs-xs)/1.2 var(--ui)}
 .checklist-go,.checklist-dismiss{min-height:var(--hit-min)}
-.checklist-go:focus-visible,.checklist-dismiss:focus-visible,.settings-appearance .seg button:focus-visible,.settings-appearance .uisw:focus-visible,.eng-sheet .btn:focus-visible,.eng-sheet .uisw:focus-visible,.brief-form textarea:focus-visible,.typed-confirm-input:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.checklist-go:focus-visible,.checklist-dismiss:focus-visible,.settings-appearance .seg button:focus-visible,.settings-appearance .uisw:focus-visible,.eng-sheet .btn:focus-visible,.eng-sheet .uisw:focus-visible,.brief-form textarea:focus-visible,.typed-confirm-input:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 
 /* ---- typed confirmation ---- */
 .typed-confirm{display:flex;flex-direction:column;gap:var(--sp-1);margin-top:var(--sp-3)}

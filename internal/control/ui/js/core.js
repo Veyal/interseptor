@@ -42,8 +42,9 @@ export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,que
   filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
-// Errors and warnings are role=alert (announced assertively), live longer, pause
-// while hovered or focused, and are never evicted by newer info toasts.
+// Errors and warnings are role=alert (announced assertively). Warnings live longer
+// and pause while hovered or focused; errors persist until dismissed. Neither is
+// evicted by newer info toasts.
 function evictToasts(c) {
   const keep = (sel, max) => {
     const items = c.querySelectorAll(sel);
@@ -53,9 +54,13 @@ function evictToasts(c) {
   keep('.toast-item:not(.error)', 3);
   keep('.toast-item.error', 5);
 }
+function dismissToast(t) {
+  t.classList.remove('show');
+  setTimeout(() => t.remove(), 220);
+}
 function armToastTimer(t, ms) {
   let left = ms, started = 0, timer = null;
-  const dismiss = () => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); };
+  const dismiss = () => dismissToast(t);
   const run = () => { started = Date.now(); clearTimeout(timer); timer = setTimeout(dismiss, left); };
   const pause = () => {
     if (timer === null) return;
@@ -80,10 +85,21 @@ export function toast(m, sev) {
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
   if (loud) { t.setAttribute('role', 'alert'); t.tabIndex = 0; }
+  if (sev === 'error') {
+    // Failures stay until dismissed (WCAG 2.2.1): a button, or Escape on the focused toast.
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn xs toast-dismiss';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.innerHTML = icon('close');
+    x.addEventListener('click', () => dismissToast(t));
+    t.addEventListener('keydown', e => { if (e.key === 'Escape') dismissToast(t); });
+    t.appendChild(x);
+  }
   c.appendChild(t);
   evictToasts(c);
   requestAnimationFrame(() => t.classList.add('show'));
-  armToastTimer(t, sev === 'error' ? 8000 : sev === 'warn' ? 5000 : 2600);
+  if (sev !== 'error') armToastTimer(t, sev === 'warn' ? 5000 : 2600);
   return t;
 }
 // toastError(prefix, e) reports a failed action. e may be an Error, a string or

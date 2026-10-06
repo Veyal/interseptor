@@ -8,7 +8,7 @@
 .rp{display:flex;flex-direction:column;gap:var(--sp-4);padding:var(--sp-4);min-width:0}
 .rp-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3)}
 .rp-head h2{margin:0;font-size:var(--fs-lg);flex:1 1 auto;min-width:0}
-.rp-head h2:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.rp-head h2:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .rp-sum{font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
 .rp h3{margin:0 0 var(--sp-2);font-size:var(--fs-sm);font-weight:700;color:var(--fg2)}
 .rp-body{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--sp-5);align-items:start}

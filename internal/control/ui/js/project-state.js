@@ -137,7 +137,7 @@ export function nextActionFrom(s) {
   if (!s.scope.enabled) return { kind: 'enable-scope', label: 'Enable scope' };
   if (!s.evidence.flows) return { kind: 'capture', label: 'Capture traffic' };
   const proof = s.findings.items.find((it) => it.gaps.some((g) => findingSectionForGap(g) === 'evidence'));
-  if (proof) return { kind: 'attach-proof', label: 'Attach proof to F-' + proof.id, findingId: proof.id, href: findingHref(proof.id, 'evidence') };
+  if (proof) return { kind: 'attach-proof', label: 'Attach evidence to F-' + proof.id, findingId: proof.id, href: findingHref(proof.id, 'evidence') };
   const blocked = s.findings.items.find((it) => it.gaps.length);
   if (blocked) return { kind: 'fix-blockers', label: 'Fix blockers in F-' + blocked.id, findingId: blocked.id, href: findingHref(blocked.id, findingSectionForGap(blocked.gaps[0])) };
   if (!s.findings.total) return { kind: 'new-finding', label: 'Create a finding' };

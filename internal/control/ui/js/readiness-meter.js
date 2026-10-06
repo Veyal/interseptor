@@ -68,7 +68,7 @@ export function readinessValuetext(readiness, labelFor = humanizeGap) {
 
 export function readinessMeterAttrs(readiness, labelFor) {
   const reached = stageIndex(readiness);
-  return { role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': String(MILESTONES.length), 'aria-valuenow': String(Math.max(0, reached)), 'aria-valuetext': readinessValuetext(readiness, labelFor) };
+  return { role: 'meter', 'aria-label': 'Report readiness', 'aria-valuemin': '0', 'aria-valuemax': String(MILESTONES.length), 'aria-valuenow': String(Math.max(0, reached)), 'aria-valuetext': readinessValuetext(readiness, labelFor) };
 }
 
 function iconSvg(name) {
@@ -80,14 +80,19 @@ function iconSvg(name) {
 //   hrefFor:   (section) => href, or omitted for plain segments (list rows are links already)
 //   labelFor:  gap code => label
 export function readinessMeterHTML(readiness, { size = 'compact', hrefFor, labelFor = humanizeGap, id } = {}) {
-  const attrs = readinessMeterAttrs(readiness, labelFor);
-  const attrText = Object.entries(attrs).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');
   const known = stageIndex(readiness) >= 0;
+  const linked = !!(hrefFor && known);
+  // Children of role=meter are presentational in ARIA 1.2, so the interactive
+  // variant is a labelled group (links keep their semantics) with the value
+  // spoken through a screen-reader summary instead.
+  const attrs = linked ? { role: 'group', 'aria-label': 'Report readiness' } : readinessMeterAttrs(readiness, labelFor);
+  const attrText = Object.entries(attrs).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');
+  const summary = linked ? `<span class="u-sr">${esc(readinessValuetext(readiness, labelFor))}. </span>` : '';
   const segs = readinessSegments(readiness).map((s) => {
     const body = `${iconSvg(s.icon)}<span class="rm-text">${esc(s.label)}<span class="u-sr">: ${esc(s.status)}</span></span>`;
     const cls = `rm-seg is-${s.state}`;
-    if (hrefFor && known) return `<a class="${cls}" href="${esc(hrefFor(s.section))}" data-find-section="${esc(s.section)}">${body}</a>`;
+    if (linked) return `<a class="${cls}" href="${esc(hrefFor(s.section))}" data-find-section="${esc(s.section)}">${body}</a>`;
     return `<span class="${cls}">${body}</span>`;
   }).join('');
-  return `<span class="rm rm-${esc(size)}"${id ? ` id="${esc(id)}"` : ''} ${attrText}${known ? '' : ' data-unknown="true"'}>${segs}</span>`;
+  return `<span class="rm rm-${esc(size)}"${id ? ` id="${esc(id)}"` : ''} ${attrText}${known ? '' : ' data-unknown="true"'}>${summary}${segs}</span>`;
 }

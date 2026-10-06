@@ -33,7 +33,7 @@ function cmdkBuild(){
   const o=document.createElement('div');o.id='cmdk';o.className='modal-overlay cmdk-overlay';
   o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell cmdk-shell">'
     +'<div class="modal-shell-head"><span id="cmdkTitle" class="modal-shell-title">Command palette</span></div>'
-    +'<input id="cmdkInput" class="cmdk-input" role="combobox" aria-label="Search commands, flows and findings" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" aria-describedby="cmdkHint" placeholder="Search flows, findings, actions…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">'
+    +'<input id="cmdkInput" class="cmdk-input" role="combobox" aria-label="Search commands, flows and findings" aria-controls="cmdkList" aria-expanded="false" aria-autocomplete="list" aria-describedby="cmdkHint" placeholder="Search flows, findings, actions…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">'
     +'<div id="cmdkHint" class="cmdk-hint"></div>'
     +'<div id="cmdkList" class="cmdk-list" role="listbox" aria-label="Command results"></div>'
     +'<div id="cmdkLive" class="u-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
@@ -106,6 +106,7 @@ function cmdkPaint(){
     html+='</div>';
   });
   cmdk.list.innerHTML=html||'<div class="cmdk-empty">No matches</div>';
+  cmdk.input.setAttribute('aria-expanded',cmdk.items.length?'true':'false');
   if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
   else cmdk.input.removeAttribute('aria-activedescendant');
   cmdk.list.querySelectorAll('.cmdk-row').forEach(r=>{

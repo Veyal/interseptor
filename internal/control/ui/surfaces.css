@@ -266,10 +266,10 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .sheet-handle{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:calc(100% - 56px);min-height:24px;padding:0;cursor:grab;touch-action:none;background:transparent}
 .sheet-handle:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
 .sheet-grip{display:block;width:36px;height:4px;border-radius:var(--r-pill);background:var(--line2)}
-.sheet-head{display:flex;align-items:center;flex:none;min-height:28px;padding:0 var(--sp-4)}
+.sheet-head{display:flex;align-items:center;flex:none;min-height:28px;padding:0 max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l))}
 .sheet-title{margin:0;overflow:hidden;font-size:var(--fs-lg);font-weight:650;text-overflow:ellipsis;white-space:nowrap}
-.sheet-close{position:absolute;top:0;right:var(--sp-2);z-index:1}
-.sheet-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 var(--sp-4) var(--sp-4)}
+.sheet-close{position:absolute;top:0;right:max(var(--sp-2),var(--safe-r));z-index:1}
+.sheet-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 max(var(--sp-4),var(--safe-r)) var(--sp-4) max(var(--sp-4),var(--safe-l))}
 .sheet[data-detent="half"] .sheet-body{flex:none;max-height:calc(var(--sheet-half) - 64px - var(--safe-b))}
 .sheet[data-detent="peek"] .sheet-body{flex:none;max-height:0;padding:0;overflow:hidden}
 @media (pointer:coarse){
@@ -282,7 +282,8 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   .sheet[data-detent="closed"]{transform:translateX(100%)}
   .sheet-handle{display:none}
   .sheet-head{padding-top:var(--sp-3)}
-  .sheet[data-detent] .sheet-body{flex:1;max-height:none;padding:0 var(--sp-4) var(--sp-4);overflow:auto}
+  .sheet[data-detent] .sheet-body{flex:1;max-height:none;padding:0 max(var(--sp-4),var(--safe-r)) var(--sp-4) max(var(--sp-4),var(--safe-l));overflow:auto}
 }
 /* The bottom navigation gets out of the way of the soft keyboard. */
 :root[data-soft-keyboard="true"] #dock{display:none}
+#toast .toast-dismiss{margin-left:var(--sp-2);vertical-align:middle}
