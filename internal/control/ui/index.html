@@ -913,6 +913,24 @@ Content-Type: application/json
               <button class="btn btn-primary" id="addScopeBtn">+ Add</button>
             </div>
           </div>
+          <div class="section" id="engagementBrief">
+            <h3>Engagement brief</h3>
+            <p class="hint u-mb-2">Authorisation and conduct rules for this project. Agents read it over MCP and reports cite its version. <b id="briefVersion">No brief recorded yet</b></p>
+            <div id="briefLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
+            <label class="hint" for="brief-scope">Scope</label>
+            <textarea id="brief-scope" class="raw u-mb-2" maxlength="16384" aria-label="Scope" placeholder="In-scope hosts and APIs" spellcheck="false"></textarea>
+            <label class="hint" for="brief-authorisation">Authorisation</label>
+            <textarea id="brief-authorisation" class="raw u-mb-2" maxlength="16384" aria-label="Authorisation" placeholder="Who authorised what, and for how long" spellcheck="false"></textarea>
+            <label class="hint" for="brief-conductRules">Conduct rules</label>
+            <textarea id="brief-conductRules" class="raw u-mb-2" maxlength="16384" aria-label="Conduct rules" placeholder="e.g. own account only; destructive actions noted, not executed" spellcheck="false"></textarea>
+            <label class="hint" for="brief-rateLimits">Rate limits</label>
+            <textarea id="brief-rateLimits" class="raw u-mb-2" maxlength="16384" aria-label="Rate limits" placeholder="e.g. at most 1 req/s, request budget" spellcheck="false"></textarea>
+            <label class="hint" for="brief-doNotTouch">Do not touch</label>
+            <textarea id="brief-doNotTouch" class="raw u-mb-2" maxlength="16384" aria-label="Do not touch" placeholder="Hosts, endpoints or data that are off limits" spellcheck="false"></textarea>
+            <label class="hint" for="brief-credentialPolicy">Credential policy</label>
+            <textarea id="brief-credentialPolicy" class="raw u-mb-2" maxlength="16384" aria-label="Credential policy" placeholder="e.g. never print credential values" spellcheck="false"></textarea>
+            <div class="row u-gap-2 u-mt-2"><button type="button" class="btn btn-primary" id="briefSaveBtn">Save brief</button></div>
+          </div>
         </section>
         <section class="set-sec" data-sec="scanner" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg><h2>Scanner &amp; OOB</h2></header>

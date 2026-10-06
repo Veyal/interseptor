@@ -1236,6 +1236,29 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/tags") })
 
+	s.add("get_engagement_brief",
+		"Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch list and credential policy, plus its version. Read it before testing and obey it; cite the version in findings and reports. Version 0 means no brief is recorded.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/engagement-brief") })
+
+	s.add("set_engagement_brief",
+		"Replace the project's engagement brief (the operator's authorisation and conduct rules). Call get_engagement_brief first and resend unchanged fields; omitted fields are cleared. The version increments only when content changes.",
+		obj(map[string]any{
+			"scope":            p("string", "in-scope hosts/APIs"),
+			"authorisation":    p("string", "authorisation statement: who authorised what"),
+			"conductRules":     p("string", "rules of conduct, e.g. own account only, destructive actions noted not executed"),
+			"rateLimits":       p("string", "e.g. <=1 req/s, request budgets"),
+			"doNotTouch":       p("string", "explicit do-not-touch list"),
+			"credentialPolicy": p("string", "e.g. never print credential values"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			for _, k := range []string{"scope", "authorisation", "conductRules", "rateLimits", "doNotTouch", "credentialPolicy"} {
+				body[k] = argStr(a, k)
+			}
+			return s.api(http.MethodPut, "/api/engagement-brief", body)
+		})
+
 	s.add("get_notes",
 		"Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings and to-dos. Read it before editing with set_notes.",
 		obj(map[string]any{}),

@@ -235,31 +235,42 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		h.enrichFindingReportBodies(fs)
 	}
 	tagOrder := splitCSV(q.Get("tagOrder"))
+	rctx := h.reportContext()
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
-		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode})
+		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
+			"engagementBriefVersion": rctx.Brief.Version})
 	case "html":
 		h.enrichFindingReportImages(fs)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
-		if groupByTag {
-			w.Write([]byte(report.ProjectHTMLGroupedByTag(fs, issues, tagOrder, omitTags)))
-		} else {
-			w.Write([]byte(report.ProjectHTML(fs, issues)))
-		}
+		w.Write([]byte(report.MarkdownToHTML(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx))))
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
-		if groupByTag {
-			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)))
-		} else {
-			w.Write([]byte(report.Project(fs, issues)))
-		}
+		w.Write([]byte(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx)))
 	default:
 		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
 	}
+}
+
+func renderReportMarkdown(fs []store.Finding, issues []store.Issue, groupByTag bool, tagOrder, omitTags []string) string {
+	if groupByTag {
+		return report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)
+	}
+	return report.Project(fs, issues)
+}
+
+// reportContext gathers engagement metadata cited in report headers. Lookup
+// failures degrade to an uncited report rather than failing the export.
+func (h *findingsAPI) reportContext() report.Context {
+	var c report.Context
+	if b, err := h.st.GetEngagementBrief(); err == nil {
+		c.Brief = b
+	}
+	return c
 }
 
 func filterReportFindings(fs []store.Finding, raw string) []store.Finding {

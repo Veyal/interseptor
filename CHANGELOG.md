@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Engagement brief.** A project-level authorisation and conduct brief (scope, authorisation, conduct rules, rate limits, do-not-touch list, credential policy) with a version that bumps only when content changes. Edit it in Settings → Target scope, read or update it over `GET`/`PUT /api/engagement-brief` and the `get_engagement_brief` / `set_engagement_brief` MCP tools. Exported reports open with an "Engagement context" section citing the brief version, and the JSON export carries `engagementBriefVersion`. Refs #89.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
