@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Safe, shared authz identities.** `set_authz` / `POST /api/authz` now merges by identity name by default (`mode: replace` keeps the old overwrite), so parallel agents can no longer wipe each other's identities. New `add_authz_identity`, `remove_authz_identity` and `list_authz` MCP tools (REST: `POST /api/authz/identity`, `DELETE /api/authz/identity/{name}`) and per-identity `updatedAt` / `owner` stamps. Writes are serialized so concurrent callers cannot lose updates.
 
+- **Anonymous vs authenticated differential testing.** `authz_differential` (REST `POST /api/authz/differential`) replays one request as anonymous plus the saved identities and classifies each result as auth failure, authz failure, validation failure or success. An optional invalid-body probe reports whether authentication is evaluated before validation, and an optional read-only state flow records side effects before/after each context. The typed evidence keeps every raw flow ID, labels inferences as hypotheses, and can be attached to a finding in one call (`attachToFinding`).
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.

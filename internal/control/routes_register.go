@@ -245,6 +245,7 @@ func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)
 	h.mux.HandleFunc("POST /api/authz/run", az.authzRun)
+	h.mux.HandleFunc("POST /api/authz/differential", az.authzDifferentialRun)
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
 

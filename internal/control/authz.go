@@ -347,13 +347,23 @@ func (h *authzAPI) authzRunOne(f *store.Flow, ids []identity) authzRunOut {
 }
 
 func (h *authzAPI) authzReplay(f *store.Flow, id identity) authzResult {
+	return h.authzReplayBody(f, id, nil)
+}
+
+// authzReplayBody is authzReplay with an optional replacement request body
+// (nil keeps the captured body). Used by the differential invalid-body probe.
+func (h *authzAPI) authzReplayBody(f *store.Flow, id identity, bodyOverride []byte) authzResult {
 	url := flowURLStr(f)
 	if h.targetsOwnListener(url) {
 		return authzResult{Name: id.Name, Error: "refusing to send to Interseptor's own listener"}
 	}
-	body, err := h.bodyBytesResult(f.ReqBodyHash)
-	if err != nil {
-		return authzResult{Name: id.Name, Error: "request body unavailable"}
+	body := bodyOverride
+	if body == nil {
+		var err error
+		body, err = h.bodyBytesResult(f.ReqBodyHash)
+		if err != nil {
+			return authzResult{Name: id.Name, Error: "request body unavailable"}
+		}
 	}
 	hdrs := applyIdentityHeaders(f.ReqHeaders, id)
 	flow, sendErr := h.snd.Send(sender.Request{Method: f.Method, URL: url, Headers: hdrs, Body: body, Flags: store.FlagAuthz, NoSession: true})

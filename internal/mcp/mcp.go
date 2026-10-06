@@ -2840,6 +2840,25 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodDelete, "/api/authz/identity/"+url.PathEscape(argStr(a, "name")), nil)
 		})
 
+	s.add("authz_differential",
+		"Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify each result as auth_failure, authz_failure, validation_failure or success. Optional invalidBody probes whether authentication is evaluated before validation; optional sideEffectFlowId (a read-only state flow) is replayed before/after each context to record side effects. Returns typed evidence retaining every raw flowId; attachToFinding adds all of them to a finding. Findings in 'hypotheses' must be reproduced before reporting.",
+		obj(map[string]any{
+			"flowId":           p("integer", "flow to replay across identities"),
+			"identities":       p("array", "optional identity names to include (default: all saved; anonymous is always added)"),
+			"invalidBody":      p("string", "optional deliberately invalid body, sent anonymously to detect auth-vs-validation ordering"),
+			"sideEffectFlowId": p("integer", "optional read-only flow observing state, replayed before/after each context"),
+			"attachToFinding":  p("integer", "optional finding id to attach every retained flow to as typed evidence"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"flowId": a["flowId"]}
+			for _, k := range []string{"identities", "invalidBody", "sideEffectFlowId", "attachToFinding"} {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api(http.MethodPost, "/api/authz/differential", body)
+		})
+
 	s.add("authz_run",
 		"Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control.",
 		obj(map[string]any{
