@@ -63,9 +63,46 @@
   /* Image lightbox — a blackout viewer, deliberately theme-independent. */
   --lightbox-bg:rgba(0,0,0,.82); --lightbox-bar:rgba(0,0,0,.55); --lightbox-stage:rgba(0,0,0,.35);
   --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
-  --row-h:30px;
-  --nav-rail-w:204px; --side-panel-w:280px;
-  --topbar-h:52px; --ctxbar-h:40px;
+  --row-h:30px; --toolbar-h:44px; --hit-min:32px; --cell-pad-x:6px;
+  --nav-rail-w:204px; --side-panel-w:280px; --rail-w-collapsed:56px;
+  --topbar-h:48px; --ctxbar-h:40px;
+  --drawer-w:420px; --drawer-min:320px; --drawer-max:640px;
+  --bottomnav-h:56px; --sheet-peek:72px; --sheet-half:50dvh;
+  --split-gutter:8px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
+  /* Fixed chrome (topbar + engagement strip) that can cover a focused control;
+     applied as scroll-padding-top so focus is never obscured (WCAG 2.4.11). */
+  --sticky-top:calc(var(--topbar-h) + var(--ctxbar-h));
+  /* Z-index scale for new code; older magic numbers migrate opportunistically. */
+  --z-sticky:10; --z-sash:15; --z-dock:20; --z-strip:25; --z-drawer:30;
+  --z-popover:40; --z-sheet:60; --z-modal:70; --z-cmdk:75; --z-toast:80;
+  /* Motion added for the workbench. transform and opacity only; the
+     prefers-reduced-motion block zeroes all four. */
+  --motion-press:90ms; --motion-pop:150ms;
+  --motion-drawer:200ms var(--motion-enter); --motion-sheet:220ms var(--motion-enter);
+  /* Readiness: Verified Green / Evidence Amber / Blocker Red / Neutral Slate.
+     Always rendered with an icon and a word, never colour alone. */
+  --rd-pass:#3ecf8e; --rd-gap:#f0b44c; --rd-block:#ff8a80; --rd-na:#a7b1bf;
+  --rd-pass-dim:rgba(62, 207, 142, 0.14); --rd-gap-dim:rgba(240, 180, 76, 0.14);
+  --rd-block-dim:rgba(255, 138, 128, 0.14); --rd-na-dim:rgba(167, 177, 191, 0.14);
+  --rd-stripe:repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 6px);
+  --scope-on:var(--rd-pass); --scope-off:var(--rd-gap);
+  /* Identity hues. Initials are always shown (--idn-fg), so hue is never the only cue. */
+  --idn-1:#2dd4bf; --idn-2:#fb923c; --idn-3:#93c5fd; --idn-4:#a3e635; --idn-5:#f472b6; --idn-6:#94a3b8;
+  --idn-fg:#0b0f14;
+  /* Diff colours always sit beside a +/- glyph. */
+  --diff-add-bg:#12261a; --diff-add-fg:#86efac; --diff-del-bg:#2c1416; --diff-del-fg:#fca5a5;
+  --diff-word-add:#1d4a2c; --diff-word-del:#5a1f24; --diff-gutter:var(--fg3);
+  --find-bg:#5c4500; --find-active-bg:#b45309; --find-fg:#ffffff;
+  --sel-cursor:var(--accent);
+  --kbd-bg:#252b35; --kbd-border:var(--line2); --kbd-fg:#cbd5e1;
+  /* Surfaces */
+  --drawer-bg:var(--bg1); --drawer-edge:var(--line);
+  --drag-over:2px dashed var(--accent);
+  --scrim:rgba(0,0,0,.55);
+  --sheet-radius:var(--r-xl) var(--r-xl) 0 0;
+  --focus-outline:2px solid var(--accent);
 }
 /* Light theme. This is NOT a mechanical inversion of the dark palette — that is
    what it used to be, and it failed AA on all secondary text and every accent
@@ -84,7 +121,45 @@
   --warnLine:#92400e;--warnFg:#78350f;--dangerLine:#b91c1c;--dangerFg:#991b1b;--pendingFill:#a16207;
   --grad-bg:linear-gradient(#f7f8fa, #f7f8fa);
   --grad-accent:linear-gradient(135deg, #047857 0%, #065f46 100%);
+  --rd-pass:#14653a; --rd-gap:#8f4d00; --rd-block:#b42318; --rd-na:#525c6a;
+  --rd-pass-dim:rgba(20, 101, 58, 0.1); --rd-gap-dim:rgba(143, 77, 0, 0.1);
+  --rd-block-dim:rgba(180, 35, 24, 0.1); --rd-na-dim:rgba(82, 92, 106, 0.1);
+  --idn-1:#0f766e; --idn-2:#b45309; --idn-3:#1d4ed8; --idn-4:#4d7c0f; --idn-5:#be185d; --idn-6:#475569;
+  --idn-fg:#ffffff;
+  --diff-add-bg:#e6f4ea; --diff-add-fg:#14532d; --diff-del-bg:#fde8e8; --diff-del-fg:#7f1d1d;
+  --diff-word-add:#b7e4c7; --diff-word-del:#f9c0c0;
+  --find-bg:#fde68a; --find-active-bg:#fbbf24; --find-fg:#1c1917;
+  --kbd-bg:#f0f2f5; --kbd-fg:#334155;
+  --scrim:rgba(15, 23, 42, 0.45);
 }
+/* High-contrast theme: opt-in, black ground, white 2px borders, 3px yellow focus
+   ring, every text pair at least 7:1 (checked by TestUIFoundationContrastAcrossThemes).
+   Tokens only; component rules follow the density blocks below. */
+:root[data-theme="hc"]{
+  --bg:#000;--bg1:#000;--bg2:#0a0a0a;--bg3:#1a1a1a;
+  --line:#fff;--line2:#fff;--surface-frame:#fff;--signal-grid:transparent;
+  --fg:#fff;--fg2:#fff;--fg3:#e5e5e5;
+  --accent:#8af5d6;--accentSolid:#ffe14d;--onAccent:#000;
+  --sel:rgba(255, 225, 77, 0.2);--accentDim:rgba(138, 245, 214, 0.2);
+  --blue:#a8cfff;--amber:#ffd166;--orange:#ffb86b;--red:#ff9e9e;--redSolid:#ff9e9e;--onDanger:#000;
+  --redDim:rgba(255, 158, 158, 0.2);--violet:#d4c1ff;--cyan:#6ee7f9;--noteDim:rgba(255, 209, 102, 0.2);
+  --focus-ring:#ffe14d;--scroll:rgba(255,255,255,0.4);--overlay:rgba(0,0,0,0.85);
+  --warnLine:#ffd166;--warnFg:#ffe08a;--dangerLine:#ff9e9e;--dangerFg:#ffc2c2;--pendingFill:#ffd166;
+  --grad-bg:linear-gradient(#000, #000);
+  --grad-accent:linear-gradient(#ffe14d, #ffe14d);
+  --rd-pass:#6ee7a8;--rd-gap:#ffd166;--rd-block:#ffb0b0;--rd-na:#e5e5e5;
+  --diff-word-del:#3d1014;--find-active-bg:#7c3500;
+  --scrim:rgba(0,0,0,.8);
+}
+/* Density tiers. data-density is stamped before first paint (index.html head) next
+   to data-theme. Coarse pointers force the touch tier inside the final
+   coarse-pointer media block at the end of this file, whatever tier is stored. */
+:root[data-density="default"]{--row-h:30px;--toolbar-h:44px;--hit-min:32px;--cell-pad-x:6px}
+:root[data-density="compact"]{--row-h:24px;--toolbar-h:36px;--hit-min:24px;--cell-pad-x:4px}
+:root[data-density="comfortable"]{--row-h:40px;--toolbar-h:48px;--hit-min:40px;--cell-pad-x:8px}
+:root[data-theme="hc"] :where(button,input,select,textarea,.btn,.panel-card,.modal-shell){border-width:2px}
+:root[data-theme="hc"] :where(button,a[href],input,select,textarea,summary,[tabindex]):focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+html{scroll-padding-top:var(--sticky-top)}
 *{box-sizing:border-box;margin:0;padding:0}
 [hidden]{display:none!important}
 html,body{height:100%}
@@ -1409,6 +1484,7 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
     scroll-behavior:auto!important;
   }
   ::view-transition-old(panel),::view-transition-new(panel){animation:none!important}
+  :root{--motion-press:0ms;--motion-pop:0ms;--motion-drawer:0ms;--motion-sheet:0ms}
 }
 /* WebSocket captured frames — text frames click-to-replay into the send box */
 .ws-frame-replay{cursor:pointer}
@@ -1546,6 +1622,9 @@ details[open]>summary::before{content:'▾'}
   input[type=checkbox]:indeterminate::before{background:ButtonText}
   input[type=checkbox]:disabled,input[type=radio]:disabled{border-color:GrayText;opacity:1}
   input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px solid Highlight;outline-offset:3px}
+  :where(button,input,select,textarea,.btn,.panel-card,.modal-shell){border-color:CanvasText}
+  :focus-visible{outline:2px solid Highlight;outline-offset:2px;box-shadow:none}
+  .trow.sel,.tab.active,[aria-selected="true"],[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText;outline:2px solid CanvasText}
 }
 
 /* Feature identity: shared vector family at navigation and content scales. */
@@ -1615,6 +1694,9 @@ details[open]>summary::before{content:'▾'}
 .u-gap-2{gap:var(--sp-2)}
 .u-gap-3{gap:var(--sp-3)}
 .u-gap-4{gap:var(--sp-4)}
+.u-grow{flex:1 1 0;min-width:0}
+.u-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.u-focus-ring:focus-visible{outline:var(--focus-outline);outline-offset:2px}
 
 /* Spacing — the 8px scale only; the stray 6px/10px/14px inline values were
    rounded onto it, which is the point of having a scale. */
@@ -1787,4 +1869,8 @@ details[open]>summary::before{content:'▾'}
   /* A wrapping label is the touch target; pseudo-elements on inputs are not rendered by every engine. */
   label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:inline-flex;align-items:center;gap:var(--sp-2)}
   :root{--row-h:44px}
+  /* Touch tier wins over a stored density: same specificity as the density
+     selectors above, and this block comes last. */
+  :root[data-density]{--row-h:44px;--toolbar-h:48px;--hit-min:44px;--cell-pad-x:8px}
+  :root{--toolbar-h:48px;--hit-min:44px;--cell-pad-x:8px}
 }
