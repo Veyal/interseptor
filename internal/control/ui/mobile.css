@@ -1,0 +1,61 @@
+/* Mobile shell (WP13): bottom navigation, destination sub-control, More sheet
+   content, soft-keyboard and safe-area handling, and the phone shape of the
+   command palette. Phone model <= 720px; the rail (#tabs) is display:none there
+   (app.css) so assistive tech never sees two navs. Only transform and opacity
+   animate; the reduced-motion block at the end removes that motion. */
+
+.dock-sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+/* ---- bottom navigation: hidden above the phone breakpoint ---- */
+#dock{display:none}
+.dock-seg{margin:var(--sp-2) var(--sp-4) 0;width:calc(100% - var(--sp-4) * 2);box-sizing:border-box;min-height:44px}
+.dock-seg[hidden]{display:none}
+.dock-seg button{flex:1 1 0;min-width:0;min-height:36px}
+
+.dock-btn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;min-height:44px;padding:var(--sp-1) var(--sp-1);background:transparent;border:0;color:var(--fg3);font-family:var(--ui);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.dock-btn .icon{width:20px;height:20px;pointer-events:none}
+.dock-label{font-size:var(--fs-xs);font-weight:600;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dock-btn[aria-current="page"]{color:var(--accent)}
+.dock-btn:disabled{opacity:.55;cursor:wait}
+.dock-btn:focus-visible{outline:var(--focus-ring);outline-offset:-3px}
+.dock-btn::after{content:"";position:absolute;left:var(--sp-3);right:var(--sp-3);top:0;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:center;transition:transform var(--motion-fast)}
+.dock-btn[aria-current="page"]::after{transform:scaleX(1)}
+.dock-badge{position:absolute;top:2px;left:calc(50% + var(--sp-1));min-width:16px;box-sizing:border-box;padding:0 var(--sp-1);border-radius:999px;background:var(--redSolid);color:var(--onDanger);font-size:var(--fs-xs);font-weight:700;line-height:16px;text-align:center}
+.dock-badge[hidden]{display:none}
+
+/* ---- More sheet content ---- */
+.dock-more{display:flex;flex-direction:column;gap:var(--sp-3);padding-top:var(--sp-2)}
+.dock-more-row{display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1)}
+.dock-more-label{font-size:var(--fs-sm);font-weight:600;color:var(--fg2)}
+.dock-more-btn{min-height:44px;justify-content:center}
+.dock-more .seg{display:flex;flex-wrap:wrap;min-height:44px}
+.dock-more .seg button{flex:1 1 auto;min-height:36px}
+.dock-more-version{margin:0;font-size:var(--fs-sm);color:var(--fg3);font-family:var(--mono)}
+
+@media (max-width:720px){
+  #dock{display:flex;flex:none;align-items:stretch;box-sizing:border-box;height:calc(var(--bottomnav-h) + var(--safe-b));padding:0 var(--safe-l) var(--safe-b) var(--safe-r);background:var(--bg1);border-top:1px solid var(--line);z-index:var(--z-dock)}
+  /* The dock owns the bottom safe area; the workspace row no longer pads for it. */
+  #appRow{padding-bottom:0}
+  /* One visible nav: the legacy select stays in the DOM and synced, never shown. */
+  .mobile-tool-nav{display:none}
+  html[data-soft-keyboard="true"] #dock{display:none}
+  /* Phone text floor: inputs stay 16px so iOS does not zoom on focus. */
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:var(--fs-xl)}
+  /* Command palette becomes a full-height sheet with 48px rows. */
+  .cmdk-shell{margin-top:0;width:100%;max-width:100%;height:100dvh;border-radius:0}
+  .cmdk-input{min-height:48px;font-size:var(--fs-xl)}
+  .cmdk-list{max-height:none;flex:1 1 auto;min-height:0}
+  .cmdk-row{min-height:48px;align-items:center}
+}
+
+@media (forced-colors:active){
+  .dock{border-top-color:CanvasText}
+  .dock-btn[aria-current="page"]{forced-color-adjust:none;color:HighlightText;background:Highlight}
+  .dock-btn:focus-visible{outline-color:Highlight}
+  .dock-btn::after{background:CanvasText}
+  .dock-badge{border:1px solid CanvasText}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .dock-btn::after{transition:none}
+}
