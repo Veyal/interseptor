@@ -744,6 +744,10 @@ function restoreFlowListFocus(box,focus){
   const target=focus.tag?[...row.querySelectorAll('.flowtag')].find(chip=>chip.dataset.tagchip===focus.tag):row;
   target?.focus({preventScroll:true});
 }
+// refreshVisibleRows re-syncs the mounted History rows with current state (for
+// example after a tag color change): keyed patch when the window allows it, a
+// full rebuild otherwise.
+export function refreshVisibleRows(){if(!reconcileVirtualRows())renderRows();}
 // reconcileVirtualRows is the keyed-reconciliation counterpart to renderRows for
 // the virtualized window. Instead of re-serializing and re-wiring the entire
 // visible slice on every live insert/removal, it diffs the mounted row ids
@@ -1421,6 +1425,7 @@ export async function renderSide(side){
 $$('.seg[data-side]').forEach(seg=>{const side=seg.dataset.side;seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
   state.view[side]=b.dataset.view;seg.querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});renderSide(side);});});
 const inspectFindBar=$('#inspectFind'),inspectFindIn=$('#inspectFindIn');
+export function openInspectFind(){toggleInspectFind(true);}
 function toggleInspectFind(show){
   if(!inspectFindBar)return;
   inspectFindBar.style.display=show?'flex':'none';

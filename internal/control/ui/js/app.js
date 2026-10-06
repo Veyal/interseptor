@@ -3,17 +3,17 @@
 // switching, the command palette, global keyboard shortcuts, the live SSE event
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
-import { $, $$, esc, state, api, toast, MODAL_IDS, openModal, closeModal, icon } from './core.js';
-import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl } from './proxy.js';
+import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon } from './core.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
-import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
+import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
 import { loadEngagementBrief } from './engagement.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
-import { loadFindings, handleAppHash } from './findings.js';
+import { loadFindings, handleAppHash, addFlowToFinding, pickFindingForSelection } from './findings.js';
 import { loadTags } from './tags.js';
 import { loadHumanInput } from './humaninput.js';
 import './flowmodal.js'; // side-effect: flow inspect popup + modal handlers
@@ -37,7 +37,18 @@ initUiHints();
 // Mirrors the existing heldBadge/actBadge pattern (set on event, clear on tab
 // visit) but as a simple on/off dot per the roadmap's minimal-first-pass ask —
 // full SSE-contract unification is a later, separate step.
-function setNavDot(id,on){ const el=$('#'+id); if(el)el.classList.toggle('on',!!on); }
+// The dot itself is decorative (aria-hidden); the unread state reaches assistive
+// tech as visually-hidden text inside the owning tab, so it is not colour-only.
+const NAV_DOT_NOTE=' (new updates)';
+function setNavDot(id,on){
+  const el=$('#'+id); if(!el)return;
+  el.classList.toggle('on',!!on);
+  const tab=el.closest('.tab'); if(!tab)return;
+  const note=tab.querySelector('.nav-dot-note');
+  if(on&&!note){
+    const n=document.createElement('span');n.className='visually-hidden nav-dot-note';n.textContent=NAV_DOT_NOTE;tab.appendChild(n);
+  }else if(!on&&note)note.remove();
+}
 function clearNavDot(id){ setNavDot(id,false); }
 
 /* ---- breadcrumb (top bar "Group / Panel" context) ---- */
@@ -45,7 +56,7 @@ function updateCrumb(t){
   const crumb=$('#crumb'); if(!crumb)return;
   const g=crumb.querySelector('.crumb-group'), p=crumb.querySelector('.crumb-panel');
   if(g)g.textContent=t.dataset.group||'';
-  if(p)p.textContent=(t.textContent||'').trim().replace(/\d+$/,'').trim();
+  if(p)p.textContent=(t.textContent||'').replace(NAV_DOT_NOTE,'').trim().replace(/\d+$/,'').trim();
 }
 
 /* ---- tabs ---- */
@@ -174,14 +185,14 @@ document.addEventListener('keydown',e=>{
 
 /* ---- capture liveness (top bar) ---- */
 let capLast=0, capCount=0;
-function onCapture(){ capLast=Date.now(); capCount++; const d=$('#capDot'); if(d)d.classList.add('live'); renderCapStat(); }
+function setCapDot(live){ const d=$('#capDot'); if(!d)return; d.classList.toggle('live',live); d.setAttribute('aria-label',live?'Capturing live':'Capture idle'); }
+function onCapture(){ capLast=Date.now(); capCount++; setCapDot(true); renderCapStat(); }
 function renderCapStat(){
   const s=$('#capStat'); if(!s)return;
   if(!capLast){ s.textContent=''; return; }
   const ago=Math.round((Date.now()-capLast)/1000);
-  const d=$('#capDot');
   if(ago<3){ s.textContent='· capturing live'; }
-  else { if(d)d.classList.remove('live'); s.textContent='· idle · '+capCount+' flows this session'; }
+  else { setCapDot(false); s.textContent='· idle · '+capCount+' flows this session'; }
   renderIcptStat();
 }
 function renderIcptStat(){
@@ -200,8 +211,11 @@ setInterval(()=>{ if(!document.hidden) renderCapStat(); },1000);
 
 let mapRefreshT=null, mapLoadedSig='';
 function scheduleMapRefresh(){
-  clearTimeout(mapRefreshT);
+  // Throttle, not trailing debounce: constant traffic would starve a debounce
+  // and the Map would never refresh while flows keep arriving.
+  if(mapRefreshT)return;
   mapRefreshT=setTimeout(()=>{
+    mapRefreshT=null;
     if(!document.querySelector('.tab[data-tab="map"]')?.classList.contains('active')) return;
     // On a busy proxy the SSE stream fires constantly; don't re-fetch + re-render
     // the (potentially huge) map unless new flows actually arrived since the last
@@ -214,44 +228,52 @@ function scheduleMapRefresh(){
 }
 
 /* ---- live events ---- */
-// STALE_GAP_MS: native EventSource auto-reconnects on drop but replays nothing —
-// any broadcasts the server fanned out while this tab had no open connection
-// (backgrounded tab throttled/suspended, laptop sleep, brief network blip) are
-// simply gone (confirmed server-side: internal/control/events.go drops a
-// disconnected client's channel outright, no replay buffer). A live per-event
-// handler can't distinguish "nothing happened" from "something happened but we
-// missed the broadcast," so past a threshold gap we stop trusting incremental
-// per-event catch-up and do one full resync instead. The server emits a named
-// `hello` SSE event (event: hello) on every connection, including reconnects —
-// used here purely as a reconnect signal, not parsed as a payload.
-const STALE_GAP_MS=8000;
-let lastSSEMsgAt=0;   // wall-clock time of the last message/connection event seen
+// Native EventSource auto-reconnects on a transient drop but replays nothing: any
+// broadcast fanned out while this tab had no open connection is gone (confirmed
+// server-side: internal/control/events.go drops a disconnected client's channel,
+// no replay buffer). A drop of ANY length can hide a missed event, so every
+// reconnect triggers one debounced full resync. The server emits a named `hello`
+// event on each connection — used purely as the "stream is open" signal.
+// When the browser gives up entirely (readyState CLOSED, e.g. an HTTP error or a
+// restarted server), connectEvents() is rebuilt by scheduleSseReconnect() with a
+// capped backoff.
+const SSE_BACKOFF_MS=[1000,2000,5000,15000];
+const SSE_RESYNC_DEBOUNCE_MS=400;
+let sseSource=null;        // the live EventSource, kept in module scope so it can be closed
 let sseConnectedOnce=false; // false until the very first `hello` (initial connect)
-// shouldResyncOnReconnect is the whole stale-reconnect decision, pulled out of
-// the `hello` handler so it can be reasoned about (and tested) on its own.
+let sseHadError=false;      // an error occurred since the last hello
+let sseRetryCount=0;        // consecutive failed (re)connect attempts
+let sseRetryTimer=null;
+let sseResyncTimer=null;
+function sseRetryDelay(attempt){
+  return SSE_BACKOFF_MS[Math.min(Math.max(attempt,0),SSE_BACKOFF_MS.length-1)];
+}
+// shouldResyncOnReconnect is the whole reconnect decision, pulled out of the
+// `hello` handler so it can be reasoned about (and tested) on its own.
 //   reason 'boot'      — the first connection of the session. The boot sequence
 //                        already loaded every panel, so there is nothing to catch
-//                        up on and we never resync.
-//   reason 'reconnect' — any later connection. Short blips (gap within
-//                        STALE_GAP_MS) stay on the cheap per-event path exactly
-//                        as before; a longer gap means broadcasts may have been
-//                        dropped while this tab had no stream, so the per-event
-//                        catch-up is abandoned in favour of one full resync.
-// An unknown last-event timestamp (0) can't prove freshness, so it resyncs.
-function shouldResyncOnReconnect(lastEventAt,now,reason){
-  if(reason!=='reconnect')return false;
-  if(!lastEventAt)return true;
-  return (now-lastEventAt)>STALE_GAP_MS;
+//                        up on — unless an earlier connect attempt failed, in
+//                        which case the stream was down while panels loaded.
+//   reason 'reconnect' — any later connection: always resync.
+function shouldResyncOnReconnect(reason,hadError){
+  return reason==='reconnect'||!!hadError;
+}
+function scheduleResync(){
+  clearTimeout(sseResyncTimer);
+  sseResyncTimer=setTimeout(resyncAfterStaleReconnect,SSE_RESYNC_DEBOUNCE_MS);
 }
 function resyncAfterStaleReconnect(){
-  // Full-refresh path per panel/global state a long gap could have gone stale
-  // for. Mirrors scheduleReload()'s "just refetch everything" philosophy but
-  // applied beyond just the flow list, since ANY event type could have been
-  // dropped, not only flow.new/flow.update.
+  // Full-refresh path per panel/global state a gap could have gone stale for.
+  // Mirrors scheduleReload()'s "just refetch everything" philosophy but applied
+  // beyond just the flow list, since ANY event type could have been dropped.
   scheduleReload();
   loadScope();
   loadRules();
   loadTags();
+  loadViews();
+  loadSession();
+  loadSettings();
+  loadProject();
   if(document.querySelector('.tab[data-tab="intruder"]')?.classList.contains('active'))scheduleIntr();
   if(document.querySelector('.tab[data-tab="scanner"]')?.classList.contains('active'))loadIssues();
   if(document.querySelector('.tab[data-tab="findings"]')?.classList.contains('active'))loadFindings();
@@ -262,6 +284,13 @@ function resyncAfterStaleReconnect(){
   refreshIntercept().then(()=>renderIcptStat());
   loadHumanInput();
 }
+// debounce coalesces bursts of nudge events (a bulk tag/finding/note change fires
+// one SSE message per row) into one trailing fetch.
+function debounce(fn,ms){
+  let timer=null;
+  return (...args)=>{clearTimeout(timer);timer=setTimeout(()=>{timer=null;fn(...args);},ms);};
+}
+const SSE_NUDGE_DEBOUNCE_MS=200;
 /* ---- SSE event contract convention ----
    The event stream (`/api/events`) currently mixes several different contracts
    per the UI-REDESIGN-ROADMAP.md §4 audit:
@@ -327,32 +356,31 @@ const SSE_HANDLERS={
   'oob.update':{contract:'modal-gated nudge',run:()=>onModalUpdate('oobModal',loadOob)},
   'intruder.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('intruder',scheduleIntr,'intrBadge')},
   'scanner.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('scanner',loadIssues,'scanBadge')},
-  'notes.update':{contract:'always-reload',run:loadNotes},
+  'notes.update':{contract:'panel-gated nudge (debounced)',run:debounce(()=>onPanelUpdate('notes',loadNotes),SSE_NUDGE_DEBOUNCE_MS)},
   'engagement.update':{contract:'always-reload',run:loadEngagementBrief},
-  'findings.update':{contract:'always-reload',run:loadFindings},
-  'tags.update':{contract:'always-reload',run:loadTags},
+  'findings.update':{contract:'panel-gated nudge (debounced)',run:debounce(()=>onPanelUpdate('findings',loadFindings),SSE_NUDGE_DEBOUNCE_MS)},
+  'tags.update':{contract:'always-reload (debounced)',run:debounce(loadTags,SSE_NUDGE_DEBOUNCE_MS)},
   'allowlist.update':{contract:'visible-pane nudge',run:refreshVisibleAllowlist},
 };
 function connectEvents(){
+  if(sseSource){sseSource.close();sseSource=null;}
   const es=new EventSource('/api/events');
+  sseSource=es;
   // Fires on the initial connect AND every browser auto-reconnect (the server
   // sends it fresh on each new stream, see handleEvents in events.go). The very
-  // first `hello` is just the normal boot connection — the boot sequence already
-  // loaded everything, so it never triggers a resync. Every `hello` after that IS
-  // a reconnect by definition (this handler only runs once per open connection);
-  // treat any reconnect following a gap longer than STALE_GAP_MS since the last
-  // thing we saw (a message, or the previous connection) as "may have missed
-  // broadcasts" and resync.
+  // first `hello` is the normal boot connection — the boot sequence already
+  // loaded everything — unless an earlier attempt failed (sseHadError). Every
+  // `hello` after that is a reconnect by definition and resyncs once, debounced.
   es.addEventListener('hello',()=>{
+    clearTimeout(sseRetryTimer);sseRetryCount=0;
     setSseStatus('ok');
-    const now=Date.now();
     const reason=sseConnectedOnce?'reconnect':'boot';
     if(sseConnectedOnce)refreshVisibleAllowlist();
-    if(shouldResyncOnReconnect(lastSSEMsgAt,now,reason))resyncAfterStaleReconnect();
+    if(shouldResyncOnReconnect(reason,sseHadError))scheduleResync();
     sseConnectedOnce=true;
-    lastSSEMsgAt=now;
+    sseHadError=false;
   });
-  es.onmessage=e=>{lastSSEMsgAt=Date.now();let m;try{m=JSON.parse(e.data);}catch(err){return;}
+  es.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(err){return;}
     const handler=SSE_HANDLERS[m.type];
     if(handler){handler.run(m);return;}
     if(m.type==='flow.new'){if(m.flow)handleFlowNew(m.flow);else scheduleReload();onCapture();scheduleMapRefresh();if(!document.querySelector('.tab[data-tab="map"]').classList.contains('active'))setNavDot('mapBadge',true);}
@@ -370,32 +398,54 @@ function connectEvents(){
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };
-  es.onerror=()=>{ setSseStatus('reconnecting'); /* browser auto-reconnects */ };
+  es.onerror=()=>{
+    sseHadError=true;
+    // CONNECTING: the browser is already retrying on its own. CLOSED: it gave up
+    // (HTTP error, restarted server) and will never retry — rebuild it ourselves.
+    if(es.readyState===EventSource.CLOSED){es.close();if(sseSource===es)sseSource=null;scheduleSseReconnect();}
+    else setSseStatus('reconnecting');
+  };
+}
+// scheduleSseReconnect retries a closed stream with a capped backoff. Each try
+// probes /api/version first so an expired session (401) reaches the /login
+// redirect in api() instead of looping on an unauthenticated stream.
+function scheduleSseReconnect(immediate){
+  clearTimeout(sseRetryTimer);
+  setSseStatus('offline');
+  const delay=immediate?0:sseRetryDelay(sseRetryCount++);
+  sseRetryTimer=setTimeout(async()=>{
+    try{await api('/api/version');}
+    catch(e){if(e&&e.message==='unauthorized')return;scheduleSseReconnect();return;}
+    connectEvents();
+  },delay);
 }
 
 function setSseStatus(s){
-  const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus');
+  const dot=$('#sseDot'), label=$('#sseLabel'), wrap=$('#sseStatus'), retry=$('#sseRetry');
   if(!dot) return;
   dot.className='sse-dot '+s;
-  const reconnecting=s!=='ok';
-  if(label)label.textContent=reconnecting?'reconnecting':'live';
+  const offline=s==='offline', reconnecting=s!=='ok';
+  const text=offline?'offline':reconnecting?'reconnecting':'live';
+  if(label)label.textContent=text;
+  if(retry)retry.hidden=!offline;
   if(wrap){
     wrap.classList.toggle('reconnecting',reconnecting);
-    wrap.setAttribute('aria-label',reconnecting?'Live updates: reconnecting':'Live updates: connected');
-    wrap.title=reconnecting?'Live updates: reconnecting…':'Live updates: connected';
+    const state=offline?'offline':reconnecting?'reconnecting':'connected';
+    wrap.setAttribute('aria-label','Live updates: '+state);
+    wrap.title='Live updates: '+state+(offline?' — use Reconnect to retry':reconnecting?'…':'');
   }
 }
+{const retry=$('#sseRetry');if(retry)retry.onclick=()=>scheduleSseReconnect(true);}
 
 /* ---- command palette (Ctrl/Cmd+K) ---- */
 const cmdk={el:null,input:null,list:null,items:[],sel:0,open:false};
 function cmdkBuild(){
-  const o=document.createElement('div');o.id='cmdk';
-  o.style.cssText='position:fixed;inset:0;z-index:300;display:none;align-items:flex-start;justify-content:center;background:var(--overlay)';
-  o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell" style="margin-top:11vh;width:min(680px,92vw)">'
+  const o=document.createElement('div');o.id='cmdk';o.className='modal-overlay cmdk-overlay';
+  o.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="cmdkTitle" class="modal-shell cmdk-shell">'
     +'<div class="modal-shell-head"><span id="cmdkTitle" class="modal-shell-title">Command palette</span></div>'
-    +'<input id="cmdkInput" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 16px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:var(--fs-xl)">'
-    +'<div id="cmdkList" role="listbox" aria-label="Command results" style="max-height:52vh;overflow:auto;padding:6px"></div>'
-    +'<div style="padding:7px 14px;border-top:1px solid var(--line);color:var(--fg3);font-size:var(--fs-xs);display:flex;gap:16px"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
+    +'<input id="cmdkInput" class="cmdk-input" role="combobox" aria-label="Search commands and flows" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Search flows · jump to a tab · run a command…" autocomplete="off" spellcheck="false">'
+    +'<div id="cmdkList" class="cmdk-list" role="listbox" aria-label="Command results"></div>'
+    +'<div class="cmdk-foot"><span>↑ ↓ navigate</span><span>⏎ run</span><span>esc close</span></div></div>';
   document.body.appendChild(o);
   cmdk.el=o;cmdk.input=o.querySelector('#cmdkInput');cmdk.list=o.querySelector('#cmdkList');
   cmdk.input.oninput=cmdkRender;
@@ -410,10 +460,11 @@ function cmdkBuild(){
 }
 // The palette NAVIGATES — it jumps to a tab, a Settings subsection, or a tool
 // screen — plus a few non-destructive conveniences (toggle theme, copy the
-// selected flow as cURL). It deliberately never performs a mutating/irreversible
-// action (run a scan, toggle intercept, export, send/delete a request) so a
-// mis-typed Enter can't do anything destructive; you act from the screen it takes
-// you to. `kw` adds search aliases.
+// selected flow as cURL) and workflow entries that only OPEN a dialog (New
+// finding, Export findings, Add to finding). It deliberately never performs a
+// mutating/irreversible action (run a scan or an Intruder attack, toggle
+// intercept, send/delete a request) so a mis-typed Enter can't do anything
+// destructive; you act from the screen it takes you to. `kw` adds search aliases.
 function cmdkCommands(){
   const go=name=>()=>document.querySelector('.tab[data-tab="'+name+'"]').click();
   const goSet=sec=>()=>{document.querySelector('.tab[data-tab="settings"]').click();const b=document.querySelector('#setNav button[data-sec="'+sec+'"]');if(b)b.click();};
@@ -433,6 +484,10 @@ function cmdkCommands(){
     {t:'Send selected flow to Repeater',kw:'resend craft edit request history',run:()=>{const f=selectedFlow();if(f)sendToRepeater(f);else toast('select a flow in History first');}},
     {t:'Send selected flow to Intruder',kw:'fuzz brute force payloads enumerate',run:()=>{const f=selectedFlow();if(f)sendToIntruder(f);else toast('select a flow in History first');}},
     {t:'Open Decoder (base64 / url / jwt / hex…)',kw:'encode decode smart',run:()=>openDecoder()},
+    {t:'New finding',kw:'create finding record report vulnerability',run:()=>{go('findings')();document.querySelector('#findNew')?.click();}},
+    {t:'Export findings',kw:'export report markdown html json download findings',run:()=>{go('findings')();document.querySelector('#findExportOpen')?.click();}},
+    {t:'Add selected flow to finding',kw:'add evidence poc finding attach history',run:()=>{if(state.selected?.size)pickFindingForSelection();else{const f=selectedFlow();if(f)addFlowToFinding(f.id);else toast('select a flow in History first');}}},
+    {t:'Find inside selected message (Ctrl+F)',kw:'search find text request response body inspector',run:()=>{go('proxy')();openInspectFind();}},
     {t:'Compare selected flows (diff)',kw:'compare diff two flows responses side by side',run:()=>openCompare()},
     {t:'Copy selected flow as cURL',kw:'curl copy clipboard request reproduce',run:()=>{const f=selectedFlow();if(f)copyCurl(f);else toast('select a flow in History first');}},
      {t:'Go to Activity',kw:'external agent mcp activity log',run:go('activity')},
@@ -471,10 +526,10 @@ function cmdkRender(){
 }
 function cmdkPaint(){
   cmdk.list.innerHTML=cmdk.items.map((it,i)=>
-    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'" style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;'+(i===cmdk.sel?'background:var(--accentSolid);color:var(--onAccent)':'')+'">'
-    +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'
-    +'<span style="opacity:.55;font-size:var(--fs-xs);flex:none">'+esc(it.sub||it.kind)+'</span></div>'
-  ).join('')||'<div style="padding:14px;color:var(--fg3)">No matches</div>';
+    '<div class="cmdk-row" id="cmdkOpt'+i+'" role="option" aria-selected="'+(i===cmdk.sel?'true':'false')+'" data-i="'+i+'">'
+    +'<span class="cmdk-text">'+esc(it.label)+'</span>'
+    +'<span class="cmdk-sub">'+esc(it.sub||it.kind)+'</span></div>'
+  ).join('')||'<div class="cmdk-empty">No matches</div>';
   if(cmdk.items.length)cmdk.input.setAttribute('aria-activedescendant','cmdkOpt'+cmdk.sel);
   else cmdk.input.removeAttribute('aria-activedescendant');
   cmdk.list.querySelectorAll('.cmdk-row').forEach(r=>{
@@ -483,7 +538,7 @@ function cmdkPaint(){
   });
   const cur=cmdk.list.querySelector('.cmdk-row[data-i="'+cmdk.sel+'"]');if(cur)cur.scrollIntoView({block:'nearest'});
 }
-function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toast(e.message);}}
+function cmdkRun(i){const it=cmdk.items[i];if(!it)return;cmdkClose();try{it.run();}catch(e){toastError('Command failed',e);}}
 function cmdkOpen(){if(workflowShortcutBlocked())return;if(!projectScopedUIReady){toast('Loading saved workspace…');return;}if(!cmdk.el)cmdkBuild();cmdk.open=true;cmdk.input.value='';cmdkRender();openModal(cmdk.el,{initialFocus:cmdk.input,onEscape:cmdkClose,onDismiss:cmdkClose});}
 function cmdkClose(){if(!cmdk.open)return;cmdk.open=false;closeModal(cmdk.el);}
 
@@ -519,6 +574,7 @@ document.addEventListener('keydown',e=>{
   if(workflowShortcutBlocked())return;
   // Repeater Send works while the request editor is focused (caret in textarea).
   if(activePanel()==='repeater'&&(isModSpace(e)||isModShortcut(e,'Enter'))){e.preventDefault();repSend();return;}
+  if(activePanel()==='intruder'&&isModShortcut(e,'Enter')){e.preventDefault();intrStart();return;}
   // Plain-letter workflow shortcuts never act through an editor. In particular,
   // typing an f or d into a held HTTP message must not forward or drop it.
   if(typing)return;
@@ -547,6 +603,11 @@ document.addEventListener('keydown',e=>{
     const f=selectedFlow();
     if(f){e.preventDefault();copyCurl(f);return;}
   }
+  if(flowSendShortcutAllowed()&&isPlainShortcut(e,'a')){
+    const f=selectedFlow();
+    if(state.selected?.size){e.preventDefault();pickFindingForSelection();return;}
+    if(f){e.preventDefault();addFlowToFinding(f.id);return;}
+  }
   if(flowSendShortcutAllowed()&&isPlainShortcut(e,'x')){
     e.preventDefault();
     toggleSelectCurrentFlow();
@@ -555,6 +616,8 @@ document.addEventListener('keydown',e=>{
   if(activePanel()==='proxy'&&isPlainShortcut(e,'/')){const s=$('#fSearch');if(s){e.preventDefault();s.focus();}return;} // /: focus search
 });
 $('#scClose').onclick=()=>closeModal($('#shortcutsModal'));
+// The skip link moves focus without touching location.hash (findings.js routes on it).
+{const skip=$('#skipLink');if(skip)skip.addEventListener('click',e=>{e.preventDefault();$('#main')?.focus();});}
 
 /* ---- project badge → Projects picker (switch / create) ---- */
 $('#mobileProjectBtn').onclick=()=>{if(projectScopedUIReady)openProjectModal();};
@@ -564,20 +627,30 @@ $('#mobileProjectBtn').onclick=()=>{if(projectScopedUIReady)openProjectModal();}
 }}
 
 /* ---- version / update check ---- */
+function markVersionFailed(el){
+  el.textContent='v?';el.dataset.failed='true';el.classList.remove('is-update');
+  el.title='Could not read the version. Click to retry.';
+}
+{const el=$('#verBadge');if(el)el.addEventListener('click',e=>{
+  if(el.dataset.failed!=='true')return;
+  e.preventDefault();loadVersion(false);
+});}
 async function loadVersion(retry){
+  const el=$('#verBadge');
   try{
-    const d=await api('/api/version');const el=$('#verBadge');if(!el)return;
+    const d=await api('/api/version');if(!el)return;
+    delete el.dataset.failed;
     const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent='◧ '+d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
-      el.textContent='↑ v'+d.latest+' available';el.style.color='var(--accent)';el.style.fontWeight='700';
+      el.textContent='↑ v'+d.latest+' available';el.classList.add('is-update');
       el.title='You have v'+(d.version||'?')+' — a newer release is available. Click for releases.';
     }else{
-      el.textContent='v'+(d.version||'');el.style.color='var(--fg3)';el.style.fontWeight='';
+      el.textContent='v'+(d.version||'');el.classList.remove('is-update');
       el.title='Interseptor v'+(d.version||'');
     }
     if(!d.latest&&retry)setTimeout(()=>loadVersion(false),3500); // the server's update check may still be in flight
-  }catch(e){}
+  }catch(e){if(el)markVersionFailed(el);}
 }
 
 /* ---- theme ---- */

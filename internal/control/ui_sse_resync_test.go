@@ -7,53 +7,60 @@ import (
 	"testing"
 )
 
-// TestUISSEStaleReconnectDecision exercises the reconnect decision on its own:
-// the boot connection never resyncs, a short blip stays on the cheap per-event
-// path, and only a gap past the staleness threshold (or an unknown last-event
-// time) escalates to one full resync.
-func TestUISSEStaleReconnectDecision(t *testing.T) {
+// TestUISSEReconnectDecision exercises the reconnect decision on its own: the
+// clean boot connection never resyncs, but a boot that followed a failed connect
+// and every later reconnect (of any gap length) do.
+func TestUISSEReconnectDecision(t *testing.T) {
 	app := readUIAsset(t, "js/app.js")
-	gap := regexp.MustCompile(`const STALE_GAP_MS=\d+;`).FindString(app)
-	if gap == "" {
-		t.Fatal("app.js no longer declares a STALE_GAP_MS threshold")
-	}
-	script := gap + "\n" + repeaterRenderJS(t, app, "function shouldResyncOnReconnect(lastEventAt,now,reason)") + `
+	script := repeaterRenderJS(t, app, "function shouldResyncOnReconnect(reason,hadError)") +
+		repeaterRenderJS(t, app, "function sseRetryDelay(attempt)") +
+		regexp.MustCompile(`const SSE_BACKOFF_MS=\[[^\]]*\];`).FindString(app) + `
 const eq=(got,want,msg)=>{if(got!==want)throw Error(msg+': got '+got+' want '+want);};
-const t0=1700000000000;
-eq(shouldResyncOnReconnect(0,t0,'boot'),false,'the boot connection must never resync');
-eq(shouldResyncOnReconnect(t0-5*60*1000,t0,'boot'),false,'boot must not resync even with an old timestamp');
-eq(shouldResyncOnReconnect(t0,t0+250,'reconnect'),false,'a short blip must stay on the per-event path');
-eq(shouldResyncOnReconnect(t0,t0+STALE_GAP_MS,'reconnect'),false,'a gap exactly at the threshold is not stale');
-eq(shouldResyncOnReconnect(t0,t0+STALE_GAP_MS+1,'reconnect'),true,'a gap past the threshold must resync');
-eq(shouldResyncOnReconnect(t0,t0+30*60*1000,'reconnect'),true,'a backgrounded tab must resync on wake');
-eq(shouldResyncOnReconnect(0,t0,'reconnect'),true,'an unknown last-event time cannot prove freshness');
-if(STALE_GAP_MS<=0)throw Error('the staleness threshold must be positive');
+eq(shouldResyncOnReconnect('boot',false),false,'the clean boot connection must never resync');
+eq(shouldResyncOnReconnect('boot',true),true,'a boot that followed a failed connect must resync');
+eq(shouldResyncOnReconnect('reconnect',false),true,'every reconnect resyncs, however short the gap');
+eq(shouldResyncOnReconnect('reconnect',true),true,'a reconnect after errors resyncs');
+const delays=[0,1,2,3,4,50].map(sseRetryDelay);
+eq(delays.join(','),'1000,2000,5000,15000,15000,15000','backoff is 1s,2s,5s,15s and capped');
+eq(sseRetryDelay(-1),1000,'a negative attempt clamps to the first delay');
 `
 	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("SSE stale-reconnect decision: %v\n%s", err, out)
+		t.Fatalf("SSE reconnect decision: %v\n%s", err, out)
 	}
 }
 
-// TestUISSEStaleReconnectResyncsOnceInsteadOfReplaying pins the wiring around the
-// decision: `hello` distinguishes boot from reconnect, every message refreshes the
-// freshness clock, and a stale reconnect refetches through the existing reload
-// paths rather than replaying per-event catch-up it cannot trust.
-func TestUISSEStaleReconnectResyncsOnceInsteadOfReplaying(t *testing.T) {
+// TestUISSEClosedStreamRecovers pins the wiring: a CLOSED EventSource is rebuilt
+// with capped backoff after probing the API, the status exposes a reconnect
+// button, and every hello after a gap resyncs through one debounced call.
+func TestUISSEClosedStreamRecovers(t *testing.T) {
 	app := executableJS(readUIAsset(t, "js/app.js"))
 	for _, contract := range []string{
+		"let sseSource=null",
+		"es.readyState===EventSource.CLOSED",
+		"scheduleSseReconnect()",
+		"await api('/api/version')",
 		"const reason=sseConnectedOnce?'reconnect':'boot'",
-		"if(shouldResyncOnReconnect(lastSSEMsgAt,now,reason))resyncAfterStaleReconnect()",
+		"if(shouldResyncOnReconnect(reason,sseHadError))scheduleResync()",
 		"sseConnectedOnce=true",
-		"lastSSEMsgAt=now",
-		"es.onmessage=e=>{lastSSEMsgAt=Date.now();",
+		"sseHadError=true",
+		"setSseStatus('offline')",
+		"clearTimeout(sseResyncTimer)",
 	} {
 		if !strings.Contains(app, contract) {
-			t.Errorf("SSE reconnect wiring missing %q", contract)
+			t.Errorf("SSE recovery wiring missing %q", contract)
 		}
 	}
-	if strings.Contains(app, "gap>STALE_GAP_MS") {
-		t.Error("the stale-reconnect decision must live in shouldResyncOnReconnect, not inline in the hello handler")
+	if strings.Contains(app, "lastSSEMsgAt") || strings.Contains(app, "STALE_GAP_MS") {
+		t.Error("the staleness-gap heuristic was replaced by resync-on-every-reconnect")
 	}
+	index := readUIAsset(t, "index.html")
+	requireUIContains(t, index, `id="sseRetry"`)
+	requireUIContains(t, readUIAsset(t, "surfaces.css"), ".sse-dot.offline{")
+}
+
+// TestUISSEResyncRefetchesEveryStore pins the refetch list.
+func TestUISSEResyncRefetchesEveryStore(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
 	start := strings.Index(app, "function resyncAfterStaleReconnect()")
 	if start < 0 {
 		t.Fatal("resyncAfterStaleReconnect not found")
@@ -68,6 +75,10 @@ func TestUISSEStaleReconnectResyncsOnceInsteadOfReplaying(t *testing.T) {
 		"loadScope()",
 		"loadRules()",
 		"loadTags()",
+		"loadViews()",
+		"loadSession()",
+		"loadSettings()",
+		"loadProject()",
 		"refreshIntercept()",
 		"loadHumanInput()",
 	} {

@@ -164,6 +164,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 }
 
 /* Command palette (Ctrl/Cmd+K). app.js sets class names only. */
+.cmdk-overlay{z-index:300;align-items:flex-start;justify-content:center}
 .cmdk-shell{margin-top:11vh;width:min(680px,calc(100% - var(--sp-4) * 2))}
 .cmdk-input{width:100%;box-sizing:border-box;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:var(--fs-xl)}
 .cmdk-input:focus-visible{outline-offset:-3px}
@@ -171,6 +172,8 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .cmdk-row{display:flex;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-lg);cursor:pointer}
 .cmdk-row[aria-selected="true"]{background:var(--accentSolid);color:var(--onAccent)}
 .cmdk-foot{display:flex;flex-wrap:wrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line);color:var(--fg3);font-size:var(--fs-xs)}
+.cmdk-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-sub{opacity:.55;font-size:var(--fs-xs);flex:none}
 .cmdk-empty{padding:var(--sp-4);text-align:center;color:var(--fg3);font-size:var(--fs-sm)}
 
 /* Skip link: off-screen until focused, then revealed inside the safe area. */
@@ -187,3 +190,5 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .msg-warn{color:var(--amber)}
 .mono-accent{font-family:var(--mono);color:var(--accent)}
 .is-update{color:var(--accent);font-weight:700}
+.sse-dot.offline{background:var(--red)}
+#main:focus{outline:none}

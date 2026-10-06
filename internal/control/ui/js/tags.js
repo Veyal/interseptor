@@ -3,7 +3,7 @@
 // flow list, and lets you color a tag via its right-click menu. Tag colors are also
 // applied to the per-row tag chips (rendered in proxy.js via state.tagColors).
 import { $, esc, escAttr, api, state, toast, openCtxMenu, renderLoadError } from './core.js';
-import { filterByTag, renderRows } from './proxy.js';
+import { filterByTag, refreshVisibleRows } from './proxy.js';
 
 // Persist stable hex values; render presets with theme colors for contrast.
 export const TAG_COLORS = [
@@ -19,10 +19,20 @@ const tagColorLanes=new Map();
 // Stored colors are validated (server-side hex rule) before interpolation so a
 // value restored from an imported project DB can never break out of the attribute.
 export function tagChipStyle(tag) {
-  const saved = state.tagColors[tag];
-  const preset = TAG_COLORS.find(([, hex]) => hex === saved?.toLowerCase())?.[2];
-  const c = preset || (saved && /^#[0-9a-fA-F]{3,8}$/.test(saved) ? saved : '');
-  return c ? `color:${c};border-color:${c}` : '';
+  const saved = normalizeTagHex(state.tagColors[tag]);
+  if (!saved) return '';
+  const preset = TAG_COLORS.find(([, hex]) => hex === saved)?.[2];
+  // Presets use theme tokens. A custom hex keeps its hue for the border and is
+  // mixed toward the foreground for the text so it stays readable in both themes.
+  return preset ? `color:${preset};border-color:${preset}`
+    : `color:color-mix(in srgb, ${saved} 55%, var(--fg));border-color:${saved}`;
+}
+// normalizeTagHex lowercases a stored color and expands #rgb so preset lookup is
+// exact. Anything that is not a plain hex color returns '' (never interpolated).
+export function normalizeTagHex(value) {
+  const v = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!/^#[0-9a-f]{3,8}$/.test(v)) return '';
+  return v.length === 4 ? '#' + [...v.slice(1)].map(c => c + c).join('') : v;
 }
 
 export async function loadTags() {
@@ -33,10 +43,13 @@ export async function loadTags() {
     if(tagColorLanes.size){tagReloadPending=true;return;}
     tagLoadError=null;
     state.tags = d.tags || [];
+    const previousColors = JSON.stringify(state.tagColors);
     state.tagColors = {};
     state.tags.forEach(t => { if (t.color) state.tagColors[t.tag] = t.color; });
     renderTagBar();
-    renderRows(); // recolor the per-row tag chips with any updated colors
+    // Recolor the per-row tag chips only when a color actually changed, and patch
+    // just the stale rows instead of rebuilding the whole History window.
+    if (JSON.stringify(state.tagColors) !== previousColors) refreshVisibleRows();
   } catch (e) {
     if(epoch!==tagLoadEpoch)return;
     tagLoadError=e;renderTagBar();
