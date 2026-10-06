@@ -244,6 +244,7 @@ let sseConnectedOnce=false; // false until the very first `hello` (initial conne
 let sseHadError=false;      // an error occurred since the last hello
 let sseRetryCount=0;        // consecutive failed (re)connect attempts
 let sseRetryTimer=null;
+let sseAttemptToken=0;      // bumped by every schedule/connect; an attempt whose token is stale is abandoned
 let sseResyncTimer=null;
 function sseRetryDelay(attempt){
   return SSE_BACKOFF_MS[Math.min(Math.max(attempt,0),SSE_BACKOFF_MS.length-1)];
@@ -363,7 +364,7 @@ const SSE_HANDLERS={
   'allowlist.update':{contract:'visible-pane nudge',run:refreshVisibleAllowlist},
 };
 function connectEvents(){
-  if(sseSource){sseSource.close();sseSource=null;}
+  sseAttemptToken++;if(sseSource){sseSource.close();sseSource=null;}
   const es=new EventSource('/api/events');
   sseSource=es;
   // Fires on the initial connect AND every browser auto-reconnect (the server
@@ -398,11 +399,11 @@ function connectEvents(){
     else if(m.type==='human.input')loadHumanInput();
     else if(m.type==='tunnel.update')window.dispatchEvent(new CustomEvent('interceptor:tunnel'));
   };
-  es.onerror=()=>{
+  es.onerror=()=>{if(sseSource!==es)return;
     sseHadError=true;
     // CONNECTING: the browser is already retrying on its own. CLOSED: it gave up
     // (HTTP error, restarted server) and will never retry — rebuild it ourselves.
-    if(es.readyState===EventSource.CLOSED){es.close();if(sseSource===es)sseSource=null;scheduleSseReconnect();}
+    if(es.readyState===EventSource.CLOSED){es.close();sseSource=null;scheduleSseReconnect();}
     else setSseStatus('reconnecting');
   };
 }
@@ -411,11 +412,14 @@ function connectEvents(){
 // redirect in api() instead of looping on an unauthenticated stream.
 function scheduleSseReconnect(immediate){
   clearTimeout(sseRetryTimer);
+  const token=++sseAttemptToken;
   setSseStatus('offline');
   const delay=immediate?0:sseRetryDelay(sseRetryCount++);
   sseRetryTimer=setTimeout(async()=>{
+    if(token!==sseAttemptToken)return;
     try{await api('/api/version');}
-    catch(e){if(e&&e.message==='unauthorized')return;scheduleSseReconnect();return;}
+    catch(e){if(token!==sseAttemptToken)return;if(e&&e.message==='unauthorized')return;scheduleSseReconnect();return;}
+    if(token!==sseAttemptToken)return;
     connectEvents();
   },delay);
 }

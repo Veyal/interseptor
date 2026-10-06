@@ -1,6 +1,7 @@
 package control
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -63,4 +64,55 @@ func TestUISelDeleteRestoresButtonBeforeSelectionBarUpdate(t *testing.T) {
 		t.Errorf("selDelete must restore the button before updateSelBar (restore=%d update=%d)", restore, update)
 	}
 	requireUIContains(t, src, "function restoreSelDelete(btn)")
+}
+
+// TestUISSEReconnectAttemptsDoNotOverlap drives scheduleSseReconnect with fake
+// timers: a timer that already fired (probe in flight) must not open a second
+// stream once a newer attempt has taken over, and a stale failed probe must not
+// reschedule on top of the newer attempt.
+func TestUISSEReconnectAttemptsDoNotOverlap(t *testing.T) {
+	app := readUIAsset(t, "js/app.js")
+	script := repeaterRenderJS(t, app, "function sseRetryDelay(attempt)") +
+		repeaterRenderJS(t, app, "function scheduleSseReconnect(immediate)") + `
+const eq=(got,want,msg)=>{if(got!==want)throw Error(msg+': got '+got+' want '+want);};
+`
+	prelude := `
+const SSE_BACKOFF_MS=[1000,2000,5000,15000];
+let sseRetryTimer=null,sseRetryCount=0,sseAttemptToken=0;
+const timers=[],probes=[];let connects=0;
+const clearTimeout=()=>{};
+const setTimeout=fn=>{timers.push(fn);return timers.length;};
+const setSseStatus=()=>{};
+const connectEvents=()=>{connects++;};
+const api=()=>new Promise((res,rej)=>probes.push({res,rej}));
+`
+	body := `
+scheduleSseReconnect();
+const stale=timers[0]();
+scheduleSseReconnect(true);
+const fresh=timers[1]();
+probes[1].res();await fresh;
+eq(connects,1,'the newest attempt opens one stream');
+probes[0].res();await stale;
+eq(connects,1,'a stale probe must not open a second stream');
+scheduleSseReconnect();
+const failing=timers[2]();
+scheduleSseReconnect(true);
+probes[2].rej(new Error('offline'));await failing;
+eq(timers.length,4,'a stale failed probe must not reschedule over the newer attempt');
+`
+	if out, err := exec.Command("node", "--input-type=module", "-e", prelude+script+body).CombinedOutput(); err != nil {
+		t.Fatalf("SSE reconnect overlap: %v\n%s", err, out)
+	}
+}
+
+func TestUISSEEventSourceCreationIsSingleFlight(t *testing.T) {
+	app := executableJS(readUIAsset(t, "js/app.js"))
+	requireUIContains(t, app,
+		"let sseAttemptToken=0",
+		"const token=++sseAttemptToken",
+		"if(token!==sseAttemptToken)return;",
+		"sseAttemptToken++;if(sseSource){sseSource.close();sseSource=null;}",
+		"es.onerror=()=>{if(sseSource!==es)return;",
+	)
 }
