@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Intruder polling is cheaper.** `/api/intruder/state` is polled every 400ms instead of 120ms, a poll with no new progress skips the re-render, and each render filters and sorts the results once for both the stats line and the rows. The server-side `?since=` incremental window is not implemented (backend change, out of UI scope).
 
+- **Flow popup carries Intruder and + Finding actions.** The inspect popup (Intruder results, Map, Scanner) now has `Intruder ↗` and `+ Finding` beside `Repeater ↗`, each closing the popup before navigating.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.

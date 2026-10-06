@@ -115,3 +115,19 @@ func TestUIIntruderPollingBacksOffAndSkipsUnchangedRenders(t *testing.T) {
 		t.Error("renderIntr must filter and sort results exactly once per render")
 	}
 }
+
+func TestUIFlowPopupCarriesIntruderAndFindingActions(t *testing.T) {
+	popup := readUIAsset(t, "js/flowmodal.js")
+	requireUIContains(t, popup,
+		"import { sendToRepeater, sendToIntruder } from './tools.js'",
+		"function wireFlowPopupActions()",
+		"intruder.id='fmIntruder'",
+		"finding.id='fmFinding'",
+		"repeater.after(intruder,finding)",
+		"sendToIntruder({id})",
+		"m.addFlowToFinding(id)",
+	)
+	if strings.Count(popup, "closeModal($('#flowModal'));\n    sendToIntruder") != 1 || strings.Count(popup, "closeModal($('#flowModal'));\n    import('./findings.js')") != 1 {
+		t.Error("popup actions must close the popup before navigating")
+	}
+}

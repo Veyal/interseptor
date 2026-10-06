@@ -1,6 +1,6 @@
-import { $, esc, escAttr, state, toast, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode } from './core.js';
+import { $, esc, escAttr, state, toast, toastError, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode } from './core.js';
 import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
-import { sendToRepeater } from './tools.js';
+import { sendToRepeater, sendToIntruder } from './tools.js';
 /* ---- flow inspect popup (Map graph/table, Scanner findings, …) ---- */
 let fmOpenEpoch=0;
 const fmSideEpoch={req:0,res:0};
@@ -113,6 +113,31 @@ $('#fmRepeater') && ($('#fmRepeater').onclick = () => {
   closeModal($('#flowModal'));
   sendToRepeater({ id });
 });
+// The popup opens from Intruder results, Map and Scanner as well, so it carries
+// the same onward actions as History: Intruder and Add to finding. The buttons
+// are injected here and close the popup first, as the Repeater action does.
+function wireFlowPopupActions(){
+  const repeater=$('#fmRepeater');
+  if(!repeater||$('#fmIntruder'))return;
+  const intruder=document.createElement('button');
+  intruder.type='button';intruder.className='btn';intruder.id='fmIntruder';
+  intruder.title='Load this flow into Intruder';intruder.textContent='Intruder ↗';
+  const finding=document.createElement('button');
+  finding.type='button';finding.className='btn';finding.id='fmFinding';
+  finding.title='Add this flow to a finding';finding.textContent='+ Finding';
+  repeater.after(intruder,finding);
+  intruder.onclick=()=>{
+    const id=state.fm&&state.fm.id;if(!id)return;
+    closeModal($('#flowModal'));
+    sendToIntruder({id});
+  };
+  finding.onclick=()=>{
+    const id=state.fm&&state.fm.id;if(!id)return;
+    closeModal($('#flowModal'));
+    import('./findings.js').then(m=>m.addFlowToFinding(id)).catch(e=>toastError('Add to finding failed',e));
+  };
+}
+wireFlowPopupActions();
 $('#fmProxy') && ($('#fmProxy').onclick = () => {
   const d = state.fm && state.fm.detail, id = state.fm && state.fm.id;
   closeModal($('#flowModal'));
