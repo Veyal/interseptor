@@ -736,7 +736,6 @@ func TestFindingCVSS31AndStatusAliases(t *testing.T) {
 	}
 }
 
-
 // seedLegacyCVSS stores a pre-4.0 vector the way an old archive would have, bypassing write validation.
 func seedLegacyCVSS(t *testing.T, s *Store, id int64, vector string) {
 	t.Helper()

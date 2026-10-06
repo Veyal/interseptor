@@ -124,7 +124,7 @@ func TestUISetupStepNavigationAndControlsRemainAccessible(t *testing.T) {
 		"next.disabled=false",
 		`aria-label="Copy trust command"`,
 		`aria-label="Scope host"`,
-		`id="setupReadiness" class="evidence" role="status" aria-live="polite" aria-atomic="true"`,
+		`id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"`,
 	)
 
 	reset := strings.Index(src, "next.disabled=false")
