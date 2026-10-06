@@ -627,9 +627,9 @@ Content-Type: application/json
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav" aria-label="Settings sections">
-        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Target scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
+        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Target scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="appearance">System · Appearance</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings.</div>
+        <div id="setNavEmpty" class="settings-nav-empty" role="status" aria-live="polite" hidden>No matching settings.</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -644,7 +644,7 @@ Content-Type: application/json
         </div>
         <div class="settings-nav-group" data-nav-group="system">
           <div class="settings-nav-group-label">System</div>
-
+          <button data-sec="appearance">Appearance</button>
           <button data-sec="project">Project &amp; data</button>
           <button data-sec="api">API &amp; MCP</button>
         </div>
@@ -996,21 +996,9 @@ Content-Type: application/json
           </div>
           <div class="section" id="engagementBrief">
             <h3>Engagement brief</h3>
-            <p class="hint u-mb-2">Authorisation and conduct rules for this project. Agents read it over MCP and reports cite its version. <b id="briefVersion">No brief recorded yet</b></p>
+            <p class="hint u-mb-2">Authorisation and conduct rules for this project. Agents read it over MCP and reports cite its version. The same form opens from the Target chip in the Engagement strip.</p>
             <div id="briefLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
-            <label class="hint" for="brief-scope">Scope</label>
-            <textarea id="brief-scope" class="raw u-mb-2" maxlength="16384" aria-label="Scope" placeholder="In-scope hosts and APIs" spellcheck="false"></textarea>
-            <label class="hint" for="brief-authorisation">Authorisation</label>
-            <textarea id="brief-authorisation" class="raw u-mb-2" maxlength="16384" aria-label="Authorisation" placeholder="Who authorised what, and for how long" spellcheck="false"></textarea>
-            <label class="hint" for="brief-conductRules">Conduct rules</label>
-            <textarea id="brief-conductRules" class="raw u-mb-2" maxlength="16384" aria-label="Conduct rules" placeholder="e.g. own account only; destructive actions noted, not executed" spellcheck="false"></textarea>
-            <label class="hint" for="brief-rateLimits">Rate limits</label>
-            <textarea id="brief-rateLimits" class="raw u-mb-2" maxlength="16384" aria-label="Rate limits" placeholder="e.g. at most 1 req/s, request budget" spellcheck="false"></textarea>
-            <label class="hint" for="brief-doNotTouch">Do not touch</label>
-            <textarea id="brief-doNotTouch" class="raw u-mb-2" maxlength="16384" aria-label="Do not touch" placeholder="Hosts, endpoints or data that are off limits" spellcheck="false"></textarea>
-            <label class="hint" for="brief-credentialPolicy">Credential policy</label>
-            <textarea id="brief-credentialPolicy" class="raw u-mb-2" maxlength="16384" aria-label="Credential policy" placeholder="e.g. never print credential values" spellcheck="false"></textarea>
-            <div class="row u-gap-2 u-mt-2"><button type="button" class="btn btn-primary" id="briefSaveBtn">Save brief</button></div>
+            <div id="briefFormMount"></div>
           </div>
         </section>
         <section class="set-sec" data-sec="scanner" hidden>
@@ -1151,8 +1139,38 @@ Content-Type: application/json
           </details>
           <div class="row u-gap-2 u-pad-4"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" data-init-hidden></span></div>
         </section>
+        <section class="set-sec" data-sec="appearance" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><h2>Appearance</h2></header>
+          <div class="section settings-appearance">
+            <h3>Theme</h3>
+            <p class="hint u-mb-2">System follows your operating system. High contrast uses white on black with thicker borders and a stronger focus ring.</p>
+            <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+              <button type="button" data-theme-choice="system" aria-pressed="false">System</button>
+              <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+              <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+              <button type="button" data-theme-choice="hc" aria-pressed="false">High contrast</button>
+            </div>
+          </div>
+          <div class="section settings-appearance">
+            <h3>Density</h3>
+            <p class="hint u-mb-2">Row height and control size. Touch screens always use the comfortable tier with 44px targets.</p>
+            <div class="seg" id="densitySeg" role="group" aria-label="Density">
+              <button type="button" data-density-choice="compact" aria-pressed="false">Compact</button>
+              <button type="button" data-density-choice="default" aria-pressed="false">Default</button>
+              <button type="button" data-density-choice="comfortable" aria-pressed="false">Comfortable</button>
+            </div>
+          </div>
+          <div class="section settings-appearance">
+            <h3>Keyboard and hints</h3>
+            <p class="hint u-mb-2">Single-letter shortcuts (such as e, d, x and y) act on the focused list. Turn them off if they clash with assistive technology; shortcuts with Ctrl, Alt or Cmd, and every button, keep working.</p>
+            <div class="row u-gap-3 u-wrap u-mb-3"><button type="button" class="uisw" id="singleKeySwitch" aria-pressed="true">Single-key shortcuts are on</button></div>
+            <p class="hint u-mb-2">Hover and focus hints explain controls. Labels and help text stay either way.</p>
+            <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="hintsSwitch" aria-pressed="true">Hints are on</button></div>
+          </div>
+        </section>
         <section class="set-sec" data-sec="project" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><h2>Project &amp; data</h2></header>
+          <div id="settingsChecklistMount" hidden></div>
           <div class="section">
             <h3>Project</h3>
             <div id="projectLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>

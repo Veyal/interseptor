@@ -4,10 +4,12 @@
 // reopenable from Settings → Project & data.
 import { $, esc, escAttr, state, toast, toastError, api, openModal, closeModal, copyText, projectStorageKey, renderLoadError } from './core.js';
 import { getSystemProxyStatus, setSystemProxyEnabled } from './settings.js';
+import { projectState } from './project-state.js';
 
 const SETUP_KEY = 'interceptor.setupDone';
 let step = 0;
-const LAST = 3;
+const LAST = 4;
+let setupLastScopeHost = '';
 let setupActionBusy = false;
 let setupSystemProxyEpoch = 0;
 let setupReadinessEpoch = 0;
@@ -201,6 +203,7 @@ function renderStep() {
           msg.innerHTML = '<span class="u-accent">✓ added ' + esc(host) + ' to scope</span>';
         }
         const input = $('#setupScopeHost');
+        setupLastScopeHost = host;
         if (input && input.value.trim() === host) input.value = '';
       } catch (e) {
         if (step !== actionStep || !button.isConnected) return;
@@ -217,6 +220,15 @@ function renderStep() {
         setSetupActionBusy(button, false, label);
       }
     };
+  } else if (step === 3) {
+    b.innerHTML = `<p class="u-m-0 u-mb-2">Set the authorised target and turn scope on, so findings and the readiness meter know what you are allowed to test.</p>
+      <p class="hint u-m-0 u-mb-3">This saves the target in the engagement brief and adds an include rule if none covers it yet. Add the rest of the brief later from the Engagement strip.</p>
+      <div class="row u-gap-2">
+        <input id="setupTargetInput" class="btn u-bg3 u-mono u-flex-1" aria-label="Authorised target" aria-describedby="setupTargetMsg" placeholder="*.example.com" spellcheck="false" value="${escAttr(setupLastScopeHost)}">
+        <button class="btn" id="setupTargetSave">Set target and enable scope</button>
+      </div>
+      <div id="setupTargetMsg" class="hint u-mt-2" role="status" aria-live="polite"></div>`;
+    $('#setupTargetSave').onclick = () => saveSetupTarget();
   } else {
     b.innerHTML = `<p class="u-m-0 u-mb-3">Configuration steps are saved. Send HTTPS traffic through the proxy to verify CA trust and interception before testing.</p>
       <ul class="u-m-0 u-mb-4 u-fg2 u-list-pad">
@@ -227,6 +239,41 @@ function renderStep() {
 
       <div id="setupReadiness" class="evidence u-mt-3" role="status" aria-live="polite" aria-atomic="true"></div>`;
     setupReadiness();
+  }
+}
+
+// The brief's `scope` field is the authorised-target list; keep every other field
+// and any lines already there, then make sure an enabled include rule covers it.
+async function saveSetupTarget() {
+  if (setupActionBusy) return;
+  const target = ($('#setupTargetInput')?.value || '').trim();
+  const msg = $('#setupTargetMsg');
+  const say = (text, role) => { if (msg) { msg.setAttribute('role', role); msg.textContent = text; } };
+  if (!target || /\s/.test(target)) { say('Enter one host or wildcard, for example *.example.com.', 'alert'); return; }
+  const button = $('#setupTargetSave');
+  const label = button.textContent;
+  const actionStep = step;
+  setSetupActionBusy(button, true, 'Saving…');
+  try {
+    const brief = await api('/api/engagement-brief');
+    const fields = ['scope', 'authorisation', 'conductRules', 'rateLimits', 'doNotTouch', 'credentialPolicy'];
+    const next = {};
+    fields.forEach(f => { next[f] = brief[f] || ''; });
+    const lines = next.scope.split(/\r?\n/).map(l => l.trim());
+    if (!lines.includes(target)) next.scope = lines.filter(Boolean).concat(target).join('\n');
+    await api('/api/engagement-brief', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(next) });
+    const scope = await api('/api/scope');
+    const covered = (scope.rules || []).some(r => r.action === 'include' && r.enabled !== false && r.host === target);
+    if (!covered) await api('/api/scope', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'include', host: target, enabled: true }) });
+    projectState.refresh({ reason: 'setup.target' });
+    if (step !== actionStep || !button.isConnected) return;
+    say('Target ' + target + ' saved and scope is on.', 'status');
+  } catch (e) {
+    if (step !== actionStep || !button.isConnected) return;
+    say('Could not set the target: ' + (e.message || 'request failed'), 'alert');
+    toastError('Setup action failed', e);
+  } finally {
+    setSetupActionBusy(button, false, label);
   }
 }
 
