@@ -118,11 +118,23 @@ func (c *authzRunCache) get(id string) (string, []authzRunOut, bool) {
 	return id, runs, ok
 }
 
-// bufferedResponse captures a handler's response so it can be post-processed.
+const (
+	maxAuthzCaptureBytes = 8 << 20 // larger authz responses are streamed through uncached
+	authzCacheRows       = 100     // rows kept per cached run (the matrix draws 40)
+	authzCacheCols       = 32      // identities kept per row (the matrix draws 8)
+)
+
+// bufferedResponse captures a handler's response so it can be post-processed,
+// up to limit bytes. Past the limit (or on Flush) it spills what it holds to
+// dst and streams the rest, so an unexpectedly large response is never held in
+// memory and streaming handlers keep working.
 type bufferedResponse struct {
-	header http.Header
-	code   int
-	body   []byte
+	dst      http.ResponseWriter
+	header   http.Header
+	code     int
+	body     []byte
+	limit    int
+	overflow bool // true once everything goes straight to dst
 }
 
 func (b *bufferedResponse) Header() http.Header { return b.header }
@@ -130,39 +142,98 @@ func (b *bufferedResponse) WriteHeader(code int) {
 	if b.code == 0 {
 		b.code = code
 	}
+	if b.overflow {
+		b.dst.WriteHeader(code)
+	}
 }
 func (b *bufferedResponse) Write(p []byte) (int, error) {
 	if b.code == 0 {
 		b.code = http.StatusOK
 	}
+	if !b.overflow && len(b.body)+len(p) > b.limit {
+		b.spill()
+	}
+	if b.overflow {
+		return b.dst.Write(p)
+	}
 	b.body = append(b.body, p...)
 	return len(p), nil
 }
 
+// Flush forces streaming: a handler that flushes expects the client to see the
+// bytes now, so buffering for post-processing ends here.
+func (b *bufferedResponse) Flush() {
+	b.spill()
+	if f, ok := b.dst.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (b *bufferedResponse) spill() {
+	if b.overflow {
+		return
+	}
+	b.overflow = true
+	for k, v := range b.header {
+		b.dst.Header()[k] = v
+	}
+	if b.code != 0 {
+		b.dst.WriteHeader(b.code)
+	}
+	if len(b.body) > 0 {
+		_, _ = b.dst.Write(b.body)
+	}
+	b.body = nil
+}
+
+// trimAuthzRuns keeps the bounded subset of an authz run the matrix needs:
+// the first authzCacheRows rows and authzCacheCols identities, with only the
+// verdict fields (no MIME, body hashes or long error text).
+func trimAuthzRuns(runs []authzRunOut) []authzRunOut {
+	out := make([]authzRunOut, 0, min(len(runs), authzCacheRows))
+	for _, run := range runs[:min(len(runs), authzCacheRows)] {
+		t := authzRunOut{FlowID: run.FlowID, Method: clipText(run.Method, 16), Path: clipText(run.Path, maxEvidenceURLRunes*4), BaselineStatus: run.BaselineStatus}
+		for _, r := range run.Results[:min(len(run.Results), authzCacheCols)] {
+			t.Results = append(t.Results, authzResult{
+				Name: clipText(r.Name, maxEvidenceNameRunes*4), Status: r.Status, Length: r.Length, FlowID: r.FlowID,
+				Same: r.Same, SessionInvalid: r.SessionInvalid, AccessDenied: r.AccessDenied, Broken: r.Broken,
+				Error: clipText(r.Error, 1), // only "was there an error" matters to the matrix
+			})
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 // captureAuthzRun wraps POST /api/authz/run: a successful response is cached
-// under a new runId, which is added to the JSON as "runId". The authz handler
-// itself is unchanged.
+// (bounded, see trimAuthzRuns) under a new runId, which is added to the JSON as
+// "runId". The authz handler itself is unchanged. Responses over
+// maxAuthzCaptureBytes are streamed to the client untouched and not cached.
 func (e *evidenceAPI) captureAuthzRun(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		buf := &bufferedResponse{header: http.Header{}}
+		buf := &bufferedResponse{dst: w, header: http.Header{}, limit: maxAuthzCaptureBytes}
 		next(buf, r)
+		if buf.overflow {
+			return
+		}
 		body := buf.body
 		if buf.code == http.StatusOK {
 			var doc map[string]json.RawMessage
-			var runs struct {
-				Runs []authzRunOut `json:"runs"`
-			}
-			if json.Unmarshal(body, &doc) == nil && json.Unmarshal(body, &runs) == nil && len(runs.Runs) > 0 {
-				id, _ := json.Marshal(e.authz.put(runs.Runs))
-				doc["runId"] = id
-				if out, err := json.Marshal(doc); err == nil {
-					body = append(out, '\n')
+			if json.Unmarshal(body, &doc) == nil {
+				var runs []authzRunOut
+				if json.Unmarshal(doc["runs"], &runs) == nil && len(runs) > 0 {
+					id, _ := json.Marshal(e.authz.put(trimAuthzRuns(runs)))
+					doc["runId"] = id
+					if out, err := json.Marshal(doc); err == nil {
+						body = append(out, '\n')
+					}
 				}
 			}
 		}
 		for k, v := range buf.header {
 			w.Header()[k] = v
 		}
+		w.Header().Del("Content-Length") // the body may have grown by the runId
 		if buf.code != 0 {
 			w.WriteHeader(buf.code)
 		}
@@ -1011,20 +1082,45 @@ func persistIntruderRun(st intruderRunStore, rec intruder.RunRecord) {
 	if !ok {
 		return
 	}
-	b, err := json.Marshal(env)
-	if err == nil {
-		err = st.PutIntruderRun(env.RunID, b)
-	}
+	err := putIntruderEnvelope(st, env)
 	if errors.Is(err, store.ErrIntruderRunTooLarge) {
-		// Drop the bulky free-text fields and retry once; timing and status survive.
+		// Stage 1: drop the free-text fields (payload, extracted value).
 		for i := range env.State.Results {
 			env.State.Results[i].Payload, env.State.Results[i].Extracted = "", ""
 		}
-		if b, err = json.Marshal(env); err == nil {
-			err = st.PutIntruderRun(env.RunID, b)
+		err = putIntruderEnvelope(st, env)
+	}
+	if errors.Is(err, store.ErrIntruderRunTooLarge) {
+		// Stage 2: drop bulky text (rate-limit headers, error strings). The
+		// error flag survives as a single character; timing and status stay.
+		for i := range env.State.Results {
+			r := &env.State.Results[i]
+			r.RLHeaders = nil
+			r.Error = clipText(r.Error, 1)
+		}
+		err = putIntruderEnvelope(st, env)
+	}
+	if errors.Is(err, store.ErrIntruderRunTooLarge) {
+		// Stage 3: keep the head and tail of the run, halving until it fits,
+		// and say so in the run state so a render never silently shows a
+		// shorter run than the operator started.
+		all := env.State.Results
+		for keep := len(all) / 4; keep >= 1 && errors.Is(err, store.ErrIntruderRunTooLarge); keep /= 2 {
+			env.State.Results = append(append([]intruder.Result(nil), all[:keep]...), all[len(all)-keep:]...)
+			env.State.Capped = true
+			env.State.Error = fmt.Sprintf("run record truncated to the first and last %d of %d results to fit the %d MiB store limit", keep, len(all), 4)
+			err = putIntruderEnvelope(st, env)
 		}
 	}
 	if err != nil {
 		log.Printf("control: persist intruder run %s: %v", env.RunID, err)
 	}
+}
+
+func putIntruderEnvelope(st intruderRunStore, env intruderRunEnvelope) error {
+	b, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return st.PutIntruderRun(env.RunID, b)
 }
