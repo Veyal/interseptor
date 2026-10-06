@@ -9,15 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **Uniform `error:` marker on MCP failures (#87).** The marker is now added where a tool failure becomes an MCP result, so store/evidence-mapping errors relayed from the API, `blocks must be a JSON array`, `send blocks or legacy body, not both`, `id is required`, unknown-tool and invalid-params failures all start with `error:`. Messages that already start with it are not doubled. In-process `Server.Call` still returns the raw Go error without the marker.
-
-- **Project merge preserves legacy findings (#73/#86).** `MergeFrom` inserts peer findings through an internal path that skips the write-time CVSS:4.0 and severity-vs-CVSS checks, so merging a project that holds a legacy CVSS 3.1 vector or a severity that disagrees with its vector no longer aborts. API and MCP writes stay strict. Revision restore and archive/full-project import already write rows directly and Burp import creates no findings, so they were unaffected. Rating-edge tests now cover real v4.0 vectors at 4.0, 6.9, 7.0, 8.9 and 9.0.
-
-### Fixed
-
-- **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
@@ -25,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Reviewer-approved target normalization.** `POST /api/findings/{id}/normalize-targets` and the MCP `normalize_finding_targets` tool apply approved path templates (for example `/users/edit/123` to `/users/edit/{id}`) to a finding's affected targets. They default to a dry run, never merge targets that differ in method, scheme, role, relation or variant, and keep flow and image references on the merged target.
 
 - **Environment validation regression tests.** `development` round-trips through the control API and unknown environments are rejected through both the control API and the MCP `update_finding` path instead of being mapped to `local`.
-### Added
 
 - **Reviewer image classification (#69).** `POST /api/findings/{id}/images/{hash}/classify` and the MCP `classify_finding_image` tool relabel an already-attached image (for example an `operator_upload` that is a real browser capture) as `browser_screenshot`/`device_screenshot` without re-uploading it. Upload ingestion metadata is preserved, the classifier is recorded, verified captures count toward `screenshotCount`, and generated flow previews can never be relabelled as captures.
 
@@ -36,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Final report-quality gate (#76).** `GET /api/findings/readiness` entries and the new `GET /api/finding-quality/{id}` return `issues` of `{rule, field, capability, message}` for every failed rule, including a `cvss_version` rule that requires a CVSS v4.0 vector (evaluated through `cvss.Evaluate`). MCP `finding_readiness` returns the same payload, and accepts `id` for one finding. The gate only reads findings; evidence is never modified.
 
 - **Project-wide readiness board (#88).** `GET /api/findings/readiness` and MCP `finding_readiness` now return a `board` of `{id, title, severity, status, ready, gaps}` rows sorted by severity (then id) with a ready/blocked `summary`. The Export dialog gains a "Check readiness" panel that renders the board and opens a blocked finding for review.
-### Added
 
 - **Per-claim verdicts on findings.** A finding can record `claims` with a verdict (`confirmed`, `partially_confirmed`, `not_reproduced`, `refuted`), evidence references and a note. Withdrawn claims are listed in readiness (`withdrawnClaims`) and rendered next to each claim in reports so a refutation cannot be dropped silently.
 - **Deliberately-not-executed requests.** `notExecuted` records requests that were authorised but intentionally not sent (method, target, reason, risk, whether authorisation is required). A documented entry satisfies the "explain why impact was not demonstrated" readiness path, and reports list them in their own section.
@@ -44,33 +33,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Reports render the structured fields.** Markdown and HTML engagement reports show claims with a `WITHDRAWN` marker, a "Finding Chains" section, related findings from both ends, and a "Requests Deliberately Not Executed" section.
 - **Optional audit trail in report export.** `GET /api/findings/report?audit=1` appends a revision appendix (time, actor, source, action, changed field names, stated reason). It never includes field values or snapshots.
 - **Finding history covers the new fields.** Revision diffs and restore include claims, not-executed requests and related findings.
-### Added
 
 - **Safe, shared authz identities.** `set_authz` / `POST /api/authz` now merges by identity name by default (`mode: replace` keeps the old overwrite), so parallel agents can no longer wipe each other's identities. New `add_authz_identity`, `remove_authz_identity` and `list_authz` MCP tools (REST: `POST /api/authz/identity`, `DELETE /api/authz/identity/{name}`) and per-identity `updatedAt` / `owner` stamps. Writes are serialized so concurrent callers cannot lose updates.
 
 - **Anonymous vs authenticated differential testing.** `authz_differential` (REST `POST /api/authz/differential`) replays one request as anonymous plus the saved identities and classifies each result as auth failure, authz failure, validation failure or success. An optional invalid-body probe reports whether authentication is evaluated before validation, and an optional read-only state flow records side effects before/after each context. The typed evidence keeps every raw flow ID, labels inferences as hypotheses, and can be attached to a finding in one call (`attachToFinding`).
 
 - **Auth timeline.** History → right-click → "Auth timeline from this flow" (also `auth_timeline` over MCP and `GET /api/flows/{id}/auth-timeline`) reconstructs a login attempt from captured traffic: redirects, cookie create/replace/clear/reject, cookies sent or omitted, session-ID and CSRF rotation, MFA state, scheme/host changes, and the first transition where authenticated state appears lost. It is read-only, labels inferred behaviour as hypotheses, and shows only value fingerprints; raw values stay in the project store.
-### Added
 
 - **Engagement brief.** A project-level authorisation and conduct brief (scope, authorisation, conduct rules, rate limits, do-not-touch list, credential policy) with a version that bumps only when content changes. Edit it in Settings → Target scope, read or update it over `GET`/`PUT /api/engagement-brief` and the `get_engagement_brief` / `set_engagement_brief` MCP tools. Exported reports open with an "Engagement context" section citing the brief version, and the JSON export carries `engagementBriefVersion`. Refs #89.
 - **Interception setup record.** A versioned project record of how traffic is intercepted: system proxy address, CA fingerprint, and pinning-bypass enablers (tool, script hash, target library, method, applicable hosts). Read or update it over `GET`/`PUT /api/interception-setup` and the `get_interception_setup` / `set_interception_setup` MCP tools; previous versions are kept so `GET /api/flows/{id}` reports an `interceptionProvenance` (the version in force at capture time and the enablers covering the host). A bodiless `CONNECT … status 0` flow can be marked `pinning_blocked` or `not_intercepted` (`PUT /api/flows/{id}/interception`, `annotate_flow_interception`), and a TLS handshake failure on a host with a recorded enabler is tagged `pinning_blocked` automatically. Reports gain a "How evidence was obtained" section, and the JSON export carries `interceptionSetupVersion`. Refs #81.
 - **WebSocket evidence.** `ws_send` / `POST /api/ws/send` now record the handshake and every sent and received frame as a flow (a rejected handshake is recorded too) and return its `flowId`, so a WebSocket finding can cite it like any HTTP flow. Frames stay inspectable via `list_ws_frames` and can be annotated with `set_ws_frame_note` (`PUT /api/flows/{id}/ws/{frameId}/note`); exported reports show a "WebSocket frames" listing under the flow's response. Recording is best-effort and never affects the send result or proxy forwarding. Refs #90.
 
-### Changed
-
-- **Finding tool registry.** Registered `normalize_finding_targets` in the MCP descriptor and docs, and refreshed the retained UI audit runtime identity.
-### Added
-
 - **Redaction helper for secrets in findings.** New MCP tool `redact_value` and `POST /api/redact` return `{len, sha256_prefix, kind}` for a value (plus a `[redacted ...]` form for `redact_value`); the value is hashed in memory and never stored or logged. Finding writes through MCP now warn, without echoing the value, when summary, impact, why, fix, retest, detail or block text contains a JWT, `AIza` key, `$2b$` hash or `Bearer` token, and the HTML report shows a screen-only secret-lint notice listing the same.
 
 ### Changed
+
+- **Finding tool registry.** Registered `normalize_finding_targets` in the MCP descriptor and docs, and refreshed the retained UI audit runtime identity.
 
 - **Finding guards say what to fix.** Every MCP tool failure returned over the protocol now starts with `error:` (applied centrally to the tool-result error path, #87) and names the field and expected shape; advisory messages are listed as `warning:` under "FORMAT WARNINGS (non-blocking)". The wall-of-text rule publishes its limit (180 characters per field), reports the character count, and is applied separately to `detail` and to `blocks`/`body`; `detail` is marked DEPRECATED in the schema. A bad `proofReview.evidence` entry now names the role and whether the flowId/hash is empty, malformed, or given twice.
 - **Severity must match the calculated CVSS rating.** Creating a finding, or changing its severity or vector, is rejected when the severity disagrees with the rating of a valid CVSS 4.0 vector, unless `proofReview.severityOverride` documents why. An omitted severity on create follows the vector. A 0.0 score is shown and stored as Info while `rawRating` keeps the specification's `NONE`. `/api/finding-cvss` also returns `severity`, an `explanation` of the influential metrics and a `legacy` flag; the editor shows them live and has a severity-override field.
 - **CVSS 4.0 is enforced when a finding is written.** Creating a finding, or changing its `cvss`, now rejects anything that is not a valid `CVSS:4.0/` vector, and the error names the field and the expected format. Existing findings that carry a 3.1 vector are never rewritten; they stay editable and expose a computed `cvssWarning` so a reviewer can re-score them.
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
+
+### Fixed
+
+- **Restoring an existing finding to an older revision (#75).** Regression tests now cover restoring a still-present finding (the `ON CONFLICT` update path) to a revision with different `claims`/`notExecuted`, which fails if `structured=excluded.structured` is removed from the upsert, and confirm the derived `cvssWarning` is ignored in revision diffs.
+
+- **Uniform `error:` marker on MCP failures (#87).** The marker is now added where a tool failure becomes an MCP result, so store/evidence-mapping errors relayed from the API, `blocks must be a JSON array`, `send blocks or legacy body, not both`, `id is required`, unknown-tool and invalid-params failures all start with `error:`. Messages that already start with it are not doubled. In-process `Server.Call` still returns the raw Go error without the marker.
+
+- **Project merge preserves legacy findings (#73/#86).** `MergeFrom` inserts peer findings through an internal path that skips the write-time CVSS:4.0 and severity-vs-CVSS checks, so merging a project that holds a legacy CVSS 3.1 vector or a severity that disagrees with its vector no longer aborts. API and MCP writes stay strict. Revision restore and archive/full-project import already write rows directly and Burp import creates no findings, so they were unaffected. Rating-edge tests now cover real v4.0 vectors at 4.0, 6.9, 7.0, 8.9 and 9.0.
+
+- **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
 
 ## [2.3.0] - 2026-10-02
 
