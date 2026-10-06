@@ -11,17 +11,6 @@ import (
 // Pure logic runs under node; DOM-shaped behaviour is pinned against the embedded
 // assets, as for the other ui_* tests.
 
-func uiRegion(t *testing.T, name string) string {
-	t.Helper()
-	index := readUIAsset(t, "index.html")
-	start := strings.Index(index, "<!-- region:"+name+" -->")
-	end := strings.Index(index, "<!-- /region:"+name+" -->")
-	if start < 0 || end < start {
-		t.Fatalf("region:%s markers missing", name)
-	}
-	return index[start:end]
-}
-
 func TestUIMapNotesActivityPureLogicUnderNode(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
