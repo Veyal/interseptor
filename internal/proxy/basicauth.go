@@ -24,7 +24,11 @@ type BasicAuth struct {
 
 // SetExempt installs a matcher for TCP peer addresses that skip the proxy
 // credential challenge (Settings → API → Allowlist). nil clears it. The
-// matcher is consulted per request, so allowlist edits apply without a rebind.
+// matcher is consulted per request, so allowlist edits apply without a rebind
+// and it must be cheap: store.AllowlistMatch answers from an in-memory snapshot.
+// The exemption keys on the TCP peer only: an allowlisted loopback address, or a
+// tunnel that connects from loopback, exempts everything relayed through it
+// (the control API warns when such an entry is added).
 func (a *BasicAuth) SetExempt(match func(ip string) bool) {
 	a.mu.Lock()
 	a.exempt = match

@@ -1,8 +1,11 @@
 package control
 
 import (
+	"net"
 	"net/http"
 	"strconv"
+
+	"github.com/Veyal/interseptor/internal/store"
 )
 
 const maxAllowlistRequestBytes = 16 << 10
@@ -33,7 +36,11 @@ func (h *metaAPI) createAllowlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.broadcast(map[string]any{"type": "allowlist.update"})
-	writeJSON(w, http.StatusOK, e)
+	out := struct {
+		store.IPAllowEntry
+		Warning string `json:"warning,omitempty"`
+	}{IPAllowEntry: e, Warning: allowlistWarning(e.CIDR)}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *metaAPI) deleteAllowlist(w http.ResponseWriter, r *http.Request) {
@@ -48,4 +55,21 @@ func (h *metaAPI) deleteAllowlist(w http.ResponseWriter, r *http.Request) {
 	}
 	h.broadcast(map[string]any{"type": "allowlist.update"})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// allowlistWarning flags entries that exempt far more than one remote machine.
+// The proxy-auth exemption keys on the TCP peer address, so a loopback entry (or
+// a tunnel whose egress connects from loopback) exempts every local process and
+// everything relayed through that tunnel.
+func allowlistWarning(cidr string) string {
+	var ip net.IP
+	if _, n, err := net.ParseCIDR(cidr); err == nil {
+		ip = n.IP
+	} else {
+		ip = net.ParseIP(cidr)
+	}
+	if ip != nil && ip.IsLoopback() {
+		return "This entry is loopback: every local process, and any tunnel that exits on this machine, skips proxy and API authentication."
+	}
+	return ""
 }

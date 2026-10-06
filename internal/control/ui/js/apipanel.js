@@ -111,9 +111,10 @@ async function createAllowEntry(){
   setAllowlistMutationPending(true);
   try{
     allowlistLoadEpoch++;
-    await api('/api/allowlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cidr,label})});
+    const added=await api('/api/allowlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cidr,label})});
     $('#allowCIDR').value='';$('#allowLabel').value='';
     toast('allowlist updated');loadAllowlist();
+    if(added&&added.warning)toast(added.warning,'warn');
   }catch(e){
     await loadAllowlist();
     showAllowlistMutationError(e);

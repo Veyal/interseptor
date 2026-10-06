@@ -2,6 +2,7 @@ package store
 
 import (
 	"testing"
+	"time"
 )
 
 func TestIPAllowlistCRUDAndMatch(t *testing.T) {
@@ -95,5 +96,79 @@ func TestAllowlistMatch_mappedPeerMatchesBareEntry(t *testing.T) {
 	}
 	if s.AllowlistMatch("127.0.0.2") {
 		t.Error("127.0.0.2 must not match")
+	}
+}
+
+// The proxy basic-auth exemption and the control guard call AllowlistMatch on
+// every request, so the match path must be served from memory.
+func TestAllowlistMatchServesFromMemoryAndWritesInvalidate(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	e, err := s.AddIPAllowlist("203.0.113.7", "host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.AllowlistMatch("203.0.113.7") {
+		t.Fatal("warm match")
+	}
+	// Remove the row behind the cache's back: a cache hit must not read the DB.
+	if _, err := s.keysDB().Exec(`DELETE FROM ip_allowlist`); err != nil {
+		t.Fatal(err)
+	}
+	if !s.AllowlistMatch("203.0.113.7") {
+		t.Fatal("match path must not touch the database inside the cache window")
+	}
+	// A write through the store invalidates immediately.
+	s2, err := s.AddIPAllowlist("198.51.100.0/24", "net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AllowlistMatch("203.0.113.7") {
+		t.Fatal("a write must invalidate the cache (stale row served)")
+	}
+	if !s.AllowlistMatch("198.51.100.9") {
+		t.Fatal("new entry must match after the write")
+	}
+	if err := s.DeleteIPAllowlist(s2.ID); err != nil {
+		t.Fatal(err)
+	}
+	if s.AllowlistMatch("198.51.100.9") {
+		t.Fatal("a delete must take effect immediately in this process")
+	}
+	_ = e
+}
+
+// Another process can edit the machine-global list, so a stale cache refreshes in
+// the background once the TTL passes; requests keep using the old snapshot.
+func TestAllowlistCacheRefreshesAfterTTLWithoutBlocking(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	clock := time.Unix(1000, 0)
+	s.allow.now = func() time.Time { return clock }
+	if _, err := s.AddIPAllowlist("203.0.113.7", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !s.AllowlistMatch("203.0.113.7") {
+		t.Fatal("warm")
+	}
+	if _, err := s.keysDB().Exec(`DELETE FROM ip_allowlist`); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(allowlistCacheTTL + time.Second)
+	if !s.AllowlistMatch("203.0.113.7") {
+		t.Fatal("the stale snapshot is served while the refresh runs")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for s.AllowlistMatch("203.0.113.7") {
+		if time.Now().After(deadline) {
+			t.Fatal("background refresh never picked up the external delete")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

@@ -24,6 +24,10 @@ type Store struct {
 	// projects). When nil, API-key ops use db (project-local, legacy/tests).
 	keys *sql.DB
 
+	// allow caches the parsed machine-global IP allowlist so AllowlistMatch, which
+	// runs on every proxied and control request, never queries SQLite.
+	allow allowlistCache
+
 	// notesMu serializes full notebook replacement and AppendNote's read-modify-write
 	// so an append cannot overwrite a replacement from a stale snapshot.
 	notesMu sync.Mutex

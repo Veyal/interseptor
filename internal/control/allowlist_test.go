@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +92,36 @@ func TestAllowlistAPI(t *testing.T) {
 	}
 	if _, ok := got["clientIP"].(string); !ok {
 		t.Fatalf("missing clientIP: %v", got)
+	}
+}
+
+// The proxy-auth exemption keys on the TCP peer, so a loopback or tunnel-egress
+// entry exempts everything arriving through it. The API says so on create.
+func TestAllowlistCreateWarnsAboutBroadPeers(t *testing.T) {
+	h, _, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	t.Cleanup(ts.Close)
+	post := func(cidr string) map[string]any {
+		body, _ := json.Marshal(map[string]string{"cidr": cidr, "label": "t"})
+		resp, err := http.Post(ts.URL+"/api/allowlist", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("create %s: %d", cidr, resp.StatusCode)
+		}
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return out
+	}
+	for _, cidr := range []string{"127.0.0.1", "127.0.0.0/8", "::1"} {
+		w, _ := post(cidr)["warning"].(string)
+		if !strings.Contains(w, "loopback") {
+			t.Errorf("%s: want a loopback warning, got %q", cidr, w)
+		}
+	}
+	if w, ok := post("198.51.100.20")["warning"]; ok {
+		t.Errorf("a single remote host needs no warning, got %v", w)
 	}
 }
