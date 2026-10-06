@@ -7,6 +7,7 @@ import { retentionStats, loadRetention } from './settings.js';
 import { openAuthz, onAuthzSelectionChanged } from './authz.js';
 import { openDecoder, prefillScanner } from './scanner.js';
 import { openSessionInspector } from './session-inspection.js';
+import { openAuthTimeline } from './authtimeline.js';
 import { loadTrafficDiagnosis, onFlowMaybeTLS } from './tlsdiag.js';
 import { animateOnce, MOTION } from './motion.js';
 import { loadMapModule } from './project.js';
@@ -1899,6 +1900,7 @@ function flowGlobalSection(f,head,side='both'){
     ...exportItems,
     {sep:true},
     {label:'Inspect session timeline',icon:'timeline',val:state.selected?.size>1&&state.selected.has(f.id)?`${state.selected.size} selected captures`:'selected capture',act:()=>openSessionInspector(sessionInspectionSelection(f.id))},
+    {label:'Auth timeline from this flow',icon:'timeline',val:'read-only',act:()=>openAuthTimeline(f.id)},
     {label:'Send to Repeater',act:()=>sendToRepeater(f)},
     {label:'Send to Intruder',act:()=>sendToIntruder(f)},
     {label:'Copy URL',act:()=>copyURL(f)},

@@ -211,7 +211,7 @@ function collectIds(){
   })).filter(x=>x.name||x.headers);
 }
 function saveIds(identities=collectIds()){
-  const operation=authzIdentityMutationTail.then(()=>api('/api/authz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identities})}));
+  const operation=authzIdentityMutationTail.then(()=>api('/api/authz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identities,mode:'replace'})}));
   authzIdentityMutationTail=operation.catch(()=>{});
   return operation;
 }

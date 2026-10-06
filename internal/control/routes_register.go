@@ -37,6 +37,7 @@ func (h *Hub) routes() {
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
 	h.mux.HandleFunc("GET /api/flows/session-inspect", f.inspectSession)
+	h.mux.HandleFunc("GET /api/flows/{id}/auth-timeline", f.authTimelineHandler)
 	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
 	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
 	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
@@ -240,12 +241,15 @@ func (h *Hub) registerOobRoutes(oob *oobAPI) {
 func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
+	h.mux.HandleFunc("POST /api/authz/identity", az.addAuthzIdentity)
+	h.mux.HandleFunc("DELETE /api/authz/identity/{name}", az.removeAuthzIdentity)
 	h.mux.HandleFunc("GET /api/readiness", az.getReadiness)
 	h.mux.HandleFunc("GET /api/tls-diagnosis", az.getTLSDiagnosis)
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)
 	h.mux.HandleFunc("POST /api/authz/run", az.authzRun)
+	h.mux.HandleFunc("POST /api/authz/differential", az.authzDifferentialRun)
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
 

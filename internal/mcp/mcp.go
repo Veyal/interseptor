@@ -2827,13 +2827,92 @@ func (s *Server) registerTools() {
 	s.add("get_authz", "List saved authorization-test identities (name + auth headers per role).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
 
+	s.add("list_authz", "List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz).", obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
+
 	s.add("set_authz",
-		"Save authorization-test identities. Replaces the full identity list — call get_authz first if you want to keep existing ones. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
+		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
+			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/authz", map[string]any{"identities": a["identities"]})
+			body := map[string]any{"identities": a["identities"]}
+			if m := argStr(a, "mode"); m != "" {
+				body["mode"] = m
+			}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz", body)
+		})
+
+	s.add("add_authz_identity",
+		"Add or update ONE authorization-test identity by name without touching the others.",
+		obj(map[string]any{
+			"name":    p("string", "identity name (e.g. admin, user, anonymous)"),
+			"headers": p("string", "auth headers as 'Key: Value' lines (array or object also accepted); empty = anonymous"),
+			"owner":   p("string", "optional owner label"),
+		}, "name"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"name": argStr(a, "name"), "headers": a["headers"]}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz/identity", body)
+		})
+
+	s.add("remove_authz_identity",
+		"Remove ONE authorization-test identity by name; other identities are untouched.",
+		obj(map[string]any{"name": p("string", "identity name to remove")}, "name"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/authz/identity/"+url.PathEscape(argStr(a, "name")), nil)
+		})
+
+	s.add("authz_differential",
+		"Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify each result as auth_failure, authz_failure, validation_failure or success. Optional invalidBody probes whether authentication is evaluated before validation; optional sideEffectFlowId (a read-only state flow) is replayed before/after each context to record side effects. Returns typed evidence retaining every raw flowId; attachToFinding adds all of them to a finding. Findings in 'hypotheses' must be reproduced before reporting.",
+		obj(map[string]any{
+			"flowId":           p("integer", "flow to replay across identities"),
+			"identities":       p("array", "optional identity names to include (default: all saved; anonymous is always added)"),
+			"invalidBody":      p("string", "optional deliberately invalid body, sent anonymously to detect auth-vs-validation ordering"),
+			"sideEffectFlowId": p("integer", "optional read-only flow observing state, replayed before/after each context"),
+			"attachToFinding":  p("integer", "optional finding id to attach every retained flow to as typed evidence"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"flowId": a["flowId"]}
+			for _, k := range []string{"identities", "invalidBody", "sideEffectFlowId", "attachToFinding"} {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api(http.MethodPost, "/api/authz/differential", body)
+		})
+
+	s.add("auth_timeline",
+		"Read-only auth timeline for a login flow and the same client's following captures: redirects, Set-Cookie create/replace/clear/reject, cookie send/omit, session-ID and CSRF rotation, MFA state, scheme/host changes and the first transition where authenticated state appears lost. Detections are hypotheses until reproduced; cookie values are never returned (fingerprints only).",
+		obj(map[string]any{
+			"flowId":        p("integer", "the login flow to start from"),
+			"windowSeconds": p("integer", "how far after the flow to follow the same client (default 120, max 600)"),
+			"max":           p("integer", "max flows in the chain (default 40, max 100)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "flowId", 0)
+			if id <= 0 {
+				return "", fmt.Errorf("flowId required")
+			}
+			q := url.Values{}
+			if v := argInt(a, "windowSeconds", 0); v > 0 {
+				q.Set("windowSeconds", strconv.Itoa(v))
+			}
+			if v := argInt(a, "max", 0); v > 0 {
+				q.Set("max", strconv.Itoa(v))
+			}
+			path := fmt.Sprintf("/api/flows/%d/auth-timeline", id)
+			if len(q) > 0 {
+				path += "?" + q.Encode()
+			}
+			return s.apiGet(path)
 		})
 
 	s.add("authz_run",
