@@ -127,6 +127,20 @@ state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (B
 `finder.js`. `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
 rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
 
+Deliberate differences from the overhaul spec, recorded so they are not mistaken for gaps:
+
+- **Repeater send-as.** The replay API has no identity parameter; an identity is applied by editing
+  the request headers. The Proxy context menu's "Send as" therefore opens a Repeater tab whose title
+  carries `[identity]`, and no per-tab override control is shown because it could not be honest about
+  what the server will do.
+- **Hint strip.** The 24px panel-footer binding list is deferred: every binding is already listed in the
+  shortcut sheet and the command palette, and the footer would cost vertical space on phones.
+- **Notes layout.** Notes keeps its single-column list and editor; Map and the Proxy inspector own
+  their own dock layouts. Only Findings, Intercept, Scanner and Settings use `split.js`.
+- **Intercept auto-forward count.** The server keeps no counter, so Intercept tallies out-of-scope
+  requests from the live flow stream with the exact client scope mirror and hides the line when scope
+  cannot be decided in the browser (regex rules).
+
 Stylesheets load in a fixed order: `app.css` (tokens and legacy components), `surfaces.css`,
 `findings.css`, `workbench.css` (documents the 1100/900/720/480px breakpoints), `primitives.css`,
 `shell.css`, `flow.css`, `panel-proxy.css`, `panel-tools.css`, `panel-scan.css`, `panel-misc.css`,
