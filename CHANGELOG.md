@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Reviewer image classification (#69).** `POST /api/findings/{id}/images/{hash}/classify` and the MCP `classify_finding_image` tool relabel an already-attached image (for example an `operator_upload` that is a real browser capture) as `browser_screenshot`/`device_screenshot` without re-uploading it. Upload ingestion metadata is preserved, the classifier is recorded, verified captures count toward `screenshotCount`, and generated flow previews can never be relabelled as captures.
 
+- **Claim-vs-evidence capability checks (#70).** Readiness checks now carry `rule` and `capability` (for example `browser_execution`, `authenticated_without_required_factor`, `account_control`, `state_change`) so a warning names exactly the missing proof. Authenticated-session and account-control claims need a server-observed result flow; a screenshot alone no longer satisfies them. The analyst's claim text is never rewritten.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
