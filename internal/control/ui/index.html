@@ -1380,6 +1380,30 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<div id="authTimelineModal" class="modal-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="authTimelineTitle" class="modal-shell session-inspect-dialog">
+    <div class="modal-shell-head">
+      <div>
+        <h2 id="authTimelineTitle" class="modal-shell-title">Auth timeline</h2>
+        <p class="hint">Read-only view of a login attempt and the same client's following captures. No requests are sent. Cookie values stay hidden; detections are hypotheses until reproduced.</p>
+      </div>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="authTimelineClose" aria-label="Close auth timeline">✕</button>
+    </div>
+    <div class="session-inspect-toolbar">
+      <span class="session-inspect-safety" id="authTimelineSummary" role="status"></span>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="authTimelineRefresh">Refresh</button>
+    </div>
+    <div class="modal-shell-body session-inspect-body">
+      <div id="authTimelineState" class="hint" role="status" aria-live="polite">Select a login flow to view its auth timeline.</div>
+      <section class="session-inspect-section" aria-labelledby="authTimelineListTitle">
+        <div class="session-inspect-section-head"><h3 id="authTimelineListTitle">Login chain</h3><span class="hint">Redirects, cookies, session/CSRF rotation, MFA, scheme and host changes.</span></div>
+        <div id="authTimelineList"></div>
+      </section>
+    </div>
+  </div>
+</div>
 <div id="authzModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="authzModalTitle" class="modal-shell modal-lg-tall">
     <div class="row modal-shell-head">

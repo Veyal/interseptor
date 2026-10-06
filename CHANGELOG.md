@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Anonymous vs authenticated differential testing.** `authz_differential` (REST `POST /api/authz/differential`) replays one request as anonymous plus the saved identities and classifies each result as auth failure, authz failure, validation failure or success. An optional invalid-body probe reports whether authentication is evaluated before validation, and an optional read-only state flow records side effects before/after each context. The typed evidence keeps every raw flow ID, labels inferences as hypotheses, and can be attached to a finding in one call (`attachToFinding`).
 
+- **Auth timeline.** History → right-click → "Auth timeline from this flow" (also `auth_timeline` over MCP and `GET /api/flows/{id}/auth-timeline`) reconstructs a login attempt from captured traffic: redirects, cookie create/replace/clear/reject, cookies sent or omitted, session-ID and CSRF rotation, MFA state, scheme/host changes, and the first transition where authenticated state appears lost. It is read-only, labels inferred behaviour as hypotheses, and shows only value fingerprints; raw values stay in the project store.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.

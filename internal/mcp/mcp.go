@@ -2859,6 +2859,32 @@ func (s *Server) registerTools() {
 			return s.api(http.MethodPost, "/api/authz/differential", body)
 		})
 
+	s.add("auth_timeline",
+		"Read-only auth timeline for a login flow and the same client's following captures: redirects, Set-Cookie create/replace/clear/reject, cookie send/omit, session-ID and CSRF rotation, MFA state, scheme/host changes and the first transition where authenticated state appears lost. Detections are hypotheses until reproduced; cookie values are never returned (fingerprints only).",
+		obj(map[string]any{
+			"flowId":        p("integer", "the login flow to start from"),
+			"windowSeconds": p("integer", "how far after the flow to follow the same client (default 120, max 600)"),
+			"max":           p("integer", "max flows in the chain (default 40, max 100)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "flowId", 0)
+			if id <= 0 {
+				return "", fmt.Errorf("flowId required")
+			}
+			q := url.Values{}
+			if v := argInt(a, "windowSeconds", 0); v > 0 {
+				q.Set("windowSeconds", strconv.Itoa(v))
+			}
+			if v := argInt(a, "max", 0); v > 0 {
+				q.Set("max", strconv.Itoa(v))
+			}
+			path := fmt.Sprintf("/api/flows/%d/auth-timeline", id)
+			if len(q) > 0 {
+				path += "?" + q.Encode()
+			}
+			return s.apiGet(path)
+		})
+
 	s.add("authz_run",
 		"Replay captured endpoint(s) under each identity and diff responses — IDOR / broken access control.",
 		obj(map[string]any{

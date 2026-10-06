@@ -37,6 +37,7 @@ func (h *Hub) routes() {
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
 	h.mux.HandleFunc("GET /api/flows/session-inspect", f.inspectSession)
+	h.mux.HandleFunc("GET /api/flows/{id}/auth-timeline", f.authTimelineHandler)
 	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
 	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
 	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
