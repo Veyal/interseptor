@@ -63,6 +63,7 @@
   /* Image lightbox — a blackout viewer, deliberately theme-independent. */
   --lightbox-bg:rgba(0,0,0,.82); --lightbox-bar:rgba(0,0,0,.55); --lightbox-stage:rgba(0,0,0,.35);
   --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
+  --row-h:30px;
   --nav-rail-w:204px; --side-panel-w:280px;
   --topbar-h:52px; --ctxbar-h:40px;
 }
@@ -133,7 +134,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
 /* top bar */
-#bar{height:var(--topbar-h);flex:none;background:var(--bg1);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 18px;user-select:none;z-index:10;box-shadow:none}
+#bar{height:calc(var(--topbar-h) + env(safe-area-inset-top,0px));flex:none;background:var(--bg1);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:env(safe-area-inset-top,0px) max(18px,env(safe-area-inset-right,0px)) 0 max(18px,env(safe-area-inset-left,0px));user-select:none;z-index:10;box-shadow:none}
 #logo{width:28px;height:28px;border-radius:var(--r-md);background:var(--accentSolid);border:none;box-shadow:none;;display:grid;place-items:center;color:var(--onAccent)}
 .brand{font-weight:650;letter-spacing:-.3px;;font-size:var(--fs-lg)}
 .tag{font-size:var(--fs-xs);color:var(--fg3);letter-spacing:1.5px}
@@ -292,7 +293,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 body.col-resizing,body.col-resizing *{cursor:col-resize!important}
 body.col-resizing{user-select:none;-webkit-user-select:none}
 #rows{flex:1;overflow:auto;min-height:0;background:var(--bg1)}
-.trow{height:30px;border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:var(--fs-xs);padding:0 6px;cursor:pointer;user-select:none;-webkit-user-select:none;transition:background var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard)}
+.trow{height:var(--row-h,30px);border-bottom:1px solid var(--line);border-left:2px solid transparent;font-size:var(--fs-xs);padding:0 6px;cursor:pointer;user-select:none;-webkit-user-select:none;transition:background var(--motion-fast) var(--motion-standard),border-color var(--motion-fast) var(--motion-standard)}
 .trow:hover{background:var(--bg3)}
 .trow.msel{background:var(--accentDim)}
 .trow.sel.msel{background:var(--sel)}
@@ -1191,7 +1192,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
 }
 @media (max-width:720px){
   body{min-width:0;overflow:hidden}
-  #bar{min-width:0;overflow:hidden;gap:8px;padding:0 8px}
+  #bar{min-width:0;overflow:hidden;gap:8px;padding:env(safe-area-inset-top,0px) max(8px,env(safe-area-inset-right,0px)) 0 max(8px,env(safe-area-inset-left,0px))}
   #crumb{display:none}
   #bar>.spacer{min-width:0}
   #bar>.row{min-width:0;overflow:hidden}
@@ -1200,6 +1201,10 @@ details.acc>summary.acc-h>*{margin:7px 0}
   #sseStatus #sseLabel{display:none}
   #sseStatus.reconnecting #sseLabel{display:inline}
   #appRow{flex-direction:column}
+  #appRow{padding-bottom:env(safe-area-inset-bottom,0px)}
+  .authz-row{grid-template-columns:minmax(0,1fr) 56px minmax(0,auto)}
+  .authz-row>*{min-width:0;overflow-wrap:anywhere}
+  .authz-row>:nth-child(3){grid-column:1/-1;grid-row:2}
   #tabs{display:none}
   .nav-rail-group{display:contents}
   .nav-rail-group-label,.nav-rail-foot{display:none}
@@ -1408,7 +1413,7 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
    stylesheet had two sources of truth and editing the primitive silently did
    nothing. TestUIStylesheetHasNoDuplicateSelectors keeps it from coming back. */
 @media (max-width:900px){
-  .toolbar{padding-left:10px;padding-right:10px}
+  .toolbar{padding-left:10px;padding-right:10px;flex-wrap:wrap;overflow-x:visible}
   .findings-toolbar{align-items:flex-start;flex-wrap:wrap}
   .findings-toolbar-actions{flex:1 1 100%;width:100%;flex-wrap:wrap}
   .findings-toolbar .find-groupby{width:100%;padding-left:0}
@@ -1432,8 +1437,32 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
   .settings-form-grid,.settings-form-grid-host,.settings-quick-add{grid-template-columns:minmax(0,1fr)}
   .settings-quick-add .btn{width:100%}
 }
+@media (min-width:721px) and (max-width:900px){
+  :root{--nav-rail-w:56px}
+  #tabs{padding:var(--sp-3) var(--sp-2)}
+  .nav-rail-group-label,.nav-rail-foot{display:none}
+  .tab{justify-content:center;gap:0;padding:var(--sp-2);font-size:0}
+  .tab .badge{position:absolute;top:2px;right:2px;margin:0;font-size:var(--fs-xs)}
+  .tab .nav-dot{position:absolute;top:6px;right:6px;margin:0}
+}
 @media (max-width:600px){
   .settings-nav button{font-size:var(--fs-sm)}
+  .oob-row{grid-template-columns:44px minmax(0,1fr) auto}
+  .oob-row>*{min-width:0}
+  .oob-row .oob-src{grid-column:1/-1;grid-row:2}
+  .authz-id{flex-wrap:wrap}
+  .authz-id .authz-name{flex:1 1 100%;width:100%}
+  .authz-id .authz-hdr{flex:1 1 0;min-width:0}
+  .act-filter{width:100%;margin-left:0}
+  .act-row{flex-direction:column;align-items:stretch;gap:var(--sp-1)}
+  .act-tool{min-width:0}
+  .act-sum,.act-res{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .act-meta{text-align:left}
+  .hi-prompt{min-width:0}
+  .hi-prompt .hi-msg{min-width:0;flex:1 1 100%}
+  .hi-prompt .hi-actions{flex:1 1 100%;min-width:0}
+  .hi-prompt .hi-input{width:100%;min-width:0;min-height:44px}
+  .hi-prompt .btn{min-height:44px}
   .btn.find-mobile-back{display:inline-flex}
   .find-view .find-detail.find-mobile-detail-visible{display:block}
   .find-view:not(:has(.find-mobile-detail-visible)) .find-detail{display:none}
@@ -1708,3 +1737,18 @@ details[open]>summary::before{content:'▾'}
 
 .find-caps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:var(--fs-xs)}.find-cap{padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--fg2)}.find-cap-miss{border-style:dashed;color:var(--fg3)}
 .find-readiness-board{margin-top:8px}.find-board-scroll{overflow-x:auto}.find-board{width:100%;border-collapse:collapse;font-size:var(--fs-xs)}.find-board th,.find-board td{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+
+/* Touch targets. Desktop density is unchanged; coarse pointers (phones and
+   tablets) get 44px hit areas. Kept last so it wins the cascade. .trow is
+   sized through --row-h because the History list is virtualized. */
+@media (pointer:coarse){
+  .btn,.tab,.search,.ui-select-trigger,.settings-nav button,.btn.xs,.btn-compact,.rep-tab-add,.uisw,#themeToggle,.ui-select-opt,.ctx-item{min-height:44px}
+  .search{height:auto}
+  #themeToggle{min-width:44px}
+  .seg{min-height:44px}
+  .seg button{min-height:36px;padding:var(--sp-2) var(--sp-3)}
+  .chip .x{width:28px;height:28px}
+  .rep-tab .rt-close{min-width:32px;min-height:32px}
+  input[type=checkbox],input[type=radio]{position:relative;width:20px;height:20px;min-width:20px}
+  input[type=checkbox]::after,input[type=radio]::after{content:'';position:absolute;inset:-12px}
+}

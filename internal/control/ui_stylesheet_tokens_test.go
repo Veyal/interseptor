@@ -137,3 +137,114 @@ func TestUISharedClassesAreDefined(t *testing.T) {
 		t.Error(".skip:focus must reveal the link inside the top safe-area inset")
 	}
 }
+
+func TestUIViewportExtendsIntoSafeArea(t *testing.T) {
+	for _, name := range []string{"index.html", "login.html"} {
+		if !strings.Contains(readUIAsset(t, name), "viewport-fit=cover") {
+			t.Errorf("%s viewport meta must declare viewport-fit=cover so env(safe-area-inset-*) applies", name)
+		}
+	}
+	css := readUIAsset(t, "app.css")
+	for _, want := range []string{"env(safe-area-inset-top", "env(safe-area-inset-left", "env(safe-area-inset-right", "env(safe-area-inset-bottom"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("app.css never reads %s", want)
+		}
+	}
+}
+
+// mediaBlock returns the concatenated bodies of every @media block whose
+// prelude equals q.
+func mediaBlock(t *testing.T, css, q string) string {
+	t.Helper()
+	var out strings.Builder
+	for from := 0; ; {
+		rel := strings.Index(css[from:], q+"{")
+		if rel < 0 {
+			break
+		}
+		at := from + rel
+		depth, end := 0, -1
+		for i := at + len(q); i < len(css) && end < 0; i++ {
+			switch css[i] {
+			case '{':
+				depth++
+			case '}':
+				if depth--; depth == 0 {
+					end = i
+				}
+			}
+		}
+		if end < 0 {
+			t.Fatalf("media block %q is unterminated", q)
+		}
+		out.WriteString(css[at+len(q)+1 : end])
+		from = end
+	}
+	if out.Len() == 0 {
+		t.Fatalf("media block %q not found", q)
+	}
+	return out.String()
+}
+
+// .trow height is shared with the virtualized History list (ROW_H in proxy.js),
+// so it is exposed as --row-h for that module instead of being resized here.
+func TestUIFlowRowHeightIsATokenForVirtualization(t *testing.T) {
+	if !strings.Contains(readUIAsset(t, "app.css"), ".trow{height:var(--row-h,30px)") {
+		t.Error(".trow height must read --row-h so the virtual list and CSS can agree")
+	}
+}
+
+func TestUICoarsePointerGetsFortyFourPixelTargets(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	at := strings.LastIndex(css, "@media (pointer:coarse){")
+	if at < 0 {
+		t.Fatal("no @media (pointer:coarse) block")
+	}
+	if strings.Count(css, "pointer:coarse") != 1 {
+		t.Error("touch sizing must live in a single pointer:coarse block")
+	}
+	block := mediaBlock(t, css, "@media (pointer:coarse)")
+	for _, want := range []string{
+		".btn,", ".tab,", ".search,", ".ui-select-trigger", ".seg button", ".chip .x", ".btn.xs", "min-height:44px",
+		"input[type=checkbox],input[type=radio]", "width:20px",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("pointer:coarse block missing %q", want)
+		}
+	}
+	for _, tail := range regexp.MustCompile(`@media`).FindAllStringIndex(css[at+10:], -1) {
+		t.Errorf("another @media block follows the pointer:coarse block at offset %d", tail[0])
+	}
+}
+
+func TestUIResponsiveCollapseAt900720And600(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	tablet := mediaBlock(t, css, "@media (min-width:721px) and (max-width:900px)")
+	for _, want := range []string{"--nav-rail-w:56px", ".nav-rail-group-label", ".nav-rail-foot", "font-size:0"} {
+		if !strings.Contains(tablet, want) {
+			t.Errorf("tablet rail collapse missing %q", want)
+		}
+	}
+	m900 := mediaBlock(t, css, "@media (max-width:900px)")
+	if !strings.Contains(m900, ".toolbar{") || !strings.Contains(m900, "flex-wrap:wrap") || !strings.Contains(m900, "overflow-x:visible") {
+		t.Error("900px block must let .toolbar wrap instead of scrolling sideways")
+	}
+	m720 := mediaBlock(t, css, "@media (max-width:720px)")
+	for _, want := range []string{
+		".authz-row{grid-template-columns:minmax(0,1fr) 56px minmax(0,auto)",
+		"overflow-wrap:anywhere", "#appRow{", "env(safe-area-inset-bottom",
+	} {
+		if !strings.Contains(m720, want) {
+			t.Errorf("720px block missing %q", want)
+		}
+	}
+	m600 := mediaBlock(t, css, "@media (max-width:600px)")
+	for _, want := range []string{
+		".oob-row{grid-template-columns:44px minmax(0,1fr) auto", ".authz-id{flex-wrap:wrap", ".act-filter{width:100%",
+		".hi-prompt .hi-input{width:100%", "min-width:0",
+	} {
+		if !strings.Contains(m600, want) {
+			t.Errorf("600px block missing %q", want)
+		}
+	}
+}

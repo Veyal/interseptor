@@ -115,7 +115,7 @@ func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
 
 func TestUIFoundationResponsiveViewportContract(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	requireUIContains(t, index, `<meta name="viewport" content="width=device-width, initial-scale=1">`)
+	requireUIContains(t, index, `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`)
 	if strings.Contains(index, `<meta name="viewport" content="width=1280">`) {
 		t.Error("index.html still forces a desktop viewport width")
 	}
