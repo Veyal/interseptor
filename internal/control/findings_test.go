@@ -797,7 +797,7 @@ func TestFindingCvssCreateAndPatch(t *testing.T) {
 
 	// CREATE with cvss + Critical severity.
 	resp, err := http.Post(ts.URL+"/api/findings", "application/json",
-		strings.NewReader(`{"title":"CVSS test","severity":"critical","cvss":"9.8"}`))
+		strings.NewReader(`{"title":"CVSS test","severity":"critical","cvss":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"}`))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -807,15 +807,15 @@ func TestFindingCvssCreateAndPatch(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create: want 200, got %d", resp.StatusCode)
 	}
-	if created.Cvss != "9.8" {
-		t.Fatalf("create: cvss want %q got %q", "9.8", created.Cvss)
+	if created.Cvss != "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" {
+		t.Fatalf("create: cvss want %q got %q", "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", created.Cvss)
 	}
 	if created.Severity != "Critical" {
 		t.Fatalf("create: severity want Critical got %q", created.Severity)
 	}
 
 	// PATCH cvss with a vector.
-	vector := `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`
+	vector := `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:N/SA:N`
 	payload, _ := json.Marshal(map[string]string{"cvss": vector})
 	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/findings/"+idStr(created.ID), strings.NewReader(string(payload)))
 	r2, err := http.DefaultClient.Do(req)

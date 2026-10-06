@@ -55,7 +55,7 @@ function renderEvidenceMapping(f) {
 export function renderProofReview(f, edit) {
   const r = f.proofReview || {};
   const score = f.cvssScore == null ? 'CVSS v4.0 vector needed' : `${f.cvssScore.toFixed(1)} · ${f.cvssRating} · ${f.cvssNomenclature}`;
-  return `<section class="find-sec find-proof-review" id="find-sec-proof-review"><h3>Impact verification</h3>${edit ? `<div class="find-properties"><label for="findExecution">Observed impact</label><select id="findExecution">${Object.entries(executionLabels).map(([v, label]) => `<option value="${v}"${(r.execution || '') === v ? ' selected' : ''}>${label}</option>`).join('')}</select><label for="findVisualProof">Visual claim</label><button type="button" id="findVisualProof" class="btn" aria-pressed="${!!r.visual}">${r.visual ? 'Browser screenshot required' : 'No visual claim'}</button></div><label class="find-target-field" for="findExecutionReason">Verification limit / reason<textarea class="find-field-text" id="findExecutionReason" rows="2" placeholder="Required when impact has not been demonstrated" aria-describedby="findExecutionReasonError">${esc(r.reason || '')}</textarea></label><p class="find-proof-needed" id="findExecutionReasonError" hidden>A reason is required when impact has not been demonstrated.</p>` : `<p>${esc(executionLabels[r.execution || ''] || r.execution)}</p>${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${r.visual ? '<p class="hint">Requires a real browser capture of the observed result.</p>' : ''}`}
+  return `<section class="find-sec find-proof-review" id="find-sec-proof-review"><h3>Impact verification</h3>${edit ? `<div class="find-properties"><label for="findExecution">Observed impact</label><select id="findExecution">${Object.entries(executionLabels).map(([v, label]) => `<option value="${v}"${(r.execution || '') === v ? ' selected' : ''}>${label}</option>`).join('')}</select><label for="findVisualProof">Visual claim</label><button type="button" id="findVisualProof" class="btn" aria-pressed="${!!r.visual}">${r.visual ? 'Browser screenshot required' : 'No visual claim'}</button></div><label class="find-target-field" for="findExecutionReason">Verification limit / reason<textarea class="find-field-text" id="findExecutionReason" rows="2" placeholder="Required when impact has not been demonstrated" aria-describedby="findExecutionReasonError">${esc(r.reason || '')}</textarea></label><p class="find-proof-needed" id="findExecutionReasonError" hidden>A reason is required when impact has not been demonstrated.</p><label class="find-target-field" for="findSeverityOverride">Severity override reason<textarea class="find-field-text" id="findSeverityOverride" rows="2" placeholder="Only when severity deliberately differs from the calculated CVSS rating">${esc(r.severityOverride || '')}</textarea></label>` : `<p>${esc(executionLabels[r.execution || ''] || r.execution)}</p>${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${r.severityOverride ? `<p class="hint">Severity override: ${esc(r.severityOverride)}</p>` : ''}${r.visual ? '<p class="hint">Requires a real browser capture of the observed result.</p>' : ''}`}
   ${edit ? renderEvidenceMapping(f) : ''}${renderCapabilityClaims(f,edit)}<p class="find-cvss-score" id="findCvssScore">${esc(score)}</p></section>`;
 }
 
@@ -131,8 +131,8 @@ export function bindFindingAssessment(root, f, { stage, save, refresh, openFlow 
     const card = root.querySelector(`#findTargetCard-${targets.length}`);
     if (card) { card.open = true; card.querySelector('input')?.focus(); }
   };
-  const execution = root.querySelector('#findExecution'), reason = root.querySelector('#findExecutionReason'), visual = root.querySelector('#findVisualProof');
-  const reviewFields = () => { review.execution = execution.value; review.reason = reason.value; return { proofReview: { ...review } }; };
+  const execution = root.querySelector('#findExecution'), reason = root.querySelector('#findExecutionReason'), visual = root.querySelector('#findVisualProof'), override = root.querySelector('#findSeverityOverride');
+  const reviewFields = () => { review.execution = execution.value; review.reason = reason.value; if (override) review.severityOverride = override.value.trim(); return { proofReview: { ...review } }; };
   const saveReview = () => {
     const fields = reviewFields(); stage(fields);
     const needsReason = ['prerequisite_only', 'not_executed'].includes(review.execution) && !review.reason.trim();
@@ -146,6 +146,7 @@ export function bindFindingAssessment(root, f, { stage, save, refresh, openFlow 
   root.querySelectorAll('[data-review-evidence]').forEach(select=>select.addEventListener('change',()=>{review.evidence={...(review.evidence || {})};const [type,id]=select.value.split(':');if(!id)delete review.evidence[select.dataset.reviewEvidence];else review.evidence[select.dataset.reviewEvidence]=type==='flow'?{flowId:Number(id)}:{hash:id};saveReview();}));
   if (execution) execution.addEventListener('change', saveReview);
   if (reason) { reason.addEventListener('input', () => stage(reviewFields())); reason.addEventListener('blur', saveReview); }
+  if (override) { override.addEventListener('input', () => stage(reviewFields())); override.addEventListener('blur', saveReview); }
   if (visual) visual.onclick = () => { review.visual = !review.visual; visual.setAttribute('aria-pressed', String(review.visual)); visual.textContent = review.visual ? 'Browser screenshot required' : 'No visual claim'; saveReview(); };
   initUiSelects(root);
 }

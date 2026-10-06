@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -33,15 +34,29 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - A permissive response or reachable prerequisite alone does not establish the claimed impact
    - Otherwise use prerequisite_only or not_executed with an explicit proofReview.reason; status stays needs_verification
    - Narrow impact to what evidence establishes. Mark unproven execution as "NOT confirmed". Keep verificationInstructions for the remaining review
-   - Keep secrets redacted; a length or digest can establish equality without publishing the value
+   - Keep secrets redacted; a length or digest can establish equality without publishing the value. Call redact_value to get {len, sha256_prefix, kind} and a "[redacted ...]" form to paste; writes that contain a JWT, AIza key, $2b$ hash or Bearer token produce a warning
    - For integrity evidence, describe only the bounded, reversible observed change and preserve its flow
 
 Use structured blocks arrays when available; legacy body JSON remains accepted. Stub create (title only) is allowed.
-Do NOT file walls of freeform markdown. Put summary/impact/why/fix/retest in their fields, reproduction in text blocks, and raw proof in flow/image blocks.`
+Do NOT file walls of freeform markdown. Put summary/impact/why/fix/retest in their fields, reproduction in text blocks, and raw proof in flow/image blocks.
 
-// wallOfTextMin is the minimum narrative length that triggers a hard reject
-// when body text looks like an essay without structure.
-const wallOfTextMin = 180
+RESPONSES: a line starting "error:" is a hard rejection and nothing was written; fix the named field and resend.
+A "warning:" line (under "FORMAT WARNINGS") is advisory and non-blocking: the write succeeded and a draft may stay as is.
+NARRATIVE LIMIT: 180 characters of unstructured text per field (detail, and the text of blocks/body) unless impact/why are set or the text uses headings. detail is DEPRECATED; prefer blocks.`
+
+// narrativeCharLimit is the published per-field narrative budget. Unstructured
+// text of this many characters or more in detail, or in the text of blocks/body,
+// is rejected unless impact/why are set or the text uses headings.
+const narrativeCharLimit = 180
+
+// detailFieldDescription is the schema text for the legacy detail field.
+var detailFieldDescription = fmt.Sprintf("DEPRECATED legacy opening text; use summary/impact/why plus blocks. Unstructured text of %d characters or more is rejected unless impact and why are set", narrativeCharLimit)
+
+// errorf builds a hard rejection. The "error:" prefix is the structural marker
+// that distinguishes a rejection (nothing written) from a "warning:" (advisory).
+func errorf(format string, args ...any) error {
+	return fmt.Errorf("error: "+format, args...)
+}
 
 func findingBlocksSchema() map[string]any {
 	return map[string]any{
@@ -92,6 +107,8 @@ var (
 
 type findingArtifacts struct {
 	text          string
+	detailText    string
+	blocksText    string
 	flowCount     int
 	imageCount    int
 	proofless     int
@@ -116,18 +133,22 @@ type findingBodyBlock struct {
 func validateFindingFormat(in findingFormatInput) (error, []string) {
 	a := narrativeArtifacts(in.Body, in.Detail)
 	if !a.validBodyJSON {
-		return fmt.Errorf("body must be a JSON array of typed blocks [{type:'text',role,md}|{type:'flow',role,flowId,proof}|{type:'image',role,hash,source,proof}]"), nil
+		return errorf("body (or blocks) must be a JSON array of typed blocks [{type:'text',role,md}|{type:'flow',role,flowId,proof}|{type:'image',role,hash,source,proof}]; the value sent is not valid JSON of that shape"), nil
 	}
 	if confidence := strings.ToLower(strings.TrimSpace(in.Confidence)); confidence != "" && confidence != "tentative" && confidence != "firm" && confidence != "certain" {
-		return fmt.Errorf("confidence must be tentative, firm, or certain"), nil
+		return errorf("confidence must be one of tentative, firm, certain; got %q", in.Confidence), nil
 	}
 
 	var warns []string
 
 	// Reject essay dumps in body/detail that ignore the structured fields model.
-	if len(strings.TrimSpace(a.text)) >= wallOfTextMin && !reHeading.MatchString(a.text) &&
-		strings.TrimSpace(in.Impact) == "" && strings.TrimSpace(in.Why) == "" {
-		return fmt.Errorf("finding narrative is a wall of text — set summary + impact + why fields, keep body as typed reproduction/evidence blocks, not a freeform essay"), nil
+	if strings.TrimSpace(in.Impact) == "" && strings.TrimSpace(in.Why) == "" {
+		for _, field := range []struct{ name, text string }{{"detail", a.detailText}, {"blocks", a.blocksText}} {
+			text := strings.TrimSpace(field.text)
+			if len(text) >= narrativeCharLimit && !reHeading.MatchString(text) {
+				return errorf("%s is a wall of text (%d characters; limit is %d per field). Set the summary, impact and why fields and keep blocks to short typed reproduction/evidence entries; detail is deprecated", field.name, len(text), narrativeCharLimit), nil
+			}
+		}
 	}
 
 	hasSummary := strings.TrimSpace(in.Summary) != ""
@@ -193,7 +214,26 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 		warns = append(warns, "credentials/secrets mentioned — redact values; use a length or digest when it is sufficient evidence")
 	}
 
+	warns = append(warns, secretLintWarnings(in, a)...)
+
 	return nil, warns
+}
+
+// secretLintWarnings flags probable secrets in finding text. Warnings carry the
+// field, kind, length and the redacted form, never the value.
+func secretLintWarnings(in findingFormatInput, a findingArtifacts) []string {
+	fields := []struct{ name, text string }{
+		{"title", in.Title}, {"summary", in.Summary}, {"impact", in.Impact}, {"why", in.Why},
+		{"fix", in.Fix}, {"retest", in.Retest}, {"detail", a.detailText}, {"blocks", a.blocksText},
+		{"verificationInstructions", in.VerificationInstructions},
+	}
+	var warns []string
+	for _, f := range fields {
+		for _, hit := range redact.Scan(f.text) {
+			warns = append(warns, fmt.Sprintf("probable secret in %s (%s, %d chars) — do not publish the value; get its length and digest with redact_value and write %s instead", f.name, hit.Kind, hit.Len, hit.Suggest))
+		}
+	}
+	return warns
 }
 
 func findingTargetsSchema() map[string]any {
@@ -210,14 +250,16 @@ func findingProofReviewSchema() map[string]any {
 	for _, key := range []string{"authenticated_without_required_factor", "browser_execution", "account_control", "state_change"} {
 		claims[key] = obj(map[string]any{"note": p("string", "Reviewer observation, not an automatic verification flag"), "evidence": map[string]any{"type": "array", "maxItems": 16, "items": ref}}, "note", "evidence")
 	}
-	return obj(map[string]any{"claims": obj(claims), "execution": p("string", "demonstrated|prerequisite_only|not_executed"), "reason": p("string", "required when impact was not demonstrated"), "visual": p("boolean", "true when a real browser screenshot is required to establish the visual claim"), "evidence": obj(map[string]any{"action": ref, "result": ref, "control": ref})})
+	return obj(map[string]any{"claims": obj(claims), "execution": p("string", "demonstrated|prerequisite_only|not_executed"), "reason": p("string", "required when impact was not demonstrated"), "visual": p("boolean", "true when a real browser screenshot is required to establish the visual claim"), "severityOverride": p("string", "documented reason severity deliberately differs from the calculated CVSS rating; without it a mismatch is rejected"), "evidence": obj(map[string]any{"action": ref, "result": ref, "control": ref})})
 }
 
 func narrativeArtifacts(body, detail string) findingArtifacts {
 	out := findingArtifacts{roles: map[string]bool{}, validBodyJSON: true}
 	var parts []string
+	var blockParts []string
 	if d := strings.TrimSpace(detail); d != "" {
 		parts = append(parts, d)
+		out.detailText = d
 	}
 	if strings.TrimSpace(body) == "" {
 		out.text = strings.Join(parts, "\n\n")
@@ -237,6 +279,7 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 		case "text":
 			if strings.TrimSpace(b.MD) != "" {
 				parts = append(parts, b.MD)
+				blockParts = append(blockParts, b.MD)
 			}
 		case "flow":
 			out.flowCount++
@@ -261,6 +304,7 @@ func narrativeArtifacts(body, detail string) findingArtifacts {
 		}
 	}
 	out.text = strings.Join(parts, "\n\n")
+	out.blocksText = strings.Join(blockParts, "\n\n")
 	return out
 }
 
@@ -269,14 +313,15 @@ func hasReproductionRole(roles map[string]bool) bool {
 }
 
 // formatWarningsBlock renders soft validation warnings for the tool response.
+// Warnings never block: the write has already succeeded when they are shown.
 func formatWarningsBlock(warns []string) string {
 	if len(warns) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\nFORMAT WARNING — fix with update_finding / evidence tools (draft OK; fill for report-ready):\n")
+	b.WriteString("\n\nFORMAT WARNINGS (non-blocking; the write succeeded; fix with update_finding / evidence tools, draft OK, fill for report-ready):\n")
 	for _, w := range warns {
-		b.WriteString("- ")
+		b.WriteString("- warning: ")
 		b.WriteString(w)
 		b.WriteByte('\n')
 	}

@@ -191,6 +191,9 @@ The UI and MCP share the report-quality and evidence contracts:
 - `normalize_finding_targets` applies reviewer-approved suggestion indexes from that preview to a saved finding
   (`dryRun` defaults to true; `POST /api/findings/{id}/normalize-targets`).
 - `evaluate_finding_cvss` previews a CVSS v4 vector without updating a finding.
+- `redact_value` (and `POST /api/redact`) returns `{len, sha256_prefix, kind}` for a secret so a finding can show
+  length and equality without the value. The value is hashed in memory and never stored. Finding writes
+  warn when text looks like a JWT, `AIza` key, `$2b$` hash or `Bearer` token.
 - `list_finding_revisions`, `get_finding_revision`, and `restore_finding_revision` expose immutable
   finding history and recovery. Restore appends a revision and cannot reconstruct separately purged
   traffic. Historical snapshots require the same care as current evidence.

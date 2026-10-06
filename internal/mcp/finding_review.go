@@ -99,6 +99,9 @@ func (s *Server) registerFindingReviewTools() {
 		}
 		return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/normalize-targets", id), map[string]any{"approve": a["approve"], "dryRun": argBool(a, "dryRun", true)})
 	})
+	s.add("redact_value", "Describe a secret (bearer token, JWT, bcrypt hash, API key) as {len, sha256_prefix, kind} plus a ready-to-paste redacted form. The raw value is hashed in memory and never stored or logged; write the redacted form, not the value, into findings.", obj(map[string]any{"value": p("string", "the secret to describe")}, "value"), func(a map[string]any) (string, error) {
+		return s.api(http.MethodPost, "/api/redact", map[string]any{"value": argStr(a, "value")})
+	})
 	s.add("evaluate_finding_cvss", "Evaluate a CVSS v4.0 vector without modifying a finding. Returns canonical vector, score, original rating and finding severity.", obj(map[string]any{"vector": pt("string")}, "vector"), func(a map[string]any) (string, error) {
 		return s.api(http.MethodPost, "/api/finding-cvss", map[string]any{"vector": argStr(a, "vector")})
 	})
