@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
+import { $, registerProjectSwitchGuard, $$, esc, escAttr, state, toast, toastError, api, saveFile, methodColor, statusColor, statusText, mimeLabel, fmtSize, fmtBytes, fmtTime, fmtDur, FLAG_WS, FLAG_TLS, FLAG_AI, FLAG_DISCOVERY, RENDER_CAP, highlightHTTP, highlightBodyText, prettify, formatHexDump, copyText, uiPrompt, uiConfirm, hasOpenModal, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, hideCtxMenu, openCtxMenu, closeAllUiSelects, flowBodyDownloadName, flowBodyDownloadHref, selectionWithin, wireSelectionDecode, wireRowKey, createFlowStore, loadFlowStore, upsertFlow as storeUpsertFlow, appendFlows, dropFlowsFrom, removeFlow, createVirtualList, diffVisibleRows, compileScopeRules, flowInScope, icon, renderLoadError } from './core.js';
 registerProjectSwitchGuard(()=>noteDrafts.size||noteSaveTails.size?'Save or retry History notes before switching projects.':'');
 import { flowFindings, addFlowToFinding, openFinding, updateFindPocBtn } from './findings.js';
 import { tagChipStyle, renderTagBar, tagActionTargets, mutateFlowTags, openTagChipMenu } from './tags.js';
@@ -59,7 +59,7 @@ async function sendAsIdentity(f, id){
     t.title=repTitle(t)+(id.name?' ['+id.name+']':'');
     renderRepTabs();repLoadEditor();repPersist();
     toast('loaded #'+f.id+' as '+( id.name||'identity')+' · Repeater');
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Send as identity failed',e);}
 }
 
 const FLOW_PAGE=250;            // primary page size shown in History
@@ -120,8 +120,19 @@ function normalizeFlowCols(cols){
   const set=new Set(cols);
   return FLOW_COLUMNS.map(c=>c.key).filter(k=>set.has(k));
 }
+// On phones the History table keeps only the columns needed to triage a flow and
+// uses compact tracks, so it fits a 375px pane instead of scrolling sideways.
+const PHONE_FLOW_COLS={id:'40px',method:'56px',host:'minmax(64px,1fr)',path:'minmax(64px,1.6fr)',status:'44px'};
+const flowPhoneQuery=typeof matchMedia==='function'?matchMedia('(max-width:720px)'):null;
+function visibleFlowCols(){
+  if(!flowPhoneQuery||!flowPhoneQuery.matches)return state.flowCols;
+  const cols=state.flowCols.filter(k=>PHONE_FLOW_COLS[k]);
+  return cols.length?cols:Object.keys(PHONE_FLOW_COLS);
+}
 function flowColGrid(){
-  return state.flowCols.map(k=>{
+  const phone=flowPhoneQuery&&flowPhoneQuery.matches;
+  return visibleFlowCols().map(k=>{
+    if(phone)return PHONE_FLOW_COLS[k];
     const w=state.flowColW&&state.flowColW[k];
     return (typeof w==='number')?w+'px':FLOW_COLUMNS.find(c=>c.key===k).w;
   }).join(' ');
@@ -237,7 +248,7 @@ function sortIsLiveDefault(){return state.sort.key==='id'&&state.sort.dir===-1;}
 export function renderFlowHead(){
   const head=$('#flowHead')||$('.thead');
   if(!head)return;
-  head.innerHTML=state.flowCols.map(k=>{
+  head.innerHTML=visibleFlowCols().map(k=>{
     const c=FLOW_COLUMNS.find(x=>x.key===k);
     const align=c.align?` style="text-align:${c.align}"`:'';
     const accessible=c.label==='St'?'Status':c.label;
@@ -391,7 +402,7 @@ function flowRowHTML(f){
     time:`<div class="tr-t" data-field="time">${fmtTime(f.ts)}</div>`,
   };
   return `<div class="trow ${f.id===state.selId?'sel':''}${state.selected.has(f.id)?' msel':''}${pending?' pending':''}${hasNote?' has-note':''}" data-id="${f.id}" aria-current="${f.id===state.selId?'true':'false'}" aria-pressed="${state.selected.has(f.id)?'true':'false'}"${title}>
-      ${state.flowCols.map(k=>cells[k]).join('')}
+      ${visibleFlowCols().map(k=>cells[k]).join('')}
     </div>`;
 }
 function wireFlowRow(r){
@@ -725,7 +736,7 @@ export function closeInspector(){
 // (scroll binding + rAF coalescing); computeWindow() below runs the same
 // windowing math the hand-rolled version used (start/end/topPad/bottomPad),
 // just centralized in core.js so future panels can share it.
-const flowVirt=createVirtualList({container:$('#rows'),itemHeight:ROW_H,threshold:VIRT_MIN,buffer:VIRT_BUF,onScroll:renderRows});
+const flowVirt=createVirtualList({container:$('#rows'),itemHeight:ROW_H,threshold:VIRT_MIN,buffer:VIRT_BUF,onScroll:()=>{if(!reconcileVirtualRows())renderRows();}});
 // Backstop for queueFullWindowRebuild's hidden-tab fallback above: force one
 // definitive re-render the moment the tab regains visibility, regardless of
 // whether a rebuild was already queued — cheap (renderRows() just rebuilds
@@ -1003,7 +1014,7 @@ export async function loadFlows(){
       else if(state.selId===committedSelected)reconcileInspectorSelectionAfterReload(committedFlow,filterChanged);
     }
     state.flowSearchNote=d.searchNote||'';
-    const box=$('#rows');if(box)box.scrollTop=0;
+    const box=$('#rows');if(signatureChanged&&box)box.scrollTop=0;
     renderRows();
     updateTruncBanner();
     refreshMethodFilter();
@@ -1071,7 +1082,8 @@ let methodsDirty=true; // build the method filter once initially
 // request) do O(1) lookup+refresh instead of O(N) findIndex over the whole
 // loaded list — essential once you've scrolled deep.
 const flowStore=createFlowStore(state.flows);
-let reloadTimer=null;
+let reloadTimer=null,reloadFirstAt=0;
+const RELOAD_DEBOUNCE_MS=150,RELOAD_MAX_WAIT_MS=1000;
 const renderSideEpoch={req:0,res:0};
 let wsRenderEpoch=0,wsReplayEpoch=0;
 let selectFlowEpoch=0;
@@ -1099,7 +1111,15 @@ function restoreFlowNoteDraft(flowId,fallback){
   $('#noteInput').value=noteDrafts.get(flowId)?.value??fallback;
   renderFlowNoteStatus(flowId);
 }
-export function scheduleReload(){clearTimeout(reloadTimer);reloadTimer=setTimeout(loadFlows,150);}
+// scheduleReload debounces bursts of reload triggers but never starves: once the
+// first pending trigger is RELOAD_MAX_WAIT_MS old the reload fires regardless.
+export function scheduleReload(){
+  const now=Date.now();
+  if(!reloadFirstAt)reloadFirstAt=now;
+  clearTimeout(reloadTimer);
+  const wait=Math.max(0,Math.min(RELOAD_DEBOUNCE_MS,RELOAD_MAX_WAIT_MS-(now-reloadFirstAt)));
+  reloadTimer=setTimeout(()=>{reloadFirstAt=0;loadFlows();},wait);
+}
 function reconcileInspectorSelectionAfterReload(previousFlow,filterChanged){
   if(state.selId==null)return;
   if(!state.detail&&flowStore.byId.has(state.selId)){selectFlow(state.selId);return;}
@@ -1186,6 +1206,28 @@ function showInspectorSelectionUnavailable(id){
   if(res)res.innerHTML='<div class="state-empty" role="status"><p class="state-empty-hint">No response can be shown until the selected flow matches the current filters.</p></div>';
   if(status){status.textContent='not in current filters';status.style.color='var(--fg3)';}
 }
+// syncSelectedRow moves the inspected-row highlight by touching only the old and
+// new rows. It returns false when a multi-select is (or was) drawn, because the
+// msel/aria-pressed state of arbitrary rows may then be stale and needs renderRows.
+function syncSelectedRow(prevId){
+  const box=$('#rows');
+  if(!box||state.selected.size||box.querySelector('.trow.msel'))return false;
+  const rows=new Map();
+  for(const id of new Set([prevId,state.selId])){
+    if(id==null)continue;
+    const row=box.querySelector('.trow[data-id="'+id+'"]');
+    if(!row)continue;
+    if(!flowStore.byId.get(id))return false;
+    rows.set(id,row);
+  }
+  rows.forEach((row,id)=>{
+    const sel=id===state.selId;
+    row.classList.toggle('sel',sel);
+    row.setAttribute('aria-current',sel?'true':'false');
+    row._flowHTML=flowRowHTML(flowStore.byId.get(id));
+  });
+  return true;
+}
 export async function selectFlow(id){
   const selectEpoch=++selectFlowEpoch;
   const filterEpoch=flowFilterEpoch;
@@ -1196,9 +1238,10 @@ export async function selectFlow(id){
     state.detail=null;
     const note=$('#noteInput');if(note)note.value='';
   }
+  const prevSelId=state.selId;
   state.selId=id;
   if(switching)onAuthzSelectionChanged();
-  renderRows();
+  if(!syncSelectedRow(prevSelId))renderRows();
   if(needsLoadingState)showInspectorLoading(id);
   try{
     const pendingNoteSave=noteSaveTails.get(id);
@@ -1234,6 +1277,16 @@ export async function selectFlow(id){
     }
   }catch(e){if(current())showInspectorLoadError(id,e);}
 }
+// fetchRawMessage caches the raw message per flowId:side for the lifetime of one
+// state.detail, so typing in Find-in-response re-highlights without a refetch.
+let rawCache={detail:null,map:new Map()};
+function fetchRawMessage(flowId,side,detail){
+  if(rawCache.detail!==detail)rawCache={detail,map:new Map()};
+  const key=flowId+':'+side;
+  if(rawCache.map.has(key))return Promise.resolve(rawCache.map.get(key));
+  const cache=rawCache;
+  return api('/api/flows/'+flowId+'/raw?side='+side).then(raw=>{cache.map.set(key,raw);return raw;});
+}
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
   const arrow=dir==='send'?'<span style="color:var(--blue)">▲ send</span>':'<span style="color:var(--accent)">▼ recv</span>';
@@ -1265,17 +1318,36 @@ export async function renderWSFrames(id){
     const d=await api('/api/flows/'+id+'/ws');const frames=d.frames||[];
     if(!current())return;
     const url=flowWsURL(detail||{});
+    const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
+      :'<span style="color:var(--fg3)">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
+    // A live frame only refreshes the frame list: rebuilding the whole pane would
+    // destroy the replay input's value and focus mid-typing.
+    const existing=$('#wsFrameList');
+    if(existing&&existing.dataset.flowId===String(id)&&$('#wsMsg')&&$('#resView').contains(existing)){
+      existing.innerHTML=list;
+      wireWsFrames(existing);
+      return;
+    }
     const box=`<div style="display:flex;gap:6px;margin-bottom:10px">
         <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
         <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
       <div id="wsReplayOut" style="margin-bottom:10px"></div>`;
-    const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
-      :'<span style="color:var(--fg3)">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
-    $('#resView').innerHTML=box+list;
+    $('#resView').innerHTML=box+`<div id="wsFrameList" data-flow-id="${id}">${list}</div>`;
     wireWsFrames($('#resView'));
     const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
     const inp=document.getElementById('wsMsg');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')wsReplay(url);};
   }catch(e){if(current())$('#resView').textContent='(error: '+e.message+')';}
+}
+// scheduleWSFrames coalesces a burst of ws.frame events into one trailing refresh.
+const WS_FRAME_COALESCE_MS=250;
+let wsFrameTimer=null,wsFrameId=null;
+export function scheduleWSFrames(id){
+  wsFrameId=id;
+  if(wsFrameTimer)return;
+  wsFrameTimer=setTimeout(()=>{
+    wsFrameTimer=null;
+    if(wsFrameId!=null&&state.selId===wsFrameId)renderWSFrames(wsFrameId);
+  },WS_FRAME_COALESCE_MS);
 }
 async function wsReplay(url){
   const out=$('#wsReplayOut'),button=$('#wsSendBtn');
@@ -1360,14 +1432,14 @@ export async function renderSide(side){
         return;
       }
       if(view==='hex'){
-        const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
+        const raw=await fetchRawMessage(flowId,side,detail);
         if(!current())return;
         el._rawText=raw;
         el._pretty=false;
         el.innerHTML='<pre class="hex-dump">'+esc(formatHexDump(raw))+'</pre>';
         return;
       }
-      const raw=await api('/api/flows/'+flowId+'/raw?side='+side);
+      const raw=await fetchRawMessage(flowId,side,detail);
       if(!current())return;
       el._rawText=raw;
       el._pretty=view==='pretty';
@@ -1455,6 +1527,7 @@ document.addEventListener('keydown',e=>{
 loadFlowCols();
 loadFlowColW();
 renderFlowHead();
+if(flowPhoneQuery)flowPhoneQuery.addEventListener('change',()=>{renderFlowHead();renderRows();});
 {const b=$('#colPickerBtn');if(b)b.onclick=e=>{e.stopPropagation();toggleColPicker();};}
 {const m=$('#colPicker');if(m)m.onclick=e=>e.stopPropagation();}
 document.addEventListener('click',()=>closeColPicker());
@@ -1626,7 +1699,7 @@ async function saveCurrentView(){
   const data={...state.filters,inScope:state.inScopeOnly,notesOnly:state.notesOnly,showManual:state.showManual,showAI:state.showAI,hideTlsFailed:state.hideTlsFailed};
   viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
   try{await api('/api/views',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,data})});toast('view saved');}
-  catch(e){toast(e.message);}
+  catch(e){toastError('Save view failed',e);}
   finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 async function deleteView(id,name){
@@ -1634,7 +1707,7 @@ async function deleteView(id,name){
   if(viewsMutationPending)return;
   viewsMutationPending=true;viewsLoadEpoch++;if($('#viewsBtn'))$('#viewsBtn').disabled=true;
   try{await api('/api/views/'+id,{method:'DELETE'});toast('view deleted');}
-  catch(e){toast(e.message);}
+  catch(e){toastError('Delete view failed',e);}
   finally{viewsMutationPending=false;if($('#viewsBtn'))$('#viewsBtn').disabled=false;loadViews();}
 }
 function openViewsMenu(){
@@ -1676,7 +1749,7 @@ export async function loadScope(){
 export async function addHostToScope(host){
   try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'include',host:host,enabled:true})}));
     toast('added '+host+' to scope — toggle ◎ in scope to focus');}
-  catch(e){toast(e.message);}
+  catch(e){toastError('Add to scope failed',e);}
 }
 export function renderScope(){
   const body=$('#scopeBody');if(!body)return;
@@ -1741,7 +1814,7 @@ $('#addScopeBtn').onclick=async()=>{
   if(!rule.host&&!rule.path){toast('host or path required');return;}
   scopeAddInFlight=true;const addEpoch=++scopeAddEpoch;setScopeAddState('pending');
   try{await scopeMutation(0,()=>api('/api/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(rule)}));
-    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){toast(e.message);setScopeAddState('idle');}
+    $('#newScopeHost').value='';$('#newScopePath').value='';toast('scope rule added');setScopeAddState('success');}catch(e){toastError('Add scope rule failed',e);setScopeAddState('idle');}
   finally{scopeAddInFlight=false;if($('#addScopeBtn')?.textContent==='Added')setTimeout(()=>{if(addEpoch===scopeAddEpoch)setScopeAddState('idle');},600);}
 };
 /* ---- filters: chips + apply/clear, kept in sync with the toolbar controls ---- */
@@ -1782,7 +1855,7 @@ async function tagFlowPrompt(f){
   const v=await uiPrompt({title:'Tag flow #'+f.id,value:cur,placeholder:'space- or comma-separated, e.g. auth idor'});
   if(v==null)return;
   try{await api('/api/flows/'+f.id+'/tags',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({tags:parseTags(v)})});}
-  catch(e){toast(e.message);}
+  catch(e){toastError('Tag failed',e);}
 }
 // tagSelectionPrompt ADDS tags to every selected flow (doesn't clobber existing).
 async function tagSelectionPrompt(){
@@ -1860,7 +1933,7 @@ function deleteHost(f){
       toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s'));
       if(state.detail?.host===f.host)closeInspector();
       loadRetention();loadFlows();
-    }catch(e){toast('purge: '+e.message);}
+    }catch(e){toastError('Purge failed',e);}
   };
 }
 
@@ -1884,7 +1957,7 @@ async function exportRawFlow(f,side,variant=''){
     const name=`flow-${f.id}_${host}_${method}_${side}${suffix}.http`;
     await saveFile(new Blob([raw],{type:'message/http'}),name,'message/http');
     toast('exported '+name);
-  }catch(e){if(e&&e.name==='AbortError')return;toast('export '+side+(variant?' original':'')+': '+e.message);}
+  }catch(e){if(e&&e.name==='AbortError')return;toastError('Export '+side+(variant?' original':'')+' failed',e);}
 }
 function rawExportItems(f,side){
   const label=side==='req'?'request':'response';
@@ -1928,7 +2001,7 @@ async function saveLoginMacroFromFlow(id){
     toast('login macro saved — Settings → Session');
     document.querySelector('.tab[data-tab="settings"]').click();
     const b=document.querySelector('#setNav button[data-sec="session"]');if(b)b.click();
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Save login macro failed',e);}
 }
 
 // showCtx builds the history-row menu: a contextual top section keyed to the
@@ -2030,6 +2103,8 @@ export function showInspectorCtx(x,y,side){
 function selectedInspectorFlow(){return flowStore.byId.get(state.selId)||state.detail;}
 const inspectSendRepeater=$('#inspectSendRepeater');
 if(inspectSendRepeater)inspectSendRepeater.onclick=()=>{const f=selectedInspectorFlow();if(f)sendToRepeater(f);};
+const inspectAddFinding=$('#inspectAddFinding');
+if(inspectAddFinding)inspectAddFinding.onclick=()=>{const f=selectedInspectorFlow();if(f)addFlowToFinding(f.id);};
 const inspectSendIntruder=$('#inspectSendIntruder');
 if(inspectSendIntruder)inspectSendIntruder.onclick=()=>{const f=selectedInspectorFlow();if(f)sendToIntruder(f);};
 const inspectMoreActions=$('#inspectMoreActions');
@@ -2071,7 +2146,7 @@ export async function copyFlowRaw(f,side='req'){
   try{
     const raw=await api('/api/flows/'+f.id+'/raw?side='+side);
     copyText(raw,(side==='req'?'Request':'Response')+' copied');
-  }catch(e){toast('copy: '+e.message);}
+  }catch(e){toastError('Copy failed',e);}
 }
 export async function copyFlowBody(f,side='req'){
   try{
@@ -2085,7 +2160,7 @@ export async function copyFlowBody(f,side='req'){
       body=i>=0?raw.slice(i+2):'';
     }
     copyText(body,(side==='req'?'Request':'Response')+' body copied');
-  }catch(e){toast('copy body: '+e.message);}
+  }catch(e){toastError('Copy body failed',e);}
 }
 export async function copyCurl(f){
   try{
@@ -2098,7 +2173,7 @@ export async function copyCurl(f){
     if(f.reqLen>0){const raw=await api('/api/flows/'+f.id+'/raw?side=req');const i=raw.indexOf('\r\n\r\n');const body=i>=0?raw.slice(i+4):'';if(body)parts.push('--data-raw '+shq(body));}
     parts.push(shq(flowURL(f)));
     copyText(parts.join(' \\\n  '),'cURL copied');
-  }catch(e){toast('cURL: '+e.message);}
+  }catch(e){toastError('cURL copy failed',e);}
 }
 // ---- History multi-select actions ----
 export function updateSelBar(){
@@ -2202,15 +2277,19 @@ $('#selScope').onclick=async()=>{
 };
 export let _delArm=false,_delTimer;
 $('#selDelete').onclick=async()=>{
+  const btn=$('#selDelete');
+  if(btn.disabled)return;
   const ids=[...state.selected];if(!ids.length)return;
   if(!_delArm){_delArm=true;$('#selDelete').innerHTML=icon('trash')+' Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';},2500);return;}
-  clearTimeout(_delTimer);_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';
+  clearTimeout(_delTimer);_delArm=false;
+  btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Deleting…';
   try{
     const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
     if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
     state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
     toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
-  }catch(e){toast('delete: '+e.message);}
+  }catch(e){toastError('Delete failed',e);}
+  finally{btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=icon('trash')+' Delete';}
 };
 /* ---- inspector splitter ---- */
 (function(){

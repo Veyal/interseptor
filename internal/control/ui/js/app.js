@@ -4,7 +4,7 @@
 // stream, theme, the version badge, and the boot sequence that kicks everything
 // off. Lazy modules use their shared readiness-aware loaders below.
 import { $, $$, esc, state, api, toast, toastError, MODAL_IDS, openModal, closeModal, icon } from './core.js';
-import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind } from './proxy.js';
+import { selectFlow, renderChips, renderRows, loadFlows, loadScope, loadViews, scheduleReload, renderWSFrames, scheduleWSFrames, clearAllFilters, walkFlowNav, toggleSelectAllShown, toggleSelectCurrentFlow, handleFlowNew, handleFlowUpdate, openCompare, copyCurl, openInspectFind } from './proxy.js';
 import { renderIntercept, toggleIntercept, loadRules, interceptStateGeneration, interceptFilterGeneration, mergeInterceptFilterSince, replaceInterceptState } from './intercept.js';
 import { repInit, intrInit, repSend, sendToRepeater, sendToIntruder, intrStart, scheduleIntr, releaseWorkstationReady, uiStateSyncPending, retryUIStateSync, workspaceStorageWarningMessage } from './tools.js';
 import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChecksList, loadOob } from './scanner.js';
@@ -389,7 +389,7 @@ function connectEvents(){
     else if(m.type==='activity.clear'){state.activity=[];clearActivityLoadError();if(document.querySelector('.tab[data-tab="activity"]').classList.contains('active'))renderActivity();clearActSeen();}
     else if(m.type==='intercept.update'){replaceInterceptState(m.intercept);renderIntercept();renderIcptStat();}
     else if(m.type==='rules.update')loadRules();
-    else if(m.type==='ws.frame'){if(m.flowId===state.selId)renderWSFrames(state.selId);}
+    else if(m.type==='ws.frame'){if(m.flowId===state.selId)scheduleWSFrames(state.selId);}
     else if(m.type==='scope.update'){loadScope();if(state.inScopeOnly)loadFlows();if($('#authzModal')&&$('#authzModal').style.display==='flex')renderAuthzScopePanel();}
     else if(m.type==='views.update')loadViews();
     else if(m.type==='session.update')loadSession();
