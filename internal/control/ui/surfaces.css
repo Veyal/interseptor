@@ -175,6 +175,35 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .cmdk-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmdk-sub{opacity:.55;font-size:var(--fs-xs);flex:none}
 .cmdk-empty{padding:var(--sp-4);text-align:center;color:var(--fg3);font-size:var(--fs-sm)}
+.cmdk-hint{padding:var(--sp-1) var(--sp-4) 0;color:var(--fg3);font-size:var(--fs-xs);min-height:var(--sp-4)}
+.cmdk-hint:empty{display:none}
+.cmdk-group{padding:var(--sp-2) var(--sp-3) var(--sp-1);color:var(--fg3);font-size:var(--fs-xs);font-weight:700;letter-spacing:.7px;text-transform:uppercase}
+.cmdk-row[aria-selected="true"] .cmdk-sub{opacity:.9}
+.cmdk-foot kbd,.chord-hint kbd{padding:0 var(--sp-1);border:1px solid var(--kbd-border);border-radius:var(--r-sm);background:var(--kbd-bg);color:var(--kbd-fg);font-family:var(--ui);font-size:var(--fs-xs)}
+.cmdk-modes{margin-left:auto}
+.cmdk-modes kbd{margin:0 2px 0 var(--sp-2)}
+@media (pointer:coarse){
+  .cmdk-row{min-height:44px;align-items:center}
+}
+/* Phones: the palette becomes a full-height sheet with a 48px field and 48px
+   rows. The same markup and keyboard model apply; only the shape changes. */
+@media (max-width:720px){
+  .cmdk-overlay{align-items:stretch}
+  .cmdk-shell{margin:0;width:100%;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+  .cmdk-input{min-height:48px;font-size:var(--fs-xl)}
+  .cmdk-list{flex:1;max-height:none}
+  .cmdk-row{min-height:48px;align-items:center;font-size:var(--fs-xl)}
+  .cmdk-sub{font-size:var(--fs-sm)}
+  .cmdk-modes{display:none}
+}
+
+/* Chord continuation popup (keyboard.js): lists what can follow a pending
+   first key, e.g. after `g`. It appears and disappears instantly. */
+.chord-hint{position:fixed;left:50%;bottom:calc(var(--sp-6) + var(--safe-b));z-index:var(--z-popover);display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);max-width:min(560px,calc(100% - var(--sp-4) * 2));padding:var(--sp-2) var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-lg);background:var(--bg1);color:var(--fg);box-shadow:var(--elev-2);transform:translateX(-50%);font-size:var(--fs-sm)}
+.chord-hint[hidden]{display:none}
+.chord-next{display:inline-flex;align-items:center;gap:var(--sp-1)}
+.chord-cancel{color:var(--fg3);font-size:var(--fs-xs)}
+.sc-foot-switch{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2);color:var(--fg2);font-size:var(--fs-sm)}
 
 /* Skip link: off-screen until focused, then revealed inside the safe area. */
 .skip{position:fixed;left:var(--sp-2);top:-100px;z-index:1000;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--accentSolid);color:var(--onAccent);font-weight:600;text-decoration:none}
