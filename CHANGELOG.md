@@ -12,8 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
+### Added
+
+- **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
+
+- **Reviewer-approved target normalization.** `POST /api/findings/{id}/normalize-targets` and the MCP `normalize_finding_targets` tool apply approved path templates (for example `/users/edit/123` to `/users/edit/{id}`) to a finding's affected targets. They default to a dry run, never merge targets that differ in method, scheme, role, relation or variant, and keep flow and image references on the merged target.
+
+- **Environment validation regression tests.** `development` round-trips through the control API and unknown environments are rejected through both the control API and the MCP `update_finding` path instead of being mapped to `local`.
 
 ### Changed
+
+- **Finding tool registry.** Registered `normalize_finding_targets` in the MCP descriptor and docs, and refreshed the retained UI audit runtime identity.
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
 

@@ -284,6 +284,10 @@ func (s *Server) Capabilities() map[string]any {
 		"finding": map[string]any{
 			"createFields": create,
 			"updateFields": update,
+			// targetsSupported lets a client holding an older tool schema
+			// detect that structured targets exist and reconnect.
+			"targetsSupported":  slices.Contains(create, "targets"),
+			"legacyScalarField": "target",
 		},
 	}
 }
@@ -1403,7 +1407,7 @@ func (s *Server) registerTools() {
 			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
 				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
 			}
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 
@@ -1564,7 +1568,7 @@ func (s *Server) registerTools() {
 				return result, err
 			}
 			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 

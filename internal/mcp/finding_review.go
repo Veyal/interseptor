@@ -85,6 +85,13 @@ func (s *Server) registerFindingReviewTools() {
 	s.add("preview_finding_targets", "Preview exact target deduplication and optional path templates without saving. Evidence links are retained. Apply templates only after reviewer approval through update_finding.", obj(map[string]any{"targets": findingTargetsSchema(), "legacy": pt("string")}), func(a map[string]any) (string, error) {
 		return s.api(http.MethodPost, "/api/finding-targets/preview", a)
 	})
+	s.add("normalize_finding_targets", "Normalize a saved finding's affected targets with reviewer-approved path templates (for example /users/edit/123 -> /users/edit/{id}). First call preview_finding_targets to list suggestions, then pass the approved suggestion indexes in approve. dryRun defaults to true (no changes); set dryRun=false to persist. Targets that differ in method, scheme, role, relation or variant are never merged; flow and image references stay on their target.", obj(map[string]any{"id": pt("integer"), "approve": map[string]any{"type": "array", "items": pt("integer"), "description": "suggestion indexes (target positions) approved for templating"}, "dryRun": p("boolean", "default true; false persists the normalized targets")}, "id"), func(a map[string]any) (string, error) {
+		id, err := findingRevisionArg(a, "id", false)
+		if err != nil {
+			return "", err
+		}
+		return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/normalize-targets", id), map[string]any{"approve": a["approve"], "dryRun": argBool(a, "dryRun", true)})
+	})
 	s.add("evaluate_finding_cvss", "Evaluate a CVSS v4.0 vector without modifying a finding. Returns canonical vector, score, original rating and finding severity.", obj(map[string]any{"vector": pt("string")}, "vector"), func(a map[string]any) (string, error) {
 		return s.api(http.MethodPost, "/api/finding-cvss", map[string]any{"vector": argStr(a, "vector")})
 	})

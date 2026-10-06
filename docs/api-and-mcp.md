@@ -188,6 +188,8 @@ The UI and MCP share the report-quality and evidence contracts:
 - `finding_readiness` returns actionable field/capability checks; `export_report` accepts `mode=final`
   to enforce them or `mode=draft` to retain incomplete work.
 - `preview_finding_targets` previews deduplication and optional path templates without saving.
+- `normalize_finding_targets` applies reviewer-approved suggestion indexes from that preview to a saved finding
+  (`dryRun` defaults to true; `POST /api/findings/{id}/normalize-targets`).
 - `evaluate_finding_cvss` previews a CVSS v4 vector without updating a finding.
 - `list_finding_revisions`, `get_finding_revision`, and `restore_finding_revision` expose immutable
   finding history and recovery. Restore appends a revision and cannot reconstruct separately purged
