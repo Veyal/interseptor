@@ -278,7 +278,7 @@ export function renderFlowHead(){
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
-    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    return `<div class="${(sorted.trim()+alignCls).trim()}"${c.sort?` data-sort="${c.sort}"`:''} aria-label="${escAttr(accessible)}"${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
