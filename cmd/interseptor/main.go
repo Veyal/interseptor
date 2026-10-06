@@ -340,6 +340,7 @@ func run() error {
 	proxyAuthUser, _, _ := st.GetSetting("proxy.authUser")
 	proxyAuthPassword, _, _ := st.GetSetting("proxy.authPassword")
 	proxyAuth.Set(proxyAuthOn == "1", strings.TrimSpace(proxyAuthUser), proxyAuthPassword)
+	proxyAuth.SetExempt(st.AllowlistMatch)
 	pm.handler = proxyAuth.Handler(prx)
 	cm.handler = hub.Handler()
 	hub.SyncSelfPorts = func() {

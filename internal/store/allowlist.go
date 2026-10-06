@@ -16,6 +16,7 @@ type IPAllowEntry struct {
 }
 
 // NormalizeAllowCIDR validates and canonicalizes a single IP or CIDR string.
+// Bare addresses become /32 (IPv4, including IPv4-mapped IPv6) or /128.
 func NormalizeAllowCIDR(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -33,9 +34,9 @@ func NormalizeAllowCIDR(raw string) (string, error) {
 		return "", fmt.Errorf("invalid IP address")
 	}
 	if v4 := ip.To4(); v4 != nil {
-		return v4.String(), nil
+		return v4.String() + "/32", nil
 	}
-	return ip.String(), nil
+	return ip.String() + "/128", nil
 }
 
 // AddIPAllowlist inserts a CIDR/IP. Duplicate cidr returns an error.
