@@ -120,9 +120,9 @@ POST   /api/findings/{id}/images             attach {data, mime?, caption?, role
 POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PNG
 GET    /api/intruder/attacks                 recent recorded Intruder runs (last 20 kept)
 GET    /api/intruder/attacks/{id}            one recorded run by runId; survives the next start and restarts
-GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip evidence render PNG (unattached)
+GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip&width=&unmask=1&expected=N&format=json&png=1 evidence render PNG (unattached; X-Render-Alt/X-Render-Summary headers)
 GET    /api/intruder/attacks/{id}/render     alias of render.png (MCP render_intruder_preview)
-GET    /api/evidence-render                  ?kind=...&runId|flowIdA,flowIdB|flowIds|findingIds single-endpoint render PNG (MCP render_evidence)
+GET    /api/evidence-render                  ?kind=...&runId|flowIdA,flowIdB|flowIds|findingIds&includeBody=1 single-endpoint render PNG (MCP render_evidence)
 POST   /api/findings/{id}/evidence-render    render and attach {kind, runId?|flowIds?|..., caption?, role?, proof?, position?}
 GET    /api/findings/report                  md (default), html, or json export
 ```
@@ -228,9 +228,35 @@ What is and is not recorded:
   DNS, connect and TTFB are not recorded and are never drawn.
 - Claims such as "first 429 at request #N" are computed from recorded status and offsets only. A render
   never says a race or rate-limit bypass is confirmed; it reports counts.
-- Secrets are redacted by the adapters, and credential-like payloads are masked in the strip.
+- Secrets are redacted by the adapters (`redact.Text`: header lines, Bearer/Basic schemes, JWTs, long
+  opaque tokens and key=value / JSON secrets under snake_case, kebab-case and camelCase names such as
+  `accessToken`, `csrf_token`, `otp`, `reset_code`, `?code=482913`). Short standalone values with no
+  recognisable key cannot be detected, so values that are often credentials are masked by default instead:
+  Intruder payloads (strip) and extracted values (race) are drawn as `[len N #digest]` (equal values stay
+  comparable) unless the request passes `unmask=1` (`mask=0`; MCP `unmask`; attach body `unmask`). Flow-diff
+  response-body lines are omitted by default (only the changed-line count is drawn); `includeBody=1` draws
+  redacted lines and the footer says body excerpts can still show personal data. `expected=N` (race) adds
+  the baseline "expected at most N" to the headline.
+- Anything target-controlled (header values, URLs, titles, payloads, targets, run ids) is clipped before
+  drawing. Characters the embedded fonts cannot draw (CJK and other non-Latin scripts) are drawn as
+  `U+XXXX` and the footer says so. `width` is `0` (default 1100) or 640-1600; non-numeric or negative ids
+  are a 400. At most four renders run at once (503 when busy) with a 10 s deadline. The JSON form
+  (`format=json`) adds the base64 PNG with `png=1` for PNGs up to 1 MiB, otherwise `pngOmitted` and `bytes`.
+- Rate-limit wording is descriptive: tiles say `2xx responses`, `throttle statuses (429/403/423)` and
+  `5xx/other`; a missing throttle status is reported as "no throttling status observed; body-based
+  lockouts are not detected unless a grep pattern was set". Grep matches are counted separately.
+- The persisted run record (`GET /api/intruder/attacks/{id}`, table `intruder_runs`, last 20 runs) is raw
+  like the flow store: payloads, extracted values and rate-limit headers are not redacted, and it travels in
+  full-project archives (it is not part of portable JSON export or peer merge). Only the renders redact.
+  Runs over the 4 MiB record cap drop payloads, then rate-limit headers and error text, then keep a head
+  and tail with a `truncated` marker in the stored run state.
 
 Provenance: `evidence_render` is generated. It never satisfies the real-visual-proof check, and reports
 label it "generated evidence render from recorded data; not browser proof". `sourceRef` is stamped
-server-side and immutable, like `sourceFlowId`. Attach a real screenshot with `add_finding_image` when a
+server-side and immutable, like `sourceFlowId` (the first recorded flow of an Intruder run, the baseline
+flow of an authz run, flow A of a diff). The source is deliberately `evidence_render`, a separate value
+from `generated_image`, and the run id lives in `sourceRef` (`intruder:<runId>`) rather than in a separate
+`attackId` field. Every render also shows its ref in the footer and carries an `Interseptor-Render` PNG
+tEXt marker; the store refuses to attach a marked PNG as `browser_screenshot`, `device_screenshot` or
+`operator_upload`. Attach a real screenshot with `add_finding_image` when a
 finding makes a visual claim.
