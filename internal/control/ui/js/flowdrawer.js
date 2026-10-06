@@ -157,6 +157,8 @@ function step(delta) {
   const next = stepSibling(cur.opts.siblings, cur.id, delta);
   if (next != null) openFlow(next, { ...cur.opts, tab: cur.tab, keepOpener: true });
 }
+$('#fdNarrow').addEventListener('click', () => applyWidth(width - 64, true));
+$('#fdWide').addEventListener('click', () => applyWidth(width + 64, true));
 $('#fdPrev').addEventListener('click', () => step(-1));
 $('#fdNext').addEventListener('click', () => step(1));
 $('#fdHead').addEventListener('keydown', (e) => {

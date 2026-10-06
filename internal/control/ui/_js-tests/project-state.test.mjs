@@ -272,3 +272,32 @@ test('blocker announcements are limited to one per 5 seconds and only on change'
   c.advance(5000);
   assert.equal(said.at(-1), 'No blockers');
 });
+
+test('a throwing load never leaves an unhandled rejection and the next refresh recovers', async () => {
+  const unhandled = [];
+  const onUnhandled = (e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    let poisoned = true;
+    const { c, ps } = make(async (path) => {
+      if (path.includes('readiness')) {
+        if (poisoned) return { get scope() { throw new Error('poisoned aggregate'); } };
+        return AGG;
+      }
+      return { identities: [] };
+    });
+    const first = ps.refresh();
+    c.advance(REFRESH_DEBOUNCE_MS + 1);
+    await first; // waiters are released even though the load threw
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(unhandled, [], 'the dropped run() promise must be handled');
+    poisoned = false;
+    const second = ps.refresh();
+    c.advance(REFRESH_DEBOUNCE_MS + 1);
+    await second;
+    await flush();
+    assert.equal(ps.get().loaded, true, 'the state recovers on the next refresh');
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});

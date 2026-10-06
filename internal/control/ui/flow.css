@@ -15,6 +15,12 @@ body.flow-drawer-docked #main{margin-right:calc(var(--flow-drawer-w) + var(--sp-
 
 .flow-drawer-sash{position:absolute;top:0;bottom:0;left:calc(var(--split-gutter) * -1);width:var(--split-gutter);z-index:var(--z-sash);cursor:col-resize;touch-action:none}
 .flow-drawer-sash::before{content:"";position:absolute;top:0;bottom:0;right:0;width:1px;background:var(--line2)}
+/* WCAG 2.5.8: the 8px sash keeps a 24px hit area; Narrower and Wider buttons are the
+   single-pointer alternative to dragging (2.5.7). */
+.flow-drawer-sash::after{content:"";position:absolute;top:0;bottom:0;left:calc(var(--sp-4) * -1);right:calc(var(--sp-4) * -1)}
+.flow-drawer-width .icon{transform:rotate(90deg)} /* the sprite chevron points down: left = wider */
+#fdNarrow .icon{transform:rotate(-90deg)}
+.flow-drawer[data-mode="overlay"] .flow-drawer-width{display:none}
 .flow-drawer-sash:hover::before,.flow-drawer.is-resizing .flow-drawer-sash::before{background:var(--accent)}
 .flow-drawer-sash:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
 .flow-drawer.is-resizing{user-select:none;-webkit-user-select:none}

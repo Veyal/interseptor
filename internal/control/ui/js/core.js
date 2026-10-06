@@ -1177,7 +1177,12 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
 // is dropped and an active (virtualized) list re-renders its window.
 export function createDensityVirtualList(opts){
   const vl=createVirtualList({...opts,itemHeight:rowHeightToken});
-  onDensityChange(()=>{if(vl.isActive()&&opts.container&&opts.container.isConnected)opts.onScroll();});
+  const dispose=onDensityChange(()=>{
+    // A list whose container left the DOM unsubscribes itself.
+    if(!opts.container||!opts.container.isConnected){dispose();return;}
+    if(vl.isActive())opts.onScroll();
+  });
+  vl.dispose=dispose;
   return vl;
 }
 

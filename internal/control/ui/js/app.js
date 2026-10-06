@@ -388,6 +388,7 @@ function connectEvents(){
   // loaded everything — unless an earlier attempt failed (sseHadError). Every
   // `hello` after that is a reconnect by definition and resyncs once, debounced.
   es.addEventListener('hello',()=>{
+    if(sseSource!==es)return; // a superseded source must not reset the retry state
     clearTimeout(sseRetryTimer);sseRetryCount=0;
     setSseStatus('ok');
     const reason=sseConnectedOnce?'reconnect':'boot';

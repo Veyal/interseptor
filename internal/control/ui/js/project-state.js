@@ -289,7 +289,8 @@ export function createProjectState(opts = {}) {
       return new Promise((resolve) => {
         waiters.push(resolve);
         if (debounceTimer !== null) timers.clearTimeout(debounceTimer);
-        debounceTimer = timers.setTimeout(() => { debounceTimer = null; run(); }, REFRESH_DEBOUNCE_MS);
+        // run() releases its waiters in finally; the rejection itself has no owner here.
+        debounceTimer = timers.setTimeout(() => { debounceTimer = null; run().catch(() => {}); }, REFRESH_DEBOUNCE_MS);
       });
     },
     // Live traffic only needs fresh counters: one refresh per 2 seconds.

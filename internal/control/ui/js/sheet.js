@@ -13,6 +13,7 @@ import { watchSoftKeyboard } from './soft-keyboard.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const sheets = new Map();
+const DETENT_TEXT = { peek: 'Panel collapsed', half: 'Panel half height', full: 'Panel full height' };
 
 const isDrawer = () => { try { return window.matchMedia('(min-width: 721px)').matches; } catch (e) { return false; } };
 const reduced = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
@@ -60,10 +61,15 @@ function build(id, title) {
   head.append(h, close);
   const body = document.createElement('div');
   body.className = 'sheet-body';
-  sheet.append(handle, head, body);
+  // The handle changes the detent without moving focus, so say what it did.
+  const live = document.createElement('div');
+  live.className = 'u-sr';
+  live.setAttribute('role', 'status');
+  live.setAttribute('aria-live', 'polite');
+  sheet.append(handle, head, body, live);
   rootEl.appendChild(sheet);
   document.body.appendChild(rootEl);
-  return { rootEl, sheet, handle, close, body, titleEl: h };
+  return { rootEl, sheet, handle, close, body, titleEl: h, live };
 }
 
 function fill(body, content) {
@@ -118,6 +124,7 @@ export function openSheet({ id, title = '', detents = DETENTS, detent, content, 
   function setDetent(name) {
     if (!entry.detents.includes(name)) return;
     applyDetent(name);
+    entry.live.textContent = DETENT_TEXT[current] || '';
   }
   function close() {
     if (!entry.open) return;
