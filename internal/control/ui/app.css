@@ -37,12 +37,12 @@
   /* Radii — 5 steps. Previously 11, including --r-3/5/6/8/9/12, which were
      magic numbers that had merely been given names. */
   --r-sm:3px; --r-md:6px; --r-lg:9px; --r-xl:12px; --r-pill:999px;
-  /* Type scale — 6 steps with an 11px floor. Previously 13 steps between 9px and
+  /* Type scale — 7 steps with an 11px floor. Previously 13 steps between 9px and
      20px (--fs-9, -9-5, -10-5, -11-5, -13-5 …), which is a continuum rather than
      a scale, and put label text below the legibility floor. Enforced by
      TestUITypeScaleIsBounded. */
   --fs-xs:11px; --fs-sm:12px; --fs-md:13px;
-  --fs-lg:14px; --fs-xl:16px; --fs-2xl:20px;
+  --fs-lg:14px; --fs-xl:16px; --fs-2xl:20px; --fs-3xl:26px;
   --lh-tight:1.35; --lh-normal:1.6; --lh-loose:1.7;
   /* Motion — state-driven timing shared by CSS and js/motion.js. */
   --motion-instant:80ms; --motion-fast:120ms; --motion-base:180ms; --motion-slow:260ms;
@@ -652,7 +652,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
    inline recipe (flex:1 + full-bleed mono editor on --bg1). */
 .notes-edit{flex:1;border:none;resize:none;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:var(--fs-md);line-height:1.8;padding:24px}
 .rep-tabs{flex:none;display:flex;gap:2px;align-items:stretch;padding:6px 8px 0;overflow-x:auto;background:var(--bg1);border-bottom:1px solid var(--line)}
-.rep-tab{display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:none;border-radius:var(--r-md) 7px 0 0;background:transparent;color:var(--fg2);white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
+.rep-tab{display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:none;border-radius:var(--r-md) var(--r-md) 0 0;background:transparent;color:var(--fg2);white-space:nowrap;max-width:260px;font-size:var(--fs-xs);margin-bottom:-1px}
 .rep-tab:hover{background:var(--bg3);color:var(--fg)}
 .rep-tab.on{background:var(--bg);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
 .rep-tab.on .rt-label{font-weight:700}
@@ -997,7 +997,7 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .find-doc-image{margin:14px 0}
 .find-doc-figure{margin:0}
 .find-doc-img{display:block;max-width:100%;max-height:420px;object-fit:contain;background:var(--bg3);cursor:zoom-in}
-.find-poc-callout{margin:0;padding:10px 14px;border-left:3px solid var(--accent);background:var(--bg2);border-radius:0 8px 8px 0;cursor:default;font-size:var(--fs-sm);line-height:1.5}
+.find-poc-callout{margin:0;padding:10px 14px;border-left:3px solid var(--accent);background:var(--bg2);border-radius:0 var(--r-lg) var(--r-lg) 0;cursor:default;font-size:var(--fs-sm);line-height:1.5}
 .find-poc-callout.find-poc-missing{border-left-color:var(--amber);background:var(--noteDim);cursor:default;opacity:.88}
 .find-poc-req{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:var(--fs-sm)}
 .find-poc-req .m{font-weight:700;color:var(--accent)}

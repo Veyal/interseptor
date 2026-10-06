@@ -771,7 +771,7 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	// The scale is only real if the markup honours it too. Inline styles in
 	// index.html and JS template strings bypass the stylesheet entirely, and
 	// that is where 9px and 10px text survived the first cleanup.
-	for _, name := range []string{"app.css", "index.html", "login.html", "js/core.js", "js/app.js",
+	for _, name := range []string{"app.css", "findings.css", "surfaces.css", "index.html", "login.html", "js/core.js", "js/app.js",
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",

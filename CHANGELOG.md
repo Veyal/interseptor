@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Findings stylesheet follows the design tokens.** The undefined `--border` token (invisible revision, deleted-row, cleanup and capability borders) now resolves to `--line`/`--line2`; `findings.css` font sizes use the `--fs-*` scale (new `--fs-3xl`), off-scale radii use `--r-*`, and `TestUITypeScaleIsBounded` now covers `findings.css` and `surfaces.css`.
+
 - **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
 ### Added
 
