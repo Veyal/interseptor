@@ -300,21 +300,24 @@
       </div>
     </div>
     <!-- workspace: hold queue + editor -->
-    <div class="icpt-work">
-      <aside class="icpt-queue">
+    <div class="icpt-work split" id="icptWork">
+      <aside class="icpt-queue split-list" aria-label="Hold queue">
         <div class="icpt-queue-head">HOLD QUEUE <span class="badge u-hidden" id="heldTotal">0</span></div>
         <div id="heldList" class="icpt-list"></div>
       </aside>
-      <section class="icpt-main">
+      <section class="icpt-main split-detail" id="icptDetail">
         <div class="icpt-edhead u-hidden" id="heldEditor">
-          <div class="icpt-edtitle" id="heldTitle"></div>
+          <div class="icpt-edtitle" id="heldTitle" data-split-focus></div>
           <div class="spacer"></div>
           <span id="heldModified" class="icpt-modified" hidden>MODIFIED</span>
           <button class="btn" id="heldBeautifyBtn" title="Beautify JSON or HTML body">Beautify</button>
           <button class="btn" id="heldResetBtn" title="Reset editor to original held bytes">Reset</button>
           <button type="button" class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body" aria-label="Show decoded held message" aria-pressed="false">Decoded</button>
-          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
-          <button class="btn btn-danger" id="dropBtn" title="Drop (D)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg> Drop</button>
+        </div>
+        <div class="icpt-ctx u-hidden" id="heldCtx" role="group" aria-label="Held message context">
+          <span class="icpt-ctx-chip" id="heldScope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg><span id="heldScopeText"></span></span>
+          <span class="icpt-ctx-chip" id="heldIdentity"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-identity"/></svg><span id="heldIdentityText"></span></span>
+          <span class="icpt-ctx-note hint" id="heldScopeNote"></span>
         </div>
         <pre id="heldDecoded" class="icpt-raw u-m-0 u-prewrap" hidden></pre>
         <textarea class="icpt-raw u-hidden" id="heldRaw" spellcheck="false" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
@@ -323,11 +326,19 @@
           <div class="state-empty-title">Nothing on hold</div>
           <p class="state-empty-hint" id="heldEmptyHint">Enable Requests or Responses to hold traffic.</p>
         </div>
+        <div class="icpt-actionbar u-hidden" id="heldActions" role="group" aria-label="Held message actions">
+          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)" aria-keyshortcuts="f">Forward</button>
+          <button class="btn" id="forwardRepeaterBtn" title="Forward, then open the sent request in Repeater">Forward and send to Repeater</button>
+          <button class="btn btn-danger" id="dropBtn" title="Drop (D)" aria-keyshortcuts="d" aria-describedby="heldDropNote"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg> Drop</button>
+          <button class="btn" id="forwardAllBtn" title="Forward every held item (edits are kept)">Forward all</button>
+          <span id="heldDropNote" class="u-sr">Drop waits 5 seconds so you can undo.</span>
+          <span id="heldActionStatus" class="u-sr" role="status" aria-live="polite"></span>
+        </div>
       </section>
     </div>
     <!-- match & replace: automatic rewriting, collapsed by default -->
     <details class="icpt-mr">
-      <summary>Match &amp; Replace rules</summary>
+      <summary>Match &amp; Replace rules <span class="badge icpt-mr-count" id="rulesCount">none</span></summary>
       <div class="icpt-mr-body">
         <table class="rules-tbl">
           <thead><tr><th class="col-1">On</th><th class="col-4">Type</th><th>Match (regex)</th><th>Replace</th><th class="col-2"></th></tr></thead>
@@ -460,30 +471,43 @@ Content-Type: application/json
       <div id="scanPassiveBar" class="row find-toolbar-row">
       <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
-      <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
+      <button class="btn btn-primary" id="scanRun" aria-describedby="scanRunReason">Run scan ▸</button>
       <button class="btn" id="scanClear">Clear results</button>
       <span id="scanRescanState" class="hint" role="status"></span>
-      <button class="btn" id="checksBtn" aria-label="Custom checks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Checks</button>
-      <button class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg> Codecs</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
-      </div>
-    </div>
-    <div class="toolbar toolbar-secondary scan-tools-bar">
-      <span class="hint scan-tools-label">Tools</span>
-      <div class="spacer"></div>
-      <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
-    </div>
-    <div id="scanPassiveView" class="scan-passive-view">
-      <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
-        <div class="state-empty">
-          <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
-          <div class="state-empty-title">No issues yet</div>
-          <p class="state-empty-hint">Run a scan to find issues.</p>
-
+      <div class="scan-tools" id="scanTools">
+        <button type="button" class="btn" id="scanToolsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="scanToolsMenu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-toolbox"/></svg> Tools <svg class="icon scan-tools-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+        <div class="scan-tools-menu" id="scanToolsMenu" role="group" aria-label="Scanner tools" hidden>
+          <button class="btn" id="checksBtn" aria-label="Custom checks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Checks</button>
+          <button class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg> Codecs</button>
+          <button class="btn" id="scanDecoderBtn" aria-label="Decoder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg> Decoder</button>
+          <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
         </div>
       </div>
-      <div id="scanDetail" class="pane scan-detail-pane">
+      </div>
+    </div>
+    <div class="scan-context" id="scanContext">
+      <p class="hint scan-scope-line" id="scanScopeLine"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> <span id="scanScopeText">Scope: loading</span> <button type="button" class="btn xs" id="scanScopeLink">Open target scope</button></p>
+      <p class="hint scan-run-reason" id="scanRunReason" hidden></p>
+    </div>
+    <div class="scan-progress" id="scanProgress" hidden>
+      <progress id="scanProgressBar" aria-label="Scan progress"></progress>
+      <span id="scanProgressText" role="status">Scanning</span>
+    </div>
+    <div id="scanPassiveView" class="scan-passive-view split">
+      <div class="split-list scan-list-col" id="scanListCol">
+        <div id="scanSevChips" class="scan-sev-chips" role="group" aria-label="Filter results by severity"></div>
+        <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
+          <div class="state-empty">
+            <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
+            <div class="state-empty-title">No issues yet</div>
+            <p class="state-empty-hint">Run a scan to find issues.</p>
+
+          </div>
+        </div>
+      </div>
+      <div id="scanDetail" class="pane scan-detail-pane split-detail">
         <div class="state-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div>
           <div class="state-empty-title">No issue selected</div>

@@ -1,7 +1,11 @@
-import { $, esc, escAttr, state, toast, api, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
+import { $, esc, escAttr, state, toast, toastError, api, projectStorageKey, openModal, closeModal, copyText, fmtTime, renderMD, pickTextFile, normalizeListText, DEC_OPS, wireRowKey, saveFile, uiConfirm, renderLoadError, icon } from './core.js';
 import { flowPopup } from './flowmodal.js';
 import { openFinding } from './findings.js';
 import { animateOnce, MOTION } from './motion.js';
+import { createSplitPane } from './split.js';
+import { renderState } from './statepanel.js';
+import { getShellApi } from './shell-hooks.js';
+import { SEV_ORDER as MODEL_SEV_ORDER, sevRank as modelSevRank, severityMeta, groupIssues, severityCounts, filterGroups, toggleSeverity, summaryText, scopeLine, runGate, promoteBody, verifyTarget } from './scanner-model.js';
 
 /* ---- out-of-band (OOB) interaction catcher ---- */
 let oobLoadEpoch=0;
@@ -658,13 +662,33 @@ function setScanRunState(stateName,label){
   if(stateName!=='idle')button.classList.add('is-'+stateName);
   button.dataset.state=stateName;
   button.setAttribute('aria-busy',stateName==='pending'?'true':'false');
-  button.disabled=stateName==='pending'||scanRunPending||scanClearPending;
+  button.disabled=stateName==='pending'||scanRunPending||scanClearPending||scanRunGate().disabled;
   button.textContent=label;
 }
 function syncScanActionControls(){
   const run=$('#scanRun'),clear=$('#scanClear');
-  if(run)run.disabled=scanRunPending||scanClearPending;
+  if(run)run.disabled=scanRunPending||scanClearPending||scanRunGate().disabled;
   if(clear){clear.disabled=scanRunPending||scanClearPending;clear.setAttribute('aria-busy',scanClearPending?'true':'false');}
+  syncScanProgress();
+}
+// The run is one synchronous POST, so progress is indeterminate (no value) and
+// there is no Stop: aborting the fetch would not stop the server-side scan.
+function syncScanProgress(){
+  const row=$('#scanProgress');if(!row)return;
+  row.hidden=!scanRunPending;
+  const text=$('#scanProgressText');
+  if(text)text.textContent=scanRunPending?'Scanning '+((($('#scanTarget')||{}).value)||'all in-scope hosts')+' …':'';
+}
+function scanRunGate(){return runGate({hostCount:scanUI.hostCount,hostsLoaded:scanUI.hostsLoaded});}
+// Scope line + the reason Run is unavailable (shown, and tied to the button via
+// aria-describedby). An empty scope is NOT a reason: the server treats it as
+// "everything is in scope".
+function renderScanContext(){
+  const text=$('#scanScopeText');
+  if(text)text.textContent=scopeLine({inCount:scanUI.scope?scanUI.scope.inCount:0,hostCount:scanUI.hostCount});
+  const reason=$('#scanRunReason'),gate=scanRunGate();
+  if(reason){reason.hidden=!gate.disabled;reason.textContent=gate.reason;}
+  syncScanActionControls();
 }
 function resetScanRun(delay,epoch){setTimeout(()=>{if(epoch===scanRunEpoch)setScanRunState('idle','Run scan ▸');},delay);}
 export async function loadIssues(){
@@ -719,6 +743,7 @@ export async function loadScanTargets(){
     if(epoch!==scanTargetLoadEpoch)return;
     if(d.truncated)throw new Error('server returned a truncated host list — retry before choosing a target');
     const hosts=(d.hosts||[]).filter(h=>h&&h.host);
+    scanUI.hostCount=hosts.length;scanUI.hostsLoaded=true;renderScanContext();
     const cur=sel.value;
     sel.innerHTML='<option value="">All in-scope hosts</option>'+hosts.map(h=>`<option value="${escAttr(h.host)}">${esc(h.host)} (${Number(h.count)||0})</option>`).join('');
     if(hosts.some(h=>h.host===cur))sel.value=cur;
@@ -740,17 +765,31 @@ $('#scanTarget')?.addEventListener('change',()=>{scannerPrefillEpoch++;scanTarge
 $('#scanFilter')?.addEventListener('input',()=>{scannerPrefillEpoch++;});
 // Group findings by title: one list row per finding type, the affected targets
 // nested in its detail — instead of a separate row per (finding × target).
-export const SEV_ORDER=['High','Medium','Low','Info'];
-export const sevRank=s=>{const i=SEV_ORDER.indexOf(s);return i<0?SEV_ORDER.length:i;};
-export function scanGroups(){
-  const map=new Map();
-  scanState.issues.forEach(i=>{
-    let g=map.get(i.title);
-    if(!g){g={title:i.title,severity:i.severity,items:[]};map.set(i.title,g);}
-    g.items.push(i);
-    if(sevRank(i.severity)<sevRank(g.severity))g.severity=i.severity; // keep the most severe
-  });
-  return [...map.values()].sort((a,b)=>sevRank(a.severity)-sevRank(b.severity)||a.title.localeCompare(b.title));
+export const SEV_ORDER=MODEL_SEV_ORDER;
+export const sevRank=modelSevRank;
+export function scanGroups(){return groupIssues(scanState.issues);}
+// Scanner view state that is not part of the issue data: the severity filter,
+// the split pane and the scope/target context behind the Run gate.
+const scanUI={sevActive:new Set(),pane:null,hostCount:0,hostsLoaded:false,scope:null};
+function setScanDetailHTML(html){
+  const host=$('#scanDetail');if(!host)return;
+  // The SplitPane's Back button lives inside the detail; keep it across renders.
+  const back=host.querySelector(':scope > .split-back');
+  host.innerHTML=html;
+  if(back)host.insertBefore(back,host.firstChild);
+}
+const SCAN_NO_SELECTION='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';
+function sevChip(sev){const m=severityMeta(sev);return `<span class="sev ${escAttr(sev)}">${icon(m.icon)} ${esc(m.label)}</span>`;}
+// Severity count chips double as filters. aria-pressed carries the state; the
+// count and the severity name are text, so colour is never the only signal.
+function renderScanChips(groups){
+  const box=$('#scanSevChips');if(!box)return;
+  const counts=severityCounts(groups);
+  box.hidden=!counts.length;
+  box.innerHTML=counts.map(({severity,count})=>{
+    const m=severityMeta(severity),on=scanUI.sevActive.has(severity);
+    return `<button type="button" class="scan-sev-chip" data-sev="${escAttr(severity)}" aria-pressed="${on?'true':'false'}">${icon(m.icon)} ${esc(m.label)} <b>${count}</b></button>`;
+  }).join('');
 }
 export function renderScan(){
   const list=$('#scanList');
@@ -758,20 +797,31 @@ export function renderScan(){
   const focusedIssue=!!document.activeElement?.closest?.('#scanList .scan-item');
   const focusedIndex=Number(document.activeElement?.closest?.('#scanList .scan-item')?.dataset.i);
   const focusedTitle=Number.isInteger(focusedIndex)?(scanState.groups||[])[focusedIndex]?.title||'':'';
-  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';$('#scanDetail').innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div><div class="state-empty-title">No issue selected</div><p class="state-empty-hint">Select an issue from the list to view its details.</p></div>';if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
-  const groups=scanState.groups=scanGroups();
-  const c={};scanState.issues.forEach(i=>c[i.severity]=(c[i.severity]||0)+1);
-  $('#scanCount').textContent=`${groups.length} finding${groups.length===1?'':'s'} · ${scanState.issues.length} target${scanState.issues.length===1?'':'s'} · ${c.High||0}H ${c.Medium||0}M ${c.Low||0}L`;
+  list.removeAttribute('data-state');
+  if(!scanState.issues.length){scanState.groups=[];scanState.sel=null;renderScanChips([]);$('#scanCount').textContent='';list.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div><div class="state-empty-title">No issues yet</div><p class="state-empty-hint">Capture some traffic, then Run scan.</p></div>';setScanDetailHTML(SCAN_NO_SELECTION);if(focusedIssue)requestAnimationFrame(()=>$('#scanRun')?.focus({preventScroll:true}));return;}
+  const all=groupIssues(scanState.issues);
+  const groups=scanState.groups=filterGroups(all,scanUI.sevActive);
+  renderScanChips(all);
+  $('#scanCount').textContent=summaryText(all,scanState.issues);
+  if(!groups.length){
+    scanState.sel=null;
+    renderState(list,'empty-filtered',{filterCount:scanUI.sevActive.size,onClear:()=>{scanUI.sevActive=new Set();renderScan();}});
+    setScanDetailHTML(SCAN_NO_SELECTION);
+    return;
+  }
   const preservedSelection=previousSelectedTitle?groups.findIndex(group=>group.title===previousSelectedTitle):-1;
   if(preservedSelection>=0)scanState.sel=preservedSelection;
   else if(scanState.sel==null||scanState.sel>=groups.length)scanState.sel=0;
   list.innerHTML=groups.map((g,idx)=>`<div class="scan-item ${idx===scanState.sel?'sel':''}" id="scan-issue-${idx}" data-i="${idx}" role="option" tabindex="${idx===scanState.sel?'0':'-1'}" aria-selected="${idx===scanState.sel?'true':'false'}">
-    <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
+    ${sevChip(g.severity)}
     <div class="t">${esc(g.title)}</div><div class="tg">${g.items.length} target${g.items.length===1?'':'s'}</div></div>`).join('');
   list.querySelectorAll('.scan-item').forEach(el=>{
     const choose=()=>{
       scanState.sel=Number(el.dataset.i);renderScan();
-      requestAnimationFrame(()=>list.querySelector('#scan-issue-'+scanState.sel)?.focus());
+      const row=list.querySelector('#scan-issue-'+scanState.sel);
+      requestAnimationFrame(()=>row?.focus());
+      // Phones show one pane at a time: opening an issue pushes its detail.
+      if(scanUI.pane&&scanUI.pane.mode()==='stack')scanUI.pane.showDetail(row);
     };
     el.onclick=choose;wireRowKey(el);
     el.addEventListener('keydown',e=>{
@@ -794,43 +844,59 @@ export function renderScan(){
     if(nextFocus>=0)list.querySelector('#scan-issue-'+nextFocus)?.focus({preventScroll:true});
   }
 }
+function scanTargetRow(i,n,shared){
+  const actions=i.flowId?`<div class="scan-tgt-actions" role="group" aria-label="Actions for ${escAttr(i.target||'this target')}">
+      <button type="button" class="btn xs" data-act="open" data-n="${n}">${icon('link')} Open flow #${i.flowId}</button>
+      <button type="button" class="btn xs" data-act="verify" data-n="${n}">${icon('repeat')} Verify in Repeater</button>
+      <button type="button" class="btn xs" data-act="attach" data-n="${n}">${icon('paperclip')} Attach as evidence</button></div>`:'';
+  return `<div class="scan-tgt"><div class="scan-tgt-url">${esc(i.target||'(no target)')}${i.flowId?` <span class="scan-tgt-flow">flow #${i.flowId}</span>`:''}</div>
+    ${(!shared&&i.detail)?`<div class="scan-tgt-detail">${esc(i.detail)}</div>`:''}
+    ${i.evidence?`<div class="evidence scan-tgt-evidence">${esc(i.evidence)}</div>`:''}${actions}</div>`;
+}
 export function renderScanDetail(){
   const g=(scanState.groups||[])[scanState.sel];if(!g)return;
   const first=g.items[0];
   const shared=g.items.every(i=>i.detail===first.detail); // show a common description once
-  const tgts=g.items.map(i=>`<div class="scan-tgt"${i.flowId?` data-flow="${i.flowId}"`:''} style="${i.flowId?'cursor:pointer;':''}padding:7px 9px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px">
-    <div style="font-family:var(--mono);font-size:var(--fs-sm);color:var(--accent);word-break:break-all">${esc(i.target||'(no target)')}${i.flowId?` <span style="color:var(--fg3)">· flow #${i.flowId}</span>`:''}</div>
-    ${(!shared&&i.detail)?`<div style="font-size:var(--fs-sm);color:var(--fg2);margin-top:5px;line-height:1.5">${esc(i.detail)}</div>`:''}
-    ${i.evidence?`<div class="evidence" style="margin-top:6px">${esc(i.evidence)}</div>`:''}</div>`).join('');
-  $('#scanDetail').innerHTML=`<div class="scan-wrap">
-    <span class="sev ${escAttr(g.severity)}">${esc(g.severity)}</span>
-    <div class="row" style="align-items:center;gap:10px;margin:12px 0 6px;flex-wrap:wrap">
-      <h1 style="font-size:var(--fs-2xl);font-weight:700;line-height:1.3;flex:1;margin:0;min-width:0">${esc(g.title)}</h1>
-      <button class="btn accent" id="scanPromote" title="Create a curated finding from this issue — title, detail, fix, and every PoC flow attached"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Promote to Finding</button>
+  setScanDetailHTML(`<div class="scan-wrap">
+    ${sevChip(g.severity)}
+    <div class="scan-head">
+      <h1 class="scan-title" tabindex="-1" data-split-focus>${esc(g.title)}</h1>
+      <button class="btn accent" id="scanPromote" title="Create a curated finding from this issue: title, detail, fix, and every PoC flow attached">${icon('plus')} Promote to Finding</button>
     </div>
-    ${(shared&&first.detail)?`<p style="font-size:var(--fs-md);color:var(--fg2);line-height:1.6">${esc(first.detail)}</p>`:''}
-    <div class="micro-label" style="margin:14px 0 6px">AFFECTED TARGETS (${g.items.length})</div>
-    ${tgts}
-    ${first.fix?`<div class="micro-label" style="margin:14px 0 6px">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`;
-  $('#scanDetail').querySelectorAll('.scan-tgt[data-flow]').forEach(el=>{el.onclick=()=>flowPopup(Number(el.dataset.flow));wireRowKey(el,()=>flowPopup(Number(el.dataset.flow)));});
+    ${(shared&&first.detail)?`<p class="scan-detail-text">${esc(first.detail)}</p>`:''}
+    <div class="micro-label scan-sec-label">AFFECTED TARGETS (${g.items.length})</div>
+    ${g.items.map((i,n)=>scanTargetRow(i,n,shared)).join('')}
+    ${first.fix?`<div class="micro-label scan-sec-label">REMEDIATION</div><div class="fixbox">${esc(first.fix)}</div>`:''}</div>`);
+  const detail=$('#scanDetail');
+  detail.querySelectorAll('[data-act]').forEach(b=>{
+    const issue=g.items[Number(b.dataset.n)];
+    b.onclick=()=>scanTargetAction(b.dataset.act,issue,b);
+  });
   const pm=$('#scanPromote'); if(pm){pm.onclick=()=>promoteFinding(g);if(promoteFindingPending)setPromoteFindingState(pm,'pending');}
+}
+// Per-target actions. Every one starts from the issue's own flow id.
+function scanTargetAction(act,issue,button){
+  const target=verifyTarget(issue);if(!target)return;
+  if(act==='open'){flowPopup(target.id);return;}
+  if(act==='verify'){
+    // Issues carry no payload, so Repeater is preloaded with the affected flow only.
+    import('./tools.js').then(m=>m.sendToRepeater(target)).catch(e=>toastError('Repeater',e));
+    return;
+  }
+  if(act==='attach')import('./evidence-attach.js').then(m=>m.attachEvidence({kind:'flow',refs:[target.id]},{anchor:button})).catch(e=>toastError('Attach as evidence',e));
 }
 // promoteFinding turns a passive-scan issue group into a curated Finding (with all
 // its PoC flows attached), then opens it — bridging the two views of "vulns" that
 // were previously disconnected silos.
 async function promoteFinding(g){
   if(promoteFindingPending)return;
-  const first=g.items[0]||{};
-  const flowIds=g.items.map(i=>i.flowId).filter(Boolean);
+  const body=promoteBody(g);
+  const flowIds=body.flowIds;
   const button=$('#scanPromote');
   promoteFindingPending=true;
   setPromoteFindingState(button,'pending');
   try{
-    const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
-      title:g.title,severity:g.severity,source:'scanner',
-      detail:first.detail||'',evidence:first.evidence||'',fix:first.fix||'',
-      flowIds,
-    })});
+    const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const warnings=Array.isArray(f.warnings)?f.warnings:[];
     const success='Promoted to Finding #'+f.id+(flowIds.length?' · '+flowIds.length+' PoC flow'+(flowIds.length===1?'':'s'):'');
     toast(warnings.length?success+' · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):success,warnings.length?'warn':'success');
@@ -878,3 +944,41 @@ $('#scanClear')&&($('#scanClear').onclick=async()=>{
     if(clearEpoch===scanClearEpoch){scanClearPending=false;if(button)button.textContent='Clear';syncScanActionControls();if(scanResultsRefreshPending){scanResultsRefreshPending=false;loadIssues();}}
   }
 });
+
+/* ---- scanner workbench wiring: severity filters, split, Tools menu, scope ---- */
+$('#scanSevChips')?.addEventListener('click',e=>{
+  const chip=e.target.closest?.('[data-sev]');if(!chip)return;
+  scanUI.sevActive=toggleSeverity(scanUI.sevActive,chip.dataset.sev);
+  renderScan();
+  // The chips are re-rendered, so hand focus back to the same filter.
+  $('#scanSevChips')?.querySelector(`[data-sev="${CSS.escape(chip.dataset.sev)}"]`)?.focus({preventScroll:true});
+});
+try{
+  const root=$('#scanPassiveView');
+  if(root)scanUI.pane=createSplitPane({
+    root,key:'scanner.split',orientation:'right',min:[240,320],default:34,stackBelow:720,scopeKey:projectStorageKey,
+    label:'Resize scanner results and detail',backLabel:'Results',
+    onView:view=>{if(view==='list')requestAnimationFrame(()=>root.querySelector('.scan-item.sel')?.focus({preventScroll:true}));},
+  });
+}catch(e){/* the plain flex layout still works without the split */}
+// Tools menu: a disclosure holding the modal-backed tools (Checks, Codecs,
+// Decoder, OOB). Esc closes it and returns focus to the button.
+(function wireScanTools(){
+  const btn=$('#scanToolsBtn'),menu=$('#scanToolsMenu');if(!btn||!menu)return;
+  const set=open=>{menu.hidden=!open;btn.setAttribute('aria-expanded',open?'true':'false');};
+  const close=(restore)=>{if(menu.hidden)return;set(false);if(restore)btn.focus({preventScroll:true});};
+  btn.addEventListener('click',()=>{set(menu.hidden);if(!menu.hidden)menu.querySelector('button:not([hidden])')?.focus();});
+  // Capture phase: focus returns to the Tools button before the tool's own
+  // handler opens its modal, so the modal restores focus to a live element.
+  menu.addEventListener('click',()=>close(true),true);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!menu.hidden){e.stopPropagation();close(true);}},true);
+  document.addEventListener('pointerdown',e=>{if(!menu.hidden&&!$('#scanTools').contains(e.target))close(false);});
+  $('#scanDecoderBtn')?.addEventListener('click',()=>openDecoder());
+})();
+$('#scanScopeLink')?.addEventListener('click',()=>{const api=getShellApi();if(api&&api.openSettings)api.openSettings('scope');});
+// Scope comes from the shared project state; a missing module just leaves the
+// "no include rule" wording in place.
+import('./project-state.js').then(m=>{
+  const apply=s=>{scanUI.scope=s&&s.scope;renderScanContext();};
+  m.projectState.subscribe(apply);apply(m.projectState.get());
+}).catch(()=>renderScanContext());
