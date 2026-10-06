@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Bulk delete restores its button before the selection bar updates.** The History Delete button label and busy state are reset as soon as the request settles, ahead of `updateSelBar`, instead of in an unconditional `finally` that ran afterwards.
+
 - **History inline styles moved to classes.** The flow-table header alignment, WebSocket frame rows and replay box, TLS-blocked pane, codec notes, binary/oversized body notes and the empty scope row use named classes (`.ws-*`, `.tls-blocked`, `.body-note`, `.u-ta-right`, ...) instead of inline `style` attributes; only data-driven colours and virtual-scroll padding stay inline.
 
 - **Tag and scope failures name the action.** History tag-colour and tagging failures and scope rule save/delete failures now report through `toastError` with an action prefix instead of a bare error message.

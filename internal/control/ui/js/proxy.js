@@ -2277,6 +2277,7 @@ $('#selScope').onclick=async()=>{
   }
 };
 export let _delArm=false,_delTimer;
+function restoreSelDelete(btn){btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=icon('trash')+' Delete';}
 $('#selDelete').onclick=async()=>{
   const btn=$('#selDelete');
   if(btn.disabled)return;
@@ -2284,13 +2285,15 @@ $('#selDelete').onclick=async()=>{
   if(!_delArm){_delArm=true;$('#selDelete').innerHTML=icon('trash')+' Confirm? ('+ids.length+')';clearTimeout(_delTimer);_delTimer=setTimeout(()=>{_delArm=false;$('#selDelete').innerHTML=icon('trash')+' Delete';},2500);return;}
   clearTimeout(_delTimer);_delArm=false;
   btn.disabled=true;btn.setAttribute('aria-busy','true');btn.textContent='Deleting…';
-  try{
-    const r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
-    if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
-    state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
-    toast('deleted '+(r.deleted!=null?r.deleted:ids.length)+' flow'+((r.deleted!=null?r.deleted:ids.length)===1?'':'s'));
-  }catch(e){toastError('Delete failed',e);}
-  finally{btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=icon('trash')+' Delete';}
+  let r;
+  try{r=await api('/api/flows/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});}
+  catch(e){restoreSelDelete(btn);toastError('Delete failed',e);return;}
+  // Restore the label first so updateSelBar and later selection changes own the final state.
+  restoreSelDelete(btn);
+  if(state.selected.has(state.selId)){state.selId=null;onAuthzSelectionChanged();}
+  state.selected.clear();state.lastSelIdx=-1;updateSelBar();loadFlows();
+  const n=r.deleted!=null?r.deleted:ids.length;
+  toast('deleted '+n+' flow'+(n===1?'':'s'));
 };
 /* ---- inspector splitter ---- */
 (function(){

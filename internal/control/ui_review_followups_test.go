@@ -45,3 +45,22 @@ func TestUIHistoryAuditInlineStylesReplacedByClasses(t *testing.T) {
 	css := readUIAsset(t, "app.css") + readUIAsset(t, "surfaces.css")
 	requireUIContains(t, css, ".ws-replay-row{", ".tls-blocked{", ".ws-frame{", ".u-ta-right{")
 }
+
+func TestUISelDeleteRestoresButtonBeforeSelectionBarUpdate(t *testing.T) {
+	src := executableJS(readUIAsset(t, "js/proxy.js"))
+	start := strings.Index(src, "$('#selDelete').onclick=async()=>")
+	end := strings.Index(src, "const SPLITTER_KEY")
+	if start < 0 || end <= start {
+		t.Fatal("selDelete handler boundary not found")
+	}
+	h := src[start:end]
+	if strings.Contains(h, "finally{") {
+		t.Error("selDelete must not reset the button in an unconditional finally that runs after updateSelBar")
+	}
+	restore := strings.Index(h, "restoreSelDelete(btn)")
+	update := strings.Index(h, "updateSelBar()")
+	if restore < 0 || update < 0 || restore > update {
+		t.Errorf("selDelete must restore the button before updateSelBar (restore=%d update=%d)", restore, update)
+	}
+	requireUIContains(t, src, "function restoreSelDelete(btn)")
+}
