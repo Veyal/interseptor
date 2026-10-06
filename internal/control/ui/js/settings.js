@@ -1,4 +1,4 @@
-import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects } from './core.js';
+import { $, registerProjectSwitchGuard, projectSwitchBlocker, $$, esc, escAttr, state, toast, toastError, api, fmtBytes, uiConfirm, uiPrompt, openModal, closeModal, copyText, setSeg, syncUiSelectStyles, renderLoadError, closeAllUiSelects } from './core.js';
 registerProjectSwitchGuard(()=>hasUnsavedSettingsFields()?'Save your Settings changes before switching projects.':'');
 import { loadFlows, loadScope } from './proxy.js';
 import { loadRules } from './intercept.js';
@@ -65,7 +65,7 @@ function renderHostHdrList(hostHeaders) {
 function makeHostHdrRow(host, hdrs) {
   const row = document.createElement('div');
   row.className = 'host-hdr-row';
-  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:flex-start';
+  row.classList.add('row', 'u-gap-2', 'u-ai-start', 'u-mb-2');
   row.innerHTML = `<input class="btn host-hdr-host" aria-label="Host override hostname" style="background:var(--bg3);font-family:var(--mono);font-size:var(--fs-xs);width:200px;flex-shrink:0" placeholder="hostname.example.com" spellcheck="false" value="${escAttr(host||'')}">` +
     `<textarea class="host-hdr-headers" aria-label="Headers for host override" rows="2" style="flex:1;font-family:var(--mono);font-size:var(--fs-xs);resize:vertical;background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0" placeholder="Authorization: Bearer eyJ…&#10;Cookie: session=…">${esc(hdrs||'')}</textarea>` +
     `<button class="btn host-hdr-del" style="flex-shrink:0;align-self:flex-start;padding:3px 8px;color:var(--red)" title="Remove this host override" aria-label="Remove host header override for ${escAttr(host||'new host')}">×</button>`;
@@ -388,7 +388,7 @@ function makeProxyListenerRow(addr){
   const{host,port}=parseListenAddr(addr);
   const row=document.createElement('div');
   row.className='proxy-listener-row row';
-  row.style.cssText='gap:8px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap';
+  row.classList.add('u-gap-2', 'u-ai-end', 'u-mb-2', 'u-wrap');
   row.innerHTML=`<div style="flex:1;min-width:180px"><label class="hint">Host</label><select class="btn proxy-host-select" aria-label="Proxy listener host" style="width:100%;text-align:left"></select></div>`+
     `<div class="field" style="width:100px;margin-bottom:0"><label class="hint">Port</label><input class="proxy-port-input" inputmode="numeric" aria-label="Proxy listener port" value="${escAttr(port)}" style="width:100%"></div>`+
     `<button type="button" class="btn proxy-listener-del" title="Remove proxy listener" aria-label="Remove proxy listener" style="color:var(--red);padding:3px 10px">×</button>`;
@@ -1222,7 +1222,7 @@ export function renderRetention(d){
   if(!body)return;
   if(!hosts.length){body.innerHTML='<tr><td colspan="5" class="hint" style="padding:10px 8px">No captured flows yet.</td></tr>';return;}
   body.innerHTML=hosts.map(h=>`<tr data-host="${escAttr(h.host)}">
-    <td><input type="checkbox" class="ret-chk" data-host="${escAttr(h.host)}" aria-label="Select ${escAttr(h.host)}"></td>
+    <td><input type="checkbox" class="ret-chk" data-host="${escAttr(h.host)}" aria-label="Select host ${escAttr(h.host)}"></td>
     <td style="font-family:var(--mono);color:var(--fg)">${esc(h.host)}</td>
     <td style="text-align:right;color:var(--fg2)">${esc(String(h.flows))}</td>
     <td style="text-align:right;color:var(--fg2)">${fmtBytes(h.bytes)}</td>
@@ -1257,7 +1257,7 @@ export async function retDeleteOne(host,flows){
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts:[host],mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 }
 
 $('#retDeleteSelected').onclick=async()=>{
@@ -1273,7 +1273,7 @@ $('#retDeleteSelected').onclick=async()=>{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'delete'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retKeepOnly').onclick=async()=>{
@@ -1290,7 +1290,7 @@ $('#retKeepOnly').onclick=async()=>{
     const r=await runRetentionMutation(()=>api('/api/flows/purge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hosts,mode:'keepOnly'})}));
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retPurgePattern').onclick=async()=>{
@@ -1304,7 +1304,7 @@ $('#retPurgePattern').onclick=async()=>{
     toast('deleted '+r.deleted+' flow'+(r.deleted===1?'':'s')+' · reclaiming space…');
     if($('#retPatternInput'))$('#retPatternInput').value='';
     loadFlows();
-  }catch(e){toast('purge: '+e.message);}
+  }catch(e){toastError('Purge failed', e);}
 };
 
 $('#retGc').onclick=async()=>{
@@ -1314,7 +1314,7 @@ $('#retGc').onclick=async()=>{
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/gc',{method:'POST'}));
     toast('GC done · removed '+r.removedFiles+' file'+(r.removedFiles===1?'':'s')+' · freed '+fmtBytes(r.freedBytes));
-  }catch(e){toast('gc: '+e.message);}
+  }catch(e){toastError('GC failed', e);}
 };
 
 $('#retPolicySave')&&($('#retPolicySave').onclick=async()=>{
@@ -1329,14 +1329,14 @@ $('#retPolicySave')&&($('#retPolicySave').onclick=async()=>{
     if(settingsEditOwned(age,ageGeneration,ageValue))age.removeAttribute('data-settings-dirty');
     if(settingsEditOwned(flows,flowsGeneration,flowsValue))flows.removeAttribute('data-settings-dirty');
     toast('auto retention saved');
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Retention policy save failed', e);}
 });
 $('#retPolicyRun')&&($('#retPolicyRun').onclick=async()=>{
   try{
     const r=await runRetentionMutation(()=>api('/api/flows/retention/run',{method:'POST'}));
     toast('retention run · deleted '+(r.deleted||0)+' flow'+(r.deleted===1?'':'s'));
     loadFlows();
-  }catch(e){toast(e.message);}
+  }catch(e){toastError('Retention run failed', e);}
 });
 
 // select-all checkbox for retention table
