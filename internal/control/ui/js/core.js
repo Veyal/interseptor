@@ -369,8 +369,8 @@ export function createTabManager(opts){
     <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
-    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
-    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">＋</button>`;
+    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">${icon('close')}</button></div>`;
+    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">${icon('plus')}</button>`;
     const tabPanel=document.getElementById(tabPanelId);
     const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
     if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
@@ -639,7 +639,7 @@ export function enhanceSelect(sel){
   const caret=document.createElement('span');
   caret.className='ui-select-caret';
   caret.setAttribute('aria-hidden','true');
-  caret.textContent='▾';
+  caret.innerHTML=icon('chevron');
   trigger.append(valueEl,caret);
 
   const menu=document.createElement('div');
@@ -1584,9 +1584,9 @@ export function encodeKindLabel(s){
 // shared inner markup once here instead of hand-duplicating it at every call site.
 const SEL_DECODE_INNER_HTML=`<span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
   <code class="sel-decode-out"></code>
-  <button type="button" class="btn sel-decode-copy" title="Copy decoded" aria-label="Copy decoded value">⧉</button>
+  <button type="button" class="btn sel-decode-copy" title="Copy decoded" aria-label="Copy decoded value">${icon('copy')}</button>
   <button type="button" class="btn sel-decode-open" title="Open in Decoder">Decoder</button>
-  <button type="button" class="btn sel-decode-close" title="Dismiss" aria-label="Dismiss decoded value">✕</button>`;
+  <button type="button" class="btn sel-decode-close" title="Dismiss" aria-label="Dismiss decoded value">${icon('close')}</button>`;
 // wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
 // (built-in smart) or matches a project message codec (when getContext provides flowId).
 export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){

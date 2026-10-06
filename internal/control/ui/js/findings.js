@@ -267,7 +267,7 @@ function findingsEmptyHTML() {
     <div class="state-empty-title">No findings yet</div>
     <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
     <div class="find-empty-actions">
-      <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
+      <button type="button" class="btn btn-primary" id="findEmptyNew">New finding</button>
        </div>
   </div>`;
 }
@@ -516,7 +516,7 @@ function renderBlockEl(b, i, total) {
   const isFirst = i === 0, isLast = i === total - 1;
   const upBtn = isFirst ? '' : `<button class="btn xs" data-mv="${i}" data-dir="-1" title="Move up" aria-label="Move evidence block ${i+1} up" style="padding:1px 5px;font-size:var(--fs-xs)">↑</button>`;
   const dnBtn = isLast ? '' : `<button class="btn xs" data-mv="${i}" data-dir="1" title="Move down" aria-label="Move evidence block ${i+1} down" style="padding:1px 5px;font-size:var(--fs-xs)">↓</button>`;
-  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" aria-label="Remove evidence block ${i+1}" style="padding:1px 5px;font-size:var(--fs-xs)">✕</button>`;
+  const delBtn = `<button class="btn xs danger" data-del="${i}" title="Remove" aria-label="Remove evidence block ${i+1}" style="padding:1px 5px;font-size:var(--fs-xs)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>`;
   const controls = `<div class="find-block-controls">${upBtn}${dnBtn}${delBtn}</div>`;
 
   if (b.type === 'text') {
@@ -1172,9 +1172,9 @@ function renderFindingDetail() {
       <div class="find-evidence-rail" id="findEvidenceRail">
         <div class="find-doc" id="findBody"></div>
         <div class="find-doc-actions" id="findDocActions" ${edit ? '' : 'hidden'}>
-          <button class="btn btn-primary find-evidence-screenshot" id="findAddImage">＋ Screenshot</button>
-          <button class="btn find-attach-flow" id="findAddFlow">＋ Attach flow<span id="findPocReady" class="hint"></span></button>
-          <button class="btn" id="findAddText">＋ Add step</button>
+          <button class="btn btn-primary find-evidence-screenshot" id="findAddImage">Screenshot</button>
+          <button class="btn find-attach-flow" id="findAddFlow">Attach flow<span id="findPocReady" class="hint"></span></button>
+          <button class="btn" id="findAddText">Add step</button>
           <input type="file" id="findImageFile" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif" hidden>
           <span class="hint find-evidence-help">Paste or drop an image here. Flows can generate a report preview.</span>
         </div>
@@ -2085,7 +2085,7 @@ function renderFindingPicker(list, items, ids, opts) {
     <span class="hint">${esc(statusLabel(f.status))}${pocCount(f) ? ' · ' + pocCount(f) + ' PoC' : ''}</span></button>`).join('');
   const note = opts.note ? `<div class="hint find-pick-note">${esc(opts.note)}</div>` : '';
   list.innerHTML = `<div class="hint find-pick-lead">Add ${ids.length} flow${ids.length === 1 ? '' : 's'} to:</div>${note}${rows || '<div class="hint">No findings yet.</div>'}
-    <button class="btn accent find-pick-new">＋ Add to a new finding</button>`;
+    <button class="btn accent find-pick-new">Add to a new finding</button>`;
   list.querySelectorAll('.find-pick').forEach(b => b.onclick = async () => {
     const id = Number(b.dataset.id);
     closeModal($('#findPickModal'));

@@ -1718,7 +1718,7 @@ export function renderViews(){
   const btn=$('#viewsBtn'); if(!btn)return;
   if(viewsLoadError){btn.textContent='Views !';btn.title='Saved views unavailable: '+(viewsLoadError.message||viewsLoadError)+' — click to retry';return;}
   const n=state.views.length;
-  const txt=n?('Views ▾ · '+n):'Views ▾';
+  const txt=n?('Views · '+n):'Views';
   btn.textContent=txt;
   btn.title=n?(n+' saved view'+(n===1?'':'s')+' — click to apply, save, or delete'):'No saved views yet — click to save the current filters as a view';
 }
@@ -1764,7 +1764,7 @@ function openViewsMenu(){
     sections.push({head:'APPLY VIEW',items:state.views.map(v=>({label:v.name,act:()=>applyView(v)}))});
     sections.push({head:'DELETE VIEW',items:state.views.map(v=>({label:v.name,danger:true,act:()=>deleteView(v.id,v.name)}))});
   }
-  if(!viewsLoadError)sections.push({items:[{label:'＋ Save current filters as a view…',act:saveCurrentView}]});
+  if(!viewsLoadError)sections.push({items:[{label:'Save current filters as a view…',act:saveCurrentView}]});
   openCtxMenu(r.left, r.bottom+2, sections, btn);
 }
 $('#viewsBtn')&&($('#viewsBtn').onclick=e=>{e.stopPropagation();openViewsMenu();});
@@ -2106,11 +2106,11 @@ export function showCtx(x,y,f,field){
   const tagItems=[];
   (f.tags||[]).forEach(t=>{
     tagItems.push({label:'Filter · '+t,icon:'tag',on:state.filters.tag===t,act:()=>filterByTag(t)});
-    tagItems.push({label:'✕ Remove · '+t,danger:true,val:tagN>1?tagN+' flows':'',act:()=>mutateFlowTags(tagTargets,{remove:[t]})});
+    tagItems.push({label:'Remove · '+t,danger:true,val:tagN>1?tagN+' flows':'',act:()=>mutateFlowTags(tagTargets,{remove:[t]})});
   });
   const selN=(state.selected&&state.selected.size>1&&state.selected.has(f.id))?state.selected.size:0;
   tagItems.push({label:selN?('Tag '+selN+' selected…'):'Tag…',icon:'tag',act:()=>selN?tagSelectionPrompt():tagFlowPrompt(f)});
-  if(selN)tagItems.push({label:'✕ Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
+  if(selN)tagItems.push({label:'Remove tag from '+selN+' selected…',danger:true,act:()=>tagSelectionRemovePrompt()});
   sections.push({head:(f.tags||[]).length?('TAGS · '+f.tags.join(' ')):'TAGS', items:tagItems});
   const ff=flowFindings(f.id);
   const fitems=ff.map(x=>({label:x.title,icon:'pin',val:x.severity,act:()=>openFinding(x.id)}));

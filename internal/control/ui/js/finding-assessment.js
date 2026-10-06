@@ -21,7 +21,7 @@ function field(index, key, label, value, extra = '') {
 
 export function renderAffectedTargets(f, edit) {
   const targets = f.targets || (f.target ? [{ url: f.target }] : []);
-  return `<section class="find-sec" id="find-sec-target"><div class="find-section-head"><h3>Affected targets <span class="hint">${targets.length}</span></h3>${edit ? '<div class="find-target-actions"><button type="button" class="btn xs" id="findTargetCleanup">Clean up</button><button type="button" class="btn xs" id="findAddTarget">＋ Add target</button></div>' : ''}</div>
+  return `<section class="find-sec" id="find-sec-target"><div class="find-section-head"><h3>Affected targets <span class="hint">${targets.length}</span></h3>${edit ? '<div class="find-target-actions"><button type="button" class="btn xs" id="findTargetCleanup">Clean up</button><button type="button" class="btn xs" id="findAddTarget">Add target</button></div>' : ''}</div>
   <div class="find-target-list">${targets.map((t, i) => {
     const gap = (f.readiness?.targetEvidenceGaps || []).includes(i);
     const ids = t.flow_ids || [];

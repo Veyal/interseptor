@@ -61,7 +61,7 @@ $('#oobGen')&&($('#oobGen').onclick=async()=>{
   button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Generating…';
   try{const r=await api('/api/oob/new',{method:'POST'});$('#oobUrl').value=r.url||'';copyText(r.url||'','OOB URL generated & copied');}
   catch(e){toast(e.message,'error');}
-  finally{if(epoch===oobGenerateEpoch){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='＋ Generate payload URL';}}
+  finally{if(epoch===oobGenerateEpoch){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='Generate payload URL';}}
 });
 $('#oobCopy')&&($('#oobCopy').onclick=()=>{const u=$('#oobUrl').value;if(u)copyText(u,'OOB URL copied');else toast('generate a URL first');});
 $('#oobSaveBase')&&($('#oobSaveBase').onclick=async()=>{
