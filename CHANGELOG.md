@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Evidence render primitives (`internal/preview`).** Shared `Rendered`/`Opts` contract, semantic report palette with status glyphs (Amber darkened to #a86300 for 4.5:1 text contrast), and a pure-Go canvas (text measure/truncate/wrap, nice ticks, tiles, legend, table grid, chips, title bar, mandatory provenance footer, deterministic size-capped PNG encoding) for the upcoming intruder/authz/diff/waterfall/chain renders.
+
 ## [2.4.2] - 2026-10-06
 
 > v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.
