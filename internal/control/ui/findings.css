@@ -247,3 +247,85 @@ details.find-target-card[open]>summary::after{transform:rotate(180deg)}
 .find-export-checks button{white-space:normal;text-align:left}
 .cvss-calculator{grid-column:1/-1;min-width:0}
 .cvss-calculator>summary{cursor:pointer;padding:8px 0}
+
+/* ---- Findings workspace (UI overhaul WP7) ---- */
+
+/* ReadinessMeter (readiness-meter.js): one segment per stage milestone the
+   server can report, each with an icon, a pattern and a word. */
+.rm{display:inline-flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;min-width:0}
+.rm-seg{position:relative;display:inline-flex;align-items:center;gap:var(--sp-1);min-height:24px;padding:0 var(--sp-2);border:1px solid var(--rd-na);border-radius:var(--r-pill);color:var(--rd-na);font-size:var(--fs-xs);font-weight:600;line-height:1;text-decoration:none;white-space:nowrap}
+.rm-seg .icon{width:12px;height:12px;flex:none}
+.rm-seg.is-pass{border-color:var(--rd-pass);background:var(--rd-pass-dim);color:var(--rd-pass)}
+.rm-seg.is-todo{border-style:dashed;background:var(--rd-na-dim)}
+a.rm-seg:hover{text-decoration:underline}
+a.rm-seg:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.rm[data-unknown="true"] .rm-seg{border-style:dotted}
+/* compact: icons only; the label stays available to assistive tech through .u-sr and aria-valuetext */
+.rm-compact .rm-text{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.rm-compact .rm-seg{padding:0 var(--sp-1);min-width:24px;justify-content:center}
+.find-row-meter{grid-column:1/-1;display:block}
+.find-context-line .rm{margin-left:auto}
+
+/* Evidence tray (evidence-tray.js) */
+.find-evidence-tray{margin:0 0 var(--sp-4)}
+.et{border:1px dashed var(--line2);border-radius:var(--r-md);padding:var(--sp-3);background:var(--bg1)}
+.et.is-drag-over{border:var(--drag-over);background-color:var(--accentDim)}
+.et-head{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-2);font-size:var(--fs-sm)}
+.et-help{margin-left:auto;font-size:var(--fs-xs)}
+.et-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:var(--sp-2);list-style:none;margin:0;padding:0}
+.et-tile{display:flex;align-items:center;gap:var(--sp-2);min-width:0;padding:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2)}
+.et-tile:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.et-tile.is-missing{border-style:dashed;border-color:var(--rd-gap);color:var(--fg2)}
+.et-thumb{width:40px;height:40px;flex:none;object-fit:cover;border-radius:var(--r-sm);background:var(--bg3)}
+.et-kind{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:none;border-radius:var(--r-sm);background:var(--bg3);color:var(--fg2)}
+.et-body{display:grid;min-width:0;flex:1}
+.et-title,.et-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.et-title{font-size:var(--fs-sm);font-weight:600}
+.et-meta{font-size:var(--fs-xs);color:var(--fg3)}
+.et-actions{display:flex;gap:var(--sp-1);flex:none}
+.et-actions .btn{min-width:24px;min-height:24px;justify-content:center}
+.et-actions [data-et-move="-1"] .icon{transform:rotate(180deg)}
+.et-empty{margin:0}
+
+/* Inline new finding row and collapsible guide (list aside) */
+.find-inline-new{display:grid;gap:var(--sp-2);margin:0 var(--sp-3) var(--sp-3);padding:var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-md);background:var(--bg2)}
+.find-inline-new[hidden]{display:none}
+.find-inline-label{font-size:var(--fs-xs);color:var(--fg3)}
+.find-inline-new input{width:100%;min-width:0}
+.find-inline-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--sp-2);align-items:center}
+.find-inline-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);min-height:24px}
+.find-inline-foot .statusline{font-size:var(--fs-xs);color:var(--fg3)}
+.find-inline-foot .statusline[data-kind="error"]{color:var(--rd-block)}
+.find-guide-aside{margin:0 var(--sp-3) var(--sp-3);border-bottom:1px solid var(--line);font-size:var(--fs-xs);color:var(--fg3)}
+.find-guide-aside>summary{min-height:24px;padding:var(--sp-2) 0;cursor:pointer}
+.find-guide-aside>summary:focus-visible{outline:var(--focus-ring);outline-offset:2px}
+.find-guide-list{margin:0 0 var(--sp-2);padding-left:var(--sp-5);display:grid;gap:var(--sp-1);color:var(--fg2)}
+.find-guide-aside .btn{margin-bottom:var(--sp-2)}
+.find-report-mount{flex:none;min-height:0}
+.find-report-mount[hidden]{display:none}
+
+/* SplitPane adoption: list | detail on wide screens. Phones keep the existing
+   list/detail toggle, so the sash and grid are desktop-only. */
+#scanFindingsView.split{display:grid}
+#scanFindingsView.split.is-empty{display:flex}
+#scanFindingsView.split.is-empty>.split-sash{display:none}
+#scanFindingsView.split>.find-browser{width:auto;min-width:0}
+#scanFindingsView.split>.split-back{display:none}
+@media(min-width:721px){#scanFindingsView.split>.find-browser .scan-list{max-height:none;height:auto}}
+@media(max-width:720px){
+  #scanFindingsView.split,#scanFindingsView.split[data-mode]{display:flex}
+  #scanFindingsView.split>.split-sash{display:none}
+  #scanFindingsView.split>.find-browser{width:100%}
+  .find-inline-row{grid-template-columns:minmax(0,1fr) auto}
+  .find-inline-row .btn{min-height:44px}
+  .et-actions .btn{min-width:44px;min-height:44px}
+  .et-help{display:none}
+}
+@media(pointer:coarse){
+  .et-actions .btn{min-width:44px;min-height:44px}
+}
+@media(forced-colors:active){
+  .rm-seg{border-color:CanvasText;color:CanvasText}
+  .rm-seg.is-pass{border-color:Highlight;color:Highlight}
+  .et,.et-tile{border-color:CanvasText}
+}
