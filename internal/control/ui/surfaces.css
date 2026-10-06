@@ -192,3 +192,32 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .is-update{color:var(--accent);font-weight:700}
 .sse-dot.offline{background:var(--red)}
 #main:focus{outline:none}
+
+/* Secondary-panel utilities (API keys, Authz, Setup wizard, TLS diagnosis): the
+   remaining one-off inline styles became classes. Tokens only; no new colours. */
+.u-fg{color:var(--fg)}
+.u-mono{font-family:var(--mono)}
+.u-select-all{user-select:all}
+.u-break{word-break:break-all}
+.u-flex-none{flex:none}
+.u-ta-left{text-align:left}
+.u-ta-center{text-align:center}
+.u-inline-block{display:inline-block}
+.u-dim{opacity:.6}
+.u-scroll-x{overflow-x:auto}
+.u-my-3{margin-top:var(--sp-3);margin-bottom:var(--sp-3)}
+.u-list-pad{padding-left:var(--sp-5)}
+.u-bg3{background:var(--bg3)}
+.cell-note{padding:var(--sp-3)}
+.pre-scroll{white-space:pre;overflow:auto;margin-top:0}
+.panel-details{margin-bottom:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3)}
+.matrix-tbl{border-collapse:collapse}
+.tls-diag-banner.is-open{display:block;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.u-nowrap{white-space:nowrap}
+.tls-diag-detail{flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.setup-steps{margin:var(--sp-2) 0 var(--sp-1);padding-left:var(--sp-5)}
+.u-block{display:block}
+.authz-scope-line{padding:var(--sp-1) 0}
+.matrix-th{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line)}
+.matrix-td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line2)}
+.matrix-flag{background:color-mix(in srgb,var(--red) 7%,transparent)}

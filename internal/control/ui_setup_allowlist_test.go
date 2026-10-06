@@ -19,7 +19,7 @@ func TestUISetupScopeMutationOwnsWizardNavigation(t *testing.T) {
 		"onDismiss: requestCloseSetup",
 		"if (setupActionBusy) return;",
 		"button.isConnected",
-		"id=\"setupScopeMsg\" class=\"hint\" role=\"status\" aria-live=\"polite\"",
+		"id=\"setupScopeMsg\" class=\"hint u-mt-2\" role=\"status\" aria-live=\"polite\"",
 		"wait for the current setup action to finish",
 	)
 	if strings.Contains(src, "finish adding the scope host before closing setup") {
@@ -36,7 +36,7 @@ func TestUISetupScopeMutationOwnsWizardNavigation(t *testing.T) {
 	requireUIContains(t, src[scopeStart:scopeStart+scopeEnd],
 		"setSetupActionBusy(button, true, 'Adding…')",
 		"setSetupActionBusy(button, false, label)",
-		"toast(e.message,'error')",
+		"toastError('Setup action failed', e)",
 	)
 	for _, control := range []string{"setupNext", "setupBack", "setupSkip"} {
 		if !strings.Contains(src, control) {
@@ -74,7 +74,7 @@ func TestUIAllowlistMutationFailureReconcilesInvalidatedLoad(t *testing.T) {
 		"await loadAllowlist();",
 		"Review the values and try the action again.",
 		"Refresh list",
-		"toast(e.message,'error')",
+		"toastError('Allowlist request failed', e)",
 	)
 }
 
