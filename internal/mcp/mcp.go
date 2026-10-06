@@ -379,7 +379,13 @@ func (s *Server) Call(name string, args map[string]any) (string, error) {
 	return s.runTool(name, args)
 }
 
+// toolError is the single place a tool failure becomes an MCP result, so every
+// hard rejection starts with the same "error:" marker whatever produced it
+// (argument validation, store error, HTTP failure, unknown tool).
 func toolError(msg string) any {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(msg)), "error:") {
+		msg = "error: " + msg
+	}
 	return map[string]any{
 		"content": []map[string]any{{"type": "text", "text": msg}},
 		"isError": true,

@@ -1005,9 +1005,21 @@ func ExtractWhyFromNarrative(text string) string {
 // If Body is empty it is synthesized from Detail + Evidence so new findings are
 // immediately in the interleaved-body format.
 func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, error) {
+	return s.createFinding(f, true, changes...)
+}
+
+// createFindingPreserving inserts a finding copied from another project. It
+// skips the write-time CVSS:4.0 and severity-vs-CVSS contract so merge keeps
+// legacy CVSS 3.1 vectors and historical severities exactly as recorded; every
+// other validation still applies. API and MCP writes use CreateFinding.
+func (s *Store) createFindingPreserving(f *Finding, changes ...FindingChange) (int64, error) {
+	return s.createFinding(f, false, changes...)
+}
+
+func (s *Store) createFinding(f *Finding, enforceAssessment bool, changes ...FindingChange) (int64, error) {
 	now := time.Now().UnixMilli()
 	f.TS, f.UpdatedTS = now, now
-	if strings.TrimSpace(f.Severity) == "" {
+	if strings.TrimSpace(f.Severity) == "" && enforceAssessment {
 		// An omitted severity follows the vector instead of defaulting to Medium.
 		if ev, err := cvsspkg.Evaluate(f.Cvss); err == nil && !ev.Legacy {
 			f.Severity = ev.Severity
@@ -1024,14 +1036,18 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 		return 0, err
 	}
 	f.Confidence = normalizeFindingConfidence(f.Confidence)
-	if err := validateCVSSWrite(f.Cvss); err != nil {
-		return 0, err
+	if enforceAssessment {
+		if err := validateCVSSWrite(f.Cvss); err != nil {
+			return 0, err
+		}
 	}
 	if err := normalizeFindingAssessment(f); err != nil {
 		return 0, err
 	}
-	if err := validateSeverityMatchesCVSS(f); err != nil {
-		return 0, err
+	if enforceAssessment {
+		if err := validateSeverityMatchesCVSS(f); err != nil {
+			return 0, err
+		}
 	}
 	if f.Body == "" {
 		f.Body = initialBody(f.Detail, f.Evidence)
