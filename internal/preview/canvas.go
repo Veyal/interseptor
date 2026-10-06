@@ -8,8 +8,11 @@ import (
 	"image/draw"
 	"image/png"
 	"math"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
@@ -79,10 +82,22 @@ type canvas struct {
 	img   *image.RGBA
 	pal   reportPalette
 	faces map[faceKey]font.Face
+	// escaped records that a rune the embedded fonts cannot draw was replaced
+	// by a readable U+XXXX escape; renderFrame then says so in the footer.
+	escaped bool
+	glyphs  map[glyphKey]bool
 }
 
+type glyphKey struct {
+	kind fontKind
+	r    rune
+}
+
+// escapedFooterNote is appended to the footer when any text was escaped.
+const escapedFooterNote = "Characters outside the embedded font are shown as U+XXXX."
+
 func newCanvas(w, h int, pal reportPalette) *canvas {
-	c := &canvas{img: image.NewRGBA(image.Rect(0, 0, w, h)), pal: pal, faces: map[faceKey]font.Face{}}
+	c := &canvas{img: image.NewRGBA(image.Rect(0, 0, w, h)), pal: pal, faces: map[faceKey]font.Face{}, glyphs: map[glyphKey]bool{}}
 	c.fill(pal.paper)
 	return c
 }
@@ -178,9 +193,49 @@ func absInt(v int) int {
 	return v
 }
 
-// measure returns the pixel width of s.
+// hasGlyph reports whether the embedded face can draw r.
+func (c *canvas) hasGlyph(kind fontKind, size int, r rune) bool {
+	k := glyphKey{kind, r}
+	if ok, hit := c.glyphs[k]; hit {
+		return ok
+	}
+	_, ok := c.face(kind, size).GlyphAdvance(r)
+	c.glyphs[k] = ok
+	return ok
+}
+
+// sanitize makes s drawable: control characters become spaces and runes the
+// embedded fonts lack (CJK and other non-Latin scripts) become U+XXXX, so
+// distinct payloads stay distinguishable instead of drawing as identical tofu.
+func (c *canvas) sanitize(kind fontKind, size int, s string) string {
+	clean := true
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 || s[i] < 0x20 || s[i] == 0x7f {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == utf8.RuneError || r < 0x20 || r == 0x7f:
+			b.WriteByte(' ')
+		case r < 0x80 || c.hasGlyph(kind, size, r):
+			b.WriteRune(r)
+		default:
+			c.escaped = true
+			b.WriteString("U+" + strings.ToUpper(strconv.FormatInt(int64(r), 16)))
+		}
+	}
+	return b.String()
+}
+
+// measure returns the pixel width of s as drawn.
 func (c *canvas) measure(kind fontKind, size int, s string) int {
-	return font.MeasureString(c.face(kind, size), s).Ceil()
+	return font.MeasureString(c.face(kind, size), c.sanitize(kind, size, s)).Ceil()
 }
 
 // text draws s with its top-left at (x,y) and returns the width drawn.
@@ -188,7 +243,7 @@ func (c *canvas) text(x, y int, s string, kind fontKind, size int, col color.RGB
 	f := c.face(kind, size)
 	d := &font.Drawer{Dst: c.img, Src: image.NewUniform(col), Face: f,
 		Dot: fixed.P(x, y+f.Metrics().Ascent.Ceil())}
-	d.DrawString(s)
+	d.DrawString(c.sanitize(kind, size, s))
 	return d.Dot.X.Ceil() - x
 }
 
@@ -201,22 +256,57 @@ func (c *canvas) lineH(kind fontKind, size int) int {
 	return c.face(kind, size).Metrics().Height.Ceil() + 2
 }
 
-// truncate shortens s with an ellipsis so it fits maxW pixels.
+// maxRunesFor bounds how many runes of untrusted text can ever matter for a
+// maxW pixel budget (every drawn rune is at least about one pixel wide).
+func maxRunesFor(maxW int) int {
+	if maxW < 16 {
+		return 16
+	}
+	return maxW + 8
+}
+
+// clipRunes returns the first n runes of s and whether anything was cut.
+func clipRunes(s string, n int) (string, bool) {
+	if len(s) <= n {
+		return s, false
+	}
+	i := 0
+	for count := 0; count < n; count++ {
+		if i >= len(s) {
+			return s, false
+		}
+		_, w := utf8.DecodeRuneInString(s[i:])
+		i += w
+	}
+	if i >= len(s) {
+		return s, false
+	}
+	return s[:i], true
+}
+
+// fitPrefix returns the largest rune count n in [0,len(r)] with
+// measure(prefix(n)+suffix) <= maxW, found by binary search.
+func (c *canvas) fitPrefix(kind fontKind, size int, r []rune, suffix string, maxW int) int {
+	return sort.Search(len(r), func(i int) bool {
+		return c.measure(kind, size, strings.TrimRight(string(r[:i+1]), " ")+suffix) > maxW
+	})
+}
+
+// truncate shortens s with an ellipsis so it fits maxW pixels. It is linear in
+// the clipped input and logarithmic in measurements, so hostile megabyte
+// strings stay cheap.
 func (c *canvas) truncate(kind fontKind, size int, s string, maxW int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	if c.measure(kind, size, s) <= maxW {
+	s, clipped := clipRunes(s, maxRunesFor(maxW))
+	if !clipped && c.measure(kind, size, s) <= maxW {
 		return s
 	}
 	const ell = "..."
 	r := []rune(s)
-	for len(r) > 0 {
-		r = r[:len(r)-1]
-		cand := strings.TrimRight(string(r), " ") + ell
-		if c.measure(kind, size, cand) <= maxW {
-			return cand
-		}
+	if n := c.fitPrefix(kind, size, r, ell, maxW); n > 0 {
+		return strings.TrimRight(string(r[:n]), " ") + ell
 	}
 	if c.measure(kind, size, ell) <= maxW {
 		return ell
@@ -226,8 +316,13 @@ func (c *canvas) truncate(kind fontKind, size int, s string, maxW int) string {
 
 // wrap breaks s into lines of at most maxW pixels, hard-splitting long words.
 // At most maxLines lines are returned (<=0 means unlimited); the last is
-// ellipsised when text remains.
+// ellipsised when text remains. Input is clipped to what could be shown.
 func (c *canvas) wrap(kind fontKind, size int, s string, maxW, maxLines int) []string {
+	budget := 4096
+	if maxLines > 0 && maxW > 0 {
+		budget = maxLines*(maxRunesFor(maxW)) + 8
+	}
+	s, _ = clipRunes(s, budget)
 	var lines []string
 	cur := ""
 	flush := func() {
@@ -235,12 +330,11 @@ func (c *canvas) wrap(kind fontKind, size int, s string, maxW, maxLines int) []s
 		cur = ""
 	}
 	for _, w := range strings.Fields(s) {
-		for c.measure(kind, size, w) > maxW && maxW > 0 {
-			// hard split the word
+		for maxW > 0 && c.measure(kind, size, w) > maxW {
 			r := []rune(w)
-			n := len(r)
-			for n > 1 && c.measure(kind, size, string(r[:n])) > maxW {
-				n--
+			n := c.fitPrefix(kind, size, r, "", maxW)
+			if n < 1 {
+				n = 1
 			}
 			if cur != "" {
 				flush()
@@ -248,6 +342,9 @@ func (c *canvas) wrap(kind fontKind, size int, s string, maxW, maxLines int) []s
 			cur = string(r[:n])
 			w = string(r[n:])
 			flush()
+			if maxLines > 0 && len(lines) > maxLines {
+				break
+			}
 		}
 		if w == "" {
 			continue
@@ -262,6 +359,9 @@ func (c *canvas) wrap(kind fontKind, size int, s string, maxW, maxLines int) []s
 		} else {
 			cur = try
 		}
+		if maxLines > 0 && len(lines) > maxLines {
+			break
+		}
 	}
 	if cur != "" {
 		flush()
@@ -271,6 +371,26 @@ func (c *canvas) wrap(kind fontKind, size int, s string, maxW, maxLines int) []s
 		lines[maxLines-1] = c.truncate(kind, size, lines[maxLines-1]+"...", maxW)
 	}
 	return lines
+}
+
+// formatTick prints an axis tick rounded to the precision of step so float
+// noise such as 0.6000000000000001 never reaches the image.
+func formatTick(v, step float64) string {
+	dec := 0
+	if step > 0 {
+		dec = int(math.Ceil(-math.Log10(step) - 1e-9))
+	}
+	if dec < 0 {
+		dec = 0
+	}
+	if dec > 6 {
+		dec = 6
+	}
+	s := strconv.FormatFloat(v, 'f', dec, 64)
+	if s == "-0" {
+		s = "0"
+	}
+	return s
 }
 
 // niceTicks returns evenly spaced "nice" (1/2/5 x 10^k) ticks covering
@@ -413,7 +533,11 @@ func renderFrame(o Opts, f frame) ([]byte, int, int, error) {
 		c.rect(0, 0, w, titleH, c.pal.paper)
 		c.drawTitleBar(f.Title)
 		c.rect(0, h-footerH, w, footerH, c.pal.paper)
-		c.drawFooter(f.Provenance)
+		prov := f.Provenance
+		if c.escaped {
+			prov = strings.TrimSpace(prov + "  " + escapedFooterNote)
+		}
+		c.drawFooter(prov)
 		c.close()
 		data, err := encodePNG(c.img, MaxPNGBytes, func() bool {
 			if rows <= 1 {

@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Flow-vs-flow diff render (`preview.RenderFlowDiff`).** Deterministic report-width PNG with two header cards, a header delta table (added/removed/changed, input order) and a unified body diff using `+`/`-` glyphs as well as colour. Lines are tab-expanded and truncated to 110 columns with an ellipsis; at most 120 diff lines are drawn (fewer when the 1800px height cap binds) followed by an honest `+N more lines`. Identical flows render a `No differences` state.
 - **Flow timing waterfall render (`preview.RenderFlowWaterfall`).** Deterministic PNG of a flow sequence: rows sorted by start then flow id, bars on a shared offset axis (ms, or s above 5000 ms), status chips with glyphs, 2px minimum bar for 0 ms flows, aggregated bucket beyond the row/height budget, and an explicit note that only total duration is recorded (no phase split).
 
+### Fixed
+- **Evidence render robustness.** `canvas.truncate`/`wrap` are now linear (clip to the drawable rune budget, binary-search the cut), so 64 KB headers, URLs, targets or unbroken titles render in milliseconds instead of seconds to minutes. Characters the embedded Go fonts cannot draw (CJK, other non-Latin scripts) are drawn as readable `U+XXXX` escapes with a footer note instead of identical tofu boxes, and axis ticks are rounded to step precision (no more `0.6000000000000001`).
+
+
 ## [2.4.2] - 2026-10-06
 
 > v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.
