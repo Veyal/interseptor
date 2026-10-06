@@ -28,7 +28,7 @@ import { projectState } from './project-state.js';
 import { initCtxbar, renderCtxbar, setCtxProject } from './ctxbar.js';
 import { initConnection, setConnectionStatus } from './connection.js';
 import { configureCommandPalette, cmdkOpen, cmdkClose, isCommandPaletteOpen } from './cmdk.js';
-import { registerCommand, registerSseHandler, runSseHooks, setShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
+import { registerCommand, registerSseHandler, runSseHooks, setShellApi, getShellApi, emitTabChange, loadOptionalModules } from './shell-hooks.js';
 import { openSheet } from './sheet.js';
 export { registerCommand, registerSseHandler };
 initUiHints();
@@ -481,7 +481,7 @@ function cmdkCommands(){
     {t:'Send selected flow to Intruder',kw:'fuzz brute force payloads enumerate',run:()=>{const f=selectedFlow();if(f)sendToIntruder(f);else toast('select a flow in History first');}},
     {t:'Open Decoder (base64 / url / jwt / hex…)',kw:'encode decode smart',run:()=>openDecoder()},
     {t:'New finding',kw:'create finding record report vulnerability',run:()=>{go('findings')();document.querySelector('#findNew')?.click();}},
-    {t:'Export findings',kw:'export report markdown html json download findings',run:()=>{go('findings')();document.querySelector('#findExportOpen')?.click();}},
+    {t:'Export findings',kw:'export report markdown html json download findings',run:()=>{go('findings')();const o=getShellApi().openReport;if(!o||!o())toast('Open the relevant view first');}},
     {t:'Add selected flow to finding',kw:'add evidence poc finding attach history',run:()=>{if(state.selected?.size)pickFindingForSelection();else{const f=selectedFlow();if(f)addFlowToFinding(f.id);else toast('select a flow in History first');}}},
     {t:'Find inside selected message (Ctrl+F)',kw:'search find text request response body inspector',run:()=>{go('proxy')();openInspectFind();}},
     {t:'Compare selected flows (diff)',kw:'compare diff two flows responses side by side',run:()=>openCompare()},

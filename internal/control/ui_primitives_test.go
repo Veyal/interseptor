@@ -243,7 +243,7 @@ func TestUICoreModalIDsIncludeOverlaySurfaces(t *testing.T) {
 		}
 	}
 	// every legacy modal stays registered (reversibility)
-	for _, legacy := range []string{"flowModal", "findPickModal", "findFlowPickModal", "findExportModal", "compareModal", "findCreateModal"} {
+	for _, legacy := range []string{"flowModal", "findPickModal", "findFlowPickModal", "compareModal", "findCreateModal"} {
 		if !strings.Contains(ids[1], "'"+legacy+"'") {
 			t.Errorf("legacy modal %s was removed from MODAL_IDS", legacy)
 		}

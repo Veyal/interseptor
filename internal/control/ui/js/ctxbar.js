@@ -12,6 +12,7 @@ import {
   projectState, scopeChipModel, evidenceSummary, readinessValuetext, identityHue, identityInitials,
   createBlockerAnnouncer, blockersByFinding,
 } from './project-state.js';
+import { getShellApi } from './shell-hooks.js';
 
 const SEGMENT_CAP = 10;
 const POPOVER_ROW_CAP = 50;
@@ -253,9 +254,15 @@ function runNext() {
   if (a.kind === 'set-target' || a.kind === 'enable-scope') { openEngagement(); return; }
   if (a.kind === 'capture') { if (deps.activateTab) deps.activateTab('proxy'); return; }
   if ((a.kind === 'attach-proof' || a.kind === 'fix-blockers') && a.href) { window.location.hash = a.href; return; }
-  if (a.kind === 'new-finding' || a.kind === 'export') {
+  if (a.kind === 'export') {
     if (deps.activateTab) deps.activateTab('findings');
-    const btn = document.getElementById(a.kind === 'export' ? 'findExportOpen' : 'findNew');
+    const open = getShellApi().openReport;
+    if (open) open();
+    return;
+  }
+  if (a.kind === 'new-finding') {
+    if (deps.activateTab) deps.activateTab('findings');
+    const btn = document.getElementById('findNew');
     if (btn) btn.click();
   }
 }

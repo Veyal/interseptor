@@ -13,7 +13,7 @@ func TestFindingsEvidenceFirstWorkspaceContracts(t *testing.T) {
 	if strings.Contains(index, `<option value="pdf">`) {
 		t.Error("findings export must not advertise PDF when the browser cannot produce it")
 	}
-	if !strings.Contains(index, `<option value="html">HTML with images</option>`) {
+	if !strings.Contains(readUIAsset(t, "js/report-preflight-model.js"), `{ value: 'html', label: 'HTML with images' }`) {
 		t.Error("findings export must identify self-contained HTML as the image-preserving handoff")
 	}
 	for _, want := range []string{`<nav id="findList"`, `id="findEvidenceRail"`, `id="findNarrativePreset"`, `id="findBackToList"`} {

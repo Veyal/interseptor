@@ -3,15 +3,16 @@
 // Left: the blocker checklist grouped by finding with Fix links. Right: export
 // options, the export button and a preview of what the report will contain.
 // Readiness is the server's (`GET /api/findings/readiness`); this file renders
-// it and gates on it, it never re-derives pass or fail. The export uses the same
-// endpoint as the legacy export modal (`GET /api/findings/report`).
+// it and gates on it, it never re-derives pass or fail. It is the only export
+// surface (`GET /api/findings/report`); the old export modal was removed.
 //
 // The view mounts into #findReportMount (owned by the Findings region) and adds
 // one toggle button to the Findings toolbar. Both are created here, so the
 // module is optional: when it fails to load, Findings behaves as before.
 
 import { $, esc, escAttr, api, saveFile, toast, projectStorageKey } from './core.js';
-import { handleAppHash } from './findings.js';
+import { handleAppHash, settleFindingsBeforeExport } from './findings.js';
+import { setShellApi } from './shell-hooks.js';
 import { projectState } from './project-state.js';
 import {
   groupBlockers, summarize, exportGate, draftGate, overrideConfirmed, OVERRIDE_PHRASE,
@@ -120,6 +121,7 @@ async function runExport(mode) {
   renderActions();
   try {
     document.activeElement?.blur?.();
+    await settleFindingsBeforeExport();
     const res = await fetch(exportURL(S.options, mode), { credentials: 'same-origin' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -181,12 +183,13 @@ function setOpen(on) {
 }
 
 export function openReportView() {
-  if (!mount) return;
+  if (!mount) return false;
   loadOptions();
   setOpen(true);
   S.quality = null;
   check();
   $('#reportTitle')?.focus();
+  return true;
 }
 
 export function closeView(focusToggle) {
@@ -218,7 +221,10 @@ function init() {
   toggle.setAttribute('aria-expanded', 'false');
   toggle.setAttribute('aria-controls', 'findReportMount');
   toggle.textContent = 'Report';
-  actions.insertBefore(toggle, $('#findExportOpen'));
+  actions.appendChild(toggle);
+  // The only export path: the palette, the strip's Next chip and the toolbar all
+  // come through here, so the typed DRAFT confirmation cannot be bypassed.
+  setShellApi({ openReport: openReportView });
   toggle.addEventListener('click', () => { if (S.open) closeView(true); else openReportView(); });
   mount.setAttribute('role', 'region');
   mount.setAttribute('aria-label', 'Report preflight');

@@ -49,7 +49,7 @@ func TestUIFindingsPureModulesHaveNoImportsOrInlineStyle(t *testing.T) {
 // P1: the client displays server readiness and never decides pass or fail.
 func TestUIFindingsReadinessIsDisplayedNeverDerived(t *testing.T) {
 	derive := regexp.MustCompile(`\.checks\s*\.\s*(filter|every|some|reduce|find)\b|\.ok\s*[=!]==|\.stage\s*=[^=>]|\.gaps\s*\.length\s*(===|==)\s*0`)
-	for _, name := range []string{"js/readiness-meter.js", "js/evidence-tray.js", "js/finding-readiness-board.js"} {
+	for _, name := range []string{"js/readiness-meter.js", "js/evidence-tray.js"} {
 		if m := derive.FindString(executableJS(readUIAsset(t, name))); m != "" {
 			t.Errorf("%s re-derives readiness (%q); render the server stage and gaps only", name, m)
 		}
@@ -89,7 +89,7 @@ func TestUIFindingsLegacyDialogsStayReachable(t *testing.T) {
 	core := readUIAsset(t, "js/core.js")
 	logic := readUIAsset(t, "js/cmdk-logic.js")
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"findGuideModal", "findExportModal", "findCreateModal", "findPickModal", "findFlowPickModal"} {
+	for _, id := range []string{"findGuideModal", "findCreateModal", "findPickModal", "findFlowPickModal"} {
 		if !strings.Contains(modals, `id="`+id+`"`) {
 			t.Errorf("legacy dialog %s was removed from the findings modal region", id)
 		}
@@ -164,8 +164,9 @@ func TestUIFindingsAdoptsSplitPaneForDesktop(t *testing.T) {
 func TestUIFindingsAutosaveAndReadinessCheckStates(t *testing.T) {
 	src := readUIAsset(t, "js/findings.js")
 	requireUIContains(t, src, "'Unsaved changes'", "'Saving…'", "'Saved'", "'Save failed'")
-	requireUIContains(t, src, "projectState.refresh({ reason: 'readiness-check' })", "$('#findReadinessCheck')")
-	requireUIContains(t, readUIAsset(t, "index.html"), `id="findReadinessBoard"`)
+	// Readiness checks live in the Report preflight view ("Check again"); the old
+	// export modal and its board are gone.
+	requireUIContains(t, executableJS(readUIAsset(t, "js/report-preflight.js")), "reportRecheck", "readinessURL(")
 }
 
 // WP7 stylesheet rules animate nothing, define their focus states and meet the

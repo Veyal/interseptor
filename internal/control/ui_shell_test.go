@@ -65,10 +65,6 @@ func TestUIShellPreservesRequiredIDs(t *testing.T) {
 			t.Errorf("index.html lost %s", want)
 		}
 	}
-	// findReadinessBoard lives in the findings region (WP7 replaces its renderer).
-	if !strings.Contains(index, `id="findReadinessBoard"`) {
-		t.Error("index.html lost #findReadinessBoard")
-	}
 	if !regexp.MustCompile(`id="crumb" class="sr-only"`).MatchString(index) {
 		t.Error("#crumb must stay in the DOM as a visually hidden element")
 	}

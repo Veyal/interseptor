@@ -465,7 +465,7 @@ func TestUIFoundationRegionMarkersAppearExactlyOnce(t *testing.T) {
 	// modals-findings nests inside modals-tools; both leave the overlays in place.
 	mt := index[strings.Index(index, "<!-- region:modals-tools -->"):strings.Index(index, "<!-- /region:modals-tools -->")]
 	mf := index[strings.Index(index, "<!-- region:modals-findings -->"):strings.Index(index, "<!-- /region:modals-findings -->")]
-	for _, id := range []string{"findGuideModal", "findExportModal", "findCreateModal", "findPickModal", "findFlowPickModal"} {
+	for _, id := range []string{"findGuideModal", "findCreateModal", "findPickModal", "findFlowPickModal"} {
 		if !strings.Contains(mf, `id="`+id+`"`) {
 			t.Errorf("modals-findings must contain %s", id)
 		}

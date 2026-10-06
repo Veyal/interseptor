@@ -450,11 +450,10 @@ func TestUIJourneyReadinessProjectScannerReportInterceptAndShareContracts(t *tes
 	if strings.Contains(app, "setTimeout(()=>{if(state.flows&&!state.flows.length)maybeShowSetup()") {
 		t.Error("first-run setup still depends on an arbitrary timer")
 	}
-	requireUIContains(t, index, `id="findExportStatuses"`)
+	requireUIContains(t, executableJS(readUIAsset(t, "js/report-preflight.js")), `id="reportStatuses"`)
 	requireUIContains(t, intercept, "intercept-danger", "held")
 	requireUIContains(t, index,
 		`id="interceptWarning"`,
-		`id="findExportStatuses"`,
 		`id="scanClear"`,
 		`id="scanRescanState"`,
 		`id="sharePrereq"`,

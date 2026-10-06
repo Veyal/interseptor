@@ -1,9 +1,8 @@
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel, renderEvidenceCapabilities } from './finding-assessment.js';
-import { renderReadinessBoard } from './finding-readiness-board.js';
 import { flowPopup, closeFlowPopup } from './flowmodal.js';
 import { sendToRepeater } from './tools.js';
 import { renderCvssEditor, bindCvssEditor } from './cvss.js';
@@ -1890,7 +1889,7 @@ $('#findGuideAside')?.addEventListener('toggle', () => $('#findGuide')?.setAttri
 $('#findGuideDialog') && ($('#findGuideDialog').onclick = () => openModal($('#findGuideModal')));
 $('#findGuideClose') && ($('#findGuideClose').onclick = () => closeModal($('#findGuideModal')));
 
-async function settleFindingsBeforeExport() {
+export async function settleFindingsBeforeExport() {
   captureActiveFindingTextEditor(bodyFindingId);
   do {
     await Promise.allSettled([...bodySaveSnapshots.keys()].map(id => flushPendingBodySave(id)));
@@ -1902,52 +1901,6 @@ async function settleFindingsBeforeExport() {
     throw new Error('Save or retry finding changes and Apply CVSS previews before exporting.');
   }
 }
-
-async function exportFindingsReport() {
-  const fmt = $('#findExportFmt')?.value || 'md';
-  const mode = $('#findExportMode')?.value || 'final';
-  const statuses = $('#findExportStatuses')?.value || 'open,verified,fixed';
-  const group = $('#findExportGroupByTag')?.checked ? '&groupBy=tag' : '';
-  const button = $('#findExport');
-  if (button?.disabled) return;
-  if (button) { button.disabled = true; button.setAttribute('aria-busy','true'); button.textContent = 'Exporting…'; }
-  try {
-    await settleFindingsBeforeExport();
-    const res = await fetch('/api/findings/report?format=' + encodeURIComponent(fmt) + '&statuses=' + encodeURIComponent(statuses) + '&mode=' + encodeURIComponent(mode) + group, { credentials: 'same-origin' });
-    if (!res.ok) {
-      const result = await res.json().catch(()=>({}));
-      const errors=$('#findExportChecks');
-      if(result.quality && errors){
-        errors.hidden=false;
-        errors.innerHTML=`<p>${esc(result.error || result.quality.message || 'Review findings before final export.')}</p>${(result.quality.findings||[]).filter(f=>!f.ready).map(f=>`<button type="button" class="btn" data-review-finding="${f.id}">${esc(f.title)} · ${(f.checks||[]).length} checks</button>`).join('')}`;
-        errors.querySelectorAll('[data-review-finding]').forEach(link=>link.onclick=()=>{closeModal($('#findExportModal'));openFinding(Number(link.dataset.reviewFinding));findSection='review';});
-      }
-      throw new Error(result.error || 'Export failed ('+res.status+')');
-    }
-    const blob = await res.blob();
-    await saveFile(blob, 'interseptor-findings.' + fmt, blob.type);
-    toast('findings exported');
-    closeModal($('#findExportModal'));
-  } catch (err) { if (err?.name !== 'AbortError') toast(err.message, 'error'); }
-  finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Download report'; } }
-}
-$('#findExport') && ($('#findExport').onclick = exportFindingsReport);
-$('#findReadinessCheck')?.addEventListener('click', async () => {
-  // The engagement strip is refreshed from the server alongside the board below;
-  // neither recomputes readiness on the client.
-  projectState.refresh({ reason: 'readiness-check' });
-  const panel = $('#findReadinessBoard');
-  if (!panel) return;
-  panel.hidden = false;
-  panel.textContent = 'Checking readiness…';
-  try {
-    const statuses = $('#findExportStatuses')?.value || 'open,verified,fixed';
-    panel.innerHTML = renderReadinessBoard(await api('/api/findings/readiness?statuses=' + encodeURIComponent(statuses)));
-    panel.querySelectorAll('[data-review-finding]').forEach(link => link.onclick = () => { closeModal($('#findExportModal')); openFinding(Number(link.dataset.reviewFinding)); findSection = 'review'; });
-  } catch (err) { panel.textContent = err.message || 'Readiness check failed'; }
-});
-$('#findExportOpen')?.addEventListener('click',()=>openModal($('#findExportModal')));
-$('#findExportClose')?.addEventListener('click',()=>closeModal($('#findExportModal')));
 
 export function flowFindings(flowId) {
   return findings.filter(f => (f.blocks || []).some(b => b.type === 'flow' && b.flowId === flowId) || (f.flows || []).some(x => x.flowId === flowId)).map(f => ({ id: f.id, title: f.title, severity: f.severity }));

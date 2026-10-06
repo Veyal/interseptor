@@ -353,8 +353,8 @@ func TestUIA11ySingleKeyRegistrationsNeverConflictAndAreGated(t *testing.T) {
 
 func TestUIA11yPreservedShellIDsAndTabs(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	for _, id := range []string{"tabs", "crumb", "mobileToolSelect", "sseStatus", "proxyAddr", "controlAddr", "deviceProxyChip", "findReadinessBoard", "cmdkBtn", "setNav", "ctxbar", "dock", "main"} {
-		if !strings.Contains(index, `id="`+id+`"`) && !strings.Contains(readUIAsset(t, "js/finding-readiness-board.js")+readUIAsset(t, "js/findings.js"), id) {
+	for _, id := range []string{"tabs", "crumb", "mobileToolSelect", "sseStatus", "proxyAddr", "controlAddr", "deviceProxyChip", "cmdkBtn", "setNav", "ctxbar", "dock", "main"} {
+		if !strings.Contains(index, `id="`+id+`"`) && !strings.Contains(readUIAsset(t, "js/findings.js"), id) {
 			t.Errorf("preserved id #%s is gone", id)
 		}
 	}
@@ -371,7 +371,7 @@ func TestUIA11yLegacyModalsStayRegisteredAndReachable(t *testing.T) {
 	if ids == nil {
 		t.Fatal("MODAL_IDS not found")
 	}
-	for _, id := range []string{"findCreateModal", "findPickModal", "findFlowPickModal", "findExportModal", "compareModal", "findGuideModal", "findDeletedModal"} {
+	for _, id := range []string{"findCreateModal", "findPickModal", "findFlowPickModal", "compareModal", "findGuideModal", "findDeletedModal"} {
 		if !strings.Contains(ids[1], "'"+id+"'") {
 			t.Errorf("legacy modal %s dropped from MODAL_IDS", id)
 		}
@@ -379,7 +379,7 @@ func TestUIA11yLegacyModalsStayRegisteredAndReachable(t *testing.T) {
 	// The palette lists every modal id as an action (reversibility).
 	palette := readUIAsset(t, "js/cmdk-logic.js")
 	requireUIContains(t, readUIAsset(t, "js/cmdk-actions.js"), "legacyModalCommands", "LEGACY_MODALS")
-	for _, id := range []string{"findCreateModal", "findPickModal", "findFlowPickModal", "findExportModal", "compareModal"} {
+	for _, id := range []string{"findCreateModal", "findPickModal", "findFlowPickModal", "compareModal"} {
 		if !strings.Contains(palette, id) {
 			t.Errorf("legacy dialog %s is not reachable from the command palette", id)
 		}

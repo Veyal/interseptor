@@ -73,33 +73,46 @@ func TestUIReportPreflightGatesExportAndRequiresTypedOverride(t *testing.T) {
 	}
 }
 
-func TestUIReportPreflightUsesTheLegacyExportEndpoint(t *testing.T) {
+func TestUIReportPreflightKeepsTheExportEndpoints(t *testing.T) {
 	model := executableJS(readUIAsset(t, "js/report-preflight-model.js"))
-	legacy := executableJS(readUIAsset(t, "js/findings.js"))
 	for _, want := range []string{"/api/findings/report?format=", "&statuses=", "&mode=", "&groupBy=tag", "/api/findings/readiness?statuses="} {
 		if !strings.Contains(model, want) {
 			t.Errorf("model missing %q", want)
 		}
 	}
-	for _, want := range []string{"/api/findings/report?format=", "&statuses=", "&mode=", "&groupBy=tag", "/api/findings/readiness?statuses="} {
-		if !strings.Contains(legacy, want) {
-			t.Errorf("legacy export no longer uses %q: update the preflight to match", want)
-		}
-	}
 }
 
-func TestUIReportPreflightMountsAndLegacyExportStaysReachable(t *testing.T) {
+// The legacy export modal had a "Draft" option with no typed confirmation, so
+// every entry point (toolbar, palette, Next chip, Export findings command) now
+// opens the Report preflight view and the modal is gone.
+func TestUIReportPreflightIsTheOnlyExportPath(t *testing.T) {
+	index := readUIAsset(t, "index.html")
+	for _, id := range []string{`id="findExportModal"`, `id="findExportOpen"`, `id="findExport"`, `id="findReadinessCheck"`, `id="findReadinessBoard"`, `findExportMode`} {
+		if strings.Contains(index, id) {
+			t.Errorf("legacy export markup %s must be gone", id)
+		}
+	}
+	if strings.Contains(executableJS(readUIAsset(t, "js/core.js")), "'findExportModal'") {
+		t.Error("findExportModal must not stay in MODAL_IDS")
+	}
+	for _, name := range []string{"js/app.js", "js/cmdk-actions.js", "js/ctxbar.js", "js/cmdk-logic.js", "js/findings.js", "js/report-preflight.js"} {
+		src := executableJS(readUIAsset(t, name))
+		for _, gone := range []string{"findExportOpen", "findExportModal", "findReadinessCheck", "exportFindingsReport"} {
+			if strings.Contains(src, gone) {
+				t.Errorf("%s still references the removed legacy export %q", name, gone)
+			}
+		}
+	}
+	requireUIContains(t, executableJS(readUIAsset(t, "js/cmdk-actions.js")), "getShellApi().openReport")
+	requireUIContains(t, executableJS(readUIAsset(t, "js/ctxbar.js")), "getShellApi().openReport")
+	requireUIContains(t, executableJS(readUIAsset(t, "js/app.js")), "getShellApi().openReport")
+	requireUIContains(t, executableJS(readUIAsset(t, "js/report-preflight.js")), "setShellApi({ openReport: openReportView })")
+}
+
+func TestUIReportPreflightMounts(t *testing.T) {
 	index := readUIAsset(t, "index.html")
 	if strings.Count(index, `id="findReportMount"`) != 1 {
 		t.Error("#findReportMount must exist exactly once")
-	}
-	for _, id := range []string{`id="findExportModal"`, `id="findExportOpen"`, `id="findExport"`, `id="findReadinessCheck"`, `id="findReadinessBoard"`} {
-		if !strings.Contains(index, id) {
-			t.Errorf("legacy export markup %s must stay until the cleanup commit", id)
-		}
-	}
-	if !strings.Contains(executableJS(readUIAsset(t, "js/core.js")), "'findExportModal'") {
-		t.Error("findExportModal must stay in MODAL_IDS")
 	}
 	hooks := readUIAsset(t, "js/shell-hooks.js")
 	if !strings.Contains(hooks, "'report-preflight'") {

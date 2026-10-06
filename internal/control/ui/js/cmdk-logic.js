@@ -244,7 +244,6 @@ export const LEGACY_MODALS = [
   { id: 'findCreateModal', title: 'Create finding dialog (legacy)', kw: 'new finding create record', how: { click: '#findNewDialog', tab: 'findings' } },
   { id: 'findPickModal', title: 'Pick a finding for the selected flow (legacy dialog)', kw: 'add attach evidence finding picker', how: { cmd: 'Add selected flow to finding' } },
   { id: 'findFlowPickModal', title: 'Attach flows to the open finding (legacy dialog)', kw: 'attach flow picker proof evidence', how: { click: '#findAddFlow', tab: 'findings' } },
-  { id: 'findExportModal', title: 'Export findings dialog (legacy)', kw: 'export report markdown html json', how: { click: '#findExportOpen', tab: 'findings' } },
   { id: 'findDeletedModal', title: 'Deleted findings dialog (legacy)', kw: 'deleted findings restore trash', how: { click: '#findDeletedOpen', tab: 'findings' } },
   { id: 'sessionInspectModal', title: 'Inspect session timeline of selected flows', kw: 'session inspection timeline roles', how: { open: 'session' } },
   { id: 'authTimelineModal', title: 'Auth timeline from selected flow', kw: 'authentication timeline login token', how: { open: 'auth-timeline' } },

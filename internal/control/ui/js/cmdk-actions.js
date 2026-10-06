@@ -41,6 +41,14 @@ function clickLater(selector, tab) {
   else toast('Open the relevant view first');
 }
 
+// openReport routes every export entry to the Report preflight view, the one
+// surface that enforces the typed draft confirmation.
+export function openReport() {
+  goTab('findings');
+  const open = getShellApi().openReport;
+  if (!open || !open()) toast('Open the relevant view first');
+}
+
 function legacyOpen(kind) {
   const flows = selectedFlows();
   if (kind === 'shortcuts') { openModal($('#shortcutsModal')); return; }
@@ -70,8 +78,8 @@ export function builtinActions() {
     { t: 'Switch identity…', kw: '@ send as role user active authz', group: 'Actions', sub: '@', prefill: '@', run() {} },
     { t: 'Show keyboard shortcuts…', kw: '? help cheatsheet keys', group: 'Actions', sub: '?', prefill: '?', run() {} },
     { t: 'Toggle scope on or off', kw: 'engagement scope switch in scope only', group: 'Actions', run: () => clickLater('#ctxScope') },
-    { t: 'Run readiness check', kw: 'findings readiness blockers ready report', group: 'Actions', run: () => clickLater('#findReadinessCheck', 'findings') },
-    { t: 'Export report', kw: 'export findings report preflight draft', group: 'Actions', run: () => clickLater('#findExportOpen', 'findings') },
+    { t: 'Run readiness check', kw: 'findings readiness blockers ready report', group: 'Actions', run: () => openReport() },
+    { t: 'Export report', kw: 'export findings report preflight draft', group: 'Actions', run: () => openReport() },
     { t: 'Open report blockers', kw: 'blockers readiness gaps strip popover', group: 'Actions', run: () => clickLater('#ctxBlockers') },
     {
       t: singleKeyShortcutsOn() ? 'Turn single-key shortcuts off' : 'Turn single-key shortcuts on',
