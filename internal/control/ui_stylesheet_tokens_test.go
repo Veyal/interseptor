@@ -117,3 +117,23 @@ func TestUIDecorationUsesTokensNotGlowOrLiterals(t *testing.T) {
 		t.Error("toast width must not use 100vw")
 	}
 }
+
+// Classes other UI modules (palette, skip link, secondary panels) are written
+// against must exist in the shared stylesheets, otherwise markup that drops its
+// inline styles silently renders unstyled.
+func TestUISharedClassesAreDefined(t *testing.T) {
+	css := readUIAsset(t, "app.css") + readUIAsset(t, "surfaces.css")
+	for _, sel := range []string{
+		".cmdk-shell", ".cmdk-input", ".cmdk-list", ".cmdk-row", `.cmdk-row[aria-selected="true"]`,
+		".cmdk-foot", ".cmdk-empty", ".skip", ".skip:focus", ".visually-hidden", ".sr-only",
+		".cell-empty", ".msg-ok", ".msg-err", ".msg-warn", ".mono-accent", ".is-update",
+	} {
+		if !strings.Contains(css, sel+"{") && !strings.Contains(css, sel+",") && !strings.Contains(css, sel+" {") {
+			t.Errorf("shared class %s is not defined", sel)
+		}
+	}
+	skip := regexp.MustCompile(`\.skip:focus[^{]*\{([^}]*)\}`).FindStringSubmatch(css)
+	if skip == nil || !strings.Contains(skip[1], "safe-area-inset-top") {
+		t.Error(".skip:focus must reveal the link inside the top safe-area inset")
+	}
+}

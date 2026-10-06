@@ -161,3 +161,28 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   .flow-inspector[data-mobile-side=res] .flow-inspector-request,.flow-inspector[data-mobile-side=req] .flow-inspector-response{display:none}
   .flow-inspector-request{border-right:0}
 }
+
+/* Command palette (Ctrl/Cmd+K). app.js sets class names only. */
+.cmdk-shell{margin-top:11vh;width:min(680px,calc(100% - var(--sp-4) * 2))}
+.cmdk-input{width:100%;box-sizing:border-box;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:var(--fs-xl)}
+.cmdk-input:focus-visible{outline-offset:-3px}
+.cmdk-list{max-height:52vh;overflow:auto;overscroll-behavior:contain;padding:var(--sp-1)}
+.cmdk-row{display:flex;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-lg);cursor:pointer}
+.cmdk-row[aria-selected="true"]{background:var(--accentSolid);color:var(--onAccent)}
+.cmdk-foot{display:flex;flex-wrap:wrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line);color:var(--fg3);font-size:var(--fs-xs)}
+.cmdk-empty{padding:var(--sp-4);text-align:center;color:var(--fg3);font-size:var(--fs-sm)}
+
+/* Skip link: off-screen until focused, then revealed inside the safe area. */
+.skip{position:fixed;left:var(--sp-2);top:-100px;z-index:1000;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--accentSolid);color:var(--onAccent);font-weight:600;text-decoration:none}
+.skip:focus{top:calc(var(--sp-2) + env(safe-area-inset-top, 0px))}
+
+/* Text visible to assistive technology only. */
+.visually-hidden,.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
+/* State and cell utilities used by secondary panels instead of inline styles. */
+.cell-empty{color:var(--fg3);text-align:center;padding:var(--sp-3)}
+.msg-ok{color:var(--state-on)}
+.msg-err{color:var(--state-danger)}
+.msg-warn{color:var(--amber)}
+.mono-accent{font-family:var(--mono);color:var(--accent)}
+.is-update{color:var(--accent);font-weight:700}
