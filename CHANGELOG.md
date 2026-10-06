@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Environment validation regression tests.** `development` round-trips through the control API and unknown environments are rejected through both the control API and the MCP `update_finding` path instead of being mapped to `local`.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
