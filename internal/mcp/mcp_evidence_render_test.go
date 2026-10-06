@@ -193,3 +193,44 @@ func TestStartIntruderDocumentsBarrierAndRunID(t *testing.T) {
 		t.Fatalf("barrier not forwarded: %+v", got[0].body)
 	}
 }
+
+func TestRenderRequestsAskForInlineJSONAndHandleOmittedPNG(t *testing.T) {
+	var got []evReq
+	big, _ := json.Marshal(map[string]any{"pngOmitted": true, "bytes": 3 << 20, "alt": "Big render.", "summary": "s", "kind": "intruder_timeline"})
+	s := evidenceServer(t, &got, func(*http.Request) string { return string(big) })
+	out, err := s.Call("render_intruder_preview", map[string]any{"kind": "timeline", "unmask": true, "expected": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := got[0].query
+	for _, want := range []string{"format=json", "png=1", "unmask=1", "expected=1"} {
+		if !strings.Contains(q, want) {
+			t.Fatalf("query %q lacks %s", q, want)
+		}
+	}
+	if strings.Contains(out, "data:image/png") || !strings.Contains(out, "over the inline limit") || !strings.Contains(out, "Big render.") {
+		t.Fatalf("omitted PNG must return alt, summary and a pointer, not a data URI: %s", out)
+	}
+}
+
+func TestRenderEvidenceForwardsIncludeBody(t *testing.T) {
+	var got []evReq
+	s := evidenceServer(t, &got, func(r *http.Request) string {
+		if r.Method == http.MethodGet {
+			return evJSON()
+		}
+		return `{"id":1}`
+	})
+	if _, err := s.Call("render_evidence", map[string]any{"kind": "flow_diff", "flowIdA": 1, "flowIdB": 2, "includeBody": true}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got[0].query, "includeBody=1") {
+		t.Fatalf("query %q", got[0].query)
+	}
+	if _, err := s.Call("render_evidence", map[string]any{"kind": "flow_diff", "flowIdA": 1, "flowIdB": 2, "includeBody": true, "findingId": 3}); err != nil {
+		t.Fatal(err)
+	}
+	if got[1].body["includeBody"] != true {
+		t.Fatalf("body %+v", got[1].body)
+	}
+}

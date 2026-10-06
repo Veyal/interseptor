@@ -77,7 +77,7 @@ func findingBlocksSchema() map[string]any {
 				"hash":         map[string]any{"type": "string", "description": "existing content hash; upload new images with add_finding_image"},
 				"mime":         map[string]any{"type": "string"},
 				"caption":      map[string]any{"type": "string"},
-				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|generated_image|operator_upload|tool_output|other"},
+				"source":       map[string]any{"type": "string", "description": "captured_flow|browser_screenshot|flow_preview|evidence_render|generated_image|operator_upload|tool_output|other"},
 				"sourceFlowId": map[string]any{"type": "integer", "description": "originating flow for captured flows or generated flow previews"},
 			},
 			"required": []string{"type"},

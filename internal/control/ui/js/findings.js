@@ -2,7 +2,8 @@ import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } fro
 import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, projectStorageKey, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
-import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel, renderEvidenceCapabilities } from './finding-assessment.js';
+import { renderAffectedTargets, renderProofReview, bindFindingAssessment, renderEvidenceCapabilities } from './finding-assessment.js';
+import { evidenceSourceLabel } from './evidence-attach.js';
 import { flowPopup, closeFlowPopup } from './flowmodal.js';
 import { sendToRepeater } from './tools.js';
 import { renderCvssEditor, bindCvssEditor } from './cvss.js';
@@ -14,7 +15,7 @@ import { projectState } from './project-state.js';
 // Generated (never real visual proof) image sources, including evidence_render.
 const GENERATED_SOURCES = ['flow_preview', 'generated_image', 'evidence_render'];
 const isGeneratedSource = source => GENERATED_SOURCES.includes(source);
-const sourceLabel = source => source === 'evidence_render' ? 'Generated evidence render · not browser proof' : evidenceSourceLabel(source);
+const sourceLabel = evidenceSourceLabel;
 
 // Findings tab: the human reviews/curates the project's vulnerability findings.
 // Each finding has a narrative body — an ordered sequence of text blocks (markdown)

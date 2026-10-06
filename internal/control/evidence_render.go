@@ -3,6 +3,7 @@ package control
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,7 @@ const (
 	renderConcurrency                   = 4                // simultaneous renders (each can hold ~12 MB of pixels)
 	renderTimeout                       = 10 * time.Second // wall-clock budget for one render
 	maxRenderHeaderRunes                = 2000
+	maxInlineRenderPNG                  = 1 << 20 // largest PNG embedded in a png=1 JSON response
 	minEvidenceWidth                    = 640
 	maxEvidenceWidth                    = 1600
 	evidenceRenderSource                = "evidence_render"
@@ -214,10 +216,20 @@ func writeRenderedPNG(w http.ResponseWriter, r *http.Request, rd preview.Rendere
 	if r.URL.Query().Get("format") == "json" {
 		w.Header().Set("Cache-Control", "private, max-age=60")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		writeJSON(w, http.StatusOK, map[string]any{
+		out := map[string]any{
 			"alt": rd.Alt, "summary": rd.Summary, "kind": rd.Kind,
 			"width": rd.Width, "height": rd.Height, "sourceRef": sourceRef,
-		})
+		}
+		if preview.ParseBool(r.URL.Query().Get("png"), false) {
+			// png=1 embeds the image for agents (MCP). Anything over the inline
+			// cap is withheld with its size so a client never has to read megabytes.
+			if len(rd.PNG) <= maxInlineRenderPNG {
+				out["png"] = base64.StdEncoding.EncodeToString(rd.PNG)
+			} else {
+				out["pngOmitted"], out["bytes"] = true, len(rd.PNG)
+			}
+		}
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
@@ -382,7 +394,23 @@ func (e *evidenceAPI) renderIntruder(q evidenceRequest, o preview.Opts) (evidenc
 	if err != nil {
 		return evidenceResult{}, err
 	}
-	return evidenceResult{R: rd, SourceRef: "intruder:" + id}, nil
+	return evidenceResult{R: rd, SourceRef: "intruder:" + id, SourceFlowID: env.firstFlowID()}, nil
+}
+
+// firstFlowID is the flow of the earliest dispatched request that recorded
+// one, so an attached render links back to captured evidence.
+func (env intruderRunEnvelope) firstFlowID() int64 {
+	var best intruder.Result
+	found := false
+	for _, r := range env.State.Results {
+		if r.FlowID > 0 && (!found || resultSeq(r) < resultSeq(best)) {
+			best, found = r, true
+		}
+	}
+	if !found {
+		return 0
+	}
+	return best.FlowID
 }
 
 func (e *evidenceAPI) renderAuthz(q evidenceRequest, o preview.Opts) (evidenceResult, error) {
@@ -394,7 +422,11 @@ func (e *evidenceAPI) renderAuthz(q evidenceRequest, o preview.Opts) (evidenceRe
 	if err != nil {
 		return evidenceResult{}, err
 	}
-	return evidenceResult{R: rd, SourceRef: "authz:" + id}, nil
+	var flow int64
+	if len(runs) > 0 {
+		flow = runs[0].FlowID
+	}
+	return evidenceResult{R: rd, SourceRef: "authz:" + id, SourceFlowID: flow}, nil
 }
 
 func (e *evidenceAPI) renderDiff(q evidenceRequest, o preview.Opts) (evidenceResult, error) {
@@ -417,7 +449,7 @@ func (e *evidenceAPI) renderDiff(q evidenceRequest, o preview.Opts) (evidenceRes
 	if err != nil {
 		return evidenceResult{}, err
 	}
-	return evidenceResult{R: rd, SourceRef: fmt.Sprintf("flow-diff:%d-%d", q.A, q.B)}, nil
+	return evidenceResult{R: rd, SourceRef: fmt.Sprintf("flow-diff:%d-%d", q.A, q.B), SourceFlowID: q.A}, nil
 }
 
 func (e *evidenceAPI) renderWaterfall(q evidenceRequest, o preview.Opts) (evidenceResult, error) {

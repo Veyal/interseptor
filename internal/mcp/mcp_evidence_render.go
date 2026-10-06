@@ -28,13 +28,21 @@ var evidenceRenderKinds = map[string]bool{
 
 // renderedPayload is the JSON a render GET returns; a bare PNG body is also accepted.
 type renderedPayload struct {
-	PNG     string `json:"png"`
-	Alt     string `json:"alt"`
-	Summary string `json:"summary"`
-	Kind    string `json:"kind"`
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
+	PNG        string `json:"png"`
+	PNGOmitted bool   `json:"pngOmitted"` // server withheld the PNG because it is over the inline limit
+	Bytes      int    `json:"bytes"`
+	Alt        string `json:"alt"`
+	Summary    string `json:"summary"`
+	Kind       string `json:"kind"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
 }
+
+// inlineRenderQuery asks the server for the JSON form carrying alt text,
+// summary and (when small enough) the base64 PNG. The server caps inline PNGs
+// at 1 MiB, far under the MCP response limit, so a render is never silently
+// dropped by the client reader.
+const inlineRenderQuery = "format=json&png=1"
 
 // formatRenderResult turns a render GET response into bounded text with a data URI.
 func formatRenderResult(raw, kind, restPath string) (string, error) {
@@ -42,11 +50,21 @@ func formatRenderResult(raw, kind, restPath string) (string, error) {
 	if strings.HasPrefix(raw, "\x89PNG") {
 		rp.PNG = base64.StdEncoding.EncodeToString([]byte(raw))
 		rp.Alt = "Generated " + kind + " render (no alt text returned by server)."
-	} else if err := json.Unmarshal([]byte(raw), &rp); err != nil || rp.PNG == "" {
+	} else if err := json.Unmarshal([]byte(raw), &rp); err != nil || (rp.PNG == "" && !rp.PNGOmitted) {
 		return "", fmt.Errorf("unexpected render response from %s", restPath)
 	}
 	if rp.Kind == "" {
 		rp.Kind = kind
+	}
+	if rp.PNGOmitted {
+		var b strings.Builder
+		fmt.Fprintf(&b, "Generated evidence render (%s), not a browser screenshot.\n", rp.Kind)
+		fmt.Fprintf(&b, "alt: %s\n", rp.Alt)
+		if rp.Summary != "" {
+			fmt.Fprintf(&b, "summary: %s\n", rp.Summary)
+		}
+		fmt.Fprintf(&b, "The PNG is %d bytes, over the inline limit, so it is not embedded. Re-call with findingId to attach it, or fetch %s from the control API.", rp.Bytes, restPath)
+		return b.String(), nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Generated evidence render (%s), not a browser screenshot.\n", rp.Kind)
@@ -78,7 +96,9 @@ func (s *Server) registerEvidenceRenderTools() {
 			"caption":   pt("string"),
 			"role":      p("string", "context|setup|baseline|action|result|control|retest|observation"),
 			"proof":     p("string", "what the recorded data in this render establishes"),
-			"mask":      p("boolean", "mask credential-like payloads (strip); always on for credential-looking values"),
+			"mask":      p("boolean", "mask payloads and extracted values as [len N #digest] (default on)"),
+			"unmask":    p("boolean", "show raw payloads and extracted values; they are often credentials, so only when the finding needs them"),
+			"expected":  p("integer", "race: how many requests the application should have accepted, drawn as a baseline"),
 		}, "kind"),
 		func(a map[string]any) (string, error) {
 			short := strings.ToLower(strings.TrimSpace(argStr(a, "kind")))
@@ -96,6 +116,12 @@ func (s *Server) registerEvidenceRenderTools() {
 				if argBool(a, "mask", false) {
 					body["mask"] = true
 				}
+				if argBool(a, "unmask", false) {
+					body["unmask"] = true
+				}
+				if n := argInt(a, "expected", 0); n > 0 {
+					body["expected"] = n
+				}
 				return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/evidence-render", fid), body)
 			}
 			q := url.Values{}
@@ -103,8 +129,14 @@ func (s *Server) registerEvidenceRenderTools() {
 			if argBool(a, "mask", false) {
 				q.Set("mask", "1")
 			}
+			if argBool(a, "unmask", false) {
+				q.Set("unmask", "1")
+			}
+			if n := argInt(a, "expected", 0); n > 0 {
+				q.Set("expected", strconv.Itoa(n))
+			}
 			path := fmt.Sprintf("/api/intruder/attacks/%s/render", url.PathEscape(attack))
-			raw, err := s.apiGet(path + "?" + q.Encode())
+			raw, err := s.apiGet(path + "?" + q.Encode() + "&" + inlineRenderQuery)
 			if err != nil {
 				return "", err
 			}
@@ -114,17 +146,18 @@ func (s *Server) registerEvidenceRenderTools() {
 	s.add("render_evidence",
 		"Render recorded data as an evidence PNG: kind=authz_matrix (identities x requests, pass runId), flow_diff (pass flowIdA and flowIdB), flow_waterfall (pass flowIds in order) or finding_chain (pass findingIds). "+evidenceRenderDisclaimer+" Without findingId returns alt text, a summary and a base64 data URI; with findingId attaches it to that finding.",
 		obj(map[string]any{
-			"kind":       p("string", "authz_matrix | flow_diff | flow_waterfall | finding_chain"),
-			"runId":      p("string", "authz run id (authz_matrix)"),
-			"flowIdA":    p("integer", "first flow (flow_diff)"),
-			"flowIdB":    p("integer", "second flow (flow_diff)"),
-			"flowIds":    map[string]any{"type": "array", "items": pt("integer"), "description": "flows in sequence order (flow_waterfall)"},
-			"findingIds": map[string]any{"type": "array", "items": pt("integer"), "description": "findings to chain (finding_chain)"},
-			"title":      pt("string"),
-			"findingId":  p("integer", "if set, attach the PNG to this finding"),
-			"caption":    pt("string"),
-			"role":       p("string", "context|setup|baseline|action|result|control|retest|observation"),
-			"proof":      p("string", "what the recorded data in this render establishes"),
+			"kind":        p("string", "authz_matrix | flow_diff | flow_waterfall | finding_chain"),
+			"runId":       p("string", "authz run id (authz_matrix)"),
+			"flowIdA":     p("integer", "first flow (flow_diff)"),
+			"flowIdB":     p("integer", "second flow (flow_diff)"),
+			"flowIds":     map[string]any{"type": "array", "items": pt("integer"), "description": "flows in sequence order (flow_waterfall)"},
+			"findingIds":  map[string]any{"type": "array", "items": pt("integer"), "description": "findings to chain (finding_chain)"},
+			"title":       pt("string"),
+			"includeBody": p("boolean", "flow_diff: draw redacted response-body lines (default off: bodies can carry personal data)"),
+			"findingId":   p("integer", "if set, attach the PNG to this finding"),
+			"caption":     pt("string"),
+			"role":        p("string", "context|setup|baseline|action|result|control|retest|observation"),
+			"proof":       p("string", "what the recorded data in this render establishes"),
 		}, "kind"),
 		func(a map[string]any) (string, error) {
 			kind := strings.ToLower(strings.TrimSpace(argStr(a, "kind")))
@@ -134,7 +167,7 @@ func (s *Server) registerEvidenceRenderTools() {
 			if fid := argInt(a, "findingId", 0); fid > 0 {
 				body := map[string]any{"kind": kind, "caption": argStr(a, "caption"),
 					"role": argStr(a, "role"), "proof": argStr(a, "proof")}
-				for _, k := range []string{"runId", "flowIdA", "flowIdB", "flowIds", "findingIds", "title"} {
+				for _, k := range []string{"runId", "flowIdA", "flowIdB", "flowIds", "findingIds", "title", "includeBody"} {
 					if v, ok := a[k]; ok && v != nil {
 						body[k] = v
 					}
@@ -145,6 +178,9 @@ func (s *Server) registerEvidenceRenderTools() {
 			q.Set("kind", kind)
 			setIf(q, "runId", argStr(a, "runId"))
 			setIf(q, "title", argStr(a, "title"))
+			if argBool(a, "includeBody", false) {
+				q.Set("includeBody", "1")
+			}
 			for _, k := range []string{"flowIdA", "flowIdB"} {
 				if n := argInt(a, k, 0); n > 0 {
 					q.Set(k, strconv.Itoa(n))
@@ -155,7 +191,7 @@ func (s *Server) registerEvidenceRenderTools() {
 					q.Set(k, strings.Join(ids, ","))
 				}
 			}
-			raw, err := s.apiGet("/api/evidence-render?" + q.Encode())
+			raw, err := s.apiGet("/api/evidence-render?" + q.Encode() + "&" + inlineRenderQuery)
 			if err != nil {
 				return "", err
 			}

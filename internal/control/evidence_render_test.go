@@ -599,3 +599,49 @@ func TestIntruderTimelineInputCarriesContext(t *testing.T) {
 		t.Fatalf("input=%+v", in)
 	}
 }
+
+func TestAttachedIntruderRenderCarriesFirstFlowAndSurvivesPATCH(t *testing.T) {
+	h, s, _ := newHub(t)
+	seedRun(t, s, syntheticRun(testRunID))
+	fid := newFindingID(t, s)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	base := ts.URL + "/api/findings/" + strconv.FormatInt(fid, 10)
+	if resp, body := evPost(t, base+"/evidence-render", `{"kind":"strip","attackId":"latest"}`); resp.StatusCode != 200 {
+		t.Fatalf("attach %d: %s", resp.StatusCode, body)
+	}
+	image := func() store.FindingBlock {
+		got, err := s.GetFinding(fid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, b := range got.Blocks {
+			if b.Type == "image" {
+				return b
+			}
+		}
+		t.Fatal("no image block")
+		return store.FindingBlock{}
+	}
+	b := image()
+	if b.Source != "evidence_render" || b.SourceRef != "intruder:"+testRunID || b.SourceFlowID != 1 {
+		t.Fatalf("attached block lacks provenance (first recorded flow id 1): %+v", b)
+	}
+	got, _ := s.GetFinding(fid)
+	blocks := got.Blocks
+	blocks[0].SourceRef = "intruder:forged"
+	blocks[0].Source = "browser_screenshot"
+	payload, _ := json.Marshal(map[string]any{"blocks": blocks, "title": "renamed"})
+	req, _ := http.NewRequest(http.MethodPatch, base, bytes.NewReader(payload))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PATCH status %d", resp.StatusCode)
+	}
+	if after := image(); after.Source != "evidence_render" || after.SourceRef != "intruder:"+testRunID || after.SourceFlowID != 1 {
+		t.Fatalf("PATCH changed generated provenance: %+v", after)
+	}
+}

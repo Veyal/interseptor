@@ -1,6 +1,8 @@
 package control
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -102,4 +104,28 @@ func TestRenderDeadlineMapsToUnavailable(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	_ = time.Second
+}
+
+func TestRenderJSONVariantEmbedsSmallPNGOnRequest(t *testing.T) {
+	h, s, _ := newHub(t)
+	seedRun(t, s, syntheticRun(testRunID))
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	_, plain := getBytes(t, ts.URL+"/api/intruder/attacks/latest/render.png?format=json")
+	if strings.Contains(string(plain), `"png"`) {
+		t.Fatalf("png must be opt-in: %.200s", plain)
+	}
+	_, body := getBytes(t, ts.URL+"/api/intruder/attacks/latest/render?kind=timeline&format=json&png=1")
+	var out struct {
+		PNG        string `json:"png"`
+		PNGOmitted bool   `json:"pngOmitted"`
+		Alt        string `json:"alt"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil || out.PNG == "" || out.PNGOmitted || out.Alt == "" {
+		t.Fatalf("body=%.200s err=%v", body, err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(out.PNG)
+	if err != nil || len(raw) == 0 || len(raw) > maxInlineRenderPNG || !strings.HasPrefix(string(raw), "\x89PNG") {
+		t.Fatalf("embedded png invalid (%d bytes, %v)", len(raw), err)
+	}
 }

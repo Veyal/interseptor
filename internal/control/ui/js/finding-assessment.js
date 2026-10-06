@@ -3,7 +3,6 @@ import { bindTargetCleanup } from './finding-target-cleanup.js';
 import { esc, escAttr, initUiSelects, uiPrompt, toast } from './core.js';
 
 const executionLabels = { '': 'Not reviewed', demonstrated: 'Impact demonstrated', prerequisite_only: 'Prerequisites only', not_executed: 'Not executed' };
-export const evidenceSourceLabel = source => ({ device_screenshot: 'Device capture · reviewer declared', browser_screenshot: 'Browser capture · reviewer declared', operator_upload: 'Uploaded image · origin unconfirmed', flow_preview: 'Generated HTTP preview', generated_image: 'Generated image · not browser proof', tool_output: 'Tool output', captured_flow: 'Captured traffic' })[source] || source || 'Origin unconfirmed';
 
 // Action/result/control/visual proof are reported separately, with uploaded
 // and generated images counted apart so a preview never reads as a capture.
