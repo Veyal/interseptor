@@ -1,10 +1,11 @@
-import { $, $$, esc, escAttr, state, toast, api, methodColor, prettify, renderLoadError, uiConfirm, projectStorageKey } from './core.js';
+import { $, $$, esc, escAttr, state, toast, api, methodColor, prettify, renderLoadError, uiConfirm, projectStorageKey, compileScopeRules, flowInScope } from './core.js';
 import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 import { createSplitPane } from './split.js';
-import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress } from './intercept-model.js';
+import { heldKey, createDropScheduler, forwardAllPlan, forwardPath, scopeNote, scopeBadgeText, identityText, rulesSummary, dropToastText, forwardAllProgress, isAutoForwarded, autoForwardText, createAutoForwardTally } from './intercept-model.js';
 import { showDropToast } from './held-undo.js';
+import { registerSseHandler } from './shell-hooks.js';
 
 /* ---- intercept ---- */
 // One unified hold queue (requests + responses) feeding one editor. state.heldSel
@@ -226,6 +227,8 @@ function showHeldLoadError(h,error){
 
 export function renderIntercept(){
   const ic=state.intercept||{};
+  autoFwd.sync(!!ic.enabled);
+  renderAutoForwarded();
   const hint=$('#heldEmptyHint');
   if(hint)hint.textContent=ic.enabled||ic.responseEnabled?'Waiting for matching '+(ic.enabled&&ic.responseEnabled?'requests or responses':ic.enabled?'requests':'responses')+'. '+scopeNote(icptCtx.scope).text:'Enable Requests or Responses to hold traffic.';
   const rq=ic.queue||[], rrq=ic.responseQueue||[];
@@ -628,6 +631,27 @@ function selectionDropping(){const sel=state.heldSel;return !!sel&&dropMarks.has
 function setHeldChrome(visible){
   ['#heldActions','#heldCtx'].forEach(sel=>{const el=$(sel);if(el)el.style.display=visible?'flex':'none';});
 }
+// Out-of-scope auto-forward tally (see intercept-model.js). Hidden while the
+// client cannot decide scope exactly or interception is off.
+const autoFwd=createAutoForwardTally();
+let autoFwdSource=null,autoFwdCompiled=null;
+function autoFwdScope(){
+  if(autoFwdSource!==state.scope){autoFwdSource=state.scope;autoFwdCompiled=compileScopeRules(state.scope);}
+  return autoFwdCompiled;
+}
+function renderAutoForwarded(){
+  const el=$('#heldAutoFwd');if(!el)return;
+  const c=autoFwdScope();
+  const show=!!(state.intercept&&state.intercept.enabled)&&c.hasInclude&&c.evaluable;
+  el.hidden=!show;
+  if(show)el.textContent=autoForwardText(autoFwd.count());
+}
+registerSseHandler('flow.new',m=>{
+  if(!m||!m.flow)return;
+  const on=!!(state.intercept&&state.intercept.enabled);
+  if(!isAutoForwarded(m.flow,{interceptOn:on,compiled:autoFwdScope(),flowInScope}))return;
+  autoFwd.add();renderAutoForwarded();
+});
 function renderHeldContext(){
   const sc=$('#heldScopeText'),idn=$('#heldIdentityText'),note=$('#heldScopeNote');
   if(sc)sc.textContent=scopeBadgeText(icptCtx.scope);
@@ -653,6 +677,9 @@ function syncDropMarks(){
 }
 const dropToasts=new Map();
 const dropScheduler=createDropScheduler({
+  // A due drop waits while a Forward or another Drop is in flight: performDrop
+  // owns heldActionInFlight/heldActionEpoch and must not clobber the other's.
+  busy:()=>!!heldActionInFlight,
   commit:entry=>{
     dropToasts.get(heldKey(entry.side,entry.id))?.dismiss();dropToasts.delete(heldKey(entry.side,entry.id));
     // The server may have released it meanwhile (timeout, another client).

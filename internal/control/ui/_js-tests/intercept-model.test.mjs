@@ -130,3 +130,58 @@ test('undo works while paused', () => {
   t.advance(60000);
   assert.deepEqual(committed, []);
 });
+
+test('a due drop waits while another held action is in flight, then commits once', () => {
+  const t = fakeTimers();
+  const committed = [];
+  const events = [];
+  let busy = true;
+  const s = createDropScheduler({ setTimeout: t.setTimeout, clearTimeout: t.clearTimeout, commit: (e) => committed.push(e), onChange: (k, w) => events.push(k + ':' + w), busy: () => busy, retryDelay: 100 });
+  s.schedule('req:3', { side: 'req', id: 3 });
+  t.advance(5000);
+  assert.deepEqual(committed, [], 'not committed while a forward is in flight');
+  assert.equal(s.has('req:3'), true, 'still pending so Undo works');
+  t.advance(1000);
+  assert.deepEqual(committed, []);
+  busy = false;
+  t.advance(100);
+  assert.deepEqual(committed, [{ side: 'req', id: 3 }]);
+  assert.equal(s.has('req:3'), false);
+  assert.deepEqual(events, ['req:3:pending', 'req:3:committed']);
+  t.advance(10000);
+  assert.equal(committed.length, 1);
+});
+
+test('undo still cancels a drop that is waiting for a busy forward', () => {
+  const t = fakeTimers();
+  const committed = [];
+  const s = createDropScheduler({ setTimeout: t.setTimeout, clearTimeout: t.clearTimeout, commit: (e) => committed.push(e), busy: () => true, retryDelay: 100 });
+  s.schedule('req:4', { side: 'req', id: 4 });
+  t.advance(5200);
+  assert.equal(s.undo('req:4'), true);
+  t.advance(60000);
+  assert.deepEqual(committed, []);
+});
+
+test('auto-forward tally: only proxy-captured out-of-scope requests count while Requests interception is on', async () => {
+  const { isAutoForwarded, autoForwardText, createAutoForwardTally } = await import('../js/intercept-model.js');
+  const compiled = { evaluable: true, hasInclude: true, rules: [] };
+  const inScope = (f) => f.host === 'app.example.com';
+  const opts = (over) => ({ interceptOn: true, compiled, flowInScope: inScope, ...over });
+  assert.equal(isAutoForwarded({ host: 'cdn.example.net', flags: 0 }, opts()), true);
+  assert.equal(isAutoForwarded({ host: 'app.example.com', flags: 0 }, opts()), false, 'in scope is held, not auto-forwarded');
+  assert.equal(isAutoForwarded({ host: 'cdn.example.net', flags: 0 }, opts({ interceptOn: false })), false);
+  assert.equal(isAutoForwarded({ host: 'cdn.example.net', flags: 0 }, opts({ compiled: { evaluable: false, hasInclude: true, rules: [] } })), false, 'a regex rule is undecidable here: never guess');
+  assert.equal(isAutoForwarded({ host: 'cdn.example.net', flags: 0 }, opts({ compiled: { evaluable: true, hasInclude: false, rules: [] } })), false, 'with no include rule everything is in scope');
+  for (const flags of [64, 128, 256, 1024, 2048, 4096, 8192]) {
+    assert.equal(isAutoForwarded({ host: 'cdn.example.net', flags }, opts()), false, 'non-proxy flag ' + flags);
+  }
+  assert.equal(autoForwardText(3), 'Out of scope, auto-forwarded: 3');
+  const t = createAutoForwardTally();
+  t.sync(true); t.add(); t.add();
+  assert.equal(t.count(), 2);
+  t.sync(true);
+  assert.equal(t.count(), 2, 'staying on keeps the count');
+  t.sync(false); t.sync(true);
+  assert.equal(t.count(), 0, 'turning interception back on restarts the tally');
+});

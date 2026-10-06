@@ -155,10 +155,14 @@ func TestUIInterceptKeepsHeldBadgeAndScopeHonesty(t *testing.T) {
 		"syncRulesCount();",
 	)
 	model := readUIAsset(t, "js/intercept-model.js")
-	// The server exposes no out-of-scope counter, so none may be fabricated.
-	if regexp.MustCompile(`(?i)auto-?forwarded:\s*\$|outOfScopeCount|autoForwarded`).MatchString(src + model) {
-		t.Error("an out-of-scope auto-forward counter would be invented: the API exposes none")
+	// The server exposes no out-of-scope counter. The tally is derived from the live
+	// flow stream with the exact client scope mirror, counts only proxy-captured
+	// flows and hides itself when scope is undecidable (regex rules); it never
+	// calls an API for a number.
+	if regexp.MustCompile(`(?i)outOfScopeCount|api\([^)]*auto-?forward`).MatchString(src + model) {
+		t.Error("the auto-forward tally must come from the flow stream, not an invented API field")
 	}
+	requireUIContains(t, model, "if (!interceptOn || !flow || !compiled || !compiled.evaluable || !compiled.hasInclude) return false;")
 }
 
 func TestUIInterceptForwardAllAndForwardToRepeaterReuseExistingEndpoints(t *testing.T) {

@@ -13,7 +13,11 @@ export const heldKey = (side, id) => side + ':' + id;
 // createDropScheduler defers an irreversible drop. `commit(entry)` performs the
 // real API call once the delay has elapsed without an Undo. The timer can be
 // paused (hover or focus on the undo toast) so the operator is never rushed.
-export function createDropScheduler({ delay = DROP_DELAY_MS, setTimeout: st = globalThis.setTimeout, clearTimeout: ct = globalThis.clearTimeout, now = Date.now, commit, onChange = () => {} } = {}) {
+//
+// `busy()` reports that another held action (a Forward or Drop) is mid-flight.
+// A due drop then re-arms after `retryDelay` instead of committing, so it never
+// overwrites the in-flight action's state; Undo stays valid while it waits.
+export function createDropScheduler({ delay = DROP_DELAY_MS, setTimeout: st = globalThis.setTimeout, clearTimeout: ct = globalThis.clearTimeout, now = Date.now, commit, onChange = () => {}, busy = () => false, retryDelay = 250 } = {}) {
   const pending = new Map();
   const arm = (key, item, ms) => {
     item.startedAt = now();
@@ -23,6 +27,7 @@ export function createDropScheduler({ delay = DROP_DELAY_MS, setTimeout: st = gl
   const fire = (key) => {
     const item = pending.get(key);
     if (!item) return;
+    if (busy()) { arm(key, item, retryDelay); return; }
     pending.delete(key);
     onChange(key, 'committed');
     commit(item.entry);
@@ -129,4 +134,35 @@ export function forwardAllProgress(done, total, failed) {
   if (failed) return 'Forward all stopped after ' + done + ' of ' + total + ': ' + failed;
   if (done >= total) return 'Forwarded ' + total + ' of ' + total;
   return 'Forwarded ' + done + ' of ' + total;
+}
+
+// ---- out-of-scope auto-forward tally -------------------------------------
+// The server keeps no counter for requests it let through without a hold, so the
+// panel tallies them from the live flow stream: a request flow that arrives
+// while Requests interception is on and a scope with include rules is defined,
+// and that the client-side scope mirror says is out of scope. Flows the proxy did
+// not capture (Repeater, Intruder, import, AI, authz, discovery, TLS bypass) never
+// count. A regex scope rule makes the mirror undecidable (Go RE2 versus JS), in
+// which case `evaluable` is false and the line is hidden rather than guessed.
+export const NON_PROXY_FLAGS = 64 | 128 | 256 | 1024 | 2048 | 4096 | 8192;
+
+export function isAutoForwarded(flow, { interceptOn, compiled, flowInScope }) {
+  if (!interceptOn || !flow || !compiled || !compiled.evaluable || !compiled.hasInclude) return false;
+  if ((Number(flow.flags) || 0) & NON_PROXY_FLAGS) return false;
+  return !flowInScope(flow, compiled);
+}
+
+export function autoForwardText(count) {
+  return 'Out of scope, auto-forwarded: ' + (Number(count) || 0);
+}
+
+// createAutoForwardTally counts since Requests interception was last switched on.
+export function createAutoForwardTally() {
+  let n = 0;
+  let wasOn = false;
+  return {
+    sync(interceptOn) { if (interceptOn && !wasOn) n = 0; wasOn = !!interceptOn; },
+    add() { n++; return n; },
+    count: () => n,
+  };
 }
