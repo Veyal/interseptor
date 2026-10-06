@@ -2173,39 +2173,44 @@ if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
 });}
 wireButtonGroupKeys($('#intrResFilter'));
 let intrToFindingPending=false;
+const INTR_FINDING_FLOW_CAP=20, INTR_FINDING_FALLBACK=10;
+// intrFindingSelection picks the attempts to attach and explains how, so the
+// picker never silently substitutes a fallback or truncates.
+function intrFindingSelection(pool){
+  const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
+  const interesting=withFlow.filter(intrIsInteresting);
+  const fallback=!interesting.length;
+  const chosen=fallback?withFlow.slice(0,INTR_FINDING_FALLBACK):interesting;
+  const ids=chosen.map(r=>Number(r.flowId||r.flowID)).filter(Boolean);
+  const notes=[];
+  if(fallback&&ids.length)notes.push(`Nothing was flagged or interesting, so the first ${ids.length} captured attempt${ids.length===1?'':'s'} are used.`);
+  if(ids.length>INTR_FINDING_FLOW_CAP)notes.push(`${ids.length} attempts qualify; only the first ${INTR_FINDING_FLOW_CAP} are attached.`);
+  return {flowIds:ids.slice(0,INTR_FINDING_FLOW_CAP),note:notes.join(' ')};
+}
 async function intrToFinding(){
   if(intrToFindingPending)return;
   const pool=intrApplyFilter(intrDisplayedResults);
-  const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
-  const interesting=withFlow.filter(intrIsInteresting);
-  const pick=interesting.length?interesting:withFlow.slice(0,10);
-  if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
+  const {flowIds,note}=intrFindingSelection(pool);
+  if(!flowIds.length){toast('no attempts with captured flows to attach','warn');return;}
   const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
-  const flowIds=pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20);
   const button=$('#intrToFinding');
   intrToFindingPending=true;
-  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Preparing…';}
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
   try{
-    const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
-    if(!title)return;
-    if(button)button.textContent='Creating…';
-    const body={
-      title, severity:'medium', status:'needs_verification', source:'human',
-      target:displayTarget,
-      why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
-      impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
-      verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
-      flowIds,
-    };
-    const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const warnings=Array.isArray(f.warnings)?f.warnings:[];
-    const success='finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s');
-    toast(warnings.length?success+' · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):success,warnings.length?'warn':'success');
-    document.querySelector('.tab[data-tab="findings"]')?.click();
-  }catch(e){toast(e.message||'could not create finding','error');}
+    const m=await import('./findings.js');
+    m.pickFindingForFlows(flowIds,{
+      target:displayTarget,note,
+      titleHint:displayTarget.replace(/^https?:\/\//,'')||'Intruder finding',
+      extra:{
+        why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
+        impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
+        verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
+      },
+    });
+  }catch(e){toastError('Could not open the finding picker',e);}
   finally{
     intrToFindingPending=false;
-    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='To Finding';}
+    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='→ Finding';}
   }
 }
 if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;

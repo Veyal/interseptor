@@ -1366,6 +1366,11 @@ kbd{font-family:var(--mono);font-size:var(--fs-xs);background:var(--bg2);border:
 .find-create-body{display:flex;flex-direction:column;gap:8px}
 .find-create-title{text-align:left}
 .find-create-detail{height:120px;border:1px solid var(--line);border-radius:var(--r-md)}
+.find-pick{width:100%;text-align:left;margin-bottom:4px}
+.find-pick .hint{float:right}
+.find-pick-lead,.find-pick-note{margin-bottom:8px}
+.find-pick-new{width:100%;margin-top:6px}
+.toast-action{margin-left:8px}
 .find-pick-dialog{max-width:520px;max-height:80vh;width:92%}
 .find-flow-pick-dialog{max-width:640px;max-height:80vh;width:94%}
 .find-flow-pick-search{padding:8px 14px;border-bottom:1px solid var(--line)}

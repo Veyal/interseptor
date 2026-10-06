@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Intercept is no longer a dead end.** A held request has a `Repeater ↗` action that opens the edited raw request in a new Repeater tab (scheme from the held item, host from the `Host` header) while leaving it held; the held-message load state uses shared `.held-load-state`/`.state-error-msg` classes instead of inline `cssText`.
 
+- **Adding flows to a finding stays in place.** `pickFindingForFlows` (History, Intruder) no longer jumps to the Findings tab: it creates or updates the finding in the background and shows a toast with an `Open` action. The new finding pre-fills its target from the flow host, uses one `Add to finding` verb in the list header and buttons, and shares `flowFindingDefaults()` across History and Intruder. Intruder `→ Finding` now uses the same picker (new or existing finding) and states when the first-10 fallback or the 20-flow cap applied.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.

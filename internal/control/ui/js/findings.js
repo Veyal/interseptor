@@ -1,5 +1,5 @@
 import { renderFindingRevisions, bindFindingRevisions, openDeletedFindings } from './finding-revisions.js';
-import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
+import { $, registerProjectSwitchGuard, esc, escAttr, state, toast, api, openModal, closeModal, renderMD, saveFile, uiPrompt, uiConfirm, methodColor, statusColor, renderLoadError, toastError, copyText, highlightHTTP, prettify, RENDER_CAP, initUiSelects, closeAllUiSelects, bodyMime, isBinaryMime, headerBlockText, flowBodyDownloadHref } from './core.js';
 registerProjectSwitchGuard(()=>findingDrafts.hasAny()||cvssPreviewDrafts.hasAny()||bodySaveTimers.size||bodySavesInFlight||findingWritesInFlight||findingAttachPending.size||findingDeletesPending.size||findingEvidenceWrites.size?'Save or retry Findings before switching projects.':'');
 import { FINDING_SECTIONS, filterFindingRecords, parseFindingRoute, findingSectionForGap, createFindingDraftStore } from './finding-workspace.js';
 import { renderAffectedTargets, renderProofReview, bindFindingAssessment, evidenceSourceLabel, renderEvidenceCapabilities } from './finding-assessment.js';
@@ -1914,30 +1914,69 @@ export function addFlowToFinding(flowId) {
 export function pickFindingForSelection() {
   pickFindingForFlows(state.selected ? [...state.selected] : []);
 }
-function pickFindingForFlows(ids) {
+// One set of defaults for every finding created from captured flows (History,
+// Intruder, Repeater), so the paths cannot drift apart.
+export function flowFindingDefaults() {
+  return { severity: 'Medium', status: 'needs_verification', source: 'human' };
+}
+function flowOrigin(d) {
+  if (!d || !d.host) return '';
+  const standard = (d.scheme === 'https' && d.port === 443) || (d.scheme === 'http' && d.port === 80);
+  return (d.scheme || 'http') + '://' + d.host + (d.port && !standard ? ':' + d.port : '');
+}
+// toastOpenFinding reports a result and adds an Open action, so the operator
+// stays where they were and chooses when to jump to the finding.
+export function toastOpenFinding(message, sev, findingId) {
+  toast(message, sev);
+  addOpenFindingAction(findingId);
+}
+function addOpenFindingAction(findingId) {
+  const items = $('#toast')?.querySelectorAll('.toast-item');
+  const el = items && items[items.length - 1];
+  if (!el || !findingId) return;
+  const open = document.createElement('button');
+  open.type = 'button'; open.className = 'btn xs toast-action'; open.textContent = 'Open';
+  open.setAttribute('aria-label', 'Open finding #' + findingId);
+  open.onclick = () => { el.remove(); openFinding(findingId); };
+  el.append(' ', open);
+}
+async function createFindingFromFlows(ids, opts) {
+  const title = await uiPrompt({ title: 'Name the new finding', placeholder: 'e.g. IDOR on /api/user/{id}', value: opts.titleHint || '' });
+  if (title == null || !String(title).trim()) return;
+  let target = opts.target || '';
+  if (!target) { try { target = flowOrigin(await api('/api/flows/' + ids[0])); } catch { target = ''; } }
+  const body = { ...flowFindingDefaults(), ...(opts.extra || {}), title, flowIds: ids };
+  if (target) body.target = target;
+  const f = await api('/api/findings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(e => { toastError('Could not add to a new finding', e); return null; });
+  if (!f) return;
+  const warnings = Array.isArray(f.warnings) ? f.warnings : [];
+  const done = 'finding #' + f.id + ' created with ' + ids.length + ' flow' + (ids.length === 1 ? '' : 's');
+  loadFindings();
+  toastOpenFinding(warnings.length ? done + ' · ' + warnings.length + ' PoC attachment warning' + (warnings.length === 1 ? '' : 's') + ': ' + warnings.join(' · ') : done, warnings.length ? 'warn' : 'success', f.id);
+}
+// pickFindingForFlows is the single "Add to finding" entry point. opts: target
+// (pre-filled), note (context shown above the list), titleHint, extra (more
+// finding fields). It never navigates away; results offer an Open action.
+export function pickFindingForFlows(ids, opts = {}) {
   if (!ids.length) { toast('select flows first'); return; }
   const list = $('#findPickList'); if (!list) return;
   const pocCount = findingPocCount;
-  const rows = findings.map(f => `<button class="btn find-pick" data-id="${f.id}" style="width:100%;text-align:left;margin-bottom:4px">
+  const rows = findings.map(f => `<button class="btn find-pick" data-id="${f.id}">
     <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}
-    <span class="hint" style="float:right">${esc(statusLabel(f.status))}${pocCount(f) ? ' · ' + pocCount(f) + ' PoC' : ''}</span></button>`).join('');
-  list.innerHTML = `<div class="hint" style="margin-bottom:8px">Attach ${ids.length} selected flow${ids.length === 1 ? '' : 's'} to:</div>${rows || '<div class="hint">No findings yet.</div>'}
-    <button class="btn accent find-pick-new" style="width:100%;margin-top:6px">＋ New finding from these flows</button>`;
+    <span class="hint">${esc(statusLabel(f.status))}${pocCount(f) ? ' · ' + pocCount(f) + ' PoC' : ''}</span></button>`).join('');
+  const note = opts.note ? `<div class="hint find-pick-note">${esc(opts.note)}</div>` : '';
+  list.innerHTML = `<div class="hint find-pick-lead">Add ${ids.length} flow${ids.length === 1 ? '' : 's'} to:</div>${note}${rows || '<div class="hint">No findings yet.</div>'}
+    <button class="btn accent find-pick-new">＋ Add to a new finding</button>`;
   openModal($('#findPickModal'));
   list.querySelectorAll('.find-pick').forEach(b => b.onclick = async () => {
+    const id = Number(b.dataset.id);
     closeModal($('#findPickModal'));
-    await attachFlowsToFinding(Number(b.dataset.id),ids);
+    const result = await attachFlowsToFinding(Number(b.dataset.id),ids);
+    if (result && result.attached) addOpenFindingAction(id);
   });
   list.querySelector('.find-pick-new').onclick = async () => {
     closeModal($('#findPickModal'));
-    const title = await uiPrompt({ title: 'Name the new finding', placeholder: 'e.g. IDOR on /api/user/{id}' });
-    if (title == null) return;
-    const f = await api('/api/findings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, severity: 'Medium', source: 'human', flowIds: ids }) }).catch(e => { toast(e.message); return null; });
-    if (f) {
-      const warnings=Array.isArray(f.warnings)?f.warnings:[];
-      selFinding = f.id; document.querySelector('.tab[data-tab="findings"]')?.click(); loadFindings();
-      toast(warnings.length?'finding created · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):'finding created',warnings.length?'warn':'success');
-    }
+    await createFindingFromFlows(ids, opts);
   };
 }
 $('#fpClose') && ($('#fpClose').onclick = () => closeModal($('#findPickModal')));
