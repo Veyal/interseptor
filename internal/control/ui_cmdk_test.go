@@ -14,10 +14,7 @@ import (
 var cmdkModules = []string{"js/cmdk.js", "js/cmdk-logic.js", "js/cmdk-actions.js", "js/keyboard.js", "js/shortcuts-table.js"}
 
 func TestUICmdkPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: palette ranking, prefix modes and shortcut table tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/cmdk-logic.test.mjs", "_js-tests/shortcuts-table.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

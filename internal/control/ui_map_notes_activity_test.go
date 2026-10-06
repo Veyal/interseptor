@@ -12,10 +12,7 @@ import (
 // assets, as for the other ui_* tests.
 
 func TestUIMapNotesActivityPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: activity-model, notes-model and map-coverage tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/activity-model.test.mjs", "_js-tests/notes-model.test.mjs", "_js-tests/map-coverage.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

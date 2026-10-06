@@ -24,10 +24,7 @@ func uiRegion(t *testing.T, name string) string {
 }
 
 func TestUIInterceptScannerPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: intercept-model and scanner-model logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/intercept-model.test.mjs", "_js-tests/scanner-model.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

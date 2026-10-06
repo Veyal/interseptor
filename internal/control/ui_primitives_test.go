@@ -19,10 +19,7 @@ var primitiveModules = []string{
 }
 
 func TestUIPrimitivesPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: pure-logic JS tests (diff, keys, copyAs, split math) were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -272,9 +269,7 @@ func TestUICoreHooksAndDensityExports(t *testing.T) {
 }
 
 func TestUICoreHooksAndVirtualListRemeasureUnderNode(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is not on PATH: virtual-list density re-measure was NOT run; coverage gap")
-	}
+	requireNode(t)
 	src := readUIAsset(t, "js/core.js")
 	cut := func(from, to string) string {
 		a := strings.Index(src, from)

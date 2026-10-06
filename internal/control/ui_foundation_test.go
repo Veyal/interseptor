@@ -387,3 +387,14 @@ func TestUIFoundationTLSDiagnosisCoalescesCaptureBursts(t *testing.T) {
 		t.Error("capture events must schedule a coalesced TLS diagnosis, not fetch immediately")
 	}
 }
+
+// requireNode returns the node binary path and fails (never skips) when it is
+// missing, so the JS logic tests cannot silently drop out of go test or CI.
+func requireNode(t *testing.T) string {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("node is required on PATH for the UI logic tests: %v", err)
+	}
+	return node
+}

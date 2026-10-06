@@ -24,10 +24,7 @@ func mobileRegion(t *testing.T) string {
 }
 
 func TestUIMobileDockModelUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: dock-model tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/dock-model.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

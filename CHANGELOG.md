@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Tests: the UI node logic tests now fail instead of skipping when `node` is missing (shared `requireNode` helper), and CI installs Node 22 so they always run.
 - **High-contrast theme survives boot.** `app.js` re-applied the theme as light or dark only, so the pre-paint `data-theme="hc"` was dropped on load; it now keeps `hc`, and the theme toggle leaves it for dark.
 - **Finding Open toast action and picker freshness.** `toast()` returns its element; the Open action is attached to that handle (and to the attach-result toast) instead of "the last `.toast-item`". The "Add to finding" picker renders the cache immediately and refetches `/api/findings` on every open, ignoring the result if the picker was closed or reopened. The shortcuts sheet documents `Alt+M` (wrap Intruder selection in § markers).
 

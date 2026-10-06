@@ -23,10 +23,7 @@ func flowDrawerRegion(t *testing.T) string {
 }
 
 func TestUIFlowDrawerPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: flowbody and evidence-attach logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/flowbody.test.mjs", "_js-tests/evidence-attach.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -24,10 +24,7 @@ func shellRegion(t *testing.T) string {
 }
 
 func TestUIShellPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: project-state, shell-hooks and connection logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/project-state.test.mjs", "_js-tests/shell-hooks.test.mjs", "_js-tests/connection.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

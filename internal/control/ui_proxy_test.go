@@ -24,10 +24,7 @@ func proxyRegion(t *testing.T) string {
 }
 
 func TestUIProxyPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: proxy selection/filter logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/proxy-selection.test.mjs", "_js-tests/proxy-filters.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

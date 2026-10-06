@@ -22,10 +22,7 @@ func findingsRegion(t *testing.T, name string) string {
 }
 
 func TestUIFindingsPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: readiness-meter and evidence-tray logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/readiness-meter.test.mjs", "_js-tests/evidence-tray.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {

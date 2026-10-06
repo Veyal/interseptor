@@ -21,10 +21,7 @@ var wp12Modules = []string{
 var settingsSections = []string{"proxy", "tls", "devices", "scope", "scanner", "session", "project", "api", "appearance"}
 
 func TestUISettingsPureLogicUnderNode(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH: settings and checklist pure-logic tests were NOT run; this is a coverage gap, not a pass")
-	}
+	node := requireNode(t)
 	cmd := exec.Command(node, "--test", "_js-tests/settings-model.test.mjs", "_js-tests/checklist-model.test.mjs")
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {
