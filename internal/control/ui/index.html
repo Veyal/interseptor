@@ -177,7 +177,7 @@
       <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
 
       <button class="btn" id="selScope" title="Add hosts to scope">◎ Scope</button>
-      <button class="btn" id="selAddFinding" title="Attach to finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Finding</button>
+      <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
       <button class="btn sel-clear" id="selClear">Clear</button>
     </div>
@@ -192,6 +192,7 @@
           <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
           <div class="spacer"></div>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
+          <button class="btn btn-compact" id="inspectAddFinding" aria-label="Add selected flow to a finding">+ Add to finding</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
           <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
 
