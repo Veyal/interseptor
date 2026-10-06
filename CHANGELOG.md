@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-10-06
+
+> v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.
+
+### Fixed
+
+- **UI failed to boot ("Workspace scripts could not start in this browser").** `renderFlowHead` in `js/proxy.js` kept a `${align}` placeholder in the header template after the identifier was removed in an inline-style cleanup, throwing `ReferenceError: align is not defined` on load and aborting the whole workspace. v2.4.1 shipped with this defect. The stray placeholder is removed; `TestUIFlowHeadTemplateUsesOnlyDeclaredIdentifiers` fails on the old template.
+
+### Added
+
+- **`scripts/ui_boot_smoke.mjs`.** A dependency-free Node 22 script that loads the UI in headless Chrome over CDP, clicks every tab and exits non-zero on any uncaught exception or a workspace boot failure. Documented in `docs/ui-audit/verification.md`, the `ui-visual-audit-evidence` skill and the CONTRIBUTING release checklist; not run in CI because it needs Chrome.
+
+### Changed
+
+- The development fallback `Version` advances to the published v2.4.1.
+
 ## [2.4.1] - 2026-10-06
 
 > v2.4.0 was tagged but never published: its release workflow failed because the
