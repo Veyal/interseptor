@@ -186,7 +186,8 @@ func TestUIIntruderHistoryBelongsToItsOriginatingTab(t *testing.T) {
 }
 
 func TestUICreatedFindingsSurfacePartialAttachmentWarnings(t *testing.T) {
-	for _, asset := range []string{"js/findings.js", "js/scanner.js", "js/tools.js"} {
+	// Intruder creates findings through the shared findings.js picker.
+	for _, asset := range []string{"js/findings.js", "js/scanner.js"} {
 		requireUIContracts(t, asset,
 			"Array.isArray(f.warnings)",
 			"PoC attachment",

@@ -289,8 +289,8 @@ func TestProjectIdentityFailureSettlesWorkstationActions(t *testing.T) {
 		"if(result?.ok)return true",
 		"return false",
 	)
-	if strings.Count(tools, "if(!await waitForWorkstationReady())return false") != 2 {
-		t.Error("Repeater and Intruder sends must both reject failed workstation readiness")
+	if strings.Count(tools, "if(!await waitForWorkstationReady())return false") != 3 {
+		t.Error("Repeater, Intruder and held-request Repeater loads must all reject failed workstation readiness")
 	}
 	requireUIContains(t, findings,
 		"const ok = await sendToRepeater({ id })",

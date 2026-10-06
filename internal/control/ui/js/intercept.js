@@ -1,4 +1,5 @@
 import { $, $$, esc, escAttr, state, toast, api, methodColor, prettify, renderLoadError } from './core.js';
+import { sendRawToRepeater } from './tools.js';
 import { wireListbox, setListboxSelection } from './listbox.js';
 import { animateOnce, MOTION } from './motion.js';
 
@@ -147,8 +148,27 @@ function setHeldModified(raw, original){
   if(badge){badge.hidden=!modified;badge.textContent=modified?'MODIFIED':'';}
 }
 
+// Intercept must not be a dead end: "Repeater" copies the (edited) held request
+// into a new Repeater tab without forwarding or dropping it.
+function ensureHeldRepeaterButton(){
+  let b=$('#heldRepeaterBtn');if(b)return b;
+  const forward=$('#forwardBtn');if(!forward)return null;
+  b=document.createElement('button');
+  b.type='button';b.className='btn';b.id='heldRepeaterBtn';b.textContent='Repeater ↗';
+  b.title='Open this request in Repeater (it stays held)';
+  b.onclick=()=>{
+    const sel=state.heldSel,h=sel&&sel.side==='req'&&heldItem(sel.id,sel.side);
+    if(!h)return;
+    sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value});
+  };
+  forward.parentNode.insertBefore(b,forward);
+  return b;
+}
+function syncHeldRepeaterButton(side){
+  const b=ensureHeldRepeaterButton();if(b)b.hidden=side==='resp';
+}
 function setHeldControlsDisabled(disabled){
-  ['#heldRaw','#forwardBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn']
+  ['#heldRaw','#forwardBtn','#dropBtn','#heldBeautifyBtn','#heldResetBtn','#heldDecodeBtn','#heldRepeaterBtn']
     .map(s=>$(s)).forEach(el=>{if(el)el.disabled=!!disabled||!!heldActionInFlight;});
 }
 
@@ -162,11 +182,11 @@ function showHeldLoadState(h,text,retry){
   const main=document.querySelector('.icpt-main');
   if(!main)return;
   const el=document.createElement('div');
-  el.id='heldLoadState';el.className='hint';el.setAttribute('role',retry?'alert':'status');
-  el.style.cssText='padding:10px 14px;border-bottom:1px solid var(--line);color:'+(retry?'var(--red)':'var(--fg2)');
+  el.id='heldLoadState';el.setAttribute('role',retry?'alert':'status');
+  el.className=retry?'hint held-load-state state-error-msg':'hint held-load-state';
   el.textContent=text;
   if(retry){
-    const b=document.createElement('button');b.type='button';b.className='btn';b.style.marginLeft='10px';b.textContent='Retry loading held message';
+    const b=document.createElement('button');b.type='button';b.className='btn';b.textContent='Retry loading held message';
     b.onclick=()=>selectHeld(h.id,h.side);el.appendChild(b);
   }
   main.insertBefore(el,main.firstChild);
@@ -284,6 +304,7 @@ function showEditor(h){
   const original=heldOriginal(h);
   if(ta){ta.style.display='block';ta.disabled=false;ta.removeAttribute('placeholder');ta.value=h.raw||'';setHeldModified(ta.value,original);}
   setHeldControlsDisabled(false);
+  syncHeldRepeaterButton(h.side);
   if(title)title.innerHTML=h.side==='resp'
     ?`<span class="icpt-tag resp" style="margin-right:8px">RESP</span><span class="u">${esc(h.host)}${esc(h.path)}</span>`
     :`<span style="color:${methodColor(h.method)};font-weight:700">${esc(h.method)}</span> ${esc(h.host)}${esc(h.path)}`;

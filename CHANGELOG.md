@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Project merge preserves legacy findings (#73/#86).** `MergeFrom` inserts peer findings through an internal path that skips the write-time CVSS:4.0 and severity-vs-CVSS checks, so merging a project that holds a legacy CVSS 3.1 vector or a severity that disagrees with its vector no longer aborts. API and MCP writes stay strict. Revision restore and archive/full-project import already write rows directly and Burp import creates no findings, so they were unaffected. Rating-edge tests now cover real v4.0 vectors at 4.0, 6.9, 7.0, 8.9 and 9.0.
 
+- **Send to Intruder no longer overwrites a configured attack.** `sendToIntruder` reuses the current attack tab only while it is pristine and otherwise opens a new tab (mirrors `sendToRepeater`); it refuses while an attack is running, and failures use `toastError`.
+
+- **Repeater gains Intruder, + Finding and Copy cURL actions.** The response pane head now loads the current request into Intruder (target from the URL, `Host` added when missing), attaches the last response flow to a finding (disabled until a send produces one) and copies the request as cURL.
+
+- **Intercept is no longer a dead end.** A held request has a `Repeater ↗` action that opens the edited raw request in a new Repeater tab (scheme from the held item, host from the `Host` header) while leaving it held; the held-message load state uses shared `.held-load-state`/`.state-error-msg` classes instead of inline `cssText`.
+
+- **Adding flows to a finding stays in place.** `pickFindingForFlows` (History, Intruder) no longer jumps to the Findings tab: it creates or updates the finding in the background and shows a toast with an `Open` action. The new finding pre-fills its target from the flow host, uses one `Add to finding` verb in the list header and buttons, and shares `flowFindingDefaults()` across History and Intruder. Intruder `→ Finding` now uses the same picker (new or existing finding) and states when the first-10 fallback or the 20-flow cap applied.
+
+- **Intruder polling is cheaper.** `/api/intruder/state` is polled every 400ms instead of 120ms, a poll with no new progress skips the re-render, and each render filters and sorts the results once for both the stats line and the rows. The server-side `?since=` incremental window is not implemented (backend change, out of UI scope).
+
+- **Flow popup carries Intruder and + Finding actions.** The inspect popup (Intruder results, Map, Scanner) now has `Intruder ↗` and `+ Finding` beside `Repeater ↗`, each closing the popup before navigating.
+
+- **Intruder marker shortcut.** `Alt+M` inside the request template wraps the selection in `§` markers (same as the Wrap button, inert in Race mode). `Ctrl/Cmd+Enter` to start an attack was already handled by the global dispatch.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
