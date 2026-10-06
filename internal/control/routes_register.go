@@ -265,6 +265,7 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /api/reference", meta.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", meta.apiMCP)
 	h.mux.HandleFunc("GET /api/mcp/capabilities", meta.apiMCPCapabilities)
+	h.mux.HandleFunc("GET /api/capabilities", meta.apiMCPCapabilities)
 	h.mux.HandleFunc("POST /api/finding-cvss", meta.evaluateCVSS)
 	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /mcp", h.handleMCP)

@@ -247,6 +247,7 @@ var apiRoutes = []apiRoute{
 	{"GET", "/api/reference", "Machine-readable route catalog"},
 	{"GET", "/api/mcp", "MCP tool descriptor + client config snippet"},
 	{"GET", "/api/mcp/capabilities", "Live MCP contract metadata and supported finding fields"},
+	{"GET", "/api/capabilities", "Alias of /api/mcp/capabilities: schemaVersion, schemaHash and supported finding fields (targetsSupported)"},
 	{"POST", "/api/finding-cvss", "Evaluate a CVSS v4.0 vector without changing a finding. Body: {vector}; NONE is exposed as INFO for finding severity display"},
 	{"GET", "/api/flows/{id}/curl", "Reconstruct the flow's request as a runnable curl command"},
 	{"GET", "/api/ui/{panel}", "Project-scoped UI state blob (panel=repeater|intruder|intruder-presets)"},

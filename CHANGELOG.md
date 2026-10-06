@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
+
 - **Reviewer-approved target normalization.** `POST /api/findings/{id}/normalize-targets` and the MCP `normalize_finding_targets` tool apply approved path templates (for example `/users/edit/123` to `/users/edit/{id}`) to a finding's affected targets. They default to a dry run, never merge targets that differ in method, scheme, role, relation or variant, and keep flow and image references on the merged target.
 
 - **Environment validation regression tests.** `development` round-trips through the control API and unknown environments are rejected through both the control API and the MCP `update_finding` path instead of being mapped to `local`.
