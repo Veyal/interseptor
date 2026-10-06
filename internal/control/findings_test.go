@@ -815,7 +815,7 @@ func TestFindingCvssCreateAndPatch(t *testing.T) {
 	}
 
 	// PATCH cvss with a vector.
-	vector := `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N`
+	vector := `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:N/SA:N`
 	payload, _ := json.Marshal(map[string]string{"cvss": vector})
 	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/findings/"+idStr(created.ID), strings.NewReader(string(payload)))
 	r2, err := http.DefaultClient.Do(req)

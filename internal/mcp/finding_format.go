@@ -207,7 +207,7 @@ func findingProofReviewSchema() map[string]any {
 	for _, key := range []string{"authenticated_without_required_factor", "browser_execution", "account_control", "state_change"} {
 		claims[key] = obj(map[string]any{"note": p("string", "Reviewer observation, not an automatic verification flag"), "evidence": map[string]any{"type": "array", "maxItems": 16, "items": ref}}, "note", "evidence")
 	}
-	return obj(map[string]any{"claims": obj(claims), "execution": p("string", "demonstrated|prerequisite_only|not_executed"), "reason": p("string", "required when impact was not demonstrated"), "visual": p("boolean", "true when a real browser screenshot is required to establish the visual claim"), "evidence": obj(map[string]any{"action": ref, "result": ref, "control": ref})})
+	return obj(map[string]any{"claims": obj(claims), "execution": p("string", "demonstrated|prerequisite_only|not_executed"), "reason": p("string", "required when impact was not demonstrated"), "visual": p("boolean", "true when a real browser screenshot is required to establish the visual claim"), "severityOverride": p("string", "documented reason severity deliberately differs from the calculated CVSS rating; without it a mismatch is rejected"), "evidence": obj(map[string]any{"action": ref, "result": ref, "control": ref})})
 }
 
 func narrativeArtifacts(body, detail string) findingArtifacts {

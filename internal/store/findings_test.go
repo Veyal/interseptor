@@ -347,7 +347,7 @@ func TestFindingCvssRoundTrip(t *testing.T) {
 		t.Fatalf("create: severity want Critical got %q", got.Severity)
 	}
 
-	vector := "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+	vector := "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:N/SA:N"
 	if err := s.UpdateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &vector, nil); err != nil {
 		t.Fatalf("UpdateFinding cvss: %v", err)
 	}

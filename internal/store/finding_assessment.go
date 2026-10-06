@@ -33,11 +33,15 @@ type FindingTarget struct {
 
 // ProofReview records the operator's assessment, not an automated proof claim.
 type FindingProofReview struct {
-	Claims    map[string]FindingCapabilityClaim   `json:"claims,omitempty"`
-	Execution string                              `json:"execution,omitempty"` // demonstrated | prerequisite_only | not_executed
-	Reason    string                              `json:"reason,omitempty"`
-	Visual    bool                                `json:"visual,omitempty"`
-	Evidence  map[string]FindingEvidenceReference `json:"evidence,omitempty"`
+	Claims    map[string]FindingCapabilityClaim `json:"claims,omitempty"`
+	Execution string                            `json:"execution,omitempty"` // demonstrated | prerequisite_only | not_executed
+	Reason    string                            `json:"reason,omitempty"`
+	Visual    bool                              `json:"visual,omitempty"`
+	// SeverityOverride is the documented reason a finding's severity
+	// deliberately differs from its calculated CVSS rating. Without it a
+	// mismatch is rejected at write time.
+	SeverityOverride string                              `json:"severityOverride,omitempty"`
+	Evidence         map[string]FindingEvidenceReference `json:"evidence,omitempty"`
 }
 
 type FindingEvidenceReference struct {
@@ -185,6 +189,20 @@ func validateCVSSWrite(vector string) error {
 	return nil
 }
 
+// validateSeverityMatchesCVSS blocks a severity that disagrees with the
+// calculated rating of a valid CVSS v4.0 vector unless the finding documents an
+// explicit override. Unparseable or legacy vectors are not judged here.
+func validateSeverityMatchesCVSS(f *Finding) error {
+	if strings.TrimSpace(f.ProofReview.SeverityOverride) != "" {
+		return nil
+	}
+	ev, err := cvsspkg.Evaluate(f.Cvss)
+	if err != nil || ev.Legacy || strings.EqualFold(f.Severity, ev.Severity) {
+		return nil
+	}
+	return fmt.Errorf("%w: severity %q conflicts with the calculated CVSS rating %s (score %.1f); set severity to %s or document a deliberate difference in proofReview.severityOverride", ErrInvalidFinding, f.Severity, ev.Severity, ev.Score, ev.Severity)
+}
+
 func (s *Store) UpdateFindingMetadata(id int64, patch FindingMetadataPatch) error {
 	return s.updateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, patch)
 }
@@ -290,7 +308,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 			if rating == "NONE" {
 				rating = "INFO"
 			}
-			if !strings.EqualFold(f.Severity, rating) {
+			if !strings.EqualFold(f.Severity, rating) && strings.TrimSpace(f.ProofReview.SeverityOverride) == "" {
 				gaps = append(gaps, "severity")
 			}
 		}
@@ -303,7 +321,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 			if rating == "NONE" {
 				rating = "INFO"
 			}
-			if !strings.EqualFold(f.Severity, rating) {
+			if !strings.EqualFold(f.Severity, rating) && strings.TrimSpace(f.ProofReview.SeverityOverride) == "" {
 				gaps = append(gaps, "severity")
 			}
 		}

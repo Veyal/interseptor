@@ -97,9 +97,17 @@ export function bindCvssEditor(root, onApply, onPreviewChange = () => {}, onDisc
       if (!root.isConnected) return;
       latest = result;
       latestVector = vector;
+      const detail = result.explanation ? ` — ${result.explanation}` : '';
+      if (result.legacy) {
+        applyButton.disabled = true;
+        setStatus(`Score ${Number(result.score).toFixed(1)} · ${displayRating(result.rating)} (${result.nomenclature}). Legacy CVSS 3.1 cannot be saved; enter a CVSS:4.0 vector.`, true);
+        return;
+      }
       applyButton.disabled = false;
       applyButton.textContent = `Apply vector + ${displayRating(result.rating)} severity`;
-      setStatus(`Score ${Number(result.score).toFixed(1)} · ${displayRating(result.rating)} (${result.nomenclature})`);
+      const current = root.ownerDocument?.querySelector?.('#findSeverity')?.value;
+      const mismatch = current && current.toLowerCase() !== String(result.severity || '').toLowerCase() ? ` Current severity ${current} differs; Apply sets ${result.severity}.` : '';
+      setStatus(`Score ${Number(result.score).toFixed(1)} · ${displayRating(result.rating)} (${result.nomenclature})${detail}${mismatch}`);
     } catch (error) {
       if (token !== generation) return;
       if (!root.isConnected) return;

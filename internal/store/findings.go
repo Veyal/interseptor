@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	cvsspkg "github.com/Veyal/interseptor/internal/cvss"
 )
 
 // ErrFlowNotFound is returned by AttachFlow when the referenced flow id has no
@@ -973,6 +975,12 @@ func ExtractWhyFromNarrative(text string) string {
 func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, error) {
 	now := time.Now().UnixMilli()
 	f.TS, f.UpdatedTS = now, now
+	if strings.TrimSpace(f.Severity) == "" {
+		// An omitted severity follows the vector instead of defaulting to Medium.
+		if ev, err := cvsspkg.Evaluate(f.Cvss); err == nil && !ev.Legacy {
+			f.Severity = ev.Severity
+		}
+	}
 	f.Severity = normalizeFindingSeverity(f.Severity)
 	f.Status = normalizeFindingStatus(f.Status)
 	f.Source = normalizeFindingSource(f.Source)
@@ -988,6 +996,9 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 		return 0, err
 	}
 	if err := normalizeFindingAssessment(f); err != nil {
+		return 0, err
+	}
+	if err := validateSeverityMatchesCVSS(f); err != nil {
 		return 0, err
 	}
 	if f.Body == "" {
@@ -1227,6 +1238,11 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	}
 	if err := normalizeFindingAssessment(&resulting); err != nil {
 		return err
+	}
+	if resulting.Cvss != current.Cvss || resulting.Severity != current.Severity {
+		if err := validateSeverityMatchesCVSS(&resulting); err != nil {
+			return err
+		}
 	}
 	if err := validateFindingReferences(tx, resulting); err != nil {
 		return err
