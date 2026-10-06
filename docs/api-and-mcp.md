@@ -121,6 +121,8 @@ POST   /api/findings/{id}/flow-preview       render and attach a labeled HTTP PN
 GET    /api/intruder/attacks                 recent recorded Intruder runs (last 20 kept)
 GET    /api/intruder/attacks/{id}            one recorded run by runId; survives the next start and restarts
 GET    /api/intruder/attacks/{id}/render.png ?kind=timeline|distribution|race|strip evidence render PNG (unattached)
+GET    /api/intruder/attacks/{id}/render     alias of render.png (MCP render_intruder_preview)
+GET    /api/evidence-render                  ?kind=...&runId|flowIdA,flowIdB|flowIds|findingIds single-endpoint render PNG (MCP render_evidence)
 POST   /api/findings/{id}/evidence-render    render and attach {kind, runId?|flowIds?|..., caption?, role?, proof?, position?}
 GET    /api/findings/report                  md (default), html, or json export
 ```

@@ -687,6 +687,50 @@ func (e *evidenceAPI) getFindingChainRender(w http.ResponseWriter, r *http.Reque
 	e.serveRender(w, r, evidenceRequest{Kind: preview.KindFindingChain, FindingID: fid, Width: width}, fmt.Sprintf("finding-chain-%d", fid))
 }
 
+// GET /api/evidence-render?kind=&runId=&flowIdA=&flowIdB=&flowIds=&findingIds=
+// is the single-endpoint form of the renders above, used by the MCP tools.
+func (e *evidenceAPI) getEvidenceRender(w http.ResponseWriter, r *http.Request) {
+	q, err := evidenceRequestFromQuery(r)
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
+	e.serveRender(w, r, q, "evidence-"+q.Kind)
+}
+
+func evidenceRequestFromQuery(r *http.Request) (evidenceRequest, error) {
+	v := r.URL.Query()
+	kind, ok := canonicalEvidenceKind(v.Get("kind"))
+	if !ok {
+		return evidenceRequest{}, evErr(http.StatusBadRequest, "kind must be one of timeline, distribution, race, strip, authz_matrix, flow_diff, flow_waterfall, finding_chain")
+	}
+	width, mask, err := widthAndMask(r)
+	if err != nil {
+		return evidenceRequest{}, err
+	}
+	q := evidenceRequest{Kind: kind, RunID: strings.TrimSpace(v.Get("runId")), Width: width, Mask: mask}
+	q.A, _ = parseFlowIDParam(orVal(v.Get("flowIdA"), v.Get("a")))
+	q.B, _ = parseFlowIDParam(orVal(v.Get("flowIdB"), v.Get("b")))
+	if q.FlowIDs, err = parseFlowIDList(orVal(v.Get("flowIds"), v.Get("ids"))); err != nil {
+		return evidenceRequest{}, err
+	}
+	q.FindingID = firstFindingID(orVal(v.Get("findingId"), v.Get("findingIds")))
+	if isIntruderKind(kind) && q.RunID == "" {
+		q.RunID = "latest"
+	}
+	return q, nil
+}
+
+// firstFindingID returns the first positive id of a comma-separated list (the chain root).
+func firstFindingID(raw string) int64 {
+	for _, p := range strings.Split(raw, ",") {
+		if id, ok := parseFlowIDParam(p); ok {
+			return id
+		}
+	}
+	return 0
+}
+
 func parseFlowIDList(raw string) ([]int64, error) {
 	var ids []int64
 	for _, p := range strings.Split(raw, ",") {
@@ -714,19 +758,22 @@ func (e *evidenceAPI) attachEvidenceRender(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var in struct {
-		Kind      string  `json:"kind"`
-		AttackID  string  `json:"attackId"`
-		RunID     string  `json:"runId"`
-		FlowIDs   []int64 `json:"flowIds"`
-		A         int64   `json:"a"`
-		B         int64   `json:"b"`
-		FindingID int64   `json:"findingId"`
-		Caption   string  `json:"caption"`
-		Role      string  `json:"role"`
-		Proof     string  `json:"proof"`
-		Position  *int    `json:"position"`
-		Width     int     `json:"width"`
-		Mask      bool    `json:"mask"`
+		Kind       string  `json:"kind"`
+		AttackID   string  `json:"attackId"`
+		RunID      string  `json:"runId"`
+		FlowIDs    []int64 `json:"flowIds"`
+		A          int64   `json:"a"`
+		B          int64   `json:"b"`
+		FlowIDA    int64   `json:"flowIdA"`
+		FlowIDB    int64   `json:"flowIdB"`
+		FindingID  int64   `json:"findingId"`
+		FindingIDs []int64 `json:"findingIds"`
+		Caption    string  `json:"caption"`
+		Role       string  `json:"role"`
+		Proof      string  `json:"proof"`
+		Position   *int    `json:"position"`
+		Width      int     `json:"width"`
+		Mask       bool    `json:"mask"`
 	}
 	if !decodeLimitedJSON(w, r, maxEvidenceRenderRequestBytes, &in) {
 		return
@@ -743,6 +790,15 @@ func (e *evidenceAPI) attachEvidenceRender(w http.ResponseWriter, r *http.Reques
 	runID := strings.TrimSpace(in.AttackID)
 	if runID == "" {
 		runID = strings.TrimSpace(in.RunID)
+	}
+	if in.A == 0 {
+		in.A = in.FlowIDA
+	}
+	if in.B == 0 {
+		in.B = in.FlowIDB
+	}
+	if in.FindingID == 0 && len(in.FindingIDs) > 0 {
+		in.FindingID = in.FindingIDs[0]
 	}
 	if kind == preview.KindFindingChain && in.FindingID == 0 {
 		in.FindingID = findingID

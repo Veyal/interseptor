@@ -317,6 +317,8 @@ func (h *Hub) registerEvidenceRoutes(ev *evidenceAPI) {
 	h.mux.HandleFunc("GET /api/intruder/attacks", ev.intruderAttacks)
 	h.mux.HandleFunc("GET /api/intruder/attacks/{id}", ev.intruderAttack)
 	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render.png", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/intruder/attacks/{id}/render", ev.intruderAttackRender)
+	h.mux.HandleFunc("GET /api/evidence-render", ev.getEvidenceRender)
 	h.mux.HandleFunc("GET /api/render/authz/{runId}", ev.getAuthzRender)
 	h.mux.HandleFunc("GET /api/render/flow-diff.png", ev.getFlowDiffRender)
 	h.mux.HandleFunc("GET /api/render/flow-waterfall.png", ev.getFlowWaterfallRender)

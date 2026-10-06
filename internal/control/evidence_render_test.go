@@ -469,3 +469,65 @@ func TestWaterfallSourceRefStaysWithinLimit(t *testing.T) {
 		t.Fatalf("ref too long: %d", len(ref))
 	}
 }
+
+// The MCP render tools call these exact REST shapes; they must resolve.
+func TestEvidenceRenderMCPContractRoutes(t *testing.T) {
+	h, s, _ := newHub(t)
+	seedRun(t, s, syntheticRun(testRunID))
+	base := time.UnixMilli(1700000000000)
+	var ids []int64
+	for i := 0; i < 3; i++ {
+		id, err := s.InsertFlow(&store.Flow{TS: base.Add(time.Duration(i) * 250 * time.Millisecond), Method: "GET", Scheme: "https",
+			Host: "example.com", Path: "/api/item/" + strconv.Itoa(i), Status: 200, DurationMs: 40})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	f1, _ := s.CreateFinding(&store.Finding{Title: "IDOR on item", Severity: "High"})
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	for _, u := range []string{
+		"/api/intruder/attacks/latest/render?kind=intruder_timeline",
+		"/api/intruder/attacks/" + testRunID + "/render?kind=intruder_race&mask=1",
+		fmt.Sprintf("/api/evidence-render?kind=flow_diff&flowIdA=%d&flowIdB=%d", ids[0], ids[1]),
+		fmt.Sprintf("/api/evidence-render?kind=flow_waterfall&flowIds=%d,%d", ids[0], ids[1]),
+		fmt.Sprintf("/api/evidence-render?kind=finding_chain&findingIds=%d,9999", f1),
+	} {
+		resp, body := getBytes(t, ts.URL+u)
+		requirePNG(t, resp, body)
+	}
+	for u, want := range map[string]int{
+		"/api/evidence-render":                              400,
+		"/api/evidence-render?kind=pie":                     400,
+		"/api/evidence-render?kind=authz_matrix":            404,
+		"/api/evidence-render?kind=authz_matrix&runId=nope": 404,
+	} {
+		if resp, body := getBytes(t, ts.URL+u); resp.StatusCode != want {
+			t.Errorf("%s = %d (%s), want %d", u, resp.StatusCode, body, want)
+		}
+	}
+}
+
+// The MCP attach body names flow_diff inputs flowIdA/flowIdB and chains findingIds.
+func TestAttachEvidenceRenderAcceptsMCPFieldNames(t *testing.T) {
+	h, s, _ := newHub(t)
+	base := time.UnixMilli(1700000000000)
+	var ids []int64
+	for i := 0; i < 2; i++ {
+		id, _ := s.InsertFlow(&store.Flow{TS: base.Add(time.Duration(i) * time.Second), Method: "GET", Scheme: "https",
+			Host: "example.com", Path: "/p" + strconv.Itoa(i), Status: 200, DurationMs: 10})
+		ids = append(ids, id)
+	}
+	fid := newFindingID(t, s)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	url := ts.URL + "/api/findings/" + strconv.FormatInt(fid, 10) + "/evidence-render"
+	body := fmt.Sprintf(`{"kind":"flow_diff","flowIdA":%d,"flowIdB":%d}`, ids[0], ids[1])
+	if resp, b := evPost(t, url, body); resp.StatusCode != 200 {
+		t.Fatalf("flow_diff attach %d: %s", resp.StatusCode, b)
+	}
+	if resp, b := evPost(t, url, fmt.Sprintf(`{"kind":"finding_chain","findingIds":[%d]}`, fid)); resp.StatusCode != 200 {
+		t.Fatalf("finding_chain attach %d: %s", resp.StatusCode, b)
+	}
+}
