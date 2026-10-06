@@ -1,10 +1,16 @@
-import { $, esc, escAttr, state, toast, toastError, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode } from './core.js';
+import { $, esc, escAttr, state, toast, toastError, api, methodColor, statusColor, statusText, fmtSize, fmtDur, highlightHTTP, prettify, RENDER_CAP, openModal, closeModal, isBinaryMime, bodyMime, headerBlockText, copyText, flowBodyDownloadName, flowBodyDownloadHref, wireSelectionDecode, openFlow, getHook } from './core.js';
 import { syncControls, renderChips, loadFlows, selectFlow } from './proxy.js';
 import { sendToRepeater, sendToIntruder } from './tools.js';
-/* ---- flow inspect popup (Map graph/table, Scanner findings, …) ---- */
+/* ---- flow inspect entry points (Map graph/table, Scanner findings, Findings evidence, …)
+   flowPopup/closeFlowPopup are a compatibility shim over the Flow Drawer: when the
+   drawer module has registered `openFlow` it handles the request. The modal below
+   remains only as the fallback for a drawer that failed to load, so a missing
+   optional module can never leave "inspect flow" dead. ---- */
 let fmOpenEpoch=0;
 const fmSideEpoch={req:0,res:0};
 export function closeFlowPopup({updateRoute=true}={}){
+  const closeDrawer=getHook('closeFlow');
+  if(closeDrawer)closeDrawer({updateRoute:false});
   fmOpenEpoch++;fmSideEpoch.req++;fmSideEpoch.res++;
   if($('#flowModal')?.style.display==='flex')closeModal($('#flowModal'));
   const match=location.hash.match(/^#finding-(\d+)\/flow-\d+$/i);
@@ -24,6 +30,7 @@ function fmFlowUrl(d){
 }
 
 export async function flowPopup(id){
+  if(openFlow(id,{source:'popup'}))return;
   const epoch=++fmOpenEpoch;
   let d;
   try{d=await api('/api/flows/'+id);}catch(e){if(epoch===fmOpenEpoch)toast('flow: '+e.message);return;}

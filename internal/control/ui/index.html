@@ -1239,6 +1239,31 @@ Content-Type: application/json
 <!-- region:mobile -->
 <!-- /region:mobile -->
 <!-- region:flowdrawer -->
+<div id="flowDrawer" class="flow-drawer" data-mode="docked">
+  <div class="flow-drawer-sash" id="fdSash" role="separator" aria-orientation="vertical" aria-label="Resize flow drawer" aria-valuemin="320" aria-valuemax="640" aria-valuenow="420" tabindex="0"></div>
+  <aside class="flow-drawer-panel" id="fdPanel" role="complementary" aria-labelledby="fdTitle">
+    <header class="flow-drawer-head" id="fdHead">
+      <h2 class="flow-drawer-title" id="fdTitle" tabindex="-1">Flow</h2>
+      <button type="button" class="btn flow-drawer-step" id="fdPrev" aria-label="Previous flow in list" title="Previous flow (k)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn flow-drawer-step" id="fdNext" aria-label="Next flow in list" title="Next flow (j)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn" id="fdClose" aria-label="Close flow drawer"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    </header>
+    <p class="flow-drawer-status" id="fdStatus" role="status"></p>
+    <div class="flow-drawer-linked" id="fdLinked" aria-label="Findings that reference this flow"></div>
+    <div class="flow-drawer-tabs" id="fdTabs" role="tablist" aria-label="Flow sections"></div>
+    <div class="flow-drawer-body" id="fdBody" role="tabpanel" tabindex="0" aria-labelledby="fdTabs"></div>
+    <footer class="flow-drawer-foot" id="fdFoot">
+      <div class="flow-drawer-split">
+        <button type="button" class="btn accent flow-drawer-attach" id="fdAttach" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"/></svg> Attach as evidence</button>
+        <button type="button" class="btn accent flow-drawer-caret" id="fdAttachMore" aria-label="More ways to attach" aria-haspopup="menu" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      </div>
+      <button type="button" class="btn" id="fdRepeater" title="Send this flow to Repeater">Repeater</button>
+      <button type="button" class="btn" id="fdIntruder" title="Load this flow into Intruder">Intruder</button>
+      <button type="button" class="btn" id="fdScanner" title="Run a scanner check against this flow">Scanner check</button>
+      <button type="button" class="btn" id="fdMore" aria-haspopup="menu" aria-expanded="false">More</button>
+    </footer>
+  </aside>
+</div>
 <!-- /region:flowdrawer -->
 <div id="ctxmenu"></div>
 <!-- region:modals-tools -->
