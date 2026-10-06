@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **MCP evidence render tools.** `render_intruder_preview` (kind timeline|distribution|race|strip, attackId default `latest`) and `render_evidence` (authz_matrix|flow_diff|flow_waterfall|finding_chain) return alt text, summary and a bounded base64 data URI without `findingId`, or attach via `POST /api/findings/{id}/evidence-render` with `findingId`. Descriptions state these are generated renders, not browser proof, and that `add_finding_image` with a real screenshot is still required. `start_intruder` gains `barrier` and documents the returned `runId`; `intruder_state` documents the run identity fields.
 - `preview.RenderFindingChain`: deterministic finding chain / attack-path PNG (longest-path layering, cycle edges dropped and noted, severity chips, edge labels, max 12 nodes) with alt text and summary.
 
 - **Authz differential matrix render (`preview.RenderAuthzMatrix`).** Deterministic report-width PNG of identities by requests with verdict glyphs (= same, D denied, ! broken, S session invalid), "N broken of M" summary, alt text listing broken cells by row and identity, and a "+N more" note past 8 identities or 40 rows.
