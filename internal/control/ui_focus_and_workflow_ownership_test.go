@@ -65,7 +65,7 @@ func TestUIFindingAttachmentsReportAuthoritativePartialResults(t *testing.T) {
 		"failed.push({id:fid,error})",
 		"await loadFindings()",
 		"'attached '+attached+' of '+ids.length+' flows · '+failed.length+' failed'",
-		"await attachFlowsToFinding(Number(b.dataset.id),ids)",
+		"await attachFlowsToFinding(id, ids)",
 	)
 	if strings.Contains(findings, "toast('attached ' + ids.length") {
 		t.Fatal("bulk finding attachments must not claim every flow succeeded")

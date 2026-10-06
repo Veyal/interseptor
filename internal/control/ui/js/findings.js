@@ -16,6 +16,7 @@ const STATUSES = ['open', 'needs_verification', 'verified', 'false_positive', 'w
 let findings = [], selFinding = null, findTagFilter = '', findTagCounts = [];
 let findingsLoadStateEl = null;
 let findingsLoadEpoch=0;
+let findingPickEpoch=0;
 const findingAttachPending=new Set();
 const findingDeletesPending = new Set();
 const findingEvidenceWrites = new Map();
@@ -1544,10 +1545,11 @@ async function attachFlowsToFinding(findingId, ids) {
       }catch(error){failed.push({id:fid,error});}
     }
     if (latest) applyFindingEvidenceResponse(latest);
-    if(!failed.length)toast('attached '+attached+' flow'+(attached===1?'':'s'),'success');
-    else if(attached)toast('attached '+attached+' of '+ids.length+' flows · '+failed.length+' failed','warn');
-    else toast('could not attach flows: '+(failed[0]?.error?.message||'request failed'),'error');
-    return {attached,failed};
+    let outcome;
+    if(!failed.length)outcome=toast('attached '+attached+' flow'+(attached===1?'':'s'),'success');
+    else if(attached)outcome=toast('attached '+attached+' of '+ids.length+' flows · '+failed.length+' failed','warn');
+    else outcome=toast('could not attach flows: '+(failed[0]?.error?.message||'request failed'),'error');
+    return {attached,failed,toast:outcome};
   } finally { findingAttachPending.delete(findingId); }
 }
 
@@ -1927,12 +1929,11 @@ function flowOrigin(d) {
 // toastOpenFinding reports a result and adds an Open action, so the operator
 // stays where they were and chooses when to jump to the finding.
 export function toastOpenFinding(message, sev, findingId) {
-  toast(message, sev);
-  addOpenFindingAction(findingId);
+  addOpenFindingAction(findingId, toast(message, sev));
 }
-function addOpenFindingAction(findingId) {
-  const items = $('#toast')?.querySelectorAll('.toast-item');
-  const el = items && items[items.length - 1];
+// addOpenFindingAction decorates the exact toast element toast() returned, never
+// "the newest toast", which another message may have replaced in the meantime.
+function addOpenFindingAction(findingId, el) {
   if (!el || !findingId) return;
   const open = document.createElement('button');
   open.type = 'button'; open.className = 'btn xs toast-action'; open.textContent = 'Open';
@@ -1960,19 +1961,30 @@ async function createFindingFromFlows(ids, opts) {
 export function pickFindingForFlows(ids, opts = {}) {
   if (!ids.length) { toast('select flows first'); return; }
   const list = $('#findPickList'); if (!list) return;
+  const pickEpoch = ++findingPickEpoch;
+  const renderPick = items => renderFindingPicker(list, items, ids, opts);
+  renderPick(findings);
+  openModal($('#findPickModal'));
+  // The cache can be stale (another client or MCP created findings), so every
+  // open refetches and re-renders unless the picker was closed or reopened.
+  api('/api/findings').then(d => {
+    if (pickEpoch !== findingPickEpoch || $('#findPickModal')?.style.display !== 'flex') return;
+    renderPick(d.findings || []);
+  }).catch(e => { if (pickEpoch === findingPickEpoch) toastError('Could not refresh findings', e); });
+}
+function renderFindingPicker(list, items, ids, opts) {
   const pocCount = findingPocCount;
-  const rows = findings.map(f => `<button class="btn find-pick" data-id="${f.id}">
+  const rows = items.map(f => `<button class="btn find-pick" data-id="${f.id}">
     <span class="sev" style="color:${sevColor(f.severity)}">${esc(f.severity)}</span> ${esc(f.title)}
     <span class="hint">${esc(statusLabel(f.status))}${pocCount(f) ? ' · ' + pocCount(f) + ' PoC' : ''}</span></button>`).join('');
   const note = opts.note ? `<div class="hint find-pick-note">${esc(opts.note)}</div>` : '';
   list.innerHTML = `<div class="hint find-pick-lead">Add ${ids.length} flow${ids.length === 1 ? '' : 's'} to:</div>${note}${rows || '<div class="hint">No findings yet.</div>'}
     <button class="btn accent find-pick-new">＋ Add to a new finding</button>`;
-  openModal($('#findPickModal'));
   list.querySelectorAll('.find-pick').forEach(b => b.onclick = async () => {
     const id = Number(b.dataset.id);
     closeModal($('#findPickModal'));
-    const result = await attachFlowsToFinding(Number(b.dataset.id),ids);
-    if (result && result.attached) addOpenFindingAction(id);
+    const result = await attachFlowsToFinding(id, ids);
+    if (result && result.attached) addOpenFindingAction(id, result.toast);
   });
   list.querySelector('.find-pick-new').onclick = async () => {
     closeModal($('#findPickModal'));

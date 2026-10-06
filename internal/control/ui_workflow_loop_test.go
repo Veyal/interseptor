@@ -67,7 +67,7 @@ func TestUIFindingCreationStaysInPlaceAndOffersOpen(t *testing.T) {
 		"＋ Add to a new finding",
 		"Add ${ids.length} flow",
 		"if (!target) { try { target = flowOrigin(await api('/api/flows/' + ids[0]));",
-		"if (result && result.attached) addOpenFindingAction(id);",
+		"if (result && result.attached) addOpenFindingAction(id, result.toast);",
 	)
 	start := strings.Index(findings, "async function createFindingFromFlows(")
 	end := strings.Index(findings, "export function pickFindingForFlows(")

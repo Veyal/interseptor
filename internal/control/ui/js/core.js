@@ -74,7 +74,7 @@ function armToastTimer(t, ms) {
 }
 export function toast(m, sev) {
   const c = $('#toast');
-  if (!c) return;
+  if (!c) return null;
   const loud = sev === 'error' || sev === 'warn';
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
@@ -84,6 +84,7 @@ export function toast(m, sev) {
   evictToasts(c);
   requestAnimationFrame(() => t.classList.add('show'));
   armToastTimer(t, sev === 'error' ? 8000 : sev === 'warn' ? 5000 : 2600);
+  return t;
 }
 // toastError(prefix, e) reports a failed action. e may be an Error, a string or
 // anything with a message; the prefix names the action ("Save failed"). A single

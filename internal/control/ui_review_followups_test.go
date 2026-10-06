@@ -153,3 +153,21 @@ func TestUITouchRowHeightAndTargetsAreRobust(t *testing.T) {
 		}
 	}
 }
+
+func TestUIToastReturnsHandleAndFindingPickerRefetches(t *testing.T) {
+	core := executableJS(readUIAsset(t, "js/core.js"))
+	requireUIContains(t, core, "armToastTimer(t, sev === 'error' ? 8000 : sev === 'warn' ? 5000 : 2600);\n  return t;")
+	f := executableJS(readUIAsset(t, "js/findings.js"))
+	requireUIContains(t, f,
+		"addOpenFindingAction(findingId, toast(message, sev))",
+		"function addOpenFindingAction(findingId, el)",
+		"addOpenFindingAction(id, result.toast)",
+		"return {attached,failed,toast:outcome}",
+		"api('/api/findings').then(d => {",
+		"pickEpoch !== findingPickEpoch",
+	)
+	if strings.Contains(f, "items[items.length - 1]") {
+		t.Error("the Open action must not attach to whichever toast happens to be last")
+	}
+	requireUIContains(t, readUIAsset(t, "index.html"), "<kbd>Alt</kbd><kbd>M</kbd>")
+}

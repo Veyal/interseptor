@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Finding Open toast action and picker freshness.** `toast()` returns its element; the Open action is attached to that handle (and to the attach-result toast) instead of "the last `.toast-item`". The "Add to finding" picker renders the cache immediately and refetches `/api/findings` on every open, ignoring the result if the picker was closed or reopened. The shortcuts sheet documents `Alt+M` (wrap Intruder selection in § markers).
+
 - **Touch rows, rail names and hit areas.** Coarse pointers set `--row-h` to 44px and `proxy.js` now reads that token (`ROW_H`, recomputed on resize and pointer-media change; `createVirtualList` accepts a height getter) so History virtual-scroll math matches the rendered rows. Icon-only rail tabs (721-900px) carry a `title`, `#toast` adds `env(safe-area-inset-bottom)` in `app.css`, checkboxes/radios are 24px with a 44px wrapping-label hit area instead of an `::after` pseudo-element on the input (not rendered by every engine), and `--violetDim` is defined in both themes.
 
 - **Live-update reconnects are single-flight.** `scheduleSseReconnect` and `connectEvents` share an attempt token: a timer whose `/api/version` probe is still in flight is abandoned once a newer attempt (or a new stream) takes over, so a late probe can no longer open a second `EventSource` or reschedule over the newer attempt; a stale `EventSource` error is ignored.
