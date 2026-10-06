@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Project merge preserves legacy findings (#73/#86).** `MergeFrom` inserts peer findings through an internal path that skips the write-time CVSS:4.0 and severity-vs-CVSS checks, so merging a project that holds a legacy CVSS 3.1 vector or a severity that disagrees with its vector no longer aborts. API and MCP writes stay strict. Revision restore and archive/full-project import already write rows directly and Burp import creates no findings, so they were unaffected. Rating-edge tests now cover real v4.0 vectors at 4.0, 6.9, 7.0, 8.9 and 9.0.
+
+### Fixed
+
 - **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
 ### Added
 

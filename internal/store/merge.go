@@ -301,7 +301,7 @@ func (s *Store) mergeFrom(peerDBPath, peerBodiesDir, label string, hooks mergeHo
 
 		remapFindingTargets(&f, peerToLocal)
 		f.Body = remapBodyFlowIDs(markMissingMergedFlowBlocks(f.Body, peerToLocal), peerToLocal)
-		_, err = s.CreateFinding(&f)
+		_, err = s.createFindingPreserving(&f)
 		if err != nil {
 			return stats, fmt.Errorf("insert merged finding: %w", err)
 		}

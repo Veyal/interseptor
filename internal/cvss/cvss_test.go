@@ -98,6 +98,30 @@ func TestEvaluateRatingBoundaries(t *testing.T) {
 	}
 }
 
+// TestEvaluateRatingEdges pins real vectors that land exactly on the rating
+// edges. No v4.0 vector scores 3.9, so the Low/Medium edge is covered by 4.0.
+func TestEvaluateRatingEdges(t *testing.T) {
+	tests := []struct {
+		vector, rating string
+		score          float64
+	}{
+		{"CVSS:4.0/AV:N/AC:L/AT:P/PR:H/UI:A/VC:L/VI:L/VA:L/SC:N/SI:N/SA:H", "MEDIUM", 4.0},
+		{"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N", "MEDIUM", 6.9},
+		{"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:H/VI:L/VA:L/SC:N/SI:N/SA:N", "HIGH", 7.0},
+		{"CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:H", "HIGH", 8.9},
+		{"CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:H/VI:L/VA:H/SC:N/SI:N/SA:H", "CRITICAL", 9.0},
+	}
+	for _, tt := range tests {
+		got, err := Evaluate(tt.vector)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Score != tt.score || got.RawRating != tt.rating {
+			t.Errorf("%s = %v/%s, want %v/%s", tt.vector, got.Score, got.RawRating, tt.score, tt.rating)
+		}
+	}
+}
+
 func TestEvaluateRejectsInvalidVector(t *testing.T) {
 	for _, vector := range []string{"", "9.8", "CVSS:4.0/AV:N", "CVSS:3.1/AV:N"} {
 		if _, err := Evaluate(vector); err == nil {
