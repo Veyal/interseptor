@@ -64,7 +64,7 @@ func TestUIFindingCreationStaysInPlaceAndOffersOpen(t *testing.T) {
 		"export function toastOpenFinding(message, sev, findingId)",
 		"open.onclick = () => { el.remove(); openFinding(findingId); };",
 		"export function pickFindingForFlows(ids, opts = {})",
-		"＋ Add to a new finding",
+		"Add to a new finding",
 		"Add ${ids.length} flow",
 		"if (!target) { try { target = flowOrigin(await api('/api/flows/' + ids[0]));",
 		"if (result && result.attached) addOpenFindingAction(id, result.toast);",

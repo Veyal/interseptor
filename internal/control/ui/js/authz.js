@@ -143,7 +143,7 @@ async function loadFlowAuthHint(flowId){
     let t='';
     if(authLine)t+='Captured request auth: <span class="u-mono u-fg2">'+esc(authLine.replace(/\n/g,' · '))+'</span>. ';
     if(hints.length)t+='Cookie hints: '+hints.map(h=>esc(h)).join('; ')+'.';
-    box.innerHTML=t+' Use <b>⧉ From flow</b> to fill the baseline identity.';
+    box.innerHTML=t+' Use <b>From flow</b> to fill the baseline identity.';
     box.style.display='';
   }catch(e){if(epoch!==authzHintEpoch||authzTarget()!==flowId||!authzModalOpen())return;box.style.display='';renderLoadError(box,'Captured authentication',e,()=>loadFlowAuthHint(flowId),false);}
 }
@@ -186,7 +186,7 @@ function renderIdentities(ids){
     <textarea class="authz-hdr rep-edit" aria-label="Authorization identity ${i+1} headers" rows="2" placeholder="Cookie: session=…  (blank = anonymous)">${esc(id.headers||'')}</textarea>
     <div class="u-flex u-gap-1">
       <button class="btn${id.broken?' danger':''} authz-broken" data-i="${i}" aria-label="${id.broken?'Unmark':'Mark'} authorization identity ${i+1} as broken" title="${id.broken?'Account marked broken — click to unmark':'Mark account as broken/locked (skipped in runs)'}">${id.broken?'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg> broken':'<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg>'}</button>
-      <button class="btn danger authz-del" data-i="${i}" aria-label="Remove authorization identity ${i+1}" title="Remove identity">✕</button>
+      <button class="btn danger authz-del" data-i="${i}" aria-label="Remove authorization identity ${i+1}" title="Remove identity"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     ${id.broken&&id.brokenNote?`<div class="hint u-fs-xs u-mt-1 u-warn">${esc(id.brokenNote)}</div>`:''}
   </div>`).join('');

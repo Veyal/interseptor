@@ -1031,7 +1031,7 @@ $('#mapDiscoveryHelp')&&($('#mapDiscoveryHelp').onclick=()=>{
   const p=$('#mapDiscoveryPanel'); if(!p) return;
   const show=p.hasAttribute('hidden')||p.style.display==='none';
   const button=$('#mapDiscoveryHelp');
-  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); button.textContent='Discovery ▾'; }
+  if(show){ p.hidden=false; p.style.display=''; refreshMapDiscoveryPanel(); button.textContent='Discovery'; }
   else { p.hidden=true; p.style.display='none'; button.textContent='Discovery ▸'; }
   button.setAttribute('aria-expanded',show?'true':'false');
 });

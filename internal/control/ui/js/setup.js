@@ -120,7 +120,7 @@ function renderStep() {
       <p class="u-m-0 u-mb-3">Interseptor is running. Point your browser or HTTP client's proxy at:</p>
       <div class="row u-gap-2 u-mb-4">
         <code class="evidence u-flex-1 u-m-0 u-fs-md">${addr}</code>
-        <button class="btn" id="setupCopyAddr">⧉ Copy</button>
+        <button class="btn" id="setupCopyAddr">Copy</button>
       </div>
        <button class="btn u-mb-3" id="setupSysProxy">Set as system proxy</button>
       <p class="hint u-m-0">HTTP works immediately. For <b>HTTPS</b>, the next step trusts the interception CA. The control UI (this window) is at <code>${esc(state.controlAddr||'127.0.0.1:9966')}</code>.</p>
@@ -165,7 +165,7 @@ function renderStep() {
     const os = osHint();
     const trust = TRUST_STEPS[os] || `<li>Install the CA into your OS/browser root trust store.</li>`;
     const cmd = TRUST_COMMANDS[os];
-    const cmdBox = cmd ? `<div class="row u-gap-2 u-mt-3"><code class="evidence u-flex-1 u-m-0 u-fs-xs u-prewrap u-break">${esc(cmd)}</code><button class="btn" id="setupCopyCmd" aria-label="Copy trust command" title="Copy trust command">⧉</button></div><p class="hint u-m-0 u-mt-1">…or paste this one-liner into a terminal after downloading.</p>` : '';
+    const cmdBox = cmd ? `<div class="row u-gap-2 u-mt-3"><code class="evidence u-flex-1 u-m-0 u-fs-xs u-prewrap u-break">${esc(cmd)}</code><button class="btn" id="setupCopyCmd" aria-label="Copy trust command" title="Copy trust command"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div><p class="hint u-m-0 u-mt-1">…or paste this one-liner into a terminal after downloading.</p>` : '';
     b.innerHTML = `<p class="u-m-0 u-mb-3">Download the CA and trust it so HTTPS traffic can be decrypted and edited.</p>
       <a class="btn accent u-no-underline u-inline-block u-mb-4" href="/api/ca.crt" download>⤓ Download CA certificate</a>
       <details class="ca-how"${os ? ' open' : ''}><summary>${os === 'mac' ? 'macOS' : os === 'win' ? 'Windows' : os === 'linux' ? 'Linux' : 'Trust it'} — how to</summary><ol class="setup-steps u-fg2">${trust}</ol></details>

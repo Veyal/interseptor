@@ -194,6 +194,8 @@ The UI and MCP share the report-quality and evidence contracts:
 - `finding_readiness` returns actionable field/capability checks; `export_report` accepts `mode=final`
   to enforce them or `mode=draft` to retain incomplete work.
 - `preview_finding_targets` previews deduplication and optional path templates without saving.
+- `normalize_finding_targets` applies reviewer-approved suggestion indexes from that preview to a saved finding
+  (`dryRun` defaults to true; `POST /api/findings/{id}/normalize-targets`).
 - `evaluate_finding_cvss` previews a CVSS v4 vector without updating a finding.
 - `redact_value` (and `POST /api/redact`) returns `{len, sha256_prefix, kind}` for a secret so a finding can show
   length and equality without the value. The value is hashed in memory and never stored. Finding writes

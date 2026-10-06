@@ -101,7 +101,7 @@ export function renderTrafficDiagnosis(rep) {
     ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn u-flex-none" data-tls-action="filter-pin">Show TLS-failed rows</button>` : ''}
     ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent u-flex-none" data-tls-action="passthrough" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
     ${rep.verdict !== 'ok' ? `<button type="button" class="btn u-flex-none" data-tls-action="open-settings">Settings → TLS</button>` : ''}
-    <button type="button" class="btn btn-compact u-flex-none" data-tls-action="dismiss" title="Dismiss until verdict changes" aria-label="Dismiss TLS diagnosis banner">✕</button>
+    <button type="button" class="btn btn-compact u-flex-none" data-tls-action="dismiss" title="Dismiss until verdict changes" aria-label="Dismiss TLS diagnosis banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     <button type="button" class="btn xs u-flex-none" data-tls-action="dismiss-forever" title="Never show this banner in Proxy History">Don't show again</button>
   </div>
   ${rep.fix ? `<div class="u-mt-2 u-fs-xs u-fg2"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}

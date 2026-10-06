@@ -609,7 +609,7 @@ async function loadVersion(retry){
     const d=await api('/api/version');if(!el)return;
     delete el.dataset.failed;
     if(d.project)setCtxProject(d.project);
-    const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent='◧ '+d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
+    const pb=$('#projBadge');if(pb&&d.project){pb.style.display='inline-block';pb.textContent=d.project;pb.title='Active project: '+d.project+(d.projectDir?'\n'+d.projectDir:'');}
     const pdh=$('#projDirHint');if(pdh&&d.projectDir)pdh.textContent=d.projectDir;
     if(d.updateAvailable&&d.latest){
       el.textContent='↑ v'+d.latest+' available';el.classList.add('is-update');
