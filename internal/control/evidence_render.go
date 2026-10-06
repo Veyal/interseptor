@@ -239,6 +239,18 @@ func writeRenderedPNG(w http.ResponseWriter, r *http.Request, rd preview.Rendere
 	_, _ = w.Write(rd.PNG)
 }
 
+// clipText bounds untrusted text to n runes before it reaches a renderer.
+func clipText(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
 func evidenceOpts(width int) preview.Opts { return preview.Opts{Width: width} }
 
 func parseWidthParam(raw string) (int, error) {

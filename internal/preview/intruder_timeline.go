@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"sort"
 	"strings"
+	"time"
 )
 
 // TimelineRow is one recorded Intruder request. StartUs/EndUs are microsecond
@@ -15,6 +16,7 @@ type TimelineRow struct {
 	StartUs, EndUs int64
 	Status, Length int
 	Error, Flagged bool
+	Matched        bool // response matched the run's grep pattern
 	RLHeaders      map[string]string
 }
 
@@ -28,6 +30,10 @@ type TimelineInput struct {
 	Target  string
 	Rows    []TimelineRow
 	Capped  bool
+	// Method and Path identify the endpoint (path only, never query values).
+	Method, Path string
+	// StartedUnixMs is the wall-clock run start; 0 means unknown.
+	StartedUnixMs int64
 }
 
 const (
@@ -47,6 +53,10 @@ type tlRow struct {
 
 type tlStats struct {
 	sent, ok, blocked, errs, other int
+	matched                        int
+	retryAfter                     string
+	acceptedBefore, inFlightAtBlk  int
+	zeroSpan                       bool
 	firstBlock                     *tlRow // earliest by EndUs among blocked
 	burstAfterSeq                  int    // 0 = none
 	burstStartUs                   int64
@@ -67,6 +77,7 @@ func tlPrepare(in TimelineInput) (bySeq []tlRow, st tlStats) {
 			st.timed = true
 		}
 	}
+	st.zeroSpan = st.timed
 	for i := range bySeq {
 		r := &bySeq[i]
 		if r.EndUs < r.StartUs {
@@ -74,6 +85,9 @@ func tlPrepare(in TimelineInput) (bySeq []tlRow, st tlStats) {
 		}
 		if r.EndUs > st.maxUs {
 			st.maxUs = r.EndUs
+		}
+		if r.EndUs != r.StartUs {
+			st.zeroSpan = false
 		}
 	}
 	sort.SliceStable(bySeq, func(i, j int) bool { return bySeq[i].Seq < bySeq[j].Seq })
@@ -94,6 +108,9 @@ func tlPrepare(in TimelineInput) (bySeq []tlRow, st tlStats) {
 		default:
 			st.other++
 		}
+		if r.Matched {
+			st.matched++
+		}
 		if st.timed {
 			lat = append(lat, (r.EndUs-r.StartUs)/1000)
 		}
@@ -105,6 +122,7 @@ func tlPrepare(in TimelineInput) (bySeq []tlRow, st tlStats) {
 			}
 		}
 	}
+	tlBlockContext(bySeq, &st)
 	// burst boundary: first Seq after which >50% of the next 5 rows are blocked
 	for i := 0; i+tlBurstWindow < len(bySeq); i++ {
 		n := 0
@@ -123,6 +141,36 @@ func tlPrepare(in TimelineInput) (bySeq []tlRow, st tlStats) {
 		st.p50, st.p95 = pctl(lat, 50), pctl(lat, 95)
 	}
 	return bySeq, st
+}
+
+// tlBlockContext fills how many requests were accepted (2xx) before the first
+// throttle status and how many were still in flight when it returned, plus any
+// Retry-After the blocked response carried.
+func tlBlockContext(bySeq []tlRow, st *tlStats) {
+	fb := st.firstBlock
+	if fb == nil {
+		return
+	}
+	for k, v := range fb.RLHeaders {
+		if strings.EqualFold(k, "retry-after") && strings.TrimSpace(v) != "" {
+			st.retryAfter = strings.TrimSpace(v)
+		}
+	}
+	for _, r := range bySeq {
+		if r.Seq == fb.Seq {
+			continue
+		}
+		if st.timed {
+			switch {
+			case r.EndUs <= fb.EndUs && tlIsOK(r.TimelineRow):
+				st.acceptedBefore++
+			case r.StartUs <= fb.EndUs && r.EndUs > fb.EndUs:
+				st.inFlightAtBlk++
+			}
+		} else if r.rank < fb.rank && tlIsOK(r.TimelineRow) {
+			st.acceptedBefore++
+		}
+	}
 }
 
 // tlBefore: earliest by EndUs when timed, else by completion rank; Seq ties.
@@ -145,28 +193,44 @@ func pctl(sorted []int64, p int) int64 {
 }
 
 func (st tlStats) summary(capped bool) string {
-	s := fmt.Sprintf("%d of %d succeeded (2xx), %d blocked (429/403/423), %d errors", st.ok, st.sent, st.blocked, st.errs)
+	s := fmt.Sprintf("%d of %d returned 2xx, %d throttle statuses (429/403/423), %d 5xx/other, %d errors", st.ok, st.sent, st.blocked, st.other, st.errs)
+	if st.matched > 0 {
+		s += fmt.Sprintf(", %d matched the grep pattern", st.matched)
+	}
+	if st.retryAfter != "" {
+		s += ", Retry-After " + st.retryAfter
+	}
 	if capped {
 		s += " " + timelineCapNote
 	}
 	return s
 }
 
+func threadsText(n int) string {
+	if n <= 0 {
+		return "-"
+	}
+	return fmt.Sprint(n)
+}
+
 func (st tlStats) alt(in TimelineInput, byWorker bool) string {
-	head := fmt.Sprintf("Intruder run %s: %s attack, %d threads, delay %d ms", orDash(in.RunID), orDash(in.Attack), in.Threads, in.DelayMs)
+	head := fmt.Sprintf("Intruder run %s: %s attack, threads %s, delay %d ms", orDash(in.RunID), orDash(in.Attack), threadsText(in.Threads), in.DelayMs)
 	if in.Target != "" {
 		head += " against " + in.Target
+	}
+	if in.Method != "" || in.Path != "" {
+		head += " (" + strings.TrimSpace(in.Method+" "+in.Path) + ")"
 	}
 	parts := []string{head, st.summary(in.Capped)}
 	if st.firstBlock != nil {
 		fb := st.firstBlock
 		if st.timed {
-			parts = append(parts, fmt.Sprintf("First block: request #%d returned %d at +%s", fb.Seq, fb.Status, fmtUsAsMs(fb.EndUs)))
+			parts = append(parts, fmt.Sprintf("First throttle status: request #%d returned %d at +%s after %d accepted requests", fb.Seq, fb.Status, fmtUsAsMs(fb.EndUs), st.acceptedBefore))
 		} else {
-			parts = append(parts, fmt.Sprintf("First block in completion order: request #%d returned %d", fb.Seq, fb.Status))
+			parts = append(parts, fmt.Sprintf("First throttle status in completion order: request #%d returned %d", fb.Seq, fb.Status))
 		}
 	} else {
-		parts = append(parts, "No 429, 403 or 423 response was recorded")
+		parts = append(parts, "Observed no throttling status (429/403/423); body-based lockouts are not detected unless a grep pattern was set")
 	}
 	if st.burstAfterSeq > 0 {
 		parts = append(parts, fmt.Sprintf("Throttling burst begins after request #%d", st.burstAfterSeq))
@@ -221,6 +285,19 @@ const (
 	tlSparkH = 64
 )
 
+// tlTickLabels formats axis ticks at the precision of the tick step.
+func tlTickLabels(g tlGeom) []string {
+	step := 1.0
+	if len(g.Ticks) > 1 {
+		step = g.Ticks[1] - g.Ticks[0]
+	}
+	out := make([]string, len(g.Ticks))
+	for i, t := range g.Ticks {
+		out[i] = formatTick(t, step)
+	}
+	return out
+}
+
 // XOf maps a microsecond offset onto the plot x coordinate.
 func (g tlGeom) XOf(us int64) int {
 	if g.AxisMaxUs <= 0 {
@@ -264,11 +341,20 @@ func tlLaneH(lanes int) int {
 }
 
 func tlFacts(in TimelineInput, st tlStats, bySeq []tlRow) []string {
-	f1 := fmt.Sprintf("attack %s  |  threads %d  |  delay %d ms  |  target %s", orDash(in.Attack), in.Threads, in.DelayMs, orDash(in.Target))
+	f1 := fmt.Sprintf("attack %s  |  threads %s  |  delay %d ms  |  target %s", orDash(in.Attack), threadsText(in.Threads), in.DelayMs, orDash(in.Target))
+	if ep := strings.TrimSpace(in.Method + " " + in.Path); ep != "" {
+		f1 += "  |  " + ep
+	}
 	if in.Capped {
 		f1 += "  |  " + timelineCapNote
 	}
 	lines := []string{f1}
+	if l := tlTimingLine(in, st); l != "" {
+		lines = append(lines, l)
+	}
+	if l := tlBlockLine(st); l != "" {
+		lines = append(lines, l)
+	}
 	if h := tlRLLine(st, bySeq); h != "" {
 		lines = append(lines, h)
 	}
@@ -278,6 +364,39 @@ func tlFacts(in TimelineInput, st tlStats, bySeq []tlRow) []string {
 		}
 	}
 	return lines
+}
+
+func fmtDurationUs(us int64) string {
+	if us < 1000000 {
+		return fmtUsAsMs(us)
+	}
+	return fmt.Sprintf("%.1f s", float64(us)/1e6)
+}
+
+// tlTimingLine reports wall-clock start, duration and achieved request rate.
+func tlTimingLine(in TimelineInput, st tlStats) string {
+	var parts []string
+	if in.StartedUnixMs > 0 {
+		parts = append(parts, "started "+time.UnixMilli(in.StartedUnixMs).UTC().Format("2006-01-02 15:04:05")+" UTC")
+	}
+	if st.timed && st.maxUs > 0 {
+		parts = append(parts, "duration "+fmtDurationUs(st.maxUs))
+		parts = append(parts, fmt.Sprintf("%.1f req/s achieved (client side)", float64(st.sent)*1e6/float64(st.maxUs)))
+	}
+	return strings.Join(parts, "  |  ")
+}
+
+// tlBlockLine states how many requests were accepted before the first throttle.
+func tlBlockLine(st tlStats) string {
+	fb := st.firstBlock
+	if fb == nil {
+		return ""
+	}
+	if !st.timed {
+		return fmt.Sprintf("first throttle status %d at request #%d after %d accepted (2xx) requests in completion order", fb.Status, fb.Seq, st.acceptedBefore)
+	}
+	return fmt.Sprintf("first block after %d accepted (2xx) requests, %d in flight  |  time to first block +%s  |  status %d at request #%d",
+		st.acceptedBefore, st.inFlightAtBlk, fmtUsAsMs(fb.EndUs), fb.Status, fb.Seq)
 }
 
 // tlRLLine lists recorded rate-limit headers from the first block row, else
@@ -371,6 +490,9 @@ func timelineGeometry(in TimelineInput, bySeq []tlRow, st tlStats, o Opts, rowBu
 		g.PlotTop = g.ChartTitleY + 20 + tlZone
 		g.PlotH = g.Lanes * g.LaneH
 		ms := float64(st.maxUs) / 1000
+		if st.zeroSpan {
+			ms++ // zero-duration run: leave a visible window right of the bars
+		}
 		g.Ticks = niceTicks(0, ms, 6)
 		g.AxisMaxUs = int64(g.Ticks[len(g.Ticks)-1]*1000 + 0.5)
 		g.AxisY = g.PlotTop + g.PlotH + 4
@@ -417,16 +539,23 @@ func tlProvenance(in TimelineInput, st tlStats) string {
 func drawTimeline(c *canvas, top int, g tlGeom, in TimelineInput, bySeq []tlRow, st tlStats) {
 	p := c.pal
 	x0 := frameGut
-	tw := (g.W - 2*frameGut - 3*12) / 4
 	tiles := []struct {
 		l, v string
 		c    color.RGBA
 	}{
 		{"Requests sent", fmt.Sprint(st.sent), p.accent},
-		{"Succeeded (2xx)", fmt.Sprint(st.ok), p.success},
-		{"Blocked (429/403/423)", fmt.Sprint(st.blocked), p.blocked},
+		{"2xx responses", fmt.Sprint(st.ok), p.success},
+		{"Throttle 429/403/423", fmt.Sprint(st.blocked), p.blocked},
+		{"5xx / other", fmt.Sprint(st.other), p.server},
 		{"Errors", fmt.Sprint(st.errs), p.errc},
 	}
+	if st.matched > 0 {
+		tiles = append(tiles, struct {
+			l, v string
+			c    color.RGBA
+		}{"Grep pattern matches", fmt.Sprint(st.matched), p.client})
+	}
+	tw := (g.W - 2*frameGut - (len(tiles)-1)*12) / len(tiles)
 	for i, t := range tiles {
 		c.statTile(x0+i*(tw+12), top+g.TilesY, tw, tlTileH, t.l, t.v, t.c)
 	}
@@ -474,10 +603,11 @@ func drawTimelineLanes(c *canvas, top int, g tlGeom, in TimelineInput, bySeq []t
 	}
 	c.rect(g.PlotX0, pt, g.PlotX1-g.PlotX0+1, g.PlotH, p.panel)
 	// grid + axis
-	for _, t := range g.Ticks {
+	labels := tlTickLabels(g)
+	for i, t := range g.Ticks {
 		x := g.XOf(int64(t*1000 + 0.5))
 		c.rect(x, pt, 1, g.PlotH, p.grid)
-		lbl := fmt.Sprintf("%g", t)
+		lbl := labels[i]
 		c.text(x-c.measure(fontSans, 11, lbl)/2, top+g.AxisY+4, lbl, fontSans, 11, p.muted)
 	}
 	c.rect(g.PlotX0, pt+g.PlotH, g.PlotX1-g.PlotX0+1, 1, p.muted)
@@ -511,6 +641,12 @@ func drawTimelineLanes(c *canvas, top int, g tlGeom, in TimelineInput, bySeq []t
 		xa, xb := g.XOf(r.StartUs), g.XOf(r.EndUs)
 		if xb-xa < 3 {
 			xb = xa + 3
+		}
+		if xb > g.PlotX1 {
+			xb = g.PlotX1
+			if xa > xb-3 {
+				xa = xb - 3
+			}
 		}
 		col := p.statusColor(r.Status)
 		if tlIsErr(r.TimelineRow) {
@@ -632,59 +768,88 @@ func drawTimelineLegend(c *canvas, top int, g tlGeom, st tlStats) {
 	c.text(frameGut, y+h, extra, fontSans, 12, p.muted)
 }
 
-func drawTimelineSpark(c *canvas, top int, g tlGeom, bySeq []tlRow, st tlStats) {
-	p := c.pal
-	var ok, bl, ot, n [timelineBuckets]int
+// tlBucket is one outcome-mix bucket.
+type tlBucket struct{ n, ok, bl, ot int }
+
+// tlBucketize groups rows into outcome buckets: up to timelineBuckets time
+// windows by completion time, or min(20, rows) dense rank buckets when timing
+// was not recorded so no bucket is spuriously empty.
+func tlBucketize(bySeq []tlRow, st tlStats) []tlBucket {
+	nb := timelineBuckets
+	timed := st.timed && st.maxUs > 0
+	if !timed {
+		if len(bySeq) < nb {
+			nb = len(bySeq)
+		}
+		if nb == 0 {
+			return nil
+		}
+	}
+	out := make([]tlBucket, nb)
 	for i, r := range bySeq {
-		b := 0
-		if st.timed && st.maxUs > 0 {
-			b = int(r.EndUs * timelineBuckets / (st.maxUs + 1))
-		} else if len(bySeq) > 0 {
-			b = i * timelineBuckets / len(bySeq)
+		var b int
+		if timed {
+			b = int(r.EndUs * int64(nb) / (st.maxUs + 1))
+		} else {
+			b = i * nb / len(bySeq)
 		}
-		if b >= timelineBuckets {
-			b = timelineBuckets - 1
+		if b >= nb {
+			b = nb - 1
 		}
-		n[b]++
+		out[b].n++
 		switch {
 		case tlIsErr(r.TimelineRow):
-			ot[b]++
+			out[b].ot++
 		case isBlockedStatus(r.Status):
-			bl[b]++
+			out[b].bl++
 		case tlIsOK(r.TimelineRow):
-			ok[b]++
+			out[b].ok++
 		default:
-			ot[b]++
+			out[b].ot++
 		}
 	}
-	axis := "time"
-	if !st.timed {
-		axis = "completion rank"
+	return out
+}
+
+func tlSparkTitle(st tlStats) string {
+	if st.timed && st.maxUs > 0 {
+		return "Outcome mix by completion time (20 buckets; \"none\" = no completions): teal = 2xx, red = throttle status, grey = other"
 	}
-	c.text(frameGut, top+g.SparkTitleY, "Outcome mix per "+axis+" bucket (20 buckets): teal = success, red = blocked, grey = other", fontBold, 13, p.ink)
+	return "Outcome mix by completion rank: teal = 2xx, red = throttle status, grey = other"
+}
+
+func drawTimelineSpark(c *canvas, top int, g tlGeom, bySeq []tlRow, st tlStats) {
+	p := c.pal
+	buckets := tlBucketize(bySeq, st)
+	c.text(frameGut, top+g.SparkTitleY, c.truncate(fontBold, 13, tlSparkTitle(st), g.W-2*frameGut), fontBold, 13, p.ink)
 	y0 := top + g.SparkY
 	x0, x1 := g.PlotX0, g.PlotX1
 	c.rect(x0, y0, x1-x0+1, g.SparkH, p.panel)
 	c.text(x0-6-c.measure(fontSans, 11, "100%"), y0-2, "100%", fontSans, 11, p.muted)
 	c.text(x0-6-c.measure(fontSans, 11, "0%"), y0+g.SparkH-12, "0%", fontSans, 11, p.muted)
-	bw := (x1 - x0) / timelineBuckets
-	for b := 0; b < timelineBuckets; b++ {
-		bx := x0 + b*bw
-		if n[b] == 0 {
-			c.rect(bx+2, y0+g.SparkH-2, bw-4, 2, p.grid)
-			continue
+	if len(buckets) > 0 {
+		bw := (x1 - x0) / len(buckets)
+		for b, k := range buckets {
+			bx := x0 + b*bw
+			if k.n == 0 {
+				c.rect(bx+2, y0+g.SparkH-2, bw-4, 2, p.grid)
+				if lw := c.measure(fontSans, 10, "none"); bw-4 >= lw {
+					c.text(bx+(bw-lw)/2, y0+g.SparkH-18, "none", fontSans, 10, p.muted)
+				}
+				continue
+			}
+			hs := g.SparkH * k.ok / k.n
+			hb := g.SparkH * k.bl / k.n
+			ho := g.SparkH * k.ot / k.n
+			c.rect(bx+2, y0+g.SparkH-hs, bw-4, hs, p.success)
+			c.rect(bx+2, y0+g.SparkH-hs-hb, bw-4, hb, p.blocked)
+			c.rect(bx+2, y0+g.SparkH-hs-hb-ho, bw-4, ho, p.errc)
 		}
-		hs := g.SparkH * ok[b] / n[b]
-		hb := g.SparkH * bl[b] / n[b]
-		ho := g.SparkH * ot[b] / n[b]
-		c.rect(bx+2, y0+g.SparkH-hs, bw-4, hs, p.success)
-		c.rect(bx+2, y0+g.SparkH-hs-hb, bw-4, hb, p.blocked)
-		c.rect(bx+2, y0+g.SparkH-hs-hb-ho, bw-4, ho, p.errc)
 	}
 	c.rect(x0, y0+g.SparkH, x1-x0+1, 1, p.muted)
 	if st.timed {
+		labels := tlTickLabels(g)
 		c.text(x0, y0+g.SparkH+4, "0 ms", fontSans, 11, p.muted)
-		lbl := fmt.Sprintf("%g ms", g.Ticks[len(g.Ticks)-1])
-		c.textRight(x1, y0+g.SparkH+4, lbl, fontSans, 11, p.muted)
+		c.textRight(x1, y0+g.SparkH+4, labels[len(labels)-1]+" ms", fontSans, 11, p.muted)
 	}
 }

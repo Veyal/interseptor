@@ -229,3 +229,38 @@ func TestLegacyJSONDecodes(t *testing.T) {
 		}
 	}
 }
+
+func TestEndpointOfDropsQueryValues(t *testing.T) {
+	cases := []struct{ in, method, path string }{
+		{"POST /api/login?user=alice&pw=§x§ HTTP/1.1\nHost: example.com\n\n", "POST", "/api/login"},
+		{"get /a/§1§ HTTP/1.1\n\n", "GET", "/a/§1§"},
+		{"garbage", "", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		m, p := endpointOf(c.in)
+		if m != c.method || p != c.path {
+			t.Fatalf("endpointOf(%q)=%q %q want %q %q", c.in, m, p, c.method, c.path)
+		}
+	}
+}
+
+func TestSpecSummaryCarriesEndpoint(t *testing.T) {
+	up := okServer(t, 0)
+	e := newEngine(t)
+	recs := make(chan RunRecord, 1)
+	e.SetRunSink(func(r RunRecord) { recs <- r })
+	if err := e.Start(Spec{Target: up.URL, Template: "GET /x?token=secret HTTP/1.1\nHost: example.com\n\n", AttackType: "repeat", Repeat: 1, Threads: 1}); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, e)
+	var rec RunRecord
+	select {
+	case rec = <-recs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no run record")
+	}
+	if rec.Spec.Method != "GET" || rec.Spec.Path != "/x" {
+		t.Fatalf("spec=%+v", rec.Spec)
+	}
+}

@@ -35,7 +35,7 @@ func TestTimelineMarkerAndSummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Summary, "10 of 12 succeeded") || r.Kind != KindIntruderTimeline {
+	if !strings.Contains(r.Summary, "10 of 12 returned 2xx") || r.Kind != KindIntruderTimeline {
 		t.Fatalf("summary/kind: %q %q", r.Summary, r.Kind)
 	}
 	img, err := png.Decode(bytes.NewReader(r.PNG))

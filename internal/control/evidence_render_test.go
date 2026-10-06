@@ -531,3 +531,15 @@ func TestAttachEvidenceRenderAcceptsMCPFieldNames(t *testing.T) {
 		t.Fatalf("finding_chain attach %d: %s", resp.StatusCode, b)
 	}
 }
+
+func TestIntruderTimelineInputCarriesContext(t *testing.T) {
+	env := intruderRunEnvelope{
+		RunID: "r1", State: intruder.State{StartedTs: 1790000000000, Attack: "repeat", Threads: 2,
+			Results: []intruder.Result{{ID: 1, Status: 200, Matched: true, StartUs: 1, EndUs: 5}}},
+		Spec: intruder.SpecSummary{Method: "POST", Path: "/api/login", Target: "example.com"},
+	}
+	in := intruderTimelineInput(env)
+	if in.Method != "POST" || in.Path != "/api/login" || in.StartedUnixMs != 1790000000000 || !in.Rows[0].Matched {
+		t.Fatalf("input=%+v", in)
+	}
+}

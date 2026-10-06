@@ -189,11 +189,14 @@ func intruderTimelineInput(env intruderRunEnvelope) preview.TimelineInput {
 		RunID: env.RunID, Attack: env.attack(), Threads: env.threads(),
 		DelayMs: max(env.State.DelayMs, env.Spec.DelayMs),
 		Target:  orVal(env.State.TargetHost, env.Spec.Target), Capped: env.State.Capped,
+		Method: clipText(env.Spec.Method, 16), Path: clipText(redactEvidenceText(env.Spec.Path), 160),
+		StartedUnixMs: env.State.StartedTs,
 	}
 	for _, r := range env.State.Results {
 		row := preview.TimelineRow{
 			Seq: resultSeq(r), Worker: r.Worker, StartUs: r.StartUs, EndUs: r.EndUs,
 			Status: r.Status, Length: int(r.Length), Error: r.Error != "", Flagged: r.Flagged,
+			Matched: r.Matched,
 		}
 		if len(r.RLHeaders) > 0 {
 			row.RLHeaders = make(map[string]string, len(r.RLHeaders))

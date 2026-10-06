@@ -23,6 +23,8 @@ type SpecSummary struct {
 	DelayMs      int      `json:"delayMs,omitempty"`
 	Repeat       int      `json:"repeat,omitempty"`
 	Barrier      bool     `json:"barrier,omitempty"`
+	Method       string   `json:"method,omitempty"` // request method from the template
+	Path         string   `json:"path,omitempty"`   // request path only; query values are never kept
 	GrepMatch    string   `json:"grepMatch,omitempty"`
 	GrepExtract  string   `json:"grepExtract,omitempty"`
 	ProcessRules []string `json:"processRules,omitempty"`
@@ -163,4 +165,16 @@ func (e *Engine) emitRunRecord() {
 	sp := e.spec
 	e.mu.Unlock()
 	fn(RunRecord{State: st, Spec: sp})
+}
+
+// endpointOf extracts the method and query-free path from a raw request
+// template's request line. Unparseable input yields empty strings.
+func endpointOf(template string) (method, path string) {
+	line, _, _ := strings.Cut(template, "\n")
+	f := strings.Fields(line)
+	if len(f) < 2 {
+		return "", ""
+	}
+	path, _, _ = strings.Cut(f[1], "?")
+	return strings.ToUpper(f[0]), path
 }

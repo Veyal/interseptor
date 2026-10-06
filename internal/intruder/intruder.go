@@ -322,8 +322,9 @@ func (e *Engine) Start(spec Spec) error {
 	}
 	e.targetHost = hostOnly(spec.Target)
 	e.barrier = spec.Barrier && spec.AttackType == "repeat" && e.threads > 1 && len(jobs) > 1
+	method, path := endpointOf(spec.Template)
 	e.spec = SpecSummary{Attack: e.attack, Target: e.targetHost, Threads: e.threads, DelayMs: spec.DelayMs,
-		Repeat: e.repeat, Barrier: e.barrier, GrepMatch: spec.GrepMatch, GrepExtract: spec.GrepExtract,
+		Method: method, Path: path, Repeat: e.repeat, Barrier: e.barrier, GrepMatch: spec.GrepMatch, GrepExtract: spec.GrepExtract,
 		ProcessRules: append([]string(nil), spec.ProcessRules...)}
 	e.doneCh = make(chan struct{})
 	e.cancel = cancel
