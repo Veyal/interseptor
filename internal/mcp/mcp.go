@@ -2797,13 +2797,47 @@ func (s *Server) registerTools() {
 	s.add("get_authz", "List saved authorization-test identities (name + auth headers per role).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
 
+	s.add("list_authz", "List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz).", obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
+
 	s.add("set_authz",
-		"Save authorization-test identities. Replaces the full identity list — call get_authz first if you want to keep existing ones. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
+		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
+			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/authz", map[string]any{"identities": a["identities"]})
+			body := map[string]any{"identities": a["identities"]}
+			if m := argStr(a, "mode"); m != "" {
+				body["mode"] = m
+			}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz", body)
+		})
+
+	s.add("add_authz_identity",
+		"Add or update ONE authorization-test identity by name without touching the others.",
+		obj(map[string]any{
+			"name":    p("string", "identity name (e.g. admin, user, anonymous)"),
+			"headers": p("string", "auth headers as 'Key: Value' lines (array or object also accepted); empty = anonymous"),
+			"owner":   p("string", "optional owner label"),
+		}, "name"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"name": argStr(a, "name"), "headers": a["headers"]}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz/identity", body)
+		})
+
+	s.add("remove_authz_identity",
+		"Remove ONE authorization-test identity by name; other identities are untouched.",
+		obj(map[string]any{"name": p("string", "identity name to remove")}, "name"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/authz/identity/"+url.PathEscape(argStr(a, "name")), nil)
 		})
 
 	s.add("authz_run",

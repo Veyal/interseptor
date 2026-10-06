@@ -73,6 +73,7 @@ type Hub struct {
 	oob           *oob.Catcher
 	hi            *humanInput // pending AI→human input prompts (request_human_input)
 	mux           *http.ServeMux
+	authzMu       sync.Mutex // serializes read-modify-write of saved authz identities
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error

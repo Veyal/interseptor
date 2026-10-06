@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Safe, shared authz identities.** `set_authz` / `POST /api/authz` now merges by identity name by default (`mode: replace` keeps the old overwrite), so parallel agents can no longer wipe each other's identities. New `add_authz_identity`, `remove_authz_identity` and `list_authz` MCP tools (REST: `POST /api/authz/identity`, `DELETE /api/authz/identity/{name}`) and per-identity `updatedAt` / `owner` stamps. Writes are serialized so concurrent callers cannot lose updates.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.

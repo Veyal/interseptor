@@ -237,6 +237,8 @@ func (h *Hub) registerOobRoutes(oob *oobAPI) {
 func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
+	h.mux.HandleFunc("POST /api/authz/identity", az.addAuthzIdentity)
+	h.mux.HandleFunc("DELETE /api/authz/identity/{name}", az.removeAuthzIdentity)
 	h.mux.HandleFunc("GET /api/readiness", az.getReadiness)
 	h.mux.HandleFunc("GET /api/tls-diagnosis", az.getTLSDiagnosis)
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
