@@ -202,6 +202,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 .u-flex-none{flex:none}
 .u-ta-left{text-align:left}
 .u-ta-center{text-align:center}
+.u-ta-right{text-align:right}
 .u-inline-block{display:inline-block}
 .u-dim{opacity:.6}
 .u-scroll-x{overflow-x:auto}

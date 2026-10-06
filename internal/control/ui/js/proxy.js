@@ -250,13 +250,13 @@ export function renderFlowHead(){
   if(!head)return;
   head.innerHTML=visibleFlowCols().map(k=>{
     const c=FLOW_COLUMNS.find(x=>x.key===k);
-    const align=c.align?` style="text-align:${c.align}"`:'';
+    const alignCls=c.align?' u-ta-'+c.align:'';
     const accessible=c.label==='St'?'Status':c.label;
     const title=k==='id'?' title="Shift+click range · Ctrl+Shift+click toggle · Ctrl+Shift+A select all"':'';
     const sk=state.sort.key,sd=state.sort.dir;
     const sorted=c.sort===sk?` sorted${sd>0?' asc':' desc'}`:'';
     const arrow=c.sort===sk?(sd>0?' ▲':' ▼'):'';
-    return `<div class="${sorted.trim()}" data-sort="${c.sort}" aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
+    return `<div class="${(sorted.trim()+alignCls).trim()}" data-sort="${c.sort}" aria-label="${escAttr(accessible)}"${align}${title}>${esc(c.label)}${arrow}<span class="col-resize" data-col="${c.key}" title="Drag to resize · double-click to reset"></span></div>`;
   }).join('');
   head.querySelectorAll('.col-resize').forEach(h=>{
     h.addEventListener('mousedown',startColResize);
@@ -1263,12 +1263,12 @@ export async function selectFlow(id){
       await renderWSFrames(id);
       if(!current())return;
     }else if(d.flags&FLAG_TLS){
-      $('#resView').innerHTML=`<div style="padding:12px;color:var(--fg2);line-height:1.5"><strong style="color:var(--red)">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span style="color:var(--fg3)">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
+      $('#resView').innerHTML=`<div class="tls-blocked"><strong class="u-danger">TLS MITM failed</strong> — the app reached the proxy (CONNECT) but rejected the certificate before sending any HTTP request.<br><br>Likely <strong>SSL pinning</strong> or an untrusted CA (Android 7+ ignores user CAs).<br><br><span class="u-fg3">${esc(d.error||'')}</span><br><br>Try Frida/objection, a patched APK, or <code>android_setup</code> with <code>caMode:system</code> on an emulator.</div>`;
       $('#resStatus').textContent='TLS blocked';$('#resStatus').style.color='var(--red)';
     }else if(!d.status&&!d.error){
       // In-flight request: response not back yet. The flow.update handler
       // re-selects this flow once it lands, filling the pane in automatically.
-      $('#resView').innerHTML='<span class="blink" style="color:var(--fg3)">waiting for response…</span>';
+      $('#resView').innerHTML='<span class="blink u-fg3">waiting for response…</span>';
       $('#resStatus').textContent='pending';$('#resStatus').style.color='var(--fg3)';
     }else{
       await renderSide('res');
@@ -1290,13 +1290,13 @@ function fetchRawMessage(flowId,side,detail){
 }
 function wsOpcode(o){return {0:'cont',1:'text',2:'bin',8:'close',9:'ping',10:'pong'}[o]||('0x'+o.toString(16));}
 function wsFrameRow(dir,opcode,length,text){
-  const arrow=dir==='send'?'<span style="color:var(--blue)">▲ send</span>':'<span style="color:var(--accent)">▼ recv</span>';
+  const arrow=dir==='send'?'<span class="ws-dir-send">▲ send</span>':'<span class="u-accent">▼ recv</span>';
   const replayable=opcode===1; // text frames only — binary has no editable text to load
-  return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" title="Click to load this frame into the replay box"`:''} style="display:flex;gap:10px;padding:3px 0;border-bottom:1px solid var(--line)">
-    <span style="width:60px;flex:none">${arrow}</span>
-    <span style="width:46px;flex:none;color:var(--fg3)">${wsOpcode(opcode)}</span>
-    <span style="width:58px;flex:none;color:var(--fg2);text-align:right">${length} B</span>
-    <span style="color:var(--fg);overflow-wrap:anywhere;flex:1;min-width:0">${esc(text)}</span>${replayable?'<span class="hint" style="flex:none;align-self:center;white-space:nowrap">↩ load</span>':''}</div>`;
+  return `<div class="ws-frame${replayable?' ws-frame-replay':''}"${replayable?` data-replay="${escAttr(text)}" title="Click to load this frame into the replay box"`:''}>
+    <span class="ws-col ws-col-dir">${arrow}</span>
+    <span class="ws-col ws-col-op">${wsOpcode(opcode)}</span>
+    <span class="ws-col ws-col-len">${length} B</span>
+    <span class="ws-col-text">${esc(text)}</span>${replayable?'<span class="hint ws-load-hint">↩ load</span>':''}</div>`;
 }
 // wireWsFrames makes text frames click-to-replay: clicking loads that frame's text
 // into the #wsMsg box (the most-expected WS-replay affordance that was missing).
@@ -1320,7 +1320,7 @@ export async function renderWSFrames(id){
     if(!current())return;
     const url=flowWsURL(detail||{});
     const list=frames.length?frames.map(f=>wsFrameRow(f.dir,f.opcode,f.length,f.preview)).join('')
-      :'<span style="color:var(--fg3)">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
+      :'<span class="u-fg3">No frames captured yet — frames stream in live as the socket exchanges messages.</span>';
     // A live frame only refreshes the frame list: rebuilding the whole pane would
     // destroy the replay input's value and focus mid-typing.
     const existing=$('#wsFrameList');
@@ -1329,10 +1329,10 @@ export async function renderWSFrames(id){
       wireWsFrames(existing);
       return;
     }
-    const box=`<div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" style="flex:1;font-family:var(--mono)">
+    const box=`<div class="ws-replay-row">
+        <input id="wsMsg" aria-label="WebSocket replay message for ${escAttr(url)}" placeholder="Replay a frame to ${escAttr(url)}" class="ws-replay-input">
         <button class="btn accent" id="wsSendBtn">▲ Send</button></div>
-      <div id="wsReplayOut" style="margin-bottom:10px"></div>`;
+      <div id="wsReplayOut" class="ws-replay-out"></div>`;
     $('#resView').innerHTML=box+`<div id="wsFrameList" data-flow-id="${id}">${list}</div>`;
     wireWsFrames($('#resView'));
     const sb=document.getElementById('wsSendBtn');if(sb)sb.onclick=()=>wsReplay(url);
@@ -1357,14 +1357,14 @@ async function wsReplay(url){
   const current=()=>epoch===wsReplayEpoch&&selectFlowEpoch===selectionEpoch&&state.selId===flowId&&state.detail===detail&&out.isConnected&&button.isConnected&&$('#wsReplayOut')===out&&$('#wsSendBtn')===button;
   const msg=($('#wsMsg')||{}).value||'';
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Sending…';}
-  if(out)out.innerHTML='<span style="color:var(--fg3)">opening socket…</span>';
+  if(out)out.innerHTML='<span class="u-fg3">opening socket…</span>';
   try{
     const r=await api('/api/ws/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url,message:msg})});
     const frames=r.frames||[];
-    const head=`<div class="micro-label" style="margin:4px 0 4px">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
+    const head=`<div class="micro-label ws-send-head">${r.status!==101?`Handshake HTTP ${r.status} · `:''}Sent · ${frames.length} frame${frames.length===1?'':'s'} received</div>`;
     if(!current())return;
     if(out){out.innerHTML=head+frames.map(f=>wsFrameRow(f.dir,f.opcode,f.len,f.text)).join('');wireWsFrames(out);}
-  }catch(e){if(current())out.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';
+  }catch(e){if(current())out.innerHTML='<span class="u-danger">'+esc(e.message)+'</span>';
   }finally{if(current()){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='▲ Send';}}
 }
 // markFindInHtml wraps occurrences of the find query in <mark>, but only inside
@@ -1415,21 +1415,21 @@ export async function renderSide(side){
         const d=await api('/api/flows/'+flowId+'/decoded?side='+side);
         if(!current())return;
         if(!d.matched){
-          el.innerHTML=`<div class="hint" style="padding:14px;line-height:1.7">No project message codec matched this ${side==='req'?'request':'response'}.<br>
+          el.innerHTML=`<div class="hint body-note">No project message codec matched this ${side==='req'?'request':'response'}.<br>
             Add one under <b>Scanner → Codecs</b> (or <code>project/codecs/*.star</code>).</div>`;
           return;
         }
         if(d.error){
-          el.innerHTML=`<div class="hint" style="padding:14px;color:var(--red)">Codec <b>${esc(d.codecId||'')}</b> error: ${esc(d.error)}</div>`;
+          el.innerHTML=`<div class="hint body-note u-danger">Codec <b>${esc(d.codecId||'')}</b> error: ${esc(d.error)}</div>`;
           return;
         }
         const fields=d.fields&&Object.keys(d.fields).length
-          ? `<div class="hint" style="padding:8px 0 10px">Decoded fields: ${Object.keys(d.fields).map(k=>`<code>${esc(k)}</code>`).join(', ')}</div>` : '';
-        const badge=`<div class="hint" style="padding:0 0 8px">Decoded for display · <b>${esc(d.title||d.codecId||'')}</b>${d.applyOnSend?' · apply_on_send':''}${d.note?' · '+esc(d.note):''}</div>`;
+          ? `<div class="hint codec-fields">Decoded fields: ${Object.keys(d.fields).map(k=>`<code>${esc(k)}</code>`).join(', ')}</div>` : '';
+        const badge=`<div class="hint codec-badge">Decoded for display · <b>${esc(d.title||d.codecId||'')}</b>${d.applyOnSend?' · apply_on_send':''}${d.note?' · '+esc(d.note):''}</div>`;
         const body=typeof d.plaintext==='string'?d.plaintext:'';
         el._rawText=body;
         el._pretty=true;
-        el.innerHTML=badge+fields+'<pre style="margin:0;white-space:pre-wrap">'+highlightBodyText(body,mime||'application/json')+'</pre>';
+        el.innerHTML=badge+fields+'<pre class="codec-pre">'+highlightBodyText(body,mime||'application/json')+'</pre>';
         return;
       }
       if(view==='hex'){
@@ -1465,29 +1465,29 @@ export async function renderSide(side){
     }
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
     el.innerHTML=highlightHTTP(headerBlockText(detail,side))+
-      `<div class="hint" style="padding:14px 0 0;line-height:1.7">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
-        <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
-        <button class="btn" data-bin="1" style="margin-top:8px;margin-left:6px">Show raw anyway</button>
-        <button class="btn" data-bin-hex="1" style="margin-top:8px;margin-left:6px">Hex dump</button></div>`;
+      `<div class="hint body-note body-note-flush">Body is <b>${esc(mime)}</b>${len?' · '+fmtSize(len):''} — binary, not rendered.<br>
+        <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
+        <button class="btn body-action body-action-next" data-bin="1">Show raw anyway</button>
+        <button class="btn body-action body-action-next" data-bin-hex="1">Hex dump</button></div>`;
     const b=el.querySelector('[data-bin]');
-    if(b)b.onclick=()=>{el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';setTimeout(draw,10);};
+    if(b)b.onclick=()=>{el.innerHTML='<span class="hint body-pad">rendering…</span>';setTimeout(draw,10);};
     const bHex=el.querySelector('[data-bin-hex]');
     if(bHex)bHex.onclick=()=>{
       state.view[side]='hex';
       const seg=document.querySelector('#inspect .seg[data-side="'+side+'"]');
       if(seg)seg.querySelectorAll('button').forEach(x=>{const on=x.dataset.view==='hex';x.classList.toggle('on',on);x.setAttribute('aria-pressed',on?'true':'false');});
-      el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';
+      el.innerHTML='<span class="hint body-pad">rendering…</span>';
       setTimeout(draw,10);
     };
     return;
   }
   if(len>RENDER_CAP){
     const dl=flowBodyDownloadName(flowId,side,mime),href=flowBodyDownloadHref(flowId,side);
-    el.innerHTML=`<div class="hint" style="padding:18px;line-height:1.8">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
-      <a class="btn" style="margin-top:8px;display:inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
-      <button class="btn" data-bigshow="1" style="margin-top:8px">Show anyway</button></div>`;
+    el.innerHTML=`<div class="hint body-note body-note-lg">${side==='req'?'Request':'Response'} body is <b>${fmtSize(len)}</b> — not shown, to keep the browser responsive.<br>
+      <a class="btn body-action u-inline-block" href="${href}" download="${escAttr(dl)}">⤓ Download body</a>
+      <button class="btn body-action" data-bigshow="1">Show anyway</button></div>`;
     const b=el.querySelector('[data-bigshow]');
-    if(b)b.onclick=()=>{el.innerHTML='<span class="hint" style="padding:16px">rendering…</span>';setTimeout(draw,10);};
+    if(b)b.onclick=()=>{el.innerHTML='<span class="hint body-pad">rendering…</span>';setTimeout(draw,10);};
     return;
   }
   await draw();
@@ -1767,7 +1767,7 @@ export function renderScope(){
       warn.textContent=`Duplicate scope rule${dup.length===1?'':'s'} detected — only one is needed.`;
     }else warn.style.display='none';
   }
-  if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint" style="padding:10px 8px">No scope rules — everything is in scope.</td></tr>';return;}
+  if(!state.scope.length){body.innerHTML='<tr><td colspan="6" class="hint scope-empty">No scope rules — everything is in scope.</td></tr>';return;}
   body.innerHTML=rows.map(r=>`<tr data-id="${r.id}">
     <td><input type="checkbox" aria-label="Enable scope rule ${r.id}" ${r.enabled?'checked':''} data-k="enabled"></td>
     <td><select data-k="action" aria-label="Scope rule ${r.id} action"><option value="include" ${r.action==='include'?'selected':''}>include</option><option value="exclude" ${r.action==='exclude'?'selected':''}>exclude</option></select></td>

@@ -1,6 +1,9 @@
 package control
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestUIInspectorFilterSignatureIncludesSort(t *testing.T) {
 	src := executableJS(readUIAsset(t, "js/proxy.js"))
@@ -19,4 +22,26 @@ func TestUITagAndScopeMutationFailuresUseToastError(t *testing.T) {
 		"toastError('Scope rule not saved',e)",
 		"toastError('Scope rule not deleted',e)",
 	)
+}
+
+func TestUIHistoryAuditInlineStylesReplacedByClasses(t *testing.T) {
+	src := executableJS(readUIAsset(t, "js/proxy.js"))
+	for _, banned := range []string{
+		`style="text-align:${c.align}"`,
+		`style="display:flex;gap:6px;margin-bottom:10px"`,
+		`style="display:flex;gap:10px;padding:3px 0`,
+		`style="width:60px;flex:none"`,
+		`style="padding:12px;color:var(--fg2);line-height:1.5"`,
+		`style="flex:1;font-family:var(--mono)"`,
+		`id="wsReplayOut" style=`,
+		`style="margin-top:8px`,
+		`style="padding:14px`,
+	} {
+		if strings.Contains(src, banned) {
+			t.Errorf("proxy.js still carries inline style %q", banned)
+		}
+	}
+	requireUIContains(t, src, `class="ws-replay-row"`, `class="tls-blocked"`, `class="ws-frame${`, "u-ta-'+c.align")
+	css := readUIAsset(t, "app.css") + readUIAsset(t, "surfaces.css")
+	requireUIContains(t, css, ".ws-replay-row{", ".tls-blocked{", ".ws-frame{", ".u-ta-right{")
 }

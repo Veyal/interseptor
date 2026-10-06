@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **History inline styles moved to classes.** The flow-table header alignment, WebSocket frame rows and replay box, TLS-blocked pane, codec notes, binary/oversized body notes and the empty scope row use named classes (`.ws-*`, `.tls-blocked`, `.body-note`, `.u-ta-right`, ...) instead of inline `style` attributes; only data-driven colours and virtual-scroll padding stay inline.
+
 - **Tag and scope failures name the action.** History tag-colour and tagging failures and scope rule save/delete failures now report through `toastError` with an action prefix instead of a bare error message.
 
 - **History sort resets scroll.** `inspectorFilterSignature` now includes the sort key and direction, so a column-header sort returns the virtual list to the top instead of leaving stale scroll.
