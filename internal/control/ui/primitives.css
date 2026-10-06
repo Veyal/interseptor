@@ -1,0 +1,80 @@
+/* Shared workbench primitives (WP1): SplitPane, state panels and skeletons, the
+   in-pane Finder and the DiffView. Loaded after the feature stylesheets so panels
+   can adopt these classes without restating them. Motion is limited to transform
+   and opacity; the global reduced-motion block in app.css turns every transition
+   and animation here off, which leaves the skeleton as a static block. */
+
+/* ---- SplitPane ---- */
+.split{display:grid;position:relative;min-width:0;min-height:0;height:100%}
+.split[data-mode="right"]{grid-template-columns:var(--split-size,40%) var(--split-gutter) minmax(0,1fr)}
+.split[data-mode="bottom"]{grid-template-rows:var(--split-size,40%) var(--split-gutter) minmax(0,1fr)}
+.split[data-mode="right"][data-collapsed="true"]{grid-template-columns:minmax(0,1fr) var(--split-gutter) 0}
+.split[data-mode="bottom"][data-collapsed="true"]{grid-template-rows:minmax(0,1fr) var(--split-gutter) 0}
+.split-list,.split-detail{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain}
+.split-detail{transition:opacity var(--motion-pop),transform var(--motion-pop)}
+.split-detail.is-collapsing{opacity:0;transform:translateX(24px);pointer-events:none}
+.split[data-mode="bottom"] .split-detail.is-collapsing{transform:translateY(24px)}
+.split-sash{position:relative;z-index:var(--z-sash);touch-action:none;background:transparent}
+.split[data-mode="right"]>.split-sash{cursor:col-resize}
+.split[data-mode="bottom"]>.split-sash{cursor:row-resize}
+.split-sash::before{content:"";position:absolute;background:var(--line2)}
+.split[data-mode="right"]>.split-sash::before{top:0;bottom:0;left:50%;width:1px}
+.split[data-mode="bottom"]>.split-sash::before{left:0;right:0;top:50%;height:1px}
+.split-sash:hover::before,.split.is-resizing>.split-sash::before{background:var(--accent)}
+.split-sash:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+.split-sash:focus-visible::before{background:var(--accent)}
+.split.is-resizing{user-select:none;-webkit-user-select:none}
+@media (pointer:coarse){
+  .split[data-mode="right"]>.split-sash::after{content:"";position:absolute;top:0;bottom:0;left:-18px;right:-18px}
+  .split[data-mode="bottom"]>.split-sash::after{content:"";position:absolute;left:0;right:0;top:-18px;bottom:-18px}
+}
+/* Stack mode (phones): the detail is a full-panel view with a Back button. */
+.split[data-mode="stack"]{display:block}
+.split[data-mode="stack"][data-view="list"]>.split-detail,
+.split[data-mode="stack"][data-view="detail"]>.split-list{display:none}
+.split[data-mode="stack"]>.split-list,.split[data-mode="stack"]>.split-detail{height:100%}
+.split-back{display:none}
+.split[data-mode="stack"] .split-back{display:inline-flex;align-items:center;gap:var(--sp-1);margin:var(--sp-2) var(--sp-4)}
+.split-back .icon{transform:rotate(90deg)}
+
+/* ---- State panels and skeletons ---- */
+.state-panel{width:100%;box-sizing:border-box}
+.state-panel[data-stale="true"]{border:1px dashed var(--line2);border-radius:var(--r-lg)}
+.state-panel-title{margin:0}
+.state-panel-title:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.state-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);justify-content:center}
+.state-loading{padding:var(--sp-3) var(--sp-4)}
+.skel{background:var(--bg3);border-radius:var(--r-sm);opacity:.8;animation:skel-pulse 1.3s ease-in-out infinite alternate}
+.skel-row{height:var(--row-h);margin-bottom:var(--sp-1)}
+@keyframes skel-pulse{from{opacity:.5}to{opacity:1}}
+
+/* ---- Finder ---- */
+.finder{display:flex;align-items:center;gap:var(--sp-1);position:sticky;top:0;z-index:var(--z-sticky);box-sizing:border-box;min-height:var(--hit-min);padding:var(--sp-1) var(--sp-2);background:var(--bg2);border-bottom:1px solid var(--line)}
+.finder[hidden]{display:none}
+.finder-input{flex:1 1 120px;min-width:0;height:calc(var(--hit-min) - 4px);padding:0 var(--sp-2);background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);color:var(--fg);font-size:var(--fs-sm)}
+.finder-input:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+.finder-input[aria-invalid="true"]{border-color:var(--state-danger)}
+.finder-count{flex:none;min-width:5ch;color:var(--fg2);font-size:var(--fs-xs);white-space:nowrap}
+.finder-btn{flex:none;min-width:var(--hit-min)}
+.finder-btn[aria-pressed="true"]{background:var(--accentDim);border-color:var(--accent);color:var(--fg)}
+.finder-prev .icon{transform:rotate(180deg)}
+.finder-hit{background:var(--find-bg);color:var(--find-fg);border-radius:2px}
+.finder-hit.is-active{background:var(--find-active-bg);outline:2px solid var(--fg);outline-offset:0}
+
+/* ---- DiffView: +/- glyph and colour, so colour is never the only signal ---- */
+.diff{min-width:0;max-width:100%;overflow:auto;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.5}
+.diff-body{min-width:0}
+.diff-row{display:grid;grid-template-columns:5ch 5ch 2ch minmax(0,1fr);gap:0 var(--sp-1);padding:0 var(--sp-1)}
+.diff-split-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 var(--sp-1)}
+.diff-cell{display:grid;grid-template-columns:5ch 2ch minmax(0,1fr);gap:0 var(--sp-1);padding:0 var(--sp-1);min-width:0}
+.diff-text{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+.diff-no{color:var(--diff-gutter);text-align:right;user-select:none;-webkit-user-select:none}
+.diff-glyph{font-weight:700;user-select:none;-webkit-user-select:none}
+.diff-add{background:var(--diff-add-bg);color:var(--diff-add-fg)}
+.diff-del{background:var(--diff-del-bg);color:var(--diff-del-fg)}
+.diff-empty{background:var(--bg2)}
+.diff-add .diff-word{background:var(--diff-word-add);color:inherit}
+.diff-del .diff-word{background:var(--diff-word-del);color:inherit}
+.diff-expand{display:block;width:100%;margin:var(--sp-1) 0;text-align:center}
+.diff-note{margin:0;padding:var(--sp-4);color:var(--fg2);font-family:var(--ui);font-size:var(--fs-md)}
+.diff-row:focus-visible,.diff-split-row:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
