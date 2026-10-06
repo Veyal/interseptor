@@ -9,15 +9,15 @@ import (
 // ProjectHTML renders the same engagement report as Project, as a self-contained
 // HTML document suitable for download or print-to-PDF.
 func ProjectHTML(findings []store.Finding, issues []store.Issue) string {
-	return projectHTMLFromMD(Project(findings, issues))
+	return projectHTMLFromMD(Project(findings, issues), secretLintNotice(findings))
 }
 
 // ProjectHTMLGroupedByTag is the HTML counterpart of ProjectGroupedByTag.
 func ProjectHTMLGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrder, omitTags []string) string {
-	return projectHTMLFromMD(ProjectGroupedByTag(findings, issues, tagOrder, omitTags))
+	return projectHTMLFromMD(ProjectGroupedByTag(findings, issues, tagOrder, omitTags), secretLintNotice(findings))
 }
 
-func projectHTMLFromMD(md string) string {
+func projectHTMLFromMD(md, lintNotice string) string {
 	body := markdownToHTML(md)
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
@@ -26,7 +26,9 @@ func projectHTMLFromMD(md string) string {
 	b.WriteString("<title>Interseptor — Engagement Report</title>\n")
 	b.WriteString("<style>")
 	b.WriteString(reportHTMLCSS)
-	b.WriteString("</style>\n</head>\n<body>\n<article class=\"md\">\n")
+	b.WriteString("</style>\n</head>\n<body>\n")
+	b.WriteString(lintNotice)
+	b.WriteString("<article class=\"md\">\n")
 	b.WriteString(body)
 	b.WriteString("\n</article>\n</body>\n</html>")
 	return b.String()
@@ -52,7 +54,9 @@ hr{border:none;border-top:1px solid #ddd;margin:20px 0}
 em{font-style:italic;color:#444}
 strong{font-weight:700}
 .meta{color:#555;font-style:italic}
-@media print{body{padding:12px}h2,h3,h4{break-after:avoid}pre,img,tr{break-inside:avoid}a,code,p,li{overflow-wrap:anywhere}}
+.secret-lint{max-width:860px;margin:0 auto 18px;padding:10px 14px;border:1px solid #b45309;border-left-width:4px;background:#fffbeb;color:#78350f;border-radius:6px;font-size:13px}
+.secret-lint ul{margin:6px 0 0}
+@media print{.secret-lint{display:none}body{padding:12px}h2,h3,h4{break-after:avoid}pre,img,tr{break-inside:avoid}a,code,p,li{overflow-wrap:anywhere}}
 `
 
 // markdownToHTML converts the subset of Markdown emitted by Project/Findings into HTML.

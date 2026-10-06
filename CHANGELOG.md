@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Redaction helper for secrets in findings.** New MCP tool `redact_value` and `POST /api/redact` return `{len, sha256_prefix, kind}` for a value (plus a `[redacted ...]` form for `redact_value`); the value is hashed in memory and never stored or logged. Finding writes through MCP now warn, without echoing the value, when summary, impact, why, fix, retest, detail or block text contains a JWT, `AIza` key, `$2b$` hash or `Bearer` token, and the HTML report shows a screen-only secret-lint notice listing the same.
+
 ### Changed
 
 - **Finding guards say what to fix.** Every MCP rejection now starts with `error:` and names the field and expected shape; advisory messages are listed as `warning:` under "FORMAT WARNINGS (non-blocking)". The wall-of-text rule publishes its limit (180 characters per field), reports the character count, and is applied separately to `detail` and to `blocks`/`body`; `detail` is marked DEPRECATED in the schema. A bad `proofReview.evidence` entry now names the role and whether the flowId/hash is empty, malformed, or given twice.

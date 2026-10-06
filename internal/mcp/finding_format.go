@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Veyal/interseptor/internal/redact"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -30,7 +31,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - A permissive response or reachable prerequisite alone does not establish the claimed impact
    - Otherwise use prerequisite_only or not_executed with an explicit proofReview.reason; status stays needs_verification
    - Narrow impact to what evidence establishes. Mark unproven execution as "NOT confirmed". Keep verificationInstructions for the remaining review
-   - Keep secrets redacted; a length or digest can establish equality without publishing the value
+   - Keep secrets redacted; a length or digest can establish equality without publishing the value. Call redact_value to get {len, sha256_prefix, kind} and a "[redacted ...]" form to paste; writes that contain a JWT, AIza key, $2b$ hash or Bearer token produce a warning
    - For integrity evidence, describe only the bounded, reversible observed change and preserve its flow
 
 Use structured blocks arrays when available; legacy body JSON remains accepted. Stub create (title only) is allowed.
@@ -210,7 +211,26 @@ func validateFindingFormat(in findingFormatInput) (error, []string) {
 		warns = append(warns, "credentials/secrets mentioned — redact values; use a length or digest when it is sufficient evidence")
 	}
 
+	warns = append(warns, secretLintWarnings(in, a)...)
+
 	return nil, warns
+}
+
+// secretLintWarnings flags probable secrets in finding text. Warnings carry the
+// field, kind, length and the redacted form, never the value.
+func secretLintWarnings(in findingFormatInput, a findingArtifacts) []string {
+	fields := []struct{ name, text string }{
+		{"title", in.Title}, {"summary", in.Summary}, {"impact", in.Impact}, {"why", in.Why},
+		{"fix", in.Fix}, {"retest", in.Retest}, {"detail", a.detailText}, {"blocks", a.blocksText},
+		{"verificationInstructions", in.VerificationInstructions},
+	}
+	var warns []string
+	for _, f := range fields {
+		for _, hit := range redact.Scan(f.text) {
+			warns = append(warns, fmt.Sprintf("probable secret in %s (%s, %d chars) — do not publish the value; get its length and digest with redact_value and write %s instead", f.name, hit.Kind, hit.Len, hit.Suggest))
+		}
+	}
+	return warns
 }
 
 func findingTargetsSchema() map[string]any {
