@@ -41,7 +41,7 @@ const (
 )
 
 // Shading steps by |length - median| / median: within 5%, within 25%, beyond.
-var stripShadeAlpha = [3]float64{0.45, 0.72, 1.0}
+var stripShadeAlpha = [3]float64{0.6, 0.8, 1.0}
 
 type stripOutlier struct {
 	Seq     int
@@ -93,11 +93,7 @@ func (in StripInput) display(p string) string {
 	if in.Mask || looksSecret(p) {
 		p = maskPayload(p)
 	}
-	r := []rune(p)
-	if len(r) > stripPayloadW {
-		p = string(r[:stripPayloadW-3]) + "..."
-	}
-	return p
+	return truncatePayload(p)
 }
 
 func stripSorted(in StripInput) []StripRow {
@@ -386,6 +382,10 @@ func drawStrip(c *canvas, in StripInput, rows []StripRow, outs []stripOutlier, m
 			glyphCol = pal.ink
 		}
 		c.cellGlyph(rc, r.Status, glyphCol)
+		if shadeStep(r.Length, med) == 1 {
+			// non-colour length cue: corner tick survives greyscale print
+			c.rect(rc.Max.X-4, rc.Max.Y-4, 3, 3, glyphCol)
+		}
 		if outSet[r.Seq] {
 			c.strokeRect(rc.Min.X-1, rc.Min.Y-1, stripCell+2, stripCell+2, pal.ink)
 		}
@@ -393,7 +393,7 @@ func drawStrip(c *canvas, in StripInput, rows []StripRow, outs []stripOutlier, m
 	per := stripPerRow(w)
 	gridBottom := titleH + stripTopPad + stripSummaryH + ((n+per-1)/per)*(stripCell+stripGap) + 8
 	y = gridBottom
-	y += drawStripLegend(c, y, w)
+	y += drawStripLegend(c, y, w, mode)
 	if len(rows) > n {
 		extra := rows[n:]
 		c.text(frameGut, y+2, fmt.Sprintf("+%d more payloads not plotted (aggregated: %s)", len(extra), statusClassCounts(extra)), fontBold, 12, pal.ink)
@@ -402,7 +402,35 @@ func drawStrip(c *canvas, in StripInput, rows []StripRow, outs []stripOutlier, m
 	drawStripOutliers(c, in, outs, y+4, w)
 }
 
-func drawStripLegend(c *canvas, y, w int) int {
+// stripLegendSwatches are the three length-shade swatches drawn in the hue of
+// the run's common status, matching the cells they explain.
+func stripLegendSwatches(pal reportPalette, mode int) [3]color.RGBA {
+	var out [3]color.RGBA
+	for i := range out {
+		out[i] = blendOver(pal.statusColor(mode), pal.paper, stripShadeAlpha[i])
+	}
+	return out
+}
+
+// stripPayloadHeader labels the payload column and says when values are masked.
+func stripPayloadHeader(in StripInput, outs []stripOutlier) string {
+	for _, o := range outs {
+		if in.display(o.Payload) != truncatePayload(o.Payload) {
+			return "Payload (masked)"
+		}
+	}
+	return "Payload"
+}
+
+func truncatePayload(p string) string {
+	r := []rune(p)
+	if len(r) > stripPayloadW {
+		return string(r[:stripPayloadW-3]) + "..."
+	}
+	return p
+}
+
+func drawStripLegend(c *canvas, y, w, mode int) int {
 	pal := c.pal
 	h := c.legend(frameGut, y, w-frameGut, []legendItem{
 		{"2xx ok (check)", pal.success}, {"3xx", pal.redirect}, {"4xx (slash)", pal.client},
@@ -412,12 +440,16 @@ func drawStripLegend(c *canvas, y, w int) int {
 	ly := y + h
 	c.text(x, ly, "Length vs median:", fontSans, 12, pal.muted)
 	x += c.measure(fontSans, 12, "Length vs median:") + 10
-	for i, lab := range []string{"within 5%", "5-25%", "over 25%"} {
-		c.rect(x, ly+2, 12, 12, blendOver(pal.muted, pal.paper, stripShadeAlpha[i]))
+	sw := stripLegendSwatches(pal, mode)
+	for i, lab := range []string{"within 5%", "5-25% (corner tick)", "over 25% (outlined)"} {
+		c.rect(x, ly+2, 12, 12, sw[i])
+		if i == 1 {
+			c.rect(x+8, ly+10, 3, 3, pal.paper)
+		}
 		x += 18 + c.text(x+18, ly, lab, fontSans, 12, pal.ink) + 14
 	}
 	c.strokeRect(x, ly+1, 14, 14, pal.ink)
-	c.text(x+20, ly, "outlined = outlier (matched, anomaly, differing status or length)", fontSans, 12, pal.ink)
+	c.text(x+20, ly, c.truncate(fontSans, 12, "outlined = outlier (matched, anomaly, differing status or length over 25%)", w-frameGut-x-20), fontSans, 12, pal.ink)
 	return stripLegendH
 }
 
@@ -430,7 +462,7 @@ func drawStripOutliers(c *canvas, in StripInput, outs []stripOutlier, y, w int) 
 	c.text(frameGut, y, fmt.Sprintf("Outlier payloads (%d)", len(outs)), fontBold, 14, pal.ink)
 	y += 28
 	cols := []int{frameGut, frameGut + 70, frameGut + 380, frameGut + 470, frameGut + 570, frameGut + 680}
-	for i, h := range []string{"Request", "Payload", "Status", "Length", "vs median", "Why"} {
+	for i, h := range []string{"Request", stripPayloadHeader(in, outs), "Status", "Length", "vs median", "Why"} {
 		c.text(cols[i], y, h, fontBold, 12, pal.muted)
 	}
 	y += stripOutRowH - 4
