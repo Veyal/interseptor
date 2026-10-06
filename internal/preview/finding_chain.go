@@ -28,13 +28,16 @@ type ChainInput struct {
 }
 
 const (
-	chainMaxNodes = 12
-	chainCardW    = 220
-	chainCardH    = 64
-	chainRowGap   = 24
-	chainMinGap   = 70
-	chainMaxGap   = 160
-	chainMaxNotes = 4
+	chainMaxNodes  = 12
+	chainCardW     = 220
+	chainCardH     = 64
+	chainCardHTall = 80  // used when cards are narrow so titles keep 3 lines
+	chainMinCardW  = 150 // never shrink cards below this; wrap into rows instead
+	chainRowSep    = 24
+	chainRowGap    = 24
+	chainMinGap    = 70
+	chainMaxGap    = 160
+	chainMaxNotes  = 4
 )
 
 type chainGraph struct {
@@ -212,10 +215,16 @@ func dropNote(e ChainEdge) string {
 	return fmt.Sprintf("%s -> %s", e.From, e.To)
 }
 
-func (g chainGraph) summary() string {
+func (g chainGraph) summary() string { return g.describe(true) }
+
+// headline is the summary without the hidden-findings clause (drawn on the
+// image header and footer; the hidden count has its own note block).
+func (g chainGraph) headline() string { return g.describe(false) }
+
+func (g chainGraph) describe(withHidden bool) string {
 	n := g.nodeCount()
 	s := fmt.Sprintf("%d finding%s in %d stage%s, %d relation%s", n, plural(n), len(g.layers), plural(len(g.layers)), len(g.edges), plural(len(g.edges)))
-	if g.hidden > 0 {
+	if withHidden && g.hidden > 0 {
 		s += fmt.Sprintf(", +%d more findings not drawn", g.hidden)
 	}
 	if len(g.dropped) > 0 {
@@ -277,50 +286,110 @@ func severityLabel(sev string) string {
 	return s
 }
 
-// chainGeom is the pixel layout of the graph, independent of fonts.
+// chainGeom is the pixel layout of the graph, independent of fonts. Stages
+// are laid out left to right; when they would not fit at a readable card
+// width they wrap into rows (reading order) and cross-row edges are routed
+// through a channel under their source row.
 type chainGeom struct {
-	x0, cardW, gap, colH, headH, chanH int
-	long                               int
+	x0, cardW, cardH, gap, headH int
+	titleLines                   int
+	perRow, rows                 int
+	rowTop, rowColH, rowChan     []int
+	long                         int // long edges in single-row mode
+	colH, chanH                  int // single-row mode: column height, channel above
+	bottom                       int // y just under the last row, relative to body
 }
 
 func (g chainGraph) geometry(w int) chainGeom {
 	n := len(g.layers)
 	avail := w - 2*frameGut
+	geo := chainGeom{headH: 34, cardH: chainCardH, titleLines: 2}
+	if n == 0 {
+		geo.cardW, geo.perRow = chainCardW, 1
+		return geo
+	}
+	per := n
+	if maxPer := max((avail+chainMinGap)/(chainMinCardW+chainMinGap), 1); per > maxPer {
+		per = maxPer
+	}
+	geo.perRow = per
+	geo.rows = (n + per - 1) / per
 	cw := chainCardW
 	gap := 0
-	if n > 1 {
-		gap = (avail - n*cw) / (n - 1)
+	if per > 1 {
+		gap = (avail - per*cw) / (per - 1)
 		if gap < chainMinGap {
 			gap = chainMinGap
-			cw = (avail - gap*(n-1)) / n
-			if cw < 72 {
-				cw = 72
-				gap = (avail - n*cw) / (n - 1)
-				if gap < 20 {
-					gap = 20
-				}
-			}
+			cw = (avail - gap*(per-1)) / per
 		}
 		if gap > chainMaxGap {
 			gap = chainMaxGap
 		}
+	} else {
+		cw = min(cw, avail)
 	}
-	total := n*cw + max(n-1, 0)*gap
-	geo := chainGeom{cardW: cw, gap: gap, x0: frameGut + max(avail-total, 0)/2, headH: 34}
-	rows := 1
-	for _, l := range g.layers {
-		rows = max(rows, len(l))
+	if cw < 190 {
+		geo.cardH, geo.titleLines = chainCardHTall, 3
 	}
-	geo.colH = rows*(chainCardH+chainRowGap) - chainRowGap
+	geo.cardW, geo.gap = cw, gap
+	total := per*cw + max(per-1, 0)*gap
+	geo.x0 = frameGut + max(avail-total, 0)/2
+	geo.rowColH = make([]int, geo.rows)
+	for r := range geo.rowColH {
+		colMax := 1
+		for li := r * per; li < min((r+1)*per, n); li++ {
+			colMax = max(colMax, len(g.layers[li]))
+		}
+		geo.rowColH[r] = colMax*(geo.cardH+chainRowGap) - chainRowGap
+	}
+	if geo.rows == 1 {
+		geo.colH = geo.rowColH[0]
+		for _, e := range g.edges {
+			if g.layerOf[e.To]-g.layerOf[e.From] > 1 {
+				geo.long++
+			}
+		}
+		if geo.long > 0 {
+			geo.chanH = 12*geo.long + 10
+		}
+		geo.rowTop = []int{geo.headH + geo.chanH}
+		geo.rowChan = []int{0}
+		geo.bottom = geo.rowTop[0] + geo.colH
+		return geo
+	}
+	routed := make([]int, geo.rows)
 	for _, e := range g.edges {
-		if g.layerOf[e.To]-g.layerOf[e.From] > 1 {
-			geo.long++
+		sl, tl := g.layerOf[e.From], g.layerOf[e.To]
+		if sl/per != tl/per || tl-sl > 1 {
+			routed[sl/per]++
 		}
 	}
-	if geo.long > 0 {
-		geo.chanH = 12*geo.long + 10
+	geo.rowTop = make([]int, geo.rows)
+	geo.rowChan = make([]int, geo.rows)
+	y := geo.headH
+	for r := 0; r < geo.rows; r++ {
+		geo.rowTop[r] = y
+		y += geo.rowColH[r]
+		if r < geo.rows-1 {
+			geo.rowChan[r] = max(chainRowSep, 12*routed[r]+20)
+			y += geo.rowChan[r]
+		}
 	}
+	geo.bottom = y
 	return geo
+}
+
+// positions returns each node's top-left corner.
+func (g chainGraph) positions(geo chainGeom) map[string]chainPos {
+	pos := map[string]chainPos{}
+	for li, layer := range g.layers {
+		r, col := li/geo.perRow, li%geo.perRow
+		colTop := geo.rowTop[r] + (geo.rowColH[r]-(len(layer)*(geo.cardH+chainRowGap)-chainRowGap))/2
+		for ri, n := range layer {
+			pos[n.ID] = chainPos{geo.x0 + col*(geo.cardW+geo.gap), colTop + ri*(geo.cardH+chainRowGap)}
+		}
+	}
+	return pos
 }
 
 // RenderFindingChain draws findings as a layered left-to-right attack-path graph.
@@ -328,7 +397,7 @@ func RenderFindingChain(in ChainInput, o Opts) (Rendered, error) {
 	g := buildChainGraph(in)
 	geo := g.geometry(o.width())
 	notes := g.noteLines()
-	bodyH := geo.headH + geo.chanH + geo.colH + 24 + 18*len(notes)
+	bodyH := geo.bottom + 24 + 18*len(notes)
 	if g.nodeCount() == 0 {
 		bodyH = geo.headH + 60
 	}
@@ -338,7 +407,7 @@ func RenderFindingChain(in ChainInput, o Opts) (Rendered, error) {
 	}
 	data, w, h, err := renderFrame(o, frame{
 		Title:      title,
-		Provenance: "Relations as recorded between findings; edge direction reads left to right. " + g.summary(),
+		Provenance: g.provenance(),
 		BodyHeight: func(int) int { return bodyH },
 		Draw: func(c *canvas, body image.Rectangle, _ int) {
 			g.draw(c, body, geo, notes)
@@ -348,6 +417,12 @@ func RenderFindingChain(in ChainInput, o Opts) (Rendered, error) {
 		return Rendered{}, err
 	}
 	return Rendered{PNG: data, Alt: g.alt(strings.TrimSpace(in.Title)), Summary: g.summary(), Kind: KindFindingChain, Width: w, Height: h}, nil
+}
+
+// provenance is the footer line; the hidden-findings note lives only in the
+// notes block under the graph so it is not repeated three times.
+func (g chainGraph) provenance() string {
+	return "Relations as recorded between findings; edge direction reads left to right, wrapping to the next row. " + g.headline()
 }
 
 func (g chainGraph) noteLines() []string {
@@ -378,27 +453,22 @@ type chainPos struct{ x, y int }
 
 func (g chainGraph) draw(c *canvas, body image.Rectangle, geo chainGeom, notes []string) {
 	p := c.pal
-	c.text(frameGut, body.Min.Y+10, g.summary(), fontSans, 13, p.muted)
+	c.text(frameGut, body.Min.Y+10, c.truncate(fontSans, 13, g.headline(), body.Dx()-2*frameGut), fontSans, 13, p.muted)
 	if g.nodeCount() == 0 {
 		c.text(frameGut, body.Min.Y+headLine(geo), "No findings recorded for this chain.", fontSans, 14, p.ink)
 		return
 	}
-	top := body.Min.Y + geo.headH + geo.chanH
-	pos := map[string]chainPos{}
-	for li, layer := range g.layers {
-		colTop := top + (geo.colH-(len(layer)*(chainCardH+chainRowGap)-chainRowGap))/2
-		for ri, n := range layer {
-			pos[n.ID] = chainPos{geo.x0 + li*(geo.cardW+geo.gap), colTop + ri*(chainCardH+chainRowGap)}
-		}
+	pos := g.positions(geo)
+	for id, at := range pos {
+		pos[id] = chainPos{at.x, at.y + body.Min.Y}
 	}
 	g.drawEdges(c, body, geo, pos)
-	for li, layer := range g.layers {
-		_ = li
+	for _, layer := range g.layers {
 		for _, n := range layer {
 			g.drawCard(c, geo, pos[n.ID], n)
 		}
 	}
-	y := top + geo.colH + 20
+	y := body.Min.Y + geo.bottom + 20
 	for _, s := range notes {
 		c.text(frameGut, y, c.truncate(fontSans, 12, s, body.Dx()-2*frameGut), fontSans, 12, p.muted)
 		y += 18
@@ -410,9 +480,9 @@ func headLine(chainGeom) int { return 40 }
 func (g chainGraph) drawCard(c *canvas, geo chainGeom, at chainPos, n ChainNode) {
 	p := c.pal
 	sc := severityColor(p, n.Severity)
-	c.rect(at.x, at.y, geo.cardW, chainCardH, p.panel)
-	c.strokeRect(at.x, at.y, geo.cardW, chainCardH, p.muted)
-	c.rect(at.x, at.y, 5, chainCardH, sc)
+	c.rect(at.x, at.y, geo.cardW, geo.cardH, p.panel)
+	c.strokeRect(at.x, at.y, geo.cardW, geo.cardH, p.muted)
+	c.rect(at.x, at.y, 5, geo.cardH, sc)
 	cw := c.chip(at.x+12, at.y+6, c.truncate(fontBold, 12, sevText(n.Severity, geo.cardW), geo.cardW-40), sc, p.paper)
 	if room := geo.cardW - 12 - cw - 12 - 12; room > 24 {
 		c.textRight(at.x+geo.cardW-8, at.y+9, c.truncate(fontMono, 11, n.ID, room), fontMono, 11, p.muted)
@@ -421,17 +491,17 @@ func (g chainGraph) drawCard(c *canvas, geo chainGeom, at chainPos, n ChainNode)
 	if strings.TrimSpace(title) == "" {
 		title = n.ID
 	}
-	for i, ln := range c.wrap(fontSans, 12, title, geo.cardW-24, 2) {
+	for i, ln := range c.wrap(fontSans, 12, title, geo.cardW-24, geo.titleLines) {
 		c.text(at.x+12, at.y+31+i*15, ln, fontSans, 12, p.ink)
 	}
 }
 
 // port spreads n attachment points along a card side.
-func port(at chainPos, idx, n int) int {
+func port(at chainPos, idx, n, cardH int) int {
 	if n <= 1 {
-		return at.y + chainCardH/2
+		return at.y + cardH/2
 	}
-	step := (chainCardH - 24) / (n - 1)
+	step := (cardH - 24) / (n - 1)
 	return at.y + 12 + idx*step
 }
 
@@ -465,15 +535,18 @@ func (g chainGraph) drawEdges(c *canvas, body image.Rectangle, geo chainGeom, po
 	}
 	chanTop := body.Min.Y + geo.headH
 	long := 0
+	rowUsed := make([]int, geo.rows)
 	for i, e := range g.edges {
 		s, t := pos[e.From], pos[e.To]
-		sy := port(s, outIdx[i], outN[e.From])
-		ty := port(t, inIdx[i], inN[e.To])
+		sy := port(s, outIdx[i], outN[e.From], geo.cardH)
+		ty := port(t, inIdx[i], inN[e.To], geo.cardH)
 		sx := s.x + geo.cardW
 		tx := t.x
-		span := g.layerOf[e.To] - g.layerOf[e.From]
+		sl, tl := g.layerOf[e.From], g.layerOf[e.To]
+		span := tl - sl
 		label := strings.TrimSpace(e.Kind)
-		if span <= 1 {
+		sameRow := sl/geo.perRow == tl/geo.perRow
+		if span <= 1 && sameRow {
 			xv := sx + 14 + (outIdx[i]%5)*6
 			c.line(sx, sy, xv, sy, p.muted)
 			c.line(xv, sy, xv, ty, p.muted)
@@ -481,16 +554,27 @@ func (g chainGraph) drawEdges(c *canvas, body image.Rectangle, geo chainGeom, po
 			g.edgeLabel(c, label, xv+4, tx-4, ty, true)
 			continue
 		}
-		cy := chanTop + 6 + long*12
-		long++
 		x1 := sx + 8 + (outIdx[i]%4)*4
 		x2 := tx - 10 - (inIdx[i]%3)*4
+		var cy int
+		if geo.rows == 1 {
+			cy = chanTop + 6 + long*12
+			long++
+		} else {
+			r := sl / geo.perRow
+			cy = body.Min.Y + geo.rowTop[r] + geo.rowColH[r] + 10 + rowUsed[r]*12
+			rowUsed[r]++
+		}
 		c.line(sx, sy, x1, sy, p.muted)
 		c.line(x1, sy, x1, cy, p.muted)
 		c.line(x1, cy, x2, cy, p.muted)
 		c.line(x2, cy, x2, ty, p.muted)
 		c.arrow(x2, ty, tx, ty, p.muted)
-		g.edgeLabel(c, label, x2-200, x2-6, cy, false)
+		if x1 > x2 { // wraps back to the left edge of the next row
+			g.edgeLabel(c, label, x2+6, min(x1-6, x2+206), cy, false)
+		} else {
+			g.edgeLabel(c, label, x2-200, x2-6, cy, false)
+		}
 	}
 }
 
