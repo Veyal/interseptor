@@ -152,11 +152,12 @@ func TestUIThemeContrastMeetsWCAGAA(t *testing.T) {
 	}{
 		{"dark", ":root{"},
 		{"light", `:root[data-theme="light"]{`},
+		{"high-contrast", `:root[data-theme="hc"]{`},
 	} {
 		t.Run(theme.name, func(t *testing.T) {
 			vars := parseThemeBlock(t, css, theme.prefix)
-			if theme.name == "light" {
-				// The light block only overrides; inherit the rest from :root.
+			if theme.name != "dark" {
+				// The light and high-contrast blocks only override; inherit the rest from :root.
 				base := parseThemeBlock(t, css, ":root{")
 				for k, v := range base {
 					if _, ok := vars[k]; !ok {
@@ -213,9 +214,11 @@ func TestUIThemeContrastMeetsWCAGAA(t *testing.T) {
 func TestUIStylesheetHasNoUntokenizedColours(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	// Everything after the light-theme block is component CSS.
-	lightEnd := strings.Index(css, `:root[data-theme="light"]{`)
+	// The high-contrast token block directly follows the light block, so the
+	// component layer starts after whichever theme block closes last.
+	lightEnd := strings.Index(css, `:root[data-theme="hc"]{`)
 	if lightEnd < 0 {
-		t.Fatal("light theme block not found")
+		t.Fatal("high-contrast theme block not found")
 	}
 	closing := strings.Index(css[lightEnd:], "}")
 	components := css[lightEnd+closing:]
@@ -239,7 +242,7 @@ func TestUIStylesheetHasNoUntokenizedColours(t *testing.T) {
 // a localhost security tool: a webfont fetch leaks that the operator is running
 // it, and breaks the UI entirely on air-gapped engagements.
 func TestUIStylesheetIsSelfContained(t *testing.T) {
-	for _, name := range []string{"app.css", "index.html", "login.html"} {
+	for _, name := range append([]string{"index.html", "login.html"}, foundationStylesheets...) {
 		asset := readUIAsset(t, name)
 		for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com"} {
 			if strings.Contains(asset, host) {
@@ -371,7 +374,7 @@ func TestUIUsesVectorIconsNotEmoji(t *testing.T) {
 		}
 	}
 	for name := range defined {
-		if !used[name] {
+		if !used[name] && !foundationReservedIcons[name] {
 			t.Errorf("icon %q is defined in the sprite but never used — drop it", name)
 		}
 	}
@@ -771,11 +774,11 @@ func TestUITypeScaleIsBounded(t *testing.T) {
 	// The scale is only real if the markup honours it too. Inline styles in
 	// index.html and JS template strings bypass the stylesheet entirely, and
 	// that is where 9px and 10px text survived the first cleanup.
-	for _, name := range []string{"app.css", "findings.css", "surfaces.css", "index.html", "login.html", "js/core.js", "js/app.js",
+	for _, name := range append(append([]string{}, foundationStylesheets...), "index.html", "login.html", "js/core.js", "js/app.js",
 		"js/proxy.js", "js/tools.js", "js/findings.js", "js/scanner.js", "js/map.js", "js/settings.js",
 		"js/activity.js", "js/authz.js", "js/codecs.js", "js/apipanel.js",
 		"js/humaninput.js", "js/tlsdiag.js", "js/intercept.js", "js/notes.js", "js/tags.js",
-		"js/setup.js", "js/flowmodal.js"} {
+		"js/setup.js", "js/flowmodal.js") {
 		for _, m := range regexp.MustCompile(`font-size:\s*([0-9.]+)px`).FindAllStringSubmatch(readUIAsset(t, name), -1) {
 			f, _ := strconv.ParseFloat(m[1], 64)
 			if f > 0 && f < 11 {
