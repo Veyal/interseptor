@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- store: persist the last 20 finished Intruder runs as opaque JSON in a new additive `intruder_runs` table (`PutIntruderRun`, `GetIntruderRun`, `ListIntruderRuns`); no existing table changes.
+- store: new generated image source `evidence_render` and additive `sourceRef` (for example `intruder:<runId>`) on finding image blocks and provenance, stamped via `PutAndAttachImageRef` and immutable like `sourceFlowId`. Evidence renders never count as real visual proof.
+
 ## [2.4.2] - 2026-10-06
 
 > v2.4.1 shipped with a boot-breaking regression (see Fixed). Upgrade to 2.4.2.

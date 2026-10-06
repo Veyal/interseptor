@@ -145,3 +145,72 @@ func TestMissingImageMappingsAndRawMessagesAgreeWithReadiness(t *testing.T) {
 		t.Fatalf("missing raw body did not block quality gate: %+v", f)
 	}
 }
+
+func TestEvidenceRenderIsGeneratedWithImmutableSourceRef(t *testing.T) {
+	s := newTestStore(t)
+	id, _ := s.CreateFinding(&Finding{Title: "Rate limit"})
+	hash, _, err := s.PutAndAttachImageRef(id, "image/png", tinyPNG, "Timeline", -1, "result", "Generated from recorded data", "evidence_render", 0, "intruder:run-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetFinding(id)
+	b := got.Blocks[0]
+	if b.Source != "evidence_render" || b.SourceRef != "intruder:run-01" {
+		t.Fatalf("block: %+v", b)
+	}
+	if b.Provenance == nil || b.Provenance.Ingestion != "generated" || b.Provenance.SourceRef != "intruder:run-01" {
+		t.Fatalf("provenance: %+v", b.Provenance)
+	}
+	if got.Readiness.Capabilities.Visual || got.Readiness.GeneratedImageCount != 1 || got.Readiness.ScreenshotCount != 0 || got.Readiness.UploadedImageCount != 0 {
+		t.Fatalf("render counted as real proof: %+v", got)
+	}
+	// Re-attach with a different source and ref must not overwrite.
+	if _, _, err = s.PutAndAttachImageRef(id, "image/png", tinyPNG, "Timeline", -1, "result", "", "browser_screenshot", 5, "intruder:other"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFinding(id)
+	b = got.Blocks[0]
+	if b.Hash != hash || b.Source != "evidence_render" || b.SourceRef != "intruder:run-01" || b.SourceFlowID != 0 {
+		t.Fatalf("overwritten: %+v", b)
+	}
+	// A body rewrite cannot forge or drop the ref either.
+	blocks := got.Blocks
+	blocks[0].SourceRef = "intruder:forged"
+	body, err := MarshalFindingBlocks(blocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.UpdateFindingCanonical(id, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, FindingMetadataPatch{}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetFinding(id)
+	if got.Blocks[0].SourceRef != "intruder:run-01" {
+		t.Fatalf("sourceRef forged via update: %q", got.Blocks[0].SourceRef)
+	}
+	// Reclassifying a generated render as a capture is refused.
+	if err = s.ClassifyFindingImage(id, hash, "browser_screenshot", FindingChange{}); err == nil {
+		t.Fatal("evidence_render reclassified")
+	}
+}
+
+func TestSourceRefValidationAndLegacyBodies(t *testing.T) {
+	s := newTestStore(t)
+	id, _ := s.CreateFinding(&Finding{Title: "Ref"})
+	for _, ref := range []string{"Intruder:1", "intruder run", "intruder/1", strings.Repeat("a", 81)} {
+		if _, _, err := s.PutAndAttachImageRef(id, "image/png", tinyPNG, "x", -1, "result", "", "evidence_render", 0, ref); err == nil {
+			t.Fatalf("ref %q accepted", ref)
+		}
+	}
+	if _, err := NormalizeFindingBody(`[{"type":"text","md":"x"},{"type":"image","hash":"` + strings.Repeat("a", 64) + `","source":"evidence_render","sourceRef":"BAD"}]`); err == nil {
+		t.Fatal("bad sourceRef in body accepted")
+	}
+	// Legacy JSON without sourceRef still loads.
+	legacy := `[{"type":"text","md":"old finding"},{"type":"image","hash":"` + strings.Repeat("b", 64) + `","source":"flow_preview","sourceFlowId":7}]`
+	out, err := NormalizeFindingBody(legacy)
+	if err != nil || strings.Contains(out, "sourceRef") {
+		t.Fatalf("legacy: %v %s", err, out)
+	}
+	if !generatedFindingImage("evidence_render") || capturedFindingImage("evidence_render") {
+		t.Fatal("evidence_render must be generated, not captured")
+	}
+}
