@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,7 +40,7 @@ const (
 	distMaxClusterRows   = 14
 	distTableRowH        = 24
 	distOutlierRowH      = 22
-	distChartH           = 190
+	distChartH           = 204
 	distSummaryH         = 48
 	distTableW           = 470
 )
@@ -60,16 +61,18 @@ func latencyBucket(ms int) int {
 	return b
 }
 
+// latencyLabel names bucket i as a range ("50-100", "5k+") so the first bin
+// is never mistaken for "exactly 0 ms".
 func latencyLabel(i int) string {
 	if i == len(latencyEdges)-1 {
-		return "5k+"
+		return edgeLabel(latencyEdges[i]) + "+"
 	}
-	e := latencyEdges[i]
-	if e >= 1000 {
-		return fmt.Sprintf("%gk", float64(e)/1000)
-	}
-	return strconv.Itoa(e)
+	return edgeLabel(latencyEdges[i]) + "-" + edgeLabel(latencyEdges[i+1])
 }
+
+// latencyBinNote is drawn under the latency histogram: bins widen with
+// latency, so equal-width bars must not be read as a density.
+const latencyBinNote = "non-linear bins; bar height is a count, not a density"
 
 // lengthBucketer returns a function mapping a length to its bucket key: the
 // exact length when fewer than 12 distinct lengths exist, else the lower edge.
@@ -259,7 +262,7 @@ func statusClass(status int) int {
 }
 
 var classRepStatus = []int{200, 300, 400, 429, 500, 0}
-var classNames = []string{"2xx", "3xx", "4xx", "429/403/423", "5xx", "error"}
+var classNames = []string{"2xx", "3xx", "4xx", "throttle-like 429/403/423", "5xx", "error"}
 
 type distSeg struct {
 	N     int
@@ -393,7 +396,7 @@ func distOutlierRows(n int) (shown int, more int) {
 // cluster table, status counts, latency histogram and an outlier panel.
 func RenderIntruderDistribution(in DistributionInput, o Opts) (Rendered, error) {
 	if len(in.Rows) == 0 {
-		return Rendered{}, ErrNoRows
+		return renderDistributionEmpty(in, o)
 	}
 	rows := in.Rows
 	clusters := buildClusters(rows)
@@ -434,11 +437,33 @@ func RenderIntruderDistribution(in DistributionInput, o Opts) (Rendered, error) 
 }
 
 func distSummary(rows []DistRow, cl []distCluster, out []distOutlier, med int) string {
-	return fmt.Sprintf("%d responses in %d clusters, median %d ms, %d outliers", len(rows), len(cl), med, len(out))
+	return fmt.Sprintf("%s in %s, median %d ms, %s", countOf(len(rows), "response"), countOf(len(cl), "cluster"), med, countOf(len(out), "outlier"))
+}
+
+// renderDistributionEmpty draws the same empty-state panel the other renders
+// use instead of failing when a run recorded no responses.
+func renderDistributionEmpty(in DistributionInput, o Opts) (Rendered, error) {
+	title := "Intruder response distribution"
+	if in.RunID != "" {
+		title += " - run " + in.RunID
+	}
+	data, w, h, err := renderFrame(o, frame{
+		Title:      title,
+		Provenance: fmt.Sprintf("Run %s - no responses recorded", orDash(in.RunID)),
+		BodyHeight: func(int) int { return 96 },
+		Draw: func(c *canvas, body image.Rectangle, _ int) {
+			c.text(frameGut, body.Min.Y+30, "no responses recorded for this run", fontBold, 14, c.pal.muted)
+		},
+	})
+	if err != nil {
+		return Rendered{}, err
+	}
+	return Rendered{PNG: data, Alt: AltFromParts("Intruder response distribution: no responses recorded for run " + orDash(in.RunID)),
+		Summary: "no responses recorded", Kind: KindIntruderDistribution, Width: w, Height: h}, nil
 }
 
 func distAlt(rows []DistRow, cl []distCluster, out []distOutlier, shown, more, med int) string {
-	parts := []string{fmt.Sprintf("Intruder response distribution: %d responses in %d status/length clusters, median latency %d ms", len(rows), len(cl), med)}
+	parts := []string{fmt.Sprintf("Intruder response distribution: %s in %s, median latency %d ms", countOf(len(rows), "response"), countOf(len(cl), "status/length cluster"), med)}
 	var top []string
 	for i, c := range cl {
 		if i == 3 {
@@ -452,9 +477,9 @@ func distAlt(rows []DistRow, cl []distCluster, out []distOutlier, shown, more, m
 	} else {
 		var o []string
 		for _, x := range out[:shown] {
-			o = append(o, fmt.Sprintf("#%d (%s, %s, %s)", x.Row.Seq, statusLabel(x.Row.Status), x.Row.Reasonless(), x.Reason))
+			o = append(o, fmt.Sprintf("#%d (%s, %s, %s)", x.Row.Seq, statusLabel(x.Row.Status), x.Row.Reasonless(), outlierDetail(x)))
 		}
-		s := fmt.Sprintf("%d outliers: %s", len(out), strings.Join(o, ", "))
+		s := fmt.Sprintf("%s: %s", countOf(len(out), "outlier"), strings.Join(o, ", "))
 		if more > 0 {
 			s += fmt.Sprintf(", and %d more", more)
 		}
@@ -470,10 +495,10 @@ func drawDistribution(c *canvas, y0 int, l distLayout, rows []DistRow, cl []dist
 	p := c.pal
 	g := frameGut
 	// summary strip
-	c.text(g, y0+10, fmt.Sprintf("%d responses  |  %d clusters  |  median %d ms  |  %d outliers", len(rows), len(cl), med, len(out)), fontBold, 14, p.ink)
-	c.text(g, y0+28, "Cluster = (status, response length). Colour is always paired with the status label.", fontSans, 11, p.muted)
+	c.text(g, y0+10, fmt.Sprintf("%s  |  %s  |  median %d ms  |  %s", countOf(len(rows), "response"), countOf(len(cl), "cluster"), med, countOf(len(out), "outlier")), fontBold, 14, p.ink)
+	c.text(g, y0+28, c.truncate(fontSans, 11, "Status mix: "+statusMix(rows, 6)+"  |  cluster = (status, response length); colour is always paired with the status label.", l.table.Dx()+l.c1.Dx()+24), fontSans, 11, p.muted)
 	drawClusterTable(c, y0, l, cl)
-	drawStatusChart(c, y0, l.c1, rows)
+	drawScatterChart(c, y0, l.c1, rows)
 	drawLatencyChart(c, y0, l.c2, rows)
 	drawOutlierPanel(c, y0, l.outliers, out, shown, more)
 }
@@ -501,8 +526,7 @@ func drawClusterTable(c *canvas, y0 int, l distLayout, cl []distCluster) {
 		cc := cl[i]
 		y := body + i*rowH
 		col := p.statusColor(cc.Status)
-		label := statusLabel(cc.Status) + " " + statusGlyph(cc.Status)
-		c.chip(t.Min.X+6, y+2, label, col, p.paper)
+		c.chip(t.Min.X+6, y+2, statusChipText(cc.Status), col, p.paper)
 		cells := []string{lengthLabel(cc), strconv.Itoa(cc.Count), strconv.Itoa(cc.Median), "#" + strconv.Itoa(cc.Example)}
 		x := t.Min.X + colW[0]
 		for j, s := range cells {
@@ -528,40 +552,123 @@ func sum(v []int) int {
 	return n
 }
 
-func drawStatusChart(c *canvas, y0 int, r image.Rectangle, rows []DistRow) {
+// statusMix lists the n most common statuses as "401 x10, 200 x9".
+func statusMix(rows []DistRow, n int) string {
+	counts := map[int]int{}
+	for _, r := range rows {
+		counts[r.Status]++
+	}
+	keys := make([]int, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if counts[keys[i]] != counts[keys[j]] {
+			return counts[keys[i]] > counts[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	var parts []string
+	for i, k := range keys {
+		if i == n {
+			parts = append(parts, fmt.Sprintf("+%d more", len(keys)-n))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s x%d", statusLabel(k), counts[k]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// outlierDetail explains why a row is listed (a flagged row says whether grep,
+// a length anomaly or a status deviation raised the flag).
+func outlierDetail(o distOutlier) string {
+	if o.Reason != "flagged" {
+		return o.Reason
+	}
+	var why []string
+	if o.Row.Matched {
+		why = append(why, "grep match")
+	}
+	if o.Row.Anomaly {
+		why = append(why, "length anomaly")
+	}
+	if len(why) == 0 {
+		why = append(why, "status deviates from the majority")
+	}
+	return "flagged: " + strings.Join(why, " + ")
+}
+
+const scatterMaxPoints = 1500
+
+type scatterPt struct {
+	Seq, Status, Length, TimeMs int
+	Flagged                     bool
+}
+
+// scatterPlan picks at most about maxPts rows by an even stride and always
+// keeps flagged/anomaly rows so outliers are never sampled away.
+func scatterPlan(rows []DistRow, maxPts int) []scatterPt {
+	stride := (len(rows) + maxPts - 1) / maxPts
+	if stride < 1 {
+		stride = 1
+	}
+	var out []scatterPt
+	flagged := 0
+	for i, r := range rows {
+		f := r.Flagged || r.Anomaly
+		if i%stride != 0 && !(f && flagged < 200) {
+			continue
+		}
+		if f && i%stride != 0 {
+			flagged++
+		}
+		out = append(out, scatterPt{r.Seq, r.Status, r.Length, r.TimeMs, f})
+	}
+	return out
+}
+
+// drawScatterChart plots latency against response length (log axes) so timing
+// side channels (a length or status class that is consistently slower) stand
+// out; counts are already in the cluster table.
+func drawScatterChart(c *canvas, y0 int, r image.Rectangle, rows []DistRow) {
 	p := c.pal
 	r = r.Add(image.Pt(0, y0))
-	c.text(r.Min.X, r.Min.Y, "Responses per status", fontBold, 12, p.ink)
-	counts := map[int]int{}
-	for _, row := range rows {
-		counts[row.Status]++
+	c.text(r.Min.X, r.Min.Y, "Latency vs response length (one dot per response)", fontBold, 12, p.ink)
+	plot := image.Rect(r.Min.X+40, r.Min.Y+26, r.Max.X-6, r.Max.Y-20)
+	if plot.Dx() < 10 || plot.Dy() < 10 {
+		return
 	}
-	var st []int
-	for s := range counts {
-		st = append(st, s)
+	pts := scatterPlan(rows, scatterMaxPoints)
+	minL, maxL, maxT := pts[0].Length, pts[0].Length, 1
+	for _, pt := range pts {
+		minL, maxL = min(minL, pt.Length), max(maxL, pt.Length)
+		maxT = max(maxT, pt.TimeMs)
 	}
-	sort.Ints(st)
-	maxBars := (r.Dx() - 46) / 44
-	if maxBars < 3 {
-		maxBars = 3
+	lx := func(l int) float64 { return math.Log10(float64(max(l, 0)) + 1) }
+	x0, x1 := lx(minL), lx(maxL)
+	if x1-x0 < 1e-9 {
+		x0, x1 = x0-0.5, x1+0.5
 	}
-	var bars []distBar
-	other := 0
-	if len(st) > maxBars {
-		sort.SliceStable(st, func(i, j int) bool { return counts[st[i]] > counts[st[j]] })
-		for _, s := range st[maxBars-1:] {
-			other += counts[s]
+	ty := math.Log10(float64(maxT) + 1)
+	if ty < 1e-9 {
+		ty = 1
+	}
+	c.rect(plot.Min.X, plot.Max.Y, plot.Dx(), 1, p.muted)
+	c.rect(plot.Min.X, plot.Min.Y, 1, plot.Dy(), p.muted)
+	c.rect(plot.Min.X, plot.Min.Y, plot.Dx(), 1, p.grid)
+	c.textRight(plot.Min.X-6, plot.Min.Y-6, strconv.Itoa(maxT), fontSans, 11, p.muted)
+	c.textRight(plot.Min.X-6, plot.Max.Y-12, "0", fontSans, 11, p.muted)
+	c.text(plot.Min.X, plot.Max.Y+4, strconv.Itoa(minL)+" B", fontSans, 11, p.muted)
+	c.textRight(plot.Max.X, plot.Max.Y+4, strconv.Itoa(maxL)+" B", fontSans, 11, p.muted)
+	c.text(plot.Min.X+plot.Dx()/2-c.measure(fontSans, 11, "length (log) / latency ms (log)")/2, plot.Max.Y+4, "length (log) / latency ms (log)", fontSans, 11, p.muted)
+	for _, pt := range pts {
+		px := plot.Min.X + 3 + int((lx(pt.Length)-x0)/(x1-x0)*float64(plot.Dx()-6))
+		py := plot.Max.Y - 3 - int(math.Log10(float64(pt.TimeMs)+1)/ty*float64(plot.Dy()-6))
+		c.rect(px-2, py-2, 5, 5, p.statusColor(pt.Status))
+		if pt.Flagged {
+			c.strokeRect(px-4, py-4, 9, 9, p.ink)
 		}
-		st = st[:maxBars-1]
-		sort.Ints(st)
 	}
-	for _, s := range st {
-		bars = append(bars, distBar{Label: statusLabel(s) + " " + statusGlyph(s), Segs: []distSeg{{counts[s], p.statusColor(s)}}})
-	}
-	if other > 0 {
-		bars = append(bars, distBar{Label: "other", Segs: []distSeg{{other, p.muted}}})
-	}
-	drawBars(c, image.Rect(r.Min.X, r.Min.Y+4, r.Max.X, r.Max.Y), bars)
 }
 
 func drawLatencyChart(c *canvas, y0 int, r image.Rectangle, rows []DistRow) {
@@ -589,8 +696,9 @@ func drawLatencyChart(c *canvas, y0 int, r image.Rectangle, rows []DistRow) {
 			items = append(items, legendItem{classNames[cls] + " " + statusGlyph(classRepStatus[cls]), p.statusColor(classRepStatus[cls])})
 		}
 	}
-	plotR := image.Rect(r.Min.X, r.Min.Y+4, r.Max.X, r.Max.Y)
+	plotR := image.Rect(r.Min.X, r.Min.Y+4, r.Max.X, r.Max.Y-14)
 	drawBars(c, plotR, bars)
+	c.text(r.Min.X+40, r.Max.Y-13, latencyBinNote, fontSans, 11, p.muted)
 	lx := r.Min.X + 40
 	lw := 0
 	for _, it := range items {
@@ -624,8 +732,8 @@ func drawOutlierPanel(c *canvas, y0 int, r image.Rectangle, out []distOutlier, s
 		row := o.Row
 		c.rect(r.Min.X, y, 4, distOutlierRowH-2, p.statusColor(row.Status))
 		c.text(r.Min.X+12, y+3, "#"+strconv.Itoa(row.Seq), fontMono, 12, p.ink)
-		c.chip(r.Min.X+80, y, statusLabel(row.Status)+" "+statusGlyph(row.Status), p.statusColor(row.Status), p.paper)
-		info := fmt.Sprintf("%d B   %d ms   %s", row.Length, row.TimeMs, o.Reason)
+		c.chip(r.Min.X+80, y, statusChipText(row.Status), p.statusColor(row.Status), p.paper)
+		info := fmt.Sprintf("%d B   %d ms   %s", row.Length, row.TimeMs, outlierDetail(o))
 		if row.Matched {
 			info += "   match"
 		}
@@ -636,7 +744,7 @@ func drawOutlierPanel(c *canvas, y0 int, r image.Rectangle, out []distOutlier, s
 			}
 			info += "   hash " + h
 		}
-		c.text(r.Min.X+176, y+3, c.truncate(fontMono, 12, info, r.Dx()-186), fontMono, 12, p.ink)
+		c.text(r.Min.X+196, y+3, c.truncate(fontMono, 12, info, r.Dx()-206), fontMono, 12, p.ink)
 		y += distOutlierRowH
 	}
 	if more > 0 {

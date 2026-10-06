@@ -2,7 +2,6 @@ package preview
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -71,13 +70,6 @@ func TestDistributionOutliers(t *testing.T) {
 	small := rows[:15]
 	if got := findOutliers(small, buildClusters(small)); len(got) != 0 {
 		t.Fatalf("small run outliers: %v", got)
-	}
-}
-
-func TestDistributionEmpty(t *testing.T) {
-	_, err := RenderIntruderDistribution(DistributionInput{RunID: "x"}, Opts{})
-	if !errors.Is(err, ErrNoRows) {
-		t.Fatalf("err=%v", err)
 	}
 }
 

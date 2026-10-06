@@ -1,6 +1,9 @@
 package preview
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Kind identifies which evidence render produced a Rendered value.
 const (
@@ -73,4 +76,12 @@ func AltFromParts(parts ...string) string {
 		out = append(out, p)
 	}
 	return strings.Join(out, " ")
+}
+
+// countOf formats "1 cluster" / "2 clusters" (regular -s plurals only).
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }

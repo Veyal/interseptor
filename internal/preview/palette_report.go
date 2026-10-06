@@ -1,6 +1,9 @@
 package preview
 
-import "image/color"
+import (
+	"fmt"
+	"image/color"
+)
 
 // reportPalette holds semantic colours for evidence renders.
 type reportPalette struct {
@@ -119,4 +122,16 @@ func contrastRatio(a, b color.RGBA) float64 {
 		la, lb = lb, la
 	}
 	return (la + 0.05) / (lb + 0.05)
+}
+
+// statusChipText spells the status class out so a chip is readable alone
+// ("502 5xx", "429 throttle", "err") instead of a cryptic suffix glyph.
+func statusChipText(status int) string {
+	switch {
+	case status <= 0 || status >= 600:
+		return "err"
+	case isBlockedStatus(status):
+		return fmt.Sprintf("%d throttle", status)
+	}
+	return fmt.Sprintf("%d %dxx", status, status/100)
 }
