@@ -1,6 +1,8 @@
 import { $, esc, escAttr, toast, toastError, copyText, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 import { wireListbox, focusOption } from './listbox.js';
+import { wireRepeaterExtras } from './repeater.js';
+import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
@@ -699,6 +701,7 @@ export async function repSend(){
     // tab, but never paint that result into the currently visible tab.
     if(repCur()!==t||!current())return;
     $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;syncRepActions();
+    if(repExtras)repExtras.afterSend();
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
     if(repCur()!==t||!current())return;
@@ -811,7 +814,7 @@ export async function loadRepHistory(){
     const remaining=flows.length-visibleCount;
     // The rows live in their own listbox wrapper so the retry banner and the
     // "show older" button stay outside it — a listbox may only own options.
-    box.innerHTML=migrationError+`<div data-rep-history-rows>`+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-selected="${f.id===t.resId?'true':'false'}">
+    box.innerHTML=migrationError+`<div data-rep-history-rows>`+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" data-evidence-flow="${f.id}" aria-selected="${f.id===t.resId?'true':'false'}">
     <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
     <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+`</div>`+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
     box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
@@ -951,7 +954,9 @@ function repAddToFinding(){
   if(!t||!t.resId){toast('Send the request first — a finding attaches the captured flow','warn');return;}
   import('./findings.js').then(m=>m.addFlowToFinding(t.resId)).catch(e=>toastError('Add to finding failed',e));
 }
+let repExtras=null,intrExtras=null,intrBaseline=null;
 function syncRepActions(){
+  if(repExtras)repExtras.sync();
   const btn=$('#repAddFinding');if(!btn)return;
   const t=repCur();
   btn.disabled=!t||!t.resId||!!t.sendPending;
@@ -969,6 +974,7 @@ function wireRepeaterActions(){
   $('#repToIntruder').onclick=repToIntruder;
   $('#repAddFinding').onclick=repAddToFinding;
   $('#repCopyCurl').onclick=repCopyCurl;
+  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur});
   syncRepActions();
 }
 // parseRawRequest splits an edited raw HTTP request (CRLF or LF) into method,
@@ -1390,6 +1396,7 @@ export async function intrInit(){
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
   wireIntrSortHeaders();
+  intrExtras=wireIntruderExtras({$,api,toast,toastError,openCtxMenu,getResults:()=>intrDisplayedResults,openResult:openIntrResult});
   resolveIntruderReady(hydration);
   return hydration;
 }
@@ -1854,8 +1861,10 @@ function setIntrStartState(stateName,label){
 }
 function resetIntrStart(delay,epoch){setTimeout(()=>{if(epoch===intrStartEpoch&&!intrLastRunning)setIntrStartState('idle','Start ▸');},delay);}
 let intrStartEpoch=0;
+let intrLargeRunConfirmed=false;
 export async function intrStart(){
   if(intrStartPending)return;
+  const confirmed=intrLargeRunConfirmed;intrLargeRunConfirmed=false;
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
   const threadsValue=Number($('#intrThreads').value),delayValue=Number($('#intrDelay').value);
@@ -1869,6 +1878,7 @@ export async function intrStart(){
     const repeatValue=Number($('#intrRepeat').value);
     if(!Number.isInteger(repeatValue)||repeatValue<1||repeatValue>2000){toast('repeat must be between 1 and 2000','error');$('#intrRepeat').focus();return;}
     body.repeat=repeatValue;
+    if(!confirmed&&intrExtras&&needsLargeRunConfirm(repeatValue)){intrExtras.confirmLarge(repeatValue,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends');$('#intrTemplate').focus();return;}
@@ -1885,6 +1895,7 @@ export async function intrStart(){
     else if(intrState.type==='cluster') reqs=body.payloads.reduce((a,l)=>a*l.length,1);
     else reqs=body.payloads[0].length*Math.max(mk.length,1);
     if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
+    if(!confirmed&&intrExtras&&needsLargeRunConfirm(reqs)){intrExtras.confirmLarge(reqs,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
@@ -2165,6 +2176,8 @@ export function renderIntr(st,{authoritative=true}={}){
   // results summary (flagged count)
   // Filter and sort once per render; the stats line and the rows share the view.
   const view=intrApplyFilter(displayRes);
+  intrBaseline=baselineOf(displayRes);
+  if(intrExtras)intrExtras.onRender({running:displayState.running,total:displayState.total,done:displayState.done,results:displayRes});
   const stats=$('#intrStats');
   if(stats){
     let fl=0,int=0;
@@ -2241,12 +2254,12 @@ const INTR_ROW_H=25, INTR_VIRT_MIN=200;
 function intrRowHTML(r){
   const fid=r.flowId||r.flowID||0;
   const title=r.error?(r.error):(fid?('open attempt #'+r.id+' · flow #'+fid):('attempt #'+r.id+(r.error?' · '+r.error:'')));
-  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}" data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
-    <div style="color:var(--fg3)">${r.id}</div>
-    <div class="pl">${esc(r.payload)}${r.flagged?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg>':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
-    <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
-    <div style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
-    <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
+  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}"${fid?` data-evidence-flow="${fid}"`:''} data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
+    <div class="intr-id">${r.id}</div>
+    <div class="pl"><span class="pl-text">${esc(r.payload)}</span>${chipsHTML(r,intrBaseline,esc)}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
+    <div class="intr-st" style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
+    <div class="intr-len" style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
+    <div class="intr-ms" style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
 }
 async function openIntrResult(el){
   const fid=Number(el.dataset.flow||0);
