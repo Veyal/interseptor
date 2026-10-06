@@ -184,7 +184,8 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 	requireUIContracts(t, "index.html",
 		`id="sseStatus" role="status" aria-live="polite"`,
 	)
-	requireUIContracts(t, "js/app.js",
+	// The status markup moved with the topbar into the Connection popover.
+	requireUIContracts(t, "js/connection.js",
 		"wrap.setAttribute('aria-label'",
 		"wrap.classList.toggle('reconnecting'",
 	)

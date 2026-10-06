@@ -269,7 +269,8 @@ func TestUIMainTablistSupportsHomeEndNavigation(t *testing.T) {
 }
 
 func TestUIFoundationCommandPaletteAccessibilityContract(t *testing.T) {
-	app := executableJS(readUIAsset(t, "js/app.js"))
+	// The palette was extracted from app.js into cmdk.js with identical markup.
+	app := executableJS(readUIAsset(t, "js/cmdk.js"))
 	requireUIContains(t, app,
 		`role="dialog"`,
 		`aria-modal="true"`,

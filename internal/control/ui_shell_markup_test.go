@@ -82,7 +82,7 @@ func TestUIShortcutsAndPaletteCoverWorkflowActions(t *testing.T) {
 }
 
 func TestUIPaletteUsesClassesNotInlineStyles(t *testing.T) {
-	app := executableJS(readUIAsset(t, "js/app.js"))
+	app := executableJS(readUIAsset(t, "js/cmdk.js"))
 	start := strings.Index(app, "function cmdkBuild()")
 	end := strings.Index(app, "function cmdkRun(")
 	if start < 0 || end < start {
