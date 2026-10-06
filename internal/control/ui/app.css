@@ -23,7 +23,7 @@
   --sel:rgba(110, 231, 194, 0.09);--accentDim:rgba(110, 231, 194, 0.14);
   --blue:#60a5fa;--amber:#f59e0b;--orange:#fb923c;--noteDim:rgba(245, 158, 11, 0.12);
   /* Same text/fill split for destructive actions. */
-  --red:#f87171;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(239, 68, 68, 0.15);
+  --red:#f87171;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(239, 68, 68, 0.15);--violetDim:rgba(167, 139, 250, 0.16);
   --violet:#a78bfa;--cyan:#06b6d4;--focus-ring:#facc15;--scroll:rgba(255,255,255,0.1);--shadow:rgba(0,0,0,0.5);--overlay:rgba(0,0,0,0.7);
   --warnLine:#b45309;--warnFg:#fcd34d;--dangerLine:#c44;--dangerFg:#fca5a5;--pendingFill:#e0a020;
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
@@ -79,7 +79,7 @@
   --accent:#065f46;--accentSolid:#047857;--onAccent:#ffffff;
   --sel:rgba(6, 95, 70, 0.1);--accentDim:rgba(6, 95, 70, 0.14);
   --blue:#1d4ed8;--amber:#92400e;--orange:#9a3412;--noteDim:rgba(146, 64, 14, 0.09);
-  --red:#b91c1c;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(185, 28, 28, 0.08);
+  --red:#b91c1c;--redSolid:#b91c1c;--onDanger:#ffffff;--redDim:rgba(185, 28, 28, 0.08);--violetDim:rgba(109, 40, 217, 0.1);
   --violet:#6d28d9;--cyan:#155e75;--focus-ring:#7c2d12;--scroll:rgba(0,0,0,0.15);--shadow:rgba(15, 23, 42, 0.1);--overlay:rgba(15, 23, 42, 0.5);
   --warnLine:#92400e;--warnFg:#78350f;--dangerLine:#b91c1c;--dangerFg:#991b1b;--pendingFill:#a16207;
   --grad-bg:linear-gradient(#f7f8fa, #f7f8fa);
@@ -1162,7 +1162,7 @@ details.acc>summary.acc-h>*{margin:7px 0}
 #inspectSplitter::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:32px;height:2px;border-radius:1px;background:var(--line2);pointer-events:none}
 #inspectSplitter:hover::after,#inspectSplitter:focus::after{background:var(--onAccent)}
 
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:100}
+#toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:100}
 .toast-item{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-4);font-size:var(--fs-sm);color:var(--fg);box-shadow:var(--elev-2);opacity:0;transform:translateY(6px);transition:opacity var(--motion-base) var(--motion-standard),transform var(--motion-base) var(--motion-standard);max-width:100%}
 .toast-item.show{opacity:1;transform:none}
 .toast-item.error{border-color:var(--dangerLine);color:var(--dangerFg)}
@@ -1783,6 +1783,8 @@ details[open]>summary::before{content:'▾'}
   .seg button{min-height:36px;padding:var(--sp-2) var(--sp-3)}
   .chip .x{width:28px;height:28px}
   .rep-tab .rt-close{min-width:32px;min-height:32px}
-  input[type=checkbox],input[type=radio]{position:relative;width:20px;height:20px;min-width:20px}
-  input[type=checkbox]::after,input[type=radio]::after{content:'';position:absolute;inset:-12px}
+  input[type=checkbox],input[type=radio]{width:24px;height:24px;min-width:24px}
+  /* A wrapping label is the touch target; pseudo-elements on inputs are not rendered by every engine. */
+  label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px;display:inline-flex;align-items:center;gap:var(--sp-2)}
+  :root{--row-h:44px}
 }

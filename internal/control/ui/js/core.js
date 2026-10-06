@@ -1078,6 +1078,7 @@ export function flowInScope(f,compiled){
    helper only decides which indices are visible). ---- */
 export function createVirtualList({container,itemHeight,threshold,buffer,onScroll}){
   let active=false,scrollTick=false,scrollBound=false;
+  const rowH=()=>typeof itemHeight==='function'?itemHeight():itemHeight;
   function bindScroll(){
     if(scrollBound||!container)return;
     scrollBound=true;
@@ -1097,10 +1098,10 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
     bindScroll();
     if(total<threshold){active=false;return null;}
     active=true;
-    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0;
-    const start=Math.max(0,Math.floor(scrollTop/itemHeight)-buffer);
-    const end=Math.min(total,start+Math.ceil(viewH/itemHeight)+2*buffer);
-    return {start,end,topPad:start*itemHeight,bottomPad:(total-end)*itemHeight};
+    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0,h=rowH();
+    const start=Math.max(0,Math.floor(scrollTop/h)-buffer);
+    const end=Math.min(total,start+Math.ceil(viewH/h)+2*buffer);
+    return {start,end,topPad:start*h,bottomPad:(total-end)*h};
   }
   return {computeWindow,isActive:()=>active};
 }

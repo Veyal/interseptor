@@ -2,6 +2,7 @@ package control
 
 import (
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -115,4 +116,40 @@ func TestUISSEEventSourceCreationIsSingleFlight(t *testing.T) {
 		"sseAttemptToken++;if(sseSource){sseSource.close();sseSource=null;}",
 		"es.onerror=()=>{if(sseSource!==es)return;",
 	)
+}
+
+func TestUITouchRowHeightAndTargetsAreRobust(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	coarse := css[strings.LastIndex(css, "@media (pointer:coarse){"):]
+	requireUIContains(t, coarse, ":root{--row-h:44px}")
+	if strings.Contains(coarse, "::after{content:'';position:absolute;inset:-12px}") {
+		t.Error("checkbox hit area must not rely on an ::after pseudo-element on an input")
+	}
+	requireUIContains(t, coarse,
+		"input[type=checkbox],input[type=radio]{width:24px;height:24px;min-width:24px}",
+		"label:has(>input[type=checkbox]),label:has(>input[type=radio]){min-height:44px",
+	)
+	requireUIContains(t, css, "#toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px))")
+	if strings.Count(css, "--violetDim:") != 2 {
+		t.Errorf("--violetDim must be defined in both themes, found %d", strings.Count(css, "--violetDim:"))
+	}
+
+	proxy := executableJS(readUIAsset(t, "js/proxy.js"))
+	requireUIContains(t, proxy,
+		"let ROW_H=readRowHeight()",
+		"function readRowHeight()",
+		"getPropertyValue('--row-h')",
+		"itemHeight:()=>ROW_H",
+		"matchMedia('(pointer:coarse)')",
+		"addEventListener('resize',refreshRowHeight)",
+	)
+	requireUIContains(t, executableJS(readUIAsset(t, "js/core.js")),
+		"const rowH=()=>typeof itemHeight==='function'?itemHeight():itemHeight")
+
+	index := readUIAsset(t, "index.html")
+	for _, m := range regexp.MustCompile(`<button class="tab[^>]*data-tab="([a-z]+)"[^>]*>`).FindAllStringSubmatch(index, -1) {
+		if !strings.Contains(m[0], ` title="`) {
+			t.Errorf("icon-only rail tab %q needs a title", m[1])
+		}
+	}
 }

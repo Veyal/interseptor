@@ -65,7 +65,12 @@ async function sendAsIdentity(f, id){
 const FLOW_PAGE=250;            // primary page size shown in History
 const FLOW_BUFFER=50;           // extra rows prefetched ahead of scroll (reduces load-more lag)
 const FLOW_FETCH=FLOW_PAGE+FLOW_BUFFER;
-const ROW_H=28;                 // virtualized row height (px)
+const ROW_H_FALLBACK=30;
+function readRowHeight(){
+  try{const v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));if(v>0)return v;}catch(e){}
+  return ROW_H_FALLBACK;
+}
+let ROW_H=readRowHeight();     // virtualized row height (px), read from the --row-h CSS token
 const VIRT_MIN=120;             // virtualize when more rows than this
 const VIRT_BUF=40;
 const MAX_LIVE_FLOWS=5000;      // cap the in-memory live list so long capture sessions don't grow unbounded (older rows stay on the server, reachable via scroll paging)
@@ -736,13 +741,21 @@ export function closeInspector(){
 // (scroll binding + rAF coalescing); computeWindow() below runs the same
 // windowing math the hand-rolled version used (start/end/topPad/bottomPad),
 // just centralized in core.js so future panels can share it.
-const flowVirt=createVirtualList({container:$('#rows'),itemHeight:ROW_H,threshold:VIRT_MIN,buffer:VIRT_BUF,onScroll:()=>{if(!reconcileVirtualRows())renderRows();}});
+const flowVirt=createVirtualList({container:$('#rows'),itemHeight:()=>ROW_H,threshold:VIRT_MIN,buffer:VIRT_BUF,onScroll:()=>{if(!reconcileVirtualRows())renderRows();}});
 // Backstop for queueFullWindowRebuild's hidden-tab fallback above: force one
 // definitive re-render the moment the tab regains visibility, regardless of
 // whether a rebuild was already queued — cheap (renderRows() just rebuilds
 // from the current in-memory state.flows) and guarantees the visible window
 // can never stay stale after a background period.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&flowVirt.isActive())renderRows();});
+function refreshRowHeight(){
+  const h=readRowHeight();
+  if(h===ROW_H)return;
+  ROW_H=h;
+  if(flowVirt.isActive())renderRows();
+}
+window.addEventListener('resize',refreshRowHeight);
+try{window.matchMedia('(pointer:coarse)').addEventListener('change',refreshRowHeight);}catch(e){}
 function captureFlowListFocus(box){
   const active=document.activeElement,row=active?.closest?.('#rows .trow[data-id]');
   if(!row||!box.contains(row))return null;

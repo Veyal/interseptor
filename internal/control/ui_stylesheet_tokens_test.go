@@ -206,7 +206,7 @@ func TestUICoarsePointerGetsFortyFourPixelTargets(t *testing.T) {
 	block := mediaBlock(t, css, "@media (pointer:coarse)")
 	for _, want := range []string{
 		".btn,", ".tab,", ".search,", ".ui-select-trigger", ".seg button", ".chip .x", ".btn.xs", "min-height:44px",
-		"input[type=checkbox],input[type=radio]", "width:20px",
+		"input[type=checkbox],input[type=radio]", "width:24px",
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("pointer:coarse block missing %q", want)
