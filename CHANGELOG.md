@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Evidence render REST wiring.** `GET /api/intruder/attacks`, `/api/intruder/attacks/{id}` (id may be `latest`) and `/api/intruder/attacks/{id}/render.png?kind=timeline|distribution|race|strip&width=&mask=` (`format=json` returns `{alt,summary,kind,width,height,sourceRef}`); `GET /api/render/authz/{runId}`, `/api/render/flow-diff.png?a=&b=`, `/api/render/flow-waterfall.png?ids=` (max 50) and `/api/render/finding-chain.png?findingId=`. `POST /api/findings/{id}/evidence-render` attaches a render with `source=evidence_render` and a server-stamped `sourceRef`. Credentials in payloads, headers, URLs and diffs are redacted before drawing. `POST /api/authz/run` now also returns a `runId`, and finished Intruder runs are persisted through the run sink; `POST /api/intruder/start` accepts `barrier`.
 - `preview.RenderFindingChain`: deterministic finding chain / attack-path PNG (longest-path layering, cycle edges dropped and noted, severity chips, edge labels, max 12 nodes) with alt text and summary.
 
 - **Authz differential matrix render (`preview.RenderAuthzMatrix`).** Deterministic report-width PNG of identities by requests with verdict glyphs (= same, D denied, ! broken, S session invalid), "N broken of M" summary, alt text listing broken cells by row and identity, and a "+N more" note past 8 identities or 40 rows.
