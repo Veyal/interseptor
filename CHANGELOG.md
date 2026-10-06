@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Uniform `error:` marker on MCP failures (#87).** The marker is now added where a tool failure becomes an MCP result, so store/evidence-mapping errors relayed from the API, `blocks must be a JSON array`, `send blocks or legacy body, not both`, `id is required`, unknown-tool and invalid-params failures all start with `error:`. Messages that already start with it are not doubled. In-process `Server.Call` still returns the raw Go error without the marker.
+
 - **Project merge preserves legacy findings (#73/#86).** `MergeFrom` inserts peer findings through an internal path that skips the write-time CVSS:4.0 and severity-vs-CVSS checks, so merging a project that holds a legacy CVSS 3.1 vector or a severity that disagrees with its vector no longer aborts. API and MCP writes stay strict. Revision restore and archive/full-project import already write rows directly and Burp import creates no findings, so they were unaffected. Rating-edge tests now cover real v4.0 vectors at 4.0, 6.9, 7.0, 8.9 and 9.0.
 
 ### Fixed
@@ -64,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Finding guards say what to fix.** Every MCP rejection now starts with `error:` and names the field and expected shape; advisory messages are listed as `warning:` under "FORMAT WARNINGS (non-blocking)". The wall-of-text rule publishes its limit (180 characters per field), reports the character count, and is applied separately to `detail` and to `blocks`/`body`; `detail` is marked DEPRECATED in the schema. A bad `proofReview.evidence` entry now names the role and whether the flowId/hash is empty, malformed, or given twice.
+- **Finding guards say what to fix.** Every MCP tool failure returned over the protocol now starts with `error:` (applied centrally to the tool-result error path, #87) and names the field and expected shape; advisory messages are listed as `warning:` under "FORMAT WARNINGS (non-blocking)". The wall-of-text rule publishes its limit (180 characters per field), reports the character count, and is applied separately to `detail` and to `blocks`/`body`; `detail` is marked DEPRECATED in the schema. A bad `proofReview.evidence` entry now names the role and whether the flowId/hash is empty, malformed, or given twice.
 - **Severity must match the calculated CVSS rating.** Creating a finding, or changing its severity or vector, is rejected when the severity disagrees with the rating of a valid CVSS 4.0 vector, unless `proofReview.severityOverride` documents why. An omitted severity on create follows the vector. A 0.0 score is shown and stored as Info while `rawRating` keeps the specification's `NONE`. `/api/finding-cvss` also returns `severity`, an `explanation` of the influential metrics and a `legacy` flag; the editor shows them live and has a severity-override field.
 - **CVSS 4.0 is enforced when a finding is written.** Creating a finding, or changing its `cvss`, now rejects anything that is not a valid `CVSS:4.0/` vector, and the error names the field and the expected format. Existing findings that carry a 3.1 vector are never rewritten; they stay editable and expose a computed `cvssWarning` so a reviewer can re-score them.
 
