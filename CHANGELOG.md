@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-06
+
 ### Added
 
 - **MCP scalar-target compatibility notice.** `scalarTargetCompatNotice` (`internal/mcp/schema_compat.go`) appends a `COMPATIBILITY` notice to create and update finding results when a client sent only the legacy scalar `target` and no structured `targets`, so a stale cached tool schema is reported instead of the call looking fully successful.
