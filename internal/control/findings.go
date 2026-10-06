@@ -235,6 +235,16 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		h.enrichFindingReportBodies(fs)
 	}
 	tagOrder := splitCSV(q.Get("tagOrder"))
+	audit := ""
+	if q.Get("audit") == "1" {
+		revisions := map[int64][]store.FindingRevision{}
+		for _, f := range fs {
+			if revs, err := h.st.ListFindingRevisions(f.ID, 100); err == nil {
+				revisions[f.ID] = revs
+			}
+		}
+		audit = report.AuditTrail(fs, revisions)
+	}
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -245,17 +255,17 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
 		if groupByTag {
-			w.Write([]byte(report.ProjectHTMLGroupedByTag(fs, issues, tagOrder, omitTags)))
+			w.Write([]byte(report.HTMLFromMarkdown(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit)))
 		} else {
-			w.Write([]byte(report.ProjectHTML(fs, issues)))
+			w.Write([]byte(report.HTMLFromMarkdown(report.Project(fs, issues) + audit)))
 		}
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
 		if groupByTag {
-			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)))
+			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit))
 		} else {
-			w.Write([]byte(report.Project(fs, issues)))
+			w.Write([]byte(report.Project(fs, issues) + audit))
 		}
 	default:
 		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")

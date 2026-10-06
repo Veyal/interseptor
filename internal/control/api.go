@@ -163,7 +163,7 @@ var apiRoutes = []apiRoute{
 	{"DELETE", "/api/packs/{name}", "Uninstall a rule pack and delete its check files; full-scope only"},
 	{"GET", "/api/findings", "List curated findings (optional ?severity=&status=&tag=; view=summary returns a bounded lightweight projection)"},
 	{"GET", "/api/findings/tags", "List tags in use on findings with counts (and optional colors from tag_meta)"},
-	{"GET", "/api/findings/report", "Curated findings as Markdown/HTML/JSON (?format=html|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=; ?issues=1; ?includeBodies=0)"},
+	{"GET", "/api/findings/report", "Curated findings as Markdown/HTML/JSON (?format=html|json; ?tag=; ?groupBy=tag; ?omitTags=; ?tagOrder=; ?issues=1; ?includeBodies=0; ?audit=1 appends the revision audit trail without values)"},
 	{"POST", "/api/findings", "Create an evidence-first finding. Body: {title, summary?, severity?, status?, confidence?, target?, targets?, proofReview?, claims?, notExecuted?, relatedFindings?, impact?, why?, cwe?, environment?, fix?, retest?, cvss?, verificationInstructions?, blocks?|body?, flowIds?, tags?, detail?, evidence?} — title required (stub OK); send blocks or legacy body, not both"},
 	{"GET", "/api/findings/{id}", "Get one canonical finding with typed blocks, proof/provenance, PoC flows, tags, structured readiness, and legacy ready/missing compatibility"},
 	{"PATCH", "/api/findings/{id}", "Update only sent finding fields. Accepts summary/confidence/retest, ordered targets, proofReview, claims (per-claim verdicts), notExecuted, relatedFindings, CVSS v4 vector, and structured blocks; send blocks or legacy body, not both"},

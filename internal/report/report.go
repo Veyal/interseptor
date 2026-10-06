@@ -88,6 +88,8 @@ func Findings(issues []store.Issue) string {
 func Project(findings []store.Finding, issues []store.Issue) string {
 	var b strings.Builder
 	b.WriteString("# Interseptor — Engagement Report\n\n")
+	titles := findingTitles(findings)
+	findings = withInverseRelations(findings)
 	if len(findings) == 0 && len(issues) == 0 {
 		b.WriteString("_No findings recorded._\n")
 		return b.String()
@@ -151,8 +153,10 @@ func Project(findings []store.Finding, issues []store.Issue) string {
 				b.WriteString("\n## " + orVal(f.Severity, "Info") + "\n")
 				lastSev = f.Severity
 			}
-			renderFinding(&b, n+1, f)
+			renderFinding(&b, n+1, f, titles)
 		}
+		renderChainsSection(&b, active)
+		renderNotExecutedSection(&b, sorted)
 	}
 
 	// Excluded / false-positive findings, listed but not part of the headline body.
@@ -234,7 +238,7 @@ func summaryTable(total int, counts, statusCounts map[string]int) string {
 // originate from untrusted proxied content — e.g. an AI pastes page content
 // into a finding — so it is neutralized before being written verbatim into the
 // exported report; see sanitizeLine/sanitizeBody for what each does and why.
-func renderFinding(b *strings.Builder, n int, f store.Finding) {
+func renderFinding(b *strings.Builder, n int, f store.Finding, titles map[int64]string) {
 	f.EnrichCompleteness()
 	fmt.Fprintf(b, "\n### %d. %s\n", n, sanitizeLine(f.Title))
 	if f.Status != "" {
@@ -263,6 +267,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 	if f.Readiness != nil && len(f.Readiness.Gaps) > 0 {
 		b.WriteString("- **Readiness gaps:** " + strings.Join(f.Readiness.Gaps, ", ") + "\n")
+	}
+	if withdrawn := withdrawnClaimIDs(f); len(withdrawn) > 0 {
+		b.WriteString("- **Withdrawn claims:** " + sanitizeLine(strings.Join(withdrawn, ", ")) + "\n")
 	}
 	if f.VerificationInstructions != "" {
 		b.WriteString("- **Verification:** " + sanitizeLine(f.VerificationInstructions) + "\n")
@@ -306,6 +313,9 @@ func renderFinding(b *strings.Builder, n int, f store.Finding) {
 	}
 
 	renderFindingTargets(b, f.Targets)
+	renderClaims(b, f)
+	renderFindingNotExecuted(b, f)
+	renderRelated(b, f, titles)
 
 	hasPoC := len(f.Blocks) > 0 || f.Detail != "" || f.Evidence != "" || len(f.Flows) > 0
 	if hasPoC {
@@ -613,6 +623,8 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 		return b.String()
 	}
 
+	titles := findingTitles(findings)
+	active = withInverseRelations(active)
 	sections := groupFindingsByTag(active, order, omit)
 	for _, sec := range sections {
 		b.WriteString("\n## " + sec.Title + "\n")
@@ -628,9 +640,11 @@ func ProjectGroupedByTag(findings []store.Finding, issues []store.Issue, tagOrde
 			return sorted[i].ID < sorted[j].ID
 		})
 		for n, f := range sorted {
-			renderFinding(&b, n+1, f)
+			renderFinding(&b, n+1, f, titles)
 		}
 	}
+	renderChainsSection(&b, active)
+	renderNotExecutedSection(&b, active)
 
 	if len(excluded) > 0 {
 		b.WriteString("\n---\n\n## Excluded — False Positives\n\n")

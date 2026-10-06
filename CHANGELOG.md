@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Per-claim verdicts on findings.** A finding can record `claims` with a verdict (`confirmed`, `partially_confirmed`, `not_reproduced`, `refuted`), evidence references and a note. Withdrawn claims are listed in readiness (`withdrawnClaims`) and rendered next to each claim in reports so a refutation cannot be dropped silently.
 - **Deliberately-not-executed requests.** `notExecuted` records requests that were authorised but intentionally not sent (method, target, reason, risk, whether authorisation is required). A documented entry satisfies the "explain why impact was not demonstrated" readiness path, and reports list them in their own section.
 - **Related findings.** `relatedFindings` links findings (`enables`, `enabled_by`, `chain`, `duplicate`, `escalates`). Ids are validated, links display from both ends, reports render the chain, and a `duplicate` link no longer demands evidence that lives on the original.
+- **Reports render the structured fields.** Markdown and HTML engagement reports show claims with a `WITHDRAWN` marker, a "Finding Chains" section, related findings from both ends, and a "Requests Deliberately Not Executed" section.
+- **Optional audit trail in report export.** `GET /api/findings/report?audit=1` appends a revision appendix (time, actor, source, action, changed field names, stated reason). It never includes field values or snapshots.
 - **Finding history covers the new fields.** Revision diffs and restore include claims, not-executed requests and related findings.
 
 ### Changed

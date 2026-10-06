@@ -55,3 +55,35 @@ func TestFindingStructuredFieldsAPI(t *testing.T) {
 		t.Fatalf("unknown related id: %d %s", r.Code, r.Body.String())
 	}
 }
+
+func TestFindingsReportOptionalAuditTrail(t *testing.T) {
+	h, _, _ := newHub(t)
+	handler := h.Handler()
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Host = "localhost"
+		handler.ServeHTTP(r, req)
+		return r
+	}
+	r := request("POST", "/api/findings", `{"title":"Audited","impact":"SECRET-VALUE-IN-IMPACT"}`)
+	var f store.Finding
+	_ = json.Unmarshal(r.Body.Bytes(), &f)
+	path := "/api/findings/" + strconv.FormatInt(f.ID, 10)
+	if r = request("PATCH", path, `{"title":"Audited v2"}`); r.Code != 200 {
+		t.Fatalf("patch: %d %s", r.Code, r.Body.String())
+	}
+	plain := request("GET", "/api/findings/report?statuses=all", "").Body.String()
+	if strings.Contains(plain, "Audit Trail") {
+		t.Fatal("audit trail must be opt-in")
+	}
+	with := request("GET", "/api/findings/report?statuses=all&audit=1", "").Body.String()
+	if !strings.Contains(with, "## Appendix: Audit Trail") || !strings.Contains(with, "fields: title") {
+		t.Fatalf("audit trail missing:\n%s", with)
+	}
+	idx := strings.Index(with, "## Appendix: Audit Trail")
+	if strings.Contains(with[idx:], "SECRET-VALUE-IN-IMPACT") {
+		t.Fatal("audit trail leaked a field value")
+	}
+}
