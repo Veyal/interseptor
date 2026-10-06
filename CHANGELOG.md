@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [2.4.0] - 2026-10-06
+## [2.4.1] - 2026-10-06
+
+> v2.4.0 was tagged but never published: its release workflow failed because the
+> UI node test passed a directory to `node --test`, which Node 21+ rejects. 2.4.1
+> supersedes it and includes all of the changes listed below.
 
 ### Added
 
@@ -37,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **UI node tests run on every Node version.** `TestUIPrimitivesPureLogicUnderNode` ran `node --test _js-tests/`; Node 21+ treats a directory argument as a module path ("Cannot find module .../_js-tests"), so the CI, Documentation and Release workflows failed on Node 22. It now passes an explicit file list from `filepath.Glob`, and the Release, Documentation and macOS CI jobs install Node 22 with `actions/setup-node`.
 - **No Unicode disclosure glyphs in stylesheets.** Seven `content:'▾'`/`'▸'` rules in `app.css` are replaced by the border-drawn chevron in `surfaces.css` (now applied to every `details`); the glyph test scans every stylesheet.
 - **Pentester flow wording and discoverability.** The Proxy toolbar gets an Edit scope button (opens Settings, Scope) and a one-time dismissible tip that the scope switch moved to the strip; Report preflight rows for verification, reproduction, retest and proof gaps say to reproduce in Repeater and attach the response as evidence. Terminology is unified: Settings and the palette say Scope (was Target scope), the finding flow picker says Attach as evidence (was Attach as PoC), the empty Findings hint points at Proxy (was History), the strip's Next chip says Attach evidence, and the scope chip name starts with its visible text.
 - **State and accessibility follow-ups.** A rejected Project State load no longer leaves an unhandled rejection; a superseded EventSource's `hello` no longer resets retry state; `createDensityVirtualList` unsubscribes (`dispose()`, or when its container is disconnected). The Flow Drawer gets Narrower and Wider buttons (single-pointer alternative to dragging, WCAG 2.5.7) and a 24px sash hit area (2.5.8); the sheet handle announces the new detent.

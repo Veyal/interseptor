@@ -3,6 +3,7 @@ package control
 import (
 	"io/fs"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -20,7 +21,16 @@ var primitiveModules = []string{
 
 func TestUIPrimitivesPureLogicUnderNode(t *testing.T) {
 	node := requireNode(t)
-	cmd := exec.Command(node, "--test", "_js-tests/")
+	// Pass an explicit file list: Node 21+ treats a directory argument as a module
+	// path ("Cannot find module .../_js-tests"), and only Node 20 recursed into it.
+	files, err := filepath.Glob(filepath.Join("ui", "_js-tests", "*.test.mjs"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no node test files found under ui/_js-tests: %v", err)
+	}
+	for i, f := range files {
+		files[i] = filepath.ToSlash(strings.TrimPrefix(f, "ui"+string(filepath.Separator)))
+	}
+	cmd := exec.Command(node, append([]string{"--test"}, files...)...)
 	cmd.Dir = "ui"
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node --test failed: %v\n%s", err, out)
