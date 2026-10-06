@@ -945,7 +945,7 @@ Content-Type: application/json
             </div>
             <div id="apiAllowlist" class="api-pane">
               <h3>IP allowlist</h3>
-              <p class="hint u-mb-3">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b></p>
+              <p class="hint u-mb-3">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b> Listed addresses also skip <b>proxy authentication</b> (no 407) on the proxy port, matched on the TCP peer address only.</p>
               <div class="hint u-mb-2" id="allowClientIP"></div>
               <div class="row u-gap-2 u-mb-3 u-wrap">
                 <input id="allowCIDR" class="repurl" aria-label="IP or CIDR" placeholder="100.65.105.2 or 100.64.0.0/10" spellcheck="false">
