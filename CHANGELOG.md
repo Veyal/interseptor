@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `preview.RenderFindingChain`: deterministic finding chain / attack-path PNG (longest-path layering, cycle edges dropped and noted, severity chips, edge labels, max 12 nodes) with alt text and summary.
 
 - **Authz differential matrix render (`preview.RenderAuthzMatrix`).** Deterministic report-width PNG of identities by requests with verdict glyphs (= same, D denied, ! broken, S session invalid), "N broken of M" summary, alt text listing broken cells by row and identity, and a "+N more" note past 8 identities or 40 rows.
 
