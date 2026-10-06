@@ -334,6 +334,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "get_finding_revision", "desc": "Historical finding snapshot and field-level diff"},
 		{"name": "restore_finding_revision", "desc": "Restore report content as a new revision"},
 		{"name": "preview_finding_targets", "desc": "Preview target cleanup while preserving evidence"},
+		{"name": "normalize_finding_targets", "desc": "Apply reviewer-approved path templates to a finding's targets (dry run by default)"},
 		{"name": "evaluate_finding_cvss", "desc": "Preview CVSS v4 score and severity"},
 		{"name": "list_flows", "desc": "List/search captured proxy flows"},
 		{"name": "get_flow", "desc": "Read a flow's raw request/response"},

@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Finding tool registry.** Registered `normalize_finding_targets` in the MCP descriptor and docs, and refreshed the retained UI audit runtime identity.
+
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.3.0` release.
 
 ## [2.3.0] - 2026-10-02
