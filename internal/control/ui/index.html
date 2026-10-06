@@ -193,28 +193,31 @@
   <!-- PROXY -->
   <!-- region:proxy -->
   <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
-    <div class="toolbar">
+    <div class="toolbar proxy-toolbar">
       <div class="search">
         <select id="fSearchScope" class="btn" title="Search in history" aria-label="Search scope"><option value="anywhere" selected>Anywhere</option><option value="body">Body</option><option value="id">ID</option><option value="script">Script</option></select>
         <input id="fSearch" aria-label="Search history (method / host / path / id)" placeholder="Search method / host / path / #id…">
       </div>
       <select id="fMethod" class="btn" aria-label="HTTP method filter"><option value="">All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
+      <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> In scope only</button>
+      <button type="button" class="btn" id="filtersBtn" title="Source, notes, tag and saved-search filters" aria-haspopup="true" aria-expanded="false" aria-controls="proxyFilters"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Filters <span id="filtersCount" class="filters-count" hidden></span></button>
       <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <div class="spacer"></div>
+      <button type="button" class="btn" id="inspectDock" aria-pressed="true" title="Show the selected flow in the side drawer instead of the bottom inspector"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg> Side drawer</button>
       <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Cols</button>
     </div>
-    <!-- Second and last toolbar tier: the filter state. Toggle pills, the
-         saved-search editor, the active-filter chips and the tag row all live
-         on one wrapping line so History starts within two rows of the panel top
-         (UI-REDESIGN-ROADMAP.md §3, "toolbar max 2 tiers"). -->
-    <div class="toolbar toolbar-secondary proxy-filter-bar">
-      <button type="button" class="uisw" id="notesFilter" title="Flows with notes" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
-      <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
-      <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> scope</button>
-      <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
-      <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
-      <div class="spacer"></div>
+    <!-- The Filters popover holds the secondary filter state (source pills, notes,
+         saved searches, tags) so History starts one toolbar tier below the panel
+         top. On phones it docks above the bottom nav as a sheet. -->
+    <div id="proxyFilters" class="proxy-filters-pop" role="group" aria-label="Filters" hidden>
+      <div class="proxy-filters-row">
+        <button type="button" class="uisw" id="notesFilter" title="Flows with notes" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
+        <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
+        <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
+        <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
+      </div>
+      <div id="tagBar" class="tagbar u-hidden" aria-label="Filter by tag"></div>
       <details class="flow-search-disc" id="flowSearchScripts">
         <summary class="hint u-cursor">Saved searches</summary>
         <div class="row u-w-full u-gap-2 u-wrap">
@@ -229,18 +232,22 @@
   return False</textarea>
         <div class="u-danger u-prewrap" id="flowSearchScriptError" role="alert"></div>
       </details>
+    </div>
+    <div class="toolbar toolbar-secondary proxy-filter-bar" id="activeFilterBar" hidden>
       <div id="chips"></div>
-      <div id="tagBar" class="tagbar u-hidden" aria-label="Filter by tag"></div>
     </div>
     <div id="tlsDiagBanner" class="tls-diag-banner u-hidden" role="status" aria-live="polite"></div>
-    <div id="selBar" class="row sel-bar u-hidden">
+    <div id="selBar" class="row sel-bar u-hidden" role="toolbar" aria-label="Bulk actions for the selected flows">
       <span id="selCount" class="sel-count"></span>
-      <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
-
-      <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
+      <button class="btn" id="selSendTo" aria-haspopup="menu" title="Send the selection to Repeater, Intruder or Scanner">Send to <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
       <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
+      <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
+      <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
+      <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
       <button class="btn sel-clear" id="selClear">Clear</button>
+      <span id="selProgress" class="hint sel-progress" role="status" aria-live="polite"></span>
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker u-hidden" role="group" aria-label="History columns"></div>
@@ -252,10 +259,11 @@
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
           <div class="spacer"></div>
+          <button class="btn btn-compact accent" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"/></svg> Attach as evidence</button>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
-          <button class="btn btn-compact" id="inspectAddFinding" aria-label="Add selected flow to a finding">+ Add to finding</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
-          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
+          <button class="btn btn-compact" id="inspectCopyAs" aria-label="Copy selected flow as" aria-haspopup="menu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
+          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
 
         </div>
         <div class="sel-decode" id="reqDecode" hidden></div>
