@@ -25,9 +25,16 @@ type RaceInput struct {
 	Barrier      bool
 	Rows         []RaceRow
 	SuccessLabel string // grep text used to mark success
+	// ExpectedMax is how many requests the application should have accepted
+	// (for example 1 coupon use); 0 means unknown and no baseline is drawn.
+	ExpectedMax int
 }
 
-const raceFooterNote = "separate connections; not single-packet synchronisation"
+const (
+	raceFooterNote  = "separate connections; not single-packet synchronisation"
+	raceLaunchTitle = "Client send-start window (not server arrival)"
+	raceHitsHeader  = "Pattern matches"
+)
 
 type raceGroup struct {
 	Status, Length int
@@ -45,6 +52,7 @@ type raceDup struct {
 
 type raceStats struct {
 	HasTiming   bool
+	LaunchN     int // rows covered by the launch window (barrier group or all)
 	SpreadUs    int64
 	MinStartUs  int64
 	MaxStartUs  int64
@@ -93,15 +101,7 @@ func analyzeRace(in RaceInput) raceStats {
 			}
 		}
 		if rowHasTiming(r) {
-			if !st.HasTiming {
-				st.HasTiming, st.MinStartUs, st.MaxStartUs = true, r.StartUs, r.StartUs
-			}
-			if r.StartUs < st.MinStartUs {
-				st.MinStartUs = r.StartUs
-			}
-			if r.StartUs > st.MaxStartUs {
-				st.MaxStartUs = r.StartUs
-			}
+			st.HasTiming = true
 			if r.EndUs > st.MaxEndUs {
 				st.MaxEndUs = r.EndUs
 			}
@@ -135,7 +135,7 @@ func analyzeRace(in RaceInput) raceStats {
 		return st.Dups[i].Value < st.Dups[j].Value
 	})
 	if st.HasTiming {
-		st.SpreadUs = st.MaxStartUs - st.MinStartUs
+		raceLaunchWindow(in, &st)
 		var timed []RaceRow
 		for _, r := range in.Rows {
 			if rowHasTiming(r) {
@@ -155,29 +155,75 @@ func analyzeRace(in RaceInput) raceStats {
 	return st
 }
 
+// raceLaunchWindow measures send-start spread over the rows that were really
+// launched together: with a barrier only the first Threads requests are parked
+// (later ones start after earlier completions), otherwise all rows.
+func raceLaunchWindow(in RaceInput, st *raceStats) {
+	bySeq := append([]RaceRow(nil), in.Rows...)
+	sort.SliceStable(bySeq, func(i, j int) bool { return bySeq[i].Seq < bySeq[j].Seq })
+	n := len(bySeq)
+	if in.Barrier && in.Threads > 0 && in.Threads < n {
+		n = in.Threads
+	}
+	st.LaunchN = n
+	first := true
+	for _, r := range bySeq[:n] {
+		if !rowHasTiming(r) {
+			continue
+		}
+		if first {
+			st.MinStartUs, st.MaxStartUs, first = r.StartUs, r.StartUs, false
+		}
+		st.MinStartUs = min64(st.MinStartUs, r.StartUs)
+		st.MaxStartUs = max64(st.MaxStartUs, r.StartUs)
+	}
+	st.SpreadUs = st.MaxStartUs - st.MinStartUs
+}
+
+func min64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// raceBanner leads with the success pattern only when one is configured. A
+// repeated body or status alone is not a signal (a protected endpoint answers
+// every attempt identically), so it is never part of the headline.
 func raceBanner(in RaceInput, st raceStats) string {
-	var parts []string
 	n := len(in.Rows)
+	var parts []string
 	if in.SuccessLabel != "" || st.Matched > 0 {
-		parts = append(parts, fmt.Sprintf("%d of %d returned the success pattern", st.Matched, n))
+		s := fmt.Sprintf("%d of %d returned the success pattern", st.Matched, n)
+		if in.ExpectedMax > 0 {
+			s += fmt.Sprintf(" (expected at most %d)", in.ExpectedMax)
+		}
+		parts = append(parts, s)
+	} else {
+		parts = append(parts, fmt.Sprintf("%d responses recorded, %d distinct outcomes; no success pattern configured; counts are descriptive only", n, len(st.Groups)))
 	}
 	if len(st.Dups) > 0 {
-		s := fmt.Sprintf("%d responses returned the same value", st.Dups[0].Count)
+		s := fmt.Sprintf("%d responses share extracted value", st.Dups[0].Count)
 		if len(st.Dups) > 1 {
 			s += fmt.Sprintf(" (%d values repeated)", len(st.Dups))
 		}
-		parts = append(parts, s)
+		parts = append(parts, s+"; check whether it should be unique")
 	}
-	if len(st.Groups) > 0 && st.Groups[0].Count >= 2 {
-		g := st.Groups[0]
-		if g.Hash != "" {
-			parts = append(parts, fmt.Sprintf("%d identical bodies", g.Count))
-		} else {
-			parts = append(parts, fmt.Sprintf("%d responses with the same status and length", g.Count))
+	if len(st.Groups) > 0 {
+		if g := st.Groups[0]; g.Count >= 2 && g.Matched == g.Count {
+			if g.Hash != "" {
+				parts = append(parts, fmt.Sprintf("%d matched responses share an identical body", g.Count))
+			} else {
+				parts = append(parts, fmt.Sprintf("%d matched responses share status and length", g.Count))
+			}
 		}
-	}
-	if len(parts) == 0 {
-		parts = append(parts, fmt.Sprintf("%d responses recorded, %d distinct outcomes", n, len(st.Groups)))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -198,9 +244,14 @@ func raceNotes(in RaceInput, st raceStats) []string {
 	if !in.Barrier {
 		notes = append(notes, "no launch barrier")
 	}
-	if st.HasTiming {
-		notes = append(notes, fmt.Sprintf("all %d launched within %s", len(in.Rows), fmtUs(st.SpreadUs)))
-	} else {
+	switch {
+	case st.HasTiming && in.Barrier && st.LaunchN < len(in.Rows):
+		notes = append(notes, fmt.Sprintf("first %d launched within %s (client send-start); %d queued after completions", st.LaunchN, fmtUs(st.SpreadUs), len(in.Rows)-st.LaunchN))
+	case st.HasTiming && in.Barrier:
+		notes = append(notes, fmt.Sprintf("all %d launched within %s (client send-start)", len(in.Rows), fmtUs(st.SpreadUs)))
+	case st.HasTiming:
+		notes = append(notes, fmt.Sprintf("all %d started within %s (client send-start)", len(in.Rows), fmtUs(st.SpreadUs)))
+	default:
 		notes = append(notes, "timing not recorded; launch spread and first/last unavailable")
 	}
 	return notes
@@ -251,12 +302,42 @@ func RenderIntruderRace(in RaceInput, o Opts) (Rendered, error) {
 type raceDims struct {
 	laneH, lanes, shown, groups             int
 	bannerH, launchH, lanesH, tableH, total int
+	sampled, narrow                         bool
 }
 
 const raceMaxGroups = 8
 
+func raceNarrow(w int) bool { return w < 900 }
+
+// raceLanePlan thins rows (sorted by Seq) to at most lanes entries by an even
+// stride so the plotted lanes span the whole run, not just its first requests.
+func raceLanePlan(rows []RaceRow, lanes int) []RaceRow {
+	if lanes < 1 || len(rows) <= lanes {
+		return rows
+	}
+	stride := (len(rows) + lanes - 1) / lanes
+	out := make([]RaceRow, 0, lanes)
+	for i := 0; i < len(rows); i += stride {
+		out = append(out, rows[i])
+	}
+	return out
+}
+
+// raceSampleNote tells the reader which slice of the run the lanes show.
+func raceSampleNote(shown, total int, spanUs int64) string {
+	every := (total + shown - 1) / max(shown, 1)
+	return fmt.Sprintf("Showing %d of %d responses (every %d by dispatch order); the time axis covers the full run, 0 to %s. Counts and the outcome table include all responses.", shown, total, every, fmtUs(spanUs))
+}
+
+func raceLegendNote(st raceStats) string {
+	if len(st.Dups) == 0 {
+		return ""
+	}
+	return "outlined = repeated extracted value"
+}
+
 func raceLayout(w, n, budget, groups int, timed bool) raceDims {
-	d := raceDims{bannerH: 70, launchH: 110}
+	d := raceDims{bannerH: 70, launchH: 110, narrow: raceNarrow(w)}
 	d.laneH = 16
 	if n > 30 {
 		d.laneH = 8
@@ -268,15 +349,26 @@ func raceLayout(w, n, budget, groups int, timed bool) raceDims {
 	if budget < d.lanes {
 		d.lanes = budget
 	}
+	const cardH = 150
 	d.tableH = 40 + (min(groups, raceMaxGroups)+1)*24 + 20
-	if d.tableH < 190 {
-		d.tableH = 190
+	if d.narrow {
+		d.tableH += 20 + cardH
+	} else if d.tableH < cardH {
+		d.tableH = cardH
 	}
-	fixed := titleH + footerH + d.bannerH + d.launchH + 60 + d.tableH
+	fixed := titleH + footerH + d.bannerH + d.launchH + 78 + d.tableH
 	if avail := (maxRenderHeight - fixed) / d.laneH; d.lanes > avail {
 		d.lanes = max(avail, 1)
 	}
+	if d.lanes < n && d.lanes > 0 {
+		stride := (n + d.lanes - 1) / d.lanes
+		d.lanes = (n + stride - 1) / stride
+		d.sampled = true
+	}
 	d.lanesH = d.lanes*d.laneH + 56
+	if d.sampled {
+		d.lanesH += 34
+	}
 	if !timed {
 		d.launchH, d.lanesH = 30, 78
 	}
@@ -314,17 +406,19 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 
 	labelW := 0
 	if d.laneH >= 12 {
-		labelW = 120
+		labelW = 150
 	}
 	ax0, ax1 := x0+labelW, x1-10
 
 	// launch window
-	c.text(x0, y, "Launch window", fontBold, 13, p.ink)
+	c.text(x0, y, raceLaunchTitle, fontBold, 13, p.ink)
+	tx := x0 + c.measure(fontBold, 13, raceLaunchTitle) + 14
 	if !st.HasTiming {
-		c.text(x0+130, y+1, "timing not recorded", fontSans, 12, p.muted)
+		c.text(tx, y+1, "timing not recorded", fontSans, 12, p.muted)
 		y += d.launchH
 	} else {
-		c.text(x0+130, y+1, fmt.Sprintf("first to last start: %s (%d requests)", fmtUs(st.SpreadUs), len(rows)), fontSans, 12, p.muted)
+		launchRows := rows[:min(st.LaunchN, len(rows))]
+		c.text(tx, y+1, c.truncate(fontSans, 12, fmt.Sprintf("first to last start: %s (%d requests)", fmtUs(st.SpreadUs), len(launchRows)), x1-tx), fontSans, 12, p.muted)
 		span := st.SpreadUs
 		if span < 1 {
 			span = 1
@@ -332,7 +426,7 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 		base := y + 78
 		c.rect(ax0, base, ax1-ax0, 1, p.muted)
 		cols := map[int]int{}
-		for _, r := range rows {
+		for _, r := range launchRows {
 			if !rowHasTiming(r) {
 				continue
 			}
@@ -352,6 +446,14 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 	// response lanes
 	c.text(x0, y, "Responses (start to end, shared time axis)", fontBold, 13, p.ink)
 	y += 24
+	var plot []RaceRow
+	if st.HasTiming {
+		plot = raceLanePlan(rows, d.lanes)
+		if len(plot) < len(rows) {
+			c.text(x0, y, c.truncate(fontBold, 12, raceSampleNote(len(plot), len(rows), st.MaxEndUs), x1-x0), fontBold, 12, p.client)
+			y += 34
+		}
+	}
 	laneTop := y
 	if !st.HasTiming {
 		c.text(x0, y+4, "Timing not recorded: lanes not drawn. Outcomes are listed below.", fontSans, 12, p.muted)
@@ -363,17 +465,14 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 		}
 		xs := func(us int64) int { return ax0 + int(float64(us)/float64(maxEnd)*float64(ax1-ax0)) }
 		drawn := 0
-		for _, r := range rows {
-			if drawn >= d.lanes {
-				break
-			}
+		for _, r := range plot {
 			ly := laneTop + drawn*d.laneH
 			drawn++
 			if !rowHasTiming(r) {
 				continue
 			}
 			if d.laneH >= 12 {
-				lbl := fmt.Sprintf("#%d w%d %d %s", r.Seq, r.Worker, r.Status, statusGlyph(r.Status))
+				lbl := fmt.Sprintf("#%d w%d %s", r.Seq, r.Worker, statusChipText(r.Status))
 				c.text(x0, ly+1, c.truncate(fontMono, 11, lbl, labelW-6), fontMono, 11, p.ink)
 			}
 			bx, ex := xs(r.StartUs), xs(r.EndUs)
@@ -385,29 +484,25 @@ func drawRace(c *canvas, body image.Rectangle, in RaceInput, st raceStats, rows 
 		}
 		// outline duplicated rows
 		drawn = 0
-		for i, r := range rows {
-			if drawn >= d.lanes {
-				break
-			}
+		for i, r := range plot {
 			ly := laneTop + drawn*d.laneH
 			drawn++
-			if rowHasTiming(r) && dupIndex(rows, st, i) {
+			if rowHasTiming(r) && dupIndex(plot, st, i) {
 				bx, ex := xs(r.StartUs), xs(r.EndUs)
 				c.strokeRect(bx-1, ly, max(ex-bx, 3)+2, d.laneH, p.ink)
 			}
 		}
-		y = laneTop + d.lanes*d.laneH + 4
+		y = laneTop + len(plot)*d.laneH + 4
 		drawTimeAxis(c, ax0, ax1, y, 0, float64(maxEnd), 6)
 		y += 32
-		if len(rows) > d.lanes {
-			c.text(x0, y-14, fmt.Sprintf("+%d more aggregated (included in outcome table)", len(rows)-d.lanes), fontSans, 12, p.muted)
-		}
 	}
 
 	c.legend(x0, y, x1, []legendItem{{"2xx ok", p.success}, {"3xx", p.redirect}, {"4xx", p.client}, {"429/403/423 X", p.blocked}, {"5xx", p.server}, {"error E", p.errc}})
-	c.text(x1-c.measure(fontSans, 12, "outlined = repeated extracted value"), y, "outlined = repeated extracted value", fontSans, 12, p.muted)
+	if note := raceLegendNote(st); note != "" {
+		c.text(x1-c.measure(fontSans, 12, note), y, note, fontSans, 12, p.muted)
+	}
 	y += 28
-	drawRaceTable(c, x0, y, x1, in, st)
+	drawRaceTable(c, x0, y, x1, d.narrow, in, st)
 }
 
 // dupIndex reports whether row index i (in sorted rows) carries a repeated value.
@@ -446,11 +541,15 @@ func drawTimeAxis(c *canvas, x0, x1, y int, lo, hi float64, n int) {
 	}
 }
 
-func drawRaceTable(c *canvas, x0, y, x1 int, in RaceInput, st raceStats) {
+func drawRaceTable(c *canvas, x0, y, x1 int, narrow bool, in RaceInput, st raceStats) {
 	p := c.pal
 	tw := (x1 - x0) * 62 / 100
-	colW := []int{70, 60, 70, 60, tw - 260}
-	hdr := []string{"Status", "Count", "Length", "Hits", "Sample extracted value"}
+	if narrow {
+		tw = x1 - x0
+	}
+	hitsW := c.measure(fontBold, 12, raceHitsHeader) + 14
+	colW := []int{104, 60, 70, hitsW, max(tw-(104+60+70+hitsW), 70)}
+	hdr := []string{"Status", "Count", "Length", raceHitsHeader, "Sample extracted value"}
 	shown := min(len(st.Groups), raceMaxGroups)
 	rowH := 24
 	c.text(x0, y, "Outcome groups", fontBold, 13, p.ink)
@@ -466,7 +565,7 @@ func drawRaceTable(c *canvas, x0, y, x1 int, in RaceInput, st raceStats) {
 		g := st.Groups[i]
 		ry := ty + (i+1)*rowH
 		cx = x0
-		c.chip(cx+4, ry+2, fmt.Sprintf("%d %s", g.Status, statusGlyph(g.Status)), p.statusColor(g.Status), p.paper)
+		c.chip(cx+4, ry+2, statusChipText(g.Status), p.statusColor(g.Status), p.paper)
 		cx += colW[0]
 		c.text(cx+6, ry+5, strconv.Itoa(g.Count), fontMono, 12, p.ink)
 		cx += colW[1]
@@ -484,10 +583,16 @@ func drawRaceTable(c *canvas, x0, y, x1 int, in RaceInput, st raceStats) {
 		c.text(x0, ty+(shown+1)*rowH+6, fmt.Sprintf("+%d more groups aggregated", len(st.Groups)-shown), fontSans, 12, p.muted)
 	}
 
-	// first vs last card
+	// first vs last card (beside the table, or below it when narrow)
 	cxs := x0 + tw + 20
 	cw := x1 - cxs
-	c.text(cxs, y, "First vs last response", fontBold, 13, p.ink)
+	cardY := y
+	if narrow {
+		cxs, cw = x0, x1-x0
+		cardY = ty + (shown+1)*rowH + 36
+		ty = cardY + 22
+	}
+	c.text(cxs, cardY, "First vs last response", fontBold, 13, p.ink)
 	c.rect(cxs, ty, cw, 4*rowH+6, p.panel)
 	c.strokeRect(cxs, ty, cw, 4*rowH+6, p.grid)
 	if st.First == nil {

@@ -31,7 +31,7 @@ func TestRaceDuplicatesAndBanner(t *testing.T) {
 	if len(st.Dups) == 0 || st.Dups[0].Count != 3 || st.Dups[0].Value != "coupon-A" {
 		t.Fatalf("dups=%+v", st.Dups)
 	}
-	if !strings.Contains(st.Banner, "3 responses returned the same value") {
+	if !strings.Contains(st.Banner, "3 responses share extracted value") {
 		t.Fatalf("banner=%q", st.Banner)
 	}
 	if !strings.Contains(st.Banner, "3 of 10 returned the success pattern") {
