@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Veyal/interseptor/internal/intruder"
 	"github.com/Veyal/interseptor/internal/preview"
@@ -30,6 +32,11 @@ const (
 	maxChainNodes                       = 12
 	maxChainDepth                       = 3
 	authzRunCacheSize                   = 20
+	renderConcurrency                   = 4                // simultaneous renders (each can hold ~12 MB of pixels)
+	renderTimeout                       = 10 * time.Second // wall-clock budget for one render
+	maxRenderHeaderRunes                = 2000
+	minEvidenceWidth                    = 640
+	maxEvidenceWidth                    = 1600
 	evidenceRenderSource                = "evidence_render"
 	latestRunAlias                      = "latest"
 )
@@ -58,10 +65,21 @@ func writeEvidenceError(w http.ResponseWriter, err error) {
 type evidenceAPI struct {
 	*Hub
 	authz *authzRunCache
+	sem   chan struct{} // bounds concurrent renders; a full channel answers 503
 }
 
 func newEvidenceAPI(h *Hub) *evidenceAPI {
-	return &evidenceAPI{Hub: h, authz: &authzRunCache{runs: map[string][]authzRunOut{}}}
+	return &evidenceAPI{Hub: h, authz: &authzRunCache{runs: map[string][]authzRunOut{}}, sem: make(chan struct{}, renderConcurrency)}
+}
+
+var errRenderTimeout = preview.ErrRenderTimeout
+
+// mapRenderError turns a renderer deadline into a retryable 503.
+func mapRenderError(err error) error {
+	if errors.Is(err, preview.ErrRenderTimeout) {
+		return evErr(http.StatusServiceUnavailable, "render timed out; try a smaller run or retry")
+	}
+	return err
 }
 
 // authzRunCache keeps the most recent authz runs in memory so the matrix can
@@ -206,6 +224,10 @@ func writeRenderedPNG(w http.ResponseWriter, r *http.Request, rd preview.Rendere
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s.png"`, name))
+	// The UI shows these (and stores the alt as the image caption); they are
+	// percent-encoded so any text is a valid header value.
+	w.Header().Set("X-Render-Alt", url.PathEscape(clipText(rd.Alt, maxRenderHeaderRunes)))
+	w.Header().Set("X-Render-Summary", url.PathEscape(clipText(rd.Summary, maxRenderHeaderRunes)))
 	_, _ = w.Write(rd.PNG)
 }
 
@@ -221,7 +243,9 @@ func clipText(s string, n int) string {
 	return string(r[:n])
 }
 
-func evidenceOpts(width int) preview.Opts { return preview.Opts{Width: width} }
+func evidenceOpts(width int) preview.Opts {
+	return preview.Opts{Width: width, Deadline: time.Now().Add(renderTimeout)}
+}
 
 // parseExpectedParam reads the optional race baseline (how many requests the
 // application should have accepted).
@@ -237,14 +261,18 @@ func parseExpectedParam(raw string) (int, error) {
 	return n, nil
 }
 
+func validEvidenceWidth(n int) bool {
+	return n == 0 || (n >= minEvidenceWidth && n <= maxEvidenceWidth)
+}
+
 func parseWidthParam(raw string) (int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0, nil
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < 0 || n > 100000 {
-		return 0, evErr(http.StatusBadRequest, "width must be a positive integer")
+	if err != nil || !validEvidenceWidth(n) {
+		return 0, evErr(http.StatusBadRequest, fmt.Sprintf("width must be 0 (default) or between %d and %d", minEvidenceWidth, maxEvidenceWidth))
 	}
 	return n, nil
 }
@@ -308,6 +336,17 @@ func isIntruderKind(k string) bool {
 }
 
 func (e *evidenceAPI) render(q evidenceRequest) (evidenceResult, error) {
+	select {
+	case e.sem <- struct{}{}:
+		defer func() { <-e.sem }()
+	default:
+		return evidenceResult{}, evErr(http.StatusServiceUnavailable, "too many renders in progress; retry shortly")
+	}
+	res, err := e.renderLimited(q)
+	return res, mapRenderError(err)
+}
+
+func (e *evidenceAPI) renderLimited(q evidenceRequest) (evidenceResult, error) {
 	o := evidenceOpts(q.Width)
 	switch {
 	case isIntruderKind(q.Kind):
@@ -691,9 +730,33 @@ func (e *evidenceAPI) getFlowDiffRender(w http.ResponseWriter, r *http.Request) 
 		writeEvidenceError(w, err)
 		return
 	}
-	a, _ := parseFlowIDParam(r.URL.Query().Get("a"))
-	b, _ := parseFlowIDParam(r.URL.Query().Get("b"))
-	e.serveRender(w, r, evidenceRequest{Kind: preview.KindFlowDiff, A: a, B: b, Width: width}, fmt.Sprintf("flow-diff-%d-%d", a, b))
+	v := r.URL.Query()
+	a, err := parseStrictID(v.Get("a"), "a")
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
+	b, err := parseStrictID(v.Get("b"), "b")
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
+	e.serveRender(w, r, evidenceRequest{Kind: preview.KindFlowDiff, A: a, B: b, Width: width,
+		IncludeBody: preview.ParseBool(v.Get("includeBody"), false)}, fmt.Sprintf("flow-diff-%d-%d", a, b))
+}
+
+// parseStrictID reads an optional positive integer id: empty means unset (0),
+// anything else that is not a positive integer is a 400 rather than a silent 0.
+func parseStrictID(raw, name string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	id, ok := parseFlowIDParam(raw)
+	if !ok {
+		return 0, evErr(http.StatusBadRequest, name+" must be a positive integer")
+	}
+	return id, nil
 }
 
 // GET /api/render/flow-waterfall.png?ids=1,2,3
@@ -718,7 +781,11 @@ func (e *evidenceAPI) getFindingChainRender(w http.ResponseWriter, r *http.Reque
 		writeEvidenceError(w, err)
 		return
 	}
-	fid, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("findingId")), 10, 64)
+	fid, err := parseStrictID(r.URL.Query().Get("findingId"), "findingId")
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
 	e.serveRender(w, r, evidenceRequest{Kind: preview.KindFindingChain, FindingID: fid, Width: width}, fmt.Sprintf("finding-chain-%d", fid))
 }
 
@@ -748,26 +815,34 @@ func evidenceRequestFromQuery(r *http.Request) (evidenceRequest, error) {
 	if q.Expected, err = parseExpectedParam(v.Get("expected")); err != nil {
 		return evidenceRequest{}, err
 	}
-	q.A, _ = parseFlowIDParam(orVal(v.Get("flowIdA"), v.Get("a")))
-	q.B, _ = parseFlowIDParam(orVal(v.Get("flowIdB"), v.Get("b")))
+	if q.A, err = parseStrictID(orVal(v.Get("flowIdA"), v.Get("a")), "flowIdA"); err != nil {
+		return evidenceRequest{}, err
+	}
+	if q.B, err = parseStrictID(orVal(v.Get("flowIdB"), v.Get("b")), "flowIdB"); err != nil {
+		return evidenceRequest{}, err
+	}
 	if q.FlowIDs, err = parseFlowIDList(orVal(v.Get("flowIds"), v.Get("ids"))); err != nil {
 		return evidenceRequest{}, err
 	}
-	q.FindingID = firstFindingID(orVal(v.Get("findingId"), v.Get("findingIds")))
+	if q.FindingID, err = firstFindingID(orVal(v.Get("findingId"), v.Get("findingIds"))); err != nil {
+		return evidenceRequest{}, err
+	}
 	if isIntruderKind(kind) && q.RunID == "" {
 		q.RunID = "latest"
 	}
 	return q, nil
 }
 
-// firstFindingID returns the first positive id of a comma-separated list (the chain root).
-func firstFindingID(raw string) int64 {
+// firstFindingID returns the first id of a comma-separated list (the chain
+// root); a non-numeric entry is a 400.
+func firstFindingID(raw string) (int64, error) {
 	for _, p := range strings.Split(raw, ",") {
-		if id, ok := parseFlowIDParam(p); ok {
-			return id
+		if strings.TrimSpace(p) == "" {
+			continue
 		}
+		return parseStrictID(p, "findingId")
 	}
-	return 0
+	return 0, nil
 }
 
 func parseFlowIDList(raw string) ([]int64, error) {
@@ -825,9 +900,15 @@ func (e *evidenceAPI) attachEvidenceRender(w http.ResponseWriter, r *http.Reques
 		httpErr(w, http.StatusBadRequest, "kind must be one of timeline, distribution, race, strip, authz, flow-diff, flow-waterfall, finding-chain")
 		return
 	}
-	if in.Width < 0 || in.Width > 100000 || len(in.FlowIDs) > maxWaterfallFlows {
-		httpErr(w, http.StatusBadRequest, "invalid width or too many flowIds")
+	if !validEvidenceWidth(in.Width) || len(in.FlowIDs) > maxWaterfallFlows {
+		httpErr(w, http.StatusBadRequest, fmt.Sprintf("width must be 0 (default) or between %d and %d, with at most %d flowIds", minEvidenceWidth, maxEvidenceWidth, maxWaterfallFlows))
 		return
+	}
+	for _, id := range append([]int64{in.A, in.B, in.FlowIDA, in.FlowIDB, in.FindingID}, append(in.FlowIDs, in.FindingIDs...)...) {
+		if id < 0 {
+			httpErr(w, http.StatusBadRequest, "ids must be positive integers")
+			return
+		}
 	}
 	runID := strings.TrimSpace(in.AttackID)
 	if runID == "" {

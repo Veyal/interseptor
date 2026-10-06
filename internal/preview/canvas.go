@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/image/font"
@@ -545,6 +546,9 @@ func renderFrame(o Opts, f frame) ([]byte, int, int, error) {
 	w := o.width()
 	rows := o.maxRows()
 	for {
+		if !o.Deadline.IsZero() && time.Now().After(o.Deadline) {
+			return nil, 0, 0, ErrRenderTimeout
+		}
 		h := titleH + f.BodyHeight(rows) + footerH
 		if h > maxRenderHeight {
 			h = maxRenderHeight

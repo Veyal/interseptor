@@ -1,8 +1,10 @@
 package preview
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Kind identifies which evidence render produced a Rendered value.
@@ -32,7 +34,13 @@ type Opts struct {
 	Width   int  // default 1100, clamped to 640..1600
 	Dark    bool // dark theme for UI preview only
 	MaxRows int  // plotted rows before aggregation (default 400)
+	// Deadline aborts a render with ErrRenderTimeout once passed (checked
+	// between draw attempts); the zero value means no deadline.
+	Deadline time.Time
 }
+
+// ErrRenderTimeout is returned when Opts.Deadline passes before a render ends.
+var ErrRenderTimeout = errors.New("preview: render deadline exceeded")
 
 const (
 	defaultRenderWidth = 1100
