@@ -971,6 +971,38 @@ function wireRepeaterActions(){
   $('#repCopyCurl').onclick=repCopyCurl;
   syncRepActions();
 }
+// parseRawRequest splits an edited raw HTTP request (CRLF or LF) into method,
+// target, header text and body. Returns null when there is no request line.
+export function parseRawRequest(raw){
+  const text=String(raw||'');
+  const m=/\r?\n\r?\n/.exec(text);
+  const head=m?text.slice(0,m.index):text;
+  const body=m?text.slice(m.index+m[0].length):'';
+  const lines=head.split(/\r?\n/);
+  const first=/^([A-Za-z]+)\s+(\S+)(?:\s+HTTP\/\d(?:\.\d)?)?\s*$/.exec(lines.shift()||'');
+  if(!first)return null;
+  return {method:first[1].toUpperCase(),target:first[2],headers:lines.filter(line=>line.trim()).join('\n'),body};
+}
+// sendRawToRepeater opens an edited raw request (for example a held Intercept
+// message) in a new Repeater tab. It never reuses a tab, so no work is lost.
+export async function sendRawToRepeater({scheme,host,raw,label}){
+  const req=parseRawRequest(raw);
+  if(!req){toast('Held message is not an editable HTTP request','warn');return false;}
+  if(!await waitForWorkstationReady())return false;
+  const hostHeader=/^host:\s*(\S+)/im.exec(req.headers);
+  const authority=(hostHeader&&hostHeader[1])||host||'';
+  const url=/^https?:\/\//i.test(req.target)?req.target:`${scheme||'http'}://${authority}${req.target.startsWith('/')?'':'/'}${req.target}`;
+  const t=repNewTab();if(!t)return false;
+  t.method=req.method;t.url=url;t.headers=req.headers;t.body=req.body;
+  t.reqView='pretty';t.sourceFlowId=null;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
+  t.label=label||'';t.requestAdoptionPristine=false;t.resId=null;t.status='';t.color='';t.sendError='';
+  t.reqEditEpoch=(t.reqEditEpoch||0)+1;t.title=repTitle(t);
+  renderRepTabs();repPersist();
+  document.querySelector('.tab[data-tab="repeater"]').click();
+  repLoadEditor();
+  toast('loaded held request into Repeater · it is still held');
+  return true;
+}
 export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   let hydration=await hydrateUIState('repeater','rep.tabs',isSafePersistedTabState);

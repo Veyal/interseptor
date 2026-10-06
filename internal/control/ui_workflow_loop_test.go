@@ -33,3 +33,23 @@ func TestUIRepeaterResponsePaneOffersIntruderFindingAndCurl(t *testing.T) {
 	css := readUIAsset(t, "app.css")
 	requireUIContains(t, css, ".rep-actions{", ".rep-res .pane-head{")
 }
+
+func TestUIInterceptHeldRequestCanOpenInRepeaterWithoutForwarding(t *testing.T) {
+	intercept := readUIAsset(t, "js/intercept.js")
+	requireUIContains(t, intercept,
+		"import { sendRawToRepeater } from './tools.js'",
+		"id='heldRepeaterBtn'",
+		"sendRawToRepeater({scheme:h.scheme,host:h.host,raw:$('#heldRaw').value})",
+		"b.hidden=side==='resp'",
+		"'#heldRepeaterBtn']",
+	)
+	if containsAny(intercept, "style.cssText", "style.marginLeft") {
+		t.Error("intercept.js must use shared classes instead of inline style writes for held-load state")
+	}
+	tools := readUIAsset(t, "js/tools.js")
+	requireUIContains(t, tools,
+		"export function parseRawRequest(raw)",
+		"export async function sendRawToRepeater({scheme,host,raw,label})",
+		"const t=repNewTab();if(!t)return false;",
+	)
+}

@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Repeater gains Intruder, + Finding and Copy cURL actions.** The response pane head now loads the current request into Intruder (target from the URL, `Host` added when missing), attaches the last response flow to a finding (disabled until a send produces one) and copies the request as cURL.
 
+- **Intercept is no longer a dead end.** A held request has a `Repeater ↗` action that opens the edited raw request in a new Repeater tab (scheme from the held item, host from the `Host` header) while leaving it held; the held-message load state uses shared `.held-load-state`/`.state-error-msg` classes instead of inline `cssText`.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
