@@ -171,6 +171,24 @@ evidence mappings.
 
 Presets are authoring shortcuts. They do not change the stored schema or the exported format.
 
+### Capability checklist before report-ready
+
+Readiness reports these separately (`readiness.capabilities`):
+
+- **Action** — the exact triggering request or flow.
+- **Result** — the observed outcome.
+- **Control** — a negative or normal-behavior request that distinguishes vulnerable behavior.
+- **Visual** — a real browser/device screenshot of the executed result for browser findings. An
+  operator-uploaded image counts only after a reviewer classifies it
+  (`POST /api/findings/{id}/images/{hash}/classify` or MCP `classify_finding_image`); generated flow
+  previews never qualify. Readiness counts `uploadedImageCount` and `generatedImageCount` apart from
+  `screenshotCount`.
+
+Test the claimed impact end to end when it is safe and in scope. When a step was not executed, set
+`proofReview.execution` to `not_executed` with a `proofReview.reason`, keep the status
+`needs_verification`, or narrow the impact. Keep secrets out of evidence: a length, stable hash, or
+redacted prefix is enough to show access.
+
 ## Evidence rules
 
 Every report-ready finding needs at least one non-missing evidence artifact. Screenshot evidence is
@@ -283,6 +301,19 @@ and secure them as sensitive engagement artifacts. Follow the
 
 
 ## Review, final export, and capability claims
+
+`GET /api/findings/readiness` also returns a project-wide `board` (id, title, severity, status, ready,
+blocking gaps; sorted by severity) and, per finding, `issues` as `{rule, field, capability, message}`.
+`GET /api/finding-quality/{id}` and MCP `finding_readiness` (with `id`) return the same issues for one
+finding. The final gate requires a CVSS v4.0 vector; it never modifies or redacts evidence. The Export
+dialog's **Check readiness** button shows the board in the UI.
+
+`GET /api/project/readiness` is the compact aggregate behind the engagement strip (counts only, no
+bodies or titles): `scope` `{enabled, in, out}` (enabled = at least one enabled include rule), `brief`
+`{target, ok}`, `evidence` `{flows, shots, ws}`, `findings` `{total, ready, items, truncated}` (at most
+200 `{id, stage, gaps}` items) and `blockers`. Blockers are the project-level codes `brief_target` and
+`scope` (same id as the readiness checklist) followed by the distinct server-computed finding gap codes.
+It sits behind the same guard as every other `/api` route.
 
 The export dialog defaults to **Final**, which requires every included finding to pass the same
 checks returned by `GET /api/findings/readiness` and MCP `finding_readiness`. Select **Draft** to
