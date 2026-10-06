@@ -355,6 +355,7 @@ var mcpDescriptor = map[string]any{
 		{"name": "update_finding", "desc": "Update canonical finding fields or structured blocks"},
 		{"name": "add_finding_poc", "desc": "Attach a captured flow with role and proof statement"},
 		{"name": "add_finding_image", "desc": "Attach a real screenshot with role, proof, and provenance"},
+		{"name": "classify_finding_image", "desc": "Reviewer relabel of an attached image as a browser/device capture without re-upload"},
 		{"name": "render_flow_preview", "desc": "Render a flow as a provenance-labeled HTTP PNG and optionally attach it"},
 		{"name": "remove_finding_poc", "desc": "Detach a PoC flow from a finding"},
 		{"name": "delete_finding", "desc": "Permanently delete a finding (cannot be undone)"},
