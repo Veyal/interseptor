@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Stylesheet component hygiene.** `.btn.accent`/`.btn-primary` and `.btn.danger`/`.btn-danger` now share one rule each and a disabled primary button looks inert; the Repeater tab close button is fully opaque (`--fg3`), at least 24px and has a focus style; status dots share one glow-free rule (`.is-ok`/`.is-fail` modifiers added for the activity dot); the lightbox uses `--lightbox-*` tokens; radii use `--r-*`; toasts get `info` styling, token padding/elevation and a container-relative width. The audit item about a hard-coded `Highlight` checkbox outline was already inside `@media (forced-colors:active)` and was left unchanged.
+
 - **Findings stylesheet follows the design tokens.** The undefined `--border` token (invisible revision, deleted-row, cleanup and capability borders) now resolves to `--line`/`--line2`; `findings.css` font sizes use the `--fs-*` scale (new `--fs-3xl`), off-scale radii use `--r-*`, and `TestUITypeScaleIsBounded` now covers `findings.css` and `surfaces.css`.
 
 - **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.

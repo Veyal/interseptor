@@ -60,6 +60,9 @@
   --state-pending:var(--amber); --state-danger:var(--red);
   --content-note:var(--violet);
   /* Layout constants */
+  /* Image lightbox — a blackout viewer, deliberately theme-independent. */
+  --lightbox-bg:rgba(0,0,0,.82); --lightbox-bar:rgba(0,0,0,.55); --lightbox-stage:rgba(0,0,0,.35);
+  --lightbox-fg:#fff; --lightbox-fg-dim:rgba(255,255,255,.7); --lightbox-line:rgba(255,255,255,.08);
   --nav-rail-w:204px; --side-panel-w:280px;
   --topbar-h:52px; --ctxbar-h:40px;
 }
@@ -125,7 +128,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* Empty/error-state art is large and decorative: thin the stroke so it does not
    read as a heavy blob at 34px. */
 .state-empty-icon .icon,.state-error-icon .icon{width:1em;height:1em;stroke-width:1.25;vertical-align:0}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:none}
+.dot,.nav-dot,.sse-dot,.act-row .ok{width:7px;height:7px;flex:none;border-radius:50%;background:var(--accent);box-shadow:none}
 .blink{opacity:.65}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
 
@@ -185,7 +188,7 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 /* .nav-dot — lightweight off-screen-update indicator for rail items that don't
    have a numeric badge yet (Discover/Map). Mirrors .badge placement but as a
    plain dot, per the roadmap's "fold into the rail's badge system" ask. */
-.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);margin-left:auto;flex:none;display:none}
+.nav-dot{margin-left:auto;display:none}
 .nav-dot.on{display:block}
 .ai-tag{font-size:var(--fs-xs);font-weight:700;background:var(--accentSolid);color:var(--onAccent);border-radius:var(--r-sm);padding:0 4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 /* .nav-foot-proj — active-project pill in the nav-rail foot (#projBadge). Replaces
@@ -230,21 +233,18 @@ pre,code,kbd,samp,textarea{font-family:var(--mono)}
 .btn:not(input):not(select):not(textarea){display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
 .btn:hover{color:var(--fg);background:var(--bg3);border-color:var(--line2);box-shadow:none}
 .btn:active{filter:brightness(.94)}
-.btn.accent{color:var(--onAccent);background:var(--accentSolid);border:1px solid var(--accentSolid);box-shadow:none}
-.btn.accent:hover{filter:brightness(1.12);box-shadow:none}
-.btn.danger{background:var(--redDim);color:var(--red)}
-.btn.danger:hover{background:var(--redSolid);color:var(--onDanger)}
+.btn.accent,.btn-primary{color:var(--onAccent);background:var(--accentSolid);border:1px solid var(--accentSolid);box-shadow:none}
+.btn.accent:hover,.btn-primary:hover{filter:brightness(1.12);box-shadow:none}
+.btn.accent:disabled,.btn-primary:disabled{color:var(--fg3);background:var(--bg3);border-color:var(--line);filter:none}
+.btn.danger,.btn-danger{background:var(--redDim);color:var(--red)}
+.btn.danger:hover,.btn-danger:hover{background:var(--redSolid);color:var(--onDanger)}
 .btn:disabled{opacity:.72;cursor:not-allowed}
 .btn.is-pending{color:var(--state-pending);border-color:var(--state-pending);cursor:progress}
 .btn.is-success{color:var(--state-on);border-color:var(--state-on);background:var(--accentDim)}
 .btn.is-error{color:var(--state-danger);border-color:var(--state-danger);background:var(--redDim)}
-/* additive modifier aliases: same rules as .btn.accent / .btn.danger, named per the
-   design-system convention (one .btn-primary per toolbar, .btn-danger for destructive actions).
-   Not wired into markup yet — existing .btn.accent/.btn.danger call sites are untouched. */
-.btn-primary{color:var(--onAccent);background:var(--accentSolid);border:1px solid var(--accentSolid);box-shadow:none}
-.btn-primary:hover{filter:brightness(1.12);box-shadow:none}
-.btn-danger{background:var(--redDim);color:var(--red)}
-.btn-danger:hover{background:var(--redSolid);color:var(--onDanger)}
+/* .btn-primary / .btn-danger are aliases of .btn.accent / .btn.danger (one
+   primary per toolbar, .btn-danger for destructive actions); each pair shares
+   one rule above so the two spellings cannot drift apart. */
 /* .btn-compact — tight padding for inline action buttons in dense rows (Proxy
    inspector action buttons #insRepeater/#insIntruder/#insCurl/#aiExplainBtn).
    Replaces the recurring inline `padding:3px 9px` on .btn elements. */
@@ -329,7 +329,7 @@ body.col-resizing{user-select:none;-webkit-user-select:none}
 .col-picker input{accent-color:var(--accent)}
 
 /* inspector */
-#inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0;background:var(--bg1);box-shadow:0 -4px 12px rgba(0,0,0,0.2)}
+#inspect{flex:none;height:46%;display:flex;border-top:1px solid var(--line);min-height:0;background:var(--bg1);box-shadow:0 -4px 12px var(--shadow)}
 .pane{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg1);border-right:1px solid var(--surface-frame);box-shadow:inset 0 1px 0 var(--line)}
 .pane:last-child{border-right:none}
 .pane-head{flex:none;height:38px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bg1);border-bottom:1px solid var(--line);box-shadow:none}
@@ -568,7 +568,9 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .act-row.act-jump{cursor:pointer}
 /* workflow separator: a thicker top rule marks where one AI workflow ends and the next begins */
 .act-row.act-grp{border-top:2px solid var(--line2);margin-top:3px}
-.act-row .ok{width:7px;height:7px;flex:none;border-radius:50%;align-self:center}
+.act-row .ok{align-self:center}
+.act-row .ok.is-ok{background:var(--accent)}
+.act-row .ok.is-fail{background:var(--red)}
 .act-intent{flex-basis:100%;margin-left:17px;color:var(--fg2);font-style:italic}
 /* AI→human input handoff banner */
 #humanInputBar{background:var(--noteDim);border-bottom:1px solid var(--amber)}
@@ -658,8 +660,8 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .rep-tab.on .rt-label{font-weight:700}
 .rep-tab .rt-select{display:flex;align-items:center;min-width:0;padding:6px 4px 8px 12px;color:inherit;background:transparent;font:inherit;text-align:left;cursor:pointer}
 .rep-tab .rt-label{overflow:hidden;text-overflow:ellipsis;max-width:212px;font-weight:600}
-.rep-tab .rt-close{opacity:.45;font-size:var(--fs-xs);border-radius:var(--r-sm);padding:0 3px}
-.rep-tab .rt-close:hover{opacity:1;color:var(--red);background:var(--sel)}
+.rep-tab .rt-close{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;opacity:1;color:var(--fg3);font-size:var(--fs-xs);border-radius:var(--r-sm);padding:0 3px}
+.rep-tab .rt-close:hover,.rep-tab .rt-close:focus-visible{color:var(--red);background:var(--sel)}
 .rep-tab-add{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--fg2);border-radius:var(--r-md);cursor:pointer;padding:5px 10px;font-size:var(--fs-md);line-height:1;align-self:center;margin-bottom:4px}
 .rep-tab-add:hover{color:var(--fg);background:var(--bg2)}
 .rep-tab-add[aria-disabled="true"]{cursor:not-allowed;color:var(--fg3);background:var(--bg3);opacity:.72}
@@ -1122,15 +1124,15 @@ textarea.raw{width:100%;height:200px;resize:vertical;background:var(--bg);color:
 .md strong{color:var(--fg);font-weight:700}
 .md-img{max-width:100%;border:1px solid var(--line);border-radius:var(--r-md);margin:8px 0;vertical-align:middle;cursor:zoom-in}
 /* Image lightbox — full-viewport focus + zoom/pan for evidence screenshots */
-.img-lightbox{z-index:250;padding:0;background:rgba(0,0,0,.82);align-items:stretch;justify-content:stretch}
+.img-lightbox{z-index:250;padding:0;background:var(--lightbox-bg);align-items:stretch;justify-content:stretch}
 .img-lightbox-shell{flex:1 1 auto;width:100%;height:100%;min-width:0;min-height:0;max-width:none;max-height:none;border:none;border-radius:0;background:transparent;box-shadow:none;display:flex;flex-direction:column;align-self:stretch}
-.img-lightbox-bar{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(0,0,0,.55);border-bottom:1px solid rgba(255,255,255,.08)}
-.img-lightbox-caption{flex:1;min-width:0;font-size:var(--fs-md);font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.img-lightbox-pct{font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right;color:rgba(255,255,255,.7)}
-.img-lightbox-stage{flex:1;min-height:0;position:relative;overflow:hidden;cursor:grab;touch-action:none;background:rgba(0,0,0,.35)}
+.img-lightbox-bar{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--lightbox-bar);border-bottom:1px solid var(--lightbox-line)}
+.img-lightbox-caption{flex:1;min-width:0;font-size:var(--fs-md);font-weight:600;color:var(--lightbox-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.img-lightbox-pct{font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right;color:var(--lightbox-fg-dim)}
+.img-lightbox-stage{flex:1;min-height:0;position:relative;overflow:hidden;cursor:grab;touch-action:none;background:var(--lightbox-stage)}
 .img-lightbox-stage.is-dragging{cursor:grabbing}
-.img-lightbox-stage img{position:absolute;left:0;top:0;max-width:none;max-height:none;width:auto;height:auto;transform-origin:0 0;user-select:none;-webkit-user-drag:none;border:none;border-radius:0;margin:0;box-shadow:0 8px 40px rgba(0,0,0,.45)}
-.img-lightbox-hint{flex:none;padding:6px 14px 10px;text-align:center;color:rgba(255,255,255,.55);background:rgba(0,0,0,.45);border-top:1px solid rgba(255,255,255,.06)}
+.img-lightbox-stage img{position:absolute;left:0;top:0;max-width:none;max-height:none;width:auto;height:auto;transform-origin:0 0;user-select:none;-webkit-user-drag:none;border:none;border-radius:0;margin:0;box-shadow:var(--elev-3)}
+.img-lightbox-hint{flex:none;padding:6px 14px 10px;text-align:center;color:var(--lightbox-fg-dim);background:var(--lightbox-bar);border-top:1px solid var(--lightbox-line)}
 details.acc{margin:0}
 details.acc>summary.acc-h{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px}
 details.acc>summary.acc-h::-webkit-details-marker{display:none}
@@ -1155,15 +1157,16 @@ details.acc>summary.acc-h>*{margin:7px 0}
 #inspectSplitter:hover::after,#inspectSplitter:focus::after{background:var(--onAccent)}
 
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:100}
-.toast-item{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);padding:9px 16px;font-size:var(--fs-sm);color:var(--fg);box-shadow:0 10px 30px var(--shadow);opacity:0;transform:translateY(6px);transition:opacity var(--motion-base) var(--motion-standard),transform var(--motion-base) var(--motion-standard);max-width:80vw}
+.toast-item{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-4);font-size:var(--fs-sm);color:var(--fg);box-shadow:var(--elev-2);opacity:0;transform:translateY(6px);transition:opacity var(--motion-base) var(--motion-standard),transform var(--motion-base) var(--motion-standard);max-width:100%}
 .toast-item.show{opacity:1;transform:none}
 .toast-item.error{border-color:var(--dangerLine);color:var(--dangerFg)}
 .toast-item.warn{border-color:var(--warnLine);color:var(--warnFg)}
+.toast-item.info{border-color:var(--blue)}
 .toast-item.success{border-color:var(--accent)}
 #sseStatus{display:inline-flex;align-items:center;gap:4px}
 .sse-status{align-items:center;gap:4px}
-.sse-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);transition:background var(--motion-base) var(--motion-standard)}
-.sse-dot.reconnecting{background:var(--pendingFill);box-shadow:0 0 6px var(--pendingFill);animation:ssePulse var(--motion-live) var(--motion-standard) infinite}
+.sse-dot{transition:background var(--motion-base) var(--motion-standard)}
+.sse-dot.reconnecting{background:var(--pendingFill);animation:ssePulse var(--motion-live) var(--motion-standard) infinite}
 @keyframes ssePulse{50%{opacity:.4}}
 
 /* responsive: only extreme narrow windows (not the normal desktop layout) */

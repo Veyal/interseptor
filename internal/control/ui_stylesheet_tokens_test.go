@@ -43,3 +43,77 @@ func TestUIAppStylesheetRadiiAreOnScale(t *testing.T) {
 		}
 	}
 }
+
+// One declaration per paired button alias, and a primary button that is
+// disabled must stop looking like the live call to action.
+func TestUIButtonAliasesShareOneRule(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	for _, want := range []string{
+		".btn.accent,.btn-primary{",
+		".btn.accent:hover,.btn-primary:hover{",
+		".btn.danger,.btn-danger{",
+		".btn.danger:hover,.btn-danger:hover{",
+		".btn.accent:disabled,.btn-primary:disabled{",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("app.css missing merged button rule %q", want)
+		}
+	}
+	for _, stale := range []string{"\n.btn-primary{", "\n.btn-danger{", "Not wired into markup yet"} {
+		if strings.Contains(css, stale) {
+			t.Errorf("app.css still carries stale duplicate %q", stale)
+		}
+	}
+}
+
+func TestUIRepTabCloseIsLegibleAndFocusable(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	rule := regexp.MustCompile(`\.rep-tab \.rt-close\{([^}]*)\}`).FindStringSubmatch(css)
+	if rule == nil {
+		t.Fatal(".rep-tab .rt-close rule missing")
+	}
+	for _, want := range []string{"opacity:1", "color:var(--fg3)", "min-width:24px", "min-height:24px"} {
+		if !strings.Contains(rule[1], want) {
+			t.Errorf(".rep-tab .rt-close missing %q", want)
+		}
+	}
+	if !strings.Contains(css, ".rep-tab .rt-close:focus-visible{") {
+		t.Error("rep-tab close needs a :focus-visible rule")
+	}
+}
+
+func TestUIDecorationUsesTokensNotGlowOrLiterals(t *testing.T) {
+	css := readUIAsset(t, "app.css")
+	for _, glow := range []string{".nav-dot{width:7px", ".sse-dot{width:7px", "box-shadow:0 -4px 12px rgba(0,0,0,0.2)"} {
+		if strings.Contains(css, glow) {
+			t.Errorf("app.css still has unshared dot/inspector rule %q", glow)
+		}
+	}
+	if !strings.Contains(css, ".dot,.nav-dot,.sse-dot,.act-row .ok{") {
+		t.Error("status dots must share one rule")
+	}
+	if strings.Contains(css, "box-shadow:0 0 6px var(--accent)") {
+		t.Error("status dots must not glow")
+	}
+	declared := parseThemeBlock(t, css, ":root{")
+	for _, tok := range []string{"--lightbox-bg", "--lightbox-bar", "--lightbox-fg", "--lightbox-fg-dim", "--lightbox-line"} {
+		if _, ok := declared[tok]; !ok {
+			t.Errorf("%s token missing", tok)
+		}
+	}
+	for _, line := range strings.Split(css, "\n") {
+		if strings.HasPrefix(line, ".img-lightbox") && (strings.Contains(line, "rgba(") || strings.Contains(line, "#fff")) {
+			t.Errorf("lightbox rule uses a literal colour: %s", line)
+		}
+	}
+	if !strings.Contains(css, ".toast-item.info{") {
+		t.Error("toast needs info styling")
+	}
+	if strings.Contains(css, "max-width:80vw") || strings.Contains(css, "0 10px 30px") {
+		t.Error("toast must use token elevation and a container-relative width")
+	}
+	surf := readUIAsset(t, "surfaces.css")
+	if strings.Contains(surf, "100vw - 24px") {
+		t.Error("toast width must not use 100vw")
+	}
+}

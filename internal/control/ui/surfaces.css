@@ -76,7 +76,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 
 #toast {
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  width: min(560px, calc(100vw - 24px));
+  width: min(560px, calc(100% - 24px));
   max-height: min(35vh, 260px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -148,7 +148,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 
 @media (max-width: 600px) {
   #ctxmenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
-  #toast { width: calc(100vw - 24px); max-height: 30dvh; }
+  #toast { width: calc(100% - 24px); max-height: 30dvh; }
   .act-detail { margin-left: 0; }
   .flow-inspector{width:100vw;height:100dvh;border:0;border-radius:0;max-height:none!important}
   .flow-inspector-toolbar{padding:12px;gap:8px}
