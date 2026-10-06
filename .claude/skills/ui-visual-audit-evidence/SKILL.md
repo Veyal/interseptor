@@ -35,6 +35,12 @@ drift until a genuine audit is re-run; never patch the hash by hand.
    `#mobileToolSelect` at ≤720px because the desktop tab rail is hidden there). The Read tool
    renders PNGs, so agents can inspect results without a browser session.
 
+## Before releasing UI changes
+
+Run `scripts/ui_boot_smoke.mjs` against a throwaway instance (see the "Boot smoke test" section
+of `docs/ui-audit/verification.md`). It fails on any uncaught exception during boot or while
+clicking every tab, which a green Go/Node test run does not guarantee.
+
 ## Harness gotchas
 
 - Custom-select menu ids (`uiSelectList<N>`) are positional; resolve them from the trigger's

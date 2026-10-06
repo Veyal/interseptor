@@ -71,6 +71,9 @@ assistants alike. They describe how the existing code is written; match it.
 
 ## Cutting a release
 
+- Before tagging any release that touches `internal/control/ui/`, run
+  `node scripts/ui_boot_smoke.mjs <url>` against a throwaway instance with headless Chrome (see
+  `docs/ui-audit/verification.md`); it must exit 0. It is not in CI because it needs Chrome.
 - `internal/version/version.go`'s `Version` variable is the dev-build fallback. At each
   release commit, bump it to the **previous** published tag (not the tag being released) —
   e.g. when tagging v1.0.0, bump `Version` to the last tag that was already public before
