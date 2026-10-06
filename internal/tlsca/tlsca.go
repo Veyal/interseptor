@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -16,6 +17,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -134,6 +136,17 @@ func create(crtPath, keyPath string) (*CA, error) {
 
 // CertPEM returns the PEM-encoded CA certificate (for the user to trust).
 func (c *CA) CertPEM() []byte { return c.certPEM }
+
+// Fingerprint returns the CA certificate's SHA-256 fingerprint as colon-separated
+// uppercase hex, the form device certificate viewers display.
+func (c *CA) Fingerprint() string {
+	sum := sha256.Sum256(c.cert.Raw)
+	parts := make([]string, len(sum))
+	for i, b := range sum {
+		parts[i] = fmt.Sprintf("%02X", b)
+	}
+	return strings.Join(parts, ":")
+}
 
 // LeafForHost mints (or returns a cached) leaf certificate for host, signed by
 // the CA. host may be a DNS name or an IP literal.

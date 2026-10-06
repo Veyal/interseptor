@@ -8,9 +8,10 @@ import (
 )
 
 // Context is engagement metadata cited in a report header: the authorisation
-// brief the work was produced under.
+// brief the work was produced under and how the evidence was obtained.
 type Context struct {
-	Brief store.EngagementBrief
+	Brief        store.EngagementBrief
+	Interception store.InterceptionSetup
 }
 
 // WithContext inserts an "Engagement context" section directly after the
@@ -32,6 +33,9 @@ func contextSection(c Context) string {
 	if c.Brief.Version > 0 {
 		writeBriefContext(&b, c.Brief)
 	}
+	if c.Interception.Version > 0 {
+		writeInterceptionContext(&b, c.Interception)
+	}
 	if b.Len() == 0 {
 		return ""
 	}
@@ -48,6 +52,40 @@ func writeBriefContext(b *strings.Builder, br store.EngagementBrief) {
 		if strings.TrimSpace(r.v) != "" {
 			fmt.Fprintf(b, "- **%s:** %s\n", r.label, sanitizeLine(strings.TrimSpace(r.v)))
 		}
+	}
+	b.WriteString("\n")
+}
+
+func writeInterceptionContext(b *strings.Builder, in store.InterceptionSetup) {
+	fmt.Fprintf(b, "### How evidence was obtained\n\nInterception setup v%d.\n\n", in.Version)
+	if in.ProxyAddress != "" {
+		fmt.Fprintf(b, "- **System proxy:** `%s`\n", code(in.ProxyAddress))
+	}
+	if in.CAFingerprint != "" {
+		fmt.Fprintf(b, "- **CA fingerprint (SHA-256):** `%s`\n", code(in.CAFingerprint))
+	}
+	if len(in.Hosts) > 0 {
+		fmt.Fprintf(b, "- **Applies to:** %s\n", sanitizeLine(strings.Join(in.Hosts, ", ")))
+	}
+	if len(in.Enablers) == 0 {
+		b.WriteString("- **Pinning bypass:** none recorded; traffic was captured through the proxy and CA alone.\n\n")
+		return
+	}
+	for _, e := range in.Enablers {
+		parts := []string{sanitizeLine(e.Tool)}
+		if e.TargetLibrary != "" {
+			parts = append(parts, "library `"+code(e.TargetLibrary)+"`")
+		}
+		if e.Method != "" {
+			parts = append(parts, "method `"+code(e.Method)+"`")
+		}
+		if e.ScriptHash != "" {
+			parts = append(parts, "script `"+code(e.ScriptHash)+"`")
+		}
+		if len(e.Hosts) > 0 {
+			parts = append(parts, "hosts "+sanitizeLine(strings.Join(e.Hosts, ", ")))
+		}
+		fmt.Fprintf(b, "- **Pinning bypass:** %s\n", strings.Join(parts, "; "))
 	}
 	b.WriteString("\n")
 }

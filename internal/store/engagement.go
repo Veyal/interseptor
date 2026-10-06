@@ -66,6 +66,6 @@ func (s *Store) SetEngagementBrief(in EngagementBrief) (EngagementBrief, error) 
 	err := s.saveVersionedSetting(engagementBriefKey, &out, func() {
 		out.Scope, out.Authorisation, out.ConductRules = in.Scope, in.Authorisation, in.ConductRules
 		out.RateLimits, out.DoNotTouch, out.CredentialPolicy = in.RateLimits, in.DoNotTouch, in.CredentialPolicy
-	})
+	}, nil)
 	return out, err
 }

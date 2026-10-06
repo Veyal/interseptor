@@ -288,6 +288,10 @@ type flowDetailJSON struct {
 	ResHeaders  map[string][]string `json:"resHeaders"`
 	ReqBodyHash string              `json:"reqBodyHash"`
 	ResBodyHash string              `json:"resBodyHash"`
+	// InterceptionProvenance states how this flow's traffic was obtained: the
+	// interception setup version in force at capture time. Omitted when no
+	// setup was recorded or it did not cover the flow's host.
+	InterceptionProvenance *store.InterceptionProvenance `json:"interceptionProvenance,omitempty"`
 }
 
 type ruleJSON struct {
@@ -785,13 +789,15 @@ func (h *flowAPI) getFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.st.AttachTags([]*store.Flow{f})
+	prov, _ := h.st.InterceptionProvenance(f.TS, f.Host) // best-effort metadata
 	writeJSON(w, http.StatusOK, flowDetailJSON{
-		flowJSON:    toFlowJSON(f),
-		HTTPVersion: f.HTTPVersion,
-		ReqHeaders:  f.ReqHeaders,
-		ResHeaders:  f.ResHeaders,
-		ReqBodyHash: f.ReqBodyHash,
-		ResBodyHash: f.ResBodyHash,
+		InterceptionProvenance: prov,
+		flowJSON:               toFlowJSON(f),
+		HTTPVersion:            f.HTTPVersion,
+		ReqHeaders:             f.ReqHeaders,
+		ResHeaders:             f.ResHeaders,
+		ReqBodyHash:            f.ReqBodyHash,
+		ResBodyHash:            f.ResBodyHash,
 	})
 }
 

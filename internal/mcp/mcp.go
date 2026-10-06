@@ -1236,6 +1236,62 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/tags") })
 
+	s.add("get_interception_setup",
+		"Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass enablers (tool, script hash, target library, method, hosts) and the record's version, plus the proxy/CA Interseptor currently observes. Use it to tell a pinning capture gap from a finding. Version 0 means nothing is recorded.",
+		obj(map[string]any{"serial": p("string", "optional adb device serial to also read the device proxy")}),
+		func(a map[string]any) (string, error) {
+			path := "/api/interception-setup"
+			if serial := strings.TrimSpace(argStr(a, "serial")); serial != "" {
+				path += "?serial=" + url.QueryEscape(serial)
+			}
+			return s.apiGet(path)
+		})
+
+	s.add("set_interception_setup",
+		"Record the interception setup (system proxy, CA fingerprint, pinning-bypass enablers such as a Frida hook, applicable hosts). Replaces the record; call get_interception_setup first and resend unchanged parts. The version increments only when content changes; reports state how evidence was obtained from it.",
+		obj(map[string]any{
+			"proxyAddress":  p("string", "proxy address the client uses, e.g. 127.0.0.1:8080"),
+			"caFingerprint": p("string", "SHA-256 fingerprint of the installed CA"),
+			"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts the setup applies to (exact or *.wildcard); empty = all"},
+			"enablers": map[string]any{"type": "array", "description": "pinning-bypass enablers in place", "items": obj(map[string]any{
+				"tool":          p("string", "e.g. frida, objection"),
+				"scriptHash":    p("string", "hash of the bypass script"),
+				"targetLibrary": p("string", "e.g. libflutter.so"),
+				"method":        p("string", "hooked function or technique"),
+				"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts this enabler covers; empty = every host the setup covers"},
+			}, "tool")},
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{
+				"proxyAddress": argStr(a, "proxyAddress"), "caFingerprint": argStr(a, "caFingerprint"),
+			}
+			if v, ok := a["hosts"]; ok {
+				body["hosts"] = v
+			}
+			if v, ok := a["enablers"]; ok {
+				body["enablers"] = v
+			}
+			return s.api(http.MethodPut, "/api/interception-setup", body)
+		})
+
+	s.add("annotate_flow_interception",
+		"Mark a bodiless 'CONNECT <host> status 0' flow as pinning_blocked (interception was intended but pinning rejected the handshake) or not_intercepted (never meant to be intercepted), so a capture gap is not read as a security finding. Empty annotation clears it.",
+		obj(map[string]any{
+			"id":         pt("integer"),
+			"annotation": p("string", "pinning_blocked | not_intercepted | \"\" to clear"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			ann := strings.TrimSpace(argStr(a, "annotation"))
+			if ann != "" && ann != "pinning_blocked" && ann != "not_intercepted" {
+				return "", fmt.Errorf("annotation must be pinning_blocked, not_intercepted or empty")
+			}
+			return s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/interception", id), map[string]any{"annotation": ann})
+		})
+
 	s.add("get_engagement_brief",
 		"Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch list and credential policy, plus its version. Read it before testing and obey it; cite the version in findings and reports. Version 0 means no brief is recorded.",
 		obj(map[string]any{}),

@@ -241,7 +241,7 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
 		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
-			"engagementBriefVersion": rctx.Brief.Version})
+			"engagementBriefVersion": rctx.Brief.Version, "interceptionSetupVersion": rctx.Interception.Version})
 	case "html":
 		h.enrichFindingReportImages(fs)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -269,6 +269,9 @@ func (h *findingsAPI) reportContext() report.Context {
 	var c report.Context
 	if b, err := h.st.GetEngagementBrief(); err == nil {
 		c.Brief = b
+	}
+	if i, err := h.st.GetInterceptionSetup(); err == nil {
+		c.Interception = i
 	}
 	return c
 }

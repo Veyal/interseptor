@@ -34,7 +34,8 @@ func loadVersionedSetting(q settingQuerier, key string, dst any) (bool, error) {
 // desired content, and persists it in one transaction. The version increments
 // (and UpdatedAt refreshes) only when content, compared with the version
 // fields zeroed, differs from what was stored or nothing was stored yet.
-func (s *Store) saveVersionedSetting(key string, dst versionedDoc, mutate func()) error {
+// onChange, if non-nil, runs in the same transaction after a version bump.
+func (s *Store) saveVersionedSetting(key string, dst versionedDoc, mutate func(), onChange func(tx *sql.Tx) error) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -66,6 +67,11 @@ func (s *Store) saveVersionedSetting(key string, dst versionedDoc, mutate func()
 	if _, err := tx.Exec(`INSERT INTO settings(key, value) VALUES(?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, string(raw)); err != nil {
 		return err
+	}
+	if onChange != nil {
+		if err := onChange(tx); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

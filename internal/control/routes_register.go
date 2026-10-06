@@ -55,6 +55,7 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", f.flowCurl)
 	h.mux.HandleFunc("GET /api/flows/diff", f.diffFlows)
 	h.mux.HandleFunc("PUT /api/flows/{id}/note", f.setFlowNote)
+	h.mux.HandleFunc("PUT /api/flows/{id}/interception", f.putFlowInterception)
 	h.mux.HandleFunc("PUT /api/flows/{id}/tags", f.setFlowTags)
 	h.mux.HandleFunc("POST /api/flows/tags", f.addFlowTagsBulk)
 	h.mux.HandleFunc("GET /api/tags", f.listTags)
@@ -194,6 +195,8 @@ func (h *Hub) registerPacksRoutes() {
 }
 
 func (h *Hub) registerProjectRoutes(proj *projectAPI) {
+	h.mux.HandleFunc("GET /api/interception-setup", proj.getInterceptionSetup)
+	h.mux.HandleFunc("PUT /api/interception-setup", proj.putInterceptionSetup)
 	h.mux.HandleFunc("GET /api/engagement-brief", proj.getEngagementBrief)
 	h.mux.HandleFunc("PUT /api/engagement-brief", proj.putEngagementBrief)
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
