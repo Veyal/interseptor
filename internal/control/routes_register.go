@@ -204,6 +204,7 @@ func (h *Hub) registerProjectRoutes(proj *projectAPI) {
 	h.mux.HandleFunc("PUT /api/interception-setup", proj.putInterceptionSetup)
 	h.mux.HandleFunc("GET /api/engagement-brief", proj.getEngagementBrief)
 	h.mux.HandleFunc("PUT /api/engagement-brief", proj.putEngagementBrief)
+	h.mux.HandleFunc("GET /api/project/readiness", proj.getProjectReadiness)
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", proj.putNotes)
 	h.mux.HandleFunc("PATCH /api/notes", proj.patchNotes)

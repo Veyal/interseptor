@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Project readiness aggregate.** `GET /api/project/readiness` returns scope counts, brief target, evidence counts, a capped (200) list of finding stages/gaps and blocker codes in one bounded, counts-only response for the engagement strip; backed by a new `Store.WSFlowCount`.
+
 ### Fixed
 
 - **Finding Open toast action and picker freshness.** `toast()` returns its element; the Open action is attached to that handle (and to the attach-result toast) instead of "the last `.toast-item`". The "Add to finding" picker renders the cache immediately and refetches `/api/findings` on every open, ignoring the result if the picker was closed or reopened. The shortcuts sheet documents `Alt+M` (wrap Intruder selection in § markers).
