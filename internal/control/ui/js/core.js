@@ -803,12 +803,16 @@ window.addEventListener('scroll',e=>{
   closeAllUiSelects();
 },true);
 window.addEventListener('resize',()=>closeAllUiSelects());
+// Virtualized lists (History, Intruder results, Map) churn rows constantly and
+// never contain a <select>; skip their mutations instead of scanning every row.
+const UI_SELECT_SKIP='#rows,.intr-virt-body,.map-virt-body';
 new MutationObserver(muts=>{
   for(const m of muts){
+    if(m.target.closest?.(UI_SELECT_SKIP))continue;
     m.addedNodes.forEach(n=>{
       if(n.nodeType!==1)return;
       if(n.tagName==='SELECT')enhanceSelect(n);
-      else initUiSelects(n);
+      else if(n.querySelector('select'))initUiSelects(n);
     });
   }
 }).observe(document.documentElement,{childList:true,subtree:true});
@@ -1520,9 +1524,9 @@ export function encodeKindLabel(s){
 // shared inner markup once here instead of hand-duplicating it at every call site.
 const SEL_DECODE_INNER_HTML=`<span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
   <code class="sel-decode-out"></code>
-  <button type="button" class="btn sel-decode-copy" title="Copy decoded">⧉</button>
+  <button type="button" class="btn sel-decode-copy" title="Copy decoded" aria-label="Copy decoded value">⧉</button>
   <button type="button" class="btn sel-decode-open" title="Open in Decoder">Decoder</button>
-  <button type="button" class="btn sel-decode-close" title="Dismiss">✕</button>`;
+  <button type="button" class="btn sel-decode-close" title="Dismiss" aria-label="Dismiss decoded value">✕</button>`;
 // wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
 // (built-in smart) or matches a project message codec (when getContext provides flowId).
 export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
