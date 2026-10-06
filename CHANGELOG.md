@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **History sort resets scroll.** `inspectorFilterSignature` now includes the sort key and direction, so a column-header sort returns the virtual list to the top instead of leaving stale scroll.
+
 - **Setup readiness test matches accessible markup.** The static test now expects the `u-mt-3` utility class on `#setupReadiness` (which replaced an inline style) while keeping `role="status"`, `aria-live="polite"` and `aria-atomic`; `internal/store/findings_test.go` is gofmt-clean.
 
 - **Proxy History panel keeps scroll and avoids full rebuilds.** A same-filter live reload no longer resets History to the top (only a filter change does) and `scheduleReload` fires at most 1s after the first trigger instead of starving under constant traffic. Scrolling the virtual list reconciles rows by key, selecting a flow only swaps the `.sel`/`aria-current` state of the old and new rows, `ws.frame` events are coalesced into a 250ms trailing refresh that updates only the frame list (the replay input keeps its text and focus), Find-in-response reuses the raw body per flow and side, and bulk Delete shows a disabled `Deleting…` busy state. Phones (`max-width:720px`) show a compact id/method/host/path/status table that fits 375px. The selection bar says `Add to finding`, the inspector gets a matching `+ Add to finding` button next to Repeater/Intruder, and History error paths report through `toastError`.

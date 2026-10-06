@@ -960,6 +960,7 @@ function inspectorFilterSignature(){
     exclude:f.exclude||[],notesOnly:!!state.notesOnly,inScopeOnly:!!state.inScopeOnly,
     hideTlsFailed:!!state.hideTlsFailed&&f.tag!=='tls-failed',
     showManual:!!state.showManual,showAI:!!state.showAI,
+    sort:(state.sort&&state.sort.key)||'',dir:sortDirParam(),
   });
 }
 
