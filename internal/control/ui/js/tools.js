@@ -1,4 +1,4 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
+import { $, esc, escAttr, toast, toastError, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 import { wireListbox, focusOption } from './listbox.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
@@ -2200,24 +2200,56 @@ export function applyIntruderPayloadSuggestion(data, opts){
   const n=pos.reduce((a,p)=>a+(p.payloads||[]).length,0);
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
+// A tab is pristine when it still holds the untouched blank attack, so loading a
+// flow may reuse it; anything the operator configured is never overwritten.
+function intrTabPristine(t){
+  if(!t)return false;
+  const blank=intrBlank(0);
+  const empty=v=>!v||(Array.isArray(v)&&v.every(x=>!x));
+  return (t.template===blank.template||!t.template)&&!t.target&&t.type==='sniper'
+    &&(t.threads||1)===1&&!(t.delay||0)&&(t.repeat||20)===20
+    &&!t.grep&&!t.extract&&!t.proc&&empty(t.sniperLines)&&empty(t.posLines)&&!t.sniperFile&&empty(t.posFiles)
+    &&(t.sniperSource||'list')==='list'&&(t.posSources||[]).every(v=>v==='list')
+    &&(t.sniper||INTR_SNIPER)===INTR_SNIPER&&JSON.stringify(t.pos||INTR_POS)===JSON.stringify(INTR_POS);
+}
+// Choose the attack tab a loaded flow should land in: the current one when it is
+// pristine, otherwise a fresh one (mirrors sendToRepeater). Returns null when the
+// tab limit refuses a new tab.
+function intrTabForLoad(forceNew=false){
+  intrSaveCur();
+  const cur=intrTabs.cur();
+  if(!forceNew&&intrTabPristine(cur))return cur;
+  const tab=intrTabs.create();
+  if(!tab)return null;
+  intrTabs.active=tab.tid;
+  renderIntrTabs();intrLoadTab(tab);
+  return tab;
+}
+let intrLoadActionEpoch=0;
 export async function sendToIntruder(f){
+  const epoch=++intrLoadActionEpoch;
   if(!await waitForWorkstationReady())return false;
-  // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
-  // and capture the active attack tab before any await so a sub-tab switch during
-  // the fetch can't make intrTouch() save the request into the wrong tab.
-  document.querySelector('.tab[data-tab="intruder"]').click();
+  if(epoch!==intrLoadActionEpoch)return false;
+  // Snapshot editor ownership before any await: when the operator edits or
+  // switches tabs during the fetch, the request lands in a new tab instead.
   const target=intrTabs.cur();
   if(!target)return false;
   const targetEditEpoch=target._editEpoch||0;
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
-    if(intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch)return;
+    if(epoch!==intrLoadActionEpoch)return false;
+    const editorMoved=intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch;
+    if((intrStartPending||intrLastRunning)&&!intrTabPristine(intrTabs.cur())){toast('An attack is running — stop it before loading another request into Intruder','warn');return false;}
+    document.querySelector('.tab[data-tab="intruder"]').click();
+    const loadTab=intrTabForLoad(editorMoved);
+    if(!loadTab){toast('Intruder tab limit reached — close a tab first','warn');return false;}
     intrLastFlowId=f.id;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;
     $('#intrTemplate').value=raw.replace(/\r\n/g,'\n');
     updateIntrMode(); // refresh marker-derived payload inputs for the new template
-    intrTouch();      // save the loaded request into the captured attack tab
+    intrTouch();      // save the loaded request into the attack tab
     toast('loaded #'+f.id+' into Intruder · add § markers');
-  }catch(e){toast(e.message);}
+    return true;
+  }catch(e){toastError('Send to Intruder failed',e);return false;}
 }

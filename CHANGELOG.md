@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Findings stylesheet follows the design tokens.** The undefined `--border` token (invisible revision, deleted-row, cleanup and capability borders) now resolves to `--line`/`--line2`; `findings.css` font sizes use the `--fs-*` scale (new `--fs-3xl`), off-scale radii use `--r-*`, and `TestUITypeScaleIsBounded` now covers `findings.css` and `surfaces.css`.
 
 - **Allowlist now exempts the proxy port from `407`.** Source addresses in Settings → API → Allowlist skip proxy Basic authentication for explicit-proxy, origin-form and `CONNECT` requests (matched on the TCP peer only; `X-Forwarded-For` is ignored), and edits apply live. Bare IPs are stored as `/32` or `/128` (IPv4-mapped IPv6 folded to IPv4). Refs #80.
+
+- **Send to Intruder no longer overwrites a configured attack.** `sendToIntruder` reuses the current attack tab only while it is pristine and otherwise opens a new tab (mirrors `sendToRepeater`); it refuses while an attack is running, and failures use `toastError`.
+
 ### Added
 
 - **MCP schema drift diagnostics.** `GET /api/capabilities` (alias of `/api/mcp/capabilities`) reports `schemaVersion`, `schemaHash`, supported finding fields and `targetsSupported`. `create_finding` and `update_finding` calls that send only the legacy scalar `target` now return an explicit notice that `targets` is supported and the MCP client should be restarted or reconnected if its schema lacks it. An integration test covers an upgrade that adds a new input field.
