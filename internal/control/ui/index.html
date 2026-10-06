@@ -2,27 +2,45 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Interseptor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Crect%20width='16'%20height='16'%20rx='4'%20fill='%2300e08a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/surfaces.css">
 <link rel="stylesheet" href="/findings.css">
+<link rel="stylesheet" href="/workbench.css">
+<link rel="stylesheet" href="/primitives.css">
+<link rel="stylesheet" href="/shell.css">
+<link rel="stylesheet" href="/flow.css">
+<link rel="stylesheet" href="/panel-proxy.css">
+<link rel="stylesheet" href="/panel-tools.css">
+<link rel="stylesheet" href="/panel-scan.css">
+<link rel="stylesheet" href="/panel-misc.css">
+<link rel="stylesheet" href="/settings.css">
+<link rel="stylesheet" href="/report.css">
+<link rel="stylesheet" href="/mobile.css">
 <!-- Modulepreload hints for the tabs users most often visit right after Proxy
      (Repeater, Intruder, Scanner) — parsed ahead of time so switching to them
      doesn't stall on module fetch/parse (Phase 4a, UI-REDESIGN-ROADMAP.md §4). -->
 <link rel="modulepreload" href="/js/tools.js">
 <link rel="modulepreload" href="/js/scanner.js">
 <script>
-// Apply the saved (or system) theme before first paint to avoid a flash.
+// Apply the saved (or system) theme and density before first paint to avoid a
+// flash or a layout shift. data-theme is light | hc; dark is the unmarked base.
+// data-density is compact | default | comfortable. Storage can throw, so both
+// reads sit inside one try/catch and fall back to the stylesheet defaults.
 (function(){try{
+  var r=document.documentElement;
   var t=localStorage.getItem('theme');
   if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
-  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+  if(t==='light'||t==='hc')r.setAttribute('data-theme',t);
+  var d=localStorage.getItem('density');
+  r.setAttribute('data-density',d==='compact'||d==='comfortable'?d:'default');
 }catch(e){}})();
 </script>
 </head>
 <body>
+<a class="skip" id="skipLink" href="#main">Skip to main content</a>
 <!-- Icon sprite. Inlined rather than fetched so it needs no build step, no
      network, and no extra request; a <use> reference pulls a symbol from it, in both
      static markup and JS-generated strings (see icon() in js/core.js).
@@ -75,52 +93,95 @@
 <symbol id="i-notebook" viewBox="0 0 24 24"><rect x="5" y="3" width="15" height="18" rx="2"/><path d="M3 7h4M3 12h4M3 17h4M11 8h5M11 12h5"/></symbol>
 <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M6 3v18M11 5h9M11 12h6M11 19h9"/><circle cx="6" cy="5" r="1"/><circle cx="6" cy="12" r="1"/><circle cx="6" cy="19" r="1"/></symbol>
 <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h6m4 0h6M4 12h10m4 0h2M4 18h2m4 0h10"/><circle cx="12" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></symbol>
+<symbol id="i-scope" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></symbol>
+<symbol id="i-identity" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+<symbol id="i-evidence" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 12.5l3 3 5-6"/></symbol>
+<symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20 11.5l-7.8 7.8a4.5 4.5 0 0 1-6.4-6.4l8.2-8.2a3 3 0 0 1 4.2 4.2l-8.2 8.2a1.5 1.5 0 0 1-2.1-2.1l7.4-7.4"/></symbol>
+<symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9"/></symbol>
+<symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></symbol>
+<symbol id="i-alert-tri" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.6h.01"/></symbol>
+<symbol id="i-drawer" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+<symbol id="i-split-h" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol>
+<symbol id="i-split-v" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/></symbol>
+<symbol id="i-diff" viewBox="0 0 24 24"><path d="M7 4v8M3 8h8M13 17h8"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+<symbol id="i-columns" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 </defs></svg>
+<!-- region:shell -->
   <div id="bar">
   <div id="logo" aria-hidden="true"><svg class="icon" focusable="false"><use href="#i-traffic"/></svg></div>
   <span class="brand">Interseptor</span>
-  <span id="crumb" aria-live="polite"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
+  <span id="crumb" class="sr-only"><span class="crumb-group">Capture</span><span class="crumb-sep">/</span><span class="crumb-panel">Proxy</span></span>
+  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel, flow or finding" aria-keyshortcuts="Control+K Meta+K"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Search flows, findings, actions</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
   <div class="spacer"></div>
-  <div class="row u-gap-2" title="Proxy listener"><div class="dot" id="capDot"></div><span class="kv"><b id="proxyAddr">…</b></span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button><span class="kv kv-dim" id="capStat"></span><span class="kv state-active u-hidden" id="icptStat" aria-live="polite"></span></div>
-  <span class="kv kv-dim">ctrl <b id="controlAddr">…</b></span>
-   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 5H4s2-1 2-5a6 6 0 0 1 6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg>
-
-  <span class="sse-status" id="sseStatus" role="status" aria-live="polite" title="Live updates: connected"><span class="sse-dot" id="sseDot" aria-hidden="true"></span><span id="sseLabel" class="kv kv-dim">live</span></span>
-  <button id="cmdkBtn" class="btn" title="Ctrl/⌘+K — jump to any panel or flow" aria-label="Command palette"><span class="cmdk-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Jump to…</span><kbd>Ctrl/⌘</kbd><kbd>K</kbd></button>
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 5H4s2-1 2-5a6 6 0 0 1 6-6Z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/><path d="M12 3V1"/><path d="m4.2 5.2-1.4-1.4"/><path d="m19.8 5.2 1.4-1.4"/></svg>
+  <button type="button" id="connChip" class="conn-chip" data-state="connected" aria-haspopup="dialog" aria-expanded="false" aria-controls="connPop" aria-label="Connection: live. Open connection details."><span id="connDot" class="sse-dot ok" aria-hidden="true"></span><span id="connText">Live</span></button>
+  <div id="connPop" class="conn-pop" role="dialog" aria-modal="false" aria-label="Connection details" hidden>
+    <div class="conn-row"><span class="sse-status" id="sseStatus" role="status" aria-live="polite" title="Live updates: connected"><span class="sse-dot" id="sseDot" aria-hidden="true"></span><span id="sseLabel" class="kv kv-dim">live</span><button type="button" class="btn xs" id="sseRetry" hidden>Reconnect</button></span></div>
+    <div class="conn-row"><span class="conn-key">Proxy listener</span><b class="conn-val" id="proxyAddr">…</b><button type="button" class="btn xs" data-conn-copy="proxyAddr" aria-label="Copy proxy listener address"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div>
+    <div class="conn-row"><span class="conn-key">Device proxy</span><button type="button" class="btn kv chip-btn" id="deviceProxyChip" title="Device proxy endpoint for phones"><b id="deviceProxyAddr">…</b></button></div>
+    <div class="conn-row"><span class="conn-key">Control UI</span><b class="conn-val" id="controlAddr">…</b><button type="button" class="btn xs" data-conn-copy="controlAddr" aria-label="Copy control UI address"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg></button></div>
+    <div class="conn-row"><span class="conn-key">Capture</span><div class="dot" id="capDot" role="img" aria-label="Capture idle"></div><span class="kv kv-dim" id="capStat"></span></div>
+  </div>
   <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"/></svg></button>
 </div>
+
+<div id="ctxbar" role="region" aria-label="Engagement" aria-busy="true">
+  <button type="button" id="ctxProject" class="ctx-chip ctx-project" aria-haspopup="dialog" title="Active project: switch or create"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><span id="ctxProjectText" class="ctx-text">Project</span></button>
+  <button type="button" id="ctxScope" class="ctx-chip ctx-scope" role="switch" aria-checked="false" aria-label="Scope: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg><span class="ctx-key">Scope</span><span id="ctxScopeText" class="ctx-text">…</span></button>
+  <button type="button" id="ctxTarget" class="ctx-chip ctx-target" aria-label="Target: loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><span class="ctx-key">Target</span><span id="ctxTargetText" class="ctx-text">…</span></button>
+  <div id="ctxIdentityWrap" class="ctx-identity" hidden><span id="ctxAvatar" class="ctx-avatar" data-hue="1" aria-hidden="true">?</span><label for="ctxIdentity" class="ctx-key">As</label><select id="ctxIdentity" class="btn" aria-label="Active identity"></select></div>
+  <button type="button" id="ctxEvidence" class="ctx-chip ctx-evidence" aria-label="Evidence loading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-evidence"/></svg><span class="ctx-key">Evidence</span><span id="ctxEvidenceText" class="ctx-text">…</span></button>
+  <div id="ctxReady" class="ctx-ready"><svg class="icon" id="ctxReadyIcon" aria-hidden="true" focusable="false"><use href="#i-ring"/></svg><span class="ctx-key">Ready</span><span id="ctxMeter" class="ctx-meter" role="meter" aria-label="Report readiness" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" aria-valuetext="No findings yet"><span id="ctxSegs" class="ctx-segs" aria-hidden="true"></span></span><span id="ctxReadyText" class="ctx-text">…</span></div>
+  <button type="button" id="ctxBlockers" class="ctx-chip ctx-blockers" aria-haspopup="dialog" aria-expanded="false" aria-controls="ctxBlockerPop" aria-label="Blockers: loading"><svg class="icon" id="ctxBlockersIcon" aria-hidden="true" focusable="false"><use href="#i-alert-tri"/></svg><span id="ctxBlockersText" class="ctx-text">…</span><svg class="icon ctx-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+  <div id="ctxBlockerPop" class="ctx-pop" role="dialog" aria-modal="false" aria-labelledby="ctxBlockerTitle" hidden>
+    <div class="ctx-pop-head"><h2 id="ctxBlockerTitle" class="ctx-pop-title">Report blockers</h2><button type="button" class="btn xs" id="ctxBlockerClose" aria-label="Close blockers"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div>
+    <ul id="ctxBlockerList" class="ctx-pop-list"></ul>
+    <a id="ctxBlockerOpen" class="btn xs" href="#findings">Open Findings</a>
+  </div>
+  <button type="button" id="ctxNext" class="ctx-chip ctx-next" aria-label="Next loading"><span class="ctx-key">Next</span><span id="ctxNextText" class="ctx-text">…</span></button>
+  <span class="kv state-active u-hidden" id="icptStat" role="status" aria-live="polite"></span>
+  <button type="button" id="ctxMore" class="ctx-chip ctx-more" aria-haspopup="dialog" aria-label="Engagement details"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><span class="ctx-key">Details</span></button>
+  <span id="ctxLive" class="u-sr" role="status" aria-live="polite"></span>
+</div>
+<div id="offlineBanner" class="offline-banner" role="status" hidden>Reconnecting&hellip; live updates paused</div>
 
 <div id="humanInputBar" role="region" aria-label="AI is asking for your input" aria-live="polite" hidden></div>
 
 <div id="workspaceHydrationStatus" class="workspace-hydration-status" role="status" aria-live="polite">Loading saved workspace…</div>
 
 <div class="mobile-tool-nav"><label for="mobileToolSelect">All tools</label><select id="mobileToolSelect" aria-label="All tools"><option value="proxy">Proxy</option><option value="intercept">Intercept</option><option value="repeater">Repeater</option><option value="intruder">Intruder</option><option value="scanner">Scanner</option><option value="map">Map</option><option value="findings">Findings</option><option value="notes">Notes</option><option value="activity">Activity</option><option value="settings">Settings</option></select><button type="button" class="btn" id="mobileProjectBtn" aria-label="Switch project" aria-haspopup="dialog">Project</button></div>
+<!-- /region:shell -->
 <div id="appRow">
 <div id="tabs" role="tablist" aria-label="Main navigation" aria-orientation="vertical" aria-busy="true">
   <div class="nav-rail-group" data-nav-group="capture">
     <div class="nav-rail-group-label">Capture</div>
-    <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg>Proxy</button>
-    <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept" data-group="Capture"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-gate"/></svg>Intercept<span id="heldBadge" class="badge u-hidden">0</span></button>
+    <button class="tab active" id="tab-proxy" role="tab" aria-selected="true" aria-controls="panel-proxy" data-tab="proxy" data-group="Capture" title="Proxy"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg>Proxy</button>
+    <button class="tab" id="tab-intercept" role="tab" aria-selected="false" aria-controls="panel-intercept" data-tab="intercept" data-group="Capture" title="Intercept"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-gate"/></svg>Intercept<span id="heldBadge" class="badge u-hidden">0</span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="test">
     <div class="nav-rail-group-label">Test</div>
-    <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg>Repeater</button>
-    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-layers"/></svg>Intruder<span id="intrBadge" class="nav-dot" aria-label="Unread Intruder updates"></span></button>
+    <button class="tab" id="tab-repeater" role="tab" aria-selected="false" aria-controls="panel-repeater" data-tab="repeater" data-group="Test" title="Repeater"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg>Repeater</button>
+    <button class="tab" id="tab-intruder" role="tab" aria-selected="false" aria-controls="panel-intruder" data-tab="intruder" data-group="Test" title="Intruder"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-layers"/></svg>Intruder<span id="intrBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="recon">
     <div class="nav-rail-group-label">Recon</div>
-    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-label="Unread scanner updates"></span></button>
-    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-nodes"/></svg>Map<span id="mapBadge" class="nav-dot" aria-label="Unread map updates"></span></button>
+    <button class="tab" id="tab-scanner" role="tab" aria-selected="false" aria-controls="panel-scanner" data-tab="scanner" data-group="Recon" title="Scanner"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg>Scanner<span id="scanBadge" class="nav-dot" aria-hidden="true"></span></button>
+    <button class="tab" id="tab-map" role="tab" aria-selected="false" aria-controls="panel-map" data-tab="map" data-group="Recon" title="Map"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-nodes"/></svg>Map<span id="mapBadge" class="nav-dot" aria-hidden="true"></span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="report">
     <div class="nav-rail-group-label">Report</div>
-    <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-report"/></svg>Findings</button>
-    <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-notebook"/></svg>Notes</button>
-    <button class="tab" id="tab-activity"  role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg>Activity<span id="actBadge" class="badge u-hidden">0</span></button>
+    <button class="tab" id="tab-findings" role="tab" aria-selected="false" aria-controls="panel-findings" data-tab="findings" data-group="Report" title="Findings"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-report"/></svg>Findings</button>
+    <button class="tab" id="tab-notes" role="tab" aria-selected="false" aria-controls="panel-notes" data-tab="notes" data-group="Report" title="Notes"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-notebook"/></svg>Notes</button>
+    <button class="tab" id="tab-activity"  role="tab" aria-selected="false" aria-controls="panel-activity" data-tab="activity" data-group="Report" title="Activity"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-timeline"/></svg>Activity<span id="actBadge" class="badge u-hidden">0</span></button>
   </div>
   <div class="nav-rail-group" data-nav-group="configure">
     <div class="nav-rail-group-label">Configure</div>
-    <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg>Settings</button>
+    <button class="tab" id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" data-group="Configure" title="Settings"><svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg>Settings</button>
   </div>
   <div class="nav-rail-foot">
     <span class="nav-foot-proj u-hidden" id="projBadge" role="button" tabindex="0" title="Active project — click to switch or create a project" aria-label="Active project — click to switch or create a project" aria-haspopup="dialog"></span>
@@ -128,31 +189,36 @@
   </div>
 </div>
 
-<div id="main">
+<main id="main" tabindex="-1" aria-label="Workspace">
   <!-- PROXY -->
+  <!-- region:proxy -->
   <div class="panel active" id="panel-proxy" role="tabpanel" aria-labelledby="tab-proxy" data-panel="proxy">
-    <div class="toolbar">
+    <div class="toolbar proxy-toolbar">
       <div class="search">
         <select id="fSearchScope" class="btn" title="Search in history" aria-label="Search scope"><option value="anywhere" selected>Anywhere</option><option value="body">Body</option><option value="id">ID</option><option value="script">Script</option></select>
         <input id="fSearch" aria-label="Search history (method / host / path / id)" placeholder="Search method / host / path / #id…">
       </div>
       <select id="fMethod" class="btn" aria-label="HTTP method filter"><option value="">All methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       <select id="fStatus" class="btn" aria-label="Response status filter"><option value="">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option></select>
-      <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views ▾</button>
+      <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> In scope only</button>
+      <button type="button" class="btn xs" id="scopeEdit" title="Open Settings, Scope, to add or change include and exclude rules">Edit scope</button>
+      <button type="button" class="btn" id="filtersBtn" title="Source, notes, tag and saved-search filters" aria-haspopup="true" aria-expanded="false" aria-controls="proxyFilters"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Filters <span id="filtersCount" class="filters-count" hidden></span></button>
+      <button class="btn" id="viewsBtn" title="Apply, save, or delete a saved view">Views <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
       <div class="spacer"></div>
-      <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false">▦ Cols</button>
+      <button type="button" class="btn" id="inspectDock" aria-pressed="true" title="Show the selected flow in the side drawer instead of the bottom inspector"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg> Side drawer</button>
+      <button class="btn" id="colPickerBtn" title="Choose which history columns to show" aria-controls="colPicker" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-columns"/></svg> Cols</button>
     </div>
-    <!-- Second and last toolbar tier: the filter state. Toggle pills, the
-         saved-search editor, the active-filter chips and the tag row all live
-         on one wrapping line so History starts within two rows of the panel top
-         (UI-REDESIGN-ROADMAP.md §3, "toolbar max 2 tiers"). -->
-    <div class="toolbar toolbar-secondary proxy-filter-bar">
-      <button type="button" class="uisw" id="notesFilter" title="Flows with notes" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
-      <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
-      <button class="uisw" id="scopeToggle" title="In-scope only" aria-pressed="false" aria-label="Filter history to in-scope flows only">◎ scope</button>
-      <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
-      <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
-      <div class="spacer"></div>
+    <!-- The Filters popover holds the secondary filter state (source pills, notes,
+         saved searches, tags) so History starts one toolbar tier below the panel
+         top. On phones it docks above the bottom nav as a sheet. -->
+    <div id="proxyFilters" class="proxy-filters-pop" role="group" aria-label="Filters" hidden>
+      <div class="proxy-filters-row">
+        <button type="button" class="uisw" id="notesFilter" title="Flows with notes" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-note"/></svg> notes</button>
+        <button type="button" class="uisw" id="hideTlsFilter" title="Hide TLS failures" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-block"/></svg> Hide TLS failures</button>
+        <button type="button" class="uisw" id="manualFilter" title="Show manual / proxy-captured flows" aria-pressed="true">Manual</button>
+        <button type="button" class="uisw" id="aiFilter" title="Show external-agent / MCP-sent flows" aria-pressed="true">External agent</button>
+      </div>
+      <div id="tagBar" class="tagbar u-hidden" aria-label="Filter by tag"></div>
       <details class="flow-search-disc" id="flowSearchScripts">
         <summary class="hint u-cursor">Saved searches</summary>
         <div class="row u-w-full u-gap-2 u-wrap">
@@ -167,18 +233,22 @@
   return False</textarea>
         <div class="u-danger u-prewrap" id="flowSearchScriptError" role="alert"></div>
       </details>
+    </div>
+    <div class="toolbar toolbar-secondary proxy-filter-bar" id="activeFilterBar" hidden>
       <div id="chips"></div>
-      <div id="tagBar" class="tagbar u-hidden" aria-label="Filter by tag"></div>
     </div>
     <div id="tlsDiagBanner" class="tls-diag-banner u-hidden" role="status" aria-live="polite"></div>
-    <div id="selBar" class="row sel-bar u-hidden">
+    <div id="selBar" class="row sel-bar u-hidden" role="toolbar" aria-label="Bulk actions for the selected flows">
       <span id="selCount" class="sel-count"></span>
-      <button class="btn" id="selCompare" title="Compare responses">⇄ Compare</button>
-
-      <button class="btn" id="selScope" title="Add hosts to scope">◎ Scope</button>
-      <button class="btn" id="selAddFinding" title="Attach to finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Finding</button>
+      <button class="btn" id="selSendTo" aria-haspopup="menu" title="Send the selection to Repeater, Intruder or Scanner">Send to <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button class="btn" id="selTag" title="Tag the selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tag"/></svg> Tag</button>
+      <button class="btn" id="selAddFinding" title="Add the selected flows to a finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</button>
+      <button class="btn" id="selCopyAs" aria-haspopup="menu" title="Copy the selection as curl, fetch, raw HTTP and more"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
+      <button class="btn" id="selCompare" title="Diff the two selected flows"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-diff"/></svg> Diff</button>
+      <button class="btn" id="selScope" title="Add hosts to scope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> Scope</button>
       <button class="btn btn-danger" id="selDelete"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg> Delete</button>
       <button class="btn sel-clear" id="selClear">Clear</button>
+      <span id="selProgress" class="hint sel-progress" role="status" aria-live="polite"></span>
     </div>
     <div class="thead" id="flowHead"></div>
     <div id="colPicker" class="col-picker u-hidden" role="group" aria-label="History columns"></div>
@@ -190,9 +260,11 @@
         <div class="pane-head"><span class="lbl">REQUEST</span>
           <div class="seg" data-side="req"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button></div>
           <div class="spacer"></div>
+          <button class="btn btn-compact accent" id="inspectAddFinding" aria-label="Add selected flow to a finding as evidence" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"/></svg> Attach as evidence</button>
           <button class="btn btn-compact" id="inspectSendRepeater" aria-label="Send selected flow to Repeater">Repeater</button>
           <button class="btn btn-compact" id="inspectSendIntruder" aria-label="Send selected flow to Intruder">Intruder</button>
-          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More…</button>
+          <button class="btn btn-compact" id="inspectCopyAs" aria-label="Copy selected flow as" aria-haspopup="menu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy as</button>
+          <button class="btn btn-compact" id="inspectMoreActions" aria-label="More flow actions" aria-haspopup="menu">More <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
 
         </div>
         <div class="sel-decode" id="reqDecode" hidden></div>
@@ -202,11 +274,6 @@
         <div class="pane-head"><span class="lbl">RESPONSE</span>
           <span id="resStatus" class="statusline"></span>
           <div class="seg" data-side="res"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Message codec plaintext" aria-pressed="false">Decoded</button><button type="button" data-view="hex" title="Hexadecimal byte dump" aria-pressed="false">Hex</button><button type="button" data-view="render" aria-pressed="false">Render</button></div>
-          <div id="inspectFind" class="inspect-find u-hidden">
-            <input id="inspectFindIn" type="search" aria-label="Find in response" placeholder="Find…">
-            <span id="inspectFindStat" class="hint"></span>
-            <button type="button" class="btn" id="inspectFindClose" aria-label="Close find">✕</button>
-          </div>
         </div>
         <div class="sel-decode" id="resDecode" hidden></div>
         <pre id="resView"><span class="u-fg3">Select a flow to inspect its response.</span></pre>
@@ -220,6 +287,8 @@
     </div>
   </div>
 
+  <!-- /region:proxy -->
+  <!-- region:intercept -->
   <!-- INTERCEPT -->
   <div class="panel" id="panel-intercept" role="tabpanel" aria-labelledby="tab-intercept" data-panel="intercept">
     <div id="interceptWarning" class="tls-diag-banner intercept-danger u-hidden" role="alert"></div>
@@ -235,21 +304,25 @@
       </div>
     </div>
     <!-- workspace: hold queue + editor -->
-    <div class="icpt-work">
-      <aside class="icpt-queue">
+    <div class="icpt-work split" id="icptWork">
+      <aside class="icpt-queue split-list" aria-label="Hold queue">
         <div class="icpt-queue-head">HOLD QUEUE <span class="badge u-hidden" id="heldTotal">0</span></div>
+        <div class="icpt-autofwd hint" id="heldAutoFwd" role="status" hidden></div>
         <div id="heldList" class="icpt-list"></div>
       </aside>
-      <section class="icpt-main">
+      <section class="icpt-main split-detail" id="icptDetail">
         <div class="icpt-edhead u-hidden" id="heldEditor">
-          <div class="icpt-edtitle" id="heldTitle"></div>
+          <div class="icpt-edtitle" id="heldTitle" data-split-focus></div>
           <div class="spacer"></div>
           <span id="heldModified" class="icpt-modified" hidden>MODIFIED</span>
           <button class="btn" id="heldBeautifyBtn" title="Beautify JSON or HTML body">Beautify</button>
           <button class="btn" id="heldResetBtn" title="Reset editor to original held bytes">Reset</button>
           <button type="button" class="btn" id="heldDecodeBtn" title="Show message-codec plaintext for the body" aria-label="Show decoded held message" aria-pressed="false">Decoded</button>
-          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)">▶ Forward</button>
-          <button class="btn btn-danger" id="dropBtn" title="Drop (D)">✕ Drop</button>
+        </div>
+        <div class="icpt-ctx u-hidden" id="heldCtx" role="group" aria-label="Held message context">
+          <span class="icpt-ctx-chip" id="heldScope"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg><span id="heldScopeText"></span></span>
+          <span class="icpt-ctx-chip" id="heldIdentity"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-identity"/></svg><span id="heldIdentityText"></span></span>
+          <span class="icpt-ctx-note hint" id="heldScopeNote"></span>
         </div>
         <pre id="heldDecoded" class="icpt-raw u-m-0 u-prewrap" hidden></pre>
         <textarea class="icpt-raw u-hidden" id="heldRaw" spellcheck="false" aria-label="Held message — edit the raw HTTP before forwarding"></textarea>
@@ -258,11 +331,19 @@
           <div class="state-empty-title">Nothing on hold</div>
           <p class="state-empty-hint" id="heldEmptyHint">Enable Requests or Responses to hold traffic.</p>
         </div>
+        <div class="icpt-actionbar u-hidden" id="heldActions" role="group" aria-label="Held message actions">
+          <button class="btn btn-primary" id="forwardBtn" title="Forward (F)" aria-keyshortcuts="f">Forward</button>
+          <button class="btn" id="forwardRepeaterBtn" title="Forward, then open the sent request in Repeater">Forward and send to Repeater</button>
+          <button class="btn btn-danger" id="dropBtn" title="Drop (D)" aria-keyshortcuts="d" aria-describedby="heldDropNote"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg> Drop</button>
+          <button class="btn" id="forwardAllBtn" title="Forward every held item (edits are kept)">Forward all</button>
+          <span id="heldDropNote" class="u-sr">Drop waits 5 seconds so you can undo.</span>
+          <span id="heldActionStatus" class="u-sr" role="status" aria-live="polite"></span>
+        </div>
       </section>
     </div>
     <!-- match & replace: automatic rewriting, collapsed by default -->
     <details class="icpt-mr">
-      <summary>Match &amp; Replace rules</summary>
+      <summary>Match &amp; Replace rules <span class="badge icpt-mr-count" id="rulesCount">none</span></summary>
       <div class="icpt-mr-body">
         <table class="rules-tbl">
           <thead><tr><th class="col-1">On</th><th class="col-4">Type</th><th>Match (regex)</th><th>Replace</th><th class="col-2"></th></tr></thead>
@@ -278,6 +359,8 @@
     </details>
   </div>
 
+  <!-- /region:intercept -->
+  <!-- region:repeater -->
   <!-- REPEATER -->
   <div class="panel" id="panel-repeater" role="tabpanel" aria-labelledby="tab-repeater" data-panel="repeater" aria-busy="true" inert>
     <div class="rep-tabs" id="repTabs"></div>
@@ -292,7 +375,7 @@
       <button class="btn btn-primary" id="repSend" title="Send (Ctrl/⌘+Space or Ctrl/⌘+Enter)"><span id="repSendLabel">Send ▸</span><span class="kbd">Ctrl/⌘+Space</span></button>
     </div>
     <div class="rep-work">
-      <aside id="repHistory" class="rep-hist" style="display:none"></aside>
+      <aside id="repHistory" class="rep-hist" data-init-hidden></aside>
       <section class="pane rep-req">
         <div class="pane-head"><span class="lbl">REQUEST</span></div>
         <div class="rep-sub">HEADERS</div>
@@ -302,7 +385,7 @@
         </div>
         <div class="rep-sub row"><span>BODY</span><div class="spacer"></div>
           <div class="seg rep-req-seg" id="repReqSeg"><button type="button" data-view="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-view="pretty" aria-pressed="true">Pretty</button><button type="button" data-view="decoded" title="Edit codec plaintext (re-encode on send if apply_on_send)" aria-pressed="false">Decoded</button></div>
-          <span id="repCodecBadge" class="hint u-ml-2" style="display:none"></span>
+          <span id="repCodecBadge" class="hint u-ml-2" data-init-hidden></span>
         </div>
         <div class="rep-field rep-field-body">
           <pre class="rep-hl" id="repBodyHL" aria-hidden="true"></pre>
@@ -320,6 +403,8 @@
     </div>
   </div>
 
+  <!-- /region:repeater -->
+  <!-- region:intruder -->
   <!-- INTRUDER -->
   <div class="panel" id="panel-intruder" role="tabpanel" aria-labelledby="tab-intruder" data-panel="intruder" aria-busy="true" inert>
     <div class="rep-tabs" id="intrTabs"></div>
@@ -328,8 +413,8 @@
     <div class="intr-bar">
       <input id="intrTarget" class="repurl" aria-label="Intruder target URL" placeholder="https://api.example.com" spellcheck="false">
       <span class="intr-sep" aria-hidden="true"></span>
-      <div class="seg" id="intrType" role="group" aria-label="Intruder mode"><button type="button" class="on" data-t="sniper" aria-pressed="true">Sniper</button><button type="button" data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists ▾</button><button type="button" data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
-      <select id="intrListMode" class="btn btn-field" style="display:none" title="How the per-marker lists combine" aria-label="Payload list combination"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
+      <div class="seg" id="intrType" role="group" aria-label="Intruder mode"><button type="button" class="on" data-t="sniper" aria-pressed="true">Sniper</button><button type="button" data-t="__lists__" aria-pressed="false" title="One payload list per § marker">Lists <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button><button type="button" data-t="repeat" aria-pressed="false" title="Race / repeat the same request N times (no payloads)">Race / repeat</button></div>
+      <select id="intrListMode" class="btn btn-field" data-init-hidden title="How the per-marker lists combine" aria-label="Payload list combination"><option value="battering">Battering (same value, all positions)</option><option value="pitchfork">Pitchfork (zip positions)</option><option value="cluster" selected>Cluster (all combinations)</option></select>
       <span class="intr-sep" aria-hidden="true"></span>
       <label class="intr-num" title="Max requests in flight at once"><span>⇉</span><input id="intrThreads" type="number" min="1" max="64" value="1">threads</label>
       <label class="intr-num" title="Delay between each request in milliseconds (throttle)"><span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg></span><input id="intrDelay" type="number" min="0" step="50" value="0">ms</label>
@@ -355,18 +440,20 @@
       </div>
     </details>
     <div class="intr-work">
-      <aside id="intrHistory" class="rep-hist" style="display:none"></aside>
-      <section class="pane intr-config">
+      <aside id="intrHistory" class="rep-hist" data-init-hidden></aside>
+      <section class="pane intr-config" data-step-pane="positions">
         <div class="pane-head"><span class="lbl">REQUEST TEMPLATE</span><span class="hint">use <b>§…§</b> for injection points</span><div class="spacer"></div><button class="btn" id="intrWrap" title="Wrap selection in § … §">§ Mark</button><button class="btn" id="intrTplLoad" type="button" title="Load from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg> Load</button></div>
         <textarea id="intrTemplate" class="rep-edit" aria-label="Intruder request template" spellcheck="false">POST /login HTTP/1.1
 Host: example.com
 Content-Type: application/json
 
 {"user":"§admin§","pass":"§password§"}</textarea>
+      </section>
+      <section class="pane intr-payload-pane" data-step-pane="payloads">
         <div class="pane-head"><span class="lbl">PAYLOADS</span><span class="hint" id="intrPayHint"></span><div class="spacer"></div></div>
         <div class="intr-payloads" id="intrPayloadsWrap"></div>
       </section>
-      <section class="pane intr-results">
+      <section class="pane intr-results" data-step-pane="results">
         <div class="pane-head"><span class="lbl">RESULTS</span><span id="intrProgress" class="count"></span><span id="intrPollStatus" class="statusline" role="status" aria-live="polite"></span><div class="spacer"></div>
           <span class="seg intr-res-filter" id="intrResFilter" role="group" aria-label="Filter results">
             <button type="button" class="on" data-f="all" aria-pressed="true">All</button>
@@ -383,36 +470,51 @@ Content-Type: application/json
     </div>
   </div>
 
+  <!-- /region:intruder -->
+  <!-- region:scanner -->
   <!-- SCANNER -->
   <div class="panel" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" data-panel="scanner">
     <div class="toolbar">
       <div id="scanPassiveBar" class="row find-toolbar-row">
       <select id="scanTarget" class="btn btn-field scan-target" title="Scan target" aria-label="Scanner target host"><option value="">All in-scope hosts</option></select>
       <input id="scanFilter" class="btn btn-field scan-filter" aria-label="Path filter" placeholder="path filter">
-      <button class="btn btn-primary" id="scanRun">Run scan ▸</button>
+      <button class="btn btn-primary" id="scanRun" aria-describedby="scanRunReason">Run scan ▸</button>
       <button class="btn" id="scanClear">Clear results</button>
       <span id="scanRescanState" class="hint" role="status"></span>
-      <button class="btn" id="checksBtn" aria-label="Custom checks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Checks</button>
-      <button class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg> Codecs</button>
       <span id="scanCount" class="count"></span>
       <div class="spacer"></div>
-      </div>
-    </div>
-    <div class="toolbar toolbar-secondary scan-tools-bar">
-      <span class="hint scan-tools-label">Tools</span>
-      <div class="spacer"></div>
-      <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
-    </div>
-    <div id="scanPassiveView" class="scan-passive-view">
-      <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
-        <div class="state-empty">
-          <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
-          <div class="state-empty-title">No issues yet</div>
-          <p class="state-empty-hint">Run a scan to find issues.</p>
-
+      <div class="scan-tools" id="scanTools">
+        <button type="button" class="btn" id="scanToolsBtn" aria-haspopup="true" aria-expanded="false" aria-controls="scanToolsMenu"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-toolbox"/></svg> Tools <svg class="icon scan-tools-caret" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+        <div class="scan-tools-menu" id="scanToolsMenu" role="group" aria-label="Scanner tools" hidden>
+          <button class="btn" id="checksBtn" aria-label="Custom checks"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"/></svg> Checks</button>
+          <button class="btn" id="codecsBtn" aria-label="Message codecs"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg> Codecs</button>
+          <button class="btn" id="scanDecoderBtn" aria-label="Decoder"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg> Decoder</button>
+          <button class="btn scan-tool-btn" id="oobBtn" data-oob-ui aria-label="OOB">OOB</button>
         </div>
       </div>
-      <div id="scanDetail" class="pane scan-detail-pane">
+      </div>
+    </div>
+    <div class="scan-context" id="scanContext">
+      <p class="hint scan-scope-line" id="scanScopeLine"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scope"/></svg> <span id="scanScopeText">Scope: loading</span> <button type="button" class="btn xs" id="scanScopeLink">Open target scope</button></p>
+      <p class="hint scan-run-reason" id="scanRunReason" hidden></p>
+    </div>
+    <div class="scan-progress" id="scanProgress" hidden>
+      <progress id="scanProgressBar" aria-label="Scan progress"></progress>
+      <span id="scanProgressText" role="status">Scanning</span>
+    </div>
+    <div id="scanPassiveView" class="scan-passive-view split">
+      <div class="split-list scan-list-col" id="scanListCol">
+        <div id="scanSevChips" class="scan-sev-chips" role="group" aria-label="Filter results by severity"></div>
+        <div id="scanList" class="scan-list" role="listbox" aria-label="Scanner issues">
+          <div class="state-empty">
+            <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></div>
+            <div class="state-empty-title">No issues yet</div>
+            <p class="state-empty-hint">Run a scan to find issues.</p>
+
+          </div>
+        </div>
+      </div>
+      <div id="scanDetail" class="pane scan-detail-pane split-detail">
         <div class="state-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"/></svg></div>
           <div class="state-empty-title">No issue selected</div>
@@ -422,17 +524,18 @@ Content-Type: application/json
     </div>
   </div>
 
+  <!-- /region:scanner -->
+  <!-- region:findings -->
   <!-- FINDINGS -->
   <div class="panel" id="panel-findings" role="tabpanel" aria-labelledby="tab-findings" data-panel="findings">
     <div class="toolbar findings-toolbar">
       <div class="findings-toolbar-title"><strong>Findings</strong><span id="findCount" class="count" role="status" aria-live="polite"></span></div>
       <div class="findings-toolbar-actions">
-        <button class="btn btn-primary" id="findNew" aria-label="New finding">＋ New finding</button>
-        <button class="btn" id="findGuide" title="How to write a clear, reproducible technical finding">Writing guide</button>
+        <button class="btn btn-primary" id="findNew" aria-label="New finding"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> New finding</button>
+        <button class="btn" id="findGuide" aria-expanded="false" aria-controls="findGuideAside" title="How to write a clear, reproducible technical finding">Writing guide</button>
 
         <span class="toolbar-divider"></span>
         <button type="button" class="btn" id="findDeletedOpen">Deleted</button>
-          <button class="btn find-export-btn" id="findExportOpen" aria-haspopup="dialog" aria-controls="findExportModal">⤓ Export</button>
       </div>
     </div>
     <div id="scanFindingsView" class="find-view is-empty">
@@ -444,15 +547,38 @@ Content-Type: application/json
             <select id="findFilterStatus" aria-label="Filter findings by status"><option value="">All statuses</option><option value="open">Open</option><option value="needs_verification">Needs verification</option><option value="verified">Verified</option><option value="fixed">Fixed</option><option value="false_positive">False positive</option><option value="wont_fix">Won't fix</option></select>
           </div>
         </div>
+        <form id="findInlineNew" class="find-inline-new" aria-label="New finding" novalidate hidden>
+          <label class="find-inline-label" for="findInlineTitle">New finding title</label>
+          <input id="findInlineTitle" class="btn btn-field" placeholder="Title (e.g. IDOR on /api/user/{id})" autocomplete="off" maxlength="300">
+          <div class="find-inline-row">
+            <select id="findInlineSeverity" class="btn btn-field" aria-label="Severity"><option>Critical</option><option>High</option><option selected>Medium</option><option>Low</option><option>Info</option></select>
+            <button type="submit" class="btn btn-primary" id="findInlineCreate">Create</button>
+            <button type="button" class="btn" id="findInlineCancel">Cancel</button>
+          </div>
+          <div class="find-inline-foot"><span id="findInlineStatus" class="statusline" role="status" aria-live="polite" aria-atomic="true"></span><button type="button" class="btn xs" id="findNewDialog">Full form</button></div>
+        </form>
+        <details id="findGuideAside" class="find-guide-aside">
+          <summary>Writing guide</summary>
+          <ol class="find-guide-list">
+            <li><strong>Title</strong> names the weakness, action and asset.</li>
+            <li><strong>Claim</strong> says who can do what, to which asset.</li>
+            <li><strong>Impact</strong> states what an attacker gains.</li>
+            <li><strong>Targets</strong> list every affected asset with CWE and a CVSS v4.0 vector.</li>
+            <li><strong>Reproduction</strong> shows the action, the result and a control case.</li>
+            <li><strong>Evidence</strong> is a real capture, annotated and redacted.</li>
+            <li><strong>Fix and retest</strong> record the failed control and the secure result.</li>
+          </ol>
+          <button type="button" class="btn xs" id="findGuideDialog">Open full guide</button>
+        </details>
         <details id="findTagsDisclosure" class="find-tags-disclosure" hidden><summary id="findTagsSummary">Tags</summary><div id="findTagFilter" class="find-tag-filter" aria-label="Filter findings by tag"></div></details>
         <div id="findOutsideFilter" class="find-outside-filter" hidden><span>Open finding is outside these filters.</span><button type="button" class="btn xs">Clear filters</button></div>
       <nav id="findList" class="scan-list" aria-label="Security findings">
         <div class="state-empty find-empty">
           <div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div>
           <div class="state-empty-title">No findings yet</div>
-          <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from History.</p>
+          <p class="state-empty-hint">File a vulnerability manually with PoC evidence, or attach captured flows from Proxy.</p>
           <div class="find-empty-actions">
-            <button type="button" class="btn btn-primary" id="findEmptyNew">＋ New finding</button>
+            <button type="button" class="btn btn-primary" id="findEmptyNew"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> New finding</button>
 
           </div>
 
@@ -467,8 +593,11 @@ Content-Type: application/json
         </div>
       </div>
     </div>
+    <div id="findReportMount" class="find-report-mount" hidden></div>
   </div>
 
+  <!-- /region:findings -->
+  <!-- region:map -->
   <!-- Endpoint map (attack surface) -->
   <div class="panel" id="panel-map" role="tabpanel" aria-labelledby="tab-map" data-panel="map">
     <div class="toolbar">
@@ -491,9 +620,11 @@ Content-Type: application/json
       <button type="button" class="uisw on" id="mapHideNoise" aria-pressed="true" title="Hide endpoints that only ever returned 403 or 404 — forced-browse / ferox noise">Hide 403/404-only</button>
       <button type="button" class="uisw on" id="mapCollapseIdentical" aria-pressed="true" title="Collapse endpoints on the same host that share the latest response body (byte-exact) or a soft-404 signature — click +N to expand">Collapse identical</button>
       <button type="button" class="btn" id="mapDiscoveryHelp" title="Run feroxbuster / ffuf through this proxy" aria-controls="mapDiscoveryPanel" aria-expanded="false">Discovery ▸</button>
+      <span id="mapCoverage" class="count map-coverage" role="status" aria-live="polite" hidden></span>
+      <button type="button" class="uisw" id="mapUnlinked" aria-pressed="false" title="Show only endpoints with no flow attached to a finding" hidden>Without evidence</button>
       <div class="spacer"></div>
       <button class="btn" id="mapExpand">Expand all</button>
-      <button class="btn" id="mapFit" title="Fit graph to view (pinch or Ctrl+scroll to zoom; scroll to pan)" style="display:none" aria-label="Fit graph to view">⤢ Fit</button>
+      <button class="btn" id="mapFit" title="Fit graph to view (pinch or Ctrl+scroll to zoom; scroll to pan)" data-init-hidden aria-label="Fit graph to view">⤢ Fit</button>
       <button class="btn" id="mapRefresh" title="Rebuild from history" aria-label="Rebuild endpoint map from history">↻</button>
     </div>
     <div id="mapDiscoveryPanel" class="map-discovery" hidden>
@@ -508,7 +639,7 @@ Content-Type: application/json
       </div>
     </div>
     <div id="mapCrumb" class="map-crumb u-hidden"></div>
-    <div id="mapWarn" class="map-warn" style="display:none" role="status" aria-live="polite"></div>
+    <div id="mapWarn" class="map-warn" data-init-hidden role="status" aria-live="polite"></div>
     <div id="mapTree" class="map-tree"></div>
     <div id="mapTable" class="map-table-wrap map-view u-hidden"></div>
     <div class="u-hidden" id="mapGraphWrap">
@@ -518,12 +649,15 @@ Content-Type: application/json
     <div id="mapParams" class="map-table-wrap map-view u-hidden"></div>
   </div>
 
+  <!-- /region:map -->
+  <!-- region:notes -->
   <!-- Project notes (markdown notebook) -->
   <div class="panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" data-panel="notes">
     <div class="toolbar">
       <div class="seg" id="notesSeg"><button type="button" class="on" data-m="edit" aria-pressed="true">Edit</button><button type="button" data-m="preview" aria-pressed="false">Preview</button></div>
       <span id="notesStatus" class="hint notes-status" aria-live="polite"></span>
       <button type="button" class="btn" id="notesSaveRetry" hidden>Retry save</button>
+      <button type="button" class="btn" id="notesPromote" title="Create a draft finding from the selected text, or the current line">Promote to finding</button>
 
       <div class="spacer"></div>
     </div>
@@ -531,24 +665,32 @@ Content-Type: application/json
     <div id="notesPreview" class="md u-hidden"></div>
   </div>
 
+  <!-- /region:notes -->
+  <!-- region:activity -->
   <!-- Activity (live AI feed) -->
   <div class="panel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" data-panel="activity">
     <div class="toolbar">
       <input id="actIntentFilter" class="btn btn-field act-filter" aria-label="Filter intent" placeholder="Filter…" spellcheck="false">
       <div class="spacer"></div>
       <span class="count" id="actCount" role="status" aria-live="polite" aria-atomic="true"></span>
+      <button type="button" class="btn" id="actAppendix" title="Copy the filtered log as a Markdown appendix for the report">Copy as report appendix</button>
       <button class="btn act-clear" id="actClear">Clear</button>
     </div>
+    <div class="act-chips" id="actChips" role="group" aria-label="Filter activity by category"></div>
+    <div class="act-attention" id="actAttention" hidden></div>
+    <button type="button" class="btn act-new-pill" id="actNewPill" hidden></button>
     <div id="actFeed" class="scroll"></div>
   </div>
 
+  <!-- /region:activity -->
+  <!-- region:settings -->
   <!-- SETTINGS -->
   <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings">
     <div class="settings-wrap">
       <nav class="settings-nav" id="setNav" aria-label="Settings sections">
-        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Target scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
+        <div class="settings-picker"><label for="settingsSectionSelect">Section</label><select id="settingsSectionSelect" aria-label="Settings section"><option value="proxy">Network · Proxy &amp; network</option><option value="tls">Network · TLS / CA</option><option value="devices">Network · Mobile devices</option><option value="scope">Testing · Scope</option><option value="scanner">Testing · Scanner &amp; OOB</option><option value="session">Testing · Session / auth</option><option value="appearance">System · Appearance</option><option value="project">System · Project &amp; data</option><option value="api">System · API &amp; MCP</option></select></div>
         <input id="setSearch" type="search" class="settings-search" placeholder="Search settings…" aria-label="Search settings" spellcheck="false" autocomplete="off">
-        <div id="setNavEmpty" class="settings-nav-empty" hidden>No matching settings.</div>
+        <div id="setNavEmpty" class="settings-nav-empty" role="status" aria-live="polite" hidden>No matching settings.</div>
         <div class="settings-nav-group" data-nav-group="network">
           <div class="settings-nav-group-label">Network</div>
           <button class="on" data-sec="proxy">Proxy &amp; network</button>
@@ -557,13 +699,13 @@ Content-Type: application/json
         </div>
         <div class="settings-nav-group" data-nav-group="testing">
           <div class="settings-nav-group-label">Testing</div>
-          <button data-sec="scope">Target scope</button>
+          <button data-sec="scope">Scope</button>
           <button type="button" data-sec="scanner">Scanner &amp; OOB</button>
           <button data-sec="session">Session / auth</button>
         </div>
         <div class="settings-nav-group" data-nav-group="system">
           <div class="settings-nav-group-label">System</div>
-
+          <button data-sec="appearance">Appearance</button>
           <button data-sec="project">Project &amp; data</button>
           <button data-sec="api">API &amp; MCP</button>
         </div>
@@ -601,7 +743,7 @@ Content-Type: application/json
               <div class="seg" id="deviceProxyModeSeg"><button type="button" class="on" data-mode="auto" aria-pressed="true">Auto</button><button type="button" data-mode="manual" aria-pressed="false">Manual</button></div>
               <span class="hint" id="deviceProxyResolved">…</span>
             </div>
-            <div class="field" id="deviceProxyManualField" style="display:none">
+            <div class="field" id="deviceProxyManualField" data-init-hidden>
               <label for="deviceProxyManualHost">Proxy host or IP</label>
               <input class="font-mono" id="deviceProxyManualHost" placeholder="192.168.1.5" spellcheck="false">
             </div>
@@ -779,7 +921,7 @@ Content-Type: application/json
         </section>
         <section class="set-sec" data-sec="devices" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-toolbox"/></svg><h2>Mobile devices</h2></header>
-          <div class="section" id="androidAdbSection" style="display:none">
+          <div class="section" id="androidAdbSection" data-init-hidden>
             <h3>Android (ADB)</h3>
             <p class="hint u-mb-2"><code>adb</code> must be on PATH. <b>USB</b> uses <code>adb reverse</code>. <b>Wi-Fi</b> needs <code>0.0.0.0:PORT</code> binding.</p>
             <div class="android-toolbar">
@@ -788,7 +930,7 @@ Content-Type: application/json
                 <div class="ui-select" id="androidDeviceSelectWrap">
                   <button type="button" class="ui-select-trigger" id="androidDeviceTrigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="androidDeviceLabel androidDeviceValue">
                     <span class="ui-select-value" id="androidDeviceValue">No device connected</span>
-                    <span class="ui-select-caret" aria-hidden="true">▾</span>
+                    <span class="ui-select-caret" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></span>
                   </button>
                   <div class="ui-select-menu" id="androidDeviceMenu" role="listbox" aria-labelledby="androidDeviceLabel" hidden></div>
                 </div>
@@ -803,7 +945,7 @@ Content-Type: application/json
               </div>
               <button class="btn" type="button" id="androidRefreshBtn">Refresh</button>
             </div>
-            <div class="hint android-lan-hint" id="androidLanHint" style="display:none"></div>
+            <div class="hint android-lan-hint" id="androidLanHint" data-init-hidden></div>
             <div class="row u-gap-2 u-wrap u-mb-2">
               <button class="btn btn-primary" type="button" id="androidSetupAllBtn">Setup all (proxy + CA)</button>
             </div>
@@ -831,7 +973,7 @@ Content-Type: application/json
                 <div class="ui-select" id="iosDeviceSelectWrap">
                   <button type="button" class="ui-select-trigger" id="iosDeviceTrigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="iosDeviceLabel iosDeviceValue">
                     <span class="ui-select-value" id="iosDeviceValue">No target selected</span>
-                    <span class="ui-select-caret" aria-hidden="true">▾</span>
+                    <span class="ui-select-caret" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></span>
                   </button>
                   <div class="ui-select-menu" id="iosDeviceMenu" role="listbox" aria-labelledby="iosDeviceLabel" hidden></div>
                 </div>
@@ -846,7 +988,7 @@ Content-Type: application/json
               </div>
               <button class="btn" type="button" id="iosRefreshBtn">Refresh</button>
             </div>
-            <div class="hint android-lan-hint" id="iosLanHint" style="display:none"></div>
+            <div class="hint android-lan-hint" id="iosLanHint" data-init-hidden></div>
             <div class="row u-gap-2 u-wrap u-mb-2">
               <button class="btn btn-primary" type="button" id="iosSetupAllBtn">Setup all (CA + profile)</button>
               <a class="btn u-no-underline" id="iosProfileLink" href="/api/ios/profile.mobileconfig" download>Download profile</a>
@@ -885,7 +1027,7 @@ Content-Type: application/json
                 <input type="text" id="iosSshKeyPath" placeholder="~/.ssh/id_rsa" autocomplete="off">
               </div>
             </div>
-            <div class="hint android-lan-hint" id="iosSshLanHint" style="display:none"></div>
+            <div class="hint android-lan-hint" id="iosSshLanHint" data-init-hidden></div>
             <div class="row u-gap-2 u-wrap u-mb-2">
               <button class="btn" type="button" id="iosSshStatusBtn">Check SSH status</button>
               <button class="btn btn-primary" type="button" id="iosSshSetupBtn">Setup all (profile)</button>
@@ -896,9 +1038,9 @@ Content-Type: application/json
           </div>
         </section>
         <section class="set-sec" data-sec="scope" hidden>
-          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><h2>Target scope</h2></header>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-target"/></svg><h2>Scope</h2></header>
           <div class="section">
-            <h3>Target scope</h3>
+            <h3>Scope</h3>
             <p class="hint u-mb-2"><b>Include</b> = in scope, <b>exclude</b> always wins, no rules = everything. Host: exact, wildcard (<b>*.example.com</b>), or regex. Path: prefix or regex. Right-click a flow → <b>Add to scope</b>.</p>
             <div id="scopeLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
             <p id="scopeDupWarn" class="hint u-hidden"></p>
@@ -912,6 +1054,12 @@ Content-Type: application/json
               <input id="newScopePath" class="btn btn-field" aria-label="Scope rule — path prefix" placeholder="path prefix or regex">
               <button class="btn btn-primary" id="addScopeBtn">+ Add</button>
             </div>
+          </div>
+          <div class="section" id="engagementBrief">
+            <h3>Engagement brief</h3>
+            <p class="hint u-mb-2">Authorisation and conduct rules for this project. Agents read it over MCP and reports cite its version. The same form opens from the Target chip in the Engagement strip.</p>
+            <div id="briefLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
+            <div id="briefFormMount"></div>
           </div>
         </section>
         <section class="set-sec" data-sec="scanner" hidden>
@@ -945,7 +1093,7 @@ Content-Type: application/json
             </div>
             <div id="apiAllowlist" class="api-pane">
               <h3>IP allowlist</h3>
-              <p class="hint u-mb-3">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b></p>
+              <p class="hint u-mb-3">Machine-global IPs/CIDRs that may use the UI and REST <b>without an API key</b> (Tailscale Serve / Cloudflare). Prefer your laptop’s Tailscale <code>100.x</code> address. Cloudflare uses your public egress IP (may change). <b>/mcp still requires a full API key.</b> Listed addresses also skip <b>proxy authentication</b> (no 407) on the proxy port, matched on the TCP peer address only.</p>
               <div class="hint u-mb-2" id="allowClientIP"></div>
               <div class="row u-gap-2 u-mb-3 u-wrap">
                 <input id="allowCIDR" class="repurl" aria-label="IP or CIDR" placeholder="100.65.105.2 or 100.64.0.0/10" spellcheck="false">
@@ -1050,10 +1198,40 @@ Content-Type: application/json
             <div id="loginMacroTestOut" class="evidence u-hidden u-mt-2"></div>
             <p class="hint u-mt-2">Tip: right-click a login flow → <b>Use as login macro</b>.</p>
           </details>
-          <div class="row u-gap-2 u-pad-4"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" style="display:none"></span></div>
+          <div class="row u-gap-2 u-pad-4"><button class="btn btn-primary" id="saveSessionBtn">Save session</button> <span class="hint" id="sessionState"></span> <span id="sessionExpiry" data-init-hidden></span></div>
+        </section>
+        <section class="set-sec" data-sec="appearance" hidden>
+          <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg><h2>Appearance</h2></header>
+          <div class="section settings-appearance">
+            <h3>Theme</h3>
+            <p class="hint u-mb-2">System follows your operating system. High contrast uses white on black with thicker borders and a stronger focus ring.</p>
+            <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+              <button type="button" data-theme-choice="system" aria-pressed="false">System</button>
+              <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+              <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+              <button type="button" data-theme-choice="hc" aria-pressed="false">High contrast</button>
+            </div>
+          </div>
+          <div class="section settings-appearance">
+            <h3>Density</h3>
+            <p class="hint u-mb-2">Row height and control size. Touch screens always use the comfortable tier with 44px targets.</p>
+            <div class="seg" id="densitySeg" role="group" aria-label="Density">
+              <button type="button" data-density-choice="compact" aria-pressed="false">Compact</button>
+              <button type="button" data-density-choice="default" aria-pressed="false">Default</button>
+              <button type="button" data-density-choice="comfortable" aria-pressed="false">Comfortable</button>
+            </div>
+          </div>
+          <div class="section settings-appearance">
+            <h3>Keyboard and hints</h3>
+            <p class="hint u-mb-2">Single-letter shortcuts (such as e, d, x and y) act on the focused list. Turn them off if they clash with assistive technology; shortcuts with Ctrl, Alt or Cmd, and every button, keep working.</p>
+            <div class="row u-gap-3 u-wrap u-mb-3"><button type="button" class="uisw" id="singleKeySwitch" aria-pressed="true">Single-key shortcuts are on</button></div>
+            <p class="hint u-mb-2">Hover and focus hints explain controls. Labels and help text stay either way.</p>
+            <div class="row u-gap-3 u-wrap"><button type="button" class="uisw" id="hintsSwitch" aria-pressed="true">Hints are on</button></div>
+          </div>
         </section>
         <section class="set-sec" data-sec="project" hidden>
           <header class="settings-section-heading"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg><h2>Project &amp; data</h2></header>
+          <div id="settingsChecklistMount" hidden></div>
           <div class="section">
             <h3>Project</h3>
             <div id="projectLoadState" class="hint u-hidden" role="status" aria-live="polite"></div>
@@ -1114,7 +1292,7 @@ Content-Type: application/json
             <div class="u-mb-3 u-fs-sm u-fg2" id="retentionTotals"></div>
             <div id="retentionLoadState" class="hint" role="status" aria-live="polite"></div>
             <table class="rules-tbl" id="retentionTable">
-              <thead><tr><th class="col-1"><input type="checkbox" id="retSelectAll" title="Select / clear all hosts"></th><th>Host</th><th class="col-3 ta-r">Flows</th><th class="col-3 ta-r">Size</th><th class="col-2"></th></tr></thead>
+              <thead><tr><th class="col-1"><input type="checkbox" id="retSelectAll" aria-label="Select all hosts" title="Select / clear all hosts"></th><th>Host</th><th class="col-3 ta-r">Flows</th><th class="col-3 ta-r">Size</th><th class="col-2"></th></tr></thead>
               <tbody id="retentionBody"><tr><td colspan="5" class="hint u-pad-2">Loading…</td></tr></tbody>
             </table>
             <div class="row u-gap-2 u-mt-3 u-wrap">
@@ -1133,20 +1311,61 @@ Content-Type: application/json
       </div>
     </div>
   </div>
-</div>
+  <!-- /region:settings -->
+</main>
 </div>
 
+<!-- region:mobile -->
+<svg class="dock-sprite" aria-hidden="true" focusable="false"><symbol id="i-dock-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></symbol></svg>
+<nav id="dock" class="dock" aria-label="Main">
+  <button type="button" class="dock-btn" data-dock="capture"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-traffic"/></svg><span class="dock-label">Capture</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+  <button type="button" class="dock-btn" data-dock="test"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg><span class="dock-label">Test</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+  <button type="button" class="dock-btn" data-dock="recon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan"/></svg><span class="dock-label">Recon</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+  <button type="button" class="dock-btn" data-dock="report"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-report"/></svg><span class="dock-label">Report</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+  <button type="button" class="dock-btn" data-dock="more" aria-haspopup="dialog"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-dock-more"/></svg><span class="dock-label">More</span><span class="dock-badge" aria-hidden="true" hidden></span><span class="dock-badge-note u-sr"></span></button>
+</nav>
+<!-- /region:mobile -->
+<!-- region:flowdrawer -->
+<div id="flowDrawer" class="flow-drawer" data-mode="docked">
+  <div class="flow-drawer-sash" id="fdSash" role="separator" aria-orientation="vertical" aria-label="Resize flow drawer" aria-valuemin="320" aria-valuemax="640" aria-valuenow="420" tabindex="0"></div>
+  <aside class="flow-drawer-panel" id="fdPanel" role="complementary" aria-labelledby="fdTitle">
+    <header class="flow-drawer-head" id="fdHead">
+      <h2 class="flow-drawer-title" id="fdTitle" tabindex="-1">Flow</h2>
+      <button type="button" class="btn flow-drawer-step" id="fdPrev" aria-label="Previous flow in list" title="Previous flow (k)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn flow-drawer-step" id="fdNext" aria-label="Next flow in list" title="Next flow (j)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn flow-drawer-width" id="fdNarrow" aria-label="Make the drawer narrower" title="Narrower"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn flow-drawer-width" id="fdWide" aria-label="Make the drawer wider" title="Wider"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      <button type="button" class="btn" id="fdClose" aria-label="Close flow drawer"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    </header>
+    <p class="flow-drawer-status" id="fdStatus" role="status"></p>
+    <div class="flow-drawer-linked" id="fdLinked" aria-label="Findings that reference this flow"></div>
+    <div class="flow-drawer-tabs" id="fdTabs" role="tablist" aria-label="Flow sections"></div>
+    <div class="flow-drawer-body" id="fdBody" role="tabpanel" tabindex="0" aria-labelledby="fdTabs"></div>
+    <footer class="flow-drawer-foot" id="fdFoot">
+      <div class="flow-drawer-split">
+        <button type="button" class="btn accent flow-drawer-attach" id="fdAttach" aria-keyshortcuts="e"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-paperclip"/></svg> Attach as evidence</button>
+        <button type="button" class="btn accent flow-drawer-caret" id="fdAttachMore" aria-label="More ways to attach" aria-haspopup="menu" aria-expanded="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+      </div>
+      <button type="button" class="btn" id="fdRepeater" title="Send this flow to Repeater">Repeater</button>
+      <button type="button" class="btn" id="fdIntruder" title="Load this flow into Intruder">Intruder</button>
+      <button type="button" class="btn" id="fdScanner" title="Run a scanner check against this flow">Scanner check</button>
+      <button type="button" class="btn" id="fdMore" aria-haspopup="menu" aria-expanded="false">More</button>
+    </footer>
+  </aside>
+</div>
+<!-- /region:flowdrawer -->
 <div id="ctxmenu"></div>
+<!-- region:modals-tools -->
 <div id="flowModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="fmTitle" class="modal-shell flow-inspector" data-mobile-side="res">
     <div class="row flow-inspector-toolbar">
       <div id="fmTitle" class="u-flex-1 u-fs-sm u-truncate"></div>
       <div class="seg" id="fmSeg"><button type="button" data-v="raw" aria-pressed="false">Raw</button><button type="button" class="on" data-v="pretty" aria-pressed="true">Pretty</button><button type="button" data-v="compare" hidden aria-pressed="false">Compare</button></div>
-      <button class="btn" id="fmCopyUrl" title="Copy full URL">⧉ Copy URL</button>
-      <button class="btn" id="fmCopyLink" title="Copy deep link to this flow">⧉ Copy link</button>
+      <button class="btn" id="fmCopyUrl" title="Copy full URL"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy URL</button>
+      <button class="btn" id="fmCopyLink" title="Copy deep link to this flow"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy link</button>
       <button class="btn" id="fmRepeater" title="Send this flow to Repeater">Repeater ↗</button>
       <button class="btn" id="fmProxy" title="Filter the Proxy history to every request to this endpoint">All in Proxy ↗</button>
-      <button class="btn" id="fmClose" aria-label="Close">✕</button>
+      <button class="btn" id="fmClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="flow-inspector-sides seg" id="fmSides" role="group" aria-label="Captured flow side"><button type="button" data-side="req" aria-controls="fmReqPane" aria-pressed="false">Request</button><button type="button" data-side="res" aria-controls="fmResPane" aria-pressed="true" class="on">Response</button></div>
     <div class="flow-inspector-panes">
@@ -1164,7 +1383,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="scTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"/></svg> Keyboard shortcuts</span>
       <div class="spacer"></div>
-      <button class="btn" id="scClose" aria-label="Close">✕</button>
+      <button class="btn" id="scClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="sc-body">
       <div class="sc-grid">
@@ -1173,6 +1392,7 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>p</kbd></div><p class="sc-desc">Go to a panel — p Proxy, i Intercept, r Repeater, u Intruder</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>g</kbd><kbd>s</kbd></div><p class="sc-desc">More panels — s Scanner, m Map, f Findings, n Notes, a Activity, t Settings</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>/</kbd></div><p class="sc-desc">Focus History search (Proxy)</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>F</kbd></div><p class="sc-desc">Find inside the inspected request or response (Proxy)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>?</kbd></div><p class="sc-desc">This shortcuts panel</p></div>
         <h3 class="sc-section">History</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>j</kbd><kbd>k</kbd></div><p class="sc-desc">Walk rows — or use <kbd>↑</kbd> <kbd>↓</kbd></p></div>
@@ -1185,16 +1405,22 @@ Content-Type: application/json
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>R</kbd></div><p class="sc-desc">Send selected Proxy flow → Repeater</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>I</kbd></div><p class="sc-desc">Send selected Proxy flow → Intruder</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>c</kbd></div><p class="sc-desc">Copy selected Proxy flow as cURL</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>a</kbd></div><p class="sc-desc">Add the selected Proxy flow(s) to a finding</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>Enter</kbd></div><p class="sc-desc">Start the Intruder attack (Intruder panel)</p></div>
+        <div class="sc-card"><div class="sc-keys"><kbd>Alt</kbd><kbd>M</kbd></div><p class="sc-desc">Wrap the selected text in § markers (Intruder template)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>Space</kbd></div><p class="sc-desc">Send the current Repeater request (also Ctrl/⌘+Enter)</p></div>
         <h3 class="sc-section">Tools</h3>
         <div class="sc-card"><div class="sc-keys"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></div><p class="sc-desc">Intruder and Decoder support <b>Load file</b> for payloads, templates, and blobs</p></div>
-        <div class="sc-card"><div class="sc-keys">Map ▾</div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
+        <div class="sc-card"><div class="sc-keys">Map <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></div><p class="sc-desc">Search scope: path/host, headers, body, or all — body search is server-side and bounded</p></div>
         <h3 class="sc-section">Intercept</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>f</kbd></div><p class="sc-desc">Forward the selected held request (outside editors)</p></div>
         <div class="sc-card"><div class="sc-keys"><kbd>d</kbd></div><p class="sc-desc">Drop the selected held request (outside editors)</p></div>
+        <h3 class="sc-section">Findings</h3>
+        <div class="sc-card"><div class="sc-keys"><kbd>Ctrl/⌘</kbd><kbd>K</kbd></div><p class="sc-desc">Palette: <b>New finding</b>, <b>Export findings</b> and <b>Add selected flow to finding</b></p></div>
         <h3 class="sc-section">General</h3>
         <div class="sc-card"><div class="sc-keys"><kbd>Esc</kbd></div><p class="sc-desc">Close dialog → context menu → collapse inspector</p></div>
       </div>
+      <label class="sc-foot-switch" for="scSingleKey"><input type="checkbox" id="scSingleKey" checked> Single-key shortcuts (letters without Ctrl)</label>
       <div class="hint sc-foot">Plain-letter workflow shortcuts are disabled while typing. Repeater Send still works in its editor.</div>
     </div>
   </div>
@@ -1204,7 +1430,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="checksModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg> Checks</span>
       <div class="spacer"></div>
-      <button class="btn" id="checksClose" aria-label="Close">✕</button>
+      <button class="btn" id="checksClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="checks-work">
       <div class="checks-sidebar">
@@ -1253,7 +1479,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="codecsModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"/></svg> Message codecs</span>
       <div class="spacer"></div>
-      <button class="btn" id="codecsClose" aria-label="Close">✕</button>
+      <button class="btn" id="codecsClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="checks-work">
       <div class="checks-sidebar">
@@ -1297,7 +1523,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="oobModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg> Out-of-band (OOB) interactions</span>
       <span class="hint u-ml-2">catch blind SSRF / XXE / SQLi / RCE callbacks</span>
-      <div class="spacer"></div><button class="btn" id="oobClose" aria-label="Close">✕</button>
+      <div class="spacer"></div><button class="btn" id="oobClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body u-col u-gap-3">
       <p class="hint u-lh u-m-0 u-warn"><b>Remote targets cannot reach localhost.</b> Set base URL to something reachable — e.g. ngrok, VPS, or LAN IP.</p>
@@ -1311,13 +1537,13 @@ Content-Type: application/json
         <p class="hint u-m-0 u-mb-2 u-lh">Run in a terminal, paste the HTTPS URL + <code>/oob</code> as Base URL above.</p>
         <div class="row u-gap-2 u-wrap">
           <code id="oobModalTunnelCmd" class="evidence">cloudflared tunnel --url http://127.0.0.1:9966</code>
-          <button type="button" class="btn" id="oobModalTunnelCopy">⧉ Copy</button>
+          <button type="button" class="btn" id="oobModalTunnelCopy"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy</button>
         </div>
       </div>
       <div class="row u-gap-2 u-wrap">
-        <button class="btn btn-primary" id="oobGen">＋ Generate payload URL</button>
+        <button class="btn btn-primary" id="oobGen"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Generate payload URL</button>
         <input id="oobUrl" class="btn font-mono u-accent" readonly aria-label="Generated OOB payload URL" placeholder="click Generate…">
-        <button class="btn" id="oobCopy">⧉ Copy</button>
+        <button class="btn" id="oobCopy"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> Copy</button>
       </div>
       <div class="row u-gap-3"><span class="micro-label">INTERACTIONS</span><span id="oobCount" class="count"></span><span id="oobLoadState" class="hint" role="status" aria-live="polite"></span><div class="spacer"></div><button class="btn btn-danger" id="oobClear">Clear</button></div>
       <div id="oobList"><div class="hint">No interactions yet — callbacks to a generated URL appear here live.</div></div>
@@ -1327,8 +1553,8 @@ Content-Type: application/json
 <div id="projModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="projModalTitle" class="modal-shell modal-sm-tall">
     <div class="row modal-shell-head">
-      <span id="projModalTitle" class="modal-shell-title">◧ Projects</span>
-      <div class="spacer"></div><button type="button" class="btn" id="pmClose" aria-label="Close projects">✕</button>
+      <span id="projModalTitle" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel"/></svg> Projects</span>
+      <div class="spacer"></div><button type="button" class="btn" id="pmClose" aria-label="Close projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body u-col u-gap-4">
       <div class="field u-m-0"><label>Active project</label><div class="u-fs-md"><b class="u-accent" id="pmCurrent">default</b> · <span class="u-fg3 font-mono u-fs-xs" id="pmDir"></span></div></div>
@@ -1342,13 +1568,13 @@ Content-Type: application/json
         <div class="micro-label u-mb-1">CREATE / OPEN A NEW PROJECT</div>
         <div class="row u-gap-2 u-wrap">
           <input id="pmNew" class="btn btn-field field-grow" placeholder="acme-engagement" spellcheck="false" aria-label="New project name">
-          <button class="btn btn-primary" id="pmNewBtn">＋ Create &amp; open</button>
+          <button class="btn btn-primary" id="pmNewBtn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Create &amp; open</button>
         </div>
         <input id="pmNewFolder" class="btn btn-field" placeholder="Folder, optional — Clients/Acme" spellcheck="false" aria-label="Folder for the new project" autocomplete="off">
         <input id="pmNewPath" aria-describedby="pmSwitchNote" class="btn btn-field font-mono" placeholder="save to a specific folder instead (optional)" spellcheck="false" aria-label="Custom save location">
         <p class="hint u-hidden u-accent" id="pmSwitchNote" role="status" aria-live="polite"></p>
       </div>
-      <div id="pmNote" class="hint u-accent" style="display:none"></div>
+      <div id="pmNote" class="hint u-accent" data-init-hidden></div>
     </div>
   </div>
 </div>
@@ -1360,7 +1586,7 @@ Content-Type: application/json
         <p class="hint">Passive comparison of selected captures. No requests are sent.</p>
       </div>
       <div class="spacer"></div>
-      <button type="button" class="btn" id="sessionInspectClose" aria-label="Close session inspection">✕</button>
+      <button type="button" class="btn" id="sessionInspectClose" aria-label="Close session inspection"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="session-inspect-toolbar">
       <span class="session-inspect-safety" id="sessionInspectSafety" role="status"></span>
@@ -1380,12 +1606,36 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<div id="authTimelineModal" class="modal-overlay">
+  <div role="dialog" aria-modal="true" aria-labelledby="authTimelineTitle" class="modal-shell session-inspect-dialog">
+    <div class="modal-shell-head">
+      <div>
+        <h2 id="authTimelineTitle" class="modal-shell-title">Auth timeline</h2>
+        <p class="hint">Read-only view of a login attempt and the same client's following captures. No requests are sent. Cookie values stay hidden; detections are hypotheses until reproduced.</p>
+      </div>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="authTimelineClose" aria-label="Close auth timeline"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="session-inspect-toolbar">
+      <span class="session-inspect-safety" id="authTimelineSummary" role="status"></span>
+      <div class="spacer"></div>
+      <button type="button" class="btn" id="authTimelineRefresh">Refresh</button>
+    </div>
+    <div class="modal-shell-body session-inspect-body">
+      <div id="authTimelineState" class="hint" role="status" aria-live="polite">Select a login flow to view its auth timeline.</div>
+      <section class="session-inspect-section" aria-labelledby="authTimelineListTitle">
+        <div class="session-inspect-section-head"><h3 id="authTimelineListTitle">Login chain</h3><span class="hint">Redirects, cookies, session/CSRF rotation, MFA, scheme and host changes.</span></div>
+        <div id="authTimelineList"></div>
+      </section>
+    </div>
+  </div>
+</div>
 <div id="authzModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="authzModalTitle" class="modal-shell modal-lg-tall">
     <div class="row modal-shell-head">
       <span id="authzModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock-open"/></svg> Authorization test</span>
       <span class="hint u-ml-2">compare access across roles</span>
-      <div class="spacer"></div><button class="btn" id="authzClose" aria-label="Close">✕</button>
+      <div class="spacer"></div><button class="btn" id="authzClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body u-col u-gap-3">
       <p class="hint u-lh u-m-0">Define identities below — the <b>first is the baseline</b>. Each replay swaps auth headers. Lower-privileged roles with <b>~same-size</b> responses are flagged.</p>
@@ -1394,13 +1644,13 @@ Content-Type: application/json
         <button type="button" data-m="scope" aria-pressed="false">All in-scope</button>
         <button type="button" data-m="crosshost" aria-pressed="false" title="Replay this endpoint to every in-scope host with its JWT — detects cross-environment token confusion">Cross-host JWT</button>
       </div>
-      <input id="authzMax" class="btn btn-field" style="display:none" aria-label="Authz — max endpoints" placeholder="max endpoints (30)" title="Bulk mode only">
-      <div id="authzScopePanel" class="panel-card" style="display:none"></div>
-      <div id="authzCookieHint" class="hint u-lh" style="display:none"></div>
+      <input id="authzMax" class="btn btn-field" data-init-hidden aria-label="Authz — max endpoints" placeholder="max endpoints (30)" title="Bulk mode only">
+      <div id="authzScopePanel" class="panel-card" data-init-hidden></div>
+      <div id="authzCookieHint" class="hint u-lh" data-init-hidden></div>
       <div id="authzIds"></div>
       <div class="row u-gap-2 u-wrap">
-        <button class="btn" id="authzAdd">＋ Add identity</button>
-        <button class="btn" id="authzFromFlow" title="Copy Cookie/Authorization from the selected flow into the first empty identity">⧉ From flow</button>
+        <button class="btn" id="authzAdd"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add identity</button>
+        <button class="btn" id="authzFromFlow" title="Copy Cookie/Authorization from the selected flow into the first empty identity"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg> From flow</button>
         <button class="btn" id="authzCheck" title="Replay the selected flow as each identity — 401/403 means the session may be expired">Check sessions</button>
         <button class="btn" id="authzSave">Save identities</button>
         <div class="spacer"></div>
@@ -1412,11 +1662,12 @@ Content-Type: application/json
     </div>
   </div>
 </div>
+<!-- region:modals-findings -->
 <div id="findGuideModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="findGuideTitle" class="modal-shell find-guide-dialog">
     <div class="modal-shell-head">
       <div><div id="findGuideTitle" class="modal-shell-title">Technical finding template</div><div class="hint">Write for fast triage, independent reproduction, and retesting.</div></div>
-      <button class="btn" id="findGuideClose" aria-label="Close finding writing guide">✕</button>
+      <button class="btn" id="findGuideClose" aria-label="Close finding writing guide"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body find-guide-body"><p><a href="https://github.com/Veyal/interseptor/blob/main/docs/engagement-closeout.md" target="_blank" rel="noopener">Engagement close-out checklist ↗</a></p>
       <section><span class="find-guide-n">1</span><div><h3>Title</h3><p>Name the weakness, affected action, and asset. Prefer “Broken object authorization exposes invoice records” over “IDOR issue”.</p></div></section>
@@ -1430,23 +1681,11 @@ Content-Type: application/json
     </div>
   </div>
 </div>
-<div id="findExportModal" class="modal-overlay">
-  <div role="dialog" aria-modal="true" aria-labelledby="findExportTitle" class="modal-shell find-export-dialog">
-    <div class="modal-shell-head"><h2 id="findExportTitle" class="modal-shell-title">Export findings</h2><button type="button" class="btn" id="findExportClose" aria-label="Close export">✕</button></div>
-    <div class="modal-shell-body find-export-fields">
-      <label for="findExportMode">Readiness</label><select id="findExportMode" aria-label="Report readiness"><option value="final">Final · require complete review</option><option value="draft">Draft · allow incomplete findings</option></select>
-      <label for="findExportFmt">Format</label><select id="findExportFmt" aria-label="Report format"><option value="md">Markdown</option><option value="html">HTML with images</option><option value="json">JSON</option></select>
-      <label for="findExportStatuses">Include</label><select id="findExportStatuses" aria-label="Report statuses"><option value="open,verified,fixed">Open, verified and fixed</option><option value="all">All statuses</option><option value="verified">Verified only</option><option value="open">Open only</option><option value="needs_verification">Needs verification</option></select>
-      <label class="find-groupby"><input type="checkbox" id="findExportGroupByTag"> Group by tag</label><div id="findExportChecks" class="find-export-checks" role="status" aria-live="polite" hidden></div>
-    </div>
-    <div class="modal-shell-foot"><span class="hint">Includes attached evidence.</span><div class="spacer"></div><button type="button" class="btn btn-primary" id="findExport">Download report</button></div>
-  </div>
-</div>
 <div id="findCreateModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="fcTitleLbl" class="modal-shell find-create-dialog">
     <div class="modal-shell-head">
-      <span id="fcTitleLbl" class="modal-shell-title">＋ New finding</span>
-      <button class="btn" id="fcClose" aria-label="Close">✕</button>
+      <span id="fcTitleLbl" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> New finding</span>
+      <button class="btn" id="fcClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body find-create-body">
       <input id="fcTitle" class="btn btn-field find-create-title" placeholder="Title (e.g. IDOR on /api/user/{id})" aria-label="Finding title">
@@ -1466,7 +1705,7 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="fpTitleLbl" class="modal-shell find-pick-dialog">
     <div class="modal-shell-head">
       <span id="fpTitleLbl" class="modal-shell-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg> Add to finding</span>
-      <button class="btn" id="fpClose" aria-label="Close">✕</button>
+      <button class="btn" id="fpClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div id="findPickList" class="modal-shell-body"></div>
   </div>
@@ -1475,7 +1714,7 @@ Content-Type: application/json
   <div role="dialog" aria-modal="true" aria-labelledby="ffpTitleLbl" class="modal-shell find-flow-pick-dialog">
     <div class="modal-shell-head">
       <span id="ffpTitleLbl" class="modal-shell-title">Pick PoC flows</span>
-      <button class="btn" id="ffpClose" aria-label="Close">✕</button>
+      <button class="btn" id="ffpClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="find-flow-pick-search">
       <input id="ffpSearch" class="btn btn-field find-flow-pick-search-input" placeholder="Filter by host, path, method, or flow id (#285)…" aria-label="Filter flows">
@@ -1484,15 +1723,16 @@ Content-Type: application/json
     <div class="modal-shell-foot find-flow-pick-foot">
       <span class="hint" id="ffpCount">0 selected</span>
       <div class="spacer"></div>
-      <button class="btn btn-primary" id="ffpAttach" disabled>Attach as PoC</button>
+      <button class="btn btn-primary" id="ffpAttach" disabled>Attach as evidence</button>
     </div>
   </div>
 </div>
+<!-- /region:modals-findings -->
 <div id="compareModal" class="modal-overlay">
   <div role="dialog" aria-modal="true" aria-labelledby="compareTitle" class="modal-shell modal-xl">
     <div class="row modal-shell-head">
       <span id="compareTitle" class="modal-shell-title">Compare responses</span>
-      <div class="spacer"></div><button class="btn" id="compareClose" aria-label="Close">✕</button>
+      <div class="spacer"></div><button class="btn" id="compareClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div id="compareBody"></div>
   </div>
@@ -1502,7 +1742,7 @@ Content-Type: application/json
     <div class="row modal-shell-head">
       <span id="decModalTitle" class="modal-shell-title u-accent"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-toolbox"/></svg> Decoder</span>
       <span class="hint u-ml-2">↓ decode · ↑ encode</span>
-      <div class="spacer"></div><button class="btn" id="decClose" aria-label="Close">✕</button>
+      <div class="spacer"></div><button class="btn" id="decClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="modal-shell-body u-col u-gap-2">
       <div class="list-file-bar">
@@ -1540,7 +1780,7 @@ Content-Type: application/json
     </div>
     <div id="setupBody"></div>
     <div class="row modal-shell-foot">
-      <button class="btn" id="setupBack" style="display:none">← Back</button>
+      <button class="btn" id="setupBack" data-init-hidden>← Back</button>
       <div class="spacer"></div>
       <button class="btn btn-primary" id="setupNext">Next ▸</button>
     </div>
@@ -1555,7 +1795,7 @@ Content-Type: application/json
       <button type="button" class="btn" id="imgLbZoomOut" title="Zoom out (−)">−</button>
       <button type="button" class="btn" id="imgLbZoomReset" title="Fit to view">Fit</button>
       <button type="button" class="btn" id="imgLbZoomIn" title="Zoom in (+)">+</button>
-      <button type="button" class="btn" id="imgLbClose" aria-label="Close">✕</button>
+      <button type="button" class="btn" id="imgLbClose" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
     </div>
     <div class="img-lightbox-stage" id="imgLbStage" tabindex="-1">
       <img id="imgLbImg" alt="">
@@ -1563,7 +1803,8 @@ Content-Type: application/json
     <div class="img-lightbox-hint hint">Scroll to zoom · drag to pan · double-click toggles zoom · Esc closes</div>
   </div>
 </div>
-<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<!-- /region:modals-tools -->
+<div id="toast" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <script>
 // This guard runs before the module graph. If a browser/profile cannot load or
@@ -1627,6 +1868,13 @@ Content-Type: application/json
     renderWorkspaceStartupFailure('Workspace initialization is taking longer than expected.');
   },8000);
 })();
+</script>
+<script>
+// These elements start hidden, and their modules show and hide them by writing
+// el.style.display ('' / 'none' / 'block'). The initial state is stamped through
+// the CSSOM rather than a style attribute so that contract is unchanged while the
+// markup stays free of inline styles. Runs before the application module loads.
+(function(){document.querySelectorAll('[data-init-hidden]').forEach(function(el){el.style.display='none';});})();
 </script>
 <script type="module" src="/js/app.js"></script>
 </body>

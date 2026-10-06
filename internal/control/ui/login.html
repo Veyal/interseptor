@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Interseptor — Sign in</title>
 <link rel="stylesheet" href="/app.css">
 <script>
@@ -11,7 +11,7 @@
 (function(){try{
   var t=localStorage.getItem('theme');
   if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
-  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+  if(t==='light'||t==='hc')document.documentElement.setAttribute('data-theme',t);
 }catch(e){}})();
 </script>
 <style>

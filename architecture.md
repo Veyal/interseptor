@@ -103,6 +103,62 @@ layout comes from the `app.css` tokens and its small `.u-*` utility layer, and
 the few remaining inline `display:none` values exist only because a script
 resets them with an empty value.
 
+### Evidence workbench shell
+
+The chrome answers "am I in scope, what evidence do I hold, what blocks my report?" before any
+panel does. `ctxbar.js` renders the Engagement Strip (`#ctxbar`, under the topbar) from
+`project-state.js`, a small store with `get`, `subscribe` and a debounced `refresh`. The store
+reads `GET /api/project/readiness` (falling back to per-endpoint reads), marks a failed segment
+stale on its own, and limits `flow.new` to one refresh per two seconds. The client renders the
+server's readiness verdicts and never recomputes pass or fail. `connection.js` holds the Connection
+popover (listener addresses, device proxy, live-update state) and the five-second offline banner.
+`cmdk.js` (with `cmdk-logic.js` and `cmdk-actions.js`) is the command palette: fuzzy ranking from
+`keys.js`, `>`/`f:`/`#`/`@`/`?` prefix modes, and an action for every legacy dialog id so replaced
+dialogs stay reachable. `keyboard.js` owns the shared key registry, chord continuations and the
+"Single-key shortcuts" switch.
+
+`flowdrawer.js` is the Flow Drawer (a docked `complementary` region above 1100px, an overlay with
+core's focus trap below) fed by the pure `flowbody.js`; `evidence-attach.js` and `evidence-tray.js`
+attach, order and undo evidence through the existing finding endpoints, and `readiness-meter.js`
+draws a finding's server-reported stage as `role=meter`. `report-preflight.js` is the Findings
+Report sub-view with gated export. `checklist.js` is the first-run checklist, derived from real
+state. Shared primitives live beside them: `split.js` (SplitPane), `sheet.js` (BottomSheet),
+`statepanel.js` (empty, loading, error, offline and locked states), `diff.js`, `copyas.js` and
+`finder.js`. `dock.js` is the phone bottom navigation; it calls the shell's `activateTab`, and the
+rail (`#tabs`) is `display:none` at 720px and below so assistive technology sees one navigation.
+
+Deliberate differences from the overhaul spec, recorded so they are not mistaken for gaps:
+
+- **Repeater send-as.** The replay API has no identity parameter; an identity is applied by editing
+  the request headers. The Proxy context menu's "Send as" therefore opens a Repeater tab whose title
+  carries `[identity]`, and no per-tab override control is shown because it could not be honest about
+  what the server will do.
+- **Hint strip.** The 24px panel-footer binding list is deferred: every binding is already listed in the
+  shortcut sheet and the command palette, and the footer would cost vertical space on phones.
+- **Notes layout.** Notes keeps its single-column list and editor; Map and the Proxy inspector own
+  their own dock layouts. Only Findings, Intercept, Scanner and Settings use `split.js`.
+- **Intercept auto-forward count.** The server keeps no counter, so Intercept tallies out-of-scope
+  requests from the live flow stream with the exact client scope mirror and hides the line when scope
+  cannot be decided in the browser (regex rules).
+
+Stylesheets load in a fixed order: `app.css` (tokens and legacy components), `surfaces.css`,
+`findings.css`, `workbench.css` (documents the 1100/900/720/480px breakpoints), `primitives.css`,
+`shell.css`, `flow.css`, `panel-proxy.css`, `panel-tools.css`, `panel-scan.css`, `panel-misc.css`,
+`settings.css`, `report.css`, and `mobile.css` last so the phone model wins the cascade.
+
+Theme and density are root attributes set by a pre-paint script so there is no layout shift:
+`data-theme` is `dark`, `light` or `hc` (high contrast; `forced-colors` maps borders, focus and
+selection to system colours) and `data-density` is `compact`, `default` or `comfortable`
+(`pointer:coarse` forces 44px rows and targets). Layout tokens include `--ctxbar-h`, `--topbar-h`,
+`--bottomnav-h` and `--sticky-top`, which feeds `scroll-padding-top` so focus is never hidden under
+the sticky bars. Only `transform` and `opacity` animate, and the global reduced-motion block turns
+every animation and transition off. Single-letter shortcuts (`e`, `d`, `x`, `y` then a letter, `/`)
+fire only outside editable controls and open dialogs and can be switched off in Settings; each has
+a visible button. Pure logic (diff, fuzzy scorer, chord resolver, copy-as, blocker derivation,
+selection model) is tested with `node --test` under `internal/control/ui/_js-tests` (not
+embedded), and `ui_a11y_audit_test.go` sweeps every stylesheet, script and the shell markup for
+accessible names, focus rings, target sizes, motion, glyph icons and privacy of the locked page.
+
 Workspace startup has two independent safety boundaries. A small classic-script guard runs before
 the ES-module graph and replaces the static loading state with a Reload action if those modules
 cannot load or evaluate. Once `app.js` is running, project identity and Repeater/Intruder state

@@ -1,0 +1,59 @@
+/* panel-proxy.css: Proxy panel workbench (UI overhaul WP6).
+   Breakpoints follow workbench.css: 1100 (side drawer), 720 (phone cards and the
+   Filters sheet), pointer:coarse (44px targets). Nothing here animates anything
+   except transform and opacity, and no min-width exceeds 375px. */
+
+/* ---- toolbar: one tier, plus the Filters popover and active-chip line ---- */
+.proxy-toolbar{flex-wrap:wrap;overflow-x:visible;row-gap:var(--sp-1)}
+.filters-count{display:inline-flex;align-items:center;justify-content:center;min-width:var(--sp-5);padding:0 var(--sp-1);margin-left:var(--sp-1);border-radius:999px;background:var(--accentDim);color:var(--accent);font-size:var(--fs-xs);font-weight:600}
+.proxy-filters-pop{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
+.proxy-filters-row{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
+.proxy-filters-pop .flow-search-disc textarea{width:100%;max-width:100%}
+.proxy-filters-pop :focus-visible,.proxy-toolbar :focus-visible,.sel-bar :focus-visible,.tr-more:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- bulk bar ---- */
+.sel-bar .btn[disabled]{opacity:.55;cursor:not-allowed}
+.sel-bar .sel-progress{flex:1 1 100%;min-height:0}
+.sel-bar .sel-progress:empty{display:none}
+
+/* ---- rows ---- */
+.tr-att{display:flex;align-items:center;justify-content:center}
+.tr-att .icon{color:var(--accent)}
+.tr-held .icon{color:var(--accent)}
+.tr-wait{color:var(--fg3)}
+.trow:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-2px;box-shadow:inset 2px 0 0 var(--sel-cursor)}
+.tr-more{display:none}
+
+/* ---- inspector docking: the side drawer replaces the bottom inspector ---- */
+#panel-proxy.dock-drawer #inspect,
+#panel-proxy.dock-drawer #inspectSplitter{display:none!important}
+#panel-proxy.dock-drawer #rows{flex:1 1 auto}
+
+/* ---- pointer:coarse: 44px targets ---- */
+@media (pointer:coarse){
+  .proxy-toolbar .btn,.proxy-toolbar .uisw,.proxy-filters-pop .uisw,.proxy-filters-pop .btn,.sel-bar .btn,.inspect-find .btn{min-height:var(--hit-min);min-width:var(--hit-min)}
+  .tr-more{min-height:var(--hit-min);min-width:var(--hit-min)}
+}
+
+/* ---- phones: Filters become a bottom sheet, rows become two-line cards ---- */
+@media (max-width:720px){
+  html[data-soft-keyboard="true"] .proxy-filters-pop{bottom:0}
+  .proxy-filters-pop{position:fixed;left:var(--safe-l);right:var(--safe-r);bottom:calc(var(--bottomnav-h) + var(--safe-b));z-index:var(--z-popover);max-height:70dvh;overflow:auto;padding:var(--sp-4);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--elev-3)}
+  .proxy-toolbar .search{flex:1 1 100%}
+  #panel-proxy #flowHead{display:none}
+  #panel-proxy #rows .trow{
+    grid-template-columns:auto minmax(0,1fr) auto auto var(--hit-min);
+    grid-template-areas:"m path path st more" "att host len t more";
+    height:56px;min-height:56px;row-gap:0;padding-block:var(--sp-1);align-items:center
+  }
+  #panel-proxy #rows .trow .tr-id,#panel-proxy #rows .trow .tr-mime{display:none}
+  #panel-proxy #rows .trow .tr-m{grid-area:m}
+  #panel-proxy #rows .trow .tr-path{grid-area:path}
+  #panel-proxy #rows .trow .tr-st{grid-area:st}
+  #panel-proxy #rows .trow .tr-att{grid-area:att;min-width:var(--sp-5)}
+  #panel-proxy #rows .trow .tr-host{grid-area:host;color:var(--fg2)}
+  #panel-proxy #rows .trow .tr-len{grid-area:len;text-align:right;color:var(--fg3)}
+  #panel-proxy #rows .trow .tr-t{grid-area:t;text-align:right;color:var(--fg3)}
+  #panel-proxy #rows .trow .tr-more{grid-area:more;display:inline-flex;align-items:center;justify-content:center;min-height:var(--hit-min);min-width:var(--hit-min);background:none;border:0;color:var(--fg2);cursor:pointer}
+}
+.coach-tip{display:inline-flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;padding:var(--sp-1) var(--sp-2);border:1px dashed var(--line2);border-radius:var(--r-md);font-size:var(--fs-xs)}

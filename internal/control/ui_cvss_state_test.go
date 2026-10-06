@@ -89,7 +89,7 @@ func TestCVSSDiscardAndExactRevertRecoverFindingDrafts(t *testing.T) {
  const controls={findSaveState:control(''),findSaveRecovery:control(''),findSaveRetry:control(''),findToggleEdit:control('')};
  const $=s=>controls[s.slice(1)];
  const loadFindings=async()=>{},refreshDeferredFindingDetail=()=>{},renderFindingDetail=()=>renders++,toast=()=>{},captureActiveFindingTextEditor=()=>{},flushPendingBodySave=async()=>{},registerProjectSwitchGuard=fn=>guard=fn;
- ` + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "async function exportFindingsReport(") + section("registerProjectSwitchGuard(", "\n") + `
+ ` + section("function findingWriteQueue(", "function renderFindingDetail(") + section("async function settleFindingsBeforeExport(", "export function flowFindings(") + section("registerProjectSwitchGuard(", "\n") + `
  const bindDone=()=>{const f=findings[0],edit=true;
  ` + section("  const te = $('#findToggleEdit');", "  const blurPatch") + `
  };

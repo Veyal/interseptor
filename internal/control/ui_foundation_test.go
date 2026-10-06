@@ -115,7 +115,7 @@ func TestUIFoundationFocusAndReducedMotionContracts(t *testing.T) {
 
 func TestUIFoundationResponsiveViewportContract(t *testing.T) {
 	index := readUIAsset(t, "index.html")
-	requireUIContains(t, index, `<meta name="viewport" content="width=device-width, initial-scale=1">`)
+	requireUIContains(t, index, `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`)
 	if strings.Contains(index, `<meta name="viewport" content="width=1280">`) {
 		t.Error("index.html still forces a desktop viewport width")
 	}
@@ -269,7 +269,8 @@ func TestUIMainTablistSupportsHomeEndNavigation(t *testing.T) {
 }
 
 func TestUIFoundationCommandPaletteAccessibilityContract(t *testing.T) {
-	app := executableJS(readUIAsset(t, "js/app.js"))
+	// The palette was extracted from app.js into cmdk.js with identical markup.
+	app := executableJS(readUIAsset(t, "js/cmdk.js"))
 	requireUIContains(t, app,
 		`role="dialog"`,
 		`aria-modal="true"`,
@@ -385,4 +386,15 @@ func TestUIFoundationTLSDiagnosisCoalescesCaptureBursts(t *testing.T) {
 	if strings.Contains(onFlow[1], "loadTrafficDiagnosis()") {
 		t.Error("capture events must schedule a coalesced TLS diagnosis, not fetch immediately")
 	}
+}
+
+// requireNode returns the node binary path and fails (never skips) when it is
+// missing, so the JS logic tests cannot silently drop out of go test or CI.
+func requireNode(t *testing.T) string {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("node is required on PATH for the UI logic tests: %v", err)
+	}
+	return node
 }

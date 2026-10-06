@@ -797,7 +797,7 @@ func TestFindingCvssCreateAndPatch(t *testing.T) {
 
 	// CREATE with cvss + Critical severity.
 	resp, err := http.Post(ts.URL+"/api/findings", "application/json",
-		strings.NewReader(`{"title":"CVSS test","severity":"critical","cvss":"9.8"}`))
+		strings.NewReader(`{"title":"CVSS test","severity":"critical","cvss":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"}`))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -807,15 +807,15 @@ func TestFindingCvssCreateAndPatch(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create: want 200, got %d", resp.StatusCode)
 	}
-	if created.Cvss != "9.8" {
-		t.Fatalf("create: cvss want %q got %q", "9.8", created.Cvss)
+	if created.Cvss != "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" {
+		t.Fatalf("create: cvss want %q got %q", "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", created.Cvss)
 	}
 	if created.Severity != "Critical" {
 		t.Fatalf("create: severity want Critical got %q", created.Severity)
 	}
 
 	// PATCH cvss with a vector.
-	vector := `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`
+	vector := `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:N/SA:N`
 	payload, _ := json.Marshal(map[string]string{"cvss": vector})
 	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/findings/"+idStr(created.ID), strings.NewReader(string(payload)))
 	r2, err := http.DefaultClient.Do(req)
@@ -1111,6 +1111,44 @@ func TestAttachFindingFlowRejectsInvalidMetadataAtomically(t *testing.T) {
 	}
 	if len(f.Blocks) != 0 || len(f.Flows) != 0 {
 		t.Fatalf("invalid metadata partially attached evidence: blocks=%+v flows=%+v", f.Blocks, f.Flows)
+	}
+}
+
+func TestClassifyFindingImageEndpoint(t *testing.T) {
+	h, s, _ := newHub(t)
+	ts := httptest.NewServer(h.Handler())
+	defer ts.Close()
+	id, _ := s.CreateFinding(&store.Finding{Title: "img"})
+	const pngB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	base := ts.URL + "/api/findings/" + strconv.FormatInt(id, 10)
+	resp, err := http.Post(base+"/images", "application/json", strings.NewReader(`{"data":"`+pngB64+`","role":"result","proof":"alert visible"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out store.Finding
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	hash := out.Blocks[0].Hash
+	if out.Readiness.ScreenshotCount != 0 {
+		t.Fatalf("upload counted before classification")
+	}
+	bad, _ := http.Post(base+"/images/"+hash+"/classify", "application/json", strings.NewReader(`{"source":"flow_preview"}`))
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("generated source status=%d", bad.StatusCode)
+	}
+	resp, err = http.Post(base+"/images/"+hash+"/classify", "application/json", strings.NewReader(`{"source":"browser_screenshot"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	out = store.Finding{}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.Readiness.ScreenshotCount != 1 || out.Blocks[0].Provenance.Ingestion != "upload" || out.Blocks[0].Provenance.ClassifiedBy == "" {
+		t.Fatalf("classified: %+v %+v", out.Readiness, out.Blocks[0].Provenance)
 	}
 }
 

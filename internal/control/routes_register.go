@@ -37,6 +37,7 @@ func (h *Hub) routes() {
 func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows", f.listFlows)
 	h.mux.HandleFunc("GET /api/flows/session-inspect", f.inspectSession)
+	h.mux.HandleFunc("GET /api/flows/{id}/auth-timeline", f.authTimelineHandler)
 	h.mux.HandleFunc("GET /api/flow-searches", f.listFlowSearches)
 	h.mux.HandleFunc("POST /api/flow-searches", f.createFlowSearch)
 	h.mux.HandleFunc("POST /api/flow-searches/test", f.testFlowSearch)
@@ -51,10 +52,12 @@ func (h *Hub) registerFlowRoutes(f *flowAPI) {
 	h.mux.HandleFunc("GET /api/flows/{id}/preview.png", f.getFlowPreviewPNG)
 	h.mux.HandleFunc("GET /api/flows/{id}/body", f.getFlowBody)
 	h.mux.HandleFunc("GET /api/flows/{id}/ws", f.flowWS)
+	h.mux.HandleFunc("PUT /api/flows/{id}/ws/{frameId}/note", f.putWSFrameNote)
 	h.mux.HandleFunc("GET /api/flows/{id}/analyze", f.analyzeFlow)
 	h.mux.HandleFunc("GET /api/flows/{id}/curl", f.flowCurl)
 	h.mux.HandleFunc("GET /api/flows/diff", f.diffFlows)
 	h.mux.HandleFunc("PUT /api/flows/{id}/note", f.setFlowNote)
+	h.mux.HandleFunc("PUT /api/flows/{id}/interception", f.putFlowInterception)
 	h.mux.HandleFunc("PUT /api/flows/{id}/tags", f.setFlowTags)
 	h.mux.HandleFunc("POST /api/flows/tags", f.addFlowTagsBulk)
 	h.mux.HandleFunc("GET /api/tags", f.listTags)
@@ -137,12 +140,15 @@ func (h *Hub) registerFindingsRoutes(fd *findingsAPI) {
 	h.mux.HandleFunc("GET /api/findings/images/{hash}", fd.getFindingImage)
 	h.mux.HandleFunc("POST /api/findings", fd.createFinding)
 	h.mux.HandleFunc("POST /api/finding-targets/preview", fd.previewFindingTargets)
+	h.mux.HandleFunc("POST /api/findings/{id}/normalize-targets", fd.normalizeFindingTargets)
+	h.mux.HandleFunc("GET /api/finding-quality/{id}", fd.findingQuality)
 	h.mux.HandleFunc("GET /api/findings/{id}", fd.getFinding)
 	h.mux.HandleFunc("PATCH /api/findings/{id}", fd.updateFinding)
 	h.mux.HandleFunc("DELETE /api/findings/{id}", fd.deleteFinding)
 	h.mux.HandleFunc("POST /api/findings/{id}/flows", fd.attachFindingFlow)
 	h.mux.HandleFunc("DELETE /api/findings/{id}/flows/{flowId}", fd.detachFindingFlow)
 	h.mux.HandleFunc("POST /api/findings/{id}/images", fd.attachFindingImage)
+	h.mux.HandleFunc("POST /api/findings/{id}/images/{hash}/classify", fd.classifyFindingImage)
 	h.mux.HandleFunc("POST /api/findings/{id}/flow-preview", fd.attachFindingFlowPreview)
 }
 
@@ -194,6 +200,11 @@ func (h *Hub) registerPacksRoutes() {
 }
 
 func (h *Hub) registerProjectRoutes(proj *projectAPI) {
+	h.mux.HandleFunc("GET /api/interception-setup", proj.getInterceptionSetup)
+	h.mux.HandleFunc("PUT /api/interception-setup", proj.putInterceptionSetup)
+	h.mux.HandleFunc("GET /api/engagement-brief", proj.getEngagementBrief)
+	h.mux.HandleFunc("PUT /api/engagement-brief", proj.putEngagementBrief)
+	h.mux.HandleFunc("GET /api/project/readiness", proj.getProjectReadiness)
 	h.mux.HandleFunc("GET /api/notes", proj.getNotes)
 	h.mux.HandleFunc("PUT /api/notes", proj.putNotes)
 	h.mux.HandleFunc("PATCH /api/notes", proj.patchNotes)
@@ -237,12 +248,15 @@ func (h *Hub) registerOobRoutes(oob *oobAPI) {
 func (h *Hub) registerAuthzRoutes(az *authzAPI) {
 	h.mux.HandleFunc("GET /api/authz", az.getAuthz)
 	h.mux.HandleFunc("POST /api/authz", az.setAuthz)
+	h.mux.HandleFunc("POST /api/authz/identity", az.addAuthzIdentity)
+	h.mux.HandleFunc("DELETE /api/authz/identity/{name}", az.removeAuthzIdentity)
 	h.mux.HandleFunc("GET /api/readiness", az.getReadiness)
 	h.mux.HandleFunc("GET /api/tls-diagnosis", az.getTLSDiagnosis)
 	h.mux.HandleFunc("GET /api/authz/flow-auth/{id}", az.authzFlowAuth)
 	h.mux.HandleFunc("POST /api/authz/from-flow/{id}", az.authzPromoteFromFlow)
 	h.mux.HandleFunc("POST /api/authz/check-sessions", az.authzCheckSessions)
 	h.mux.HandleFunc("POST /api/authz/run", az.authzRun)
+	h.mux.HandleFunc("POST /api/authz/differential", az.authzDifferentialRun)
 	h.mux.HandleFunc("POST /api/authz/cross-host-replay", az.authzCrossHostReplay)
 }
 
@@ -264,7 +278,9 @@ func (h *Hub) registerMetaRoutes(meta *metaAPI) {
 	h.mux.HandleFunc("GET /api/reference", meta.apiReference)
 	h.mux.HandleFunc("GET /api/mcp", meta.apiMCP)
 	h.mux.HandleFunc("GET /api/mcp/capabilities", meta.apiMCPCapabilities)
+	h.mux.HandleFunc("GET /api/capabilities", meta.apiMCPCapabilities)
 	h.mux.HandleFunc("POST /api/finding-cvss", meta.evaluateCVSS)
+	h.mux.HandleFunc("POST /api/redact", meta.redactValue)
 	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.HandleFunc("GET /mcp", h.handleMCP)
 	h.mux.HandleFunc("OPTIONS /mcp", h.handleMCP)

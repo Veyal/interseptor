@@ -1,0 +1,84 @@
+/* Intercept and Scanner workbench (WP10). Loaded after the shared primitives, so
+   `.split` panes here only restate what the legacy panel rules would otherwise
+   win. No transitions or keyframes are used: state is conveyed by text, icon and
+   border style, so there is nothing for prefers-reduced-motion to switch off. */
+
+/* ---- Intercept ---- */
+.icpt-work.split{height:auto;flex:1;min-height:0}
+.icpt-work.split>.icpt-queue{width:auto;max-height:none;border-right:0;min-width:0}
+.icpt-work.split>.icpt-main{min-width:0}
+.icpt-work.split[data-mode="stack"]>.icpt-queue{max-height:none;border-bottom:0}
+.icpt-main .icpt-raw{min-height:240px}
+
+.icpt-ctx{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
+.icpt-ctx-chip{display:inline-flex;align-items:center;gap:var(--sp-1);padding:2px var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-xl);background:var(--bg2);color:var(--fg);font-size:var(--fs-xs);font-weight:600}
+.icpt-ctx-chip[hidden]{display:none}
+.icpt-ctx-note{flex:1 1 240px;min-width:0;font-size:var(--fs-xs);color:var(--fg2)}
+
+.icpt-actionbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg2);border-top:1px solid var(--line2);position:sticky;bottom:0;z-index:var(--z-sticky)}
+.icpt-actionbar .btn{min-height:var(--hit-min)}
+.icpt-actionbar .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+.icpt-item.is-dropping{border-left-style:dashed}
+.icpt-dropping-tag{margin-left:auto;font-size:var(--fs-xs);font-weight:700;color:var(--amber)}
+.icpt-mr>summary .icpt-mr-count{margin-left:var(--sp-2)}
+
+@media (max-width:720px){
+  .icpt-actionbar{padding-bottom:calc(var(--sp-2) + var(--safe-b))}
+  .icpt-actionbar .btn{flex:1 1 auto;justify-content:center}
+  .icpt-ctx-note{flex-basis:100%}
+}
+
+/* ---- Scanner ---- */
+/* The toolbar scrolls horizontally (overflow-x:auto), which would clip the Tools
+   popover; the row itself wraps, so it never needs to scroll. */
+#panel-scanner>.toolbar{overflow:visible}
+.scan-tools{position:relative;flex:none}
+.scan-tools-menu{position:absolute;right:0;top:calc(100% + var(--sp-1));z-index:var(--z-popover);display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-1);min-width:180px;padding:var(--sp-2);background:var(--bg1);border:1px solid var(--line2);border-radius:9px;box-shadow:var(--elev-2)}
+.scan-tools-menu[hidden]{display:none}
+.scan-tools-menu .btn{justify-content:flex-start;min-height:var(--hit-min)}
+#scanToolsBtn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+.scan-context{flex:none;display:flex;flex-direction:column;gap:var(--sp-1);padding:var(--sp-1) var(--sp-4);border-bottom:1px solid var(--line)}
+.scan-scope-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:0}
+.scan-run-reason{margin:0;color:var(--amber);font-weight:600}
+.scan-run-reason[hidden]{display:none}
+
+.scan-progress{flex:none;position:sticky;top:0;z-index:var(--z-sticky);display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-4);background:var(--bg2);border-bottom:1px solid var(--line2)}
+.scan-progress[hidden]{display:none}
+.scan-progress progress{flex:0 1 240px;min-width:0;height:var(--sp-2);accent-color:var(--accent)}
+
+.scan-passive-view.split{height:auto;flex:1;min-height:0}
+.scan-passive-view.split>.scan-list-col{display:flex;flex-direction:column;background:var(--bg1)}
+.scan-list-col .scan-list{width:auto;flex:none;overflow:visible;border-right:0}
+.scan-passive-view[data-mode="stack"] .scan-list{max-height:none}
+.scan-passive-view.split>.scan-detail-pane{display:block;border-right:0}
+
+.scan-sev-chips{position:sticky;top:0;z-index:var(--z-sticky);display:flex;flex-wrap:wrap;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);background:var(--bg1);border-bottom:1px solid var(--line)}
+.scan-sev-chips[hidden]{display:none}
+.scan-sev-chip{display:inline-flex;align-items:center;gap:var(--sp-1);min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-xl);background:var(--bg2);color:var(--fg);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.scan-sev-chip[aria-pressed="true"]{background:var(--accentDim);border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);font-weight:700}
+.scan-sev-chip:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+.scan-item .sev .icon,.scan-wrap .sev .icon{width:1em;height:1em}
+.scan-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin:var(--sp-3) 0 var(--sp-2)}
+.scan-title{flex:1;min-width:0;margin:0;font-size:var(--fs-2xl);font-weight:700;line-height:1.3}
+.scan-title:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.scan-detail-text{color:var(--fg2);font-size:var(--fs-md);line-height:1.6}
+.scan-sec-label{margin:var(--sp-4) 0 var(--sp-2)}
+.scan-tgt{padding:var(--sp-2) var(--sp-3);border:1px solid var(--line);border-radius:6px;margin-bottom:var(--sp-2)}
+.scan-tgt-url{font-family:var(--mono);font-size:var(--fs-sm);color:var(--accent);overflow-wrap:anywhere}
+.scan-tgt-flow{color:var(--fg2)}
+.scan-tgt-detail{margin-top:var(--sp-2);font-size:var(--fs-sm);color:var(--fg2);line-height:1.5}
+.scan-tgt-evidence{margin-top:var(--sp-2)}
+.scan-tgt-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+.scan-tgt-actions .btn:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+@media (max-width:720px){
+  .scan-progress{padding-inline:var(--sp-4)}
+  .scan-tools-menu{min-width:min(240px,calc(100vw - 32px))}
+}
+@media (pointer:coarse){
+  .scan-tgt-actions .btn{min-height:var(--hit-min)}
+}
+.icpt-autofwd{flex:none;padding:var(--sp-1) var(--sp-3);border-bottom:1px solid var(--line);font-size:var(--fs-xs)}

@@ -42,20 +42,73 @@ export const state={flows:[],selId:null,detail:null,intercept:{enabled:false,que
   filters:{scheme:'',search:'',searchScope:'anywhere',method:'',status:'',host:'',tag:'',exclude:[]},notesOnly:false,hideTlsFailed:true,activity:[],actUnseen:0,tags:[],tagColors:{},flowCols:['id','method','host','path','status','size','time'],oobEnabled:false};
 
 // toast(m) = info; toast(m, 'error'|'warn'|'success') for a longer, colored one.
-export function toast(m, sev){
+// Errors and warnings are role=alert (announced assertively). Warnings live longer
+// and pause while hovered or focused; errors persist until dismissed. Neither is
+// evicted by newer info toasts.
+function evictToasts(c) {
+  const keep = (sel, max) => {
+    const items = c.querySelectorAll(sel);
+    for (let i = 0; i < items.length - max; i++) items[i].remove();
+  };
+  // Older notices are less useful than the latest result, so cap each class.
+  keep('.toast-item:not(.error)', 3);
+  keep('.toast-item.error', 5);
+}
+function dismissToast(t) {
+  t.classList.remove('show');
+  setTimeout(() => t.remove(), 220);
+}
+function armToastTimer(t, ms) {
+  let left = ms, started = 0, timer = null;
+  const dismiss = () => dismissToast(t);
+  const run = () => { started = Date.now(); clearTimeout(timer); timer = setTimeout(dismiss, left); };
+  const pause = () => {
+    if (timer === null) return;
+    clearTimeout(timer); timer = null;
+    left = Math.max(2000, left - (Date.now() - started));
+  };
+  const resume = () => {
+    if (t.matches(':hover') || t.contains(document.activeElement)) return;
+    run();
+  };
+  t.addEventListener('mouseenter', pause);
+  t.addEventListener('focusin', pause);
+  t.addEventListener('mouseleave', resume);
+  t.addEventListener('focusout', resume);
+  run();
+}
+export function toast(m, sev) {
   const c = $('#toast');
-  if (!c) return;
-  // Keep transient feedback from obscuring the compact workspace. Older notices
-  // are less useful than the latest result, so evict them before appending.
-  const visible = c.querySelectorAll('.toast-item');
-  for (let i = 0; i < visible.length - 3; i++) visible[i].remove();
+  if (!c) return null;
+  const loud = sev === 'error' || sev === 'warn';
   const t = document.createElement('div');
   t.className = 'toast-item ' + (sev || 'info');
   t.textContent = m;
+  if (loud) { t.setAttribute('role', 'alert'); t.tabIndex = 0; }
+  if (sev === 'error') {
+    // Failures stay until dismissed (WCAG 2.2.1): a button, or Escape on the focused toast.
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn xs toast-dismiss';
+    x.setAttribute('aria-label', 'Dismiss');
+    x.innerHTML = icon('close');
+    x.addEventListener('click', () => dismissToast(t));
+    t.addEventListener('keydown', e => { if (e.key === 'Escape') dismissToast(t); });
+    t.appendChild(x);
+  }
   c.appendChild(t);
+  evictToasts(c);
   requestAnimationFrame(() => t.classList.add('show'));
-  const ms = sev === 'error' ? 4500 : 2600;
-  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); }, ms);
+  if (sev !== 'error') armToastTimer(t, sev === 'warn' ? 5000 : 2600);
+  return t;
+}
+// toastError(prefix, e) reports a failed action. e may be an Error, a string or
+// anything with a message; the prefix names the action ("Save failed"). A single
+// non-string argument is treated as the error itself.
+export function toastError(prefix, e) {
+  if (e === undefined && typeof prefix !== 'string') { e = prefix; prefix = ''; }
+  const detail = (e && e.message) || (e ? String(e) : '') || 'request failed';
+  toast(prefix ? prefix + ': ' + detail : detail, 'error');
 }
 
 // wireRowKey makes a clickable <div> row keyboard-operable: it becomes a focusable
@@ -332,8 +385,8 @@ export function createTabManager(opts){
     <button type="button" class="rt-select" id="${bar.id}Tab${t.tid}" role="tab" aria-selected="${active?'true':'false'}" aria-controls="${escAttr(tabPanelId)}" tabindex="${active?'0':'-1'}" aria-label="${escAttr(label)}">
       <span class="rt-label"${style?` style="${escAttr(style)}"`:''}>${esc(label)}</span>
     </button>
-    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">✕</button></div>`;
-    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">＋</button>`;
+    <button type="button" class="rt-close" data-close="${t.tid}" aria-label="Close ${escAttr(label)}" title="Close ${escAttr(label)}">${icon('close')}</button></div>`;
+    }).join('')+`<button type="button" class="rep-tab-add" id="${bar.id}Add" aria-disabled="${atTabLimit?'true':'false'}" aria-label="${escAttr(addLabel)}" title="${escAttr(addLabel)}">${icon('plus')}</button>`;
     const tabPanel=document.getElementById(tabPanelId);
     const activeTab=bar.querySelector('.rt-select[aria-selected="true"]');
     if(tabPanel&&activeTab)tabPanel.setAttribute('aria-labelledby',activeTab.id);
@@ -602,7 +655,7 @@ export function enhanceSelect(sel){
   const caret=document.createElement('span');
   caret.className='ui-select-caret';
   caret.setAttribute('aria-hidden','true');
-  caret.textContent='▾';
+  caret.innerHTML=icon('chevron');
   trigger.append(valueEl,caret);
 
   const menu=document.createElement('div');
@@ -767,37 +820,74 @@ window.addEventListener('scroll',e=>{
   closeAllUiSelects();
 },true);
 window.addEventListener('resize',()=>closeAllUiSelects());
+// Virtualized lists (History, Intruder results, Map) churn rows constantly and
+// never contain a <select>; skip their mutations instead of scanning every row.
+const UI_SELECT_SKIP='#rows,.intr-virt-body,.map-virt-body';
 new MutationObserver(muts=>{
   for(const m of muts){
+    if(m.target.closest?.(UI_SELECT_SKIP))continue;
     m.addedNodes.forEach(n=>{
       if(n.nodeType!==1)return;
       if(n.tagName==='SELECT')enhanceSelect(n);
-      else initUiSelects(n);
+      else if(n.querySelector('select'))initUiSelects(n);
     });
   }
 }).observe(document.documentElement,{childList:true,subtree:true});
 
+// apiErrorMessage turns a failed response into one short, human sentence: the
+// JSON `error` field, a short plain-text body, the status text, or "HTTP <n>"
+// (HTTP/2 has no status text). HTML bodies are never surfaced.
+async function apiErrorMessage(r) {
+  const fallback = r.statusText || 'HTTP ' + r.status;
+  let raw = '';
+  try { raw = String(await r.text()).trim(); } catch (e) { return fallback; }
+  if (!raw) return fallback;
+  try {
+    const j = JSON.parse(raw);
+    return (j && typeof j.error === 'string' && j.error) || fallback;
+  } catch (e) { /* not JSON */ }
+  if (raw[0] === '<' || raw.length > 200) return fallback;
+  return raw;
+}
+// apiFetchError wraps a rejected fetch: a caller-driven abort passes through;
+// timeouts and unreachable servers get a message the operator can act on.
+function apiFetchError(e, opts) {
+  if (opts.signal && opts.signal.aborted && !opts.defaultTimeout) return e;
+  const timedOut = e && e.name === 'TimeoutError';
+  const err = new Error(timedOut
+    ? 'The Interseptor control server did not respond in time. Retry in a moment.'
+    : 'Cannot reach the Interseptor control server. Check that it is still running, then retry.');
+  err.code = timedOut ? 'timeout' : 'network';
+  return err;
+}
 export async function api(path,opts){
-  opts=opts||{};
+  opts=Object.assign({},opts);
   // Remote (cookie-authed) sessions must carry an anti-CSRF header on mutations;
   // it is harmless on the loopback path. Safe methods (GET/HEAD) skip it.
   const method=(opts.method||'GET').toUpperCase();
   if(method!=='GET'&&method!=='HEAD'){
     opts.headers=Object.assign({'X-Interseptor-CSRF':'1'},opts.headers||{});
   }
-  const r=await fetch(path,opts);
+  // Reads should fail loudly instead of hanging a panel on "loading" forever.
+  if(method==='GET'&&!opts.signal&&typeof AbortSignal!=='undefined'&&AbortSignal.timeout){
+    opts.signal=AbortSignal.timeout(30000);opts.defaultTimeout=true;
+  }
+  const {defaultTimeout,...init}=opts;
+  let r;
+  try{r=await fetch(path,init);}
+  catch(e){throw apiFetchError(e,opts);}
   if(r.status===401){ // remote session expired / not signed in → go to login
     if(location.pathname!=='/login'){ location.href='/login'; }
     throw new Error('unauthorized');
   }
-  if(!r.ok){let m=r.statusText;try{m=(await r.json()).error||m}catch(e){}throw new Error(m);}
+  if(!r.ok){const err=new Error(await apiErrorMessage(r));err.status=r.status;throw err;}
   const ct=r.headers.get('content-type')||'';return ct.includes('json')?r.json():r.text();
 }
 
 /** apiTry wraps api(); on failure optionally toasts and returns null instead of throwing. */
 export async function apiTry(path, opts, {toastOnError=true, label=''}={}){
   try{return await api(path, opts);}
-  catch(e){if(toastOnError)toast((label?label+': ':'')+e.message);return null;}
+  catch(e){if(toastOnError)toastError(label, e);return null;}
 }
 
 export const methodColor=m=>({GET:'var(--blue)',POST:'var(--accent)',PUT:'var(--amber)',PATCH:'var(--violet)',DELETE:'var(--red)'}[m]||'var(--fg2)');
@@ -995,6 +1085,54 @@ export function flowInScope(f,compiled){
   return compiled.hasInclude?included:true;
 }
 
+/* ---- density: --row-h and friends follow :root[data-density] (and the coarse
+   pointer tier). Anything that measures rows listens for `densitychange`. ---- */
+export const DENSITIES=['compact','default','comfortable'];
+export function readRowHeightToken(fallback=30){
+  const h=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row-h'));
+  return h>0?h:fallback;
+}
+export function getDensity(){
+  const d=document.documentElement.getAttribute('data-density');
+  return DENSITIES.includes(d)?d:'default';
+}
+function announceDensity(){window.dispatchEvent(new CustomEvent('densitychange',{detail:{density:getDensity(),rowHeight:readRowHeightToken()}}));}
+// setDensity applies and persists the density tier, then announces it.
+export function setDensity(value){
+  const d=DENSITIES.includes(value)?value:'default';
+  document.documentElement.setAttribute('data-density',d);
+  try{localStorage.setItem('density',d);}catch(e){}
+  announceDensity();
+  return d;
+}
+try{window.matchMedia('(pointer:coarse)').addEventListener('change',announceDensity);}catch(e){}
+let rowTokenCache=0;
+const densityListeners=new Set();
+// rowHeightToken is the cached --row-h value; it is re-read after `densitychange`.
+export function rowHeightToken(){return rowTokenCache||(rowTokenCache=readRowHeightToken());}
+export function onDensityChange(fn){densityListeners.add(fn);return()=>{densityListeners.delete(fn);};}
+window.addEventListener('densitychange',()=>{
+  rowTokenCache=0;
+  densityListeners.forEach(fn=>{try{fn();}catch(e){}});
+});
+
+/* ---- extension registry: later modules register implementations that other
+   panels call through core, so panels never import each other. `openFlow` is
+   backed by the Flow Drawer; `renderFlowBody` by the shared flow body renderer. ---- */
+const hooks=new Map();
+export function registerHook(name,fn){
+  if(typeof fn!=='function')throw new Error('registerHook: '+name+' needs a function');
+  hooks.set(name,fn);
+  return ()=>{if(hooks.get(name)===fn)hooks.delete(name);};
+}
+export function getHook(name){return hooks.get(name)||null;}
+// openFlow(id, {source, tab}) opens a flow wherever the drawer is mounted; it
+// returns false when no implementation is registered yet.
+export function openFlow(id,opts){const h=hooks.get('openFlow');return h?h(id,opts||{}):false;}
+// renderFlowBody(flow, tab) returns the shared body markup, or null before the
+// renderer registers.
+export function renderFlowBody(flow,tab){const h=hooks.get('renderFlowBody');return h?h(flow,tab):null;}
+
 /* ---- createVirtualList: windowed-rendering helper for long rows-in-a-scroll-
    -div lists (Proxy history today; Map's table and Intruder's results are
    candidates for a later migration, not touched by this pass).
@@ -1005,6 +1143,7 @@ export function flowInScope(f,compiled){
    helper only decides which indices are visible). ---- */
 export function createVirtualList({container,itemHeight,threshold,buffer,onScroll}){
   let active=false,scrollTick=false,scrollBound=false;
+  const rowH=()=>typeof itemHeight==='function'?itemHeight():itemHeight;
   function bindScroll(){
     if(scrollBound||!container)return;
     scrollBound=true;
@@ -1024,12 +1163,27 @@ export function createVirtualList({container,itemHeight,threshold,buffer,onScrol
     bindScroll();
     if(total<threshold){active=false;return null;}
     active=true;
-    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0;
-    const start=Math.max(0,Math.floor(scrollTop/itemHeight)-buffer);
-    const end=Math.min(total,start+Math.ceil(viewH/itemHeight)+2*buffer);
-    return {start,end,topPad:start*itemHeight,bottomPad:(total-end)*itemHeight};
+    const viewH=container.clientHeight||640,scrollTop=container.scrollTop||0,h=rowH();
+    const start=Math.max(0,Math.floor(scrollTop/h)-buffer);
+    const end=Math.min(total,start+Math.ceil(viewH/h)+2*buffer);
+    return {start,end,topPad:start*h,bottomPad:(total-end)*h};
   }
   return {computeWindow,isActive:()=>active};
+}
+
+// createDensityVirtualList is createVirtualList whose rows are measured from the
+// --row-h density token instead of a constant. When the density tier (or the
+// coarse-pointer tier) changes, core dispatches `densitychange`: the cached token
+// is dropped and an active (virtualized) list re-renders its window.
+export function createDensityVirtualList(opts){
+  const vl=createVirtualList({...opts,itemHeight:rowHeightToken});
+  const dispose=onDensityChange(()=>{
+    // A list whose container left the DOM unsubscribes itself.
+    if(!opts.container||!opts.container.isConnected){dispose();return;}
+    if(vl.isActive())opts.onScroll();
+  });
+  vl.dispose=dispose;
+  return vl;
 }
 
 /* ---- createAutosave: shared debounced-save-with-status pattern.
@@ -1451,9 +1605,9 @@ export function encodeKindLabel(s){
 // shared inner markup once here instead of hand-duplicating it at every call site.
 const SEL_DECODE_INNER_HTML=`<span class="sel-decode-kind">Base64</span><span class="sel-decode-arrow">→</span>
   <code class="sel-decode-out"></code>
-  <button type="button" class="btn sel-decode-copy" title="Copy decoded">⧉</button>
+  <button type="button" class="btn sel-decode-copy" title="Copy decoded" aria-label="Copy decoded value">${icon('copy')}</button>
   <button type="button" class="btn sel-decode-open" title="Open in Decoder">Decoder</button>
-  <button type="button" class="btn sel-decode-close" title="Dismiss">✕</button>`;
+  <button type="button" class="btn sel-decode-close" title="Dismiss" aria-label="Dismiss decoded value">${icon('close')}</button>`;
 // wireSelectionDecode shows a slim decode strip when highlighted text looks encoded
 // (built-in smart) or matches a project message codec (when getContext provides flowId).
 export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
@@ -1499,7 +1653,10 @@ export function wireSelectionDecode(viewEl, barEl, {onDecoder, getContext}={}){
 
 /* ---- authoritative modal registry + focus stack ---- */
 export const FOCUSABLE='a[href],button,input,select,textarea,[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
-export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findExportModal','findDeletedModal','sessionInspectModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox'];
+export const MODAL_IDS=['flowModal','shortcutsModal','checksModal','codecsModal','oobModal','projModal','authzModal','findGuideModal','findCreateModal','findPickModal','findFlowPickModal','findDeletedModal','sessionInspectModal','authTimelineModal','compareModal','decModal','confirmModal','promptModal','setupModal','imgLightbox',
+  // Overlay surfaces created by sheet.js and the Flow Drawer. Listed here so shortcut
+  // gating (workflowShortcutBlocked) and the focus trap treat them as modals.
+  'flowDrawer','flowDiffModal','engagementSheet','filtersSheet','moreSheet','detailSheet','toolsSheet','historySheet','paletteSheet'];
 const MODAL_Z_BASE=400;
 const modalRegistry=new Map();
 const modalStack=[];

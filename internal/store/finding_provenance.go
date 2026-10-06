@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -88,6 +89,43 @@ func stampFindingImageProvenance(tx *sql.Tx, oldBody, newBody string, change Fin
 	}
 	data, err := json.Marshal(blocks)
 	return string(data), err
+}
+
+// ClassifyFindingImage lets a reviewer relabel an already-attached image (for
+// example an operator upload that is really a browser capture) without
+// re-uploading it. Ingestion metadata is preserved; the classifier is recorded.
+// Generated images can never be relabelled as captures.
+func (s *Store) ClassifyFindingImage(findingID int64, hash, source string, change FindingChange) error {
+	source = normalizeFindingBlockSource(source)
+	switch source {
+	case "browser_screenshot", "device_screenshot", "operator_upload", "tool_output", "other":
+	default:
+		return fmt.Errorf("%w: image source must be browser_screenshot, device_screenshot, operator_upload, tool_output or other", ErrInvalidFinding)
+	}
+	f, err := s.GetFinding(findingID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range f.Blocks {
+		b := &f.Blocks[i]
+		if b.Type != "image" || b.Hash != hash {
+			continue
+		}
+		if generatedFindingImage(b.Source) || b.Provenance != nil && generatedFindingImage(b.Provenance.OriginalSource) {
+			return fmt.Errorf("%w: generated images cannot be reclassified", ErrInvalidFinding)
+		}
+		b.Source = source
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("%w: image not attached to finding", ErrInvalidFinding)
+	}
+	body, err := MarshalFindingBlocks(f.Blocks)
+	if err != nil {
+		return err
+	}
+	return s.UpdateFindingCanonical(findingID, nil, nil, nil, nil, nil, nil, nil, &body, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, FindingMetadataPatch{Change: change})
 }
 
 // Missing image mappings must agree with the referenced evidence blocks.

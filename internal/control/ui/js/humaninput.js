@@ -1,10 +1,11 @@
-import { $, esc, escAttr, api, toast } from './core.js';
+import { $, esc, escAttr, api, toast, toastError } from './core.js';
 
 // AI→human handoff: when the AI calls request_human_input, a prompt shows in the
 // top banner so the operator can answer/approve. Loaded on boot and refreshed on
 // the SSE "human.input" event (so it survives reconnects).
 let humanInputLoadEpoch=0;
 const humanInputPending=new Set();
+let humanInputShown=0; // prompts currently rendered (an error row is not a prompt)
 
 export async function loadHumanInput() {
   const epoch=++humanInputLoadEpoch;
@@ -13,11 +14,27 @@ export async function loadHumanInput() {
     if(epoch!==humanInputLoadEpoch)return;
     renderHumanInput(d.prompts || []);
   }
-  catch (e) { if(epoch!==humanInputLoadEpoch)return;/* best-effort */ }
+  catch (e) {
+    if(epoch!==humanInputLoadEpoch)return;
+    // Existing prompts stay usable; with nothing shown, a silent failure would
+    // hide a pending AI request, so say so and offer Retry.
+    if(!humanInputShown)renderHumanInputError(e);
+  }
+}
+
+function renderHumanInputError(e) {
+  const bar = $('#humanInputBar'); if (!bar) return;
+  bar.hidden = false;
+  bar.innerHTML = `<div class="hi-prompt hi-error" role="alert">
+      <span class="hi-msg">Could not check for AI input requests: ${esc((e && e.message) || 'request failed')}</span>
+      <span class="hi-actions"><button type="button" class="btn xs hi-retry">Retry</button></span>
+    </div>`;
+  bar.querySelector('.hi-retry').onclick = () => loadHumanInput();
 }
 
 function renderHumanInput(prompts) {
   const bar = $('#humanInputBar'); if (!bar) return;
+  humanInputShown = prompts.length;
   if (!prompts.length) { bar.hidden = true; bar.innerHTML = ''; return; }
   bar.hidden = false;
   bar.innerHTML = prompts.map(p => {
@@ -62,6 +79,10 @@ async function respond(id, answer) {
     await api('/api/human-input/' + id + '/respond', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ answer }) });
     await loadHumanInput();
   }
-  catch (e) { toast(e.message); }
+  catch (e) {
+    toastError('Could not send answer', e);
+    // The prompt may have expired or been answered elsewhere; refresh the list.
+    loadHumanInput();
+  }
   finally{humanInputPending.delete(id);setPromptPending(id,false);}
 }

@@ -24,6 +24,10 @@ type Store struct {
 	// projects). When nil, API-key ops use db (project-local, legacy/tests).
 	keys *sql.DB
 
+	// allow caches the parsed machine-global IP allowlist so AllowlistMatch, which
+	// runs on every proxied and control request, never queries SQLite.
+	allow allowlistCache
+
 	// notesMu serializes full notebook replacement and AppendNote's read-modify-write
 	// so an append cannot overwrite a replacement from a stale snapshot.
 	notesMu sync.Mutex
@@ -258,7 +262,8 @@ CREATE TABLE IF NOT EXISTS findings (
   fix TEXT NOT NULL DEFAULT '',
   retest TEXT NOT NULL DEFAULT '',
   targets TEXT NOT NULL DEFAULT '[]',
-  proof_review TEXT NOT NULL DEFAULT '{}'
+  proof_review TEXT NOT NULL DEFAULT '{}',
+  structured TEXT NOT NULL DEFAULT '{}'
 );
 
 -- PoC request/response evidence attached to a finding (many flows per finding).
@@ -377,6 +382,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE findings ADD COLUMN retest TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN targets TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE findings ADD COLUMN proof_review TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE findings ADD COLUMN structured TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN verification_instructions TEXT NOT NULL DEFAULT ''`,
@@ -387,6 +393,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
 		`ALTER TABLE api_keys ADD COLUMN expires INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE rules ADD COLUMN big_body INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE ws_frames ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(mig); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()

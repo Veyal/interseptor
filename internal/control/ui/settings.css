@@ -1,0 +1,88 @@
+/* settings.css — Settings workspace additions: the resizable section list and its
+   phone push-pages, section health chips, the shared engagement brief form and
+   Engagement sheet, the Appearance section, the first-run checklist and the typed
+   confirmation field. Loaded after app.css and primitives.css, so equal-specificity
+   rules here win; app.css is frozen. Only transform and opacity may animate in this
+   file and it animates nothing, so the global reduced-motion block has nothing to
+   cover. Breakpoints follow workbench.css: 720 turns the section list into a
+   grouped list whose rows open a full-screen page. */
+
+/* ---- section list | page split (aliases: settings-nav, settings-body) ---- */
+.settings-wrap.split{flex:1;min-height:0;overflow:hidden}
+.settings-wrap.split>.settings-nav{width:auto;min-width:0;border-right:0}
+.settings-wrap.split>.settings-body{min-width:0}
+.settings-nav button mark{padding:0 2px;border-radius:2px;background:var(--find-bg);color:var(--find-fg)}
+.settings-nav button:focus-visible,.settings-search:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+.settings-nav-empty{color:var(--fg2)}
+
+/* ---- section health chips: icon plus text, never colour alone ---- */
+.settings-section-heading{flex-wrap:wrap}
+.settings-health{display:inline-flex;align-items:center;gap:var(--sp-1);margin-left:auto;padding:var(--sp-1) var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg2);font:600 var(--fs-xs)/1.2 var(--ui)}
+.settings-health[hidden]{display:none}
+.settings-health[data-state="ok"]{border-color:var(--rd-pass);color:var(--rd-pass);background:var(--rd-pass-dim)}
+.settings-health[data-state="warn"]{border-color:var(--rd-gap);color:var(--rd-gap);background:var(--rd-gap-dim)}
+.settings-health[data-state="unknown"]{border-style:dashed;color:var(--rd-na);background:var(--rd-na-dim)}
+.settings-health[data-stale="true"]{border-style:dashed}
+.settings-health .icon{flex:none;width:14px;height:14px}
+
+/* ---- the one engagement brief form (Settings and the Engagement sheet) ---- */
+.brief-form{display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.brief-field{display:flex;flex-direction:column;min-width:0}
+.brief-form textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:calc(var(--sp-8) * 2)}
+.brief-form textarea[aria-invalid="true"]{border-color:var(--rd-block)}
+.brief-help{margin:0 0 var(--sp-1)}
+.field-error{display:flex;flex-direction:column;gap:var(--sp-1);margin:0 0 var(--sp-2);padding:var(--sp-2);border:1px solid var(--rd-block);border-radius:var(--r-md);background:var(--rd-block-dim);color:var(--rd-block);font:600 var(--fs-sm)/1.4 var(--ui)}
+.field-error[hidden]{display:none}
+.settings-status{min-height:var(--hit-min);display:inline-flex;align-items:center}
+
+/* ---- Engagement sheet ---- */
+.eng-sheet{display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
+.eng-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);min-width:0}
+.eng-key{flex:0 0 112px;color:var(--fg3);font:600 var(--fs-sm)/1.4 var(--ui)}
+.eng-val{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-width:0;overflow-wrap:anywhere;color:var(--fg)}
+.eng-scope[aria-disabled="true"]{opacity:.8}
+
+/* ---- Appearance ---- */
+.settings-appearance .seg{flex-wrap:wrap;max-width:100%}
+.settings-appearance .uisw.on{border-color:var(--rd-pass);color:var(--rd-pass)}
+:root[data-hints="off"] #uiTooltip{display:none!important}
+
+/* ---- first-run checklist ---- */
+.checklist-host[hidden]{display:none}
+.checklist{display:flex;flex-direction:column;gap:var(--sp-2);margin:0 0 var(--sp-4);padding:var(--sp-3) var(--sp-4);border:1px solid var(--line2);border-radius:var(--r-lg);background:var(--bg2)}
+.checklist-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3)}
+.checklist-title{margin:0;font:650 var(--fs-md)/1.3 var(--ui);color:var(--fg)}
+.checklist-count{margin-right:auto;color:var(--fg2);font:600 var(--fs-sm)/1.3 var(--ui)}
+.checklist-progress{width:100%;height:var(--sp-2);accent-color:var(--rd-pass)}
+.checklist-steps{display:flex;flex-direction:column;gap:var(--sp-1);margin:0;padding:0;list-style:none}
+.checklist-step{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);color:var(--fg)}
+.checklist-step .icon{flex:none;width:16px;height:16px;color:var(--rd-na)}
+.checklist-step[data-done="true"] .icon{color:var(--rd-pass)}
+.checklist-label{flex:1 1 180px;min-width:0}
+.checklist-step[data-done="true"] .checklist-label{color:var(--fg2)}
+.checklist-state{color:var(--fg3);font:600 var(--fs-xs)/1.2 var(--ui)}
+.checklist-go,.checklist-dismiss{min-height:var(--hit-min)}
+.checklist-go:focus-visible,.checklist-dismiss:focus-visible,.settings-appearance .seg button:focus-visible,.settings-appearance .uisw:focus-visible,.eng-sheet .btn:focus-visible,.eng-sheet .uisw:focus-visible,.brief-form textarea:focus-visible,.typed-confirm-input:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- typed confirmation ---- */
+.typed-confirm{display:flex;flex-direction:column;gap:var(--sp-1);margin-top:var(--sp-3)}
+.typed-confirm-input{width:100%;box-sizing:border-box}
+
+/* ---- touch targets ---- */
+@media (pointer:coarse){
+  .settings-appearance .seg button,.settings-appearance .uisw,.checklist-go,.checklist-dismiss,.eng-sheet .btn,.eng-sheet .uisw,.settings-nav button{min-height:44px}
+  .settings-search{min-height:44px;font-size:var(--fs-xl)}
+  .brief-form textarea,.typed-confirm-input{font-size:var(--fs-xl)}
+}
+
+/* ---- phones: grouped list, each row opens a full-screen page ---- */
+@media (max-width:720px){
+  .settings-picker{display:none}
+  .settings-wrap.split .settings-nav-group:not([hidden]){display:flex}
+  .settings-wrap.split>.settings-nav{padding:var(--sp-4);gap:var(--sp-1)}
+  .settings-wrap.split .settings-nav button{min-height:44px;display:flex;align-items:center;font-size:var(--fs-md)}
+  .settings-wrap.split>.settings-body{padding:var(--sp-2) var(--sp-4) var(--sp-6)}
+  .settings-wrap.split .split-back{margin:var(--sp-2) 0}
+  .settings-health{margin-left:0}
+  .eng-key{flex-basis:100%}
+}

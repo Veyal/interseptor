@@ -1,0 +1,141 @@
+/* shell.css — the workbench shell: topbar additions (palette field, Connection
+   chip and popover), the Engagement Strip (#ctxbar), the offline banner and the
+   rail badge. Loaded after app.css, so equal-specificity rules here win; app.css
+   itself is frozen. Only transform and opacity may ever animate in this file, and
+   it currently animates nothing, so the global reduced-motion block has nothing
+   to cover. Breakpoints follow workbench.css: 900 drops the evidence counters,
+   720 is the one-row phone strip, 480 collapses the target to an icon. */
+
+/* ---- topbar ---- */
+#crumb.sr-only{position:absolute}
+@media (max-width:720px){#bar #crumb{display:flex}}
+/* The Connection popover lives inside #bar and the blockers popover inside #ctxbar,
+   so each bar must sit at popover level to stay above the workspace and the drawer. */
+#bar{gap:var(--sp-3);z-index:var(--z-popover)}
+#cmdkBtn{flex:1 1 200px;max-width:520px;min-width:0;justify-content:flex-start;min-height:var(--hit-min)}
+#cmdkBtn .cmdk-label{display:inline-flex;align-items:center;gap:var(--sp-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#cmdkBtn kbd{margin-left:auto;flex:none}
+#cmdkBtn kbd+kbd{margin-left:0}
+.conn-chip{display:inline-flex;align-items:center;gap:var(--sp-2);flex:none;min-height:var(--hit-min);padding:0 var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.conn-chip:hover{background:var(--bg3)}
+.conn-chip[data-state="offline"]{border-color:var(--rd-block);color:var(--rd-block)}
+.conn-chip[data-state="reconnecting"]{border-color:var(--rd-gap);color:var(--rd-gap)}
+.conn-pop{position:fixed;top:calc(var(--topbar-h) + var(--safe-t));right:max(var(--sp-2),var(--safe-r));z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(320px,calc(100vw - 16px));padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
+.conn-pop[hidden]{display:none}
+.conn-row{display:flex;align-items:center;gap:var(--sp-2);min-width:0;font-size:var(--fs-sm)}
+.conn-key{flex:0 0 96px;color:var(--fg3)}
+.conn-val{min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-weight:600;color:var(--fg)}
+.conn-row:has(>#deviceProxyChip[style*="none"]){display:none}
+.conn-row .chip-btn{min-width:0;max-width:100%;overflow-wrap:anywhere}
+
+/* ---- offline banner ---- */
+.offline-banner{flex:none;display:flex;align-items:center;min-height:32px;padding:0 max(var(--sp-4),var(--safe-l));background:var(--rd-gap-dim);border-bottom:1px solid var(--rd-gap);color:var(--fg);font-size:var(--fs-sm)}
+.offline-banner[hidden]{display:none}
+
+/* ---- Engagement Strip ---- */
+#ctxbar{position:relative;z-index:var(--z-popover);flex:none;display:flex;align-items:center;gap:var(--sp-2);min-height:var(--ctxbar-h);padding:var(--sp-2) max(var(--sp-4),var(--safe-r)) var(--sp-2) max(var(--sp-4),var(--safe-l));background:var(--bg1);border-bottom:1px solid var(--line);font-size:var(--fs-sm);white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+#ctxbar::-webkit-scrollbar{display:none}
+.ctx-chip{display:inline-flex;align-items:center;gap:var(--sp-1);flex:0 1 auto;min-width:0;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);color:var(--fg2);font:600 var(--fs-xs)/1 var(--ui);cursor:pointer}
+.ctx-chip:hover{background:var(--bg3);color:var(--fg)}
+.ctx-chip:focus-visible,.conn-chip:focus-visible,#cmdkBtn:focus-visible,.ctx-identity .ui-select-trigger:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.ctx-chip .icon{flex:none;width:14px;height:14px}
+.ctx-key{flex:none;color:var(--fg3);font-weight:600}
+.ctx-text{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
+.ctx-project .ctx-text{max-width:16ch}
+.ctx-target .ctx-text{max-width:24ch}
+.ctx-next .ctx-text{max-width:30ch}
+.ctx-chip[data-stale="true"],#ctxReady[data-stale="true"]{border-style:dashed}
+.ctx-scope[data-state="filtering"]{border-color:var(--scope-on);background:var(--rd-pass-dim)}
+.ctx-scope[data-state="filtering"] .icon{color:var(--scope-on)}
+.ctx-scope[data-state="defined"] .icon{color:var(--scope-on)}
+.ctx-scope[data-state="none"]{border-color:var(--scope-off);background:var(--rd-gap-dim)}
+.ctx-scope[data-state="none"] .icon{color:var(--scope-off)}
+.ctx-target[data-empty="true"]{border-color:var(--rd-gap);background:var(--rd-gap-dim)}
+.ctx-target[data-empty="true"] .ctx-text{color:var(--rd-gap)}
+.ctx-blockers[data-count="0"] .icon:first-child{color:var(--rd-pass)}
+.ctx-blockers:not([data-count="0"]){border-color:var(--rd-block);background:var(--rd-block-dim)}
+.ctx-blockers:not([data-count="0"]) .icon:first-child{color:var(--rd-block)}
+.ctx-next{border-style:solid;border-color:var(--accent);color:var(--accent)}
+.ctx-next .ctx-text{color:var(--accent)}
+.ctx-more{display:none}
+.ctx-ready{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none;min-height:var(--hit-min);padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--bg2);font-size:var(--fs-xs);font-weight:600}
+.ctx-ready .icon{width:14px;height:14px;color:var(--rd-gap)}
+.ctx-ready .ctx-text{color:var(--fg)}
+.ctx-meter{display:inline-flex;align-items:center;min-height:16px}
+.ctx-meter[hidden]{display:none}
+.ctx-segs{display:inline-flex;gap:2px;align-items:center}
+/* Pass = solid fill, gap = hollow outline with a stripe; the words carry the rest. */
+.ctx-seg{width:8px;height:12px;border-radius:2px;border:1px solid var(--rd-pass);box-sizing:border-box}
+.ctx-seg.is-pass{background:var(--rd-pass)}
+.ctx-seg.is-gap{border-color:var(--rd-gap);background:var(--rd-stripe);color:var(--rd-gap)}
+.ctx-identity{display:inline-flex;align-items:center;gap:var(--sp-1);flex:none}
+.ctx-identity[hidden]{display:none}
+.ctx-avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--idn-6);color:var(--idn-fg);font:700 var(--fs-xs)/1 var(--ui)}
+.ctx-avatar[data-hue="1"]{background:var(--idn-1)}
+.ctx-avatar[data-hue="2"]{background:var(--idn-2)}
+.ctx-avatar[data-hue="3"]{background:var(--idn-3)}
+.ctx-avatar[data-hue="4"]{background:var(--idn-4)}
+.ctx-avatar[data-hue="5"]{background:var(--idn-5)}
+.ctx-avatar[data-hue="6"]{background:var(--idn-6)}
+#icptStat{flex:none}
+
+/* ---- blockers popover (non-modal) ---- */
+.ctx-pop{--pop-left:8px;position:fixed;top:calc(var(--sticky-top) + var(--safe-t));left:var(--pop-left);z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(352px,calc(100vw - 16px));max-height:min(60vh,420px);padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2);white-space:normal}
+.ctx-pop[hidden]{display:none}
+.ctx-pop-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+.ctx-pop-title{margin:0;font-size:var(--fs-lg);font-weight:650;color:var(--fg)}
+.ctx-pop-list{margin:0;padding:0;list-style:none;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp-1)}
+.ctx-pop-row{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);font-size:var(--fs-sm);color:var(--fg2)}
+.ctx-pop-row .icon{flex:none;width:14px;height:14px;color:var(--rd-block)}
+.ctx-pop-label{flex:1;min-width:0;overflow-wrap:anywhere}
+.ctx-pop-label strong{color:var(--fg);margin-right:var(--sp-1)}
+.ctx-gap{color:var(--accent);text-decoration:underline;margin-right:var(--sp-1)}
+.ctx-pop-empty{color:var(--fg3);font-size:var(--fs-sm);padding:var(--sp-2) 0}
+.ctx-pop a.btn{align-self:flex-start;text-decoration:none}
+.ctx-pop-row a.btn{align-self:center;flex:none}
+.ctx-gap:focus-visible,.ctx-pop a:focus-visible,.ctx-pop button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* ---- phone details sheet content ---- */
+.ctx-sheet{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-4)}
+.ctx-sheet-row{display:flex;gap:var(--sp-3);align-items:baseline;min-width:0}
+.ctx-sheet-key{flex:0 0 72px;color:var(--fg3);font-size:var(--fs-sm)}
+.ctx-sheet-val{min-width:0;overflow-wrap:anywhere;color:var(--fg);font-size:var(--fs-lg)}
+.ctx-sheet-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+
+/* ---- rail badge for Findings blockers ---- */
+#tab-findings #findBadge{margin-left:auto;background:var(--redSolid);color:var(--onDanger)}
+
+/* ---- breakpoints ---- */
+@media (max-width:900px){
+  .ctx-evidence{display:none}
+}
+@media (max-width:720px){
+  #ctxbar{gap:var(--sp-1)}
+  .ctx-project,.ctx-identity,.ctx-next,.ctx-key,.ctx-caret{display:none}
+  .ctx-more{display:inline-flex}
+  .ctx-target .ctx-text{max-width:12ch}
+  #cmdkBtn{min-height:44px}
+  #cmdkBtn kbd{display:none}
+  .conn-chip{min-height:44px}
+  .ctx-chip,.ctx-ready{min-height:var(--hit-min)}
+  .ctx-pop{left:max(var(--sp-2),var(--safe-l));right:max(var(--sp-2),var(--safe-r));width:auto}
+  .ctx-scope .ctx-text{max-width:14ch}
+  .ctx-seg{width:4px}
+}
+@media (max-width:480px){
+  .ctx-target .ctx-text{display:none}
+  .ctx-scope .ctx-text{max-width:9ch}
+  .ctx-segs{display:none}
+  #bar .brand{display:none}
+  #cmdkBtn .cmdk-label{font-size:var(--fs-sm)}
+}
+@media (pointer:coarse){
+  .ctx-chip,.ctx-ready,.conn-chip,#cmdkBtn{min-height:44px}
+  .conn-pop .btn.xs,.ctx-pop .btn.xs{min-height:44px;min-width:44px}
+}
+@media (forced-colors:active){
+  .ctx-chip,.conn-chip,.ctx-ready{border-color:CanvasText}
+  .ctx-chip:focus-visible,.conn-chip:focus-visible{outline-color:Highlight}
+  .ctx-seg{border-color:CanvasText}
+  .ctx-seg.is-pass{background:Highlight}
+}

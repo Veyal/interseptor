@@ -67,21 +67,22 @@
 .ui-select-opt.active{outline:1px solid var(--accent);outline-offset:-1px}
 .ui-select-opt.sel::after{content:'✓';flex:none;color:var(--accent);font-size:var(--fs-sm)}
 .ui-select-trigger[aria-expanded=true]{border-color:var(--accent);background:var(--bg2)}
-details[class]>summary{min-height:32px;align-content:center}
-details[class]>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
-details[class][open]>summary::before{content:'';transform:rotate(45deg);margin-bottom:3px}
-details[class]>summary:hover{color:var(--fg)}
-details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) var(--motion-enter)}
-@media(prefers-reduced-motion:reduce){details[class]>summary::before{transition:none}details[class][open]>:not(summary){animation:none}}
+details>summary{min-height:32px;align-content:center}
+details>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 2px;vertical-align:middle;opacity:.8;transition:transform var(--motion-fast) var(--motion-standard)}
+details[open]>summary::before{content:'';transform:rotate(45deg);margin-bottom:3px}
+details>summary:hover{color:var(--fg)}
+details[open]>:not(summary){animation:surface-enter var(--motion-fast) var(--motion-enter)}
+@media(prefers-reduced-motion:reduce){details>summary::before{transition:none}details[open]>:not(summary){animation:none}}
 
 #toast {
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  width: min(560px, calc(100vw - 24px));
+  width: min(560px, calc(100% - 24px));
   max-height: min(35vh, 260px);
   overflow-y: auto;
   overscroll-behavior: contain;
   align-items: stretch;
 }
+#toast .toast-item{pointer-events:auto}
 #toast .toast-item {
   max-width: none;
   overflow-wrap: anywhere;
@@ -148,7 +149,7 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
 
 @media (max-width: 600px) {
   #ctxmenu { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
-  #toast { width: calc(100vw - 24px); max-height: 30dvh; }
+  #toast { width: calc(100% - 24px); max-height: 30dvh; }
   .act-detail { margin-left: 0; }
   .flow-inspector{width:100vw;height:100dvh;border:0;border-radius:0;max-height:none!important}
   .flow-inspector-toolbar{padding:12px;gap:8px}
@@ -161,3 +162,128 @@ details[class][open]>:not(summary){animation:surface-enter var(--motion-fast) va
   .flow-inspector[data-mobile-side=res] .flow-inspector-request,.flow-inspector[data-mobile-side=req] .flow-inspector-response{display:none}
   .flow-inspector-request{border-right:0}
 }
+
+/* Command palette (Ctrl/Cmd+K). app.js sets class names only. */
+.cmdk-overlay{z-index:300;align-items:flex-start;justify-content:center}
+.cmdk-shell{margin-top:11vh;width:min(680px,calc(100% - var(--sp-4) * 2))}
+.cmdk-input{width:100%;box-sizing:border-box;padding:var(--sp-3) var(--sp-4);border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);font-size:var(--fs-xl)}
+.cmdk-input:focus-visible{outline-offset:-3px}
+.cmdk-list{max-height:52vh;overflow:auto;overscroll-behavior:contain;padding:var(--sp-1)}
+.cmdk-row{display:flex;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-lg);cursor:pointer}
+.cmdk-row[aria-selected="true"]{background:var(--accentSolid);color:var(--onAccent)}
+.cmdk-foot{display:flex;flex-wrap:wrap;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--line);color:var(--fg3);font-size:var(--fs-xs)}
+.cmdk-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-sub{opacity:.55;font-size:var(--fs-xs);flex:none}
+.cmdk-empty{padding:var(--sp-4);text-align:center;color:var(--fg3);font-size:var(--fs-sm)}
+.cmdk-hint{padding:var(--sp-1) var(--sp-4) 0;color:var(--fg3);font-size:var(--fs-xs);min-height:var(--sp-4)}
+.cmdk-hint:empty{display:none}
+.cmdk-group{padding:var(--sp-2) var(--sp-3) var(--sp-1);color:var(--fg3);font-size:var(--fs-xs);font-weight:700;letter-spacing:.7px;text-transform:uppercase}
+.cmdk-row[aria-selected="true"] .cmdk-sub{opacity:.9}
+.cmdk-foot kbd,.chord-hint kbd{padding:0 var(--sp-1);border:1px solid var(--kbd-border);border-radius:var(--r-sm);background:var(--kbd-bg);color:var(--kbd-fg);font-family:var(--ui);font-size:var(--fs-xs)}
+.cmdk-modes{margin-left:auto}
+.cmdk-modes kbd{margin:0 2px 0 var(--sp-2)}
+@media (pointer:coarse){
+  .cmdk-row{min-height:44px;align-items:center}
+}
+/* Phones: the palette becomes a full-height sheet with a 48px field and 48px
+   rows. The same markup and keyboard model apply; only the shape changes. */
+@media (max-width:720px){
+  .cmdk-overlay{align-items:stretch}
+  .cmdk-shell{margin:0;width:100%;max-width:none;height:100dvh;max-height:none;border:0;border-radius:0;padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+  .cmdk-input{min-height:48px;font-size:var(--fs-xl)}
+  .cmdk-list{flex:1;max-height:none}
+  .cmdk-row{min-height:48px;align-items:center;font-size:var(--fs-xl)}
+  .cmdk-sub{font-size:var(--fs-sm)}
+  .cmdk-modes{display:none}
+}
+
+/* Chord continuation popup (keyboard.js): lists what can follow a pending
+   first key, e.g. after `g`. It appears and disappears instantly. */
+.chord-hint{position:fixed;left:50%;bottom:calc(var(--sp-6) + var(--safe-b));z-index:var(--z-popover);display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);max-width:min(560px,calc(100% - var(--sp-4) * 2));padding:var(--sp-2) var(--sp-3);border:1px solid var(--line2);border-radius:var(--r-lg);background:var(--bg1);color:var(--fg);box-shadow:var(--elev-2);transform:translateX(-50%);font-size:var(--fs-sm)}
+.chord-hint[hidden]{display:none}
+.chord-next{display:inline-flex;align-items:center;gap:var(--sp-1)}
+.chord-cancel{color:var(--fg3);font-size:var(--fs-xs)}
+.sc-foot-switch{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2);color:var(--fg2);font-size:var(--fs-sm)}
+
+/* Skip link: off-screen until focused, then revealed inside the safe area. */
+.skip{position:fixed;left:var(--sp-2);top:-100px;z-index:1000;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);background:var(--accentSolid);color:var(--onAccent);font-weight:600;text-decoration:none}
+.skip:focus{top:calc(var(--sp-2) + env(safe-area-inset-top, 0px))}
+
+/* Text visible to assistive technology only. */
+.visually-hidden,.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
+/* State and cell utilities used by secondary panels instead of inline styles. */
+.cell-empty{color:var(--fg3);text-align:center;padding:var(--sp-3)}
+.msg-ok{color:var(--state-on)}
+.msg-err{color:var(--state-danger)}
+.msg-warn{color:var(--amber)}
+.mono-accent{font-family:var(--mono);color:var(--accent)}
+.is-update{color:var(--accent);font-weight:700}
+.sse-dot.offline{background:var(--red)}
+#main:focus{outline:none}
+
+/* Secondary-panel utilities (API keys, Authz, Setup wizard, TLS diagnosis): the
+   remaining one-off inline styles became classes. Tokens only; no new colours. */
+.u-fg{color:var(--fg)}
+.u-mono{font-family:var(--mono)}
+.u-select-all{user-select:all}
+.u-break{word-break:break-all}
+.u-flex-none{flex:none}
+.u-ta-left{text-align:left}
+.u-ta-center{text-align:center}
+.u-ta-right{text-align:right}
+.u-inline-block{display:inline-block}
+.u-dim{opacity:.6}
+.u-scroll-x{overflow-x:auto}
+.u-my-3{margin-top:var(--sp-3);margin-bottom:var(--sp-3)}
+.u-list-pad{padding-left:var(--sp-5)}
+.u-bg3{background:var(--bg3)}
+.cell-note{padding:var(--sp-3)}
+.pre-scroll{white-space:pre;overflow:auto;margin-top:0}
+.panel-details{margin-bottom:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3)}
+.matrix-tbl{border-collapse:collapse}
+.tls-diag-banner.is-open{display:block;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.u-nowrap{white-space:nowrap}
+.tls-diag-detail{flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.setup-steps{margin:var(--sp-2) 0 var(--sp-1);padding-left:var(--sp-5)}
+.u-block{display:block}
+.authz-scope-line{padding:var(--sp-1) 0}
+.matrix-th{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line)}
+.matrix-td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line2)}
+.matrix-flag{background:color-mix(in srgb,var(--red) 7%,transparent)}
+
+/* ---- BottomSheet (sheet.js): peek / half / full on phones, right drawer from
+   721px. Movement is transform only; reduced motion is the global block. ---- */
+.sheet-root{position:fixed;inset:0;display:none;z-index:var(--z-sheet)}
+.sheet-root[data-modal="true"]{background:var(--scrim)}
+.sheet-root[data-modal="false"]{pointer-events:none}
+.sheet{--sheet-drag:0px;pointer-events:auto;position:absolute;left:0;right:0;bottom:0;box-sizing:border-box;display:flex;flex-direction:column;height:calc(100dvh - var(--safe-t) - var(--sp-4));padding-bottom:var(--safe-b);background:var(--bg1);border:1px solid var(--surface-frame);border-bottom:0;border-radius:var(--sheet-radius);box-shadow:var(--elev-3);transform:translateY(calc(var(--sheet-offset,100%) + var(--sheet-drag,0px)));transition:transform var(--motion-sheet);will-change:transform}
+.sheet[data-detent="peek"]{--sheet-offset:calc(100% - var(--sheet-peek))}
+.sheet[data-detent="half"]{--sheet-offset:calc(100% - var(--sheet-half))}
+.sheet[data-detent="full"]{--sheet-offset:0px}
+.sheet[data-detent="closed"]{--sheet-offset:100%}
+.sheet.is-dragging{transition:none}
+.sheet-handle{display:flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;width:calc(100% - 56px);min-height:24px;padding:0;cursor:grab;touch-action:none;background:transparent}
+.sheet-handle:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+.sheet-grip{display:block;width:36px;height:4px;border-radius:var(--r-pill);background:var(--line2)}
+.sheet-head{display:flex;align-items:center;flex:none;min-height:28px;padding:0 max(var(--sp-4),var(--safe-r)) 0 max(var(--sp-4),var(--safe-l))}
+.sheet-title{margin:0;overflow:hidden;font-size:var(--fs-lg);font-weight:650;text-overflow:ellipsis;white-space:nowrap}
+.sheet-close{position:absolute;top:0;right:max(var(--sp-2),var(--safe-r));z-index:1}
+.sheet-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 max(var(--sp-4),var(--safe-r)) var(--sp-4) max(var(--sp-4),var(--safe-l))}
+.sheet[data-detent="half"] .sheet-body{flex:none;max-height:calc(var(--sheet-half) - 64px - var(--safe-b))}
+.sheet[data-detent="peek"] .sheet-body{flex:none;max-height:0;padding:0;overflow:hidden}
+@media (pointer:coarse){
+  .sheet-handle{min-height:44px}
+  .sheet-close{min-width:44px;min-height:44px}
+}
+@media (min-width:721px){
+  .sheet-root[data-modal="false"]{pointer-events:auto}
+  .sheet{left:auto;top:0;width:min(var(--drawer-w),100vw);height:100dvh;padding-top:var(--safe-t);border-radius:0;border-bottom:1px solid var(--surface-frame);transform:none;transition:transform var(--motion-drawer)}
+  .sheet[data-detent="closed"]{transform:translateX(100%)}
+  .sheet-handle{display:none}
+  .sheet-head{padding-top:var(--sp-3)}
+  .sheet[data-detent] .sheet-body{flex:1;max-height:none;padding:0 max(var(--sp-4),var(--safe-r)) var(--sp-4) max(var(--sp-4),var(--safe-l));overflow:auto}
+}
+/* The bottom navigation gets out of the way of the soft keyboard. */
+:root[data-soft-keyboard="true"] #dock{display:none}
+#toast .toast-dismiss{margin-left:var(--sp-2);vertical-align:middle}

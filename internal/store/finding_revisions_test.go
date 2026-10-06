@@ -154,3 +154,59 @@ func TestFindingRevisionRestoresMixedEvidenceOrder(t *testing.T) {
 		t.Fatalf("mixed evidence order changed: %+v", got.Flows)
 	}
 }
+
+func TestRestoreExistingFindingToOlderRevisionRestoresStructuredFields(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	original := []FindingClaim{{ID: "c1", Statement: "Original claim", Verdict: "confirmed"}}
+	id, err := s.CreateFinding(&Finding{
+		Title: "Structured restore", Claims: original,
+		NotExecuted: []FindingNotExecuted{{Method: "DELETE", Target: "https://example.com/a", Reason: "destructive"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	revs, err := s.ListFindingRevisions(id, 100)
+	if err != nil || len(revs) == 0 {
+		t.Fatalf("revisions %v: %+v", err, revs)
+	}
+	first := revs[len(revs)-1].ID
+	newClaims := []FindingClaim{{ID: "c2", Statement: "Changed claim", Verdict: "refuted"}}
+	newNotExecuted := []FindingNotExecuted{}
+	if err := s.UpdateFindingMetadata(id, FindingMetadataPatch{Claims: &newClaims, NotExecuted: &newNotExecuted}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := s.GetFinding(id)
+	if err != nil || len(changed.Claims) != 1 || changed.Claims[0].ID != "c2" || len(changed.NotExecuted) != 0 {
+		t.Fatalf("setup update failed: %v %+v", err, changed)
+	}
+	// The finding still exists, so restore takes the ON CONFLICT(id) DO UPDATE path.
+	if err := s.RestoreFindingRevision(id, first, FindingChange{Actor: "reviewer", Source: "api", Reason: "Undo"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFinding(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Claims) != 1 || got.Claims[0].ID != "c1" || got.Claims[0].Statement != "Original claim" {
+		t.Fatalf("claims not restored: %+v", got.Claims)
+	}
+	if len(got.NotExecuted) != 1 || got.NotExecuted[0].Method != "DELETE" {
+		t.Fatalf("notExecuted not restored: %+v", got.NotExecuted)
+	}
+}
+
+func TestFindingRevisionDiffIgnoresDerivedCVSSWarning(t *testing.T) {
+	before := &Finding{Title: "t", CvssWarning: "legacy CVSS 3.1 vector kept as-is"}
+	after := &Finding{Title: "t"}
+	if diff := findingRevisionFields(before, after); len(diff) != 0 {
+		t.Fatalf("derived cvssWarning must not appear as a change: %+v", diff)
+	}
+	after.Title = "u"
+	if diff := findingRevisionFields(before, after); len(diff) != 1 || diff[0].Field != "title" {
+		t.Fatalf("real change lost: %+v", diff)
+	}
+}

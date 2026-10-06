@@ -184,7 +184,8 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 	requireUIContracts(t, "index.html",
 		`id="sseStatus" role="status" aria-live="polite"`,
 	)
-	requireUIContracts(t, "js/app.js",
+	// The status markup moved with the topbar into the Connection popover.
+	requireUIContracts(t, "js/connection.js",
 		"wrap.setAttribute('aria-label'",
 		"wrap.classList.toggle('reconnecting'",
 	)
@@ -197,7 +198,7 @@ func TestUIMobileKeepsReconnectStateVisible(t *testing.T) {
 func TestUIScopeLoadFailureIsPersistentAndRetryable(t *testing.T) {
 	requireUIContracts(t, "index.html", `id="scopeLoadState"`)
 	requireUIContracts(t, "js/proxy.js",
-		"renderLoadError(loadState,'Target scope',e,loadScope",
+		"renderLoadError(loadState,'Scope',e,loadScope",
 		"loadState.style.display='none'",
 	)
 }
@@ -274,10 +275,12 @@ func TestUIContextMenuMovesAndRestoresFocus(t *testing.T) {
 }
 
 func TestUIInspectorEscapeDismissesFindBeforeInspector(t *testing.T) {
-	requireUIContracts(t, "js/proxy.js",
-		"if(e.key==='Escape'&&inspectFindBar.style.display==='flex')",
-		"e.stopImmediatePropagation()",
+	// The inspector uses the shared Finder, whose input closes only the bar on
+	// Escape and stops the event before it reaches any underlying dialog.
+	requireUIContracts(t, "js/finder.js",
+		"e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close_(); }",
 	)
+	requireUIContracts(t, "js/proxy.js", "createFinder(view.parentElement", "proxy.inspector.find")
 }
 
 func TestUIToolEditorsKeepAllActionsReachableOnPhones(t *testing.T) {

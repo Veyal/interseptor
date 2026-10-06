@@ -43,7 +43,14 @@ func findingRevisionArg(a map[string]any, key string, optional bool) (int64, err
 }
 
 func (s *Server) registerFindingReviewTools() {
-	s.add("finding_readiness", "Check selected finding statuses for final report readiness. Returns the same actionable field/capability checks shown by the UI; these assess completeness, not independent exploit verification.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string")}), func(a map[string]any) (string, error) {
+	s.add("finding_readiness", "Project-wide report readiness board: one row per finding (id, title, severity, status, ready, blocking gaps) sorted by severity, plus per-finding final-gate issues {rule, field, capability, message}. Pass id for one finding's gate result. Same results as the UI and API; these assess completeness, not independent exploit verification. Statuses default to open,verified,fixed; use statuses=all for every finding.", obj(map[string]any{"statuses": pt("string"), "tag": pt("string"), "id": pt("integer")}), func(a map[string]any) (string, error) {
+		if a["id"] != nil && a["id"] != "" {
+			id, err := findingRevisionArg(a, "id", false)
+			if err != nil {
+				return "", err
+			}
+			return s.apiGet(fmt.Sprintf("/api/finding-quality/%d", id))
+		}
 		q := url.Values{}
 		q.Set("statuses", argStr(a, "statuses"))
 		q.Set("tag", argStr(a, "tag"))
@@ -84,6 +91,16 @@ func (s *Server) registerFindingReviewTools() {
 	})
 	s.add("preview_finding_targets", "Preview exact target deduplication and optional path templates without saving. Evidence links are retained. Apply templates only after reviewer approval through update_finding.", obj(map[string]any{"targets": findingTargetsSchema(), "legacy": pt("string")}), func(a map[string]any) (string, error) {
 		return s.api(http.MethodPost, "/api/finding-targets/preview", a)
+	})
+	s.add("normalize_finding_targets", "Normalize a saved finding's affected targets with reviewer-approved path templates (for example /users/edit/123 -> /users/edit/{id}). First call preview_finding_targets to list suggestions, then pass the approved suggestion indexes in approve. dryRun defaults to true (no changes); set dryRun=false to persist. Targets that differ in method, scheme, role, relation or variant are never merged; flow and image references stay on their target.", obj(map[string]any{"id": pt("integer"), "approve": map[string]any{"type": "array", "items": pt("integer"), "description": "suggestion indexes (target positions) approved for templating"}, "dryRun": p("boolean", "default true; false persists the normalized targets")}, "id"), func(a map[string]any) (string, error) {
+		id, err := findingRevisionArg(a, "id", false)
+		if err != nil {
+			return "", err
+		}
+		return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/normalize-targets", id), map[string]any{"approve": a["approve"], "dryRun": argBool(a, "dryRun", true)})
+	})
+	s.add("redact_value", "Describe a secret (bearer token, JWT, bcrypt hash, API key) as {len, sha256_prefix, kind} plus a ready-to-paste redacted form. The raw value is hashed in memory and never stored or logged; write the redacted form, not the value, into findings.", obj(map[string]any{"value": p("string", "the secret to describe")}, "value"), func(a map[string]any) (string, error) {
+		return s.api(http.MethodPost, "/api/redact", map[string]any{"value": argStr(a, "value")})
 	})
 	s.add("evaluate_finding_cvss", "Evaluate a CVSS v4.0 vector without modifying a finding. Returns canonical vector, score, original rating and finding severity.", obj(map[string]any{"vector": pt("string")}, "vector"), func(a map[string]any) (string, error) {
 		return s.api(http.MethodPost, "/api/finding-cvss", map[string]any{"vector": argStr(a, "vector")})

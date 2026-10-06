@@ -1,0 +1,104 @@
+/* Flow Drawer and evidence attach (WP5). Docked beside the workspace from 1101px;
+   at 1100px and below it overlays with a focus trap. Motion is limited to
+   transform and opacity; the global reduced-motion block in app.css removes the
+   animation entirely. Colours, spacing and type come from the shared tokens. */
+
+:root{--flow-drawer-w:var(--drawer-w)}
+.flow-drawer{display:none;position:fixed;top:calc(var(--sticky-top) + var(--safe-t));right:0;bottom:0;z-index:var(--z-drawer);width:var(--flow-drawer-w);max-width:100%;box-sizing:border-box}
+.flow-drawer.is-open{display:block}
+.flow-drawer.is-open .flow-drawer-panel{animation:fd-in var(--motion-drawer) both}
+@keyframes fd-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+body.flow-drawer-docked #main{margin-right:calc(var(--flow-drawer-w) + var(--sp-3))}
+
+.flow-drawer-panel{display:flex;flex-direction:column;height:100%;min-width:0;box-sizing:border-box;background:var(--drawer-bg);border-left:1px solid var(--drawer-edge);color:var(--fg)}
+.flow-drawer-panel:focus-visible,.flow-drawer-title:focus-visible,.flow-drawer-body:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+
+.flow-drawer-sash{position:absolute;top:0;bottom:0;left:calc(var(--split-gutter) * -1);width:var(--split-gutter);z-index:var(--z-sash);cursor:col-resize;touch-action:none}
+.flow-drawer-sash::before{content:"";position:absolute;top:0;bottom:0;right:0;width:1px;background:var(--line2)}
+/* WCAG 2.5.8: the 8px sash keeps a 24px hit area; Narrower and Wider buttons are the
+   single-pointer alternative to dragging (2.5.7). */
+.flow-drawer-sash::after{content:"";position:absolute;top:0;bottom:0;left:calc(var(--sp-4) * -1);right:calc(var(--sp-4) * -1)}
+.flow-drawer-width .icon{transform:rotate(90deg)} /* the sprite chevron points down: left = wider */
+#fdNarrow .icon{transform:rotate(-90deg)}
+.flow-drawer[data-mode="overlay"] .flow-drawer-width{display:none}
+.flow-drawer-sash:hover::before,.flow-drawer.is-resizing .flow-drawer-sash::before{background:var(--accent)}
+.flow-drawer-sash:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+.flow-drawer.is-resizing{user-select:none;-webkit-user-select:none}
+@media (pointer:coarse){.flow-drawer-sash{left:calc(var(--hit-min) * -1);width:var(--hit-min)}}
+
+.flow-drawer-head{display:flex;align-items:center;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)}
+.flow-drawer-title{flex:1 1 auto;min-width:0;margin:0;font-family:var(--mono);font-size:var(--fs-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flow-drawer-step{min-width:var(--hit-min);min-height:var(--hit-min)}
+.flow-drawer-head:not(.has-steps) .flow-drawer-step{display:none}
+#fdPrev .icon{transform:rotate(180deg)}
+.flow-drawer-status{margin:0;padding:var(--sp-1) var(--sp-3);color:var(--fg2);font-size:var(--fs-xs)}
+.flow-drawer-status:empty{display:none}
+.flow-drawer-linked{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);padding:0 var(--sp-3)}
+.flow-drawer-linked:empty{display:none}
+.flow-drawer-linked-label{color:var(--fg2);font-size:var(--fs-xs)}
+.flow-chip{display:inline-flex;align-items:center;max-width:100%;padding:0 var(--sp-2);border:1px solid var(--line2);border-radius:var(--r-lg);background:var(--bg2);color:var(--fg);font-size:var(--fs-xs);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+a.flow-chip:hover{border-color:var(--accent)}
+a.flow-chip:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+
+.flow-drawer-tabs{display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3) 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.flow-drawer-tab{min-height:var(--hit-min);padding:0 var(--sp-3);border:0;border-bottom:2px solid transparent;background:transparent;color:var(--fg2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+.flow-drawer-tab:hover{color:var(--fg)}
+.flow-drawer-tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.flow-drawer-tab:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+
+.flow-drawer-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:var(--sp-2) var(--sp-3);scroll-padding-top:var(--sp-4)}
+.flow-raw{margin:0;font-family:var(--mono);font-size:var(--fs-xs);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.flow-note{margin:var(--sp-2) 0;color:var(--fg2);font-size:var(--fs-sm)}
+.flow-download{margin-left:var(--sp-2)}
+.flow-ws-list,.flow-tl,.flow-tl-transitions{margin:0;padding:0;list-style:none}
+.flow-ws-frame{display:grid;grid-template-columns:auto auto auto minmax(0,1fr);gap:var(--sp-2);padding:var(--sp-1) 0;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:var(--fs-xs)}
+.flow-ws-text{min-width:0;overflow-wrap:anywhere}
+.flow-tl-step{padding:var(--sp-2) 0;border-bottom:1px solid var(--line);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.flow-tl-id{font-family:var(--mono);color:var(--fg2)}
+.flow-tl-transitions{margin-top:var(--sp-1);padding-left:var(--sp-3);color:var(--fg2);font-size:var(--fs-xs)}
+
+.flow-drawer-foot{position:relative;display:flex;flex-wrap:wrap;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3) max(var(--sp-2),var(--safe-b));border-top:1px solid var(--line);background:var(--drawer-bg)}
+.flow-drawer-foot .btn{min-height:var(--hit-min)}
+.flow-drawer-split{display:inline-flex}
+.flow-drawer-split .flow-drawer-attach{border-radius:var(--r-md) 0 0 var(--r-md)}
+.flow-drawer-split .flow-drawer-caret{min-width:var(--hit-min);border-radius:0 var(--r-md) var(--r-md) 0;border-left-color:var(--onAccent)}
+
+.flow-menu{position:absolute;bottom:100%;left:var(--sp-3);z-index:var(--z-popover);min-width:220px;max-width:calc(100% - var(--sp-6));max-height:50vh;margin:0 0 var(--sp-1);padding:var(--sp-1);list-style:none;overflow:auto;background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2)}
+.flow-menu-item{display:block;width:100%;min-height:var(--hit-min);padding:0 var(--sp-3);border:0;border-radius:var(--r-md);background:transparent;color:var(--fg);font:inherit;font-size:var(--fs-sm);text-align:left;cursor:pointer}
+.flow-menu-item:hover,.flow-menu-item:focus-visible{background:var(--bg3)}
+.flow-menu-item:focus-visible{outline:3px solid var(--focus-ring);outline-offset:-3px}
+
+/* Overlay mode: scrim plus a right-aligned panel; core's modal trap owns focus. */
+.flow-drawer[data-mode="overlay"]{top:0;left:0;width:auto;max-width:none;background:var(--scrim)}
+.flow-drawer[data-mode="overlay"] .flow-drawer-panel{margin-left:auto;width:min(var(--flow-drawer-w),100%);padding-top:var(--safe-t);box-shadow:var(--elev-3)}
+.flow-drawer[data-mode="overlay"] .flow-drawer-sash{display:none}
+.flow-drawer[data-mode="overlay"].is-open{align-items:stretch}
+@media (max-width:720px){
+  .flow-drawer[data-mode="overlay"] .flow-drawer-panel{width:100%}
+  .flow-drawer-body{padding-inline:max(var(--sp-4),var(--safe-l))}
+}
+
+/* ---- attach popover: combobox + listbox ---- */
+.attach-pop{--attach-left:8px;--attach-top:96px;position:fixed;left:var(--attach-left);top:var(--attach-top);z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--sp-2);width:min(360px,calc(100vw - 16px));max-height:min(60vh,420px);box-sizing:border-box;padding:var(--sp-3);background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-lg);box-shadow:var(--elev-2);color:var(--fg)}
+.attach-title{margin:0;font-size:var(--fs-sm);font-weight:600}
+.attach-search{width:100%;box-sizing:border-box;min-height:var(--hit-min);padding:0 var(--sp-2);background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);color:var(--fg);font:inherit;font-size:var(--fs-sm)}
+.attach-search:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+.attach-list{margin:0;padding:0;list-style:none;overflow:auto;overscroll-behavior:contain}
+.attach-opt{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--hit-min);padding:0 var(--sp-2);border-radius:var(--r-md);font-size:var(--fs-sm);cursor:pointer}
+.attach-opt-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attach-opt-sub{color:var(--fg2);font-size:var(--fs-xs)}
+.attach-opt:hover{background:var(--bg3)}
+.attach-opt[aria-selected="true"]{background:var(--sel);box-shadow:inset 2px 0 0 var(--sel-cursor,var(--accent))}
+.attach-pips{display:inline-flex;gap:2px}
+.attach-pip{width:var(--sp-2);height:var(--sp-2);border:1px solid var(--rd-na);border-radius:50%}
+.attach-pip.is-on{background:var(--rd-pass);border-color:var(--rd-pass)}
+@media (max-width:720px){
+  .attach-pop{left:0;right:0;top:auto;bottom:0;width:auto;max-height:70dvh;border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:max(var(--sp-3),var(--safe-b))}
+}
+
+/* Drop zones for dragged flows: additive only, the keyboard path is the `e` key
+   and the Attach button. */
+[data-evidence-drop].is-drag-over{outline:var(--drag-over);outline-offset:-2px;background:var(--accentDim)}
+.flow-diff-shell{display:flex;flex-direction:column;height:min(80dvh,720px);max-height:calc(100dvh - var(--sp-4) * 2);overflow:hidden}
+.flow-diff-shell .rep-diff{flex:1}
+.flow-drawer-panel .finder{flex:none;margin:0 var(--sp-3) var(--sp-1)}

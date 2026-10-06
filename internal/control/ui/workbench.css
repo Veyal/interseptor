@@ -1,0 +1,13 @@
+/* Workbench breakpoint model. Documentation only: each package writes its own
+   rules in its own stylesheet (shell.css, primitives.css, flow.css, panel-*.css,
+   settings.css, report.css, mobile.css), and app.css is frozen after WP0.
+
+     >= 1100px   full desktop: Flow Drawer docks beside the workspace
+      901-1099   drawer overlays the workspace and traps focus; rail may collapse
+      721-900    engagement strip drops the evidence counters; rail is 56px icons
+     <= 720px    phone model: bottom nav, one-row strip, split panes stack with Back
+     <= 480px    strip target collapses to an icon with a tooltip
+
+   pointer:coarse forces 44px targets and the comfortable-touch density tier at
+   any width (see the touch block at the end of app.css). Side gutters stay at
+   16px or more and nothing sets a min-width wider than 375px. */

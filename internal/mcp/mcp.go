@@ -284,6 +284,10 @@ func (s *Server) Capabilities() map[string]any {
 		"finding": map[string]any{
 			"createFields": create,
 			"updateFields": update,
+			// targetsSupported lets a client holding an older tool schema
+			// detect that structured targets exist and reconnect.
+			"targetsSupported":  slices.Contains(create, "targets"),
+			"legacyScalarField": "target",
 		},
 	}
 }
@@ -375,7 +379,13 @@ func (s *Server) Call(name string, args map[string]any) (string, error) {
 	return s.runTool(name, args)
 }
 
+// toolError is the single place a tool failure becomes an MCP result, so every
+// hard rejection starts with the same "error:" marker whatever produced it
+// (argument validation, store error, HTTP failure, unknown tool).
 func toolError(msg string) any {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(msg)), "error:") {
+		msg = "error: " + msg
+	}
 	return map[string]any{
 		"content": []map[string]any{{"type": "text", "text": msg}},
 		"isError": true,
@@ -1236,6 +1246,85 @@ func (s *Server) registerTools() {
 		obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/tags") })
 
+	s.add("get_interception_setup",
+		"Read how traffic is being intercepted for this project: system proxy address, CA fingerprint, pinning-bypass enablers (tool, script hash, target library, method, hosts) and the record's version, plus the proxy/CA Interseptor currently observes. Use it to tell a pinning capture gap from a finding. Version 0 means nothing is recorded.",
+		obj(map[string]any{"serial": p("string", "optional adb device serial to also read the device proxy")}),
+		func(a map[string]any) (string, error) {
+			path := "/api/interception-setup"
+			if serial := strings.TrimSpace(argStr(a, "serial")); serial != "" {
+				path += "?serial=" + url.QueryEscape(serial)
+			}
+			return s.apiGet(path)
+		})
+
+	s.add("set_interception_setup",
+		"Record the interception setup (system proxy, CA fingerprint, pinning-bypass enablers such as a Frida hook, applicable hosts). Replaces the record; call get_interception_setup first and resend unchanged parts. The version increments only when content changes; reports state how evidence was obtained from it.",
+		obj(map[string]any{
+			"proxyAddress":  p("string", "proxy address the client uses, e.g. 127.0.0.1:8080"),
+			"caFingerprint": p("string", "SHA-256 fingerprint of the installed CA"),
+			"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts the setup applies to (exact or *.wildcard); empty = all"},
+			"enablers": map[string]any{"type": "array", "description": "pinning-bypass enablers in place", "items": obj(map[string]any{
+				"tool":          p("string", "e.g. frida, objection"),
+				"scriptHash":    p("string", "hash of the bypass script"),
+				"targetLibrary": p("string", "e.g. libflutter.so"),
+				"method":        p("string", "hooked function or technique"),
+				"hosts":         map[string]any{"type": "array", "items": pt("string"), "description": "hosts this enabler covers; empty = every host the setup covers"},
+			}, "tool")},
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{
+				"proxyAddress": argStr(a, "proxyAddress"), "caFingerprint": argStr(a, "caFingerprint"),
+			}
+			if v, ok := a["hosts"]; ok {
+				body["hosts"] = v
+			}
+			if v, ok := a["enablers"]; ok {
+				body["enablers"] = v
+			}
+			return s.api(http.MethodPut, "/api/interception-setup", body)
+		})
+
+	s.add("annotate_flow_interception",
+		"Mark a bodiless 'CONNECT <host> status 0' flow as pinning_blocked (interception was intended but pinning rejected the handshake) or not_intercepted (never meant to be intercepted), so a capture gap is not read as a security finding. Empty annotation clears it.",
+		obj(map[string]any{
+			"id":         pt("integer"),
+			"annotation": p("string", "pinning_blocked | not_intercepted | \"\" to clear"),
+		}, "id"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			ann := strings.TrimSpace(argStr(a, "annotation"))
+			if ann != "" && ann != "pinning_blocked" && ann != "not_intercepted" {
+				return "", fmt.Errorf("annotation must be pinning_blocked, not_intercepted or empty")
+			}
+			return s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/interception", id), map[string]any{"annotation": ann})
+		})
+
+	s.add("get_engagement_brief",
+		"Read the project's engagement brief: scope, authorisation statement, conduct rules, rate limits, do-not-touch list and credential policy, plus its version. Read it before testing and obey it; cite the version in findings and reports. Version 0 means no brief is recorded.",
+		obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/engagement-brief") })
+
+	s.add("set_engagement_brief",
+		"Replace the project's engagement brief (the operator's authorisation and conduct rules). Call get_engagement_brief first and resend unchanged fields; omitted fields are cleared. The version increments only when content changes.",
+		obj(map[string]any{
+			"scope":            p("string", "in-scope hosts/APIs"),
+			"authorisation":    p("string", "authorisation statement: who authorised what"),
+			"conductRules":     p("string", "rules of conduct, e.g. own account only, destructive actions noted not executed"),
+			"rateLimits":       p("string", "e.g. <=1 req/s, request budgets"),
+			"doNotTouch":       p("string", "explicit do-not-touch list"),
+			"credentialPolicy": p("string", "e.g. never print credential values"),
+		}),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{}
+			for _, k := range []string{"scope", "authorisation", "conductRules", "rateLimits", "doNotTouch", "credentialPolicy"} {
+				body[k] = argStr(a, k)
+			}
+			return s.api(http.MethodPut, "/api/engagement-brief", body)
+		})
+
 	s.add("get_notes",
 		"Read the project's shared markdown notebook — the operator's scratchpad for credentials, scope, findings and to-dos. Read it before editing with set_notes.",
 		obj(map[string]any{}),
@@ -1290,6 +1379,9 @@ func (s *Server) registerTools() {
 			"target":                   p("string", "legacy primary target; first targets entry takes precedence"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability — which security property breaks"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1297,7 +1389,7 @@ func (s *Server) registerTools() {
 			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
-			"detail":                   p("string", "legacy opening text — prefer impact/why fields + PoC body"),
+			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "when status is needs_verification: exact steps for the human"),
@@ -1350,7 +1442,7 @@ func (s *Server) registerTools() {
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
 			}
-			for _, key := range []string{"targets", "proofReview"} {
+			for _, key := range []string{"targets", "proofReview", "claims", "notExecuted", "relatedFindings"} {
 				if v, ok := a[key]; ok {
 					reqBody[key] = v
 				}
@@ -1403,7 +1495,7 @@ func (s *Server) registerTools() {
 			if jsonErr := json.Unmarshal([]byte(result), &f); jsonErr == nil && f.ID > 0 {
 				result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, f.ID)
 			}
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 
@@ -1467,6 +1559,9 @@ func (s *Server) registerTools() {
 			"target":                   pt("string"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1474,7 +1569,7 @@ func (s *Server) registerTools() {
 			"environment":              p("string", "optional: production|staging|development|testing|local (legacy prod accepted; invalid values rejected)"),
 			"fix":                      p("string", "remediation at the failed trust boundary"),
 			"retest":                   p("string", "expected secure behavior and negative verification case"),
-			"detail":                   pt("string"),
+			"detail":                   p("string", detailFieldDescription),
 			"evidence":                 p("string", "legacy — prefer add_finding_poc"),
 			"cvss":                     p("string", "CVSS:4.0 vector; server calculates score and checks severity for report readiness"),
 			"verificationInstructions": p("string", "exact steps when status is needs_verification"),
@@ -1544,7 +1639,7 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}
@@ -1564,7 +1659,7 @@ func (s *Server) registerTools() {
 				return result, err
 			}
 			result += fmt.Sprintf("\n\nUI: %s/#finding-%d", s.base, id)
-			result += formatWarningsBlock(warns)
+			result += formatWarningsBlock(warns) + scalarTargetCompatNotice(a)
 			return result, nil
 		})
 
@@ -1773,6 +1868,26 @@ func (s *Server) registerTools() {
 				reqBody["position"] = pos
 			}
 			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images", fid), reqBody)
+		})
+
+	s.add("classify_finding_image",
+		"Reviewer relabel of an already-attached finding image (for example an operator_upload that is a real browser capture) without re-uploading it. Ingestion metadata is preserved and the classifier is recorded. Generated flow previews cannot be relabelled as captures. Only classify when the capture provenance is known.",
+		obj(map[string]any{
+			"findingId": pt("integer"),
+			"hash":      p("string", "image content hash from the finding's image block"),
+			"source":    p("string", "browser_screenshot|device_screenshot|operator_upload|tool_output|other"),
+			"reason":    pt("string"),
+		}, "findingId", "hash", "source"),
+		func(a map[string]any) (string, error) {
+			fid, err := reqInt(a, "findingId")
+			if err != nil {
+				return "", err
+			}
+			hash := argStr(a, "hash")
+			if fid == 0 || hash == "" {
+				return "", fmt.Errorf("findingId and hash are required")
+			}
+			return s.api(http.MethodPost, fmt.Sprintf("/api/findings/%d/images/%s/classify", fid, url.PathEscape(hash)), map[string]any{"source": argStr(a, "source"), "reason": argStr(a, "reason")})
 		})
 
 	s.add("render_flow_preview",
@@ -2344,8 +2459,26 @@ func (s *Server) registerTools() {
 			return boundJSON(out, 200), err
 		})
 
+	s.add("set_ws_frame_note",
+		"Annotate one WebSocket frame of a flow (see list_ws_frames for frame ids) with what it proves. Empty note clears it.",
+		obj(map[string]any{"id": p("integer", "flow id"), "frameId": pt("integer"), "note": pt("string")}, "id", "frameId"),
+		func(a map[string]any) (string, error) {
+			id, err := reqInt(a, "id")
+			if err != nil {
+				return "", err
+			}
+			frameID, err := reqInt(a, "frameId")
+			if err != nil {
+				return "", err
+			}
+			if _, err := s.api(http.MethodPut, fmt.Sprintf("/api/flows/%d/ws/%d/note", id, frameID), map[string]any{"note": argStr(a, "note")}); err != nil {
+				return "", err
+			}
+			return "frame note saved", nil
+		})
+
 	s.add("ws_send",
-		"Open a fresh WebSocket, send one message, return the server's reply frames.",
+		"Open a fresh WebSocket, send one message, return the server's reply frames. The handshake and every sent/received frame are recorded as a flow; the reply's flowId can be attached to a finding (add_finding_poc) and its frames read with list_ws_frames. A rejected handshake is recorded too, so a negative control is citable.",
 		obj(map[string]any{
 			"url":     p("string", "ws:// or wss://"),
 			"message": pt("string"),
@@ -2797,13 +2930,92 @@ func (s *Server) registerTools() {
 	s.add("get_authz", "List saved authorization-test identities (name + auth headers per role).", obj(map[string]any{}),
 		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
 
+	s.add("list_authz", "List saved authorization-test identities with per-identity updatedAt/owner (same data as get_authz).", obj(map[string]any{}),
+		func(a map[string]any) (string, error) { return s.apiGet("/api/authz") })
+
 	s.add("set_authz",
-		"Save authorization-test identities. Replaces the full identity list — call get_authz first if you want to keep existing ones. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
+		"Save authorization-test identities. Default mode 'merge' upserts by identity name and keeps every other identity (safe for parallel agents); mode 'replace' overwrites the whole list. Each identity's headers can be given as a single 'Key: Value\\nKey2: Value2' string, an array of 'Key: Value' strings, or a {\"Key\":\"Value\"} object — all three are accepted. For APIs that hand back the session token in a login response BODY (not a header/cookie), extract the token yourself from that response and put it in headers, e.g. {\"Authorization\":\"Bearer <token>\"}.",
 		obj(map[string]any{
 			"identities": p("array", "objects with name + headers (Cookie/Authorization lines, as a string, array, or object — see description)"),
+			"mode":       p("string", "merge (default: upsert by name, keep others) | replace (overwrite the whole list)"),
+			"owner":      p("string", "optional label recorded as each written identity's owner (e.g. your agent name)"),
 		}, "identities"),
 		func(a map[string]any) (string, error) {
-			return s.api(http.MethodPost, "/api/authz", map[string]any{"identities": a["identities"]})
+			body := map[string]any{"identities": a["identities"]}
+			if m := argStr(a, "mode"); m != "" {
+				body["mode"] = m
+			}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz", body)
+		})
+
+	s.add("add_authz_identity",
+		"Add or update ONE authorization-test identity by name without touching the others.",
+		obj(map[string]any{
+			"name":    p("string", "identity name (e.g. admin, user, anonymous)"),
+			"headers": p("string", "auth headers as 'Key: Value' lines (array or object also accepted); empty = anonymous"),
+			"owner":   p("string", "optional owner label"),
+		}, "name"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"name": argStr(a, "name"), "headers": a["headers"]}
+			if o := argStr(a, "owner"); o != "" {
+				body["owner"] = o
+			}
+			return s.api(http.MethodPost, "/api/authz/identity", body)
+		})
+
+	s.add("remove_authz_identity",
+		"Remove ONE authorization-test identity by name; other identities are untouched.",
+		obj(map[string]any{"name": p("string", "identity name to remove")}, "name"),
+		func(a map[string]any) (string, error) {
+			return s.api(http.MethodDelete, "/api/authz/identity/"+url.PathEscape(argStr(a, "name")), nil)
+		})
+
+	s.add("authz_differential",
+		"Replay ONE captured request as anonymous plus the saved identities (low-privilege, admin, …) and classify each result as auth_failure, authz_failure, validation_failure or success. Optional invalidBody probes whether authentication is evaluated before validation; optional sideEffectFlowId (a read-only state flow) is replayed before/after each context to record side effects. Returns typed evidence retaining every raw flowId; attachToFinding adds all of them to a finding. Findings in 'hypotheses' must be reproduced before reporting.",
+		obj(map[string]any{
+			"flowId":           p("integer", "flow to replay across identities"),
+			"identities":       p("array", "optional identity names to include (default: all saved; anonymous is always added)"),
+			"invalidBody":      p("string", "optional deliberately invalid body, sent anonymously to detect auth-vs-validation ordering"),
+			"sideEffectFlowId": p("integer", "optional read-only flow observing state, replayed before/after each context"),
+			"attachToFinding":  p("integer", "optional finding id to attach every retained flow to as typed evidence"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			body := map[string]any{"flowId": a["flowId"]}
+			for _, k := range []string{"identities", "invalidBody", "sideEffectFlowId", "attachToFinding"} {
+				if v, ok := a[k]; ok {
+					body[k] = v
+				}
+			}
+			return s.api(http.MethodPost, "/api/authz/differential", body)
+		})
+
+	s.add("auth_timeline",
+		"Read-only auth timeline for a login flow and the same client's following captures: redirects, Set-Cookie create/replace/clear/reject, cookie send/omit, session-ID and CSRF rotation, MFA state, scheme/host changes and the first transition where authenticated state appears lost. Detections are hypotheses until reproduced; cookie values are never returned (fingerprints only).",
+		obj(map[string]any{
+			"flowId":        p("integer", "the login flow to start from"),
+			"windowSeconds": p("integer", "how far after the flow to follow the same client (default 120, max 600)"),
+			"max":           p("integer", "max flows in the chain (default 40, max 100)"),
+		}, "flowId"),
+		func(a map[string]any) (string, error) {
+			id := argInt(a, "flowId", 0)
+			if id <= 0 {
+				return "", fmt.Errorf("flowId required")
+			}
+			q := url.Values{}
+			if v := argInt(a, "windowSeconds", 0); v > 0 {
+				q.Set("windowSeconds", strconv.Itoa(v))
+			}
+			if v := argInt(a, "max", 0); v > 0 {
+				q.Set("max", strconv.Itoa(v))
+			}
+			path := fmt.Sprintf("/api/flows/%d/auth-timeline", id)
+			if len(q) > 0 {
+				path += "?" + q.Encode()
+			}
+			return s.apiGet(path)
 		})
 
 	s.add("authz_run",

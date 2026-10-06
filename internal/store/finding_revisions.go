@@ -103,7 +103,7 @@ func findingRevisionFields(before, after *Finding) []FindingRevisionDiff {
 			b, _ := json.Marshal(f)
 			_ = json.Unmarshal(b, &out)
 		}
-		for _, k := range []string{"id", "ts", "updatedTs", "ready", "missing", "readiness", "cvssScore", "cvssRating", "cvssNomenclature"} {
+		for _, k := range []string{"id", "ts", "updatedTs", "ready", "missing", "readiness", "cvssScore", "cvssRating", "cvssNomenclature", "cvssWarning"} {
 			delete(out, k)
 		}
 		return out
@@ -315,7 +315,7 @@ func (s *Store) RestoreFindingRevision(id, revisionID int64, change FindingChang
 		return err
 	}
 	f.Body = string(normalized)
-	_, err = tx.Exec(`INSERT INTO findings (`+findingCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET updated_ts=excluded.updated_ts,severity=excluded.severity,status=excluded.status,source=excluded.source,title=excluded.title,summary=excluded.summary,target=excluded.target,confidence=excluded.confidence,detail=excluded.detail,evidence=excluded.evidence,fix=excluded.fix,body=excluded.body,impact=excluded.impact,why=excluded.why,cwe=excluded.cwe,environment=excluded.environment,cvss=excluded.cvss,verification_instructions=excluded.verification_instructions,retest=excluded.retest,targets=excluded.targets,proof_review=excluded.proof_review`, id, f.TS, time.Now().UnixMilli(), f.Severity, f.Status, f.Source, f.Title, f.Summary, f.Target, f.Confidence, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions, f.Retest, f.Targets, f.ProofReview)
+	_, err = tx.Exec(`INSERT INTO findings (`+findingCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET updated_ts=excluded.updated_ts,severity=excluded.severity,status=excluded.status,source=excluded.source,title=excluded.title,summary=excluded.summary,target=excluded.target,confidence=excluded.confidence,detail=excluded.detail,evidence=excluded.evidence,fix=excluded.fix,body=excluded.body,impact=excluded.impact,why=excluded.why,cwe=excluded.cwe,environment=excluded.environment,cvss=excluded.cvss,verification_instructions=excluded.verification_instructions,retest=excluded.retest,targets=excluded.targets,proof_review=excluded.proof_review,structured=excluded.structured`, id, f.TS, time.Now().UnixMilli(), f.Severity, f.Status, f.Source, f.Title, f.Summary, f.Target, f.Confidence, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions, f.Retest, f.Targets, f.ProofReview, structuredValue(f))
 	if err != nil {
 		return err
 	}

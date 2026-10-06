@@ -73,6 +73,7 @@ type Hub struct {
 	oob           *oob.Catcher
 	hi            *humanInput // pending AI→human input prompts (request_human_input)
 	mux           *http.ServeMux
+	authzMu       sync.Mutex // serializes read-modify-write of saved authz identities
 
 	// Upstream applies a chained upstream-proxy URL ("" = direct). Set by cmd.
 	Upstream func(string) error
@@ -288,6 +289,10 @@ type flowDetailJSON struct {
 	ResHeaders  map[string][]string `json:"resHeaders"`
 	ReqBodyHash string              `json:"reqBodyHash"`
 	ResBodyHash string              `json:"resBodyHash"`
+	// InterceptionProvenance states how this flow's traffic was obtained: the
+	// interception setup version in force at capture time. Omitted when no
+	// setup was recorded or it did not cover the flow's host.
+	InterceptionProvenance *store.InterceptionProvenance `json:"interceptionProvenance,omitempty"`
 }
 
 type ruleJSON struct {
@@ -785,13 +790,15 @@ func (h *flowAPI) getFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.st.AttachTags([]*store.Flow{f})
+	prov, _ := h.st.InterceptionProvenance(f.TS, f.Host) // best-effort metadata
 	writeJSON(w, http.StatusOK, flowDetailJSON{
-		flowJSON:    toFlowJSON(f),
-		HTTPVersion: f.HTTPVersion,
-		ReqHeaders:  f.ReqHeaders,
-		ResHeaders:  f.ResHeaders,
-		ReqBodyHash: f.ReqBodyHash,
-		ResBodyHash: f.ResBodyHash,
+		InterceptionProvenance: prov,
+		flowJSON:               toFlowJSON(f),
+		HTTPVersion:            f.HTTPVersion,
+		ReqHeaders:             f.ReqHeaders,
+		ResHeaders:             f.ResHeaders,
+		ReqBodyHash:            f.ReqBodyHash,
+		ResBodyHash:            f.ResBodyHash,
 	})
 }
 

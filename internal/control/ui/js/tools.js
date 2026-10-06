@@ -1,6 +1,8 @@
-import { $, esc, escAttr, toast, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
+import { $, esc, escAttr, toast, toastError, copyText, api, methodColor, statusColor, statusText, highlightHTTP, highlightHeaderLines, highlightBodyText, prettify, beautifyBody, fmtDur, fmtSize, openCtxMenu, DEC_OPS, contentTypeFromRaw, pickTextFile, normalizeListText, parseListLines, previewListLines, LIST_PREVIEW_LINES, wireRowKey, uiPrompt, createTabManager, projectStorageKey, projectStorageLegacyKeys, consumeStorageMigrationWarning, isSafePersistedTabState, MAX_PROJECT_UI_STATE_BYTES, persistedStateByteLength, syncUiSelectStyles, icon } from './core.js';
 import { animateOnce, MOTION } from './motion.js';
 import { wireListbox, focusOption } from './listbox.js';
+import { wireRepeaterExtras } from './repeater.js';
+import { wireIntruderExtras, chipsHTML, baselineOf, needsLargeRunConfirm } from './intruder.js';
 import { renderHTMLResponse, RENDER_CAP, flowBodyDownloadHref, flowBodyDownloadName, formatHexDump } from './core.js';
 
 // friendlySendError turns a raw backend/network error (Go's url.Parse wording,
@@ -625,6 +627,7 @@ export function repLoadEditor(){
   else if(t.resId){$('#repStatus').textContent=t.status||'';$('#repStatus').style.color=t.color||'var(--fg3)';renderRepResponse();}
   else{$('#repStatus').textContent='';$('#repResView').innerHTML=REP_RES_EMPTY;}
   refreshRepHistory(t);
+  syncRepActions();
 }
 async function repEnterDecoded(t){
   const flowId=t.sourceFlowId||t.resId;
@@ -680,7 +683,7 @@ export async function repSend(){
   t.sendEpoch=(t.sendEpoch||0)+1;
   const sendEpoch=t.sendEpoch;
   const current=()=>!t._closed&&t.sendEpoch===sendEpoch;
-  t.sendPending=true;
+  t.sendPending=true;syncRepActions();
   repResponseEpoch++;repSyncResView(t);
   setRepSendState('pending','Sending…');
   $('#repStatus').textContent='sending…';$('#repStatus').style.color='var(--fg3)';
@@ -697,7 +700,8 @@ export async function repSend(){
     // the operator has switched to another tab; keep the result on its source
     // tab, but never paint that result into the currently visible tab.
     if(repCur()!==t||!current())return;
-    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;
+    $('#repStatus').textContent=t.status;$('#repStatus').style.color=t.color;syncRepActions();
+    if(repExtras)repExtras.afterSend();
     if(flow.status===401) toast('401 Unauthorized — run login macro in Settings → Session or enable Re-auth on 401');
     await renderRepResponse();
     if(repCur()!==t||!current())return;
@@ -810,7 +814,7 @@ export async function loadRepHistory(){
     const remaining=flows.length-visibleCount;
     // The rows live in their own listbox wrapper so the retry banner and the
     // "show older" button stay outside it — a listbox may only own options.
-    box.innerHTML=migrationError+`<div data-rep-history-rows>`+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" aria-selected="${f.id===t.resId?'true':'false'}">
+    box.innerHTML=migrationError+`<div data-rep-history-rows>`+visible.map(f=>`<div class="h ${f.id===t.resId?'sel':''}" data-id="${f.id}" data-evidence-flow="${f.id}" aria-selected="${f.id===t.resId?'true':'false'}">
     <div><span style="color:${methodColor(f.method)};font-weight:700">${esc(f.method||'—')}</span> <span style="color:${statusColor(f.status)};font-weight:700">${f.status||'—'}</span></div>
     <div class="u">${esc((f.host||'')+(f.path||''))}</div></div>`).join('')+`</div>`+(remaining?`<button type="button" class="rep-hist-more" data-rep-history-more>Show ${Math.min(REP_HISTORY_RENDER_BATCH,remaining)} older <span aria-hidden="true">·</span> ${remaining} remaining</button>`:'');
     box.querySelector('[data-rep-history-more]')?.addEventListener('click',()=>{
@@ -898,6 +902,113 @@ export async function sendToRepeater(f){
     return true;
   }catch(e){toast(e.message);return false;}
 }
+// ---- Repeater response-pane actions: Intruder / + Finding / Copy cURL ----
+function shellQuote(v){return "'"+String(v).replace(/'/g,"'\\''")+"'";}
+function repExportBody(t){
+  if((t.reqView||'raw')==='decoded')return t.rawBody||t.body||'';
+  return compactBody(t.body||'');
+}
+// repBuildRaw turns the active tab into the pieces other tools need: the
+// target origin plus a raw HTTP/1.1 request. Returns null for an unusable URL.
+function repBuildRaw(t){
+  let u;
+  try{u=new URL((t.url||'').trim());}catch(e){return null;}
+  if(u.protocol!=='http:'&&u.protocol!=='https:')return null;
+  const headers=(t.headers||'').split(/\r?\n/).filter(line=>line.trim());
+  if(!headers.some(line=>/^host:/i.test(line)))headers.unshift('Host: '+u.host);
+  const method=t.method||'GET';
+  const raw=`${method} ${u.pathname}${u.search} HTTP/1.1\n${headers.join('\n')}\n\n${repExportBody(t)}`;
+  return {target:u.origin,raw,url:u.href,method,headers:headers.filter(line=>!/^host:/i.test(line)),body:repExportBody(t)};
+}
+function repCurlCommand(built){
+  const parts=['curl -i -X '+built.method];
+  built.headers.forEach(line=>parts.push('-H '+shellQuote(line)));
+  if(built.body)parts.push('--data-raw '+shellQuote(built.body));
+  parts.push(shellQuote(built.url));
+  return parts.join(' \\\n  ');
+}
+function repActionRequest(){
+  repSaveEditor();
+  const t=repCur();if(!t)return null;
+  const built=repBuildRaw(t);
+  if(!built){toast('Enter a valid http(s) URL first','warn');return null;}
+  return {t,built};
+}
+async function repToIntruder(){
+  const req=repActionRequest();if(!req)return;
+  if(!await waitForWorkstationReady())return;
+  if((intrStartPending||intrLastRunning)&&!intrTabPristine(intrTabs.cur())){toast('An attack is running — stop it before loading another request into Intruder','warn');return;}
+  document.querySelector('.tab[data-tab="intruder"]').click();
+  const tab=intrTabForLoad();if(!tab)return;
+  $('#intrTarget').value=req.built.target;
+  $('#intrTemplate').value=req.built.raw;
+  updateIntrMode();intrTouch();
+  toast('loaded Repeater request into Intruder · add § markers');
+}
+function repCopyCurl(){
+  const req=repActionRequest();if(!req)return;
+  copyText(repCurlCommand(req.built),'cURL copied');
+}
+function repAddToFinding(){
+  const t=repCur();
+  if(!t||!t.resId){toast('Send the request first — a finding attaches the captured flow','warn');return;}
+  import('./findings.js').then(m=>m.addFlowToFinding(t.resId)).catch(e=>toastError('Add to finding failed',e));
+}
+let repExtras=null,intrExtras=null,intrBaseline=null;
+function syncRepActions(){
+  if(repExtras)repExtras.sync();
+  const btn=$('#repAddFinding');if(!btn)return;
+  const t=repCur();
+  btn.disabled=!t||!t.resId||!!t.sendPending;
+  btn.title=btn.disabled?'Send the request first to attach its flow to a finding':'Add this response flow to a finding';
+}
+function wireRepeaterActions(){
+  const head=document.querySelector('#panel-repeater .rep-res .pane-head');
+  if(!head||$('#repActions'))return;
+  const group=document.createElement('div');
+  group.id='repActions';group.className='rep-actions';group.setAttribute('role','group');group.setAttribute('aria-label','Request actions');
+  group.innerHTML='<button type="button" class="btn xs" id="repToIntruder" title="Load this request into Intruder">Intruder</button>'
+    +'<button type="button" class="btn xs" id="repAddFinding" title="Add this response flow to a finding">+ Finding</button>'
+    +'<button type="button" class="btn xs" id="repCopyCurl" title="Copy this request as a cURL command">Copy cURL</button>';
+  head.insertBefore(group,$('#repResSeg'));
+  $('#repToIntruder').onclick=repToIntruder;
+  $('#repAddFinding').onclick=repAddToFinding;
+  $('#repCopyCurl').onclick=repCopyCurl;
+  repExtras=wireRepeaterExtras({$,api,toast,toastError,openCtxMenu,repCur});
+  syncRepActions();
+}
+// parseRawRequest splits an edited raw HTTP request (CRLF or LF) into method,
+// target, header text and body. Returns null when there is no request line.
+export function parseRawRequest(raw){
+  const text=String(raw||'');
+  const m=/\r?\n\r?\n/.exec(text);
+  const head=m?text.slice(0,m.index):text;
+  const body=m?text.slice(m.index+m[0].length):'';
+  const lines=head.split(/\r?\n/);
+  const first=/^([A-Za-z]+)\s+(\S+)(?:\s+HTTP\/\d(?:\.\d)?)?\s*$/.exec(lines.shift()||'');
+  if(!first)return null;
+  return {method:first[1].toUpperCase(),target:first[2],headers:lines.filter(line=>line.trim()).join('\n'),body};
+}
+// sendRawToRepeater opens an edited raw request (for example a held Intercept
+// message) in a new Repeater tab. It never reuses a tab, so no work is lost.
+export async function sendRawToRepeater({scheme,host,raw,label}){
+  const req=parseRawRequest(raw);
+  if(!req){toast('Held message is not an editable HTTP request','warn');return false;}
+  if(!await waitForWorkstationReady())return false;
+  const hostHeader=/^host:\s*(\S+)/im.exec(req.headers);
+  const authority=(hostHeader&&hostHeader[1])||host||'';
+  const url=/^https?:\/\//i.test(req.target)?req.target:`${scheme||'http'}://${authority}${req.target.startsWith('/')?'':'/'}${req.target}`;
+  const t=repNewTab();if(!t)return false;
+  t.method=req.method;t.url=url;t.headers=req.headers;t.body=req.body;
+  t.reqView='pretty';t.sourceFlowId=null;t.codecId='';t.decodedPlain='';t.rawBody='';t.applyOnSend=false;
+  t.label=label||'';t.requestAdoptionPristine=false;t.resId=null;t.status='';t.color='';t.sendError='';
+  t.reqEditEpoch=(t.reqEditEpoch||0)+1;t.title=repTitle(t);
+  renderRepTabs();repPersist();
+  document.querySelector('.tab[data-tab="repeater"]').click();
+  repLoadEditor();
+  toast('loaded held request into Repeater · it is still held');
+  return true;
+}
 export async function repInit(){
   if(repInit._done)return repeaterReady;repInit._done=true;
   let hydration=await hydrateUIState('repeater','rep.tabs',isSafePersistedTabState);
@@ -928,6 +1039,7 @@ export async function repInit(){
   repRefreshHL();
   repWireEncodeCtx();
   wirePostmanImport();
+  wireRepeaterActions();
   resolveRepeaterReady(hydration);
   return hydration;
 }
@@ -1284,6 +1396,7 @@ export async function intrInit(){
   ['#intrGrep','#intrExtract','#intrProc'].forEach(s=>{const el=$(s);if(el)el.addEventListener('input',intrTouch);});
   const gen=$('#intrAiGen');if(gen)gen.onclick=()=>intrGeneratePayloads();
   wireIntrSortHeaders();
+  intrExtras=wireIntruderExtras({$,api,toast,toastError,openCtxMenu,getResults:()=>intrDisplayedResults,openResult:openIntrResult});
   resolveIntruderReady(hydration);
   return hydration;
 }
@@ -1455,7 +1568,7 @@ const INTR_PRESETS={
     "-1"
   ]
 };
-const INTR_FILE_BTNS=`<div class="spacer"></div><select class="btn btn-field intr-preset-select" title="Insert built-in attack payloads" aria-label="Insert built-in attack payloads"><option value="" disabled selected>Presets ▾</option><option value="sqli_auth">SQLi Auth Bypass</option><option value="sqli_probe">SQLi Error/Probe</option><option value="xss">Cross-Site Scripting</option><option value="traversal">Path Traversal / LFI</option><option value="ssrf">SSRF Localhost</option><option value="cmdi">Command Injection</option><option value="auth_bypass">Auth / Role Tokens</option></select><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file" aria-label="Append payloads from file">＋</button>`;
+const INTR_FILE_BTNS=`<div class="spacer"></div><select class="btn btn-field intr-preset-select" title="Insert built-in attack payloads" aria-label="Insert built-in attack payloads"><option value="" disabled selected>Presets</option><option value="sqli_auth">SQLi Auth Bypass</option><option value="sqli_probe">SQLi Error/Probe</option><option value="xss">Cross-Site Scripting</option><option value="traversal">Path Traversal / LFI</option><option value="ssrf">SSRF Localhost</option><option value="cmdi">Command Injection</option><option value="auth_bypass">Auth / Role Tokens</option></select><button type="button" class="btn intr-file-load" data-mode="replace" title="Load payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"/></svg></button><button type="button" class="btn intr-file-load" data-mode="append" title="Append payloads from file" aria-label="Append payloads from file"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></button>`;
 async function intrLoadPayloadFile(ta, append){
   const ownerTab=intrTabs.cur(),ownerEditEpoch=intrTabs.cur()?._editEpoch||0;
   try{
@@ -1718,7 +1831,17 @@ function wireButtonGroupKeys(group){
 wireButtonGroupKeys($('#intrType'));
 const _intrListMode=document.getElementById('intrListMode');
 if(_intrListMode)_intrListMode.onchange=()=>{intrState.type=_intrListMode.value;updateIntrMode();intrTouch();};
-$('#intrWrap').onclick=()=>{const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();};
+function intrWrapSelection(){const ta=$('#intrTemplate');const a=ta.selectionStart,b=ta.selectionEnd,v=ta.value;ta.value=v.slice(0,a)+'§'+v.slice(a,b)+'§'+v.slice(b);ta.focus();ta.selectionStart=a+1;ta.selectionEnd=b+1;intrTemplateChanged();intrTouch();}
+$('#intrWrap').onclick=intrWrapSelection;
+// Alt+M wraps the selection in § markers from the keyboard (Race mode has no
+// markers, so the shortcut follows the disabled button). e.code is used because
+// Alt+M types a different character on macOS layouts.
+$('#intrTemplate').addEventListener('keydown',e=>{
+  if(!e.altKey||e.ctrlKey||e.metaKey||e.shiftKey||e.code!=='KeyM')return;
+  e.preventDefault();
+  if($('#intrWrap').disabled)return;
+  intrWrapSelection();
+});
 // Re-derive the per-marker inputs whenever the template's § markers change. (Input
 // listeners for the editor fields are wired in intrInit so they also save to the tab.)
 function intrTemplateChanged(){if(intrState.type==='pitchfork'||intrState.type==='cluster')renderPayloadInputs();else updateIntrCount();}
@@ -1738,8 +1861,10 @@ function setIntrStartState(stateName,label){
 }
 function resetIntrStart(delay,epoch){setTimeout(()=>{if(epoch===intrStartEpoch&&!intrLastRunning)setIntrStartState('idle','Start ▸');},delay);}
 let intrStartEpoch=0;
+let intrLargeRunConfirmed=false;
 export async function intrStart(){
   if(intrStartPending)return;
+  const confirmed=intrLargeRunConfirmed;intrLargeRunConfirmed=false;
   const target=$('#intrTarget').value.trim();
   if(!target){toast('enter a target (scheme://host)');$('#intrTarget').focus();return;}
   const threadsValue=Number($('#intrThreads').value),delayValue=Number($('#intrDelay').value);
@@ -1753,6 +1878,7 @@ export async function intrStart(){
     const repeatValue=Number($('#intrRepeat').value);
     if(!Number.isInteger(repeatValue)||repeatValue<1||repeatValue>2000){toast('repeat must be between 1 and 2000','error');$('#intrRepeat').focus();return;}
     body.repeat=repeatValue;
+    if(!confirmed&&intrExtras&&needsLargeRunConfirm(repeatValue)){intrExtras.confirmLarge(repeatValue,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }else{
     const mk=intrMarkers();
     if(!mk.length){toast('mark at least one § injection point — or use Race / repeat for payload-free resends');$('#intrTemplate').focus();return;}
@@ -1769,6 +1895,7 @@ export async function intrStart(){
     else if(intrState.type==='cluster') reqs=body.payloads.reduce((a,l)=>a*l.length,1);
     else reqs=body.payloads[0].length*Math.max(mk.length,1);
     if(reqs>INTR_MAX_REQUESTS){toast(`too many requests (${reqs.toLocaleString()} > ${INTR_MAX_REQUESTS}) — shrink the payload range`,'error');return;}
+    if(!confirmed&&intrExtras&&needsLargeRunConfirm(reqs)){intrExtras.confirmLarge(reqs,()=>{intrLargeRunConfirmed=true;intrStart();});return;}
   }
   intrTouch();                       // persist the launched config to the active tab
   intrRunCfg={...intrReadEditor(),tid:intrTabs.cur()?.tid??null}; // snapshot + tab owner for history
@@ -1971,6 +2098,14 @@ function intrApplyFilter(res){
   else if(intrFilter==='error') out=out.filter(r=>r.error);
   return intrApplySort(out);
 }
+const INTR_POLL_MS=400;
+// A running attack that has made no progress since the last poll needs neither
+// a re-render nor a results copy; just keep polling.
+function intrPollUnchanged(st){
+  if(!st||!st.running||st.error||intrPollError||!intrLastRunning)return false;
+  const res=Array.isArray(st.results)?st.results:[];
+  return (st.done||0)===intrLastDone&&(st.total||0)===intrLastTotal&&res.length===intrLastResults.length;
+}
 export function scheduleIntr(){
   clearTimeout(intrTimer);
   if(intrPollInFlight){intrPollQueued=true;return;}
@@ -1980,7 +2115,8 @@ export function scheduleIntr(){
     try{
       const st=await api('/api/intruder/state');
       if(epoch!==intrPollEpoch)return;
-      renderIntr(st);
+      if(intrPollUnchanged(st))scheduleIntr();
+      else renderIntr(st);
     }catch(e){
       if(epoch!==intrPollEpoch)return;
       // Keep the last result set visible while the state endpoint is unavailable.
@@ -1992,7 +2128,7 @@ export function scheduleIntr(){
       intrPollInFlight=false;
       if(intrPollQueued){intrPollQueued=false;scheduleIntr();}
     }
-  },120);
+  },INTR_POLL_MS);
 }
 export function renderIntr(st,{authoritative=true}={}){
   const running=!!st.running,total=st.total||0,done=st.done||0,res=Array.isArray(st.results)?st.results:[];
@@ -2038,11 +2174,15 @@ export function renderIntr(st,{authoritative=true}={}){
   const bar=$('#intrProgBar'),fill=$('#intrProgFill');
   if(bar&&fill){bar.style.display=(displayState.running||displayState.total)?'block':'none';fill.style.width=displayState.total?Math.round(displayState.done/displayState.total*100)+'%':'0';}
   // results summary (flagged count)
+  // Filter and sort once per render; the stats line and the rows share the view.
+  const view=intrApplyFilter(displayRes);
+  intrBaseline=baselineOf(displayRes);
+  if(intrExtras)intrExtras.onRender({running:displayState.running,total:displayState.total,done:displayState.done,results:displayRes});
   const stats=$('#intrStats');
   if(stats){
-    const fl=displayRes.filter(r=>r.flagged).length, int=displayRes.filter(intrIsInteresting).length;
-    const shown=intrApplyFilter(displayRes).length;
-    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+shown:''}`:'';
+    let fl=0,int=0;
+    for(const r of displayRes){if(r.flagged)fl++;if(intrIsInteresting(r))int++;}
+    stats.textContent=displayRes.length?`${displayRes.length} sent${fl?' · '+fl+' flagged':''}${int&&intrFilter!=='interesting'?' · '+int+' interesting':''}${intrFilter!=='all'?' · showing '+view.length:''}`:'';
   }
   const box=$('#intrResults');
   if(st.error){box.innerHTML='<div class="state-error"><div class="state-error-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-warning"/></svg></div><div class="state-error-msg">'+esc(st.error)+'</div></div>';return;}
@@ -2050,7 +2190,6 @@ export function renderIntr(st,{authoritative=true}={}){
     box.innerHTML=displayState.running?'<div class="hint" style="padding:12px">sending…</div>':INTR_RESULTS_EMPTY;
     return;
   }
-  const view=intrApplyFilter(displayRes);
   if(!view.length){
     box.innerHTML='<div class="state-empty"><div class="state-empty-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg></div><div class="state-empty-title">No matches</div><p class="state-empty-hint">No results match this filter.</p></div>';
     return;
@@ -2067,55 +2206,60 @@ if(seg)seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
 });}
 wireButtonGroupKeys($('#intrResFilter'));
 let intrToFindingPending=false;
+const INTR_FINDING_FLOW_CAP=20, INTR_FINDING_FALLBACK=10;
+// intrFindingSelection picks the attempts to attach and explains how, so the
+// picker never silently substitutes a fallback or truncates.
+function intrFindingSelection(pool){
+  const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
+  const interesting=withFlow.filter(intrIsInteresting);
+  const fallback=!interesting.length;
+  const chosen=fallback?withFlow.slice(0,INTR_FINDING_FALLBACK):interesting;
+  const ids=chosen.map(r=>Number(r.flowId||r.flowID)).filter(Boolean);
+  const notes=[];
+  if(fallback&&ids.length)notes.push(`Nothing was flagged or interesting, so the first ${ids.length} captured attempt${ids.length===1?'':'s'} are used.`);
+  if(ids.length>INTR_FINDING_FLOW_CAP)notes.push(`${ids.length} attempts qualify; only the first ${INTR_FINDING_FLOW_CAP} are attached.`);
+  return {flowIds:ids.slice(0,INTR_FINDING_FLOW_CAP),note:notes.join(' ')};
+}
 async function intrToFinding(){
   if(intrToFindingPending)return;
   const pool=intrApplyFilter(intrDisplayedResults);
-  const withFlow=pool.filter(r=>(r.flowId||r.flowID)>0);
-  const interesting=withFlow.filter(intrIsInteresting);
-  const pick=interesting.length?interesting:withFlow.slice(0,10);
-  if(!pick.length){toast('no attempts with captured flows to attach','warn');return;}
+  const {flowIds,note}=intrFindingSelection(pool);
+  if(!flowIds.length){toast('no attempts with captured flows to attach','warn');return;}
   const displayTarget=intrDisplayedTarget||$('#intrTarget').value||'';
-  const flowIds=pick.map(r=>Number(r.flowId||r.flowID)).filter(Boolean).slice(0,20);
   const button=$('#intrToFinding');
   intrToFindingPending=true;
-  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Preparing…';}
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
   try{
-    const title=await uiPrompt({title:'Create finding from Intruder',placeholder:'e.g. IDOR on /api/users?id=',value:(displayTarget||'Intruder finding').replace(/^https?:\/\//,'')});
-    if(!title)return;
-    if(button)button.textContent='Creating…';
-    const body={
-      title, severity:'medium', status:'needs_verification', source:'human',
-      target:displayTarget,
-      why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
-      impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
-      verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
-      flowIds,
-    };
-    const f=await api('/api/findings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const warnings=Array.isArray(f.warnings)?f.warnings:[];
-    const success='finding #'+f.id+' created with '+body.flowIds.length+' PoC'+(body.flowIds.length===1?'':'s');
-    toast(warnings.length?success+' · '+warnings.length+' PoC attachment warning'+(warnings.length===1?'':'s')+': '+warnings.join(' · '):success,warnings.length?'warn':'success');
-    document.querySelector('.tab[data-tab="findings"]')?.click();
-  }catch(e){toast(e.message||'could not create finding','error');}
+    const m=await import('./findings.js');
+    m.pickFindingForFlows(flowIds,{
+      target:displayTarget,note,
+      titleHint:displayTarget.replace(/^https?:\/\//,'')||'Intruder finding',
+      extra:{
+        why:'Intruder attack produced interesting responses (flagged / matched / anomalous).',
+        impact:'Confirm whether the differing responses indicate unauthorized access or injection.',
+        verificationInstructions:'Open each attached PoC flow, compare status/length/body to the baseline, and confirm impact on the target.',
+      },
+    });
+  }catch(e){toastError('Could not open the finding picker',e);}
   finally{
     intrToFindingPending=false;
-    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='To Finding';}
+    if(button){button.disabled=false;button.setAttribute('aria-busy','false');button.textContent='→ Finding';}
   }
 }
 if($('#intrToFinding'))$('#intrToFinding').onclick=intrToFinding;
 // Virtualized Intruder results: rendering thousands of result rows on every poll
-// (every 120ms while running) rebuilds the whole DOM and janks the tab. Render only
+// (every poll while running) rebuilds the whole DOM and janks the tab. Render only
 // the visible window, repaint on scroll — same pattern as the Map table / Proxy rows.
 const INTR_ROW_H=25, INTR_VIRT_MIN=200;
 function intrRowHTML(r){
   const fid=r.flowId||r.flowID||0;
   const title=r.error?(r.error):(fid?('open attempt #'+r.id+' · flow #'+fid):('attempt #'+r.id+(r.error?' · '+r.error:'')));
-  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}" data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
-    <div style="color:var(--fg3)">${r.id}</div>
-    <div class="pl">${esc(r.payload)}${r.flagged?' <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flag"/></svg>':''}${r.anomaly?' <span class="intr-anomaly" title="length anomaly">∿</span>':''}${r.matched?' <span title="grep matched">✓</span>':''}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
-    <div style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
-    <div style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
-    <div style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
+  return `<div class="intr-row ${r.flagged?'flag':''}${r.matched?' match':''}" data-flow="${fid||''}"${fid?` data-evidence-flow="${fid}"`:''} data-err="${escAttr(r.error||'')}" title="${escAttr(title)}" tabindex="0" role="button">
+    <div class="intr-id">${r.id}</div>
+    <div class="pl"><span class="pl-text">${esc(r.payload)}</span>${chipsHTML(r,intrBaseline,esc)}${r.extracted?' <span class="ext" title="extracted">→ '+esc(r.extracted)+'</span>':''}</div>
+    <div class="intr-st" style="color:${statusColor(r.status)};font-weight:700;text-align:center">${r.error?'ERR':(r.status||'—')}</div>
+    <div class="intr-len" style="color:${r.anomaly?'var(--amber)':'var(--fg2)'};text-align:right;font-weight:${r.anomaly?'700':'400'}">${r.length}</div>
+    <div class="intr-ms" style="color:var(--fg3);text-align:right">${r.timeMs}ms</div></div>`;
 }
 async function openIntrResult(el){
   const fid=Number(el.dataset.flow||0);
@@ -2200,24 +2344,56 @@ export function applyIntruderPayloadSuggestion(data, opts){
   const n=pos.reduce((a,p)=>a+(p.payloads||[]).length,0);
   toast((opts&&opts.toast)||(`loaded ${n} AI payload${n===1?'':'s'} into Intruder — review & Start`));
 }
+// A tab is pristine when it still holds the untouched blank attack, so loading a
+// flow may reuse it; anything the operator configured is never overwritten.
+function intrTabPristine(t){
+  if(!t)return false;
+  const blank=intrBlank(0);
+  const empty=v=>!v||(Array.isArray(v)&&v.every(x=>!x));
+  return (t.template===blank.template||!t.template)&&!t.target&&t.type==='sniper'
+    &&(t.threads||1)===1&&!(t.delay||0)&&(t.repeat||20)===20
+    &&!t.grep&&!t.extract&&!t.proc&&empty(t.sniperLines)&&empty(t.posLines)&&!t.sniperFile&&empty(t.posFiles)
+    &&(t.sniperSource||'list')==='list'&&(t.posSources||[]).every(v=>v==='list')
+    &&(t.sniper||INTR_SNIPER)===INTR_SNIPER&&JSON.stringify(t.pos||INTR_POS)===JSON.stringify(INTR_POS);
+}
+// Choose the attack tab a loaded flow should land in: the current one when it is
+// pristine, otherwise a fresh one (mirrors sendToRepeater). Returns null when the
+// tab limit refuses a new tab.
+function intrTabForLoad(forceNew=false){
+  intrSaveCur();
+  const cur=intrTabs.cur();
+  if(!forceNew&&intrTabPristine(cur))return cur;
+  const tab=intrTabs.create();
+  if(!tab)return null;
+  intrTabs.active=tab.tid;
+  renderIntrTabs();intrLoadTab(tab);
+  return tab;
+}
+let intrLoadActionEpoch=0;
 export async function sendToIntruder(f){
+  const epoch=++intrLoadActionEpoch;
   if(!await waitForWorkstationReady())return false;
-  // Switch to the Intruder tab first for responsiveness (matches sendToRepeater),
-  // and capture the active attack tab before any await so a sub-tab switch during
-  // the fetch can't make intrTouch() save the request into the wrong tab.
-  document.querySelector('.tab[data-tab="intruder"]').click();
+  if(epoch!==intrLoadActionEpoch)return false;
+  // Snapshot editor ownership before any await: when the operator edits or
+  // switches tabs during the fetch, the request lands in a new tab instead.
   const target=intrTabs.cur();
   if(!target)return false;
   const targetEditEpoch=target._editEpoch||0;
   try{
     const [d,raw]=await Promise.all([api('/api/flows/'+f.id),api('/api/flows/'+f.id+'/raw?side=req')]);
-    if(intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch)return;
+    if(epoch!==intrLoadActionEpoch)return false;
+    const editorMoved=intrTabs.cur()!==target||(target._editEpoch||0)!==targetEditEpoch;
+    if((intrStartPending||intrLastRunning)&&!intrTabPristine(intrTabs.cur())){toast('An attack is running — stop it before loading another request into Intruder','warn');return false;}
+    document.querySelector('.tab[data-tab="intruder"]').click();
+    const loadTab=intrTabForLoad(editorMoved);
+    if(!loadTab){toast('Intruder tab limit reached — close a tab first','warn');return false;}
     intrLastFlowId=f.id;
     const def=(d.scheme==='https'&&d.port===443)||(d.scheme==='http'&&d.port===80);
     $('#intrTarget').value=`${d.scheme}://${d.host}${def?'':':'+d.port}`;
     $('#intrTemplate').value=raw.replace(/\r\n/g,'\n');
     updateIntrMode(); // refresh marker-derived payload inputs for the new template
-    intrTouch();      // save the loaded request into the captured attack tab
+    intrTouch();      // save the loaded request into the attack tab
     toast('loaded #'+f.id+' into Intruder · add § markers');
-  }catch(e){toast(e.message);}
+    return true;
+  }catch(e){toastError('Send to Intruder failed',e);return false;}
 }

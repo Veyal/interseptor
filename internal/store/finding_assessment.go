@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	cvsspkg "github.com/Veyal/interseptor/internal/cvss"
 	cvss31 "github.com/pandatix/go-cvss/31"
 	cvss40 "github.com/pandatix/go-cvss/40"
 )
@@ -32,11 +33,15 @@ type FindingTarget struct {
 
 // ProofReview records the operator's assessment, not an automated proof claim.
 type FindingProofReview struct {
-	Claims    map[string]FindingCapabilityClaim   `json:"claims,omitempty"`
-	Execution string                              `json:"execution,omitempty"` // demonstrated | prerequisite_only | not_executed
-	Reason    string                              `json:"reason,omitempty"`
-	Visual    bool                                `json:"visual,omitempty"`
-	Evidence  map[string]FindingEvidenceReference `json:"evidence,omitempty"`
+	Claims    map[string]FindingCapabilityClaim `json:"claims,omitempty"`
+	Execution string                            `json:"execution,omitempty"` // demonstrated | prerequisite_only | not_executed
+	Reason    string                            `json:"reason,omitempty"`
+	Visual    bool                              `json:"visual,omitempty"`
+	// SeverityOverride is the documented reason a finding's severity
+	// deliberately differs from its calculated CVSS rating. Without it a
+	// mismatch is rejected at write time.
+	SeverityOverride string                              `json:"severityOverride,omitempty"`
+	Evidence         map[string]FindingEvidenceReference `json:"evidence,omitempty"`
 }
 
 type FindingEvidenceReference struct {
@@ -49,6 +54,10 @@ type FindingMetadataPatch struct {
 	Change      FindingChange
 	Targets     *FindingTargets
 	ProofReview *FindingProofReview
+	// Structured fields: a nil pointer preserves the stored value, a non-nil one replaces it.
+	Claims          *[]FindingClaim
+	NotExecuted     *[]FindingNotExecuted
+	RelatedFindings *[]FindingRelation
 }
 
 func scanFindingJSON(value any, out any) error {
@@ -78,6 +87,9 @@ func (r FindingProofReview) Value() (driver.Value, error) {
 
 func normalizeFindingAssessment(f *Finding) error {
 	if err := normalizeCapabilityClaims(f); err != nil {
+		return err
+	}
+	if err := normalizeFindingStructured(f); err != nil {
 		return err
 	}
 	if len(f.Targets) > 64 {
@@ -146,10 +158,8 @@ func normalizeFindingAssessment(f *Finding) error {
 	if len(f.Targets) > 0 {
 		f.Target = f.Targets[0].URL
 	}
-	for role, ref := range f.ProofReview.Evidence {
-		if !slices.Contains([]string{"action", "result", "control"}, role) || (ref.FlowID <= 0 && !isContentHash(ref.Hash)) || (ref.FlowID > 0 && ref.Hash != "") {
-			return fmt.Errorf("%w: evidence mapping requires action/result/control and one flowId or image hash", ErrInvalidFinding)
-		}
+	if err := validateEvidenceMapping(f.ProofReview.Evidence); err != nil {
+		return err
 	}
 	r := &f.ProofReview
 	r.Execution = strings.TrimSpace(r.Execution)
@@ -157,7 +167,7 @@ func normalizeFindingAssessment(f *Finding) error {
 	switch r.Execution {
 	case "", "demonstrated":
 	case "prerequisite_only", "not_executed":
-		if r.Reason == "" {
+		if r.Reason == "" && len(f.NotExecuted) == 0 {
 			return fmt.Errorf("%w: explain why claimed impact has not been demonstrated", ErrInvalidFinding)
 		}
 		f.Status = "needs_verification"
@@ -176,6 +186,60 @@ func normalizeFindingAssessment(f *Finding) error {
 	return nil
 }
 
+// validateEvidenceMapping checks proofReview.evidence and names the exact role
+// and the part (role, flowId or hash) that is wrong.
+func validateEvidenceMapping(evidence map[string]FindingEvidenceReference) error {
+	roles := make([]string, 0, len(evidence))
+	for role := range evidence {
+		roles = append(roles, role)
+	}
+	slices.Sort(roles)
+	for _, role := range roles {
+		ref := evidence[role]
+		field := "proofReview.evidence." + role
+		switch {
+		case !slices.Contains([]string{"action", "result", "control"}, role):
+			return fmt.Errorf("%w: %s: role must be one of action, result, control", ErrInvalidFinding, field)
+		case ref.FlowID > 0 && ref.Hash != "":
+			return fmt.Errorf("%w: %s: give either flowId or hash, not both", ErrInvalidFinding, field)
+		case ref.FlowID <= 0 && ref.Hash == "":
+			return fmt.Errorf("%w: %s: both flowId and hash are empty; give flowId (a positive captured flow id) or hash (64 hex characters of an uploaded image)", ErrInvalidFinding, field)
+		case ref.FlowID <= 0 && !isContentHash(ref.Hash):
+			return fmt.Errorf("%w: %s.hash: expected 64 hex characters of an uploaded image hash, got %q", ErrInvalidFinding, field, truncateForError(ref.Hash))
+		}
+	}
+	return nil
+}
+
+func truncateForError(s string) string {
+	if len(s) > 24 {
+		return s[:24] + "..."
+	}
+	return s
+}
+
+// validateCVSSWrite enforces the CVSS:4.0 contract for a vector being written.
+func validateCVSSWrite(vector string) error {
+	if err := cvsspkg.ValidateForWrite(vector); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidFinding, err)
+	}
+	return nil
+}
+
+// validateSeverityMatchesCVSS blocks a severity that disagrees with the
+// calculated rating of a valid CVSS v4.0 vector unless the finding documents an
+// explicit override. Unparseable or legacy vectors are not judged here.
+func validateSeverityMatchesCVSS(f *Finding) error {
+	if strings.TrimSpace(f.ProofReview.SeverityOverride) != "" {
+		return nil
+	}
+	ev, err := cvsspkg.Evaluate(f.Cvss)
+	if err != nil || ev.Legacy || strings.EqualFold(f.Severity, ev.Severity) {
+		return nil
+	}
+	return fmt.Errorf("%w: severity %q conflicts with the calculated CVSS rating %s (score %.1f); set severity to %s or document a deliberate difference in proofReview.severityOverride", ErrInvalidFinding, f.Severity, ev.Severity, ev.Score, ev.Severity)
+}
+
 func (s *Store) UpdateFindingMetadata(id int64, patch FindingMetadataPatch) error {
 	return s.updateFinding(id, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, patch)
 }
@@ -184,7 +248,11 @@ func (f *Finding) enrichAssessment() {
 	f.CvssScore = nil
 	f.CvssRating = ""
 	f.CvssNomenclature = ""
+	f.CvssWarning = ""
 	raw := strings.TrimSpace(f.Cvss)
+	if cvsspkg.IsLegacy(raw) {
+		f.CvssWarning = "legacy CVSS 3.1 vector kept as-is; the finding contract requires CVSS:4.0 — re-score it with evaluate_finding_cvss"
+	}
 	if strings.HasPrefix(strings.ToUpper(raw), "CVSS:3.1") {
 		if v, err := cvss31.ParseVector(raw); err == nil {
 			score := v.BaseScore()
@@ -219,6 +287,23 @@ func (f *Finding) enrichAssessment() {
 		}
 		f.Targets = FindingTargets{t}
 	}
+}
+
+// capabilityStatus derives the separate action/result/control/visual flags
+// from the assessment gaps and the captured result screenshots.
+func (f *Finding) capabilityStatus(gaps []string) FindingCapabilityStatus {
+	st := FindingCapabilityStatus{
+		Action:    !slices.Contains(gaps, "action"),
+		Result:    !slices.Contains(gaps, "result"),
+		Control:   !slices.Contains(gaps, "control"),
+		Execution: f.ProofReview.Execution,
+	}
+	for _, b := range f.Blocks {
+		if b.Type == "image" && !b.Missing && b.Hash != "" && b.Role == "result" && capturedFindingImage(b.Source) && strings.TrimSpace(b.Proof) != "" {
+			st.Visual = true
+		}
+	}
+	return st
 }
 
 func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
@@ -261,7 +346,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	if f.ProofReview.Execution != "demonstrated" {
 		gaps = append(gaps, "execution")
 	}
-	if (f.ProofReview.Execution == "not_executed" || f.ProofReview.Execution == "prerequisite_only") && strings.TrimSpace(f.ProofReview.Reason) == "" {
+	if (f.ProofReview.Execution == "not_executed" || f.ProofReview.Execution == "prerequisite_only") && strings.TrimSpace(f.ProofReview.Reason) == "" && len(f.NotExecuted) == 0 {
 		gaps = append(gaps, "execution_reason")
 	}
 	if f.ProofReview.Visual && !visualResult {
@@ -277,7 +362,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 			if rating == "NONE" {
 				rating = "INFO"
 			}
-			if !strings.EqualFold(f.Severity, rating) {
+			if !strings.EqualFold(f.Severity, rating) && strings.TrimSpace(f.ProofReview.SeverityOverride) == "" {
 				gaps = append(gaps, "severity")
 			}
 		}
@@ -290,7 +375,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 			if rating == "NONE" {
 				rating = "INFO"
 			}
-			if !strings.EqualFold(f.Severity, rating) {
+			if !strings.EqualFold(f.Severity, rating) && strings.TrimSpace(f.ProofReview.SeverityOverride) == "" {
 				gaps = append(gaps, "severity")
 			}
 		}

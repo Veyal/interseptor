@@ -1,5 +1,5 @@
 // tlsdiag.js — surfaces SSL pinning / missing-traffic diagnosis in the UI.
-import { $, esc, state, api, toast, renderLoadError } from './core.js';
+import { $, esc, state, api, toast, toastError, renderLoadError } from './core.js';
 
 const VERDICT = {
   ok: { label: 'HTTPS OK', color: 'var(--accent)', icon: '✓' },
@@ -30,11 +30,11 @@ function verdictMeta(v) {
 
 function hostsLine(rep) {
   if (!rep.hostsBlocked || !rep.hostsBlocked.length) return '';
-  return `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--fg3)">Blocked hosts: <code>${rep.hostsBlocked.map(h => esc(h)).join('</code>, <code>')}</code></div>`;
+  return `<div class="u-mt-2 u-fs-xs u-fg3">Blocked hosts: <code>${rep.hostsBlocked.map(h => esc(h)).join('</code>, <code>')}</code></div>`;
 }
 
 function bypassNote() {
-  return `<p style="margin:8px 0 0;font-size:var(--fs-xs);color:var(--fg3)"><b>Interseptor cannot bypass SSL pinning to read this traffic</b> — that requires changes on the device (Frida, patched APK, emulator + system CA if the app does not pin). If these domains aren't important to your test, <b>pass them through</b> so the app keeps working while you intercept the rest.</p>`;
+  return `<p class="u-m-0 u-mt-2 u-fs-xs u-fg3"><b>Interseptor cannot bypass SSL pinning to read this traffic</b> — that requires changes on the device (Frida, patched APK, emulator + system CA if the app does not pin). If these domains aren't important to your test, <b>pass them through</b> so the app keeps working while you intercept the rest.</p>`;
 }
 
 export function isTlsBannerHidden() {
@@ -58,11 +58,18 @@ function isBannerSuppressed(rep) {
   return bannerDismissedVerdict === rep.verdict;
 }
 
+// setBannerVisible shows or hides the diagnosis banner with classes (the layout
+// lives in .tls-diag-banner.is-open) instead of per-instance inline styles.
+function setBannerVisible(banner, on) {
+  banner.classList.toggle('u-hidden', !on);
+  banner.classList.toggle('is-open', on);
+}
+
 function dismissBannerForVerdict(verdict) {
   bannerDismissedVerdict = verdict || null;
   const banner = $('#tlsDiagBanner');
   if (banner) {
-    banner.style.display = 'none';
+    setBannerVisible(banner, false);
     banner.innerHTML = '';
   }
 }
@@ -88,30 +95,29 @@ export function renderTrafficDiagnosis(rep) {
   const banner = $('#tlsDiagBanner');
   const panel = $('#tlsDiagPanel');
 
-  const body = `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
-    <span style="font-weight:700;color:${v.color};white-space:nowrap">${v.icon} ${esc(v.label)}</span>
-    <span style="flex:1;min-width:200px;color:var(--fg2);font-size:var(--fs-sm);line-height:1.55">${esc(rep.detail || '')}</span>
-    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn" data-tls-action="filter-pin" style="flex:none">Show TLS-failed rows</button>` : ''}
-    ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent" data-tls-action="passthrough" style="flex:none" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
-    ${rep.verdict !== 'ok' ? `<button type="button" class="btn" data-tls-action="open-settings" style="flex:none">Settings → TLS</button>` : ''}
-    <button type="button" class="btn" data-tls-action="dismiss" title="Dismiss until verdict changes" style="flex:none;padding:3px 8px" aria-label="Dismiss TLS diagnosis banner">✕</button>
-    <button type="button" class="btn" data-tls-action="dismiss-forever" title="Never show this banner in Proxy History" style="flex:none;font-size:var(--fs-xs)">Don't show again</button>
+  const body = `<div class="u-flex u-gap-3 u-ai-start u-wrap">
+    <span class="u-bold u-nowrap" style="color:${v.color}">${v.icon} ${esc(v.label)}</span>
+    <span class="tls-diag-detail">${esc(rep.detail || '')}</span>
+    ${rep.verdict === 'tls_blocked' ? `<button type="button" class="btn u-flex-none" data-tls-action="filter-pin">Show TLS-failed rows</button>` : ''}
+    ${rep.verdict === 'tls_blocked' && rep.hostsBlocked && rep.hostsBlocked.length ? `<button type="button" class="btn accent u-flex-none" data-tls-action="passthrough" title="Tunnel these pinned hosts straight through (no interception) so the app works">Pass through ${rep.hostsBlocked.length} host${rep.hostsBlocked.length > 1 ? 's' : ''}</button>` : ''}
+    ${rep.verdict !== 'ok' ? `<button type="button" class="btn u-flex-none" data-tls-action="open-settings">Settings → TLS</button>` : ''}
+    <button type="button" class="btn btn-compact u-flex-none" data-tls-action="dismiss" title="Dismiss until verdict changes" aria-label="Dismiss TLS diagnosis banner"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+    <button type="button" class="btn xs u-flex-none" data-tls-action="dismiss-forever" title="Never show this banner in Proxy History">Don't show again</button>
   </div>
-  ${rep.fix ? `<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--fg2)"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
+  ${rep.fix ? `<div class="u-mt-2 u-fs-xs u-fg2"><b>Fix:</b> ${esc(rep.fix)}</div>` : ''}
   ${hostsLine(rep)}
   ${rep.verdict === 'tls_blocked' ? bypassNote() : ''}`;
 
   if (banner) {
     if (rep.verdict === 'ok' && rep.totalFlows > 0) {
       bannerDismissedVerdict = null;
-      banner.style.display = 'none';
+      setBannerVisible(banner, false);
       banner.innerHTML = '';
     } else if (isBannerSuppressed(rep)) {
-      banner.style.display = 'none';
+      setBannerVisible(banner, false);
       banner.innerHTML = '';
     } else {
-      banner.style.display = '';
-      banner.style.cssText = 'display:block;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);font-size:var(--fs-sm);line-height:1.55';
+      setBannerVisible(banner, true);
       banner.innerHTML = body;
       wireTrafficDiagnosisActions(banner,rep);
       wireBannerDismiss(banner, rep);
@@ -158,7 +164,7 @@ async function addHostsToPassthrough(hosts) {
     await addTLSBypassHosts(hosts);
     toast('Passing through ' + hosts.length + ' pinned host' + (hosts.length > 1 ? 's' : '') + ' — reconnect the app');
     loadTrafficDiagnosis();
-  } catch (e) { toast('passthrough: ' + e.message); }
+  } catch (e) { toastError('Passthrough failed', e); }
 }
 
 export async function loadTrafficDiagnosis(host) {
@@ -179,11 +185,11 @@ export async function loadTrafficDiagnosis(host) {
 export function getStartedDiagnosisHint() {
   if (!lastDiag || lastDiag.verdict === 'ok') return '';
   const v = verdictMeta(lastDiag.verdict);
-  return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);font-size:var(--fs-sm);line-height:1.6">
-    <div style="font-weight:700;color:${v.color};margin-bottom:4px">${v.icon} ${esc(v.label)}</div>
-    <div style="color:var(--fg2)">${esc(lastDiag.detail || '')}</div>
-    ${lastDiag.verdict === 'tls_blocked' ? '<div style="margin-top:6px;color:var(--fg3)">Interseptor detects pinning but <b>cannot bypass it</b> — use Frida, a patched APK, or an emulator with system CA.</div>' : ''}
-    ${lastDiag.fix ? `<div style="margin-top:6px;color:var(--fg2)"><b>Try:</b> ${esc(lastDiag.fix)}</div>` : ''}
+  return `<div class="panel-card u-my-3 u-fs-sm u-lh">
+    <div class="u-bold u-mb-1" style="color:${v.color}">${v.icon} ${esc(v.label)}</div>
+    <div class="u-fg2">${esc(lastDiag.detail || '')}</div>
+    ${lastDiag.verdict === 'tls_blocked' ? '<div class="u-mt-2 u-fg3">Interseptor detects pinning but <b>cannot bypass it</b> — use Frida, a patched APK, or an emulator with system CA.</div>' : ''}
+    ${lastDiag.fix ? `<div class="u-mt-2 u-fg2"><b>Try:</b> ${esc(lastDiag.fix)}</div>` : ''}
   </div>`;
 }
 

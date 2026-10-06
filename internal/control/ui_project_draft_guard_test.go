@@ -91,13 +91,13 @@ if(!projectSwitchBlocker())throw new Error('failed guard allowed destructive rel
 }
 
 func TestUICommandPaletteCannotBypassActiveModal(t *testing.T) {
-	src := readUIAsset(t, "js/app.js")
-	start := strings.Index(src, "function cmdkOpen()")
-	end := strings.Index(src[start:], "function cmdkClose()")
-	script := `let blocked=true,opened=0;const projectScopedUIReady=true;
-const workflowShortcutBlocked=()=>blocked,toast=()=>{},cmdkRender=()=>{},cmdkClose=()=>{};
+	src := readUIAsset(t, "js/cmdk.js")
+	start := strings.Index(src, "export function cmdkOpen()")
+	end := strings.Index(src[start:], "export function cmdkClose()")
+	script := `let blocked=true,opened=0;
+const cmdkEnv={blocked:()=>blocked,ready:()=>true},toast=()=>{},cmdkRender=()=>{},cmdkClose=()=>{};
 const cmdk={el:{},input:{value:'preserve'},open:false};const openModal=()=>opened++;
-` + src[start:start+end] + `
+` + strings.TrimPrefix(src[start:start+end], "export ") + `
 cmdkOpen();
 if(opened||cmdk.open||cmdk.input.value!=='preserve')throw Error('command palette bypassed active project dialog');
 blocked=false;cmdkOpen();

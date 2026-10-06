@@ -123,28 +123,34 @@ func TestUIFindingsDebouncesBodiesPerFinding(t *testing.T) {
 func TestUIFindingsExportWaitsAndBlocksUnresolvedDrafts(t *testing.T) {
 	source := readUIAsset(t, "js/findings.js")
 	start := strings.Index(source, "async function settleFindingsBeforeExport(")
-	end := strings.Index(source, "$('#findExport') &&")
+	end := strings.Index(source, "export function flowFindings(")
 	if start < 0 || end <= start {
 		t.Fatal("missing export draft barrier")
+	}
+	// The Report preflight view is the only export path and it awaits this barrier.
+	if !strings.Contains(source, "export async function settleFindingsBeforeExport(") {
+		t.Fatal("findings.js must export the barrier for the Report preflight view")
+	}
+	if !strings.Contains(executableJS(readUIAsset(t, "js/report-preflight.js")), "await settleFindingsBeforeExport();") {
+		t.Fatal("the Report preflight export must await settleFindingsBeforeExport")
 	}
 	script := `
  let bodyFindingId=1,bodySavesInFlight=0,findingWritesInFlight=0;
  const bodySaveTimers=new Map(),bodySaveSnapshots=new Map(),findingWriteQueues=new Map(),findingAttachPending=new Set(),findingDeletesPending=new Set(),findingEvidenceWrites=new Map();
- let dirty=false,previewDirty=false,requests=0,downloads=0,errors=[];
+ let dirty=false,previewDirty=false;
  const findingDrafts={hasAny:()=>dirty},cvssPreviewDrafts={hasAny:()=>previewDirty};
- const controls={findExport:{disabled:false,setAttribute(){},removeAttribute(){}},findExportMode:{value:'final'}};
- const $=s=>controls[s.slice(1)],captureActiveFindingTextEditor=()=>{},flushPendingBodySave=async id=>{bodySaveSnapshots.delete(id);bodySaveTimers.delete(id);};
- const fetch=async()=>{requests++;return {ok:true,blob:async()=>({type:'text/plain'})}},saveFile=async()=>downloads++,toast=(message,type)=>{if(type==='error')errors.push(message)},closeModal=()=>{};
+ const captureActiveFindingTextEditor=()=>{},flushPendingBodySave=async id=>{bodySaveSnapshots.delete(id);bodySaveTimers.delete(id);};
  ` + source[start:end] + `
- for(const mode of ['draft','final']) {
- controls.findExportMode.value=mode;findingWriteQueues.set(1,{running:true});dirty=true;
- const before=requests;const pending=exportFindingsReport();await new Promise(r=>setTimeout(r,5));
- if(requests!==before||downloads!==before)throw Error('export ran while write pending');
+ findingWriteQueues.set(1,{running:true});dirty=true;
+ let settled=false;const pending=settleFindingsBeforeExport().then(()=>{settled=true;});
+ await new Promise(r=>setTimeout(r,5));
+ if(settled)throw Error('barrier resolved while a write was pending');
  dirty=false;findingWriteQueues.clear();await pending;
- if(requests!==before+1||downloads!==requests)throw Error('settled write did not export');
- dirty=true;const rejected=requests;await exportFindingsReport();if(requests!==rejected||!errors.at(-1).includes('Save or retry'))throw Error('rejected write exported stale content');
- dirty=false;previewDirty=true;await exportFindingsReport();if(requests!==rejected)throw Error('unapplied preview exported');previewDirty=false;
- }
+ if(!settled)throw Error('settled write did not release the barrier');
+ dirty=true;let msg='';try{await settleFindingsBeforeExport();}catch(e){msg=e.message;}
+ if(!msg.includes('Save or retry'))throw Error('unsaved draft did not block export');
+ dirty=false;previewDirty=true;msg='';try{await settleFindingsBeforeExport();}catch(e){msg=e.message;}
+ if(!msg.includes('Apply CVSS'))throw Error('unapplied preview did not block export');
  `
 	if out, err := exec.Command("node", "--input-type=module", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("export drafts: %v\n%s", err, out)
