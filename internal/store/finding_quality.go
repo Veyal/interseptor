@@ -68,6 +68,11 @@ func normalizeCapabilityClaims(f *Finding) error {
 	return nil
 }
 func visitClaimReferences(f *Finding, fn func(*FindingEvidenceReference)) {
+	for i := range f.Claims {
+		for j := range f.Claims[i].Evidence {
+			fn(&f.Claims[i].Evidence[j])
+		}
+	}
 	for key, c := range f.ProofReview.Claims {
 		for i := range c.Evidence {
 			fn(&c.Evidence[i])

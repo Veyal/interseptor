@@ -258,7 +258,8 @@ CREATE TABLE IF NOT EXISTS findings (
   fix TEXT NOT NULL DEFAULT '',
   retest TEXT NOT NULL DEFAULT '',
   targets TEXT NOT NULL DEFAULT '[]',
-  proof_review TEXT NOT NULL DEFAULT '{}'
+  proof_review TEXT NOT NULL DEFAULT '{}',
+  structured TEXT NOT NULL DEFAULT '{}'
 );
 
 -- PoC request/response evidence attached to a finding (many flows per finding).
@@ -377,6 +378,7 @@ func Open(dir string) (*Store, error) {
 		`ALTER TABLE findings ADD COLUMN retest TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN targets TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE findings ADD COLUMN proof_review TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE findings ADD COLUMN structured TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE findings ADD COLUMN impact TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN cvss TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN verification_instructions TEXT NOT NULL DEFAULT ''`,

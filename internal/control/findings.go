@@ -235,6 +235,16 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		h.enrichFindingReportBodies(fs)
 	}
 	tagOrder := splitCSV(q.Get("tagOrder"))
+	audit := ""
+	if q.Get("audit") == "1" {
+		revisions := map[int64][]store.FindingRevision{}
+		for _, f := range fs {
+			if revs, err := h.st.ListFindingRevisions(f.ID, 100); err == nil {
+				revisions[f.ID] = revs
+			}
+		}
+		audit = report.AuditTrail(fs, revisions)
+	}
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -245,17 +255,17 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
 		if groupByTag {
-			w.Write([]byte(report.ProjectHTMLGroupedByTag(fs, issues, tagOrder, omitTags)))
+			w.Write([]byte(report.HTMLFromMarkdown(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit)))
 		} else {
-			w.Write([]byte(report.ProjectHTML(fs, issues)))
+			w.Write([]byte(report.HTMLFromMarkdown(report.Project(fs, issues) + audit)))
 		}
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
 		if groupByTag {
-			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)))
+			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit))
 		} else {
-			w.Write([]byte(report.Project(fs, issues)))
+			w.Write([]byte(report.Project(fs, issues) + audit))
 		}
 	default:
 		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
@@ -414,29 +424,32 @@ func (h *findingsAPI) reportBody(hash string, headers map[string][]string) (map[
 
 func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Severity                 string                   `json:"severity"`
-		Status                   string                   `json:"status"`
-		Source                   string                   `json:"source"`
-		Title                    string                   `json:"title"`
-		Summary                  string                   `json:"summary"`
-		Target                   string                   `json:"target"`
-		Targets                  store.FindingTargets     `json:"targets"`
-		ProofReview              store.FindingProofReview `json:"proofReview"`
-		Confidence               string                   `json:"confidence"`
-		Detail                   string                   `json:"detail"`
-		Evidence                 string                   `json:"evidence"`
-		Fix                      string                   `json:"fix"`    // remediation — optional
-		Impact                   string                   `json:"impact"` // what an attacker gains / business consequence
-		Why                      string                   `json:"why"`    // why this is a vulnerability
-		Cwe                      string                   `json:"cwe"`
-		Environment              string                   `json:"environment"` // production | staging | development | testing | local; legacy prod
-		Cvss                     string                   `json:"cvss"`
-		VerificationInstructions string                   `json:"verificationInstructions"`
-		Retest                   string                   `json:"retest"`
-		Body                     string                   `json:"body"`    // JSON blocks (PoC timeline)
-		Blocks                   *[]store.FindingBlock    `json:"blocks"`  // canonical structured alternative to body
-		FlowIDs                  []int64                  `json:"flowIds"` // optional: attach these PoC flows on create
-		Tags                     []string                 `json:"tags"`    // report-scoping labels (cms, api, …)
+		Severity                 string                     `json:"severity"`
+		Status                   string                     `json:"status"`
+		Source                   string                     `json:"source"`
+		Title                    string                     `json:"title"`
+		Summary                  string                     `json:"summary"`
+		Target                   string                     `json:"target"`
+		Targets                  store.FindingTargets       `json:"targets"`
+		ProofReview              store.FindingProofReview   `json:"proofReview"`
+		Claims                   []store.FindingClaim       `json:"claims"`
+		NotExecuted              []store.FindingNotExecuted `json:"notExecuted"`
+		RelatedFindings          []store.FindingRelation    `json:"relatedFindings"`
+		Confidence               string                     `json:"confidence"`
+		Detail                   string                     `json:"detail"`
+		Evidence                 string                     `json:"evidence"`
+		Fix                      string                     `json:"fix"`    // remediation — optional
+		Impact                   string                     `json:"impact"` // what an attacker gains / business consequence
+		Why                      string                     `json:"why"`    // why this is a vulnerability
+		Cwe                      string                     `json:"cwe"`
+		Environment              string                     `json:"environment"` // production | staging | development | testing | local; legacy prod
+		Cvss                     string                     `json:"cvss"`
+		VerificationInstructions string                     `json:"verificationInstructions"`
+		Retest                   string                     `json:"retest"`
+		Body                     string                     `json:"body"`    // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock      `json:"blocks"`  // canonical structured alternative to body
+		FlowIDs                  []int64                    `json:"flowIds"` // optional: attach these PoC flows on create
+		Tags                     []string                   `json:"tags"`    // report-scoping labels (cms, api, …)
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -471,7 +484,7 @@ func (h *findingsAPI) createFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	f := &store.Finding{
 		Severity: in.Severity, Status: in.Status, Source: orVal(in.Source, "human"),
-		Title: in.Title, Summary: in.Summary, Target: in.Target, Targets: in.Targets, ProofReview: in.ProofReview, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
+		Title: in.Title, Summary: in.Summary, Target: in.Target, Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings, Confidence: in.Confidence, Detail: in.Detail, Evidence: in.Evidence, Fix: in.Fix, Retest: in.Retest,
 		Impact: in.Impact, Why: in.Why, Cwe: in.Cwe, Environment: in.Environment,
 		Cvss: in.Cvss, VerificationInstructions: in.VerificationInstructions, Body: in.Body,
 		Tags: in.Tags,
@@ -589,27 +602,30 @@ func (h *findingsAPI) requireFinding(w http.ResponseWriter, id int64) bool {
 func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var in struct {
-		Severity                 *string                   `json:"severity"`
-		Status                   *string                   `json:"status"`
-		Title                    *string                   `json:"title"`
-		Summary                  *string                   `json:"summary"`
-		Target                   *string                   `json:"target"`
-		Targets                  *store.FindingTargets     `json:"targets"`
-		ProofReview              *store.FindingProofReview `json:"proofReview"`
-		Confidence               *string                   `json:"confidence"`
-		Detail                   *string                   `json:"detail"`
-		Evidence                 *string                   `json:"evidence"`
-		Fix                      *string                   `json:"fix"`
-		Impact                   *string                   `json:"impact"`
-		Why                      *string                   `json:"why"`
-		Cwe                      *string                   `json:"cwe"`
-		Environment              *string                   `json:"environment"`
-		Cvss                     *string                   `json:"cvss"`
-		VerificationInstructions *string                   `json:"verificationInstructions"`
-		Retest                   *string                   `json:"retest"`
-		Body                     *string                   `json:"body"`   // JSON blocks (PoC timeline)
-		Blocks                   *[]store.FindingBlock     `json:"blocks"` // canonical structured alternative to body
-		Tags                     *[]string                 `json:"tags"`   // when present (incl. []), replaces the tag set
+		Severity                 *string                     `json:"severity"`
+		Status                   *string                     `json:"status"`
+		Title                    *string                     `json:"title"`
+		Summary                  *string                     `json:"summary"`
+		Target                   *string                     `json:"target"`
+		Targets                  *store.FindingTargets       `json:"targets"`
+		ProofReview              *store.FindingProofReview   `json:"proofReview"`
+		Claims                   *[]store.FindingClaim       `json:"claims"`
+		NotExecuted              *[]store.FindingNotExecuted `json:"notExecuted"`
+		RelatedFindings          *[]store.FindingRelation    `json:"relatedFindings"`
+		Confidence               *string                     `json:"confidence"`
+		Detail                   *string                     `json:"detail"`
+		Evidence                 *string                     `json:"evidence"`
+		Fix                      *string                     `json:"fix"`
+		Impact                   *string                     `json:"impact"`
+		Why                      *string                     `json:"why"`
+		Cwe                      *string                     `json:"cwe"`
+		Environment              *string                     `json:"environment"`
+		Cvss                     *string                     `json:"cvss"`
+		VerificationInstructions *string                     `json:"verificationInstructions"`
+		Retest                   *string                     `json:"retest"`
+		Body                     *string                     `json:"body"`   // JSON blocks (PoC timeline)
+		Blocks                   *[]store.FindingBlock       `json:"blocks"` // canonical structured alternative to body
+		Tags                     *[]string                   `json:"tags"`   // when present (incl. []), replaces the tag set
 	}
 	if !decodeLimitedJSON(w, r, maxFindingMutationRequestBytes, &in) {
 		return
@@ -655,7 +671,7 @@ func (h *findingsAPI) updateFinding(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusRequestEntityTooLarge, msg)
 		return
 	}
-	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview}); err != nil {
+	if err := h.st.UpdateFindingCanonical(id, in.Severity, in.Status, in.Title, in.Target, in.Detail, in.Evidence, in.Fix, in.Body, in.Impact, in.Why, in.Cwe, in.Environment, in.Cvss, in.VerificationInstructions, in.Summary, in.Confidence, in.Retest, in.Tags, store.FindingMetadataPatch{Change: findingAPIChange(""), Targets: in.Targets, ProofReview: in.ProofReview, Claims: in.Claims, NotExecuted: in.NotExecuted, RelatedFindings: in.RelatedFindings}); err != nil {
 		if errors.Is(err, store.ErrInvalidFinding) || errors.Is(err, store.ErrFlowNotFound) || strings.Contains(err.Error(), "type must be") || strings.Contains(err.Error(), "body must be") || strings.Contains(err.Error(), "flow block") {
 			httpErr(w, http.StatusBadRequest, err.Error())
 			return

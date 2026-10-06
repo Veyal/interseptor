@@ -54,6 +54,10 @@ type FindingMetadataPatch struct {
 	Change      FindingChange
 	Targets     *FindingTargets
 	ProofReview *FindingProofReview
+	// Structured fields: a nil pointer preserves the stored value, a non-nil one replaces it.
+	Claims          *[]FindingClaim
+	NotExecuted     *[]FindingNotExecuted
+	RelatedFindings *[]FindingRelation
 }
 
 func scanFindingJSON(value any, out any) error {
@@ -83,6 +87,9 @@ func (r FindingProofReview) Value() (driver.Value, error) {
 
 func normalizeFindingAssessment(f *Finding) error {
 	if err := normalizeCapabilityClaims(f); err != nil {
+		return err
+	}
+	if err := normalizeFindingStructured(f); err != nil {
 		return err
 	}
 	if len(f.Targets) > 64 {
@@ -160,7 +167,7 @@ func normalizeFindingAssessment(f *Finding) error {
 	switch r.Execution {
 	case "", "demonstrated":
 	case "prerequisite_only", "not_executed":
-		if r.Reason == "" {
+		if r.Reason == "" && len(f.NotExecuted) == 0 {
 			return fmt.Errorf("%w: explain why claimed impact has not been demonstrated", ErrInvalidFinding)
 		}
 		f.Status = "needs_verification"
@@ -339,7 +346,7 @@ func (f *Finding) assessmentGaps(r *FindingReadiness) []string {
 	if f.ProofReview.Execution != "demonstrated" {
 		gaps = append(gaps, "execution")
 	}
-	if (f.ProofReview.Execution == "not_executed" || f.ProofReview.Execution == "prerequisite_only") && strings.TrimSpace(f.ProofReview.Reason) == "" {
+	if (f.ProofReview.Execution == "not_executed" || f.ProofReview.Execution == "prerequisite_only") && strings.TrimSpace(f.ProofReview.Reason) == "" && len(f.NotExecuted) == 0 {
 		gaps = append(gaps, "execution_reason")
 	}
 	if f.ProofReview.Visual && !visualResult {

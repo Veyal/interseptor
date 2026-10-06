@@ -1294,6 +1294,9 @@ func (s *Server) registerTools() {
 			"target":                   p("string", "legacy primary target; first targets entry takes precedence"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability — which security property breaks"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1354,7 +1357,7 @@ func (s *Server) registerTools() {
 				"target": argStr(a, "target"), "detail": argStr(a, "detail"),
 				"evidence": argStr(a, "evidence"), "source": "ai",
 			}
-			for _, key := range []string{"targets", "proofReview"} {
+			for _, key := range []string{"targets", "proofReview", "claims", "notExecuted", "relatedFindings"} {
 				if v, ok := a[key]; ok {
 					reqBody[key] = v
 				}
@@ -1471,6 +1474,9 @@ func (s *Server) registerTools() {
 			"target":                   pt("string"),
 			"targets":                  findingTargetsSchema(),
 			"proofReview":              findingProofReviewSchema(),
+			"claims":                   findingClaimsSchema(),
+			"notExecuted":              findingNotExecutedSchema(),
+			"relatedFindings":          findingRelatedSchema(),
 			"impact":                   p("string", "what an attacker gains / CIA consequence"),
 			"why":                      p("string", "why this is a vulnerability"),
 			"confidence":               p("string", "tentative|firm|certain"),
@@ -1548,7 +1554,7 @@ func (s *Server) registerTools() {
 				}
 			}
 			body := map[string]any{}
-			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
+			for _, k := range []string{"status", "severity", "title", "summary", "target", "targets", "proofReview", "claims", "notExecuted", "relatedFindings", "detail", "evidence", "impact", "why", "confidence", "cwe", "environment", "fix", "retest", "cvss", "verificationInstructions", "body"} {
 				if v, ok := a[k]; ok {
 					body[k] = v
 				}

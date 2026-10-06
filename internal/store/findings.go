@@ -44,7 +44,8 @@ func validateFindingNarrativeSize(f Finding) error {
 	metadata, err := json.Marshal(struct {
 		Targets FindingTargets
 		Review  FindingProofReview
-	}{f.Targets, f.ProofReview})
+		Struct  string
+	}{f.Targets, f.ProofReview, structuredValue(f)})
 	if err != nil {
 		return fmt.Errorf("%w: metadata: %v", ErrInvalidFinding, err)
 	}
@@ -68,13 +69,13 @@ type findingNarrativeScanner interface {
 func scanFindingNarrative(row findingNarrativeScanner) (Finding, error) {
 	var f Finding
 	err := row.Scan(&f.Title, &f.Summary, &f.Target, &f.Detail, &f.Evidence, &f.Fix,
-		&f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Cvss, &f.VerificationInstructions, &f.Retest, &f.Targets, &f.ProofReview, &f.Status, &f.Severity)
+		&f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Cvss, &f.VerificationInstructions, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}, &f.Status, &f.Severity)
 	return f, err
 }
 
 func findingNarrativeRow(tx *sql.Tx, id int64) findingNarrativeScanner {
 	return tx.QueryRow(`SELECT title, summary, target, detail, evidence, fix, body,
-		impact, why, cwe, cvss, verification_instructions, retest, targets, proof_review, status, severity
+		impact, why, cwe, cvss, verification_instructions, retest, targets, proof_review, structured, status, severity
 		FROM findings WHERE id=?`, id)
 }
 
@@ -229,6 +230,10 @@ type Finding struct {
 	Target           string             `json:"target"`
 	Targets          FindingTargets     `json:"targets"`
 	ProofReview      FindingProofReview `json:"proofReview"`
+	// Structured evidence-first fields (stored together in findings.structured).
+	Claims           []FindingClaim       `json:"claims,omitempty"`
+	NotExecuted      []FindingNotExecuted `json:"notExecuted,omitempty"`
+	RelatedFindings  []FindingRelation    `json:"relatedFindings,omitempty"`
 	CvssScore        *float64           `json:"cvssScore,omitempty"`
 	CvssRating       string             `json:"cvssRating,omitempty"`
 	CvssNomenclature string             `json:"cvssNomenclature,omitempty"`
@@ -278,6 +283,9 @@ type FindingReadiness struct {
 	UploadedImageCount  int                     `json:"uploadedImageCount"`
 	GeneratedImageCount int                     `json:"generatedImageCount"`
 	Capabilities        FindingCapabilityStatus `json:"capabilities"`
+	// WithdrawnClaims lists claim ids whose verdict is not_reproduced or refuted.
+	// They are surfaced rather than blocking: a documented refutation is honest, not incomplete.
+	WithdrawnClaims []string `json:"withdrawnClaims,omitempty"`
 }
 
 // FindingCapabilityStatus reports action/result/control/visual proof
@@ -958,6 +966,8 @@ func (f *Finding) ReadinessSummary() FindingReadiness {
 	if f.Status == "needs_verification" {
 		gaps = addUniqueFindingGap(gaps, "verification")
 	}
+	gaps = f.relaxLinkedFindingGaps(gaps)
+	r.WithdrawnClaims = f.withdrawnClaimIDs()
 	r.Checks = qualityChecks(gaps)
 	r.Gaps = gaps
 	if len(gaps) > 0 && (r.EvidenceCount == 0 || len(gaps) >= 1 && (strings.TrimSpace(f.Title) == "" || strings.TrimSpace(f.Summary) == "" || strings.TrimSpace(f.Target) == "" || strings.TrimSpace(f.Impact) == "" || strings.TrimSpace(f.Why) == "")) {
@@ -1046,6 +1056,9 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 	if err := validateFindingReferences(tx, *f); err != nil {
 		return 0, err
 	}
+	if err := validateRelatedFindings(tx, 0, *f); err != nil {
+		return 0, err
+	}
 	f.Body, err = stampFindingImageProvenance(tx, "", f.Body, firstFindingChange(changes))
 	if err != nil {
 		return 0, err
@@ -1054,9 +1067,9 @@ func (s *Store) CreateFinding(f *Finding, changes ...FindingChange) (int64, erro
 		return 0, err
 	}
 	res, err := tx.Exec(
-		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest, targets, proof_review)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Summary, f.Target, f.Confidence, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions, f.Retest, f.Targets, f.ProofReview)
+		`INSERT INTO findings (ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest, targets, proof_review, structured)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		f.TS, f.UpdatedTS, f.Severity, f.Status, f.Source, f.Title, f.Summary, f.Target, f.Confidence, f.Detail, f.Evidence, f.Fix, f.Body, f.Impact, f.Why, f.Cwe, f.Environment, f.Cvss, f.VerificationInstructions, f.Retest, f.Targets, f.ProofReview, structuredValue(*f))
 	if err != nil {
 		return 0, err
 	}
@@ -1244,6 +1257,15 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if patch.ProofReview != nil {
 		resulting.ProofReview = *patch.ProofReview
 	}
+	if patch.Claims != nil {
+		resulting.Claims = *patch.Claims
+	}
+	if patch.NotExecuted != nil {
+		resulting.NotExecuted = *patch.NotExecuted
+	}
+	if patch.RelatedFindings != nil {
+		resulting.RelatedFindings = *patch.RelatedFindings
+	}
 	if body != nil {
 		stamped, err := stampFindingImageProvenance(tx, existingBody, *body, patch.Change)
 		if err != nil {
@@ -1269,6 +1291,11 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if err := validateFindingReferences(tx, resulting); err != nil {
 		return err
 	}
+	if patch.RelatedFindings != nil {
+		if err := validateRelatedFindings(tx, id, resulting); err != nil {
+			return err
+		}
+	}
 	if status != nil || resulting.Status != current.Status {
 		status = &resulting.Status
 	}
@@ -1285,6 +1312,10 @@ func (s *Store) updateFinding(id int64, severity, status, title, target, detail,
 	if patch.ProofReview != nil {
 		sets = append(sets, "proof_review=?")
 		args = append(args, resulting.ProofReview)
+	}
+	if patch.Claims != nil || patch.NotExecuted != nil || patch.RelatedFindings != nil {
+		sets = append(sets, "structured=?")
+		args = append(args, structuredValue(resulting))
 	}
 	if severity != nil {
 		sets = append(sets, "severity=?")
@@ -1632,13 +1663,13 @@ func scanFinding(sc scanner) (*Finding, error) {
 	var f Finding
 	if err := sc.Scan(&f.ID, &f.TS, &f.UpdatedTS, &f.Severity, &f.Status, &f.Source,
 		&f.Title, &f.Summary, &f.Target, &f.Confidence, &f.Detail, &f.Evidence, &f.Fix, &f.Body, &f.Impact, &f.Why, &f.Cwe, &f.Environment, &f.Cvss,
-		&f.VerificationInstructions, &f.Retest, &f.Targets, &f.ProofReview); err != nil {
+		&f.VerificationInstructions, &f.Retest, &f.Targets, &f.ProofReview, structuredScan{&f}); err != nil {
 		return nil, err
 	}
 	return &f, nil
 }
 
-const findingCols = `id, ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest, targets, proof_review`
+const findingCols = `id, ts, updated_ts, severity, status, source, title, summary, target, confidence, detail, evidence, fix, body, impact, why, cwe, environment, cvss, verification_instructions, retest, targets, proof_review, structured`
 
 // GetFinding loads one finding with its narrative body blocks and PoC flow list.
 func (s *Store) GetFinding(id int64) (*Finding, error) {

@@ -17,6 +17,9 @@ func ProjectHTMLGroupedByTag(findings []store.Finding, issues []store.Issue, tag
 	return projectHTMLFromMD(ProjectGroupedByTag(findings, issues, tagOrder, omitTags), secretLintNotice(findings))
 }
 
+// HTMLFromMarkdown wraps an already-rendered engagement report in the HTML shell.
+func HTMLFromMarkdown(md string) string { return projectHTMLFromMD(md, "") }
+
 func projectHTMLFromMD(md, lintNotice string) string {
 	body := markdownToHTML(md)
 	var b strings.Builder

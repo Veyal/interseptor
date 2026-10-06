@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Final report-quality gate (#76).** `GET /api/findings/readiness` entries and the new `GET /api/finding-quality/{id}` return `issues` of `{rule, field, capability, message}` for every failed rule, including a `cvss_version` rule that requires a CVSS v4.0 vector (evaluated through `cvss.Evaluate`). MCP `finding_readiness` returns the same payload, and accepts `id` for one finding. The gate only reads findings; evidence is never modified.
 
 - **Project-wide readiness board (#88).** `GET /api/findings/readiness` and MCP `finding_readiness` now return a `board` of `{id, title, severity, status, ready, gaps}` rows sorted by severity (then id) with a ready/blocked `summary`. The Export dialog gains a "Check readiness" panel that renders the board and opens a blocked finding for review.
+### Added
+
+- **Per-claim verdicts on findings.** A finding can record `claims` with a verdict (`confirmed`, `partially_confirmed`, `not_reproduced`, `refuted`), evidence references and a note. Withdrawn claims are listed in readiness (`withdrawnClaims`) and rendered next to each claim in reports so a refutation cannot be dropped silently.
+- **Deliberately-not-executed requests.** `notExecuted` records requests that were authorised but intentionally not sent (method, target, reason, risk, whether authorisation is required). A documented entry satisfies the "explain why impact was not demonstrated" readiness path, and reports list them in their own section.
+- **Related findings.** `relatedFindings` links findings (`enables`, `enabled_by`, `chain`, `duplicate`, `escalates`). Ids are validated, links display from both ends, reports render the chain, and a `duplicate` link no longer demands evidence that lives on the original.
+- **Reports render the structured fields.** Markdown and HTML engagement reports show claims with a `WITHDRAWN` marker, a "Finding Chains" section, related findings from both ends, and a "Requests Deliberately Not Executed" section.
+- **Optional audit trail in report export.** `GET /api/findings/report?audit=1` appends a revision appendix (time, actor, source, action, changed field names, stated reason). It never includes field values or snapshots.
+- **Finding history covers the new fields.** Revision diffs and restore include claims, not-executed requests and related findings.
 
 ### Changed
 

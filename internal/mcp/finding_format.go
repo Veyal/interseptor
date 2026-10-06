@@ -34,6 +34,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - A permissive response or reachable prerequisite alone does not establish the claimed impact
    - Otherwise use prerequisite_only or not_executed with an explicit proofReview.reason; status stays needs_verification
    - Narrow impact to what evidence establishes. Mark unproven execution as "NOT confirmed". Keep verificationInstructions for the remaining review
+   - Record claims[] verdicts (confirmed|partially_confirmed|not_reproduced|refuted), notExecuted[] for authorised requests deliberately not sent, and relatedFindings[] for chains/duplicates instead of burying them in prose
    - Keep secrets redacted; a length or digest can establish equality without publishing the value. Call redact_value to get {len, sha256_prefix, kind} and a "[redacted ...]" form to paste; writes that contain a JWT, AIza key, $2b$ hash or Bearer token produce a warning
    - For integrity evidence, describe only the bounded, reversible observed change and preserve its flow
 
@@ -242,6 +243,28 @@ func findingTargetsSchema() map[string]any {
 		"role": p("string", "identity prerequisite"), "variant": p("string", "parameter, object identifier, or variant"), "relation": p("string", "affected|source|sink|setup|chain"), "note": pt("string"),
 		"flow_ids": map[string]any{"type": "array", "items": pt("integer")}, "image_hashes": map[string]any{"type": "array", "items": pt("string")}, "evidenceException": p("string", "documented reason for setup/chain target without its own evidence"),
 	}, "url")}
+}
+
+func findingClaimsSchema() map[string]any {
+	ref := obj(map[string]any{"flowId": pt("integer"), "hash": pt("string")})
+	return map[string]any{"type": "array", "maxItems": 64, "description": "Per-claim verdicts so a withdrawn claim is never lost in prose. Replaces the stored list.", "items": obj(map[string]any{
+		"id": p("string", "stable short id, unique within the finding"), "statement": p("string", "the claim being judged"),
+		"verdict":  p("string", "confirmed|partially_confirmed|not_reproduced|refuted"),
+		"evidence": map[string]any{"type": "array", "maxItems": 16, "items": ref}, "note": pt("string"),
+	}, "id", "statement", "verdict")}
+}
+
+func findingNotExecutedSchema() map[string]any {
+	return map[string]any{"type": "array", "maxItems": 64, "description": "Authorised requests deliberately NOT sent (chose not to, as opposed to could not). Rendered in their own report section. Replaces the stored list.", "items": obj(map[string]any{
+		"method": pt("string"), "target": pt("string"), "reason": p("string", "why it was not sent"),
+		"risk": p("string", "what sending it would have affected"), "requiresAuthorisation": p("boolean", "true when explicit authorisation is needed before sending"),
+	}, "method", "target", "reason")}
+}
+
+func findingRelatedSchema() map[string]any {
+	return map[string]any{"type": "array", "maxItems": 64, "description": "Links to other findings in this project (ids must exist). Shown from both ends; duplicate links do not demand duplicate evidence. Replaces the stored list.", "items": obj(map[string]any{
+		"id": pt("integer"), "relation": p("string", "enables|enabled_by|chain|duplicate|escalates"),
+	}, "id", "relation")}
 }
 
 func findingProofReviewSchema() map[string]any {
