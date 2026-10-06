@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The development fallback `Version` advances to the published v2.4.1.
+- **Post-release maintenance.** Advanced the dev-build fallback to the published `2.4.1` release.
 
 ## [2.4.1] - 2026-10-06
 
