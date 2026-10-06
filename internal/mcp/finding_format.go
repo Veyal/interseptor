@@ -29,6 +29,7 @@ const findingFormatGuide = `REQUIRED FORMAT (evidence-first; blanks OK in a draf
    - Capability checklist before report-ready (readiness reports each separately): ACTION the exact triggering request/flow; RESULT the observed outcome; CONTROL a negative or normal-behavior request that distinguishes vulnerable behavior; VISUAL a real browser/device screenshot for browser findings
    - Operator-uploaded images count as visual proof only after a reviewer classifies them (classify_finding_image); generated previews never qualify
    - Test the claimed impact end to end when safe and in scope; if a step was not executed, set proofReview.execution=not_executed with proofReview.reason, keep status=needs_verification, or narrow the impact
+   - WebSocket evidence: ws_send records the handshake and every frame as a flow and returns its flowId — cite it as an ordinary flow block (including a rejected-handshake or invalid-token control); annotate frames with set_ws_frame_note
 6. Fix and retest — remediation plus the expected secure behavior / negative test in retest
 7. Review — confidence=tentative|firm|certain; proofReview.execution=demonstrated only for impact actually observed
    - A permissive response or reachable prerequisite alone does not establish the claimed impact

@@ -51,6 +51,19 @@ func (s *Server) recordTLSFailure(host string, port int, clientAddr string, r *h
 	})
 	s.record(flow)
 	if flow.ID != 0 {
-		s.st.AddFlowTagsNonBlocking(flow.ID, []string{"tls-failed", "ssl-pinning?"})
+		tags := []string{"tls-failed", "ssl-pinning?"}
+		if s.pinningEnablerRecorded(host, started) {
+			tags = append(tags, store.AnnotationPinningBlocked)
+		}
+		s.st.AddFlowTagsNonBlocking(flow.ID, tags)
 	}
+}
+
+// pinningEnablerRecorded reports whether the project's interception setup
+// lists a pinning-bypass enabler covering host. A handshake failure there is a
+// capture gap (pinning blocked despite the enabler), so it is annotated rather
+// than left to be read as a security finding. Lookup errors read as "no".
+func (s *Server) pinningEnablerRecorded(host string, ts time.Time) bool {
+	prov, err := s.st.InterceptionProvenance(ts, host)
+	return err == nil && prov != nil && len(prov.Enablers) > 0
 }

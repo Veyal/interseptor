@@ -219,34 +219,34 @@ func NormalizeFindingBlocks(blocks []FindingBlock) ([]FindingBlock, error) {
 // sequence of text blocks (markdown) and flow-reference blocks (clickable PoC
 // request/response), freely interleaved.
 type Finding struct {
-	ID               int64              `json:"id"`
-	TS               int64              `json:"ts"`        // created, unix millis
-	UpdatedTS        int64              `json:"updatedTs"` // last modified, unix millis
-	Severity         string             `json:"severity"`  // Critical | High | Medium | Low | Info
-	Status           string             `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
-	Source           string             `json:"source"`    // human | ai | scanner
-	Title            string             `json:"title"`
-	Summary          string             `json:"summary,omitempty"`
-	Target           string             `json:"target"`
-	Targets          FindingTargets     `json:"targets"`
-	ProofReview      FindingProofReview `json:"proofReview"`
+	ID          int64              `json:"id"`
+	TS          int64              `json:"ts"`        // created, unix millis
+	UpdatedTS   int64              `json:"updatedTs"` // last modified, unix millis
+	Severity    string             `json:"severity"`  // Critical | High | Medium | Low | Info
+	Status      string             `json:"status"`    // open | needs_verification | verified | false_positive | wont_fix | fixed
+	Source      string             `json:"source"`    // human | ai | scanner
+	Title       string             `json:"title"`
+	Summary     string             `json:"summary,omitempty"`
+	Target      string             `json:"target"`
+	Targets     FindingTargets     `json:"targets"`
+	ProofReview FindingProofReview `json:"proofReview"`
 	// Structured evidence-first fields (stored together in findings.structured).
 	Claims           []FindingClaim       `json:"claims,omitempty"`
 	NotExecuted      []FindingNotExecuted `json:"notExecuted,omitempty"`
 	RelatedFindings  []FindingRelation    `json:"relatedFindings,omitempty"`
-	CvssScore        *float64           `json:"cvssScore,omitempty"`
-	CvssRating       string             `json:"cvssRating,omitempty"`
-	CvssNomenclature string             `json:"cvssNomenclature,omitempty"`
-	CvssWarning      string             `json:"cvssWarning,omitempty"` // computed: legacy CVSS 3.1 vector, never persisted
-	Confidence       string             `json:"confidence,omitempty"`
-	Detail           string             `json:"detail"`                // legacy / MCP compat: first text block synced here
-	Evidence         string             `json:"evidence"`              // legacy only
-	Fix              string             `json:"fix"`                   // back-compat: kept but superseded by Impact
-	Impact           string             `json:"impact"`                // security impact — what an attacker gains / business consequence
-	Why              string             `json:"why"`                   // why this is a vulnerability (broken security property)
-	Cwe              string             `json:"cwe,omitempty"`         // CWE id or short class, e.g. CWE-639 / IDOR
-	Environment      string             `json:"environment,omitempty"` // production | staging | development | testing | local; legacy prod
-	Cvss             string             `json:"cvss,omitempty"`        // CVSS:4.0 vector for readiness; older score/vector strings remain readable
+	CvssScore        *float64             `json:"cvssScore,omitempty"`
+	CvssRating       string               `json:"cvssRating,omitempty"`
+	CvssNomenclature string               `json:"cvssNomenclature,omitempty"`
+	CvssWarning      string               `json:"cvssWarning,omitempty"` // computed: legacy CVSS 3.1 vector, never persisted
+	Confidence       string               `json:"confidence,omitempty"`
+	Detail           string               `json:"detail"`                // legacy / MCP compat: first text block synced here
+	Evidence         string               `json:"evidence"`              // legacy only
+	Fix              string               `json:"fix"`                   // back-compat: kept but superseded by Impact
+	Impact           string               `json:"impact"`                // security impact — what an attacker gains / business consequence
+	Why              string               `json:"why"`                   // why this is a vulnerability (broken security property)
+	Cwe              string               `json:"cwe,omitempty"`         // CWE id or short class, e.g. CWE-639 / IDOR
+	Environment      string               `json:"environment,omitempty"` // production | staging | development | testing | local; legacy prod
+	Cvss             string               `json:"cvss,omitempty"`        // CVSS:4.0 vector for readiness; older score/vector strings remain readable
 	// VerificationInstructions tells a human reviewer exactly what to check when
 	// Status is needs_verification (e.g. "download X and run file on it").
 	VerificationInstructions string         `json:"verificationInstructions,omitempty"`

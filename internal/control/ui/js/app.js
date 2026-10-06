@@ -11,6 +11,7 @@ import { loadIssues, runScan, loadScanTargets, openDecoder, openChecks, loadChec
 import { openCodecs, loadCodecsList } from './codecs.js';
 import { loadSettings, loadSysProxy, loadAndroid, loadIOS, loadIOSSsh, loadSession, loadProject, openProjectModal, applyOobDisabledUI } from './settings.js';
 import { loadNotes, flushNotesSave, focusNotes } from './notes.js';
+import { loadEngagementBrief } from './engagement.js';
 import { renderActivity, onActivity, loadActivity, clearActSeen, clearActivityLoadError } from './activity.js';
 import { loadFindings, handleAppHash } from './findings.js';
 import { loadTags } from './tags.js';
@@ -327,6 +328,7 @@ const SSE_HANDLERS={
   'intruder.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('intruder',scheduleIntr,'intrBadge')},
   'scanner.update':{contract:'panel-gated nudge',run:()=>onPanelUpdate('scanner',loadIssues,'scanBadge')},
   'notes.update':{contract:'always-reload',run:loadNotes},
+  'engagement.update':{contract:'always-reload',run:loadEngagementBrief},
   'findings.update':{contract:'always-reload',run:loadFindings},
   'tags.update':{contract:'always-reload',run:loadTags},
   'allowlist.update':{contract:'visible-pane nudge',run:refreshVisibleAllowlist},
@@ -710,7 +712,7 @@ async function bootFirstRunUI(){
     toast('Could not initialize project-scoped UI: '+e.message,'error');
   }
 }
-renderChips();loadSettings();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
+renderChips();loadSettings();loadEngagementBrief();loadSysProxy();loadAndroid();loadIOS();loadIOSSsh();loadSession();loadTrafficDiagnosis();loadRules();loadScope();loadViews();refreshIntercept().then(()=>renderIcptStat());loadActivity();loadProject();loadVersion(true);loadHumanInput();loadFindings();loadTags();connectEvents();
 // Reaching this line proves the static module graph loaded and evaluated. The
 // separate project-workspace deadline below still owns async hydration.
 settleWorkspaceBootWatchdog();

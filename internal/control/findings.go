@@ -245,31 +245,45 @@ func (h *findingsAPI) findingsReport(w http.ResponseWriter, r *http.Request) {
 		}
 		audit = report.AuditTrail(fs, revisions)
 	}
+	rctx := h.reportContext()
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.json"`)
-		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode})
+		writeJSON(w, http.StatusOK, map[string]any{"findings": fs, "issues": issues, "quality": quality, "mode": mode,
+			"engagementBriefVersion": rctx.Brief.Version, "interceptionSetupVersion": rctx.Interception.Version})
 	case "html":
 		h.enrichFindingReportImages(fs)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.html"`)
-		if groupByTag {
-			w.Write([]byte(report.HTMLFromMarkdown(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit)))
-		} else {
-			w.Write([]byte(report.HTMLFromMarkdown(report.Project(fs, issues) + audit)))
-		}
+		w.Write([]byte(report.HTMLFromMarkdown(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx)+audit, fs)))
 	case "", "md", "markdown":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="interseptor-report.md"`)
-		if groupByTag {
-			w.Write([]byte(report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags) + audit))
-		} else {
-			w.Write([]byte(report.Project(fs, issues) + audit))
-		}
+		w.Write([]byte(report.WithContext(renderReportMarkdown(fs, issues, groupByTag, tagOrder, omitTags), rctx) + audit))
 	default:
 		httpErr(w, http.StatusBadRequest, "format must be md, html, or json")
 	}
+}
+
+func renderReportMarkdown(fs []store.Finding, issues []store.Issue, groupByTag bool, tagOrder, omitTags []string) string {
+	if groupByTag {
+		return report.ProjectGroupedByTag(fs, issues, tagOrder, omitTags)
+	}
+	return report.Project(fs, issues)
+}
+
+// reportContext gathers engagement metadata cited in report headers. Lookup
+// failures degrade to an uncited report rather than failing the export.
+func (h *findingsAPI) reportContext() report.Context {
+	var c report.Context
+	if b, err := h.st.GetEngagementBrief(); err == nil {
+		c.Brief = b
+	}
+	if i, err := h.st.GetInterceptionSetup(); err == nil {
+		c.Interception = i
+	}
+	return c
 }
 
 func filterReportFindings(fs []store.Finding, raw string) []store.Finding {
@@ -380,7 +394,7 @@ func (h *findingsAPI) flowRawForReport(id int64) (req, res string) {
 	if err != nil || f == nil {
 		return "", ""
 	}
-	return h.flowRawSideForReport(f, true), h.flowRawSideForReport(f, false)
+	return h.flowRawSideForReport(f, true), h.flowRawSideForReport(f, false) + h.wsFramesForReport(f)
 }
 
 const reportBodyTruncationMarker = "\n\n… [body truncated at 64 KiB]"
