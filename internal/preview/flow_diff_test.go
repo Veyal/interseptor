@@ -201,3 +201,32 @@ func TestFlowDiffIdenticalResponsesButDifferentRequests(t *testing.T) {
 		t.Fatalf("same request must not note, got %q", got)
 	}
 }
+
+func TestFlowDiffBodyExcerptOmittedStillReportsCounts(t *testing.T) {
+	in := sampleFlowDiff()
+	in.BodyDeltas = nil
+	in.BodyOmitted, in.BodyAdded, in.BodyRemoved = true, 3, 2
+	in.BodyNote = "body excerpt not included"
+	if flowDiffIdentical(in) {
+		t.Fatal("omitted body with changes must not read as identical")
+	}
+	r, err := RenderFlowDiff(in, Opts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Alt, "Body: 3 lines added, 2 lines removed (excerpt not included)") {
+		t.Fatalf("alt: %s", r.Alt)
+	}
+	if strings.Contains(r.Alt, "No body differences") {
+		t.Fatalf("alt: %s", r.Alt)
+	}
+	// identical flows stay identical when no body change was counted
+	same := FlowDiffInput{A: in.A, B: in.A, BodyOmitted: true}
+	same.B.FlowID = 99
+	if !flowDiffIdentical(same) {
+		t.Fatal("no counted changes means identical")
+	}
+	if p := flowDiffProvenance(in); !strings.Contains(p, "body excerpt not included") {
+		t.Fatalf("provenance %q", p)
+	}
+}

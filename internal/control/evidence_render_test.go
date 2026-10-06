@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Veyal/interseptor/internal/intruder"
+	"github.com/Veyal/interseptor/internal/preview"
 	"github.com/Veyal/interseptor/internal/store"
 )
 
@@ -402,14 +403,47 @@ func TestEvidenceAdaptersRedactCredentials(t *testing.T) {
 	if !ok {
 		t.Fatal("envelope")
 	}
-	out := fmt.Sprintf("%+v|%+v|%+v|%+v", intruderStripInput(env, false), intruderRaceInput(env), intruderTimelineInput(env), intruderDistributionInput(env))
+	out := fmt.Sprintf("%+v|%+v|%+v|%+v", intruderStripInput(env, true), intruderRaceInput(env, true, 0), intruderTimelineInput(env), intruderDistributionInput(env))
 	for _, leak := range []string{secret, "hunter2hunter2", "Bearer " + secret} {
 		if strings.Contains(out, leak) {
 			t.Fatalf("adapter output leaks %q: %s", leak, out)
 		}
 	}
-	if !strings.Contains(fmt.Sprintf("%+v", intruderStripInput(env, false).Rows[0].Payload), "redacted") {
-		t.Fatalf("payload not redacted: %+v", intruderStripInput(env, false).Rows[0])
+	if p := intruderStripInput(env, true).Rows[0].Payload; !strings.HasPrefix(p, "[len ") {
+		t.Fatalf("payload not masked: %q", p)
+	}
+	// unmasking is an explicit opt-in and shows the recorded value
+	if p := intruderStripInput(env, false).Rows[1].Payload; p != "password=hunter2hunter2" {
+		t.Fatalf("unmasked payload = %q", p)
+	}
+	// the race view keeps duplicated values comparable while masked
+	race := intruderRaceInput(env, true, 0)
+	if race.Rows[5].Extracted[0] != race.Rows[6].Extracted[0] || strings.Contains(race.Rows[5].Extracted[0], "coupon") {
+		t.Fatalf("masked race values: %v / %v", race.Rows[5].Extracted, race.Rows[6].Extracted)
+	}
+	if raw := intruderRaceInput(env, false, 1); raw.Rows[5].Extracted[0] != "coupon-7" || raw.ExpectedMax != 1 {
+		t.Fatalf("unmasked race: %+v", raw.Rows[5])
+	}
+}
+
+func TestMaskedPayloadsHideShortCredentialsInPNGAltAndSummary(t *testing.T) {
+	rec := syntheticRun(testRunID)
+	rec.State.Results[0].Payload = "Summer2024!"
+	rec.State.Results[1].Payload = "482913"
+	rec.State.Results[0].Matched = true // matched rows are outliers and are listed in the alt text
+	rec.State.Results[1].Matched = true
+	env, _ := newIntruderEnvelope(rec)
+	r, err := preview.RenderIntruderStrip(intruderStripInput(env, true), preview.Opts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"Summer2024!", "482913", "Su*", "48*"} {
+		if strings.Contains(r.Alt, leak) || strings.Contains(r.Summary, leak) {
+			t.Fatalf("alt/summary leak %q: %s | %s", leak, r.Alt, r.Summary)
+		}
+	}
+	if !strings.Contains(r.Alt, "[len 11 #") || !strings.Contains(r.Alt, "[len 6 #") {
+		t.Fatalf("alt should carry masked identities: %s", r.Alt)
 	}
 }
 
@@ -422,12 +456,34 @@ func TestFlowDiffInputRedactsHeadersAndBody(t *testing.T) {
 		BodyDeltas:   []bodyLineDelta{{Line: 1, A: `{"access_token":"` + secret + `"}`, B: `{"error":"denied"}`}},
 		Summary:      "status changed",
 	}
-	in := flowDiffInput(fa, fb, d)
+	in := flowDiffInput(fa, fb, d, true)
 	if s := fmt.Sprintf("%+v", in); strings.Contains(s, secret) {
 		t.Fatalf("diff input leaks secret: %s", s)
 	}
-	if len(in.BodyDeltas) != 2 || in.BodyDeltas[0].Kind != "-" || in.BodyDeltas[1].Kind != "+" {
-		t.Fatalf("body deltas = %+v", in.BodyDeltas)
+	if len(in.BodyDeltas) != 2 || in.BodyDeltas[0].Kind != "-" || in.BodyDeltas[1].Kind != "+" || in.BodyOmitted {
+		t.Fatalf("body deltas = %+v", in)
+	}
+	if !strings.Contains(in.BodyNote, "redacted: yes") {
+		t.Fatalf("footer note: %q", in.BodyNote)
+	}
+}
+
+func TestFlowDiffInputOmitsBodyLinesByDefault(t *testing.T) {
+	fa := &store.Flow{ID: 1, Method: "GET", Host: "example.com", Path: "/x", Status: 200}
+	fb := &store.Flow{ID: 2, Method: "GET", Host: "example.com", Path: "/x", Status: 200}
+	d := flowDiff{BodyDeltas: []bodyLineDelta{
+		{Line: 1, A: `{"email":"alice@example.com"}`, B: `{"email":"bob@example.com"}`},
+		{Line: 2, A: "", B: "extra line"},
+	}}
+	in := flowDiffInput(fa, fb, d, false)
+	if len(in.BodyDeltas) != 0 || !in.BodyOmitted || in.BodyAdded != 2 || in.BodyRemoved != 1 {
+		t.Fatalf("default must keep only counts: %+v", in)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", in), "alice@example.com") {
+		t.Fatal("body leaked without includeBody")
+	}
+	if !strings.Contains(in.BodyNote, "not included") {
+		t.Fatalf("note %q", in.BodyNote)
 	}
 }
 

@@ -27,6 +27,9 @@ type StripInput struct {
 	Attack string
 	Rows   []StripRow
 	Mask   bool
+	// Premasked means the adapter already replaced payloads with a masked
+	// form; they are drawn as given and the column is labelled masked.
+	Premasked bool
 }
 
 const (
@@ -90,6 +93,9 @@ func looksSecret(s string) bool {
 }
 
 func (in StripInput) display(p string) string {
+	if in.Premasked {
+		return truncatePayload(p)
+	}
 	if in.Mask || looksSecret(p) {
 		p = maskPayload(p)
 	}
@@ -414,6 +420,9 @@ func stripLegendSwatches(pal reportPalette, mode int) [3]color.RGBA {
 
 // stripPayloadHeader labels the payload column and says when values are masked.
 func stripPayloadHeader(in StripInput, outs []stripOutlier) string {
+	if in.Premasked {
+		return "Payload (masked)"
+	}
 	for _, o := range outs {
 		if in.display(o.Payload) != truncatePayload(o.Payload) {
 			return "Payload (masked)"

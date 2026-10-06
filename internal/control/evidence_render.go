@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,73 +150,44 @@ func (e *evidenceAPI) captureAuthzRun(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ---- redaction -------------------------------------------------------------
+// ---- redaction and bounds --------------------------------------------------
 
-var (
-	redactHeaderLine = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization|set-cookie|cookie|x-api-key|x-auth-token|x-access-token|x-csrf-token|x-xsrf-token)\b(\s*[:=]\s*)([^\r\n]+)`)
-	redactScheme     = regexp.MustCompile(`(?i)\b(bearer|basic|digest|negotiate)(\s+)([A-Za-z0-9._~+/=:-]{6,})`)
-	redactJWT        = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*`)
-	redactKeyValue   = regexp.MustCompile(`(?i)\b((?:access_|refresh_|id_)?token|api[_-]?key|secret|client_secret|password|passwd|pwd|session(?:id)?|sid|auth|signature)(["']?\s*[:=]\s*["']?)([^&\s"',;]+)`)
-	redactLongToken  = regexp.MustCompile(`[A-Za-z0-9_+=]{32,}`)
+// Hostile (target-controlled) text is clipped before it reaches a renderer:
+// header values, URLs, titles, payloads and run metadata can be megabytes.
+const (
+	maxEvidenceValueRunes = 256 // header values, payloads, extracted values
+	maxEvidenceURLRunes   = 512 // URLs and paths
+	maxEvidenceLabelRunes = 300 // summaries, grep labels, request labels
+	maxEvidenceTitleRunes = 160 // finding titles
+	maxEvidenceNameRunes  = 80  // identity, header and attack names
+	maxEvidenceRunIDRunes = 64
 )
 
-func secretPlaceholder(v string) string { return redact.Describe(v).Placeholder() }
-
-// redactEvidenceText masks credentials in free text before it is drawn:
-// credential header lines, Bearer/Basic schemes, JWTs, key=value secrets and
-// long opaque tokens. Masked values become a length+digest placeholder so two
-// equal secrets stay comparable without being shown.
-func redactEvidenceText(s string) string {
-	if s == "" {
-		return s
-	}
-	s = redactHeaderLine.ReplaceAllStringFunc(s, func(m string) string {
-		p := redactHeaderLine.FindStringSubmatch(m)
-		return p[1] + p[2] + secretPlaceholder(p[3])
-	})
-	s = redactScheme.ReplaceAllStringFunc(s, func(m string) string {
-		p := redactScheme.FindStringSubmatch(m)
-		if strings.HasPrefix(p[3], "[redacted") {
-			return m
-		}
-		return p[1] + p[2] + secretPlaceholder(p[3])
-	})
-	s = redactJWT.ReplaceAllStringFunc(s, secretPlaceholder)
-	s = redactKeyValue.ReplaceAllStringFunc(s, func(m string) string {
-		p := redactKeyValue.FindStringSubmatch(m)
-		if strings.HasPrefix(p[3], "[redacted") {
-			return m
-		}
-		return p[1] + p[2] + secretPlaceholder(p[3])
-	})
-	return redactLongToken.ReplaceAllStringFunc(s, func(m string) string {
-		if looksOpaqueToken(m) {
-			return secretPlaceholder(m)
-		}
-		return m
-	})
+// evidenceText redacts credentials with the shared redact package and bounds
+// the result to n runes. It redacts a wider window first so a secret cut by the
+// bound is still masked rather than half shown.
+func evidenceText(s string, n int) string {
+	return clipText(redact.Text(clipText(s, n*4)), n)
 }
 
-// looksOpaqueToken is true for long runs mixing letters and digits (API keys,
-// session ids, hashes); long plain words and identifiers are left alone.
-func looksOpaqueToken(s string) bool {
-	letter, digit := false, false
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-			digit = true
-		case r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z':
-			letter = true
-		}
-	}
-	return letter && digit
-}
+// redactEvidenceText masks credentials in free text before it is drawn (see
+// redact.Text) and bounds it to a label length.
+func redactEvidenceText(s string) string { return evidenceText(s, maxEvidenceLabelRunes) }
 
 func redactHeaderValue(name, value string) string {
+	value = clipText(value, maxEvidenceValueRunes*4)
 	if isAuthHeaderKey(name) {
-		return secretPlaceholder(value)
+		return clipText(redact.Describe(value).Placeholder(), maxEvidenceValueRunes)
 	}
-	return redactEvidenceText(value)
+	return evidenceText(value, maxEvidenceValueRunes)
+}
+
+// maskedValue is the drawn form of a masked payload or extracted value: its
+// length and a short digest, so equal values stay comparable without showing a
+// single character of the secret (a 6-digit OTP must not leak half its digits).
+func maskedValue(v string) string {
+	d := redact.Describe(v)
+	return fmt.Sprintf("[len %d #%s]", d.Len, d.SHA256Prefix[:6])
 }
 
 // ---- common response helpers ----------------------------------------------
@@ -253,6 +223,20 @@ func clipText(s string, n int) string {
 
 func evidenceOpts(width int) preview.Opts { return preview.Opts{Width: width} }
 
+// parseExpectedParam reads the optional race baseline (how many requests the
+// application should have accepted).
+func parseExpectedParam(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 || n > 1_000_000 {
+		return 0, evErr(http.StatusBadRequest, "expected must be a non-negative integer")
+	}
+	return n, nil
+}
+
 func parseWidthParam(raw string) (int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -276,7 +260,14 @@ type evidenceRequest struct {
 	A, B      int64
 	FindingID int64
 	Width     int
-	Mask      bool
+	// Mask hides payloads and extracted values (default). Unmasking is an
+	// explicit opt-in because those values are often credentials.
+	Mask bool
+	// IncludeBody draws response-body diff lines (default off: bodies can carry
+	// PII that pattern redaction cannot see).
+	IncludeBody bool
+	// Expected is how many requests the application should have accepted (race).
+	Expected int
 }
 
 // evidenceResult is a rendered image plus its server-derived provenance.
@@ -345,7 +336,7 @@ func (e *evidenceAPI) renderIntruder(q evidenceRequest, o preview.Opts) (evidenc
 	case preview.KindIntruderDistribution:
 		rd, err = preview.RenderIntruderDistribution(intruderDistributionInput(env), o)
 	case preview.KindIntruderRace:
-		rd, err = preview.RenderIntruderRace(intruderRaceInput(env), o)
+		rd, err = preview.RenderIntruderRace(intruderRaceInput(env, q.Mask, q.Expected), o)
 	default:
 		rd, err = preview.RenderIntruderStrip(intruderStripInput(env, q.Mask), o)
 	}
@@ -383,7 +374,7 @@ func (e *evidenceAPI) renderDiff(q evidenceRequest, o preview.Opts) (evidenceRes
 	if err != nil {
 		return evidenceResult{}, evErr(http.StatusNotFound, "response body not found")
 	}
-	rd, err := preview.RenderFlowDiff(flowDiffInput(fa, fb, d), o)
+	rd, err := preview.RenderFlowDiff(flowDiffInput(fa, fb, d, q.IncludeBody), o)
 	if err != nil {
 		return evidenceResult{}, err
 	}
@@ -455,40 +446,62 @@ func waterfallSourceRef(ids []int64) string {
 // ---- adapters: flows -------------------------------------------------------
 
 func flowDisplayURL(f *store.Flow) string {
-	u := f.Host + f.Path
+	u := clipText(f.Host, maxEvidenceNameRunes*2) + clipText(f.Path, maxEvidenceURLRunes*4)
 	if f.Scheme != "" {
-		u = f.Scheme + "://" + u
+		u = clipText(f.Scheme, 16) + "://" + u
 	}
-	return redactEvidenceText(u)
+	return evidenceText(u, maxEvidenceURLRunes)
 }
 
 func flowSide(f *store.Flow) preview.FlowSide {
 	return preview.FlowSide{
-		FlowID: f.ID, Method: f.Method, URL: flowDisplayURL(f),
+		FlowID: f.ID, Method: clipText(f.Method, 16), URL: flowDisplayURL(f),
 		Status: f.Status, Length: int(f.ResLen), TimeMs: int(f.DurationMs),
 	}
 }
 
-// flowDiffInput adapts a flowDiff into preview input. Header values and body
-// lines are redacted here; the renderer never sees raw credentials.
-func flowDiffInput(fa, fb *store.Flow, d flowDiff) preview.FlowDiffInput {
+// flowDiffInput adapts a flowDiff into preview input. Header values are
+// redacted and bounded here; the renderer never sees raw credentials. Body
+// lines are omitted unless includeBody is set (only the changed-line count is
+// kept); when included they are redacted and the footer says so.
+func flowDiffInput(fa, fb *store.Flow, d flowDiff, includeBody bool) preview.FlowDiffInput {
 	in := preview.FlowDiffInput{A: flowSide(fa), B: flowSide(fb), Summary: redactEvidenceText(d.Summary)}
 	for _, h := range d.HeaderDeltas {
 		in.HeaderDeltas = append(in.HeaderDeltas, preview.FlowHeaderDelta{
-			Name: h.Name, Kind: h.Kind, A: redactHeaderValue(h.Name, h.A), B: redactHeaderValue(h.Name, h.B),
+			Name: clipText(h.Name, maxEvidenceNameRunes), Kind: h.Kind,
+			A: redactHeaderValue(h.Name, h.A), B: redactHeaderValue(h.Name, h.B),
 		})
 	}
 	for _, b := range d.BodyDeltas {
 		switch {
 		case b.A == "" && b.B != "":
-			in.BodyDeltas = append(in.BodyDeltas, preview.FlowBodyDelta{Kind: "+", Line: redactEvidenceText(b.B)})
+			in.BodyAdded++
 		case b.B == "" && b.A != "":
-			in.BodyDeltas = append(in.BodyDeltas, preview.FlowBodyDelta{Kind: "-", Line: redactEvidenceText(b.A)})
+			in.BodyRemoved++
+		default:
+			in.BodyAdded++
+			in.BodyRemoved++
+		}
+		if !includeBody {
+			continue
+		}
+		line := func(v string) string { return evidenceText(v, maxEvidenceLabelRunes) }
+		switch {
+		case b.A == "" && b.B != "":
+			in.BodyDeltas = append(in.BodyDeltas, preview.FlowBodyDelta{Kind: "+", Line: line(b.B)})
+		case b.B == "" && b.A != "":
+			in.BodyDeltas = append(in.BodyDeltas, preview.FlowBodyDelta{Kind: "-", Line: line(b.A)})
 		default:
 			in.BodyDeltas = append(in.BodyDeltas,
-				preview.FlowBodyDelta{Kind: "-", Line: redactEvidenceText(b.A)},
-				preview.FlowBodyDelta{Kind: "+", Line: redactEvidenceText(b.B)})
+				preview.FlowBodyDelta{Kind: "-", Line: line(b.A)},
+				preview.FlowBodyDelta{Kind: "+", Line: line(b.B)})
 		}
+	}
+	if includeBody {
+		in.BodyNote = "Body excerpt redacted: yes (pattern redaction cannot hide personal data)"
+	} else {
+		in.BodyOmitted = true
+		in.BodyNote = "Body excerpt not included (opt in with includeBody=1)"
 	}
 	if d.BodyMoreLines > 0 {
 		in.Summary = strings.TrimSpace(in.Summary + fmt.Sprintf(" (+%d more changed lines not shown)", d.BodyMoreLines))
@@ -500,7 +513,7 @@ func flowWaterfallInput(flows []*store.Flow) preview.WaterfallInput {
 	in := preview.WaterfallInput{Title: "Flow timing sequence"}
 	for _, f := range flows {
 		in.Rows = append(in.Rows, preview.WaterfallRow{
-			FlowID: f.ID, Method: f.Method, Path: redactEvidenceText(f.Path), Status: f.Status,
+			FlowID: f.ID, Method: clipText(f.Method, 16), Path: evidenceText(f.Path, maxEvidenceURLRunes), Status: f.Status,
 			StartMs: f.TS.UnixMilli(), DurationMs: int(f.DurationMs),
 		})
 	}
@@ -521,7 +534,7 @@ func authzMatrixInput(runID string, runs []authzRunOut) preview.AuthzMatrixInput
 		for _, r := range run.Results {
 			if _, ok := colIdx[r.Name]; !ok {
 				colIdx[r.Name] = len(in.Cols)
-				in.Cols = append(in.Cols, r.Name)
+				in.Cols = append(in.Cols, evidenceText(r.Name, maxEvidenceNameRunes))
 			}
 		}
 	}
@@ -529,7 +542,7 @@ func authzMatrixInput(runID string, runs []authzRunOut) preview.AuthzMatrixInput
 		in.BaselineName = in.Cols[0]
 	}
 	for _, run := range runs {
-		row := preview.AuthzRow{Label: redactEvidenceText(strings.TrimSpace(run.Method + " " + run.Path)), Cells: make([]preview.AuthzCell, len(in.Cols))}
+		row := preview.AuthzRow{Label: evidenceText(strings.TrimSpace(clipText(run.Method, 16)+" "+clipText(run.Path, maxEvidenceURLRunes*4)), maxEvidenceURLRunes), Cells: make([]preview.AuthzCell, len(in.Cols))}
 		for _, r := range run.Results {
 			ci := colIdx[r.Name]
 			skipped := r.Error != "" && r.Status == 0
@@ -614,7 +627,7 @@ func chainInputFrom(src chainFinder, root int64) (preview.ChainInput, error) {
 	for _, id := range order {
 		f := nodes[id]
 		in.Nodes = append(in.Nodes, preview.ChainNode{
-			ID: strconv.FormatInt(id, 10), Title: redactEvidenceText(fmt.Sprintf("#%d %s", id, f.Title)), Severity: f.Severity,
+			ID: strconv.FormatInt(id, 10), Title: evidenceText(fmt.Sprintf("#%d %s", id, clipText(f.Title, maxEvidenceTitleRunes*4)), maxEvidenceTitleRunes), Severity: clipText(f.Severity, 16),
 		})
 	}
 	for _, e := range edges {
@@ -642,12 +655,22 @@ func (e *evidenceAPI) serveRender(w http.ResponseWriter, r *http.Request, q evid
 	writeRenderedPNG(w, r, res.R, res.SourceRef, name)
 }
 
+// widthAndMask parses width and the masking choice. Masking is the default;
+// mask=0 or unmask=1 opts out.
 func widthAndMask(r *http.Request) (int, bool, error) {
 	w, err := parseWidthParam(r.URL.Query().Get("width"))
 	if err != nil {
 		return 0, false, err
 	}
-	return w, preview.ParseBool(r.URL.Query().Get("mask"), false), nil
+	return w, queryMask(r), nil
+}
+
+func queryMask(r *http.Request) bool {
+	q := r.URL.Query()
+	if preview.ParseBool(q.Get("unmask"), false) {
+		return false
+	}
+	return preview.ParseBool(q.Get("mask"), true)
 }
 
 // GET /api/render/authz/{runId}[.png]
@@ -720,7 +743,11 @@ func evidenceRequestFromQuery(r *http.Request) (evidenceRequest, error) {
 	if err != nil {
 		return evidenceRequest{}, err
 	}
-	q := evidenceRequest{Kind: kind, RunID: strings.TrimSpace(v.Get("runId")), Width: width, Mask: mask}
+	q := evidenceRequest{Kind: kind, RunID: strings.TrimSpace(v.Get("runId")), Width: width, Mask: mask,
+		IncludeBody: preview.ParseBool(v.Get("includeBody"), false)}
+	if q.Expected, err = parseExpectedParam(v.Get("expected")); err != nil {
+		return evidenceRequest{}, err
+	}
 	q.A, _ = parseFlowIDParam(orVal(v.Get("flowIdA"), v.Get("a")))
 	q.B, _ = parseFlowIDParam(orVal(v.Get("flowIdB"), v.Get("b")))
 	if q.FlowIDs, err = parseFlowIDList(orVal(v.Get("flowIds"), v.Get("ids"))); err != nil {
@@ -770,22 +797,25 @@ func (e *evidenceAPI) attachEvidenceRender(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var in struct {
-		Kind       string  `json:"kind"`
-		AttackID   string  `json:"attackId"`
-		RunID      string  `json:"runId"`
-		FlowIDs    []int64 `json:"flowIds"`
-		A          int64   `json:"a"`
-		B          int64   `json:"b"`
-		FlowIDA    int64   `json:"flowIdA"`
-		FlowIDB    int64   `json:"flowIdB"`
-		FindingID  int64   `json:"findingId"`
-		FindingIDs []int64 `json:"findingIds"`
-		Caption    string  `json:"caption"`
-		Role       string  `json:"role"`
-		Proof      string  `json:"proof"`
-		Position   *int    `json:"position"`
-		Width      int     `json:"width"`
-		Mask       bool    `json:"mask"`
+		Kind        string  `json:"kind"`
+		AttackID    string  `json:"attackId"`
+		RunID       string  `json:"runId"`
+		FlowIDs     []int64 `json:"flowIds"`
+		A           int64   `json:"a"`
+		B           int64   `json:"b"`
+		FlowIDA     int64   `json:"flowIdA"`
+		FlowIDB     int64   `json:"flowIdB"`
+		FindingID   int64   `json:"findingId"`
+		FindingIDs  []int64 `json:"findingIds"`
+		Caption     string  `json:"caption"`
+		Role        string  `json:"role"`
+		Proof       string  `json:"proof"`
+		Position    *int    `json:"position"`
+		Width       int     `json:"width"`
+		Mask        *bool   `json:"mask"`
+		Unmask      bool    `json:"unmask"`
+		IncludeBody bool    `json:"includeBody"`
+		Expected    int     `json:"expected"`
 	}
 	if !decodeLimitedJSON(w, r, maxEvidenceRenderRequestBytes, &in) {
 		return
@@ -815,7 +845,13 @@ func (e *evidenceAPI) attachEvidenceRender(w http.ResponseWriter, r *http.Reques
 	if kind == preview.KindFindingChain && in.FindingID == 0 {
 		in.FindingID = findingID
 	}
-	res, err := e.render(evidenceRequest{Kind: kind, RunID: runID, FlowIDs: in.FlowIDs, A: in.A, B: in.B, FindingID: in.FindingID, Width: in.Width, Mask: in.Mask})
+	mask := !in.Unmask && (in.Mask == nil || *in.Mask)
+	if in.Expected < 0 || in.Expected > 1_000_000 {
+		httpErr(w, http.StatusBadRequest, "expected must be a non-negative integer")
+		return
+	}
+	res, err := e.render(evidenceRequest{Kind: kind, RunID: runID, FlowIDs: in.FlowIDs, A: in.A, B: in.B, FindingID: in.FindingID,
+		Width: in.Width, Mask: mask, IncludeBody: in.IncludeBody, Expected: in.Expected})
 	if err != nil {
 		writeEvidenceError(w, err)
 		return

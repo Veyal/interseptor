@@ -162,8 +162,13 @@ func (e *evidenceAPI) intruderAttackRender(w http.ResponseWriter, r *http.Reques
 		writeEvidenceError(w, err)
 		return
 	}
+	expected, err := parseExpectedParam(r.URL.Query().Get("expected"))
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
 	id := r.PathValue("id")
-	e.serveRender(w, r, evidenceRequest{Kind: kind, RunID: id, Width: width, Mask: mask}, "intruder-"+id+"-"+r.URL.Query().Get("kind"))
+	e.serveRender(w, r, evidenceRequest{Kind: kind, RunID: id, Width: width, Mask: mask, Expected: expected}, "intruder-"+id+"-"+r.URL.Query().Get("kind"))
 }
 
 func (env intruderRunEnvelope) attack() string {
@@ -186,10 +191,10 @@ func resultSeq(r intruder.Result) int {
 
 func intruderTimelineInput(env intruderRunEnvelope) preview.TimelineInput {
 	in := preview.TimelineInput{
-		RunID: env.RunID, Attack: env.attack(), Threads: env.threads(),
+		RunID: clipText(env.RunID, maxEvidenceRunIDRunes), Attack: clipText(env.attack(), maxEvidenceNameRunes), Threads: env.threads(),
 		DelayMs: max(env.State.DelayMs, env.Spec.DelayMs),
-		Target:  orVal(env.State.TargetHost, env.Spec.Target), Capped: env.State.Capped,
-		Method: clipText(env.Spec.Method, 16), Path: clipText(redactEvidenceText(env.Spec.Path), 160),
+		Target:  evidenceText(orVal(env.State.TargetHost, env.Spec.Target), maxEvidenceNameRunes*2), Capped: env.State.Capped,
+		Method: clipText(env.Spec.Method, 16), Path: evidenceText(env.Spec.Path, maxEvidenceURLRunes),
 		StartedUnixMs: env.State.StartedTs,
 	}
 	for _, r := range env.State.Results {
@@ -201,7 +206,7 @@ func intruderTimelineInput(env intruderRunEnvelope) preview.TimelineInput {
 		if len(r.RLHeaders) > 0 {
 			row.RLHeaders = make(map[string]string, len(r.RLHeaders))
 			for k, v := range r.RLHeaders {
-				row.RLHeaders[k] = redactHeaderValue(k, v)
+				row.RLHeaders[clipText(k, maxEvidenceNameRunes)] = redactHeaderValue(k, v)
 			}
 		}
 		in.Rows = append(in.Rows, row)
@@ -210,39 +215,54 @@ func intruderTimelineInput(env intruderRunEnvelope) preview.TimelineInput {
 }
 
 func intruderDistributionInput(env intruderRunEnvelope) preview.DistributionInput {
-	in := preview.DistributionInput{RunID: env.RunID}
+	in := preview.DistributionInput{RunID: clipText(env.RunID, maxEvidenceRunIDRunes)}
 	for _, r := range env.State.Results {
 		in.Rows = append(in.Rows, preview.DistRow{
 			Seq: resultSeq(r), Status: r.Status, Length: int(r.Length), TimeMs: int(r.TimeMs),
-			Flagged: r.Flagged, Anomaly: r.Anomaly, Matched: r.Matched, BodyHash: r.BodyHash,
+			Flagged: r.Flagged, Anomaly: r.Anomaly, Matched: r.Matched, BodyHash: clipText(r.BodyHash, 64),
 		})
 	}
 	return in
 }
 
-func intruderRaceInput(env intruderRunEnvelope) preview.RaceInput {
+// intruderRaceInput adapts a run for the race view. Extracted values are the
+// proof a race finding needs but are often tokens or coupon codes, so they are
+// shown as length plus digest unless the caller unmasks. expected is the
+// optional baseline of requests the application should have accepted.
+func intruderRaceInput(env intruderRunEnvelope, mask bool, expected int) preview.RaceInput {
 	in := preview.RaceInput{
-		RunID: env.RunID, Threads: env.threads(), Barrier: env.State.Barrier,
-		SuccessLabel: redactEvidenceText(env.Spec.GrepMatch),
+		RunID: clipText(env.RunID, maxEvidenceRunIDRunes), Threads: env.threads(), Barrier: env.State.Barrier,
+		SuccessLabel: redactEvidenceText(env.Spec.GrepMatch), ExpectedMax: expected,
 	}
 	for _, r := range env.State.Results {
 		row := preview.RaceRow{
 			Seq: resultSeq(r), Worker: r.Worker, StartUs: r.StartUs, EndUs: r.EndUs,
-			Status: r.Status, Length: int(r.Length), BodyHash: r.BodyHash, Matched: r.Matched,
+			Status: r.Status, Length: int(r.Length), BodyHash: clipText(r.BodyHash, 64), Matched: r.Matched,
 		}
 		if r.Extracted != "" {
-			row.Extracted = []string{redactEvidenceText(r.Extracted)}
+			v := clipText(r.Extracted, maxEvidenceValueRunes)
+			if mask {
+				v = maskedValue(v)
+			}
+			row.Extracted = []string{v}
 		}
 		in.Rows = append(in.Rows, row)
 	}
 	return in
 }
 
+// intruderStripInput adapts a run for the payload heat strip. Payloads are
+// masked by default (brute-force and credential-stuffing payloads are the
+// credentials); mask=false is an explicit opt-in.
 func intruderStripInput(env intruderRunEnvelope, mask bool) preview.StripInput {
-	in := preview.StripInput{RunID: env.RunID, Attack: env.attack(), Mask: mask}
+	in := preview.StripInput{RunID: clipText(env.RunID, maxEvidenceRunIDRunes), Attack: clipText(env.attack(), maxEvidenceNameRunes), Mask: mask, Premasked: mask}
 	for _, r := range env.State.Results {
+		payload := clipText(r.Payload, maxEvidenceValueRunes)
+		if mask {
+			payload = maskedValue(payload)
+		}
 		in.Rows = append(in.Rows, preview.StripRow{
-			Seq: resultSeq(r), Payload: redactEvidenceText(r.Payload), Status: r.Status,
+			Seq: resultSeq(r), Payload: payload, Status: r.Status,
 			Length: int(r.Length), TimeMs: int(r.TimeMs), Matched: r.Matched, Anomaly: r.Anomaly,
 		})
 	}

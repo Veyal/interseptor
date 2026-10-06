@@ -50,6 +50,11 @@ type FlowDiffInput struct {
 	HeaderDeltas []FlowHeaderDelta
 	BodyDeltas   []FlowBodyDelta
 	Summary      string
+	// BodyOmitted means the adapter chose not to include body lines (they can
+	// carry PII); BodyAdded/BodyRemoved still report how many changed.
+	BodyOmitted            bool
+	BodyAdded, BodyRemoved int
+	BodyNote               string // footer note such as "body excerpt redacted: yes"
 }
 
 // diffKind is the normalised delta kind.
@@ -155,12 +160,24 @@ func flowDiffIdentical(in FlowDiffInput) bool {
 	if in.A.Status != in.B.Status || in.A.Length != in.B.Length || len(in.HeaderDeltas) > 0 {
 		return false
 	}
+	if in.BodyOmitted && in.BodyAdded+in.BodyRemoved > 0 {
+		return false
+	}
 	for _, d := range in.BodyDeltas {
 		if normDiffKind(d.Kind) != diffContext {
 			return false
 		}
 	}
 	return true
+}
+
+// bodyChangeCounts is the changed-line count, from the counted fields when the
+// body excerpt was omitted.
+func (in FlowDiffInput) bodyChangeCounts() (add, del int) {
+	if in.BodyOmitted {
+		return in.BodyAdded, in.BodyRemoved
+	}
+	return countBodyChanges(in.BodyDeltas)
 }
 
 func countBodyChanges(in []FlowBodyDelta) (add, del int) {
@@ -214,7 +231,7 @@ func flowDiffSummary(in FlowDiffInput) string {
 		}
 		return s
 	}
-	add, del := countBodyChanges(in.BodyDeltas)
+	add, del := in.bodyChangeCounts()
 	return fmt.Sprintf("%s: status %d -> %d, length %d -> %d, %d header deltas, +%d/-%d body lines",
 		head, in.A.Status, in.B.Status, in.A.Length, in.B.Length, len(in.HeaderDeltas), add, del)
 }
@@ -247,9 +264,13 @@ func flowDiffAlt(in FlowDiffInput) string {
 	if len(in.HeaderDeltas) > 0 {
 		parts = append(parts, fmt.Sprintf("Headers: %d added, %d removed, %d changed", len(added), len(removed), len(changed)))
 	}
-	add, del := countBodyChanges(in.BodyDeltas)
+	add, del := in.bodyChangeCounts()
 	if add+del > 0 {
-		parts = append(parts, fmt.Sprintf("Body: %d lines added, %d lines removed", add, del))
+		s := fmt.Sprintf("Body: %d lines added, %d lines removed", add, del)
+		if in.BodyOmitted {
+			s += " (excerpt not included)"
+		}
+		parts = append(parts, s)
 	}
 	return AltFromParts(parts...)
 }
@@ -266,7 +287,7 @@ func RenderFlowDiff(in FlowDiffInput, o Opts) (Rendered, error) {
 		hdrs = hdrs[:flowDiffMaxHeaders]
 	}
 	summary := flowDiffSummary(in)
-	prov := fmt.Sprintf("Flows #%d and #%d. Redacted by the adapter. Only recorded status, length, time, headers and body are compared.", in.A.FlowID, in.B.FlowID)
+	prov := flowDiffProvenance(in)
 
 	f := frame{
 		Title:      "Flow-vs-flow diff",
@@ -285,6 +306,14 @@ func RenderFlowDiff(in FlowDiffInput, o Opts) (Rendered, error) {
 		return Rendered{}, err
 	}
 	return Rendered{PNG: png, Alt: flowDiffAlt(in), Summary: summary, Kind: KindFlowDiff, Width: w, Height: h}, nil
+}
+
+func flowDiffProvenance(in FlowDiffInput) string {
+	p := fmt.Sprintf("Flows #%d and #%d. Redacted by the adapter. Only recorded status, length, time, headers and body are compared.", in.A.FlowID, in.B.FlowID)
+	if n := strings.TrimSpace(in.BodyNote); n != "" {
+		p += " " + n + "."
+	}
+	return p
 }
 
 // planDiffLines picks the diff lines to draw: at most flowDiffMaxLines (120)
@@ -390,8 +419,15 @@ func drawFlowDiff(c *canvas, body image.Rectangle, in FlowDiffInput, hdrs []Flow
 
 	c.text(x0, y, "Body diff", fontBold, 14, c.pal.ink)
 	add, del := countBodyChanges(in.BodyDeltas)
+	if in.BodyOmitted {
+		add, del = in.BodyAdded, in.BodyRemoved
+	}
 	c.text(x0+c.measure(fontBold, 14, "Body diff")+10, y+2, fmt.Sprintf("+%d / -%d lines", add, del), fontSans, 12, c.pal.muted)
 	y += 26
+	if in.BodyOmitted {
+		c.text(x0, y, "Body excerpt not included (it can carry personal data); only the changed-line count is shown.", fontSans, 13, c.pal.muted)
+		return
+	}
 	if len(lines) == 0 {
 		c.text(x0, y, "No body differences recorded.", fontSans, 13, c.pal.muted)
 		return
