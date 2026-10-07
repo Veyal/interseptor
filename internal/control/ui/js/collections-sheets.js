@@ -1,5 +1,5 @@
 // collections-sheets.js — environment variables sheet, script review (quarantine approve), import sheet with report, and the collection runner.
-import { $, esc, api, toast, toastError, icon, uiConfirm, openFlow } from './core.js';
+import { $, esc, api, toast, toastError, icon, uiConfirm, openFlow, getHook } from './core.js';
 import { renderState } from './statepanel.js';
 import { openSheet, closeSheet } from './sheet.js';
 import * as M from './collections-model.js';
@@ -313,6 +313,12 @@ export function paintReport(out, report, pv) {
 
 export async function runCollection(folderUid = '') {
   if (!S.colUid) { toast('Create or import a collection first'); return; }
+  const mount = getHook('collectionRunner');
+  if (mount) {
+    // The runner view has its own options and an explicit Run button, so no confirm step.
+    openSheet({ id: 'collRunSheet', title: 'Run', detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); mount(w, { collectionUid: S.colUid, collectionName: S.collection.name || '', folderUid: folderUid || '', envUid: S.envUid || '' }); return body; } });
+    return;
+  }
   const ok = await uiConfirm('Run requests', 'Run every request ' + (folderUid ? 'in this folder' : 'in <b>' + esc(S.collection.name || 'the collection') + '</b>') + ' in order? Scope policy is <b>block</b>; quarantined scripts are skipped. Variable changes made by scripts are discarded.', 'Run', 'btn accent');
   if (!ok) return;
   openSheet({ id: 'collRunSheet', title: 'Run', detents: ['half', 'full'], detent: 'full', opener: $('#collRun'), content: (body) => { body.textContent = ''; const w = el('div', 'coll-sheet'); body.append(w); renderState(w, 'loading', { title: 'Running', rows: 5 }); execRun(w, folderUid); return body; } });
