@@ -328,7 +328,7 @@ func bootstrap(rt jsrt.Runtime, h *host, in *Input) error {
 		in.Cookies = []scriptctx.Cookie{}
 	}
 	w := inWire{
-		Phase: in.Phase, Request: in.Request, Response: rw, Vars: in.Vars, Cookies: in.Cookies, Info: in.Info, Caps: in.Caps,
+		Phase: in.Phase, Request: in.Request, Response: rw, Vars: heapVars(in.Vars, in.Caps), Cookies: in.Cookies, Info: in.Info, Caps: in.Caps,
 		Limits: limitsWire{MaxTests: in.Limits.MaxTests, MaxString: in.Limits.MaxString, MaxArray: in.Limits.MaxArray, MaxAlloc: in.Limits.MaxAlloc},
 	}
 	b, err := json.Marshal(w)
@@ -366,4 +366,36 @@ func classify(ctx context.Context, e error) ScriptError {
 		return ScriptError{Kind: k, Message: se.Message, Stack: se.Stack}
 	}
 	return ScriptError{Kind: "error", Message: e.Error()}
+}
+
+// heapVars is the variable data that may enter the JS heap. Secret values
+// never do unless the script holds secrets.read, and nothing does without
+// vars.read, so no prelude bug can expose what the heap never held. The
+// secret name list stays so replaceIn and masking keep working.
+func heapVars(v scriptctx.Vars, caps scriptctx.Caps) scriptctx.Vars {
+	out := scriptctx.Vars{EnvName: v.EnvName, Secret: v.Secret}
+	if !caps.VarsRead {
+		return out
+	}
+	drop := map[string]bool{}
+	if !caps.SecretsRead {
+		for _, n := range v.Secret {
+			drop[n] = true
+		}
+	}
+	keep := func(m map[string]any) map[string]any {
+		if m == nil {
+			return nil
+		}
+		o := make(map[string]any, len(m))
+		for k, x := range m {
+			if !drop[k] {
+				o[k] = x
+			}
+		}
+		return o
+	}
+	out.Environment, out.Globals, out.Collection = keep(v.Environment), keep(v.Globals), keep(v.Collection)
+	out.Local, out.IterationData = keep(v.Local), keep(v.IterationData)
+	return out
 }

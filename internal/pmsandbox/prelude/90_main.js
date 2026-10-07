@@ -34,7 +34,7 @@
   def('tests', legacyTests);
   def('environment', scopes.environment.toObject());
   def('globals', scopes.globals.toObject());
-  def('data', Object.assign({}, scopes.iteration.__d));
+  def('data', Object.assign({}, sd(scopes.iteration)));
   def('iteration', __in.info.iteration || 0);
   def('request', { url: reqObj.url.toString(), method: reqObj.method, headers: reqObj.headers.toObject(), data: reqObj.body.toString(), name: reqObj.name, id: reqObj.id });
   if (respObj) {
@@ -61,7 +61,7 @@ function fail(e) {
   scriptErr({ kind: kind, name: e && e.name, message: e && e.message !== undefined ? String(e.message) : String(e), stack: e && e.stack ? String(e.stack) : '' });
 }
 function finish() {
-  const dump = (s) => Object.assign({}, s.__d);
+  const dump = (s) => Object.assign({}, sd(s));
   const errs = scriptErrors.map((e) => (e && e.kind ? e : { kind: e instanceof UnsupportedError ? 'unsupported' : 'error', name: e && e.name, message: e && e.message !== undefined ? String(e.message) : String(e), stack: '' }));
   const rq = reqObj.toJSON();
   rq.name = reqObj.name; rq.id = reqObj.id;

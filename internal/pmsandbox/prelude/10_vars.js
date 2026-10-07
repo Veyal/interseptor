@@ -14,41 +14,43 @@ function dyn(name) {
   }
 }
 
+const SCOPE_DATA = new WeakMap();
+const sd = (s) => SCOPE_DATA.get(s).d;
 class VarScope {
   constructor(name, data, writable) {
-    this.__name = name; this.__d = Object.assign(Object.create(null), data || {}); this.__w = writable !== false;
+    this.__name = name; SCOPE_DATA.set(this, { d: Object.assign(Object.create(null), data || {}) }); this.__w = writable !== false;
   }
   get(k) {
     need('varsRead', 'reading variables');
-    if (!hasOwn(this.__d, k)) return undefined;
+    if (!hasOwn(sd(this), k)) return undefined;
     if (secretNames[k] && !CAPS.secretsRead) return undefined;
-    return this.__d[k];
+    return sd(this)[k];
   }
-  has(k) { need('varsRead', 'reading variables'); return hasOwn(this.__d, k); }
+  has(k) { need('varsRead', 'reading variables'); return hasOwn(sd(this), k); }
   set(k, v) {
     need('varsWrite', 'writing variables');
     if (!this.__w) throw new Error('pm.' + this.__name + ' is read-only');
     if (typeof v === 'function' || typeof v === 'symbol') throw new TypeError('cannot store a ' + typeof v + ' in pm.' + this.__name);
     const key = String(k);
-    this.__d[key] = v;
+    sd(this)[key] = v;
     chgPush({ scope: this.__name, name: key, op: 'set', value: v });
   }
   unset(k) {
     need('varsWrite', 'writing variables');
     if (!this.__w) throw new Error('pm.' + this.__name + ' is read-only');
-    delete this.__d[k];
+    delete sd(this)[k];
     chgPush({ scope: this.__name, name: String(k), op: 'unset' });
   }
   clear() {
     need('varsWrite', 'writing variables');
     if (!this.__w) throw new Error('pm.' + this.__name + ' is read-only');
-    this.__d = Object.create(null);
+    SCOPE_DATA.get(this).d = Object.create(null);
     chgPush({ scope: this.__name, name: '', op: 'clear' });
   }
   toObject() {
     need('varsRead', 'reading variables');
     const o = {};
-    Object.keys(this.__d).forEach((k) => { if (!secretNames[k] || CAPS.secretsRead) setOwn(o, k, this.__d[k]); });
+    Object.keys(sd(this)).forEach((k) => { if (!secretNames[k] || CAPS.secretsRead) setOwn(o, k, sd(this)[k]); });
     return o;
   }
   replaceIn(s) { return replaceIn(String(s)); }
@@ -64,7 +66,7 @@ const scopes = {
 Object.defineProperty(scopes.environment, 'name', { value: __in.vars.envName || '', enumerable: false });
 const ORDER = [scopes.local, scopes.iteration, scopes.collection, scopes.environment, scopes.globals];
 function lookup(k) {
-  for (let i = 0; i < ORDER.length; i++) if (hasOwn(ORDER[i].__d, k)) return { found: true, value: ORDER[i].__d[k] };
+  for (let i = 0; i < ORDER.length; i++) if (hasOwn(sd(ORDER[i]), k)) return { found: true, value: sd(ORDER[i])[k] };
   return { found: false };
 }
 function replaceIn(s, depth) {
@@ -89,7 +91,7 @@ const variables = {
   toObject() {
     need('varsRead', 'reading variables');
     const o = {};
-    for (let i = ORDER.length - 1; i >= 0; i--) Object.keys(ORDER[i].__d).forEach((k) => setOwn(o, k, ORDER[i].__d[k]));
+    for (let i = ORDER.length - 1; i >= 0; i--) Object.keys(sd(ORDER[i])).forEach((k) => setOwn(o, k, sd(ORDER[i])[k]));
     Object.keys(o).forEach((k) => { if (secretNames[k] && !CAPS.secretsRead) delete o[k]; });
     return o;
   },

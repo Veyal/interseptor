@@ -2,12 +2,14 @@
 const pmExpect = expectFn;
 const PASS_KEYS = { then: 1, toJSON: 1, inspect: 1, constructor: 1, valueOf: 1, toString: 1, asymmetricMatch: 1, nodeType: 1, tagName: 1 };
 function strict(obj, label) {
-  return new Proxy(obj, {
+  const px = new Proxy(obj, {
     get(t, k, r) {
       if (typeof k === 'symbol' || k in t || PASS_KEYS[k]) return Reflect.get(t, k, r);
       unsupported(label + '.' + String(k));
     },
   });
+  if (SCOPE_DATA.has(obj)) SCOPE_DATA.set(px, SCOPE_DATA.get(obj));
+  return px;
 }
 
 const flow = { nextSet: false, next: '', skip: false };

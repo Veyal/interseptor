@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Collections import: the secret scrub no longer blanks a header that only wraps template references in an auth scheme (`Authorization: Bearer {{token}}`, `Basic {{user}}:{{pass}}`); an imported bearer-auth request was stored with an empty Authorization header and sent unauthenticated. A value mixing a template with literal text is still scrubbed. Re-importing a file that matches an existing collection (same uid or name) now answers with the stored collection's uid instead of one that was never written.
 
 - **HAR importer test fixture was gitignored.** `*.har` in `.gitignore` swallowed `internal/collimport/har/testdata/sample.har`, so a clean checkout failed `TestHARGolden`; added a testdata negation and committed the (example.com) fixture.
+- Script sandbox: secret variable values no longer enter the JS heap unless the script holds `secrets.read` (and no variable data without `vars.read`), and scope data moved from the public `__d` property to a closure-private WeakMap, so `vars.read` alone can no longer read or exfiltrate secrets.
 
 ### Changed
 
