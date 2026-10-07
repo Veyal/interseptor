@@ -53,26 +53,26 @@ export async function paintEnvSheet(body, groups, getActive, setActive) {
   holder.append(el('p', 'coll-note', 'Initial values are shared when you export. Current values stay on this machine and are what requests use. Secret variables never show or export a value.'));
   const rows = V.sheetRows(vars);
   const currents = new Map();
-  const table = el('table', 'coll-kv');
+  const table = el('table', 'coll-kv coll-kv-vars');
   table.setAttribute('aria-label', g.title + ' variables');
   table.innerHTML = '<thead><tr><th scope="col">On</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Initial value</th><th scope="col">Current value</th><th scope="col"><span class="u-sr">Remove</span></th></tr></thead>';
   const tb = el('tbody');
   const addRow = (r) => {
     const tr = el('tr');
     const on = el('td', 'coll-on'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.enabled; cb.setAttribute('aria-label', 'Enabled ' + r.key); cb.addEventListener('change', () => { r.enabled = cb.checked; }); on.append(cb);
-    const mkText = (prop, aria, opts = {}) => { const td = el('td'); const i = document.createElement('input'); i.type = 'text'; i.className = 'btn btn-field'; i.value = opts.value != null ? opts.value : r[prop]; i.setAttribute('aria-label', aria + ' ' + (r.key || 'new variable')); i.autocomplete = 'off'; i.spellcheck = false; if (opts.disabled) i.disabled = true; if (opts.placeholder) i.placeholder = opts.placeholder; i.addEventListener('input', () => { if (opts.onInput) opts.onInput(i.value); else r[prop] = i.value; }); td.append(i); return td; };
+    const mkText = (prop, aria, opts = {}) => { const td = el('td'); if (opts.label) td.dataset.label = opts.label; const i = document.createElement('input'); i.type = 'text'; i.className = 'btn btn-field'; i.value = opts.value != null ? opts.value : r[prop]; i.setAttribute('aria-label', aria + ' ' + (r.key || 'new variable')); i.autocomplete = 'off'; i.spellcheck = false; if (opts.disabled) i.disabled = true; if (opts.placeholder) i.placeholder = opts.placeholder; i.addEventListener('input', () => { if (opts.onInput) opts.onInput(i.value); else r[prop] = i.value; }); td.append(i); return td; };
     const type = el('td'); const ts = document.createElement('select'); ts.className = 'btn btn-field'; ts.setAttribute('aria-label', 'Type of ' + (r.key || 'new variable')); ['default', 'secret'].forEach((t) => ts.append(new Option(t, t))); ts.value = r.type === 'secret' ? 'secret' : 'default'; ts.addEventListener('change', () => { r.type = ts.value; r.secret = ts.value === 'secret'; paintRows(); }); type.append(ts);
     const curPlaceholder = r.secret ? (r.hasCurrent ? 'set (hidden)' : 'not set') : '';
     tr.append(on, mkText('key', 'Name', {}), type,
-      mkText('initial', 'Initial value of', { disabled: r.secret, placeholder: r.secret ? 'never stored' : '' }),
-      mkText('current', 'Current value of', { value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r.key, { value: v, secret: r.secret }); } }));
+      mkText('initial', 'Initial value of', { label: 'Initial value', disabled: r.secret, placeholder: r.secret ? 'never stored' : '' }),
+      mkText('current', 'Current value of', { label: 'Current value', value: r.secret ? '' : r.current, placeholder: curPlaceholder, onInput: (v) => { currents.set(r.key, { value: v, secret: r.secret }); } }));
     const del = el('td', 'coll-del'); const x = btn('', () => { rows.splice(rows.indexOf(r), 1); paintRows(); }, 'btn xs'); x.innerHTML = icon('trash'); x.setAttribute('aria-label', 'Remove ' + (r.key || 'variable')); del.append(x); tr.append(del);
     tb.append(tr);
   };
   const paintRows = () => { tb.textContent = ''; rows.forEach(addRow); };
   paintRows();
   table.append(tb);
-  const scroll = el('div', 'coll-scroll-x');
+  const scroll = el('div', 'coll-scroll-x coll-vars-wrap');
   scroll.append(table);
   holder.append(scroll);
   holder.append(btn('Add variable', () => { rows.push({ key: '', type: 'default', enabled: true, initial: '', current: '', hasCurrent: false, secret: false }); paintRows(); tb.querySelector('tr:last-child input[type="text"]')?.focus(); }, 'btn', 'plus'));
@@ -217,7 +217,14 @@ export function paintImport(body, initialText) {
   const file = document.createElement('input');
   file.type = 'file'; file.id = 'collImportFile'; file.multiple = true; file.accept = '.json,.yaml,.yml,.txt,.bru,.har,.xml,application/json';
   file.setAttribute('aria-label', 'Choose a collection file, or several .bru files for a Bruno folder');
-  row.append(file);
+  file.hidden = true;
+  // The native file control is replaced by the app button (custom-ui-controls); the hidden input stays the value adapter.
+  const pick = btn('Choose files', () => file.click(), 'btn', 'folder-open');
+  pick.setAttribute('aria-describedby', 'collImportPicked');
+  const picked = el('span', 'coll-note', 'No file chosen');
+  picked.id = 'collImportPicked';
+  picked.setAttribute('role', 'status');
+  row.append(pick, picked, file);
   wrap.append(row);
   const ta = document.createElement('textarea');
   ta.id = 'collImportText';
@@ -238,22 +245,23 @@ export function paintImport(body, initialText) {
   let data = initialText;
   let format = 'auto';
   file.addEventListener('change', async () => {
-    const picked = Array.from(file.files || []);
-    if (!picked.length) return;
-    const total = picked.reduce((n, f) => n + f.size, 0);
+    const chosen = Array.from(file.files || []);
+    if (!chosen.length) return;
+    picked.textContent = chosen.length === 1 ? chosen[0].name : chosen.length + ' files chosen';
+    const total = chosen.reduce((n, f) => n + f.size, 0);
     if (total > 64 * 1024 * 1024) { toast('Those files are larger than the 64 MiB import limit', 'error'); return; }
-    if (picked.length > 1) {
+    if (chosen.length > 1) {
       // Several files are a Bruno folder: send each with its relative path.
-      const files = await Promise.all(picked.map(async (f) => ({ path: f.webkitRelativePath || f.name, text: await f.text() })));
+      const files = await Promise.all(chosen.map(async (f) => ({ path: f.webkitRelativePath || f.name, text: await f.text() })));
       data = JSON.stringify({ files });
       format = 'bruno-files';
       ta.value = '';
-      ta.placeholder = picked.length + ' files loaded (' + fmtSize(total) + ')';
+      ta.placeholder = chosen.length + ' files loaded (' + fmtSize(total) + ')';
     } else {
-      data = await picked[0].text();
+      data = await chosen[0].text();
       format = 'auto';
       ta.value = data.length > 200000 ? '' : data;
-      ta.placeholder = data.length > 200000 ? picked[0].name + ' loaded (' + fmtSize(total) + ')' : ta.placeholder;
+      ta.placeholder = data.length > 200000 ? chosen[0].name + ' loaded (' + fmtSize(total) + ')' : ta.placeholder;
     }
     commit.disabled = true;
     runPreview();

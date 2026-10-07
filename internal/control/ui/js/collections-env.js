@@ -70,7 +70,17 @@ export function renderScriptsChip() {
   const total = S.scripts && S.scripts.scripts ? S.scripts.scripts.length : 0;
   chip.hidden = !total;
   chip.dataset.state = n ? 'warn' : 'ok';
-  text.textContent = n ? n + ' quarantined ' + (n === 1 ? 'script' : 'scripts') : total + ' ' + (total === 1 ? 'script' : 'scripts') + ' approved';
+  const count = n || total;
+  const word = (count === 1 ? 'script' : 'scripts') + (n ? ' quarantined' : ' approved');
+  // The long wording hides on phones (shared .lbl-long rule); the count and the accessible name stay.
+  text.textContent = '';
+  const num = document.createElement('span');
+  num.textContent = String(count);
+  const long = document.createElement('span');
+  long.className = 'lbl-long';
+  long.textContent = ' ' + word;
+  text.append(num, long);
+  chip.setAttribute('aria-label', count + ' ' + word + '. Review scripts');
 }
 
 /* ------------------------------------------------------------------ send */

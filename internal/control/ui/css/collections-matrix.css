@@ -16,10 +16,12 @@
 .cxm-table th,.cxm-table td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;white-space:nowrap}
 .cxm-table th{color:var(--fg3);font-weight:600;font-size:var(--fs-xs)}
 .cxm-table th.cxm-baseline{color:var(--accent)}
-.cxm-row-name{white-space:normal;max-width:360px;overflow-wrap:anywhere}
+.cxm-table td.cxm-row-name{white-space:normal;max-width:11rem;overflow-wrap:anywhere}
 .cxm-method{font-family:var(--mono);font-weight:700;font-size:var(--fs-xs);color:var(--fg2);margin-right:4px}
 
 .cxm-cell{text-align:center;font-family:var(--mono)}
+/* Identity columns stay narrow so a three-identity matrix fits the side sheet; the wrapper still scrolls when there are more. */
+.cxm-table th:not(:first-child),.cxm-table td.cxm-cell{padding-inline:var(--sp-1)}
 .cxm-glyph{display:inline-block;min-width:1.2em}
 .cxm-status{color:var(--fg3);font-size:var(--fs-xs);margin-left:4px}
 .cxm-cell[data-class="success"] .cxm-glyph{color:var(--accent)}
