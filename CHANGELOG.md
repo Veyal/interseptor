@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-08
+
+> Feature release: Collections, the Postman replacement. Collections and environments with secret handling, `pm.*` pre-request and test scripts in a sandboxed worker, a runner with the `interseptor run` CLI (JUnit, JSON and HTML reports), importers for Postman, curl, OpenAPI, Insomnia, Bruno and HAR, an auth suite, an identity matrix and a Collections UI. Also the restyled documentation site (fixes #92, #93, #94) and a security pass that fixed four high-severity findings. This is a minor bump: a large new capability set on top of the existing surface.
+>
+> Known limits, stated plainly:
+>
+> - The script-trust/CSRF gate is a constant header, so a local process on the same machine can approve scripts. This is the documented local trust boundary (`docs/collections.md`).
+> - An AI agent with MCP access can read resolved secrets from captured collection flows in History. Wire bytes are real by design; this is documented.
+> - The binary grew by about 11 MB from the embedded JavaScript engine (goja): darwin/arm64 built with `-s -w` went from 20.8 MB (v2.5.0 source) to 32.2 MB (+11.4 MB, +55%).
+> - Out of scope for this release: gRPC, MQTT, mock server, monitors, Postman collection v3 and `pm.visualizer`.
+> - Imported scripts are quarantined until you trust them in the UI.
+
 ### Added
 - Collections differentiators package `internal/collmatrix` (library, REST routes `/api/collmatrix/*` and MCP tool descriptors, mounted by the control layer): the identity matrix runs a collection or chosen requests once per saved authz identity plus anonymous through the shared runner (scope policy block, script writes discarded, each identity's credentials replace the stored ones and the owner's collection auth is neutralised), classifies each cell with the authz outcome classes (success, auth failure, authz failure, validation, other, blocked, error), compares with a baseline identity, flags an identity expected to be denied that succeeded as a violation hypothesis, renders through the authz-matrix evidence renderer and attaches the flagged flows to a finding.
 - Collections: OpenAPI coverage (which operations of an imported spec stored runs exercised: untested, blocked, failing, passing, statuses seen, per-tag rollup), saved-example diff (status, headers with volatile ones ignored, JSON structure by path with `$.a[*].b` ignore paths, normalised bodies for the shared DiffView; secrets scrubbed), Intruder handoff (a request item becomes target, raw template with section-sign positions on chosen or detected variables, attack type and dataset or starter payloads; secret variables stay placeholders unless a human UI session opts in), run timing breakdown (requests, tests, other, per-request min/median/p95/max, outliers; the sender records total round trip only, so no DNS/connect/TLS split) and cross-identity timing outliers, and run results attached as finding evidence with a run-context note.
