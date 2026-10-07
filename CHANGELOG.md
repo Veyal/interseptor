@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 
 - **Sender per-send options (collections WP3).** `sender.Request.Options` (`SendOptions`) adds timeout, redirect following (each hop its own flow, credentials dropped cross-host), TLS verify/SNI/client cert, per-send proxy override, DNS override, `Meta` plus an `OnFlow` hook run after the persist hook, ordered duplicate-preserving `RawHeaders` over HTTP/1.1, and a dial-time `IPGuard` (loopback, link-local/metadata, RFC1918/ULA, CGNAT, own-listener refusal; pinned to the vetted IP so DNS rebinding cannot swap it). Transports are cached per option set. A nil `Options` keeps Repeater/Intruder behaviour unchanged.
+
+- **Collection execution pipeline (collections WP4).** New `internal/collexec` package with a single `Pipeline.Step()` used by every collection send: ancestor chain (collection, folders, request) with inherited auth/settings, trust-gated pre/test scripts through an engine-neutral `Executor` interface (quarantined scripts never run; unsupported APIs report `unsupported`, never a false pass), `{{var}}` resolution via `internal/varstore` with unresolved-blocks-send, basic/bearer/api-key/manual OAuth2 token auth, a per-collection/env/identity cookie jar fed by `Set-Cookie`, own-listener refusal plus base-target pin and scope policy (`block` for runner/CLI/script/MCP, `warn` for interactive sends) with per-hop redirect re-checks, optional message-codec body encoding for encoded form-submission flows, raw/urlencoded/multipart/GraphQL bodies, ordered duplicate headers, sends through `sender.Send` flagged `FlagCollection` (plus `FlagAI`) with `flow_ctx` rows written best effort after persist, declarative assertions (status, header, body, JSONPath subset, time), `setNextRequest`/skip flow control, and a masked, secret-free result model.
+
 ### Changed
 
 - **Post-release maintenance.** Advanced the dev-build fallback to the published `2.5.0` release.
