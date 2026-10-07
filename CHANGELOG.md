@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Portable project bundle v2: `/api/export/project` now carries a scrubbed `collections` section (`Export/DecodeCollectionsBundle`, secrets blanked, scripts quarantined on import, capabilities default-deny) and `/api/import/project` merges it and reports `importedCollections`. Version 1 bundles without the section still import; bundles newer than 2 are rejected.
 - Fixed: an exported project with no captured flows serialized its HAR as `"entries": null`, which the project importer rejected; `harx.Build` now always emits an empty array.
 - Project merge (`Store.MergeFrom`/`MergePreview`, archive merge and vault merge) now also unions collections, items and environments via the scrubbed collections merge (scripts quarantined, capabilities default-deny) and reports them under `collections` in the merge stats; older peers without collection tables merge unchanged. Preview counts are an upper bound for items.
 - Collections integration: full-project archive exports (download, file export, merge push) and vault backups now snapshot through `Store.BackupToScrubbed`, so secret variables, current values, cookies, OAuth tokens, auth credentials and script trust never leave the machine; canary tests drive the real archive endpoints and the vault path.
