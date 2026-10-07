@@ -420,3 +420,16 @@ func TestMergeCollectionsNameAndPathSignatureFallback(t *testing.T) {
 		t.Fatalf("collections=%d", len(cs))
 	}
 }
+
+func TestIsSecretNameIsTheScrubHeuristic(t *testing.T) {
+	for _, n := range []string{"token", "accessToken", "client_secret", "Authorization", "session_id", "x-api-key", "signature", "db_password"} {
+		if !IsSecretName(n) {
+			t.Errorf("%q must be a secret name", n)
+		}
+	}
+	for _, n := range []string{"baseUrl", "tokenUrl", "tokenType", "username", "page", "authName", ""} {
+		if IsSecretName(n) {
+			t.Errorf("%q must not be a secret name", n)
+		}
+	}
+}

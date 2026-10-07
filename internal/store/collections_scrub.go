@@ -32,6 +32,12 @@ var nonSecretSuffixes = []string{"url", "uri", "type", "prefix", "name", "locati
 var secretNameParts = []string{"token", "secret", "password", "passwd", "passphrase", "apikey", "api-key", "api_key",
 	"authorization", "cookie", "privatekey", "private_key", "session", "signature", "credential"}
 
+// IsSecretName reports whether a variable, header or parameter name designates
+// a secret (token, password, signature, ...). It is the single name heuristic of
+// the scrub; callers that declare variables on a script's behalf use it so a
+// credential a script writes is stored as a secret, not a shareable value.
+func IsSecretName(name string) bool { return secretName(name) }
+
 // secretName reports whether a key/header/param name designates a secret.
 func secretName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))

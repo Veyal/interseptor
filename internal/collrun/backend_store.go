@@ -308,7 +308,7 @@ func (b *StoreBackend) setCurrent(kind, uid, key, value string, secret bool) err
 	}
 	if !found {
 		typ := store.VarTypeDefault
-		if secret {
+		if secret || store.IsSecretName(key) {
 			typ, isSecret = store.VarTypeSecret, true
 		}
 		decl = append(decl, store.Variable{OwnerKind: kind, OwnerUID: uid, Key: key, Type: typ, Enabled: true})

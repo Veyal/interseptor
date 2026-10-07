@@ -282,7 +282,7 @@ func (c *collectionsAPI) setCurrentValue(kind, uid, key, value, by string, secre
 			return false, store.ErrCollInvalid
 		}
 		typ := store.VarTypeDefault
-		if secret {
+		if secret || store.IsSecretName(key) {
 			typ, secretOut = store.VarTypeSecret, true
 		}
 		decl = append(decl, store.Variable{OwnerKind: kind, OwnerUID: uid, Key: key, Type: typ, Enabled: true})
