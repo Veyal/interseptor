@@ -45,6 +45,9 @@ class Assertion {
   __self() { return this.__proxy || this; }
   equal(v) { this.__assert(this.__f.deep ? deepEqual(this.__obj, v) : this.__obj === v, 'equal ' + fmt(v), 'not equal ' + fmt(v), v); return this.__self(); }
   eql(v) { this.__assert(deepEqual(this.__obj, v), 'deeply equal ' + fmt(v), 'not deeply equal ' + fmt(v), v); return this.__self(); }
+  equals(v) { return this.equal(v); }
+  eq(v) { return this.equal(v); }
+  eqls(v) { return this.eql(v); }
   property(name, val) {
     const o = this.__obj;
     if (o === null || o === undefined) throw new AssertionError(this.__msg + 'Target cannot be null or undefined.');
